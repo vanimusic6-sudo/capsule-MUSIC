@@ -10,6 +10,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.res.painterResource
+import com.nikhil.yt.constants.InnerTubeCookieKey
+import com.nikhil.yt.innertube.utils.parseCookieString
+import com.nikhil.yt.utils.rememberPreference
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -28,21 +35,52 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.nikhil.yt.R
+import com.nikhil.yt.ui.theme.LocalCapsuleLightTheme
 
 /** Neutral chrome for the standard layout, independent of Capsule Dock artwork. */
 object StandardChrome {
     val isDark: Boolean @Composable get() = MaterialTheme.colorScheme.surface.luminance() < 0.5f
-    val background: Color @Composable get() = if (isDark) Color(0xFF141414) else Color(0xFFFAFAFA)
-    val panel: Color @Composable get() = if (isDark) Color(0xFF1C1C1C) else Color(0xFFF0F0F0)
-    val selected: Color @Composable get() = if (isDark) Color(0xFF272727) else Color(0xFFDEDEDE)
-    val text: Color @Composable get() = if (isDark) Color(0xFFF3F3F3) else Color(0xFF171717)
-    val muted: Color @Composable get() = if (isDark) Color(0xFF969696) else Color(0xFF626262)
+    val background: Color @Composable get() =
+        if (LocalCapsuleLightTheme.current) MaterialTheme.colorScheme.background
+        else if (isDark) Color(0xFF141414) else Color(0xFFFAFAFA)
+    val panel: Color @Composable get() =
+        if (LocalCapsuleLightTheme.current) MaterialTheme.colorScheme.surfaceContainer
+        else if (isDark) Color(0xFF1C1C1C) else Color(0xFFF0F0F0)
+    val selected: Color @Composable get() =
+        if (LocalCapsuleLightTheme.current) MaterialTheme.colorScheme.surfaceContainerHighest
+        else if (isDark) Color(0xFF272727) else Color(0xFFDEDEDE)
+    val text: Color @Composable get() =
+        if (LocalCapsuleLightTheme.current) MaterialTheme.colorScheme.onSurface
+        else if (isDark) Color(0xFFF3F3F3) else Color(0xFF171717)
+    val muted: Color @Composable get() =
+        if (LocalCapsuleLightTheme.current) MaterialTheme.colorScheme.onSurfaceVariant
+        else if (isDark) Color(0xFF969696) else Color(0xFF626262)
     val favorite: Color @Composable get() = CapsuleFavoriteColors.selected(text)
 }
 
 @Composable
-fun StandardHeaderTitle(accountName: String?, accountImageUrl: String?, onAccountClick: () -> Unit) {
+fun StandardHeaderTitle(
+    accountName: String?,
+    accountImageUrl: String?,
+    showHomeGreeting: Boolean = false,
+    onAccountClick: () -> Unit,
+) {
     val accountLabel = stringResource(R.string.account)
+    // The preference snapshot is primed before Compose. A returning signed-in
+    // user keeps their account placeholder until the real portrait loads;
+    // they never flash a guest sun/moon while accountInfo() is in flight.
+    val cookie by rememberPreference(InnerTubeCookieKey, defaultValue = "")
+    val signedIn = remember(cookie) {
+        runCatching { "SAPISID" in parseCookieString(cookie) }.getOrDefault(false)
+    }
+    // One lifecycle receiver and one scheduled boundary for both header elements.
+    val dayPeriod = if (showHomeGreeting) rememberHomeDayPeriod() else null
+    val guestIcon = dayPeriod?.let { homeGuestIcon(signedIn = signedIn, period = it) }
+    val title = if (dayPeriod != null) {
+        stringResource(dayPeriod.greetingId)
+    } else {
+        stringResource(R.string.app_name)
+    }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(
             contentAlignment = Alignment.Center,
@@ -51,12 +89,31 @@ fun StandardHeaderTitle(accountName: String?, accountImageUrl: String?, onAccoun
                 .semantics { contentDescription = accountLabel },
         ) {
             Box(Modifier.size(30.dp).clip(CircleShape).background(Color(0xFFBC3606)), contentAlignment = Alignment.Center) {
-                Text(accountName?.trim()?.firstOrNull()?.uppercase() ?: "C", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                AsyncImage(model = accountImageUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(30.dp).clip(CircleShape))
+                if (guestIcon != null) {
+                    Icon(
+                        painter = painterResource(guestIcon),
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp),
+                    )
+                } else {
+                    Text(
+                        accountName?.takeUnless { it == "Guest" }?.trim()?.firstOrNull()?.uppercase() ?: "C",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    AsyncImage(
+                        model = if (signedIn || !showHomeGreeting) accountImageUrl else null,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(30.dp).clip(CircleShape),
+                    )
+                }
             }
         }
         Text(
-            text = stringResource(R.string.app_name),
+            text = title,
             color = StandardChrome.text,
             fontSize = 27.sp,
             fontWeight = FontWeight.Bold,

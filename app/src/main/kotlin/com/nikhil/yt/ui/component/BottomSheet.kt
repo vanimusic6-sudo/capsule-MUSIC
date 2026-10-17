@@ -33,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -67,6 +68,52 @@ import kotlin.math.abs
  * The mini-player uses this while it is completely covered by the expanded full player.
  */
 internal val LocalCapsuleBackgroundMotionEnabled = compositionLocalOf { true }
+
+/**
+ * Tracks the touch axis on the MINI surface without consuming events.
+ * A direction remains locked until finger-up even if the user reverses course.
+ * This protects the sheet from a secondary vertical drag during track swipes.
+ */
+internal enum class MiniGestureAxis { UNKNOWN, HORIZONTAL, VERTICAL }
+
+internal class MiniPlayerGestureArbiter {
+    private var sumX = 0f
+    private var sumY = 0f
+    var active = false
+        private set
+    var axis = MiniGestureAxis.UNKNOWN
+        private set
+    private var completedAxis = MiniGestureAxis.UNKNOWN
+
+    fun begin() {
+        sumX = 0f
+        sumY = 0f
+        axis = MiniGestureAxis.UNKNOWN
+        completedAxis = MiniGestureAxis.UNKNOWN
+        active = true
+    }
+
+    fun record(dx: Float, dy: Float, touchSlop: Float) {
+        if (!active || axis != MiniGestureAxis.UNKNOWN) return
+        sumX += dx
+        sumY += dy
+        if (maxOf(abs(sumX), abs(sumY)) <= touchSlop) return
+        axis = if (abs(sumX) > abs(sumY)) MiniGestureAxis.HORIZONTAL
+            else MiniGestureAxis.VERTICAL
+    }
+
+    fun finish() {
+        if (active) completedAxis = axis
+        active = false
+    }
+
+    fun wasHorizontal(): Boolean =
+        if (active) axis == MiniGestureAxis.HORIZONTAL
+        else completedAxis == MiniGestureAxis.HORIZONTAL
+}
+
+internal val LocalMiniPlayerGestureArbiter =
+    staticCompositionLocalOf<MiniPlayerGestureArbiter?> { null }
 
 /**
  * Whether the mini-player's decorative background clock is allowed to run.
@@ -282,6 +329,7 @@ fun BottomSheet(
                     state.compactSurfaceVisible
             }
         }
+    val miniGestureArbiter = remember(state) { MiniPlayerGestureArbiter() }
     val renderExpandedSurface by
         remember(state) {
             derivedStateOf {
@@ -324,6 +372,7 @@ fun BottomSheet(
                             state = state,
                             onDismiss = if (allowSwipeDismiss) onDismiss else null,
                             dismissOnlyFromCollapsed = dismissOnlyFromCollapsed,
+                            miniGestureArbiter = miniGestureArbiter,
                         )
                     } else {
                         Modifier
@@ -358,6 +407,7 @@ fun BottomSheet(
             ) {
                 CompositionLocalProvider(
                     LocalCapsuleBackgroundMotionEnabled provides miniBackgroundMotionEnabled,
+                    LocalMiniPlayerGestureArbiter provides miniGestureArbiter,
                 ) {
                     collapsedContent()
                 }
@@ -986,6 +1036,23 @@ const val EXPANDED_ANCHOR = 2
 const val COLLAPSED_ANCHOR = 1
 const val DISMISSED_ANCHOR = 0
 
+/**
+ * Restore a newly selected track to its compact dock only if the player
+ * still intends to be dismissed. On the very first open, a tap can request
+ * Expanded while the physical offset remains at Dismissed for a frame.
+ * A stale queue-restoration callback must never convert that into a close.
+ */
+internal fun shouldRestoreCompactPlayerAfterPlayback(
+    hasMediaItem: Boolean,
+    isYearInMusicScreen: Boolean,
+    physicalDismissed: Boolean,
+    requestedAnchor: Int,
+): Boolean =
+    hasMediaItem &&
+        !isYearInMusicScreen &&
+        physicalDismissed &&
+        requestedAnchor == DISMISSED_ANCHOR
+
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
 fun rememberBottomSheetState(
@@ -1070,6 +1137,9 @@ internal fun canStartCompactDismissGesture(
  */
 private class BottomSheetGesturePolicy {
     var allowDismiss: Boolean = false
+    var startedOnMini: Boolean = false
+    // Latched through finger-up, even if the next pointer begins immediately.
+    var horizontalOwned: Boolean = false
 }
 
 /**
@@ -1081,10 +1151,11 @@ private class BottomSheetGesturePolicy {
  * the exact current offset instead of racing a queue of snap coroutines.
  */
 @Composable
-fun Modifier.bottomSheetDraggable(
+internal fun Modifier.bottomSheetDraggable(
     state: BottomSheetState,
     onDismiss: (() -> Unit)? = null,
     dismissOnlyFromCollapsed: Boolean = false,
+    miniGestureArbiter: MiniPlayerGestureArbiter? = null,
 ): Modifier {
     val density = LocalDensity.current
     val velocityThresholdPx = with(density) { BottomSheetVelocityThreshold.toPx() }
@@ -1106,7 +1177,12 @@ fun Modifier.bottomSheetDraggable(
                             object : DragScope {
                                 override fun dragBy(pixels: Float) {
                                     // Pointer Y grows downward; sheet offset grows toward Expanded.
-                                    sheetScope.dragBy(-pixels)
+                                    if (gesturePolicy.startedOnMini &&
+                                        miniGestureArbiter?.wasHorizontal() == true
+                                    ) gesturePolicy.horizontalOwned = true
+                                    if (!gesturePolicy.horizontalOwned) {
+                                        sheetScope.dragBy(-pixels)
+                                    }
                                 }
                             }
                         block.invoke(pointerScope)
@@ -1114,10 +1190,15 @@ fun Modifier.bottomSheetDraggable(
                 }
 
                 override fun dispatchRawDelta(delta: Float) {
-                    state.dispatchRawUserDelta(
-                        deltaPx = -delta,
-                        allowDismiss = gesturePolicy.allowDismiss,
-                    )
+                    if (gesturePolicy.startedOnMini &&
+                        miniGestureArbiter?.wasHorizontal() == true
+                    ) gesturePolicy.horizontalOwned = true
+                    if (!gesturePolicy.horizontalOwned) {
+                        state.dispatchRawUserDelta(
+                            deltaPx = -delta,
+                            allowDismiss = gesturePolicy.allowDismiss,
+                        )
+                    }
                 }
             }
         }
@@ -1131,7 +1212,11 @@ fun Modifier.bottomSheetDraggable(
         startDragImmediately = false,
         onDragStarted = {
             state.setUserGestureInProgress(true)
+            gesturePolicy.startedOnMini = miniGestureArbiter?.active == true
+            gesturePolicy.horizontalOwned =
+                gesturePolicy.startedOnMini && miniGestureArbiter?.wasHorizontal() == true
             gesturePolicy.allowDismiss =
+                (!gesturePolicy.startedOnMini || miniGestureArbiter?.wasHorizontal() != true) &&
                 onDismiss != null &&
                     (
                         !dismissOnlyFromCollapsed ||
@@ -1143,11 +1228,17 @@ fun Modifier.bottomSheetDraggable(
                     )
         },
         onDragStopped = { pointerVelocity ->
-            val allowDismissForGesture = gesturePolicy.allowDismiss
+            // Finger-up can reach the mini observer before draggable's stop
+            // callback. Preserve the axis decision through that ordering.
+            val horizontalOwned = gesturePolicy.horizontalOwned ||
+                (gesturePolicy.startedOnMini && miniGestureArbiter?.wasHorizontal() == true)
+            val allowDismissForGesture = gesturePolicy.allowDismiss && !horizontalOwned
             gesturePolicy.allowDismiss = false
+            gesturePolicy.startedOnMini = false
+            gesturePolicy.horizontalOwned = false
             try {
                 state.settleUserInput(
-                    velocity = -pointerVelocity,
+                    velocity = if (horizontalOwned) 0f else -pointerVelocity,
                     velocityThresholdPx = velocityThresholdPx,
                     allowDismiss = allowDismissForGesture,
                     onDismiss = if (allowDismissForGesture) onDismiss else null,

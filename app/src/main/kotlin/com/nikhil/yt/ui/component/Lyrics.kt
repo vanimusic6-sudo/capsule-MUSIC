@@ -168,12 +168,12 @@ import com.nikhil.yt.constants.LyricsSyncOffsetKey
 import com.nikhil.yt.constants.LyricsTextPositionKey
 import com.nikhil.yt.constants.LyricsAnimationStyle
 import com.nikhil.yt.constants.LyricsAnimationStyleKey
+import com.nikhil.yt.constants.ReleaseAppearanceDefaults
 import com.nikhil.yt.constants.LyricsTextSizeKey
 import com.nikhil.yt.constants.LyricsUsePlayerThemeKey
 import com.nikhil.yt.constants.LyricsLineSpacingKey
 import com.nikhil.yt.constants.PlayerBackgroundStyle
 import com.nikhil.yt.constants.PlayerBackgroundStyleKey
-import com.nikhil.yt.constants.UseSystemFontKey
 import com.nikhil.yt.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import com.nikhil.yt.lyrics.LyricsEntry
 import com.nikhil.yt.lyrics.withInstrumentalBreaks
@@ -650,13 +650,10 @@ fun Lyrics(
         configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     val lyricsTextPosition by rememberEnumPreference(LyricsTextPositionKey, LyricsPosition.LEFT)
-    val lyricsAnimationStyle by rememberEnumPreference(LyricsAnimationStyleKey, LyricsAnimationStyle.APPLE)
+    val lyricsAnimationStyle by rememberEnumPreference(LyricsAnimationStyleKey, ReleaseAppearanceDefaults.lyricsAnimation)
     val lyricsTextSize by rememberPreference(LyricsTextSizeKey, 26f)
     val lyricsLineSpacing by rememberPreference(LyricsLineSpacingKey, 1.3f)
-    val useSystemFont by rememberPreference(UseSystemFontKey, false)
-    val lyricsFontFamily = remember(useSystemFont) {
-        if (useSystemFont) null else FontFamily(Font(R.font.sfprodisplaybold))
-    }
+    val lyricsFontFamily = remember { FontFamily(Font(R.font.sfprodisplaybold)) }
 
     val verticalLineSpacing = with(LocalDensity.current) {
         (lyricsTextSize.sp * (lyricsLineSpacing - 1f)).toDp().coerceAtLeast(0.dp)
@@ -673,18 +670,18 @@ fun Lyrics(
 
     val playerBackground by rememberEnumPreference(
         key = PlayerBackgroundStyleKey,
-        defaultValue = PlayerBackgroundStyle.CAPSULE_STAR
+        defaultValue = ReleaseAppearanceDefaults.playerBackground
     )
     val playerDesign by rememberEnumPreference(
         key = CapsulePlayerDesignKey,
-        defaultValue = CapsulePlayerDesign.SUPER,
+        defaultValue = ReleaseAppearanceDefaults.playerDesign,
     )
     val lyricsUsePlayerTheme by rememberPreference(
         LyricsUsePlayerThemeKey,
-        defaultValue = false,
+        defaultValue = ReleaseAppearanceDefaults.usePlayerThemeInLyrics,
     )
 
-    val darkTheme by rememberEnumPreference(DarkModeKey, defaultValue = DarkMode.AUTO)
+    val darkTheme by rememberEnumPreference(DarkModeKey, defaultValue = DarkMode.ON)
     val isSystemInDarkTheme = isSystemInDarkTheme()
     val useDarkTheme = remember(darkTheme, isSystemInDarkTheme) {
         if (darkTheme == DarkMode.AUTO) isSystemInDarkTheme else darkTheme == DarkMode.ON

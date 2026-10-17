@@ -215,8 +215,6 @@
     <string name="appearance">外観</string>
     <string name="theme">テーマ</string>
     <string name="enable_dynamic_theme">ダイナミックテーマを有効にする</string>
-    <string name="random_theme_on_startup">起動時にランダムテーマ</string>
-    <string name="random_theme_on_startup_desc">アプリ起動時にランダムなカラーパレットを適用</string>
     <!-- Color Palette -->
     <string name="color_palette">カラーパレット</string>
     <string name="customize_theme_colors">アプリのテーマカラーを選択</string>
@@ -575,13 +573,10 @@
     <string name="queue_continue_playing">プレイを続ける</string>
     <string name="queue_autoplaying_similar">類似した音楽の自動再生</string>
     <string name="lyrics_line_spacing">歌詞の行間</string>
-    <string name="hide_video">ミュージックビデオを非表示にする</string>
     <string name="added_to_playlist">%s に追加されました</string>
     <string name="added_n_songs_to_playlist">%2$s に %1$d 曲を追加しました</string>
     <string name="added_to_n_playlists">%d個のプレイリストに追加されました</string>
     <string name="added_n_songs_to_n_playlists">%1$d 曲を %2$d 個のプレイリストに追加しました</string>
-    <string name="use_system_font">システムフォントを使用する</string>
-    <string name="use_system_font_desc">アプリフォントの代わりにデバイスフォントを使用する</string>
     <string name="permanent_shuffle">恒久的なシャッフルモード</string>
     <string name="permanent_shuffle_desc">新しい曲を再生する際にシャッフルを有効にしたままにする</string>
     <string name="eq_waiting_for_audio_session">オーディオセッションを待機中…</string>
@@ -720,4 +715,7 @@
     <string name="together_welcome_permissions_body">ホストは、曲の追加、再生の制御、参加の承認要求をゲストに許可するかどうかを決定できます。</string>
     <string name="latest_release">最新リリース</string>
     <string name="artist_release_metadata">アルバム • %1$d</string>
+    <string name="capsule_advanced_mode_warning_title">開発者向け設定</string>
+    <string name="capsule_advanced_mode_warning_body">開発者向け設定を変更すると、アプリの動作が遅くなったり、不具合が生じたりすることがあります。Capsule の開発チームは、ほとんどのユーザーに適した設定をすでに選んでいます。変更するときは慎重に、動作を確認しながら進めてください 😉</string>
+    <string name="capsule_advanced_mode_warning_confirm">了解</string>
 </resources>

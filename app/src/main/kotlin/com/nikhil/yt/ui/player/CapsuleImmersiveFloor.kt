@@ -13,6 +13,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import coil3.imageLoader
 import coil3.request.ImageRequest
@@ -35,6 +37,9 @@ internal data class ImmersiveArtworkTone(
     val landscape: Boolean = false,
     val accent: Color = IMMERSIVE_NEUTRAL_COLOR,
     val bottomTexture: Float = 0f,
+    // Only genuinely near-white, nearly neutral covers need the new soft
+    // seam treatment. Every other album gets the ORIGINAL palette and fade.
+    val nearWhiteBackground: Boolean = false,
     val displayUrl: String? = null,
     // A thumbnail URL alone does not imply the dimensions and background are prepared.
     // The player must not render the raw 16:9 preview while this is false.
@@ -130,23 +135,30 @@ internal fun rememberImmersiveEdgeColor(
             if (isYtimg && index < 2 && (!landscape || image.width < 200)) continue
 
             resultTone = withContext(Dispatchers.Default) {
-                // The colour must belong to the background at the BOTTOM of the *visible,
-                // centre-cropped* frame. A whole-image vibrant Palette picked the green
-                // artwork accent in a black-and-white cover, even though no green background
-                // exists at the point where the picture meets the controls.
-                // Sample the visible crop as before, but keep the
-                // LITERAL decoded artwork colour. The old HSV clamp to
-                // V<=0.44 was turning Blonde's near-white paper into
-                // dark grey: no algorithm can make that seamless.
-                val background = image.immersiveBottomBackground(artworkAspect)
-                    .comfortableImmersiveColor()
+                // ORIGINAL Immersion colour extraction: the modal background
+                // in the lower visible centre crop, not a full-artwork palette.
+                // Only near-white, low-saturation covers bypass the original
+                // brightness clamp so the isolated softer fade can eliminate
+                // the noticeable white->grey edge.
+                val rawEdge = image.immersiveBottomBackground(artworkAspect)
+                val nearWhite = rawEdge.isNearWhiteImmersiveBackground()
+                val background = if (nearWhite) {
+                    rawEdge
+                } else {
+                    rawEdge.comfortableImmersiveColor()
+                }
                 val bottomTexture = image.immersiveBottomTexture(artworkAspect)
                 ImmersiveArtworkTone(
                     edge = background,
-                    // No invented secondary palette: one exact colour
-                    // owns the seam AND the entire continuation below it.
-                    accent = background,
+                    // Restore the original modest 10% darker floor exactly.
+                    // The modern softened colour is used ONLY for white covers.
+                    accent = if (nearWhite) {
+                        rawEdge.immersiveMutedAccent()
+                    } else {
+                        lerp(background, Color.Black, 0.10f)
+                    },
                     bottomTexture = bottomTexture,
+                    nearWhiteBackground = nearWhite,
                     landscape = landscape,
                     displayUrl = url,
                     ready = true,
@@ -184,6 +196,28 @@ internal fun rememberImmersiveEdgeColor(
         displayUrl = if (readyForCurrentTrack) target.displayUrl else null,
         ready = readyForCurrentTrack,
     )
+}
+
+/** Only near-white, nearly neutral backgrounds receive the slightly wider fade. */
+internal fun Color.isNearWhiteImmersiveBackground(): Boolean {
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(toArgb(), hsv)
+    return hsv[1] <= 0.12f && hsv[2] >= 0.88f
+}
+
+/**
+ * Darken the colour actually extracted from the lower visible artwork crop.
+ * Preserve its own hue; never inject a synthetic blue/slate/graphite tint.
+ * For achromatic artwork saturation remains zero.
+ *
+ * Only called when decoding/sampling the artwork off the UI thread.
+ */
+internal fun Color.immersiveMutedAccent(): Color {
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(toArgb(), hsv)
+    hsv[1] = (hsv[1] * 0.92f).coerceIn(0f, 1f)
+    hsv[2] = (hsv[2] * 0.78f).coerceIn(0.22f, 0.82f)
+    return Color(android.graphics.Color.HSVToColor(hsv))
 }
 
 /**
@@ -324,13 +358,14 @@ internal fun Bitmap.immersiveBottomTexture(artworkAspect: Float): Float {
         .coerceIn(0f, 1f)
 }
 
-/**
- * Preserve the real sRGB sample, including its luminance.
- *
- * Previous HSV brightness clamp V<=0.44 replaced all bright artwork paper
- * with charcoal grey. Saturation-only correction was not enough: even
- * neutral white ended up dark. Do not force "comfortable" wallpaper onto
- * someone else's album artwork; contrast belongs to the *controls*, not the
- * artwork or its continuous floor.
- */
-internal fun Color.comfortableImmersiveColor(): Color = this
+
+
+/** Keep greys grey: increasing the saturation of a neutral background tinted white art. */
+internal fun Color.comfortableImmersiveColor(): Color {
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(toArgb(), hsv)
+    // Preserve background hue AND saturation; only limit luminance for white controls.
+    // In particular, do not manufacture 32% saturation for greyscale artwork.
+    hsv[2] = hsv[2].coerceIn(0.17f, 0.44f)
+    return Color(android.graphics.Color.HSVToColor(hsv))
+}

@@ -15,9 +15,7 @@ import androidx.lifecycle.viewModelScope
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.BrowseEndpoint
 import com.nikhil.yt.innertube.models.filterExplicit
-import com.nikhil.yt.innertube.models.filterVideo
 import com.nikhil.yt.constants.HideExplicitKey
-import com.nikhil.yt.constants.HideVideoKey
 import com.nikhil.yt.models.ItemsPage
 import com.nikhil.yt.utils.dataStore
 import com.nikhil.yt.utils.get
@@ -57,7 +55,7 @@ constructor(
                             items = artistItemsPage.items
                                 .distinctBy { it.id }
                                 .filterExplicit(context.dataStore.get(HideExplicitKey, false))
-                                .filterVideo(context.dataStore.get(HideVideoKey, false)),
+                                ,
                             continuation = artistItemsPage.continuation,
                         )
                 }.onFailure {

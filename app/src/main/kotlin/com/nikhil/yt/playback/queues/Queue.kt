@@ -9,7 +9,6 @@
 package com.nikhil.yt.playback.queues
 
 import androidx.media3.common.MediaItem
-import com.nikhil.yt.extensions.ExtraIsMusicVideo
 import com.nikhil.yt.extensions.metadata
 import com.nikhil.yt.models.MediaMetadata
 
@@ -36,14 +35,6 @@ interface Queue {
             } else {
                 this
             }
-        fun filterVideo(enabled: Boolean = true) =
-            if (enabled) {
-                copy(
-                    items = items.filterVideo(),
-                )
-            } else {
-                this
-            }
     }
 }
 
@@ -56,11 +47,3 @@ fun List<MediaItem>.filterExplicit(enabled: Boolean = true) =
         this
     }
 
-fun List<MediaItem>.filterVideo(enabled: Boolean = true) =
-    if (enabled) {
-        filterNot {
-            it.mediaMetadata.extras?.getBoolean(ExtraIsMusicVideo, false) == true
-        }
-    } else {
-        this
-    }

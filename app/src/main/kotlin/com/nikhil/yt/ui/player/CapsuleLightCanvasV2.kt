@@ -11,6 +11,7 @@ package com.nikhil.yt.ui.player
 
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -1238,6 +1239,18 @@ internal fun CapsuleLightCanvasV2(
         }
     val (resolvedOrder, resolvedPositionsPx) = resolvedLayout
 
+    // On a cold Light composition, the children must report their real sizes
+    // before the position solver can place them. Animating from provisional
+    // (0, 0, ...) makes every block visibly fold/slide during the first open.
+    // Prime only the child placement at its measured location; the owning
+    // mini-to-player BottomSheet animation is unchanged.
+    val firstLayoutReady =
+        allMeasured && resolvedPositionsPx.keys.containsAll(order)
+    var initialPlacementCommitted by remember { mutableStateOf(false) }
+    LaunchedEffect(firstLayoutReady) {
+        if (firstLayoutReady) initialPlacementCommitted = true
+    }
+
     val activePositionsPx =
         when {
             // A magnetic DOCK moves the command block away from the raw finger coordinate.
@@ -1407,7 +1420,10 @@ internal fun CapsuleLightCanvasV2(
                     animateFloatAsState(
                         targetValue = visualTop,
                         animationSpec =
-                            if (selected) {
+                            if (!initialPlacementCommitted) {
+                                // No artificial first-open spring from unresolved zero tops.
+                                snap()
+                            } else if (selected) {
                                 spring(
                                     dampingRatio = 0.92f,
                                     stiffness = Spring.StiffnessMedium,
@@ -1439,6 +1455,9 @@ internal fun CapsuleLightCanvasV2(
                             }
                             .graphicsLayer {
                                 translationY = animatedTop
+                                // Never draw the transient stack at Y=0 while its height
+                                // measurements are still being gathered. Measurement continues.
+                                alpha = if (!initialPlacementCommitted && !firstLayoutReady) 0f else 1f
                             }
                             .zIndex(if (selected) 4f else 0f),
                 ) {

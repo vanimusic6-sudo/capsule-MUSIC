@@ -18,10 +18,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.filterExplicit
-import com.nikhil.yt.innertube.models.filterVideo
 import com.nikhil.yt.innertube.pages.SearchSummaryPage
 import com.nikhil.yt.constants.HideExplicitKey
-import com.nikhil.yt.constants.HideVideoKey
 import com.nikhil.yt.models.ItemsPage
 import com.nikhil.yt.soundcloud.SoundCloudCatalog
 import com.nikhil.yt.utils.dataStore
@@ -65,7 +63,7 @@ constructor(
                         YouTube
                             .searchSummary(query)
                             .onSuccess {
-                                summaryPage = it.filterExplicit(context.dataStore.get(HideExplicitKey, false)).filterVideo(context.dataStore.get(HideVideoKey, false))
+                                summaryPage = it.filterExplicit(context.dataStore.get(HideExplicitKey, false))
                             }.onFailure {
                                 reportException(it)
                             }
@@ -84,7 +82,7 @@ constructor(
                                                     HideExplicitKey,
                                                     false
                                                 )
-                                            ).filterVideo(context.dataStore.get(HideVideoKey, false)),
+                                            ),
                                         result.continuation,
                                     )
                             }.onFailure {

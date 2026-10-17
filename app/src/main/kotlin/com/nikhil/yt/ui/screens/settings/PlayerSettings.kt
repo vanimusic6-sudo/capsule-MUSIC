@@ -46,6 +46,8 @@ import com.nikhil.yt.R
 import com.nikhil.yt.constants.ArtistSeparatorsKey
 import com.nikhil.yt.constants.AudioClientOrder
 import com.nikhil.yt.constants.AudioClientOrderKey
+import com.nikhil.yt.constants.ReleasePlaybackDefaults
+import com.nikhil.yt.constants.SettingsAdvancedModeKey
 import com.nikhil.yt.constants.AudioCrossfadeDurationKey
 import com.nikhil.yt.constants.AudioNormalizationKey
 import com.nikhil.yt.constants.AudioOffload
@@ -79,6 +81,7 @@ import com.nikhil.yt.ui.component.TagsManagementDialog
 import com.nikhil.yt.ui.utils.backToMain
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
+import com.nikhil.yt.utils.PreferenceStore
 
 @Composable
 private fun AudioStreamPolicy.localizedTitle(): String =
@@ -155,10 +158,11 @@ fun PlayerSettings(
     navController: NavController,
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
+    val (advancedSettings, _) = rememberPreference(SettingsAdvancedModeKey, false)
     val (audioQuality, onAudioQualityChange) =
         rememberEnumPreference(
             AudioQualityKey,
-            defaultValue = AudioQuality.AUTO,
+            defaultValue = ReleasePlaybackDefaults.audioQuality,
         )
     // HIGHEST used to be exposed as “maximum”, but the playback backend maps
     // it to exactly the same InnerTubeX tier as HIGH. Keep the enum only as a
@@ -188,17 +192,18 @@ fun PlayerSettings(
         AudioClientOrder.resolve(
             raw = rawAudioClientOrder,
             legacyPolicy = audioStreamPolicy,
+            legacyPreferenceExplicit = PreferenceStore.get(AudioStreamPolicyKey) != null,
         )
 
     val (networkMetered, onNetworkMeteredChange) =
         rememberPreference(
             NetworkMeteredKey,
-            defaultValue = true,
+            defaultValue = ReleasePlaybackDefaults.metered,
         )
     val (persistentQueue, onPersistentQueueChange) =
         rememberPreference(
             PersistentQueueKey,
-            defaultValue = true,
+            defaultValue = ReleasePlaybackDefaults.persistentQueue,
         )
     val (permanentShuffle, onPermanentShuffleChange) =
         rememberPreference(
@@ -213,12 +218,12 @@ fun PlayerSettings(
     val (audioNormalization, onAudioNormalizationChange) =
         rememberPreference(
             AudioNormalizationKey,
-            defaultValue = true,
+            defaultValue = ReleasePlaybackDefaults.normalization,
         )
     val (audioOffload, onAudioOffloadChange) =
         rememberPreference(
             AudioOffload,
-            defaultValue = false,
+            defaultValue = ReleasePlaybackDefaults.audioOffloadUntilVerified,
         )
     val (autoDownloadOnLike, onAutoDownloadOnLikeChange) =
         rememberPreference(
@@ -228,12 +233,12 @@ fun PlayerSettings(
     val (autoSkipNextOnError, onAutoSkipNextOnErrorChange) =
         rememberPreference(
             AutoSkipNextOnErrorKey,
-            defaultValue = false,
+            defaultValue = ReleasePlaybackDefaults.autoSkipOnError,
         )
     val (pauseOnDeviceMute, onPauseOnDeviceMuteChange) =
         rememberPreference(
             PauseOnDeviceMuteKey,
-            defaultValue = false,
+            defaultValue = ReleasePlaybackDefaults.pauseOnMute,
         )
     val (autoStartOnBluetooth, onAutoStartOnBluetoothChange) =
         rememberPreference(
@@ -269,7 +274,7 @@ fun PlayerSettings(
     val resources = LocalResources.current
     val playerConnection = LocalPlayerConnection.current
 
-    if (showArtistSeparatorsDialog) {
+    if (advancedSettings && showArtistSeparatorsDialog) {
         ArtistSeparatorsDialog(
             currentSeparators = artistSeparators,
             onDismiss = { showArtistSeparatorsDialog = false },
@@ -280,17 +285,17 @@ fun PlayerSettings(
         )
     }
 
-    if (showTagsManagementDialog) {
+    if (advancedSettings && showTagsManagementDialog) {
         TagsManagementDialog(
             database = database,
             onDismiss = { showTagsManagementDialog = false },
         )
     }
 
-    if (showAudioClientPriorityDialog) {
+    if (advancedSettings && showAudioClientPriorityDialog) {
         AudioClientPriorityDialog(
             currentOrder = audioClientOrder,
-            resetOrder = AudioClientOrder.legacyOrder(audioStreamPolicy),
+            resetOrder = AudioClientOrder.releaseDefaultOrder,
             onDismiss = { showAudioClientPriorityDialog = false },
             onOrderChange = { newOrder ->
                 onAudioClientOrderChange(AudioClientOrder.encode(newOrder))
@@ -347,6 +352,7 @@ fun PlayerSettings(
             },
         )
 
+        if (advancedSettings) {
         PreferenceEntry(
             title = { Text(stringResource(R.string.audio_client_priority_title)) },
             description =
@@ -365,6 +371,7 @@ fun PlayerSettings(
                 showAudioClientPriorityDialog = true
             },
         )
+        }
 
         Text(
             text = stringResource(R.string.audio_client_priority_note),
@@ -396,6 +403,7 @@ fun PlayerSettings(
             onCheckedChange = onNetworkMeteredChange,
         )
 
+        if (advancedSettings) {
         SliderPreference(
             title = {
                 Text(stringResource(R.string.history_duration))
@@ -409,13 +417,17 @@ fun PlayerSettings(
             value = historyDuration,
             onValueChange = onHistoryDurationChange,
         )
+        }
 
+        if (advancedSettings) {
         CrossfadeSliderPreference(
             value = audioCrossfadeSeconds,
             onValueChange = onAudioCrossfadeSecondsChange,
             isEnabled = !audioOffload,
         )
+        }
 
+        if (advancedSettings) {
         SwitchPreference(
             title = {
                 Text(stringResource(R.string.skip_silence))
@@ -430,7 +442,9 @@ fun PlayerSettings(
             onCheckedChange = onSkipSilenceChange,
             isEnabled = !audioOffload,
         )
+        }
 
+        if (advancedSettings) {
         SwitchPreference(
             title = {
                 Text(stringResource(R.string.audio_normalization))
@@ -444,7 +458,9 @@ fun PlayerSettings(
             checked = audioNormalization,
             onCheckedChange = onAudioNormalizationChange,
         )
+        }
 
+        if (advancedSettings) {
         SwitchPreference(
             title = {
                 Text(stringResource(R.string.audio_offload))
@@ -501,6 +517,7 @@ fun PlayerSettings(
                 }
             },
         )
+        }
 
         SwitchPreference(
             title = {
@@ -546,10 +563,13 @@ fun PlayerSettings(
             onCheckedChange = onAutoStartOnBluetoothChange,
         )
 
+        if (advancedSettings) {
         PreferenceGroupTitle(
             title = stringResource(R.string.queue),
         )
+        }
 
+        if (advancedSettings) {
         SwitchPreference(
             title = {
                 Text(stringResource(R.string.persistent_queue))
@@ -565,7 +585,9 @@ fun PlayerSettings(
             checked = persistentQueue,
             onCheckedChange = onPersistentQueueChange,
         )
+        }
 
+        if (advancedSettings) {
         SwitchPreference(
             title = {
                 Text(stringResource(R.string.permanent_shuffle))
@@ -581,6 +603,7 @@ fun PlayerSettings(
             checked = permanentShuffle,
             onCheckedChange = onPermanentShuffleChange,
         )
+        }
 
         SwitchPreference(
             title = {
@@ -600,6 +623,7 @@ fun PlayerSettings(
             onCheckedChange = onAutoDownloadOnLikeChange,
         )
 
+        if (advancedSettings) {
         SwitchPreference(
             title = {
                 Text(
@@ -621,11 +645,15 @@ fun PlayerSettings(
             checked = autoSkipNextOnError,
             onCheckedChange = onAutoSkipNextOnErrorChange,
         )
+        }
 
+        if (advancedSettings) {
         PreferenceGroupTitle(
             title = stringResource(R.string.misc),
         )
+        }
 
+        if (advancedSettings) {
         SwitchPreference(
             title = {
                 Text(
@@ -643,7 +671,9 @@ fun PlayerSettings(
             checked = stopMusicOnTaskClear,
             onCheckedChange = onStopMusicOnTaskClearChange,
         )
+        }
 
+        if (advancedSettings) {
         PreferenceEntry(
             title = {
                 Text(stringResource(R.string.artist_separators))
@@ -662,7 +692,9 @@ fun PlayerSettings(
                 showArtistSeparatorsDialog = true
             },
         )
+        }
 
+        if (advancedSettings) {
         PreferenceEntry(
             title = {
                 Text(
@@ -685,6 +717,7 @@ fun PlayerSettings(
                 showTagsManagementDialog = true
             },
         )
+        }
     }
 
     TopAppBar(

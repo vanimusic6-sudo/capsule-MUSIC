@@ -236,10 +236,6 @@
     <string name="appearance">Tampilan</string>
     <string name="theme">Tema</string>
     <string name="enable_dynamic_theme">Aktifkan tema dinamis</string>
-    <string name="random_theme_on_startup">Random theme on startup</string>
-    <string name="random_theme_on_startup_desc">Apply a random color palette every time the app starts</string>
-    <string name="use_system_font">Gunakan font sistem</string>
-    <string name="use_system_font_desc">Gunakan font perangkat alih-alih font aplikasi</string>
     <!-- Color Palette -->
     <string name="color_palette">Palet Warna</string>
     <string name="customize_theme_colors">Pilih warna tema aplikasi kamu</string>
@@ -498,7 +494,6 @@
     <string name="preload_queue_lyrics">Preload queue lyrics</string>
     <string name="queue_lyrics_preload_count">Number of songs to preload</string>
     <string name="hide_explicit">Sembunyikan konten eksplisit</string>
-    <string name="hide_video">Sembunyikan video musik</string>
     <string name="backup_restore">Cadangkan dan pulihkan</string>
     <string name="action_backup">Cadangan</string>
     <string name="action_restore">Pulihkan</string>
@@ -770,4 +765,7 @@
     <string name="extracting_from_url">Extracting tokens from URL…</string>
     <string name="latest_release">Rilisan terbaru</string>
     <string name="artist_release_metadata">Album • %1$d</string>
+    <string name="capsule_advanced_mode_warning_title">Pengaturan pengembang</string>
+    <string name="capsule_advanced_mode_warning_body">Mengubah pengaturan pengembang dapat memperlambat aplikasi atau mengganggu fungsinya. Pengembang Capsule sudah memilih pengaturan terbaik bagi sebagian besar pengguna. Ubah dengan hati-hati dan perhatikan dampaknya 😉</string>
+    <string name="capsule_advanced_mode_warning_confirm">Mengerti</string>
 </resources>

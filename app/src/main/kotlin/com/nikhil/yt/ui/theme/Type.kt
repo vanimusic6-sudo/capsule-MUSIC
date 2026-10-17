@@ -143,5 +143,4 @@ private fun buildTypography(fontFamily: FontFamily) =
  */
 private val AppFontFamily = FontFamily.SansSerif
 val AppTypography = buildTypography(AppFontFamily)
-val SystemTypography = buildTypography(FontFamily.Default)
 

@@ -245,10 +245,6 @@
     <string name="appearance">Aussehen</string>
     <string name="theme">Thema</string>
     <string name="enable_dynamic_theme">Aktivieren Sie das dynamische Design</string>
-    <string name="random_theme_on_startup">Zufälliges Theme beim start</string>
-    <string name="random_theme_on_startup_desc">Wende eine zufällige Farbpalette bei jedem Appstart an</string>
-    <string name="use_system_font">Nutze Systemschriftart</string>
-    <string name="use_system_font_desc">Nutze die Geräteschriftar anstelle der Appschriftart</string>
     <!-- Color Palette -->
     <string name="color_palette">Farbpalette</string>
     <string name="customize_theme_colors">Wähle die Farben deines App-Themes</string>
@@ -507,7 +503,6 @@
     <string name="preload_queue_lyrics">Preload queue lyrics</string>
     <string name="queue_lyrics_preload_count">Number of songs to preload</string>
     <string name="hide_explicit">Anstößige Inhalte ausblenden</string>
-    <string name="hide_video">Hide music videos</string>
     <string name="backup_restore">Sichern und Wiederherstellen</string>
     <string name="action_backup">Sicherung</string>
     <string name="action_restore">Wiederherstellen</string>
@@ -779,4 +774,7 @@
     <string name="extracting_from_url">Extracting tokens from URL…</string>
     <string name="latest_release">Neueste Veröffentlichung</string>
     <string name="artist_release_metadata">Album • %1$d</string>
+    <string name="capsule_advanced_mode_warning_title">Entwicklereinstellungen</string>
+    <string name="capsule_advanced_mode_warning_body">Änderungen an den Entwicklereinstellungen können die App verlangsamen oder ihre Funktion beeinträchtigen. Das Capsule-Team hat bereits die besten Einstellungen für die meisten Nutzer ausgewählt. Ändere sie vorsichtig und behalte die Auswirkungen im Blick 😉</string>
+    <string name="capsule_advanced_mode_warning_confirm">Verstanden</string>
 </resources>

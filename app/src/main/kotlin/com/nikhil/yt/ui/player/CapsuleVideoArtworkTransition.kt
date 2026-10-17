@@ -5,6 +5,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
@@ -102,6 +103,10 @@ internal fun CapsuleVideoArtworkTransition(
     video: @Composable (active: Boolean) -> Unit,
     artwork: @Composable () -> Unit,
 ) {
+    // Artwork taps open Lyrics. The default Material ripple would flood the large
+    // artwork bounds with a pale veil during the Lyrics aperture animation.
+    // Keep click semantics and hit target, but never draw a pressed overlay.
+    val artworkTapInteraction = remember { MutableInteractionSource() }
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
     val windowWidth = with(density) { configuration.screenWidthDp.dp.roundToPx() }
@@ -297,7 +302,12 @@ internal fun CapsuleVideoArtworkTransition(
                         )
                     }
                 }
-                .clickable(enabled = artworkClickable, onClick = onArtworkClick),
+                .clickable(
+                    interactionSource = artworkTapInteraction,
+                    indication = null,
+                    enabled = artworkClickable,
+                    onClick = onArtworkClick,
+                ),
             contentAlignment = Alignment.Center,
         ) {
             // The VIDEO decoder is not an artwork placeholder. Without this gate a

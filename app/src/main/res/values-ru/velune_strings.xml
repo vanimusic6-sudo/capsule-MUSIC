@@ -95,8 +95,6 @@
     <string name="background_nebula">Туманность</string>
     <string name="background_glass">Стекло</string>
     <string name="capsule_settings_group">Capsule</string>
-    <string name="capsule_bottom_bar">Навигационная панель Capsule</string>
-    <string name="capsule_bottom_bar_description">Использовать нижнюю навигационную панель Capsule.</string>
     <string name="capsule_theme">Тема Capsule</string>
     <string name="capsule_theme_description">Тёмный монохромный стиль Capsule. Ваши настройки цветов сохраняются.</string>
     <string name="follow_theme">Следовать теме</string>

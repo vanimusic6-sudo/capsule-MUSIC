@@ -89,51 +89,176 @@ class CapsuleImmersiveContentTest {
     }
 
     @Test
-    fun `white paper flows directly into the controls floor with no colour contamination`() {
-        val paper = Color(0.96f, 0.96f, 0.96f, 1f)
-        val darkerFloor = Color(0.23f, 0.23f, 0.23f, 1f)
-
-        // Even if legacy track metadata supplies a darker floor, it can
-        // never pollute the sampled PHOTO colour at the seam.
-        assertEquals(paper, immersiveSeamColor(paper, darkerFloor))
-        assertEquals(paper, immersiveUpperHazeColor(paper))
-        assertEquals(Color(0xFF141414), immersiveInkForFloor(Color.White, paper))
-
-        val midnight = Color(0.06f, 0.08f, 0.11f, 1f)
-        assertEquals(Color.White, immersiveInkForFloor(Color.White, midnight))
+    fun `photo preserves exact extracted colour and floor preserves its own hue`() {
+        assertEquals(Color.White, ImmersiveControlInk)
+        val pairs = listOf(
+            Color.White to Color(0xFFC7C7C7),
+            Color(0xFFECCDB9) to Color(0xFFAB7358),
+            Color(0xFFD13248) to Color(0xFF892030),
+            Color(0xFF1549CA) to Color(0xFF12358E),
+            Color.Black to Color.Black,
+        )
+        for ((edge, muted) in pairs) {
+            assertEquals(edge, immersiveSeamColor(edge, muted))
+            assertEquals(edge, immersiveContinuousPageColor(edge, muted, 0f, 0.55f, 0.15f))
+            assertEquals(muted, immersiveContinuousPageColor(edge, muted, 1f, 0.55f, 0.15f))
+        }
     }
 
     @Test
-    fun `difficult artwork only boosts fade after threshold`() {
-        val calm = immersiveFadeProfile(bottomTexture = 0f, landscape = false)
-        val medium = immersiveFadeProfile(bottomTexture = 0.35f, landscape = false)
-        val hard = immersiveFadeProfile(bottomTexture = 1f, landscape = false)
-
-        // Keep the current calm profile exactly as-is.
-        assertEquals(0.42f, calm.start, 0.0001f)
-        assertEquals(0.60f, calm.firstStop, 0.0001f)
-        assertEquals(0.15f, calm.firstAlpha, 0.0001f)
-        assertEquals(0.74f, calm.secondStop, 0.0001f)
-        assertEquals(0.46f, calm.secondAlpha, 0.0001f)
-        assertEquals(0.89f, calm.thirdStop, 0.0001f)
-        assertEquals(0.80f, calm.thirdAlpha, 0.0001f)
-
-        // Medium-detail artwork below the threshold must not be flattened by the adaptive boost.
-        assertEquals(calm.start, medium.start, 0.0001f)
-        assertEquals(calm.firstAlpha, medium.firstAlpha, 0.0001f)
-        assertEquals(calm.secondAlpha, medium.secondAlpha, 0.0001f)
-        assertEquals(calm.thirdAlpha, medium.thirdAlpha, 0.0001f)
-
-        // Fully difficult artwork reaches the known-good hard endpoint from a9ef7ff.
-        assertEquals(0.11f, hard.start, 0.0001f)
-        assertEquals(0.39f, hard.firstStop, 0.0001f)
-        assertEquals(0.50f, hard.firstAlpha, 0.0001f)
-        assertEquals(0.56f, hard.secondStop, 0.0001f)
-        assertEquals(0.90f, hard.secondAlpha, 0.0001f)
-        assertEquals(0.79f, hard.thirdStop, 0.0001f)
-        assertEquals(1f, hard.thirdAlpha, 0.0001f)
+    fun `single page gradient reaches the sampled muted colour smoothly past the artwork`() {
+        val tolerance = 1f / 255f + 0.0001f
+        for (cover in listOf(0.35f, 0.48f, 0.55f, 0.69f)) {
+            val extension = minOf(0.16f, (1f - cover) * 0.68f)
+            for ((edge, muted) in listOf(
+                Color.White to Color(0xFFC7C7C7),
+                Color(0xFFE3D9C9) to Color(0xFF8D7768),
+                Color(0xFFAA193D) to Color(0xFF7A1230),
+                Color.Black to Color.Black,
+            )) {
+                val stops = immersiveContinuousPageStops(edge, muted, cover, extension)
+                assertEquals(49, stops.size)
+                assertEquals(edge, stops.first().second)
+                assertEquals(0f, stops.first().first, 0f)
+                assertEquals(1f, stops.last().first, 0f)
+                assertEquals(1f, stops.last().second.alpha, 0f)
+                assertEquals(edge,
+                    immersiveContinuousPageColor(edge, muted, 0.40f * cover, cover, extension))
+                val end = cover + extension
+                assertEquals(muted, immersiveContinuousPageColor(edge, muted, end, cover, extension))
+                assertEquals(muted, immersiveContinuousPageColor(edge, muted, 1f, cover, extension))
+                // Between the original and accent hues, no extra black/grey stage.
+                for (stop in stops) {
+                    val c = stop.second
+                    for ((v, a, b) in listOf(
+                        Triple(c.red, edge.red, muted.red),
+                        Triple(c.green, edge.green, muted.green),
+                        Triple(c.blue, edge.blue, muted.blue),
+                    )) {
+                        assertTrue(v >= minOf(a, b) - tolerance && v <= maxOf(a, b) + tolerance)
+                    }
+                }
+                val step = 0.001f
+                val left = immersiveContinuousPageColor(edge, muted, cover - step, cover, extension)
+                val mid = immersiveContinuousPageColor(edge, muted, cover, cover, extension)
+                val right = immersiveContinuousPageColor(edge, muted, cover + step, cover, extension)
+                assertTrue("no photo-boundary stripe",
+                    kotlin.math.abs((mid.red - left.red) - (right.red - mid.red)) < 0.015f)
+            }
+        }
     }
 
+    @Test
+    fun `photo overlay and page share identical RGB at same physical Y`() {
+        val tolerance = 1f / 255f + 0.0001f
+        for ((edge, muted) in listOf(
+            Color.White to Color(0xFFC7C7C7),
+            Color(0xFFEECCDD) to Color(0xFF914F70),
+            Color(0xFFD62942) to Color(0xFF842039),
+            Color.Black to Color.Black,
+        )) for (cover in listOf(0.35f, 0.55f, 0.69f)) {
+            val tail = minOf(0.15f, (1f - cover) * 0.68f)
+            for (texture in listOf(0f, 0.5f, 1f)) {
+                val profile = immersiveFadeProfile(texture, landscape = false)
+                val overlay = immersiveContinuousCoverStops(edge, muted, cover, tail, profile)
+                assertEquals(49, overlay.size)
+                assertEquals(0f, overlay.first().second.alpha, 0f)
+                assertEquals(1f, overlay.last().first, 0f)
+                assertEquals(1f, overlay.last().second.alpha, 0f)
+                assertEquals(
+                    immersiveContinuousPageColor(edge, muted, cover, cover, tail),
+                    overlay.last().second,
+                )
+                assertEquals(0f, immersiveCoverFadeAlpha(profile, 0.55f), 0f)
+                var lastAlpha = 0f
+                for (stop in overlay) {
+                    val expected = immersiveContinuousPageColor(
+                        edge, muted, stop.first * cover, cover, tail,
+                    )
+                    assertEquals(expected.red, stop.second.red, tolerance)
+                    assertEquals(expected.green, stop.second.green, tolerance)
+                    assertEquals(expected.blue, stop.second.blue, tolerance)
+                    assertTrue("alpha must not reverse", stop.second.alpha + tolerance >= lastAlpha)
+                    lastAlpha = stop.second.alpha
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `original Immersion fade profile and seam stay unchanged for coloured artwork`() {
+        val calm = immersiveOriginalFadeProfile(0f, landscape = false)
+        assertEquals(0.42f, calm.start, 0.00001f)
+        assertEquals(0.60f, calm.firstStop, 0.00001f)
+        assertEquals(0.15f, calm.firstAlpha, 0.00001f)
+        assertEquals(0.74f, calm.secondStop, 0.00001f)
+        assertEquals(0.46f, calm.secondAlpha, 0.00001f)
+        assertEquals(0.89f, calm.thirdStop, 0.00001f)
+        assertEquals(0.80f, calm.thirdAlpha, 0.00001f)
+
+        val busy = immersiveOriginalFadeProfile(1f, landscape = false)
+        assertEquals(0.11f, busy.start, 0.00001f)
+        assertEquals(0.39f, busy.firstStop, 0.00001f)
+        assertEquals(1f, busy.thirdAlpha, 0.00001f)
+
+        val edge = Color(0xFF6F314C)
+        val floor = Color(0xFF632C44)
+        val originalSeam = androidx.compose.ui.graphics.lerp(edge, floor, 0.45f)
+        assertEquals(originalSeam, immersiveOriginalSeamColor(edge, floor))
+        assertEquals(
+            androidx.compose.ui.graphics.lerp(edge, Color.White, 0.055f),
+            immersiveUpperHazeColor(edge),
+        )
+    }
+
+    @Test
+    fun `white screenshot blends only to its neutral sampled muted colour`() {
+        val screen = 1536f
+        val photo = 800f
+        val cover = photo / screen
+        val tail = 0.08f
+        val edge = Color.White
+        val floor = Color(0xFFC7C7C7)
+        val fade = immersiveFadeProfile(0f, landscape = false)
+        fun rendered(y: Float): Color {
+            val backdrop = immersiveContinuousPageColor(edge, floor, y / screen, cover, tail)
+            if (y >= photo) return backdrop
+            val alpha = immersiveCoverFadeAlpha(fade, y / photo)
+            return Color(
+                red = 1f + (backdrop.red - 1f) * alpha,
+                green = 1f + (backdrop.green - 1f) * alpha,
+                blue = 1f + (backdrop.blue - 1f) * alpha,
+                alpha = 1f,
+            )
+        }
+        assertTrue("preserve cover title", rendered(540f).red > 0.96f)
+        assertTrue("retain bright album details", rendered(680f).red > 0.75f)
+        val underText = rendered(860f)
+        assertEquals("white artwork must never gain artificial blue",
+            underText.red, underText.blue, 1f / 255f + 0.0001f)
+        assertEquals("no green tint either",
+            underText.red, underText.green, 1f / 255f + 0.0001f)
+        assertTrue("do not target near-black", rendered(1200f).red > 0.74f)
+        assertEquals(floor, rendered(1200f))
+        assertTrue("no strip at artwork join",
+            kotlin.math.abs(rendered(797f).red - rendered(803f).red) < 0.035f)
+    }
+
+    @Test
+    fun `artwork texture adjusts only the fade start and never control ink`() {
+        val calm = immersiveFadeProfile(0f, landscape = false)
+        val dense = immersiveFadeProfile(1f, landscape = false)
+        assertEquals(0.67f, calm.start, 0.00001f)
+        assertEquals(0.615f, dense.start, 0.00001f)
+        assertTrue(dense.start < calm.start)
+        assertTrue(immersiveFadeProfile(0.4f, landscape = true).start < calm.start)
+        for (p in listOf(calm, dense)) {
+            assertEquals(0f, immersiveCoverFadeAlpha(p, p.start), 0f)
+            assertEquals(1f, immersiveCoverFadeAlpha(p, 1f), 0f)
+            assertTrue(immersiveCoverFadeAlpha(p, 0.85f) in 0f..1f)
+        }
+        assertEquals(Color.White, ImmersiveControlInk)
+    }
 
     @org.junit.Test
     fun editorWorkspaceStopsAtArtworkAndQueueRail() {

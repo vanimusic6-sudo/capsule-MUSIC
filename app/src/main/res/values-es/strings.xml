@@ -222,10 +222,6 @@
     <string name="appearance">Apariencia</string>
     <string name="theme">Tema</string>
     <string name="enable_dynamic_theme">Activar el tema dinámico</string>
-    <string name="random_theme_on_startup">Tema aleatorio al inicio</string>
-    <string name="random_theme_on_startup_desc">Aplicar paletas de colores aleatorias cada vez que la aplicación se inicie</string>
-    <string name="use_system_font">Usar fuente del sistema</string>
-    <string name="use_system_font_desc">Utilizar la fuente del dispositivo en lugar de la fuente de la aplicación</string>
     <string name="color_palette">Paleta de color</string>
     <string name="customize_theme_colors">Elige los colores del tema de tu aplicación</string>
     <string name="selected_theme_color">Color del tema seleccionado</string>
@@ -459,7 +455,6 @@
     <string name="disable_screenshot_desc">Cuando esta opción este activa, las capturas de pantalla y la vista en recientes se desactivaran.</string>
     <string name="enable_lrclib">Activar el proveedor de letras LrcLib</string>
     <string name="hide_explicit">Ocultar contenido explicito</string>
-    <string name="hide_video">Ocultar vídeos musicales</string>
     <string name="backup_restore">Copia de seguridad y restauración</string>
     <string name="action_backup">Copia de seguridad</string>
     <string name="action_restore">Restaurar</string>
@@ -695,4 +690,7 @@
     <string name="stream_bypass_proxy_desc">Utiliza tu dirección IP directa para la reproducción de transmisiones y evita las incompatibilidades de IP</string>
     <string name="latest_release">Último lanzamiento</string>
     <string name="artist_release_metadata">Álbum • %1$d</string>
+    <string name="capsule_advanced_mode_warning_title">Ajustes para desarrolladores</string>
+    <string name="capsule_advanced_mode_warning_body">Cambiar los ajustes para desarrolladores puede ralentizar la aplicación o afectar su funcionamiento. El equipo de Capsule ya eligió la configuración más adecuada para la mayoría de las personas. Haz cambios con cuidado y comprueba cómo responde la aplicación 😉</string>
+    <string name="capsule_advanced_mode_warning_confirm">Entendido</string>
 </resources>

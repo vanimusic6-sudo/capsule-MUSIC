@@ -89,6 +89,7 @@ import com.nikhil.yt.MainActivity
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.AudioClientOrder
 import com.nikhil.yt.constants.AudioClientOrderKey
+import com.nikhil.yt.constants.ReleasePlaybackDefaults
 import com.nikhil.yt.constants.AudioCrossfadeDurationKey
 import com.nikhil.yt.constants.AudioNormalizationKey
 import com.nikhil.yt.constants.AudioOffload
@@ -114,7 +115,6 @@ import com.nikhil.yt.constants.EqualizerSelectedProfileIdKey
 import com.nikhil.yt.constants.EqualizerVirtualizerEnabledKey
 import com.nikhil.yt.constants.EqualizerVirtualizerStrengthKey
 import com.nikhil.yt.constants.HideExplicitKey
-import com.nikhil.yt.constants.HideVideoKey
 import com.nikhil.yt.constants.HistoryDuration
 import com.nikhil.yt.constants.InnerTubeCookieKey
 import com.nikhil.yt.constants.ListenBrainzEnabledKey
@@ -176,7 +176,6 @@ import com.nikhil.yt.playback.queues.EmptyQueue
 import com.nikhil.yt.playback.queues.Queue
 import com.nikhil.yt.playback.queues.YouTubeQueue
 import com.nikhil.yt.playback.queues.filterExplicit
-import com.nikhil.yt.playback.queues.filterVideo
 import com.nikhil.yt.playback.video.CAPSULE_VIDEO_CACHE_PREFIX
 import com.nikhil.yt.playback.video.CAPSULE_VIDEO_SCHEME
 import com.nikhil.yt.playback.video.CAPSULE_VIDEO_STREAM_CACHE_PREFIX
@@ -556,14 +555,14 @@ class MusicService :
     private val isNetworkConnected = MutableStateFlow(false)
 
     @Volatile
-    private var audioQuality = AudioQuality.AUTO
+    private var audioQuality = ReleasePlaybackDefaults.audioQuality
 
     @Volatile
     private var audioStreamPolicy = AudioStreamPolicy.VISIONOS
 
     @Volatile
     private var audioClientOrder: List<String> =
-        AudioClientOrder.legacyOrder(AudioStreamPolicy.VISIONOS)
+        AudioClientOrder.releaseDefaultOrder
     private val capsuleVideoQuality by enumPreference(
         this,
         CapsuleVideoQualityKey,
@@ -1799,7 +1798,7 @@ class MusicService :
         super.onCreate()
         audioQuality =
             dataStore[AudioQualityKey]
-                .toEnum(AudioQuality.AUTO)
+                .toEnum(ReleasePlaybackDefaults.audioQuality)
                 .normalizedPlaybackQuality()
         audioStreamPolicy = dataStore[AudioStreamPolicyKey].toEnum(AudioStreamPolicy.VISIONOS).normalizedForPlayback()
         connectivityManager = requireNotNull(getSystemService()) { "ConnectivityManager is unavailable" }
@@ -1811,6 +1810,7 @@ class MusicService :
             AudioClientOrder.resolve(
                 raw = dataStore[AudioClientOrderKey],
                 legacyPolicy = audioStreamPolicy,
+                legacyPreferenceExplicit = dataStore[AudioStreamPolicyKey] != null,
             )
 
         try {
@@ -1929,12 +1929,13 @@ class MusicService :
                         .normalizedForPlayback()
                 val quality =
                     prefs[AudioQualityKey]
-                        .toEnum(AudioQuality.AUTO)
+                        .toEnum(ReleasePlaybackDefaults.audioQuality)
                         .normalizedPlaybackQuality()
                 val clientOrder =
                     AudioClientOrder.resolve(
                         raw = prefs[AudioClientOrderKey],
                         legacyPolicy = policy,
+                        legacyPreferenceExplicit = prefs[AudioStreamPolicyKey] != null,
                     )
                 Triple(policy, quality, clientOrder)
             }
@@ -2038,7 +2039,7 @@ class MusicService :
             }
 
         dataStore.data
-            .map { it[PauseOnDeviceMuteKey] ?: false }
+            .map { it[PauseOnDeviceMuteKey] ?: ReleasePlaybackDefaults.pauseOnMute }
             .distinctUntilChanged()
             .collectLatest(scope) { enabled ->
                 pauseOnDeviceMuteEnabled = enabled
@@ -2137,7 +2138,7 @@ class MusicService :
             currentFormat,
             freshlyResolvedLoudnessVersion,
             dataStore.data
-                .map { it[AudioNormalizationKey] ?: true }
+                .map { it[AudioNormalizationKey] ?: ReleasePlaybackDefaults.normalization }
                 .distinctUntilChanged(),
         ) { metadata, format, _, normalizeAudio ->
             val fresh = metadata?.id?.let(freshlyResolvedLoudness::get)
@@ -2422,7 +2423,7 @@ class MusicService :
                 autoSkipEnabled =
                     (autoSkipAfterCdnExhaustion && isNetworkConnected.value &&
                         player.playWhenReady) ||
-                        dataStore.get(AutoSkipNextOnErrorKey, false),
+                        dataStore.get(AutoSkipNextOnErrorKey, ReleasePlaybackDefaults.autoSkipOnError),
             )
 
         if (decision.circuitOpenedNow) {
@@ -2542,7 +2543,7 @@ class MusicService :
                     withContext(Dispatchers.IO) {
                         queue.getInitialStatus()
                             .filterExplicit(dataStore.get(HideExplicitKey, false))
-                            .filterVideo(dataStore.get(HideVideoKey, false))
+                            
                     }
 
                 val targetItem =
@@ -2622,7 +2623,7 @@ class MusicService :
         queueLoadJob = scope.launch(SilentHandler) {
             val initialStatus =
                 withContext(Dispatchers.IO) {
-                    queue.getInitialStatus().filterExplicit(dataStore.get(HideExplicitKey, false)).filterVideo(dataStore.get(HideVideoKey, false))
+                    queue.getInitialStatus().filterExplicit(dataStore.get(HideExplicitKey, false))
                 }
             if (currentQueue !== queue) return@launch
             if (initialStatus.title != null) {
@@ -2660,9 +2661,7 @@ class MusicService :
                                     .filterExplicit(
                                         dataStore.get(HideExplicitKey, false),
                                     )
-                                    .filterVideo(
-                                        dataStore.get(HideVideoKey, false),
-                                    )
+                                    
                             }
                         if (currentQueue !== queue) return@launch
 
@@ -2772,7 +2771,7 @@ class MusicService :
                 endpoint = WatchEndpoint(videoId = currentMediaId)
             )
             val initialStatus = withContext(Dispatchers.IO) {
-                radioQueue.getInitialStatus().filterExplicit(dataStore.get(HideExplicitKey, false)).filterVideo(dataStore.get(HideVideoKey, false))
+                radioQueue.getInitialStatus().filterExplicit(dataStore.get(HideExplicitKey, false))
             }
 
             if (initialStatus.title != null) {
@@ -2851,7 +2850,6 @@ class MusicService :
         automixCoordinator.refresh(
             seedMediaId = seedMediaId,
             hideExplicit = dataStore.get(HideExplicitKey, false),
-            hideVideo = dataStore.get(HideVideoKey, false),
             queueIdsProvider = {
                 (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
             },
@@ -2893,7 +2891,6 @@ class MusicService :
         automixCoordinator.expandNow(
             seedMediaId = seedMediaId,
             hideExplicit = dataStore.get(HideExplicitKey, false),
-            hideVideo = dataStore.get(HideVideoKey, false),
             queueIdsProvider = {
                 (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
             },
@@ -3821,7 +3818,7 @@ class MusicService :
     ) {
         scope.launch(SilentHandler) {
             val mediaItems =
-                currentQueue.nextPage().filterExplicit(dataStore.get(HideExplicitKey, false)).filterVideo(dataStore.get(HideVideoKey, false))
+                currentQueue.nextPage().filterExplicit(dataStore.get(HideExplicitKey, false))
             if (player.playbackState != STATE_IDLE) {
                 player.addMediaItems(mediaItems.drop(1))
             } else {
@@ -3962,11 +3959,9 @@ class MusicService :
                 clearAutomix()
             } else if (lastMediaMetadata != null) {
                 val hideExplicit = dataStore.get(HideExplicitKey, false)
-                val hideVideo = dataStore.get(HideVideoKey, false)
                 automixCoordinator.recoverAfterQueueEnded(
                     seedMediaId = lastMediaMetadata.id,
                     hideExplicit = hideExplicit,
-                    hideVideo = hideVideo,
                     isBeforeApplyRelevant = {
                         !suppressAutoPlayback && player.playbackState != STATE_IDLE && player.mediaItemCount > 0
                     },

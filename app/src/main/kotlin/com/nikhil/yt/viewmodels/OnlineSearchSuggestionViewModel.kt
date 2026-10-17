@@ -14,9 +14,7 @@ import androidx.lifecycle.viewModelScope
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.YTItem
 import com.nikhil.yt.innertube.models.filterExplicit
-import com.nikhil.yt.innertube.models.filterVideo
 import com.nikhil.yt.constants.HideExplicitKey
-import com.nikhil.yt.constants.HideVideoKey
 import com.nikhil.yt.db.MusicDatabase
 import com.nikhil.yt.db.entities.SearchHistory
 import com.nikhil.yt.utils.dataStore
@@ -78,7 +76,7 @@ constructor(
                                                 false,
                                             ),
                                         )
-                                        ?.filterVideo(context.dataStore.get(HideVideoKey, false)).orEmpty(),
+                                        .orEmpty(),
                                 )
                             }
                     }

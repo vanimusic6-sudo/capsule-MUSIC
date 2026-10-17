@@ -90,6 +90,7 @@ import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.CapsuleLightLyricLineKey
+import com.nikhil.yt.constants.ReleaseAppearanceDefaults
 import com.nikhil.yt.constants.CapsuleLightEditEnabledKey
 import com.nikhil.yt.constants.CapsuleLightEditSessionActiveKey
 import com.nikhil.yt.constants.CapsuleLightLayoutOrderKey
@@ -377,7 +378,7 @@ fun CapsulePlayerContent(
     val cropAlbumArt by
         rememberPreference(
             CropThumbnailToSquareKey,
-            defaultValue = false,
+            defaultValue = ReleaseAppearanceDefaults.cropThumbnail,
         )
 
     val isLoading =
@@ -414,7 +415,7 @@ fun CapsulePlayerContent(
     val showLyricLine by
         rememberPreference(
             CapsuleLightLyricLineKey,
-            defaultValue = true,
+            defaultValue = ReleaseAppearanceDefaults.lightLyricLine,
         )
 
     /*
@@ -597,34 +598,65 @@ fun CapsulePlayerContent(
                             modifier = Modifier.size(72.dp),
                         )
                     } else {
-                        AsyncImage(
-                            model = mediaMetadata.thumbnailUrl?.let { artwork ->
-                                // YouTube's =w540 URL rewrite corrupts SoundCloud CDN URLs
-                                // with query parameters; their full-size art is selected at search.
+                        val originalArtworkUrl = mediaMetadata.thumbnailUrl
+                        val highResArtworkUrl = remember(mediaMetadata.id, originalArtworkUrl) {
+                            originalArtworkUrl?.let { artwork ->
                                 if (mediaMetadata.id.startsWith("soundcloud:")) artwork
                                 else artwork.toHighResThumbnail()
-                            },
-                            contentDescription = mediaMetadata.title,
-                            contentScale =
-                                if (
-                                    cropAlbumArt ||
-                                    (
-                                        useClayLayout &&
-                                            (
-                                                artworkResizeActive ||
-                                                    abs(lightArtworkWidthScale - 1f) > 0.01f ||
-                                                    abs(lightArtworkHeightScale - 1f) > 0.01f
-                                            )
-                                    )
-                                ) {
-                                    // Once the user reshapes the artwork frame, the image follows
-                                    // that frame by cropping instead of leaving Fit letterboxing.
-                                    ContentScale.Crop
-                                } else {
-                                    ContentScale.Fit
+                            }
+                        }
+                        var useOriginalArtwork by remember(mediaMetadata.id, originalArtworkUrl) {
+                            mutableStateOf(false)
+                        }
+                        var artworkFailed by remember(mediaMetadata.id, originalArtworkUrl) {
+                            mutableStateOf(false)
+                        }
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            AsyncImage(
+                                // Retry only when high-resolution CDN art actually failed.
+                                // Both URLs are already in the track's metadata.
+                                model = if (useOriginalArtwork) originalArtworkUrl else highResArtworkUrl,
+                                contentDescription = mediaMetadata.title,
+                                onSuccess = { artworkFailed = false },
+                                onError = {
+                                    if (!useOriginalArtwork &&
+                                        !originalArtworkUrl.isNullOrBlank() &&
+                                        originalArtworkUrl != highResArtworkUrl
+                                    ) {
+                                        useOriginalArtwork = true
+                                    } else {
+                                        artworkFailed = true
+                                    }
                                 },
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                                contentScale =
+                                    if (
+                                        cropAlbumArt ||
+                                        (
+                                            useClayLayout &&
+                                                (
+                                                    artworkResizeActive ||
+                                                        abs(lightArtworkWidthScale - 1f) > 0.01f ||
+                                                        abs(lightArtworkHeightScale - 1f) > 0.01f
+                                                )
+                                        )
+                                    ) {
+                                        // Once the user reshapes the artwork frame, the image follows
+                                        // that frame by cropping instead of leaving Fit letterboxing.
+                                        ContentScale.Crop
+                                    } else {
+                                        ContentScale.Fit
+                                    },
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                            if (artworkFailed) {
+                                Icon(
+                                    painter = painterResource(R.drawable.album),
+                                    contentDescription = mediaMetadata.title,
+                                    tint = secondaryText,
+                                    modifier = Modifier.size(72.dp),
+                                )
+                            }
+                        }
                     }
                 }
             }

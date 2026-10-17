@@ -15,7 +15,6 @@ import androidx.lifecycle.viewModelScope
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.pages.BrowseResult
 import com.nikhil.yt.constants.HideExplicitKey
-import com.nikhil.yt.constants.HideVideoKey
 import com.nikhil.yt.utils.dataStore
 import com.nikhil.yt.utils.get
 import com.nikhil.yt.utils.reportException
@@ -42,8 +41,7 @@ constructor(
             YouTube
                 .browse(browseId, params)
                 .onSuccess {
-                    val hideVideo = context.dataStore.get(HideVideoKey, false)
-                    result.value = it.filterExplicit(context.dataStore.get(HideExplicitKey, false)).filterVideo(hideVideo)
+                    result.value = it.filterExplicit(context.dataStore.get(HideExplicitKey, false))
                 }.onFailure {
                     reportException(it)
                 }

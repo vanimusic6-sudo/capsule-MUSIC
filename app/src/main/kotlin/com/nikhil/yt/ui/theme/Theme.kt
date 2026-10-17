@@ -22,6 +22,7 @@ import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -39,6 +40,7 @@ import com.kyant.m3color.scheme.SchemeMonochrome
 import com.kyant.m3color.scheme.SchemeNeutral
 import com.kyant.m3color.scheme.SchemeTonalSpot
 import com.nikhil.yt.constants.PureBlackKey
+import com.nikhil.yt.constants.ReleaseAppearanceDefaults
 import com.nikhil.yt.utils.rememberPreference
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -65,7 +67,6 @@ fun VeluneTheme(
     pureBlack: Boolean = false,
     themeColor: Color = DefaultThemeColor,
     seedPalette: ThemeSeedPalette? = null,
-    useSystemFont: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
@@ -79,35 +80,31 @@ fun VeluneTheme(
      */
     val capsuleThemeEnabled by rememberPreference(
         CapsuleThemeEnabledKey,
-        defaultValue = false,
+        defaultValue = ReleaseAppearanceDefaults.capsuleTheme,
     )
 
     /*
-     * MainActivity normally disables Pure Black while Velune is in
-     * light mode. Capsule itself is dark-only, so when Capsule is enabled
-     * we read the actual stored PureBlack preference.
+     * Capsule Dark and Light are separate ColorScheme overrides.
+     * Never let the Capsule enable toggle override the user-selected brightness.
      */
     val capsulePureBlack by rememberPreference(
         PureBlackKey,
-        defaultValue = true,
+        defaultValue = ReleaseAppearanceDefaults.pureBlack,
     )
 
-    val effectiveDarkTheme =
-        capsuleThemeEnabled || darkTheme
+    // The explicit Dark Mode / Follow System selection owns the brightness.
+    // Capsule toggles the visual family; it must not override that selection.
+    val effectiveDarkTheme = darkTheme
 
     val effectivePureBlack =
-        if (capsuleThemeEnabled) {
+        if (effectiveDarkTheme && capsuleThemeEnabled) {
             capsulePureBlack
         } else {
             pureBlack
         }
 
-    /*
-     * Keep Android status/navigation bar icon contrast correct even when
-     * the user had Light Mode selected before enabling Capsule.
-     *
-     * The saved DarkMode preference itself is not changed.
-     */
+    // System bar icon contrast must match the *applied* mode, not Capsule's
+    // enabled flag; the saved DarkMode preference itself is never rewritten.
     SideEffect {
         context.findActivity()?.window?.let { window ->
             WindowCompat
@@ -125,14 +122,7 @@ fun VeluneTheme(
             themeColor == DefaultThemeColor &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
-    val typography =
-        remember(useSystemFont) {
-            if (useSystemFont) {
-                SystemTypography
-            } else {
-                AppTypography
-            }
-        }
+    val typography = AppTypography
 
     val appColorScheme =
         remember(
@@ -172,29 +162,44 @@ fun VeluneTheme(
             effectiveDarkTheme,
             capsuleThemeEnabled,
         ) {
-            when {
-                capsuleThemeEnabled ->
-                    baseColorScheme.capsule(
-                        pureBlack = effectivePureBlack,
-                    )
-
-                effectiveDarkTheme && effectivePureBlack ->
-                    baseColorScheme.pureBlack(true)
-
-                else ->
-                    baseColorScheme
-            }
+            resolveCapsuleColorScheme(
+                baseColorScheme = baseColorScheme,
+                capsuleThemeEnabled = capsuleThemeEnabled,
+                isDark = effectiveDarkTheme,
+                pureBlack = effectivePureBlack,
+            )
         }
 
     val animatedColorScheme =
         animateColorScheme(colorScheme)
 
-    MaterialExpressiveTheme(
-        colorScheme = animatedColorScheme,
-        typography = typography,
-        content = content,
-    )
+    CompositionLocalProvider(LocalCapsuleLightTheme provides (capsuleThemeEnabled && !effectiveDarkTheme)) {
+        MaterialExpressiveTheme(
+            colorScheme = animatedColorScheme,
+            typography = typography,
+            content = content,
+        )
+    }
 }
+
+/**
+ * Resolve Capsule Dark to its untouched original palette and Capsule Light to
+ * its own scoped palette. Non-Capsule themes still use the original schemes.
+ *
+ * Stateless: fast theme toggles cannot leave a stale override cached here.
+ */
+internal fun resolveCapsuleColorScheme(
+    baseColorScheme: ColorScheme,
+    capsuleThemeEnabled: Boolean,
+    isDark: Boolean,
+    pureBlack: Boolean,
+): ColorScheme =
+    when {
+        capsuleThemeEnabled && isDark -> baseColorScheme.capsule(pureBlack = pureBlack)
+        capsuleThemeEnabled && !isDark -> baseColorScheme.capsuleLight()
+        isDark && pureBlack -> baseColorScheme.pureBlack(true)
+        else -> baseColorScheme
+    }
 
 private tailrec fun Context.findActivity(): Activity? =
     when (this) {

@@ -88,6 +88,7 @@ internal fun capsuleArtworkPaletteKey(mediaId: String): String = "track:$mediaId
 internal fun rememberCapsuleArtworkColors(
     mediaMetadata: MediaMetadata?,
     enabled: Boolean = true,
+    refreshOnOpen: Boolean = false,
 ): List<Color> =
     rememberArtworkGradientColors(
         cacheKey =
@@ -96,6 +97,7 @@ internal fun rememberCapsuleArtworkColors(
             },
         thumbnailUrl = mediaMetadata?.thumbnailUrl,
         enabled = enabled,
+        refreshOnOpen = refreshOnOpen,
     )
 
 /** Shared artwork palette for non-player surfaces such as playlist cards. */
@@ -105,6 +107,7 @@ internal fun rememberArtworkGradientColors(
     thumbnailUrl: String?,
     enabled: Boolean = true,
     paletteCache: ArtworkPaletteCache = CapsuleArtworkPaletteCache,
+    refreshOnOpen: Boolean = false,
 ): List<Color> {
     val context = LocalContext.current
     val primary = MaterialTheme.colorScheme.primary
@@ -129,6 +132,7 @@ internal fun rememberArtworkGradientColors(
         cacheKey,
         thumbnailUrl,
         enabled,
+        refreshOnOpen,
         primary,
         secondary,
         tertiary,
@@ -146,6 +150,8 @@ internal fun rememberArtworkGradientColors(
         }
 
         // Pin the visible song even if browsing many albums evicts its cache entry.
+        // Reopening the sheet reattempts ONLY a previously failed extraction:
+        // successful palettes exit here without any extra network or bitmap work.
         if (cacheKey == resolvedKey) return@LaunchedEffect
 
         paletteCache.get(cacheKey)?.let {

@@ -18,6 +18,14 @@ object AudioClientOrder {
     const val WEB_CREATOR = "WEB_CREATOR"
     const val TVHTML5_SIMPLY = "TVHTML5_SIMPLY"
 
+    /**
+     * TASK 06.1 new-install ranking only; all six existing clients remain available.
+     * Do not change this list when an explicit order is already stored.
+     */
+    val releaseDefaultOrder: List<String> = listOf(
+        WEB_REMIX, VISIONOS, VISIONOS_0_1, TVHTML5_SIMPLY, WEB_EMBEDDED, WEB_CREATOR,
+    )
+
     val supportedProfiles: List<String> =
         listOf(
             VISIONOS,
@@ -33,6 +41,7 @@ object AudioClientOrder {
     fun resolve(
         raw: String?,
         legacyPolicy: AudioStreamPolicy,
+        legacyPreferenceExplicit: Boolean = false,
     ): List<String> {
         val parsed =
             raw
@@ -42,7 +51,10 @@ object AudioClientOrder {
                 .filter { it in supportedSet }
                 .distinct()
 
-        val seed = parsed.ifEmpty { legacyOrder(legacyPolicy) }
+        // Explicit legacy selection on upgrades still wins over release defaults.
+        val seed = parsed.ifEmpty {
+            if (legacyPreferenceExplicit) legacyOrder(legacyPolicy) else releaseDefaultOrder
+        }
         return (seed + legacyOrder(legacyPolicy) + supportedProfiles)
             .map(::normalize)
             .filter { it in supportedSet }

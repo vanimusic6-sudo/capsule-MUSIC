@@ -17,10 +17,8 @@ import java.time.ZoneOffset
 
 val DynamicThemeKey = booleanPreferencesKey("dynamicTheme")
 val CustomThemeColorKey = stringPreferencesKey("customThemeColor")
-val RandomThemeOnStartupKey = booleanPreferencesKey("randomThemeOnStartup")
 val DarkModeKey = stringPreferencesKey("darkMode")
 val PureBlackKey = booleanPreferencesKey("pureBlack")
-val UseSystemFontKey = booleanPreferencesKey("useSystemFont")
 val DefaultOpenTabKey = stringPreferencesKey("defaultOpenTab")
 val SlimNavBarKey = booleanPreferencesKey("slimNavBar")
 val GridItemsSizeKey = stringPreferencesKey("gridItemSize")
@@ -45,16 +43,15 @@ val EnableLyricsPlusKey = booleanPreferencesKey("enableLyricsPlus")
 val EnableNetEaseKey = booleanPreferencesKey("enableNetEase")
 
 /**
- * Off by default, deliberately.
- *
- * Paxsenix relays Apple Music's lyrics, and reaching their catalogue means using the anonymous
- * token their own web player mints for itself. Nobody's account is involved and nothing is
- * decrypted, but it is an API meant for their client rather than ours, so it is something to turn
- * on knowingly rather than something that is simply on.
+ * Enabled for new installations by release preference. Existing users keep
+ * their saved choice; relay and retrieval logic are unchanged.
  */
 val EnablePaxsenixAppleMusicKey = booleanPreferencesKey("enablePaxsenixAppleMusic")
+/** UI-only choice: never changes playback or rewrites other preferences. */
+val SettingsAdvancedModeKey = booleanPreferencesKey("settingsAdvancedModeV1")
+/** Set only when the first developer-mode warning is acknowledged. */
+val SettingsAdvancedWarningSeenKey = booleanPreferencesKey("settingsAdvancedWarningSeenV1")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
-val HideVideoKey = booleanPreferencesKey("hideVideo")
 /** Experimental SoundCloud source (keeps the old preference name on existing installs). */
 val SoundCloudWebPreviewEnabledKey = booleanPreferencesKey("soundcloudWebPreviewEnabled")
 val ProxyEnabledKey = booleanPreferencesKey("proxyEnabled")

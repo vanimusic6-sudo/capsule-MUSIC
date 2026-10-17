@@ -36,7 +36,6 @@ import com.nikhil.yt.constants.PlaylistSongSortDescendingKey
 import com.nikhil.yt.constants.PlaylistSongSortType
 import com.nikhil.yt.constants.PlaylistSongSortTypeKey
 import com.nikhil.yt.constants.HideExplicitKey
-import com.nikhil.yt.constants.HideVideoKey
 import com.nikhil.yt.R
 import com.nikhil.yt.db.MusicDatabase
 import com.nikhil.yt.db.entities.PlaylistSong
@@ -46,7 +45,6 @@ import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.YTItem
 import com.nikhil.yt.innertube.models.filterExplicit
-import com.nikhil.yt.innertube.models.filterVideo
 import com.nikhil.yt.innertube.pages.SearchResult
 import com.nikhil.yt.models.PlaylistSuggestion
 import com.nikhil.yt.models.PlaylistSuggestionPage
@@ -534,7 +532,6 @@ constructor(
 
     private suspend fun filterSuggestionItems(items: List<YTItem>): List<YTItem> {
         val hideExplicit = context.dataStore.data.first()[HideExplicitKey] ?: false
-        val hideVideos = context.dataStore.data.first()[HideVideoKey] ?: false
 
         var filteredItems = items.filter { item ->
             item.id !in suggestedSongIds.value
@@ -544,9 +541,6 @@ constructor(
             filteredItems = filteredItems.filterExplicit()
         }
 
-        if (hideVideos) {
-            filteredItems = filteredItems.filterVideo()
-        }
         return filteredItems
     }
 }

@@ -232,8 +232,6 @@
     <string name="appearance">المظهر</string>
     <string name="theme">السمة</string>
     <string name="enable_dynamic_theme">تفعيل السمة الديناميكية</string>
-    <string name="use_system_font">استخدم خط النظام</string>
-    <string name="use_system_font_desc">استخدم خط الجهاز بدلاً من خط التطبيق</string>
     <string name="color_palette">لوحة الألوان</string>
     <string name="customize_theme_colors">اختر ألوان سمة التطبيق</string>
     <string name="selected_theme_color">لون السمة المختار</string>
@@ -349,4 +347,7 @@
     <string name="lyrics_text_position">موضع نص كلمات الأغنية</string>
     <string name="latest_release">أحدث إصدار</string>
     <string name="artist_release_metadata">ألبوم • %1$d</string>
+    <string name="capsule_advanced_mode_warning_title">إعدادات المطوّرين</string>
+    <string name="capsule_advanced_mode_warning_body">قد يؤدي تغيير إعدادات المطوّرين إلى إبطاء التطبيق أو تعطيل بعض وظائفه. اختار مطوّرو Capsule بالفعل الإعدادات الأنسب لمعظم المستخدمين. غيّر هذه الإعدادات بحذر وراقب أداء التطبيق 😉</string>
+    <string name="capsule_advanced_mode_warning_confirm">فهمت</string>
 </resources>

@@ -229,10 +229,6 @@
     <string name="appearance">Giao diện</string>
     <string name="theme">Giao diện</string>
     <string name="enable_dynamic_theme">Bật giao diện động</string>
-    <string name="random_theme_on_startup">Chủ đề ngẫu nhiên khi khởi động</string>
-    <string name="random_theme_on_startup_desc">Áp dụng bảng màu ngẫu nhiên mỗi khi app khởi động</string>
-    <string name="use_system_font">Sử dụng font hệ thống</string>
-    <string name="use_system_font_desc">Sử dụng font thiết bị thay vì font ứng dụng</string>
     <!-- Color Palette -->
     <string name="color_palette">Bảng màu</string>
     <string name="customize_theme_colors">Chọn màu giao diện ứng dụng của bạn</string>
@@ -478,7 +474,6 @@
     <string name="preload_queue_lyrics">Tải trước lời bài hát trong danh sách</string>
     <string name="queue_lyrics_preload_count">Số lượng bài hát được tải trước</string>
     <string name="hide_explicit">Ẩn nội dung rõ ràng</string>
-    <string name="hide_video">Ẩn video âm nhạc</string>
     <string name="backup_restore">Sao lưu và khôi phục</string>
     <string name="action_backup">Sao lưu</string>
     <string name="action_restore">Khôi phục</string>
@@ -735,4 +730,7 @@ Velune sẽ chỉ trích xuất token của bạn, và mọi thứ khác đượ
     <string name="together_token_missing">Phiên bản này không hỗ trợ phát nhạc trực tuyến</string>
     <string name="latest_release">Bản phát hành mới nhất</string>
     <string name="artist_release_metadata">Album • %1$d</string>
+    <string name="capsule_advanced_mode_warning_title">Cài đặt nhà phát triển</string>
+    <string name="capsule_advanced_mode_warning_body">Thay đổi cài đặt dành cho nhà phát triển có thể khiến ứng dụng chậm đi hoặc hoạt động không ổn định. Nhóm phát triển Capsule đã chọn sẵn các thiết lập phù hợp nhất với đa số người dùng. Hãy thay đổi cẩn thận và theo dõi kết quả 😉</string>
+    <string name="capsule_advanced_mode_warning_confirm">Đã hiểu</string>
 </resources>

@@ -559,7 +559,6 @@
     <string name="clear_translation_models">Effacer les modèles de traduction</string>
     <string name="queue_continue_playing">Continuer la lecture</string>
     <string name="queue_autoplaying_similar">Lecture automatique de musique similaire</string>
-    <string name="hide_video">Masquer les clips musicaux</string>
     <string name="updates">Mises à jour</string>
     <string name="current_version">Version actuelle</string>
     <string name="latest_version_format">Dernière mise à jour : %s</string>
@@ -593,8 +592,6 @@
     <string name="permission_status_required">Veuillez autoriser toutes les permissions requises pour continuer.</string>
     <string name="next">Suivant</string>
     <string name="allow">Autoriser</string>
-    <string name="use_system_font">Utiliser la police système</string>
-    <string name="use_system_font_desc">Utilisez la police de l\'appareil au lieu de la police de l\'application</string>
     <string name="eq_waiting_for_audio_session">En attente de la session audio…</string>
     <string name="eq_open_system_equalizer">Ouvrir l\'égaliseur système</string>
     <string name="eq_presets">Préréglages</string>
@@ -666,8 +663,6 @@
     <string name="together_ban_confirm">Interdire %1$s ?</string>
     <string name="together_requesting_song_change">Demande à l\'hôte de changer de titre…</string>
     <string name="together_song_change_failed">Le changement de titre n\'a pas été pris en compte. Veuillez réessayer.</string>
-    <string name="random_theme_on_startup">Thème aléatoire au démarrage</string>
-    <string name="random_theme_on_startup_desc">Appliquer une palette de couleurs aléatoire à chaque démarrage de l\'application</string>
     <string name="audio_offload">Déchargement audio</string>
     <string name="audio_offload_desc">Permettre aux appareils pris en charge de lire des fichiers audio à l\'aide d\'un décodage matériel à faible consommation d\'énergie. Certaines fonctionnalités de traitement audio sont désactivées.</string>
     <string name="changelog">Journal des modifications</string>
@@ -743,4 +738,7 @@
     <string name="stream_bypass_proxy_desc">Utilisez votre adresse IP directe pour la lecture en continu afin d\'éviter les problèmes de correspondance d\'adresses IP</string>
     <string name="latest_release">Dernière sortie</string>
     <string name="artist_release_metadata">Album • %1$d</string>
+    <string name="capsule_advanced_mode_warning_title">Paramètres développeur</string>
+    <string name="capsule_advanced_mode_warning_body">Modifier les paramètres avancés peut ralentir l’application ou perturber son fonctionnement. L’équipe de Capsule a déjà choisi les réglages les plus adaptés à la majorité des utilisateurs. Modifiez-les avec prudence et surveillez les effets 😉</string>
+    <string name="capsule_advanced_mode_warning_confirm">Compris</string>
 </resources>

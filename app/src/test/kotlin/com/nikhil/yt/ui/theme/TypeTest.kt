@@ -22,9 +22,4 @@ class TypeTest {
         }
     }
 
-    @Test
-    fun systemTypographyStillUsesDeviceDefaultFamily() {
-        assertEquals(FontFamily.Default, SystemTypography.bodyLarge.fontFamily)
-        assertEquals(FontFamily.Default, SystemTypography.titleLarge.fontFamily)
-    }
 }

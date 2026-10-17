@@ -242,10 +242,6 @@
     <string name="appearance">Внешний вид</string>
     <string name="theme">Тема</string>
     <string name="enable_dynamic_theme">Включить динамическую тему</string>
-    <string name="random_theme_on_startup">Случайная тема при запуске</string>
-    <string name="random_theme_on_startup_desc">Применять случайную цветовую схему при каждом запуске приложения</string>
-    <string name="use_system_font">Использовать системный шрифт</string>
-    <string name="use_system_font_desc">Использовать шрифт устройства вместо шрифта приложения</string>
     <string name="color_palette">Цветовая схема</string>
     <string name="customize_theme_colors">Выберите свои цвета для темы</string>
     <string name="selected_theme_color">Выбранный цвет темы</string>
@@ -495,7 +491,6 @@
     <string name="disable_screenshot_desc">При включении, скриншоты и предпросмотр приложения в списке недавних будут отключены.</string>
     <string name="enable_lrclib">Включить провайдера текста песен LrcLib</string>
     <string name="hide_explicit">Скрывать нецензурный контент</string>
-    <string name="hide_video">Скрывать музыкальные клипы</string>
     <string name="backup_restore">Резервное копирование и восстановление</string>
     <string name="action_backup">Создать резервную копию</string>
     <string name="action_restore">Восстановить</string>
@@ -872,4 +867,15 @@
     <string name="video_timeout_description">Сброс локальной паузы и накопленной задержки. Для новой попытки нажмите video в плеере. YouTube может повторно ограничить запросы.</string>
     <string name="video_timeout_reset">Сбросить тайм-аут видео</string>
     <string name="video_timeout_reset_done">Тайм-аут видео сброшен</string>
+    <string name="home_greeting_morning">Доброе утро</string>
+    <string name="home_greeting_afternoon">Добрый день</string>
+    <string name="home_greeting_evening">Добрый вечер</string>
+    <string name="home_greeting_night">Доброй ночи</string>
+    <string name="capsule_settings_mode_toggle">Переключить режим настроек</string>
+    <string name="capsule_settings_mode_user">Базовые</string>
+    <string name="capsule_settings_mode_advanced_compact">Разработка</string>
+    <string name="capsule_settings_mode_advanced">Для разработчиков</string>
+    <string name="capsule_advanced_mode_warning_title">Настройки для разработчиков</string>
+    <string name="capsule_advanced_mode_warning_body">Изменяя настройки для разработчиков, вы можете замедлить или нарушить работу приложения. Разработчики Capsule уже подобрали оптимальные настройки для удобства большинства пользователей. Меняйте параметры осторожно и следите за результатом 😉</string>
+    <string name="capsule_advanced_mode_warning_confirm">Понятно</string>
 </resources>

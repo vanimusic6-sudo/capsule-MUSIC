@@ -63,6 +63,7 @@ fun ContentSettings(
     navController: NavController,
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
+    val (advancedSettings, _) = rememberPreference(SettingsAdvancedModeKey, false)
     val context = LocalContext.current
 
     // Used only before Android 13
@@ -71,7 +72,6 @@ fun ContentSettings(
     val (contentLanguage, onContentLanguageChange) = rememberPreference(key = ContentLanguageKey, defaultValue = "system")
     val (contentCountry, onContentCountryChange) = rememberPreference(key = ContentCountryKey, defaultValue = "system")
     val (hideExplicit, onHideExplicitChange) = rememberPreference(key = HideExplicitKey, defaultValue = false)
-    val (hideVideo, onHideVideoChange) = rememberPreference(key = HideVideoKey, defaultValue = false)
     val (proxyEnabled, onProxyEnabledChange) = rememberPreference(key = ProxyEnabledKey, defaultValue = false)
     val (proxyType, onProxyTypeChange) = rememberEnumPreference(key = ProxyTypeKey, defaultValue = Proxy.Type.HTTP)
     val (proxyUrl, onProxyUrlChange) = rememberPreference(key = ProxyUrlKey, defaultValue = "host:port")
@@ -79,7 +79,7 @@ fun ContentSettings(
     val (enableBetterLyrics, onEnableBetterLyricsChange) = rememberPreference(key = EnableBetterLyricsKey, defaultValue = true)
     val (enableLyricsPlus, onEnableLyricsPlusChange) = rememberPreference(key = EnableLyricsPlusKey, defaultValue = true)
     val (enablePaxsenixApple, onEnablePaxsenixAppleChange) =
-        rememberPreference(key = EnablePaxsenixAppleMusicKey, defaultValue = false)
+        rememberPreference(key = EnablePaxsenixAppleMusicKey, defaultValue = true)
     val (enableNetEase, onEnableNetEaseChange) = rememberPreference(key = EnableNetEaseKey, defaultValue = true)
     val (rawLyricsProviderOrder, onLyricsProviderOrderChange) =
         rememberPreference(key = LyricsProviderOrderKey, defaultValue = "")
@@ -111,6 +111,7 @@ fun ContentSettings(
             .padding(bottom = settingsBottomContentPadding()),
     ) {
         PreferenceGroupTitle(title = stringResource(R.string.general))
+        if (advancedSettings) {
         ListPreference(
             title = { Text(stringResource(R.string.content_language)) },
             icon = { Icon(painterResource(R.drawable.language), null) },
@@ -133,6 +134,8 @@ fun ContentSettings(
                 onContentLanguageChange(newValue)
             }
         )
+        }
+        if (advancedSettings) {
         ListPreference(
             title = { Text(stringResource(R.string.content_country)) },
             icon = { Icon(painterResource(R.drawable.location_on), null) },
@@ -153,6 +156,7 @@ fun ContentSettings(
                 onContentCountryChange(newValue)
            }
         )
+        }
 
         SwitchPreference(
             title = { Text(stringResource(R.string.hide_explicit)) },
@@ -161,12 +165,6 @@ fun ContentSettings(
             onCheckedChange = onHideExplicitChange,
         )
 
-        SwitchPreference(
-            title = { Text(stringResource(R.string.hide_video)) },
-            icon = { Icon(painterResource(R.drawable.slow_motion_video), null) },
-            checked = hideVideo,
-            onCheckedChange = onHideVideoChange,
-        )
 
         PreferenceGroupTitle(title = stringResource(R.string.app_language))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -206,14 +204,18 @@ fun ContentSettings(
             )
         }
 
-        PreferenceGroupTitle(title = stringResource(R.string.proxy))
+        if (advancedSettings) {
+            PreferenceGroupTitle(title = stringResource(R.string.proxy))
+        }
+        if (advancedSettings) {
         SwitchPreference(
             title = { Text(stringResource(R.string.enable_proxy)) },
             icon = { Icon(painterResource(R.drawable.wifi_proxy), null) },
             checked = proxyEnabled,
             onCheckedChange = onProxyEnabledChange,
         )
-        if (proxyEnabled) {
+        }
+        if (advancedSettings && proxyEnabled) {
             Column {
                 ListPreference(
                     title = { Text(stringResource(R.string.proxy_type)) },
@@ -240,13 +242,18 @@ fun ContentSettings(
             }
         }
 
-        PreferenceGroupTitle(title = stringResource(R.string.lyrics))
+        if (advancedSettings) {
+            PreferenceGroupTitle(title = stringResource(R.string.lyrics))
+        }
+        if (advancedSettings) {
         SwitchPreference(
             title = { Text(stringResource(R.string.enable_betterlyrics)) },
             icon = { Icon(painterResource(R.drawable.lyrics), null) },
             checked = enableBetterLyrics,
             onCheckedChange = onEnableBetterLyricsChange,
         )
+        }
+        if (advancedSettings) {
         SwitchPreference(
             title = { Text(stringResource(R.string.enable_lyricsplus)) },
             description = stringResource(R.string.enable_lyricsplus_description),
@@ -254,6 +261,8 @@ fun ContentSettings(
             checked = enableLyricsPlus,
             onCheckedChange = onEnableLyricsPlusChange,
         )
+        }
+        if (advancedSettings) {
         SwitchPreference(
             title = { Text(stringResource(R.string.enable_paxsenix_apple)) },
             description = stringResource(R.string.lyrics_provider_paxsenix_apple_description),
@@ -261,12 +270,16 @@ fun ContentSettings(
             checked = enablePaxsenixApple,
             onCheckedChange = onEnablePaxsenixAppleChange,
         )
+        }
+        if (advancedSettings) {
         PreferenceEntry(
             title = { Text(stringResource(R.string.paxsenix_status_title)) },
             description = stringResource(R.string.paxsenix_status_description),
             icon = { Icon(painterResource(R.drawable.lyrics), null) },
             onClick = { showPaxsenixStatsDialog = true },
         )
+        }
+        if (advancedSettings) {
         SwitchPreference(
             title = { Text(stringResource(R.string.enable_netease)) },
             description = stringResource(R.string.enable_netease_description),
@@ -274,6 +287,8 @@ fun ContentSettings(
             checked = enableNetEase,
             onCheckedChange = onEnableNetEaseChange,
         )
+        }
+        if (advancedSettings) {
         PreferenceEntry(
             title = { Text(stringResource(R.string.lyrics_provider_priority_title)) },
             description =
@@ -284,27 +299,34 @@ fun ContentSettings(
             icon = { Icon(painterResource(R.drawable.lyrics), null) },
             onClick = { showLyricsProviderPriorityDialog = true },
         )
+        }
+        if (advancedSettings) {
         SwitchPreference(
             title = { Text(stringResource(R.string.lyrics_romanize_japanese)) },
             icon = { Icon(painterResource(R.drawable.lyrics), null) },
             checked = lyricsRomanizeJapanese,
             onCheckedChange = onLyricsRomanizeJapaneseChange,
         )
+        }
 
+        if (advancedSettings) {
         SwitchPreference(
             title = { Text(stringResource(R.string.lyrics_romanize_korean)) },
             icon = { Icon(painterResource(R.drawable.lyrics), null) },
             checked = lyricsRomanizeKorean,
             onCheckedChange = onLyricsRomanizeKoreanChange,
         )
+        }
         // Queue lyrics pre-load settings
+        if (advancedSettings) {
         SwitchPreference(
             title = { Text(stringResource(R.string.preload_queue_lyrics)) },
             icon = { Icon(painterResource(R.drawable.lyrics), null) },
             checked = preloadQueueLyricsEnabled,
             onCheckedChange = onPreloadQueueLyricsEnabledChange,
         )
-        if (preloadQueueLyricsEnabled) {
+        }
+        if (advancedSettings && preloadQueueLyricsEnabled) {
             NumberPickerPreference(
                 title = { Text(stringResource(R.string.queue_lyrics_preload_count)) },
                 icon = { Icon(painterResource(R.drawable.lyrics), null) },
@@ -316,7 +338,10 @@ fun ContentSettings(
             )
         }
 
-        PreferenceGroupTitle(title = stringResource(R.string.misc))
+        if (advancedSettings) {
+            PreferenceGroupTitle(title = stringResource(R.string.misc))
+        }
+        if (advancedSettings) {
         EditTextPreference(
             title = { Text(stringResource(R.string.top_length)) },
             icon = { Icon(painterResource(R.drawable.trending_up), null) },
@@ -324,6 +349,8 @@ fun ContentSettings(
             isInputValid = { it.toIntOrNull()?.let { num -> num > 0 } == true },
             onValueChange = onLengthTopChange,
         )
+        }
+        if (advancedSettings) {
         ListPreference(
             title = { Text(stringResource(R.string.set_quick_picks)) },
             icon = { Icon(painterResource(R.drawable.home_outlined), null) },
@@ -337,9 +364,10 @@ fun ContentSettings(
             },
             onValueSelected = onQuickPicksChange,
         )
+        }
     }
 
-    if (showLyricsProviderPriorityDialog) {
+    if (advancedSettings && showLyricsProviderPriorityDialog) {
         LyricsProviderPriorityDialog(
             currentOrder = lyricsProviderOrder,
             onDismiss = { showLyricsProviderPriorityDialog = false },
@@ -349,7 +377,7 @@ fun ContentSettings(
         )
     }
 
-    if (showPaxsenixStatsDialog) {
+    if (advancedSettings && showPaxsenixStatsDialog) {
         PaxsenixStatsDialog(
             onDismiss = { showPaxsenixStatsDialog = false },
         )

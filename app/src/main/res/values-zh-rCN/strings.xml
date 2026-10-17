@@ -151,8 +151,6 @@
     <string name="appearance">外观</string>
     <string name="theme">主题</string>
     <string name="enable_dynamic_theme">启用动态主题</string>
-    <string name="use_system_font">使用系统字体</string>
-    <string name="use_system_font_desc">使用设备字体，而不是应用字体</string>
     <string name="color_palette">调色板</string>
     <string name="customize_theme_colors">选择你的应用主题颜色</string>
     <string name="selected_theme_color">选定主题颜色</string>
@@ -404,7 +402,6 @@
     <string name="disable_screenshot_desc">开启该选项时，截图和应用的最近查看功能会被禁用.</string>
     <string name="enable_lrclib">启用LrcLib歌词提供</string>
     <string name="hide_explicit">隐藏露骨内容</string>
-    <string name="hide_video">隐藏音乐视频</string>
     <string name="backup_restore">备份与恢复</string>
     <string name="action_backup">备份</string>
     <string name="action_restore">恢复</string>
@@ -589,4 +586,7 @@
     <string name="remove_playlist_cover">移除封面</string>
     <string name="latest_release">最新发行</string>
     <string name="artist_release_metadata">专辑 • %1$d</string>
+    <string name="capsule_advanced_mode_warning_title">开发者设置</string>
+    <string name="capsule_advanced_mode_warning_body">更改开发者设置可能会让应用变慢或影响正常运行。Capsule 开发团队已经为大多数用户选好了合适的设置。请谨慎调整，并留意更改后的效果 😉</string>
+    <string name="capsule_advanced_mode_warning_confirm">知道了</string>
 </resources>

@@ -120,6 +120,7 @@ import com.nikhil.yt.utils.joinByBullet
 import com.nikhil.yt.utils.makeTimeString
 import com.nikhil.yt.utils.rememberPreference
 import com.nikhil.yt.constants.CropThumbnailToSquareKey
+import com.nikhil.yt.constants.ReleaseAppearanceDefaults
 import com.nikhil.yt.utils.reportException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -309,6 +310,7 @@ fun SongListItem(
     isSwipeable: Boolean = true,
     showSourceIcon: Boolean = false,
     trailingContent: @Composable RowScope.() -> Unit = {},
+    showActiveBackground: Boolean = true,
 ) {
     val swipeEnabled by rememberPreference(SwipeToSongKey, defaultValue = false)
     val visuals = LocalSongListVisuals.current
@@ -335,7 +337,7 @@ fun SongListItem(
             },
             trailingContent = trailingContent,
             modifier = modifier,
-            isActive = isActive,
+            isActive = isActive && showActiveBackground,
             itemHeight = visuals.rowHeight,
         )
     }
@@ -1235,6 +1237,14 @@ fun LocalAlbumsGrid(
     modifier = modifier
 )
 
+/**
+ * A square IMAGE SLOT is already measured by its caller. Crop its decoded source
+ * once at draw time, centered and with uniform scale; never pre-crop or distort
+ * the source URL. Wide cards retain their existing Fit behavior.
+ */
+internal fun shouldCropSquareThumbnail(enabled: Boolean, frameAspectRatio: Float): Boolean =
+    enabled && frameAspectRatio.isFinite() && kotlin.math.abs(frameAspectRatio - 1f) < 0.001f
+
 @Composable
 fun ItemThumbnail(
     thumbnailUrl: String?,
@@ -1257,9 +1267,11 @@ fun ItemThumbnail(
             .aspectRatio(thumbnailRatio)
             .clip(shape)
     ) {
-        val (cropThumbnailToSquare, _) = rememberPreference(CropThumbnailToSquareKey, false)
-        val isYouTubeThumb = thumbnailUrl?.contains("ytimg.com", ignoreCase = true) == true
-        val shouldApplySquareCrop = cropThumbnailToSquare && isYouTubeThumb && kotlin.math.abs(thumbnailRatio - 1f) < 0.001f
+        val (cropThumbnailToSquare, _) =
+            rememberPreference(CropThumbnailToSquareKey, ReleaseAppearanceDefaults.cropThumbnail)
+        // Square cards crop the ORIGINAL decoded image, including wide video art and
+        // non-ytimg CDN URLs. The source request is not cropped/transformed/cached again.
+        val shouldApplySquareCrop = shouldCropSquareThumbnail(cropThumbnailToSquare, thumbnailRatio)
         val widthPx = if (maxWidth == Dp.Infinity) null else with(density) { maxWidth.roundToPx().coerceAtLeast(1) }
         val heightPx = if (maxHeight == Dp.Infinity) null else with(density) { maxHeight.roundToPx().coerceAtLeast(1) }
 
@@ -1282,7 +1294,7 @@ fun ItemThumbnail(
                     contentScale = if (shouldApplySquareCrop) ContentScale.Crop else ContentScale.Fit,
                     modifier = Modifier
                         .fillMaxSize()
-                        .let { if (shouldApplySquareCrop) it.aspectRatio(1f) else it }
+                        
                 )
             } else {
                 Box(
@@ -1359,9 +1371,11 @@ fun LocalThumbnail(
             .aspectRatio(thumbnailRatio)
             .clip(shape)
     ) {
-        val (cropThumbnailToSquare, _) = rememberPreference(CropThumbnailToSquareKey, false)
-        val isYouTubeThumb = thumbnailUrl?.contains("ytimg.com", ignoreCase = true) == true
-        val shouldApplySquareCrop = cropThumbnailToSquare && isYouTubeThumb && kotlin.math.abs(thumbnailRatio - 1f) < 0.001f
+        val (cropThumbnailToSquare, _) =
+            rememberPreference(CropThumbnailToSquareKey, ReleaseAppearanceDefaults.cropThumbnail)
+        // Square cards crop the ORIGINAL decoded image, including wide video art and
+        // non-ytimg CDN URLs. The source request is not cropped/transformed/cached again.
+        val shouldApplySquareCrop = shouldCropSquareThumbnail(cropThumbnailToSquare, thumbnailRatio)
         val widthPx = if (maxWidth == Dp.Infinity) null else with(density) { maxWidth.roundToPx().coerceAtLeast(1) }
         val heightPx = if (maxHeight == Dp.Infinity) null else with(density) { maxHeight.roundToPx().coerceAtLeast(1) }
         val request = remember(thumbnailUrl, widthPx, heightPx) {
@@ -1379,7 +1393,7 @@ fun LocalThumbnail(
             model = request,
             contentDescription = null,
             contentScale = if (shouldApplySquareCrop) ContentScale.Crop else ContentScale.Fit,
-            modifier = Modifier.fillMaxSize().let { if (shouldApplySquareCrop) it.aspectRatio(1f) else it }
+            modifier = Modifier.fillMaxSize()
         )
 
         AnimatedVisibility(

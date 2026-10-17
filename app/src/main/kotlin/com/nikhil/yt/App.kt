@@ -24,9 +24,6 @@ import coil3.request.allowHardware
 import coil3.request.crossfade
 import com.nikhil.yt.constants.*
 import com.nikhil.yt.extensions.*
-import com.nikhil.yt.ui.screens.settings.ThemePalettes
-import com.nikhil.yt.ui.theme.ThemeSeedPalette
-import com.nikhil.yt.ui.theme.ThemeSeedPaletteCodec
 import com.nikhil.yt.utils.dataStore
 import com.nikhil.yt.utils.CapsuleBrand
 import com.nikhil.yt.utils.PreferenceStore
@@ -203,17 +200,9 @@ class App : Application(), SingletonImageLoader.Factory {
                  */
                 YouTube.webClientPoTokenEnabled = prefs[WebClientPoTokenEnabledKey] ?: false
 
-                /*
-                 * Hardware audio offload lets supported devices keep decoding
-                 * and playback out of the main CPU path while the screen is
-                 * off. Respect an explicit user choice, but make the efficient
-                 * path the default for installs that never chose a value.
-                 */
-                if (prefs[AudioOffload] == null) {
-                    dataStore.edit { settings ->
-                        settings[AudioOffload] = true
-                    }
-                }
+                // Do not auto-enable Media3 audio offload here. Before a selected
+                // audio format and route exist, support is UNKNOWN. Offload stays
+                // disabled for unset preferences; an explicit user choice survives.
 
                 if (prefs[ProxyEnabledKey] == true) {
                     try {
@@ -235,20 +224,6 @@ class App : Application(), SingletonImageLoader.Factory {
 
                 if (prefs[UseLoginForBrowse] != false) {
                     YouTube.useLoginForBrowse = true
-                }
-
-                if (prefs[RandomThemeOnStartupKey] == true) {
-                    val randomPalette = ThemePalettes.generateRandomPalette()
-                    val seedPalette = ThemeSeedPalette(
-                        primary = randomPalette.primary,
-                        secondary = randomPalette.secondary,
-                        tertiary = randomPalette.tertiary,
-                        neutral = randomPalette.neutral
-                    )
-                    val encodedPalette = ThemeSeedPaletteCodec.encodeForPreference(seedPalette, "Random")
-                    dataStore.edit { settings ->
-                        settings[CustomThemeColorKey] = encodedPalette
-                    }
                 }
 
                 isInitialized = true

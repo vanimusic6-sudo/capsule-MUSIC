@@ -98,8 +98,6 @@
     <string name="background_nebula">Nebula</string>
     <string name="background_glass">Glass</string>
     <string name="capsule_settings_group">Capsule</string>
-    <string name="capsule_bottom_bar">Capsule navigation dock</string>
-    <string name="capsule_bottom_bar_description">Use the Capsule bottom navigation dock.</string>
     <string name="capsule_theme">Capsule theme</string>
     <string name="capsule_theme_description">Dark monochrome Capsule visual style. Existing color settings are preserved.</string>
     <string name="follow_theme">Follow theme</string>

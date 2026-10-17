@@ -61,6 +61,7 @@ import com.kyant.backdrop.Backdrop
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.constants.CapsulePlayerDesign
 import com.nikhil.yt.constants.CapsulePlayerDesignKey
+import com.nikhil.yt.constants.ReleaseAppearanceDefaults
 import com.nikhil.yt.constants.DarkModeKey
 import com.nikhil.yt.constants.MiniPlayerHeight
 import com.nikhil.yt.constants.MiniPlayerBackgroundStyle
@@ -82,7 +83,6 @@ import com.nikhil.yt.ui.component.rememberBottomSheetState
 import com.nikhil.yt.ui.menu.PlayerMenu
 import com.nikhil.yt.ui.screens.settings.DarkMode
 import com.nikhil.yt.ui.utils.ShowMediaInfo
-import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
 import kotlinx.coroutines.delay
@@ -121,8 +121,7 @@ fun BottomSheetPlayer(
         mutableStateOf(false)
     }
 
-    val playerDesign by rememberEnumPreference(CapsulePlayerDesignKey, CapsulePlayerDesign.SUPER)
-    val capsuleDock by rememberPreference(CapsuleBottomBarEnabledKey, false)
+    val playerDesign by rememberEnumPreference(CapsulePlayerDesignKey, ReleaseAppearanceDefaults.playerDesign)
     val configuration = LocalConfiguration.current
     val isLandscape =
         configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -139,12 +138,12 @@ fun BottomSheetPlayer(
     val playerBackground by
         rememberEnumPreference(
             key = PlayerBackgroundStyleKey,
-            defaultValue = PlayerBackgroundStyle.CAPSULE_STAR,
+            defaultValue = ReleaseAppearanceDefaults.playerBackground,
         )
     val miniPlayerBackground by
         rememberEnumPreference(
             MiniPlayerBackgroundStyleKey,
-            MiniPlayerBackgroundStyle.CAPSULE_STAR,
+            ReleaseAppearanceDefaults.miniPlayerBackground,
         )
 
     val systemDark = isSystemInDarkTheme()
@@ -174,7 +173,10 @@ fun BottomSheetPlayer(
     val enrichedMetadata =
         remember(mediaMetadata, currentSong) {
             val metadata = mediaMetadata ?: return@remember null
-            val localArtistCredits = currentSong?.toMediaMetadata()?.artists.orEmpty()
+            // Room's currentSong flow can lag one media item behind Media3.
+            // Never hydrate a new track with the old track's artwork or credits.
+            val currentSongForTrack = currentSong?.takeIf { it.id == metadata.id }
+            val localArtistCredits = currentSongForTrack?.toMediaMetadata()?.artists.orEmpty()
             val enrichedArtists =
                 mergeArtistCredits(
                     primary = metadata.artists,
@@ -183,22 +185,22 @@ fun BottomSheetPlayer(
 
             val album =
                 metadata.album
-                    ?: currentSong?.album?.let {
+                    ?: currentSongForTrack?.album?.let {
                         MediaMetadata.Album(
                             id = it.id,
                             title = it.title,
                         )
                     }
-                    ?: currentSong?.song?.albumId?.let { albumId ->
+                    ?: currentSongForTrack?.song?.albumId?.let { albumId ->
                         MediaMetadata.Album(
                             id = albumId,
-                            title = currentSong?.song?.albumName.orEmpty(),
+                            title = currentSongForTrack?.song?.albumName.orEmpty(),
                         )
                     }
 
             metadata.copy(
                 artists = enrichedArtists,
-                thumbnailUrl = metadata.thumbnailUrl ?: currentSong?.song?.thumbnailUrl,
+                thumbnailUrl = metadata.thumbnailUrl ?: currentSongForTrack?.song?.thumbnailUrl,
                 album = album,
             )
         }
@@ -283,6 +285,7 @@ fun BottomSheetPlayer(
         rememberCapsuleArtworkColors(
             mediaMetadata = enrichedMetadata,
             enabled = needsArtworkPalette,
+            refreshOnOpen = state.isExpandedOrExpanding,
         )
 
     val textColor =
@@ -368,8 +371,8 @@ fun BottomSheetPlayer(
         collapsedContentHeight = MiniPlayerHeight,
         // Match CapsuleMiniPlayer's real geometry so the full surface grows out of the card
         // instead of appearing as an unrelated full-width page behind it.
-        collapsedHorizontalInset = if (capsuleDock) 10.dp else 12.dp,
-        collapsedTopCornerRadius = if (capsuleDock) 24.dp else 14.dp,
+        collapsedHorizontalInset = 12.dp,
+        collapsedTopCornerRadius = 14.dp,
         surfaceAlpha = ::playerHandoffSurfaceAlpha,
         onDismiss = {
             playerConnection.service.stopAndClearPlayback()
@@ -660,7 +663,7 @@ private fun CapsulePlayerLyricsHost(
             if (design == CapsulePlayerDesign.IMMERSIVE) {
                 rememberImmersiveEdgeColor(
                     mediaMetadata = mediaMetadata,
-                    enabled = onScreen && !playerState.isDismissed,
+                    enabled = onScreen && playerState.isExpandedOrExpanding,
                     visibleArtworkAspectRatio =
                         maxWidth.value / immersiveArtworkHeight(maxHeight).value.coerceAtLeast(1f),
                 )
@@ -802,12 +805,6 @@ private fun CapsulePlayerLyricsHost(
             }
 
             if (lyricsLayerMounted) {
-                val lipShade = remember {
-                    Brush.verticalGradient(
-                        0f to Color.Black.copy(alpha = 0.10f),
-                        1f to Color.Transparent,
-                    )
-                }
                 Box(modifier = Modifier.fillMaxSize().then(lyricsFrame)) {
                     Box(
                         modifier = Modifier.fillMaxSize().graphicsLayer {
@@ -828,26 +825,15 @@ private fun CapsulePlayerLyricsHost(
                             playerArtworkColors = playerArtworkColors,
                             backdropAnimationTime = backdropAnimationTime,
                             isVisible = showLyrics,
+                            instantBackdrop = true,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
 
-                    // A narrow moving edge shade is the only decoration:
-                    // it belongs to the aperture (not to the static scene).
-                    // Only 14dp of pixels are shaded; no bitmap blur, second
-                    // backdrop, or long-running full-screen effect. The
-                    // envelope vanishes exactly at open and hidden anchors.
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .fillMaxWidth()
-                            .height(14.dp)
-                            .graphicsLayer {
-                                val p = sheetOffset.value.coerceIn(0f, 1f)
-                                alpha = sin((PI * p).toFloat()).coerceAtLeast(0f)
-                            }
-                            .background(lipShade),
-                    )
+                    // No extra translucent edge scrim: on bright artwork,
+                    // that colour layer was seen as haze above the aperture.
+                    // Shape, clip and two physical springs supply the edge
+                    // depth without another GPU blend pass.
 
                     // The Lyrics foreground is ALREADY painted at its
                     // final full-screen coordinates, then the same aperture

@@ -28,15 +28,17 @@ object LyricsProviderOrder {
     /**
      * Default order, best first.
      *
-     * Rich/synced sources lead. Plain YouTube metadata stays last because it nearly always has
+     * Apple/Paxsenix leads, with Better and NetEase fallback. LyricsPlus is the
+     * maintained provider available in this branch; there is no separately
+     * identified YourLyrics implementation. YouTube plain metadata stays last because it nearly always has
      * *something*: putting it higher would stop every provider below it from being reached.
      */
     val supportedProviders: List<String> =
         listOf(
-            LYRICS_PLUS,
-            BETTER_LYRICS,
             PAXSENIX_APPLE_MUSIC,
+            BETTER_LYRICS,
             NETEASE,
+            LYRICS_PLUS,
             YOUTUBE,
         )
 

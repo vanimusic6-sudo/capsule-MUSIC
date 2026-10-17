@@ -245,10 +245,6 @@
     <string name="appearance">Appearance</string>
     <string name="theme">Theme</string>
     <string name="enable_dynamic_theme">Enable dynamic theme</string>
-    <string name="random_theme_on_startup">Random theme on startup</string>
-    <string name="random_theme_on_startup_desc">Apply a random color palette every time the app starts</string>
-    <string name="use_system_font">Use system font</string>
-    <string name="use_system_font_desc">Use the device font instead of the app font</string>
     <!-- Color Palette -->
     <string name="color_palette">Color Palette</string>
     <string name="customize_theme_colors">Choose your app theme colors</string>
@@ -507,7 +503,6 @@
     <string name="preload_queue_lyrics">Preload queue lyrics</string>
     <string name="queue_lyrics_preload_count">Number of songs to preload</string>
     <string name="hide_explicit">Hide explicit content</string>
-    <string name="hide_video">Hide music videos</string>
     <string name="backup_restore">Backup and restore</string>
     <string name="action_backup">Backup</string>
     <string name="action_restore">Restore</string>
@@ -780,4 +775,7 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="extracting_from_url">Extracting tokens from URL…</string>
     <string name="latest_release">नवीनतम रिलीज़</string>
     <string name="artist_release_metadata">एल्बम • %1$d</string>
+    <string name="capsule_advanced_mode_warning_title">डेवलपर सेटिंग</string>
+    <string name="capsule_advanced_mode_warning_body">डेवलपर सेटिंग बदलने से ऐप धीमा हो सकता है या ठीक से काम करना बंद कर सकता है। Capsule के डेवलपर पहले ही ज़्यादातर लोगों के लिए उपयुक्त सेटिंग चुन चुके हैं। सेटिंग सावधानी से बदलें और उसके असर पर नज़र रखें 😉</string>
+    <string name="capsule_advanced_mode_warning_confirm">समझ गया</string>
 </resources>

@@ -7,7 +7,6 @@ import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.WatchEndpoint
 import com.nikhil.yt.playback.audio.CapsuleAudioEngine
 import com.nikhil.yt.playback.queues.filterExplicit
-import com.nikhil.yt.playback.queues.filterVideo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -124,7 +123,6 @@ internal class AutomixCoordinator(
     fun refresh(
         seedMediaId: String,
         hideExplicit: Boolean,
-        hideVideo: Boolean,
         queueIdsProvider: () -> Set<String>,
         isRelevant: suspend (String) -> Boolean,
         noSimilarSongsMessage: () -> String,
@@ -161,7 +159,6 @@ internal class AutomixCoordinator(
                             result.items.map { it.toMediaItem() },
                             queueIds,
                             hideExplicit,
-                            hideVideo,
                         )
 
                     val relatedSongs =
@@ -180,7 +177,6 @@ internal class AutomixCoordinator(
                             relatedSongs.map { it.toMediaItem() },
                             queueIds,
                             hideExplicit,
-                            hideVideo,
                         )
 
                     val poolBase =
@@ -201,7 +197,7 @@ internal class AutomixCoordinator(
                                     .orEmpty()
                                     .map { it.toMediaItem() }
                             }.let { items ->
-                                filterCandidates(items, queueIds, hideExplicit, hideVideo)
+                                filterCandidates(items, queueIds, hideExplicit)
                             }
                         }
 
@@ -231,7 +227,6 @@ internal class AutomixCoordinator(
     fun expandNow(
         seedMediaId: String,
         hideExplicit: Boolean,
-        hideVideo: Boolean,
         queueIdsProvider: () -> Set<String>,
         isRelevant: suspend (String) -> Boolean,
         onAddItems: (List<MediaItem>) -> Unit,
@@ -261,7 +256,6 @@ internal class AutomixCoordinator(
                             result.items.map { it.toMediaItem() },
                             initialQueueIds,
                             hideExplicit,
-                            hideVideo,
                         )
 
                     val addedNow = ArrayList<MediaItem>(32)
@@ -286,7 +280,6 @@ internal class AutomixCoordinator(
                             relatedSongs.map { it.toMediaItem() },
                             queueIdsAfterNext,
                             hideExplicit,
-                            hideVideo,
                         )
 
                     if (addedNow.isEmpty() && related.isNotEmpty()) {
@@ -311,7 +304,7 @@ internal class AutomixCoordinator(
                             }
                             .orEmpty()
                             .let { items ->
-                                filterCandidates(items, queueIdsAfterAdds, hideExplicit, hideVideo)
+                                filterCandidates(items, queueIdsAfterAdds, hideExplicit)
                             }
 
                     if (!ownsRelevantSeed(seed, isRelevant)) return@launch finishIdleIfOwned(seed)
@@ -341,7 +334,6 @@ internal class AutomixCoordinator(
     fun recoverAfterQueueEnded(
         seedMediaId: String,
         hideExplicit: Boolean,
-        hideVideo: Boolean,
         isBeforeApplyRelevant: suspend () -> Boolean,
         isAfterApplyRelevant: suspend () -> Boolean,
         onReplaceQueue: (List<MediaItem>) -> Unit,
@@ -369,7 +361,6 @@ internal class AutomixCoordinator(
                             nextResult.items.map { it.toMediaItem() },
                             excludedIds = setOf(seed),
                             hideExplicit = hideExplicit,
-                            hideVideo = hideVideo,
                         )
                     if (radioItems.isEmpty()) {
                         runtime.items.value = emptyList()
@@ -411,7 +402,6 @@ internal class AutomixCoordinator(
                             continuationItems,
                             excludedIds = setOf(seed),
                             hideExplicit = hideExplicit,
-                            hideVideo = hideVideo,
                         )
                     if (runtime.seedMediaId == currentSeed) {
                         runtime.items.value = pool
@@ -439,12 +429,11 @@ internal class AutomixCoordinator(
         items: List<MediaItem>,
         excludedIds: Set<String>,
         hideExplicit: Boolean,
-        hideVideo: Boolean,
     ): List<MediaItem> =
         items
             .filter { it.mediaId !in excludedIds }
             .filterExplicit(hideExplicit)
-            .filterVideo(hideVideo)
+            
 }
 
 internal fun mergeAutomixCandidates(

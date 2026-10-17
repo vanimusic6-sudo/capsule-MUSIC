@@ -9,6 +9,7 @@ import com.nikhil.yt.ui.component.EXPANDED_ANCHOR
 import com.nikhil.yt.ui.component.canStartCompactDismissGesture
 import com.nikhil.yt.ui.component.isAtSheetAnchor
 import com.nikhil.yt.ui.component.resolveBottomSheetTarget
+import com.nikhil.yt.ui.component.shouldRestoreCompactPlayerAfterPlayback
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -155,5 +156,48 @@ class BottomSheetAnchorTest {
                 allowDismiss = true,
             ),
         )
+    }
+    @Test fun `first Light open is not overridden by late playback restoration`() {
+        // The spring is still at Dismissed physically, but a tap has already
+        // requested Expanded. The late queue/track callback must not collapse it.
+        assertFalse(shouldRestoreCompactPlayerAfterPlayback(
+            hasMediaItem = true,
+            isYearInMusicScreen = false,
+            physicalDismissed = true,
+            requestedAnchor = EXPANDED_ANCHOR,
+        ))
+        assertFalse(shouldRestoreCompactPlayerAfterPlayback(
+            hasMediaItem = true,
+            isYearInMusicScreen = false,
+            physicalDismissed = true,
+            requestedAnchor = COLLAPSED_ANCHOR,
+        ))
+        assertTrue(shouldRestoreCompactPlayerAfterPlayback(
+            hasMediaItem = true,
+            isYearInMusicScreen = false,
+            physicalDismissed = true,
+            requestedAnchor = DISMISSED_ANCHOR,
+        ))
+    }
+
+    @Test fun `playback restoration never opens missing media or Year in Music`() {
+        assertFalse(shouldRestoreCompactPlayerAfterPlayback(
+            hasMediaItem = false,
+            isYearInMusicScreen = false,
+            physicalDismissed = true,
+            requestedAnchor = DISMISSED_ANCHOR,
+        ))
+        assertFalse(shouldRestoreCompactPlayerAfterPlayback(
+            hasMediaItem = true,
+            isYearInMusicScreen = true,
+            physicalDismissed = true,
+            requestedAnchor = DISMISSED_ANCHOR,
+        ))
+        assertFalse(shouldRestoreCompactPlayerAfterPlayback(
+            hasMediaItem = true,
+            isYearInMusicScreen = false,
+            physicalDismissed = false,
+            requestedAnchor = DISMISSED_ANCHOR,
+        ))
     }
 }

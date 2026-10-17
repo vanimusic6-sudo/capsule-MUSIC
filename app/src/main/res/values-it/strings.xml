@@ -226,8 +226,6 @@
     <string name="appearance">Aspetto</string>
     <string name="theme">Tema</string>
     <string name="enable_dynamic_theme">Abilita tema dinamico</string>
-    <string name="use_system_font">Utilizza il carattere di sistema</string>
-    <string name="use_system_font_desc">Utilizza il carattere del dispositivo anziché il carattere dell\'app</string>
     <!-- Color Palette -->
     <string name="color_palette">Tavolozza dei colori</string>
     <string name="customize_theme_colors">Scegli i colori del tema dell\'app</string>
@@ -470,7 +468,6 @@
     <string name="disable_screenshot_desc">Quando questa opzione è attiva, gli screenshot e la visualizzazione dell\'app in Recenti sono disabilitati.</string>
     <string name="enable_lrclib">Abilita il provider di testi LrcLib</string>
     <string name="hide_explicit">Nascondi contenuti espliciti</string>
-    <string name="hide_video">Nascondi video musicali</string>
     <string name="backup_restore">Backup e ripristino</string>
     <string name="action_backup">Backup</string>
     <string name="action_restore">Ripristina</string>
@@ -624,4 +621,7 @@
     <string name="allow">Consenti</string>
     <string name="latest_release">Ultima uscita</string>
     <string name="artist_release_metadata">Album • %1$d</string>
+    <string name="capsule_advanced_mode_warning_title">Impostazioni sviluppatore</string>
+    <string name="capsule_advanced_mode_warning_body">Modificare le impostazioni per sviluppatori può rallentare l’app o comprometterne il funzionamento. Gli sviluppatori di Capsule hanno già scelto le impostazioni più adatte alla maggior parte degli utenti. Modificale con cautela e controlla il risultato 😉</string>
+    <string name="capsule_advanced_mode_warning_confirm">Ho capito</string>
 </resources>

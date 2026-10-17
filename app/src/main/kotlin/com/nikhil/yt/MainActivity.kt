@@ -166,6 +166,7 @@ import com.nikhil.yt.constants.DarkModeKey
 import com.nikhil.yt.constants.DefaultOpenTabKey
 import com.nikhil.yt.constants.DisableScreenshotKey
 import com.nikhil.yt.constants.DynamicThemeKey
+import com.nikhil.yt.constants.ReleaseAppearanceDefaults
 import com.nikhil.yt.constants.HasPressedStarKey
 import com.nikhil.yt.constants.LaunchCountKey
 import com.nikhil.yt.constants.MiniPlayerBottomSpacing
@@ -187,7 +188,6 @@ import com.nikhil.yt.constants.SlimNavBarKey
 
 
 import com.nikhil.yt.constants.StopMusicOnTaskClearKey
-import com.nikhil.yt.constants.UseSystemFontKey
 import com.nikhil.yt.db.MusicDatabase
 import com.nikhil.yt.db.entities.SearchHistory
 import com.nikhil.yt.innertube.YouTube
@@ -216,6 +216,7 @@ import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.StarDialog
 import com.nikhil.yt.ui.component.TopSearch
 import com.nikhil.yt.ui.component.rememberBottomSheetState
+import com.nikhil.yt.ui.component.shouldRestoreCompactPlayerAfterPlayback
 import com.nikhil.yt.ui.component.shimmer.ShimmerTheme
 import com.nikhil.yt.ui.menu.YouTubeSongMenu
 import com.nikhil.yt.ui.motion.CapsuleMotion
@@ -230,7 +231,6 @@ import com.nikhil.yt.ui.screens.settings.DarkMode
 import com.nikhil.yt.ui.screens.settings.DiscordPresenceManager
 import com.nikhil.yt.ui.screens.settings.NavigationTab
 import com.nikhil.yt.ui.theme.VeluneTheme
-import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
 import com.nikhil.yt.ui.theme.ColorSaver
 import com.nikhil.yt.ui.theme.DefaultThemeColor
 import com.nikhil.yt.ui.theme.extractThemeColor
@@ -584,10 +584,9 @@ class MainActivity : ComponentActivity() {
             // }
 
 
-            val enableDynamicTheme by rememberPreference(DynamicThemeKey, defaultValue = true)
+            val enableDynamicTheme by rememberPreference(DynamicThemeKey, defaultValue = ReleaseAppearanceDefaults.dynamicTheme)
             val customThemeColorValue by rememberPreference(CustomThemeColorKey, defaultValue = "default")
             val darkTheme by rememberEnumPreference(DarkModeKey, defaultValue = DarkMode.ON)
-            val useSystemFont by rememberPreference(UseSystemFontKey, defaultValue = false)
             val isSystemInDarkTheme = isSystemInDarkTheme()
             val useDarkTheme =
                 remember(darkTheme, isSystemInDarkTheme) {
@@ -596,7 +595,7 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(useDarkTheme) {
                 setSystemBarAppearance(useDarkTheme)
             }
-            val pureBlackEnabled by rememberPreference(PureBlackKey, defaultValue = true)
+            val pureBlackEnabled by rememberPreference(PureBlackKey, defaultValue = ReleaseAppearanceDefaults.pureBlack)
             val pureBlack = pureBlackEnabled && useDarkTheme
 
             val customThemeSeedPalette = remember(customThemeColorValue) {
@@ -635,7 +634,10 @@ class MainActivity : ComponentActivity() {
                 mutableStateOf(DefaultThemeColor)
             }
 
-            LaunchedEffect(playerConnection, enableDynamicTheme, isSystemInDarkTheme, customThemeColor) {
+            // The system's current brightness is resolved above. It does not
+            // alter artwork color extraction, so do not restart image decoding
+            // solely because Android switched Light/Dark.
+            LaunchedEffect(playerConnection, enableDynamicTheme, customThemeColor) {
                 val playerConnection = playerConnection
                 if (!enableDynamicTheme || playerConnection == null) {
                     themeColor = if (!enableDynamicTheme) customThemeColor else DefaultThemeColor
@@ -677,7 +679,6 @@ class MainActivity : ComponentActivity() {
                 pureBlack = pureBlack,
                 themeColor = themeColor,
                 seedPalette = if (!enableDynamicTheme) customThemeSeedPalette else null,
-                useSystemFont = useSystemFont,
             ) {
                 BoxWithConstraints(
                     modifier =
@@ -717,11 +718,6 @@ class MainActivity : ComponentActivity() {
                     val navigationItems = remember { Screens.MainScreens }
                     val mainTabNavigator = rememberMainTabNavigator(navController)
                     val (slimNav) = rememberPreference(SlimNavBarKey, defaultValue = false)
-                    val capsuleBottomBarEnabled by
-                        rememberPreference(
-                            CapsuleBottomBarEnabledKey,
-                            defaultValue = false,
-                        )
                     val initialDefaultOpenTab =
                         remember {
                             PreferenceStore.get(DefaultOpenTabKey)
@@ -848,11 +844,7 @@ class MainActivity : ComponentActivity() {
 
                     fun getBottomNavPadding(): Dp {
                         return if (shouldShowNavigationBar && !useRail) {
-                            when {
-                                capsuleBottomBarEnabled -> NavigationBarHeight
-                                slimNav -> SlimNavBarHeight
-                                else -> NavigationBarHeight
-                            }
+                            if (slimNav) SlimNavBarHeight else NavigationBarHeight
                         } else {
                             0.dp
                         }
@@ -863,11 +855,7 @@ class MainActivity : ComponentActivity() {
                     val floatingBarsBottomPadding = 0.dp
 
                     val navVisibleHeight =
-                        when {
-                            capsuleBottomBarEnabled -> NavigationBarHeight
-                            slimNav -> SlimNavBarHeight
-                            else -> NavigationBarHeight
-                        }
+                        if (slimNav) SlimNavBarHeight else NavigationBarHeight
 
                     /*
                      * Liquid glass is opt-in and owns no animation clock. The backdrop layer is
@@ -877,13 +865,13 @@ class MainActivity : ComponentActivity() {
                     val miniPlayerBackground by
                         rememberEnumPreference(
                             MiniPlayerBackgroundStyleKey,
-                            MiniPlayerBackgroundStyle.CAPSULE_STAR,
+                            ReleaseAppearanceDefaults.miniPlayerBackground,
                         )
 
                     val playerBackground by
                         rememberEnumPreference(
                             PlayerBackgroundStyleKey,
-                            PlayerBackgroundStyle.CAPSULE_STAR,
+                            ReleaseAppearanceDefaults.playerBackground,
                         )
 
                     /*
@@ -928,10 +916,6 @@ class MainActivity : ComponentActivity() {
                         label = "navigationBarReveal",
                     )
 
-                    val capsuleConnected =
-                        capsuleBottomBarEnabled &&
-                                shouldShowNavigationBar &&
-                                !useRail
 
                     val playerBottomSheetState =
                         rememberBottomSheetState(
@@ -944,19 +928,11 @@ class MainActivity : ComponentActivity() {
                                             0.dp
                                         }) +
                                         getBottomNavPadding() +
-                                        (if (!capsuleConnected) {
-                                            MiniPlayerBottomSpacing
-                                        } else {
-                                            0.dp
-                                        }) +
+                                        MiniPlayerBottomSpacing +
                                         MiniPlayerHeight,
                             expandedBound = maxHeight,
                         )
 
-                    val capsuleDockActuallyVisible =
-                        capsuleBottomBarEnabled &&
-                                shouldShowNavigationBar &&
-                                !useRail
 
                     val capsuleMiniPlayerActuallyVisible =
                         playerConnection != null &&
@@ -1069,13 +1045,12 @@ class MainActivity : ComponentActivity() {
                             shouldShowNavigationBar,
                             playerBottomSheetState.isDismissed,
                             navVisibleHeight,
-                            capsuleConnected,
                         ) {
                             var bottom = bottomInset
                             if (shouldShowNavigationBar && !useRail) bottom += getBottomNavPadding()
                             if (!playerBottomSheetState.isDismissed) {
                                 bottom += MiniPlayerHeight
-                                if (!capsuleConnected) bottom += MiniPlayerBottomSpacing
+                                bottom += MiniPlayerBottomSpacing
                             }
                             windowsInsets
                                 .only((if(useRail) {
@@ -1204,13 +1179,20 @@ class MainActivity : ComponentActivity() {
                                 playerBottomSheetState.dismiss()
                             }
                         } else {
-                            if (!isYearInMusicScreen && playerBottomSheetState.isDismissed) {
+                            if (
+                                shouldRestoreCompactPlayerAfterPlayback(
+                                    hasMediaItem = true,
+                                    isYearInMusicScreen = isYearInMusicScreen,
+                                    physicalDismissed = playerBottomSheetState.isDismissed,
+                                    requestedAnchor = playerBottomSheetState.targetAnchor,
+                                )
+                            ) {
                                 playerBottomSheetState.collapseSoft()
                             }
                         }
                     }
 
-                    DisposableEffect(playerConnection, playerBottomSheetState) {
+                    DisposableEffect(playerConnection, playerBottomSheetState, isYearInMusicScreen) {
                         val player =
                             playerConnection?.player ?: return@DisposableEffect onDispose { }
                         val listener =
@@ -1220,9 +1202,12 @@ class MainActivity : ComponentActivity() {
                                     reason: Int,
                                 ) {
                                     if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED &&
-                                        mediaItem != null &&
-                                        playerBottomSheetState.isDismissed &&
-                                        !isYearInMusicScreen
+                                        shouldRestoreCompactPlayerAfterPlayback(
+                                            hasMediaItem = mediaItem != null,
+                                            isYearInMusicScreen = isYearInMusicScreen,
+                                            physicalDismissed = playerBottomSheetState.isDismissed,
+                                            requestedAnchor = playerBottomSheetState.targetAnchor,
+                                        )
                                     ) {
                                         playerBottomSheetState.collapseSoft()
                                     }
@@ -1356,7 +1341,7 @@ class MainActivity : ComponentActivity() {
                         LocalSyncUtils provides syncUtils,
                         LocalBottomSheetPageState provides bottomSheetPageState,
                         LocalMenuState provides menuState,
-                        LocalCapsuleDockVisible provides capsuleDockActuallyVisible,
+                        LocalCapsuleDockVisible provides false,
                         LocalImmersiveStatusBarRequest provides onImmersiveStatusBarRequest,
                     ) {
                         Row {
@@ -1417,7 +1402,7 @@ class MainActivity : ComponentActivity() {
 
                             Scaffold(
                                 topBar = {
-                                    if (shouldShowTopBar) {
+                                    if (shouldShowTopBar && currentRoute != Screens.Home.route) {
                                         val isTransparentTopBarScreen = navBackStackEntry?.destination?.route in listOf(
                                             Screens.Home.route,
                                             Screens.Library.route,
@@ -1429,7 +1414,7 @@ class MainActivity : ComponentActivity() {
                                             isTransparentTopBarScreen
                                         }
 
-                                        val surfaceColor = if (capsuleBottomBarEnabled) MaterialTheme.colorScheme.surface else StandardChrome.background
+                                        val surfaceColor = StandardChrome.background
                                         val currentScrollBehavior = if (isTransparentTopBarScreen) searchBarScrollBehavior else topAppBarScrollBehavior
 
                                         Box(
@@ -1466,31 +1451,12 @@ class MainActivity : ComponentActivity() {
                                                     WindowInsetsSides.Right
                                                 } else WindowInsetsSides.Horizontal) + WindowInsetsSides.Top),
                                                 title = {
-                                                    if (!capsuleBottomBarEnabled) {
                                                         StandardHeaderTitle(
                                                             accountName = headerAccountName,
                                                             accountImageUrl = headerAccountImage,
                                                             onAccountClick = { navController.navigate("settings/account") },
+                                                            showHomeGreeting = currentRoute == Screens.Home.route,
                                                         )
-                                                    } else {
-                                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                                            // app icon
-                                                            Image(
-                                                                painter = painterResource(id = R.drawable.ic_velune_concept),
-                                                                contentDescription = stringResource(R.string.app_name),
-                                                                modifier = Modifier
-                                                                    .size(35.dp)
-                                                                    .padding(end = 6.dp)
-                                                            )
-
-                                                            Text(
-                                                                text = stringResource(R.string.app_name),
-                                                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                                                                maxLines = 1,
-                                                                overflow = TextOverflow.Ellipsis
-                                                            )
-                                                        }
-                                                    }
                                                 },
 
                                                 actions = {
@@ -1507,7 +1473,7 @@ class MainActivity : ComponentActivity() {
                                                     containerColor = if (isTransparentTopBarScreen) Color.Transparent else if (pureBlack) Color.Black else MaterialTheme.colorScheme.surface,
                                                     scrolledContainerColor = if (isTransparentTopBarScreen) Color.Transparent else if (pureBlack) Color.Black else MaterialTheme.colorScheme.surface,
                                                     titleContentColor = MaterialTheme.colorScheme.onSurface,
-                                                    actionIconContentColor = if (capsuleBottomBarEnabled) MaterialTheme.colorScheme.onSurfaceVariant else StandardChrome.muted,
+                                                    actionIconContentColor = StandardChrome.muted,
                                                     navigationIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                             )
@@ -1649,7 +1615,7 @@ class MainActivity : ComponentActivity() {
                                             val searchOverlayBottomPadding = getBottomNavPadding() +
                                                 (if (!playerBottomSheetState.isDismissed) {
                                                     MiniPlayerHeight +
-                                                        (if (capsuleConnected) 0.dp else MiniPlayerBottomSpacing)
+                                                        MiniPlayerBottomSpacing
                                                 } else 0.dp)
                                             Crossfade(
                                                 targetState = searchSource,
@@ -1753,19 +1719,10 @@ class MainActivity : ComponentActivity() {
 
                                             FluidSlidingNavigationBar(
                                                 modifier =
-                                                    if (capsuleBottomBarEnabled) {
-                                                        Modifier
-                                                            .align(Alignment.BottomCenter)
-                                                            .fillMaxWidth()
-                                                            .height(
-                                                                bottomInset + navVisibleHeight,
-                                                            )
-                                                    } else {
-                                                        Modifier
-                                                            .align(Alignment.BottomCenter)
-                                                            .fillMaxWidth()
-                                                            .height(bottomInset + navVisibleHeight)
-                                                    },
+                                                    Modifier
+                                                        .align(Alignment.BottomCenter)
+                                                        .fillMaxWidth()
+                                                        .height(bottomInset + navVisibleHeight),
                                                 items = navigationItems,
                                                 currentRoute =
                                                     if (active) Screens.Search.route
@@ -1792,7 +1749,10 @@ class MainActivity : ComponentActivity() {
                                 },
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .nestedScroll(searchBarScrollBehavior.nestedScrollConnection)
+                                    .then(
+                                        if (currentRoute == Screens.Home.route) Modifier
+                                        else Modifier.nestedScroll(searchBarScrollBehavior.nestedScrollConnection)
+                                    )
                             ) {
                                 /*
                                  * Record one stable full-size source for liquid glass instead of
@@ -1843,15 +1803,15 @@ class MainActivity : ComponentActivity() {
                                     modifier =
                                         Modifier
                                             .clipToBounds()
-                                            .nestedScroll(
-                                        if (navigationItems.fastAny { it.route == navBackStackEntry?.destination?.route } ||
-                                            navBackStackEntry?.destination?.route?.startsWith("search/") == true
-                                        ) {
-                                            searchBarScrollBehavior.nestedScrollConnection
-                                        } else {
-                                            topAppBarScrollBehavior.nestedScrollConnection
-                                        }
-                                    )
+                                            .then(
+                                                if (currentRoute == Screens.Home.route) Modifier
+                                                else Modifier.nestedScroll(
+                                                    if (navigationItems.fastAny { it.route == currentRoute } ||
+                                                        currentRoute?.startsWith("search/") == true
+                                                    ) searchBarScrollBehavior.nestedScrollConnection
+                                                    else topAppBarScrollBehavior.nestedScrollConnection
+                                                )
+                                            )
                                 ) {
                                     navigationBuilder(
                                         navController,
