@@ -59,6 +59,16 @@ class ScreenTransitionsTest {
         assertTrue(file.contains("arrival.from == \"settings\""))
     }
 
+    @Test fun `root motion comes from the settings button corner rather than a generic shallow fade`() {
+        val root = com.nikhil.yt.ui.screens.settingsPageTravel("home")
+        val nested = com.nikhil.yt.ui.screens.settingsPageTravel("settings")
+        assertTrue("root opens from further away", root.startOffsetFraction > nested.startOffsetFraction)
+        assertTrue("root starts smaller", root.startScale < nested.startScale)
+        assertTrue("detail avoids excessive scaling", nested.startScale > 0.9f)
+        assertTrue("all geometry stays non-negative", root.startOffsetFraction in 0.5f..1f)
+        assertTrue("all geometry stays non-negative", nested.startOffsetFraction in 0.5f..1f)
+    }
+
     @Test fun `stepping back out of settings arrives from the leading edge`() {
         assertEquals(
             RouteDirection.Backward,
@@ -156,7 +166,9 @@ class ScreenTransitionsTest {
 
     @Test fun `a tab reached from another tab still moves like a tab`() {
         assertEquals(DestinationMotion.Tab, destinationMotionFor("home", from = "library"))
-        assertEquals(DestinationMotion.Tab, destinationMotionFor("stats", from = "home"))
+        // Stats is reachable, but it is not a bottom-navigation tab.
+        assertEquals(DestinationMotion.Detail, destinationMotionFor("stats", from = "home"))
+        assertEquals(DestinationMotion.Tab, destinationMotionFor("search", from = "home"))
         // Cold start: nothing was on screen before, so nothing was crossed.
         assertEquals(DestinationMotion.Tab, destinationMotionFor("home", from = null))
     }
