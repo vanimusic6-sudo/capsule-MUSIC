@@ -79,33 +79,6 @@ fun VeluneSettingsScreen(
                         )
                     }
                 },
-                actions = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(end = 8.dp),
-                    ) {
-                        val currentMode = if (advancedSettings) {
-                            stringResource(R.string.capsule_settings_mode_advanced)
-                        } else {
-                            stringResource(R.string.capsule_settings_mode_user)
-                        }
-                        Text(
-                            text = currentMode,
-                            style = MaterialTheme.typography.labelSmall,
-                            maxLines = 1,
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        val toggleModeDescription = stringResource(R.string.capsule_settings_mode_toggle)
-                        Switch(
-                            checked = advancedSettings,
-                            onCheckedChange = onAdvancedSettingsChange,
-                            modifier = Modifier.semantics {
-                                contentDescription = toggleModeDescription
-                                stateDescription = currentMode
-                            },
-                        )
-                    }
-                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
                 )
@@ -122,6 +95,39 @@ fun VeluneSettingsScreen(
                 .padding(horizontal = 16.dp),
             contentPadding = PaddingValues(bottom = playerAwareBottomPadding + 32.dp),
         ) {
+            // The mode control belongs to the scrollable Settings list, not
+            // to the title bar. It uses the same horizontal content bounds.
+            item(key = "settings_mode") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val currentMode = if (advancedSettings) {
+                        stringResource(R.string.capsule_settings_mode_advanced)
+                    } else {
+                        stringResource(R.string.capsule_settings_mode_user)
+                    }
+                    Text(
+                        text = currentMode,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    val toggleModeDescription = stringResource(R.string.capsule_settings_mode_toggle)
+                    Switch(
+                        checked = advancedSettings,
+                        onCheckedChange = onAdvancedSettingsChange,
+                        modifier = Modifier.semantics {
+                            contentDescription = toggleModeDescription
+                            stateDescription = currentMode
+                        },
+                    )
+                }
+            }
+
             item(key = "appearance") {
                 SettingsItemScreenshotStyle(
                     icon = painterResource(R.drawable.palette),

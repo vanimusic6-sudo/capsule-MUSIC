@@ -48,13 +48,27 @@ class SettingsModeRegressionTest {
         val home = source("com/nikhil/yt/ui/screens/settings/VeluneSettingsScreen.kt")
         val rows = Regex("""item\(key = "([^"]+)"\)""")
             .findAll(home).map { it.groupValues[1] }.toList()
+        assertEquals("settings_mode", rows.first())
+        // The mode switch sits above the first destination, inside the same
+        // LazyColumn. There is no longer an app-bar action for it.
+        assertTrue(
+            home.substringAfter("item(key = \"settings_mode\")")
+                .substringBefore("item(key = \"appearance\")")
+                .contains("onCheckedChange = onAdvancedSettingsChange")
+        )
+        assertFalse(home.substringBefore("        LazyColumn(").contains("actions = {"))
+        val switchRow = home.substringAfter("item(key = \"settings_mode\")")
+            .substringBefore("item(key = \"appearance\")")
+        assertTrue(switchRow.contains(".fillMaxWidth()"))
+        assertTrue(switchRow.contains("horizontalArrangement = Arrangement.End"))
+        val destinations = rows.drop(1)
         assertEquals(
             listOf(
                 "appearance", "capsule_customize", "account", "listen_together",
                 "player", "video", "content", "discord", "integration", "privacy",
                 "storage", "backup", "developer", "about",
             ),
-            rows,
+            destinations,
         )
         val advancedOnly = setOf(
             "account", "listen_together", "video", "discord", "integration",
@@ -63,7 +77,7 @@ class SettingsModeRegressionTest {
         assertEquals(
             listOf("appearance", "capsule_customize", "player", "content",
                    "privacy", "storage", "backup"),
-            rows.filterNot { it in advancedOnly },
+            destinations.filterNot { it in advancedOnly },
         )
         assertEquals(4, Regex("""(?m)^            if \(advancedSettings\) \{""").findAll(home).count())
         assertTrue(home.contains("SettingsAdvancedModeKey, false"))
