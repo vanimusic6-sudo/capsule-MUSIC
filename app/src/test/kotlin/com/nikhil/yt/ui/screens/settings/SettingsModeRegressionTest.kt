@@ -77,18 +77,20 @@ class SettingsModeRegressionTest {
         assertTrue(home.contains("height(30.dp)"))
         assertTrue(home.contains("height(44.dp)"))
         assertTrue(home.contains("scheme.onSurface.copy(alpha = 0.085f)"))
-        // Same rolling spring response as the audio/video control, but
-        // without the automatic press/ripple underlay.
+        // The basic/developer selection is a single drawing-phase spring.
+        // The width and position are sampled from the SAME state: no per-frame
+        // layout of the segmented toggle and no mid-gesture angle jump.
         val modeControl = home.substringAfter("private fun SettingsModeSegmentedToggle(")
             .substringBefore("@Composable\\nprivate fun SettingsItemScreenshotStyle(")
-        val avToggle = source("com/nikhil/yt/ui/player/CapsulePlaybackModeToggle.kt")
-        assertTrue(modeControl.contains("animateFloatAsState("))
-        assertTrue(modeControl.contains("dampingRatio = 0.73f"))
-        assertTrue(modeControl.contains("stiffness = 240f"))
-        assertTrue(avToggle.contains("spring(dampingRatio = 0.73f, stiffness = 240f"))
-        assertTrue(modeControl.contains("translationX = travelPx * position"))
-        assertTrue(modeControl.contains("rotationZ ="))
-        assertTrue(modeControl.contains("thumbWidth"))
+        assertTrue(modeControl.contains("val position = animateFloatAsState("))
+        assertTrue(modeControl.contains("dampingRatio = 0.86f"))
+        assertTrue(modeControl.contains("stiffness = 260f"))
+        assertTrue(modeControl.contains("Canvas(Modifier.fillMaxSize())"))
+        assertTrue(modeControl.contains("val springPosition = position.value"))
+        assertTrue(modeControl.contains("val thumbWidth ="))
+        assertTrue(modeControl.contains("val travelPx = baseWidth * springPosition"))
+        assertTrue(modeControl.contains("drawRoundRect("))
+        assertFalse(modeControl.contains("rotationZ ="))
         assertTrue(modeControl.contains("indication = null"))
         assertTrue(modeControl.contains("MutableInteractionSource()"))
         assertTrue(modeControl.contains("performHapticFeedback"))
