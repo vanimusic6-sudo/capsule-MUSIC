@@ -279,7 +279,6 @@
     <string name="disable_screenshot_desc">Kui see eelistus on kasutusel, siis ekraanitõmmiste tegemine ja rakenduse vaade Viimaste rakenduste all on keelatud.</string>
     <string name="enable_lrclib">Kasuta laulusõnade kuvamiseks teenusepakkujat LrcLib</string>
     <string name="hide_explicit">Peida ebasobilik sisu</string>
-    <string name="hide_video">Peida muusikavideod</string>
     <string name="backup_restore">Varundamine ja taastamine</string>
     <string name="action_backup">Varunda</string>
     <string name="action_restore">Taasta</string>
@@ -303,8 +302,6 @@
     <string name="added_n_songs_to_playlist">%1$d lugu on isatud „%2$s“ esitusloendisse</string>
     <string name="added_to_n_playlists">Lisatud %d-te esitusloendisse</string>
     <string name="added_n_songs_to_n_playlists">%1$d lugu on isatud %2$d-te esitusloendisse</string>
-    <string name="use_system_font">Kasuta süsteemi kirjatüüpi</string>
-    <string name="use_system_font_desc">Rakenduse kirjatüübi asemel kasuta süsteemi vaikimisi kirjatüüpi</string>
     <string name="palette_ocean_blue">Ookeanisinine</string>
     <string name="palette_arctic_blue">Arktiline sinine</string>
     <string name="palette_midnight_navy">Kesköine meri</string>

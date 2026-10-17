@@ -174,7 +174,6 @@ import com.nikhil.yt.constants.LyricsUsePlayerThemeKey
 import com.nikhil.yt.constants.LyricsLineSpacingKey
 import com.nikhil.yt.constants.PlayerBackgroundStyle
 import com.nikhil.yt.constants.PlayerBackgroundStyleKey
-import com.nikhil.yt.constants.UseSystemFontKey
 import com.nikhil.yt.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import com.nikhil.yt.lyrics.LyricsEntry
 import com.nikhil.yt.lyrics.withInstrumentalBreaks
@@ -654,10 +653,7 @@ fun Lyrics(
     val lyricsAnimationStyle by rememberEnumPreference(LyricsAnimationStyleKey, ReleaseAppearanceDefaults.lyricsAnimation)
     val lyricsTextSize by rememberPreference(LyricsTextSizeKey, 26f)
     val lyricsLineSpacing by rememberPreference(LyricsLineSpacingKey, 1.3f)
-    val useSystemFont by rememberPreference(UseSystemFontKey, false)
-    val lyricsFontFamily = remember(useSystemFont) {
-        if (useSystemFont) null else FontFamily(Font(R.font.sfprodisplaybold))
-    }
+    val lyricsFontFamily = remember { FontFamily(Font(R.font.sfprodisplaybold)) }
 
     val verticalLineSpacing = with(LocalDensity.current) {
         (lyricsTextSize.sp * (lyricsLineSpacing - 1f)).toDp().coerceAtLeast(0.dp)

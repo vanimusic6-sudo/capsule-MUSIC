@@ -70,7 +70,6 @@ import com.nikhil.yt.constants.MiniPlayerBackgroundStyleKey
 import com.nikhil.yt.constants.PlayerBackgroundStyle
 import com.nikhil.yt.constants.PlayerBackgroundStyleKey
 import com.nikhil.yt.constants.PureBlackKey
-import com.nikhil.yt.constants.RandomThemeOnStartupKey
 import com.nikhil.yt.constants.ShowCachedPlaylistKey
 import com.nikhil.yt.constants.ShowDownloadedPlaylistKey
 import com.nikhil.yt.constants.ShowLikedPlaylistKey
@@ -80,7 +79,6 @@ import com.nikhil.yt.constants.SlimNavBarKey
 import com.nikhil.yt.constants.SwipeSensitivityKey
 import com.nikhil.yt.constants.SwipeThumbnailKey
 import com.nikhil.yt.constants.SwipeToSongKey
-import com.nikhil.yt.constants.UseSystemFontKey
 import com.nikhil.yt.ui.component.DefaultDialog
 import com.nikhil.yt.ui.component.EnumListPreference
 import com.nikhil.yt.ui.component.IconButton
@@ -88,7 +86,6 @@ import com.nikhil.yt.ui.component.ListPreference
 import com.nikhil.yt.ui.component.PreferenceEntry
 import com.nikhil.yt.ui.component.PreferenceGroupTitle
 import com.nikhil.yt.ui.component.SwitchPreference
-import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
 import com.nikhil.yt.ui.theme.CapsuleThemeEnabledKey
 import com.nikhil.yt.ui.utils.backToMain
 import com.nikhil.yt.utils.rememberEnumPreference
@@ -127,14 +124,6 @@ fun AppearanceSettings(
             defaultValue = ReleaseAppearanceDefaults.capsuleTheme,
         )
 
-    val (
-        capsuleBottomBarEnabled,
-        onCapsuleBottomBarEnabledChange,
-    ) =
-        rememberPreference(
-            CapsuleBottomBarEnabledKey,
-            defaultValue = false,
-        )
 
     /*
      * =========================
@@ -151,14 +140,6 @@ fun AppearanceSettings(
             defaultValue = ReleaseAppearanceDefaults.dynamicTheme,
         )
 
-    val (
-        randomThemeOnStartup,
-        onRandomThemeOnStartupChange,
-    ) =
-        rememberPreference(
-            RandomThemeOnStartupKey,
-            defaultValue = false,
-        )
 
     val (
         darkMode,
@@ -235,14 +216,6 @@ fun AppearanceSettings(
             defaultValue = ReleaseAppearanceDefaults.disableBlur,
         )
 
-    val (
-        useSystemFont,
-        onUseSystemFontChange,
-    ) =
-        rememberPreference(
-            UseSystemFontKey,
-            defaultValue = false,
-        )
 
     val (
         defaultOpenTab,
@@ -451,32 +424,7 @@ fun AppearanceSettings(
          * =========================
          */
 
-        PreferenceGroupTitle(
-            title = stringResource(R.string.capsule_settings_group),
-        )
 
-        SwitchPreference(
-            title = {
-                Text(
-                    stringResource(R.string.capsule_bottom_bar),
-                )
-            },
-            description =
-                stringResource(R.string.capsule_bottom_bar_description),
-            icon = {
-                Icon(
-                    painter =
-                        painterResource(
-                            R.drawable.nav_bar,
-                        ),
-                    contentDescription = null,
-                )
-            },
-            checked =
-                capsuleBottomBarEnabled,
-            onCheckedChange =
-                onCapsuleBottomBarEnabledChange,
-        )
 
         /*
          * =========================
@@ -534,38 +482,6 @@ fun AppearanceSettings(
                 onDynamicThemeChange,
         )
 
-        AnimatedVisibility(
-            visible =
-                !dynamicTheme ||
-                    Build.VERSION.SDK_INT <
-                    Build.VERSION_CODES.S,
-        ) {
-            SwitchPreference(
-                title = {
-                    Text(
-                        stringResource(
-                            R.string.random_theme_on_startup,
-                        ),
-                    )
-                },
-                description =
-                    stringResource(
-                        R.string.random_theme_on_startup_desc,
-                    ),
-                icon = {
-                    Icon(
-                        painterResource(
-                            R.drawable.shuffle,
-                        ),
-                        null,
-                    )
-                },
-                checked =
-                    randomThemeOnStartup,
-                onCheckedChange =
-                    onRandomThemeOnStartupChange,
-            )
-        }
 
         AnimatedVisibility(
             visible =
@@ -692,30 +608,6 @@ fun AppearanceSettings(
                 onDisableBlurChange,
         )
 
-        SwitchPreference(
-            title = {
-                Text(
-                    stringResource(
-                        R.string.use_system_font,
-                    ),
-                )
-            },
-            description =
-                stringResource(
-                    R.string.use_system_font_desc,
-                ),
-            icon = {
-                Icon(
-                    painterResource(
-                        R.drawable.text_fields,
-                    ),
-                    null,
-                )
-            },
-            checked = useSystemFont,
-            onCheckedChange =
-                onUseSystemFontChange,
-        )
 
         /*
          * =========================

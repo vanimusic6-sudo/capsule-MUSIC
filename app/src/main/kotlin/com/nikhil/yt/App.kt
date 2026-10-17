@@ -24,9 +24,6 @@ import coil3.request.allowHardware
 import coil3.request.crossfade
 import com.nikhil.yt.constants.*
 import com.nikhil.yt.extensions.*
-import com.nikhil.yt.ui.screens.settings.ThemePalettes
-import com.nikhil.yt.ui.theme.ThemeSeedPalette
-import com.nikhil.yt.ui.theme.ThemeSeedPaletteCodec
 import com.nikhil.yt.utils.dataStore
 import com.nikhil.yt.utils.CapsuleBrand
 import com.nikhil.yt.utils.PreferenceStore
@@ -227,20 +224,6 @@ class App : Application(), SingletonImageLoader.Factory {
 
                 if (prefs[UseLoginForBrowse] != false) {
                     YouTube.useLoginForBrowse = true
-                }
-
-                if (prefs[RandomThemeOnStartupKey] == true) {
-                    val randomPalette = ThemePalettes.generateRandomPalette()
-                    val seedPalette = ThemeSeedPalette(
-                        primary = randomPalette.primary,
-                        secondary = randomPalette.secondary,
-                        tertiary = randomPalette.tertiary,
-                        neutral = randomPalette.neutral
-                    )
-                    val encodedPalette = ThemeSeedPaletteCodec.encodeForPreference(seedPalette, "Random")
-                    dataStore.edit { settings ->
-                        settings[CustomThemeColorKey] = encodedPalette
-                    }
                 }
 
                 isInitialized = true

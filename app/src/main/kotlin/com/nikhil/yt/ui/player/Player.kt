@@ -83,7 +83,6 @@ import com.nikhil.yt.ui.component.rememberBottomSheetState
 import com.nikhil.yt.ui.menu.PlayerMenu
 import com.nikhil.yt.ui.screens.settings.DarkMode
 import com.nikhil.yt.ui.utils.ShowMediaInfo
-import com.nikhil.yt.ui.theme.CapsuleBottomBarEnabledKey
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
 import kotlinx.coroutines.delay
@@ -123,7 +122,6 @@ fun BottomSheetPlayer(
     }
 
     val playerDesign by rememberEnumPreference(CapsulePlayerDesignKey, ReleaseAppearanceDefaults.playerDesign)
-    val capsuleDock by rememberPreference(CapsuleBottomBarEnabledKey, false)
     val configuration = LocalConfiguration.current
     val isLandscape =
         configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -373,8 +371,8 @@ fun BottomSheetPlayer(
         collapsedContentHeight = MiniPlayerHeight,
         // Match CapsuleMiniPlayer's real geometry so the full surface grows out of the card
         // instead of appearing as an unrelated full-width page behind it.
-        collapsedHorizontalInset = if (capsuleDock) 10.dp else 12.dp,
-        collapsedTopCornerRadius = if (capsuleDock) 24.dp else 14.dp,
+        collapsedHorizontalInset = 12.dp,
+        collapsedTopCornerRadius = 14.dp,
         surfaceAlpha = ::playerHandoffSurfaceAlpha,
         onDismiss = {
             playerConnection.service.stopAndClearPlayback()

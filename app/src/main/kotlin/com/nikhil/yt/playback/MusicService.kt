@@ -115,7 +115,6 @@ import com.nikhil.yt.constants.EqualizerSelectedProfileIdKey
 import com.nikhil.yt.constants.EqualizerVirtualizerEnabledKey
 import com.nikhil.yt.constants.EqualizerVirtualizerStrengthKey
 import com.nikhil.yt.constants.HideExplicitKey
-import com.nikhil.yt.constants.HideVideoKey
 import com.nikhil.yt.constants.HistoryDuration
 import com.nikhil.yt.constants.InnerTubeCookieKey
 import com.nikhil.yt.constants.ListenBrainzEnabledKey
@@ -2545,7 +2544,7 @@ class MusicService :
                     withContext(Dispatchers.IO) {
                         queue.getInitialStatus()
                             .filterExplicit(dataStore.get(HideExplicitKey, false))
-                            .filterVideo(dataStore.get(HideVideoKey, false))
+                            
                     }
 
                 val targetItem =
@@ -2625,7 +2624,7 @@ class MusicService :
         queueLoadJob = scope.launch(SilentHandler) {
             val initialStatus =
                 withContext(Dispatchers.IO) {
-                    queue.getInitialStatus().filterExplicit(dataStore.get(HideExplicitKey, false)).filterVideo(dataStore.get(HideVideoKey, false))
+                    queue.getInitialStatus().filterExplicit(dataStore.get(HideExplicitKey, false))
                 }
             if (currentQueue !== queue) return@launch
             if (initialStatus.title != null) {
@@ -2663,9 +2662,7 @@ class MusicService :
                                     .filterExplicit(
                                         dataStore.get(HideExplicitKey, false),
                                     )
-                                    .filterVideo(
-                                        dataStore.get(HideVideoKey, false),
-                                    )
+                                    
                             }
                         if (currentQueue !== queue) return@launch
 
@@ -2775,7 +2772,7 @@ class MusicService :
                 endpoint = WatchEndpoint(videoId = currentMediaId)
             )
             val initialStatus = withContext(Dispatchers.IO) {
-                radioQueue.getInitialStatus().filterExplicit(dataStore.get(HideExplicitKey, false)).filterVideo(dataStore.get(HideVideoKey, false))
+                radioQueue.getInitialStatus().filterExplicit(dataStore.get(HideExplicitKey, false))
             }
 
             if (initialStatus.title != null) {
@@ -2854,7 +2851,6 @@ class MusicService :
         automixCoordinator.refresh(
             seedMediaId = seedMediaId,
             hideExplicit = dataStore.get(HideExplicitKey, false),
-            hideVideo = dataStore.get(HideVideoKey, false),
             queueIdsProvider = {
                 (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
             },
@@ -2896,7 +2892,6 @@ class MusicService :
         automixCoordinator.expandNow(
             seedMediaId = seedMediaId,
             hideExplicit = dataStore.get(HideExplicitKey, false),
-            hideVideo = dataStore.get(HideVideoKey, false),
             queueIdsProvider = {
                 (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }.toSet()
             },
@@ -3824,7 +3819,7 @@ class MusicService :
     ) {
         scope.launch(SilentHandler) {
             val mediaItems =
-                currentQueue.nextPage().filterExplicit(dataStore.get(HideExplicitKey, false)).filterVideo(dataStore.get(HideVideoKey, false))
+                currentQueue.nextPage().filterExplicit(dataStore.get(HideExplicitKey, false))
             if (player.playbackState != STATE_IDLE) {
                 player.addMediaItems(mediaItems.drop(1))
             } else {
@@ -3965,11 +3960,9 @@ class MusicService :
                 clearAutomix()
             } else if (lastMediaMetadata != null) {
                 val hideExplicit = dataStore.get(HideExplicitKey, false)
-                val hideVideo = dataStore.get(HideVideoKey, false)
                 automixCoordinator.recoverAfterQueueEnded(
                     seedMediaId = lastMediaMetadata.id,
                     hideExplicit = hideExplicit,
-                    hideVideo = hideVideo,
                     isBeforeApplyRelevant = {
                         !suppressAutoPlayback && player.playbackState != STATE_IDLE && player.mediaItemCount > 0
                     },

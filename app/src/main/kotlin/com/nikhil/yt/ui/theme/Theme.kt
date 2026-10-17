@@ -67,7 +67,6 @@ fun VeluneTheme(
     pureBlack: Boolean = false,
     themeColor: Color = DefaultThemeColor,
     seedPalette: ThemeSeedPalette? = null,
-    useSystemFont: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
@@ -123,14 +122,7 @@ fun VeluneTheme(
             themeColor == DefaultThemeColor &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
-    val typography =
-        remember(useSystemFont) {
-            if (useSystemFont) {
-                SystemTypography
-            } else {
-                AppTypography
-            }
-        }
+    val typography = AppTypography
 
     val appColorScheme =
         remember(

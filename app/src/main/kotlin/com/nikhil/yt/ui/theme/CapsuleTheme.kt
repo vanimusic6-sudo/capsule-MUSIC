@@ -24,15 +24,6 @@ val CapsuleThemeEnabledKey =
     booleanPreferencesKey("capsuleThemeEnabled")
 
 /**
- * Reserved for the next Capsule UI stage:
- * Capsule Mini Player + Capsule Dock.
- *
- * It is intentionally not used yet.
- */
-val CapsuleBottomBarEnabledKey =
-    booleanPreferencesKey("capsuleBottomBarEnabled")
-
-/**
  * One scoped marker for generic chrome (Home, tabs, list rows).
  * Player designs can retain their own intentional, artwork-led colors.
  */

@@ -566,8 +566,6 @@
     <string name="added_n_songs_to_n_playlists">%1$d곡을 %2$d개의 재생 목록에 추가함</string>
     <string name="queue_continue_playing">계속 재생</string>
     <string name="queue_autoplaying_similar">유사한 음악 자동 재생</string>
-    <string name="use_system_font">시스템 글꼴 사용</string>
-    <string name="use_system_font_desc">앱 글꼴 대신 장치 글꼴을 사용합니다.</string>
     <string name="lyrics_line_spacing">가사 줄 간격</string>
     <string name="permanent_shuffle">영구 셔플 모드</string>
     <string name="permanent_shuffle_desc">새 노래를 시작할 때 셔플을 활성화 상태로 유지합니다.</string>
@@ -597,7 +595,6 @@
     <string name="eq_virtualizer">가상화 장치</string>
     <string name="smart_trimmer">스마트 트리머</string>
     <string name="smart_trimmer_description">스마트 트리머는 이미지 캐시와 노래 캐시를 동적으로 관리하여 오래된 항목을 정리하고 디스크 공간을 절약합니다.</string>
-    <string name="hide_video">뮤직 비디오 숨기기</string>
     <string name="restore_success">백업이 성공적으로 복원되었습니다.</string>
     <string name="status_active">활성</string>
     <string name="status_inactive">비활성</string>

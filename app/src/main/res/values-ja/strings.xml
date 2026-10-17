@@ -215,8 +215,6 @@
     <string name="appearance">外観</string>
     <string name="theme">テーマ</string>
     <string name="enable_dynamic_theme">ダイナミックテーマを有効にする</string>
-    <string name="random_theme_on_startup">起動時にランダムテーマ</string>
-    <string name="random_theme_on_startup_desc">アプリ起動時にランダムなカラーパレットを適用</string>
     <!-- Color Palette -->
     <string name="color_palette">カラーパレット</string>
     <string name="customize_theme_colors">アプリのテーマカラーを選択</string>
@@ -575,13 +573,10 @@
     <string name="queue_continue_playing">プレイを続ける</string>
     <string name="queue_autoplaying_similar">類似した音楽の自動再生</string>
     <string name="lyrics_line_spacing">歌詞の行間</string>
-    <string name="hide_video">ミュージックビデオを非表示にする</string>
     <string name="added_to_playlist">%s に追加されました</string>
     <string name="added_n_songs_to_playlist">%2$s に %1$d 曲を追加しました</string>
     <string name="added_to_n_playlists">%d個のプレイリストに追加されました</string>
     <string name="added_n_songs_to_n_playlists">%1$d 曲を %2$d 個のプレイリストに追加しました</string>
-    <string name="use_system_font">システムフォントを使用する</string>
-    <string name="use_system_font_desc">アプリフォントの代わりにデバイスフォントを使用する</string>
     <string name="permanent_shuffle">恒久的なシャッフルモード</string>
     <string name="permanent_shuffle_desc">新しい曲を再生する際にシャッフルを有効にしたままにする</string>
     <string name="eq_waiting_for_audio_session">オーディオセッションを待機中…</string>

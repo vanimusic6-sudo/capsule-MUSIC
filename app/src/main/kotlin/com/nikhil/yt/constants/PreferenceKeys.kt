@@ -17,10 +17,8 @@ import java.time.ZoneOffset
 
 val DynamicThemeKey = booleanPreferencesKey("dynamicTheme")
 val CustomThemeColorKey = stringPreferencesKey("customThemeColor")
-val RandomThemeOnStartupKey = booleanPreferencesKey("randomThemeOnStartup")
 val DarkModeKey = stringPreferencesKey("darkMode")
 val PureBlackKey = booleanPreferencesKey("pureBlack")
-val UseSystemFontKey = booleanPreferencesKey("useSystemFont")
 val DefaultOpenTabKey = stringPreferencesKey("defaultOpenTab")
 val SlimNavBarKey = booleanPreferencesKey("slimNavBar")
 val GridItemsSizeKey = stringPreferencesKey("gridItemSize")
@@ -50,7 +48,6 @@ val EnableNetEaseKey = booleanPreferencesKey("enableNetEase")
  */
 val EnablePaxsenixAppleMusicKey = booleanPreferencesKey("enablePaxsenixAppleMusic")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
-val HideVideoKey = booleanPreferencesKey("hideVideo")
 /** Experimental SoundCloud source (keeps the old preference name on existing installs). */
 val SoundCloudWebPreviewEnabledKey = booleanPreferencesKey("soundcloudWebPreviewEnabled")
 val ProxyEnabledKey = booleanPreferencesKey("proxyEnabled")

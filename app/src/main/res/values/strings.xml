@@ -252,10 +252,6 @@
     <string name="appearance">Appearance</string>
     <string name="theme">Theme</string>
     <string name="enable_dynamic_theme">Enable dynamic theme</string>
-    <string name="random_theme_on_startup">Random theme on startup</string>
-    <string name="random_theme_on_startup_desc">Apply a random color palette every time the app starts</string>
-    <string name="use_system_font">Use system font</string>
-    <string name="use_system_font_desc">Use the device font instead of the app font</string>
     <!-- Color Palette -->
     <string name="color_palette">Color Palette</string>
     <string name="customize_theme_colors">Choose your app theme colors</string>
@@ -544,7 +540,6 @@
     <string name="preload_queue_lyrics">Preload queue lyrics</string>
     <string name="queue_lyrics_preload_count">Number of songs to preload</string>
     <string name="hide_explicit">Hide explicit content</string>
-    <string name="hide_video">Hide music videos</string>
     <string name="backup_restore">Backup and restore</string>
     <string name="action_backup">Backup</string>
     <string name="action_restore">Restore</string>
