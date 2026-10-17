@@ -1455,8 +1455,6 @@ class MainActivity : ComponentActivity() {
                                                             accountName = headerAccountName,
                                                             accountImageUrl = headerAccountImage,
                                                             onAccountClick = { navController.navigate("settings/account") },
-                                                            // Library/Stats/History use the same modern time greeting + avatar as Home.
-                                                             showHomeGreeting = true,
                                                         )
                                                 },
 
