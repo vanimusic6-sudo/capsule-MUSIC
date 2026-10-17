@@ -2,41 +2,72 @@ package com.nikhil.yt.ui.screens
 
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.unit.IntOffset
+import com.nikhil.yt.ui.motion.CapsuleExitEasing
 
 /**
- * Route changes are instant. No destination is ever drawn on top of another one.
+ * A single, deliberately scoped exception to instant route changes.
  *
- * A timed route transition keeps both destinations composed for its whole duration, and that costs
- * three things at once:
+ * Settings is a physical sheet of pages. It approaches from the right/top
+ * (where the Home settings action lives), grows into the viewport and returns
+ * to the right to uncover its ACTUAL previous screen on Back.
  *
- * - a hitch on each tab switch, because two full destinations are composed and drawn together;
- * - transitions that feel different per tab, because the cost depends on what each screen builds;
- * - a crash. Once an entry is destroyed, touching its ViewModels throws, and a destination still
- *   composed 290ms after it was popped will recompose inside that window. Rapid tab switching
- *   destroys entries while they are still on screen, and that is exactly the
- *   `IllegalStateException: You cannot access the NavBackStackEntry's ViewModels after the
- *   NavBackStackEntry is destroyed` seen on device.
+ * All tab, player, artwork and other routes retain None transitions. In
+ * particular, do not keep two tabs composed: that caused a destroyed
+ * NavBackStackEntry/ViewModel race and hitches during repeated tab taps.
  *
- * With no transition the outgoing destination is gone within a frame, so the window closes.
- *
- * There used to be one exception: leaving a settings page faded and slid out, so that stepping back
- * out of the tree read as movement rather than a page ceasing to exist. It is gone, and it is worth
- * saying why, because the reasoning applies to any future exit. An exit transition is by definition
- * two destinations on screen at once, and a *fading* exit is by definition the screen behind showing
- * through the one leaving. However brief and however slight the opacity, that is one screen pasted
- * over another, which is the single effect this app does not want anywhere.
- *
- * The feel it was there for is kept, and kept honestly: leaving a settings page is now expressed by
- * the page that *arrives*, which slides in from the leading edge — the direction you came from —
- * instead of the trailing edge it uses going deeper. One screen moves, one screen is on display, and
- * the pair still reads as a step along a path. See [DestinationMotion.Settings].
+ * No fades (a translucent destination exposes an artificial grey canvas),
+ * no blur, no perpetual clocks and no animations after the NavHost settles.
  */
+private fun String?.isSettingsPage(): Boolean =
+    this == "settings" || this?.startsWith("settings/") == true
+
+private val SettingsOrigin = TransformOrigin(1f, 0.08f)
+private val SettingsEnterSpec = spring<IntOffset>(
+    dampingRatio = 0.90f,
+    stiffness = Spring.StiffnessMediumLow,
+)
+private val SettingsGrowSpec = spring<Float>(
+    dampingRatio = 0.90f,
+    stiffness = Spring.StiffnessMediumLow,
+)
+
 object ScreenTransitions {
     @Suppress("UNUSED_PARAMETER")
     fun enter(from: String?, to: String?, isPop: Boolean = false): EnterTransition =
-        EnterTransition.None
+        if (!isPop && to.isSettingsPage()) {
+            slideInHorizontally(
+                initialOffsetX = { (it * 0.36f).toInt() },
+                animationSpec = SettingsEnterSpec,
+            ) + scaleIn(
+                initialScale = 0.92f,
+                transformOrigin = SettingsOrigin,
+                animationSpec = SettingsGrowSpec,
+            )
+        } else {
+            EnterTransition.None
+        }
 
     @Suppress("UNUSED_PARAMETER")
     fun exit(from: String?, to: String?, isPop: Boolean = false): ExitTransition =
-        ExitTransition.None
+        if (isPop && from.isSettingsPage()) {
+            slideOutHorizontally(
+                targetOffsetX = { (it * 0.36f).toInt() },
+                animationSpec = tween(durationMillis = 390, easing = CapsuleExitEasing),
+            ) + scaleOut(
+                targetScale = 0.92f,
+                transformOrigin = SettingsOrigin,
+                animationSpec = tween(durationMillis = 390, easing = CapsuleExitEasing),
+            )
+        } else {
+            ExitTransition.None
+        }
 }
