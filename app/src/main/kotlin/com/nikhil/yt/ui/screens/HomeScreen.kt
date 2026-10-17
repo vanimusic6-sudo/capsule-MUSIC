@@ -110,8 +110,6 @@ fun HomeScreen(
     val bottomSheetPageState = LocalBottomSheetPageState.current
     val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current ?: return
-    val headerAccountName by viewModel.accountName.collectAsState()
-    val headerAccountImage by viewModel.accountImageUrl.collectAsState()
     val haptic = LocalHapticFeedback.current
 
     val isPlaying by playerConnection.isPlaying.collectAsState()
@@ -245,47 +243,13 @@ fun HomeScreen(
                 )
             }
 
-            // MainActivity no longer draws a second, floating Home app bar. The
-            // shared insets still reserve its old height for other destinations;
-            // subtract that reserve here and give the scrollable header that slot.
-            val oldContentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()
-            val direction = LocalLayoutDirection.current
-            val homeContentPadding = PaddingValues(
-                start = oldContentPadding.calculateStartPadding(direction),
-                top = (oldContentPadding.calculateTopPadding() - AppBarHeight).coerceAtLeast(0.dp),
-                end = oldContentPadding.calculateEndPadding(direction),
-                bottom = oldContentPadding.calculateBottomPadding(),
-            )
+            // The header is a separate, route-owned chrome sibling ABOVE the
+            // list. Preserve the original top reservation for its 64dp bar:
+            // content travels underneath as the header scrolls out of view.
             LazyColumn(
                 state = lazylistState,
-                contentPadding = homeContentPadding,
+                contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
             ) {
-                item(key = "home:header", contentType = "home-header") {
-                    TopAppBar(
-                        windowInsets = WindowInsets(0, 0, 0, 0),
-                        title = {
-                            StandardHeaderTitle(
-                                accountName = headerAccountName,
-                                accountImageUrl = headerAccountImage,
-                                onAccountClick = { navController.navigate("settings/account") },
-                            )
-                        },
-                        actions = {
-                            IconButton(onClick = { navController.navigate("settings") }) {
-                                Icon(
-                                    painter = painterResource(R.drawable.settings),
-                                    contentDescription = stringResource(R.string.settings),
-                                    modifier = Modifier.size(24.dp),
-                                )
-                            }
-                        },
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = Color.Transparent,
-                            scrolledContainerColor = Color.Transparent,
-                            titleContentColor = MaterialTheme.colorScheme.onSurface,
-                        ),
-                    )
-                }
                     quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
             /*
                 item {

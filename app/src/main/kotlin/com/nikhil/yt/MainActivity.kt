@@ -11,6 +11,9 @@ package com.nikhil.yt
 import com.nikhil.yt.ui.component.StandardHeaderTitle
 import com.nikhil.yt.ui.utils.liveSavedStateHandle
 import com.nikhil.yt.ui.screens.ScreenTransitions
+import com.nikhil.yt.ui.screens.LocalCapsuleHeaderAccountName
+import com.nikhil.yt.ui.screens.LocalCapsuleHeaderAccountImage
+import com.nikhil.yt.ui.screens.LocalCapsuleHeaderNavController
 import com.nikhil.yt.ui.screens.rememberMainTabNavigator
 import androidx.compose.ui.draw.clipToBounds
 import com.nikhil.yt.ui.component.StandardChrome
@@ -1219,13 +1222,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // Derive the shell header from the same current route as NavHost.
-                    // The previous LaunchedEffect left a stale state for a visible frame
-                    // during Library/Search -> Settings and exposed the old brand.
-                    val shouldShowTopBar =
-                        !active && currentRoute in topLevelScreens &&
-                            currentRoute != Screens.Home.route
-
                     val coroutineScope = rememberCoroutineScope()
                     var sharedSong: SongItem? by remember {
                         mutableStateOf(null)
@@ -1333,6 +1329,9 @@ class MainActivity : ComponentActivity() {
 
                     CompositionLocalProvider(
                         LocalDatabase provides database,
+                        LocalCapsuleHeaderAccountName provides headerAccountName,
+                        LocalCapsuleHeaderAccountImage provides headerAccountImage,
+                        LocalCapsuleHeaderNavController provides navController,
                         LocalContentColor provides if (pureBlack) Color.White else contentColorFor(MaterialTheme.colorScheme.surface),
                         LocalPlayerConnection provides playerConnection,
                         LocalPlayerAwareWindowInsets provides playerAwareWindowInsets,
@@ -1402,82 +1401,8 @@ class MainActivity : ComponentActivity() {
 
                             Scaffold(
                                 topBar = {
-                                    if (shouldShowTopBar && currentRoute != Screens.Home.route) {
-                                        val isTransparentTopBarScreen = navBackStackEntry?.destination?.route in listOf(
-                                            Screens.Home.route,
-                                            Screens.Library.route,
-                                            Screens.History.route,
-                                            Screens.Stats.route
-                                        )
-
-                                        val shouldShowBlurBackground = remember(navBackStackEntry) {
-                                            isTransparentTopBarScreen
-                                        }
-
-                                        val surfaceColor = StandardChrome.background
-                                        val currentScrollBehavior = if (isTransparentTopBarScreen) searchBarScrollBehavior else topAppBarScrollBehavior
-
-                                        Box(
-                                            modifier = Modifier.offset {
-                                                IntOffset(
-                                                    x = 0,
-                                                    y = currentScrollBehavior.state.heightOffset.toInt()
-                                                )
-                                            }
-                                        ) {
-                                            // Gradient shadow background
-                                            if (shouldShowBlurBackground) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .height(AppBarHeight + with(LocalDensity.current) {
-                                                            WindowInsets.systemBars.getTop(LocalDensity.current).toDp()
-                                                        })
-                                                        .background(
-                                                            Brush.verticalGradient(
-                                                                colors = listOf(
-                                                                    surfaceColor.copy(alpha = 0.95f),
-                                                                    surfaceColor.copy(alpha = 0.85f),
-                                                                    surfaceColor.copy(alpha = 0.6f),
-                                                                    Color.Transparent
-                                                                )
-                                                            )
-                                                        )
-                                                )
-                                            }
-
-                                            TopAppBar(
-                                                windowInsets = WindowInsets.safeDrawing.only((if(useRail) {
-                                                    WindowInsetsSides.Right
-                                                } else WindowInsetsSides.Horizontal) + WindowInsetsSides.Top),
-                                                title = {
-                                                        StandardHeaderTitle(
-                                                            accountName = headerAccountName,
-                                                            accountImageUrl = headerAccountImage,
-                                                            onAccountClick = { navController.navigate("settings/account") },
-                                                        )
-                                                },
-
-                                                actions = {
-                                                    IconButton(onClick = { navController.navigate("settings") }) {
-                                                        Icon(
-                                                            painter = painterResource(R.drawable.settings),
-                                                            contentDescription = stringResource(R.string.settings),
-                                                            modifier = Modifier.size(24.dp)
-                                                        )
-                                                    }
-                                                },
-                                                scrollBehavior = currentScrollBehavior,
-                                                colors = TopAppBarDefaults.topAppBarColors(
-                                                    containerColor = if (isTransparentTopBarScreen) Color.Transparent else if (pureBlack) Color.Black else MaterialTheme.colorScheme.surface,
-                                                    scrolledContainerColor = if (isTransparentTopBarScreen) Color.Transparent else if (pureBlack) Color.Black else MaterialTheme.colorScheme.surface,
-                                                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                                                    actionIconContentColor = StandardChrome.muted,
-                                                    navigationIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            )
-                                        }
-                                    }
+                                    // Scroll-away greeting/settings lives inside each main NavHost route.
+                                    // The Activity only renders the transient search overlay.
                                     AnimatedVisibility(
                                         visible = active || navBackStackEntry?.destination?.route?.startsWith("search/") == true,
                                         enter = fadeIn(animationSpec = tween(durationMillis = 300)),
@@ -1749,7 +1674,7 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .then(
-                                        if (currentRoute == Screens.Home.route) Modifier
+                                        if (currentRoute in topLevelScreens) Modifier
                                         else Modifier.nestedScroll(searchBarScrollBehavior.nestedScrollConnection)
                                     )
                             ) {
@@ -1803,7 +1728,7 @@ class MainActivity : ComponentActivity() {
                                         Modifier
                                             .clipToBounds()
                                             .then(
-                                                if (currentRoute == Screens.Home.route) Modifier
+                                                if (currentRoute in topLevelScreens) Modifier
                                                 else Modifier.nestedScroll(
                                                     if (navigationItems.fastAny { it.route == currentRoute } ||
                                                         currentRoute?.startsWith("search/") == true
