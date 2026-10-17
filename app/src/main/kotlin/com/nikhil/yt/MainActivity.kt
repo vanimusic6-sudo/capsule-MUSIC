@@ -217,6 +217,7 @@ import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.StarDialog
 import com.nikhil.yt.ui.component.TopSearch
 import com.nikhil.yt.ui.component.rememberBottomSheetState
+import com.nikhil.yt.ui.component.shouldRestoreCompactPlayerAfterPlayback
 import com.nikhil.yt.ui.component.shimmer.ShimmerTheme
 import com.nikhil.yt.ui.menu.YouTubeSongMenu
 import com.nikhil.yt.ui.motion.CapsuleMotion
@@ -1208,13 +1209,20 @@ class MainActivity : ComponentActivity() {
                                 playerBottomSheetState.dismiss()
                             }
                         } else {
-                            if (!isYearInMusicScreen && playerBottomSheetState.isDismissed) {
+                            if (
+                                shouldRestoreCompactPlayerAfterPlayback(
+                                    hasMediaItem = true,
+                                    isYearInMusicScreen = isYearInMusicScreen,
+                                    physicalDismissed = playerBottomSheetState.isDismissed,
+                                    requestedAnchor = playerBottomSheetState.targetAnchor,
+                                )
+                            ) {
                                 playerBottomSheetState.collapseSoft()
                             }
                         }
                     }
 
-                    DisposableEffect(playerConnection, playerBottomSheetState) {
+                    DisposableEffect(playerConnection, playerBottomSheetState, isYearInMusicScreen) {
                         val player =
                             playerConnection?.player ?: return@DisposableEffect onDispose { }
                         val listener =
@@ -1224,9 +1232,12 @@ class MainActivity : ComponentActivity() {
                                     reason: Int,
                                 ) {
                                     if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED &&
-                                        mediaItem != null &&
-                                        playerBottomSheetState.isDismissed &&
-                                        !isYearInMusicScreen
+                                        shouldRestoreCompactPlayerAfterPlayback(
+                                            hasMediaItem = mediaItem != null,
+                                            isYearInMusicScreen = isYearInMusicScreen,
+                                            physicalDismissed = playerBottomSheetState.isDismissed,
+                                            requestedAnchor = playerBottomSheetState.targetAnchor,
+                                        )
                                     ) {
                                         playerBottomSheetState.collapseSoft()
                                     }

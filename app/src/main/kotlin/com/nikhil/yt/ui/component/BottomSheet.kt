@@ -1036,6 +1036,23 @@ const val EXPANDED_ANCHOR = 2
 const val COLLAPSED_ANCHOR = 1
 const val DISMISSED_ANCHOR = 0
 
+/**
+ * Restore a newly selected track to its compact dock only if the player
+ * still intends to be dismissed. On the very first open, a tap can request
+ * Expanded while the physical offset remains at Dismissed for a frame.
+ * A stale queue-restoration callback must never convert that into a close.
+ */
+internal fun shouldRestoreCompactPlayerAfterPlayback(
+    hasMediaItem: Boolean,
+    isYearInMusicScreen: Boolean,
+    physicalDismissed: Boolean,
+    requestedAnchor: Int,
+): Boolean =
+    hasMediaItem &&
+        !isYearInMusicScreen &&
+        physicalDismissed &&
+        requestedAnchor == DISMISSED_ANCHOR
+
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
 fun rememberBottomSheetState(
