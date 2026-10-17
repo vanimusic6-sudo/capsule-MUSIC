@@ -2,6 +2,40 @@ package com.nikhil.yt.ui.screens
 
 import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.align
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.navigation.NavHostController
+import com.nikhil.yt.R
+import com.nikhil.yt.constants.AppBarHeight
+import com.nikhil.yt.ui.component.StandardHeaderTitle
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -50,13 +84,64 @@ internal fun NavGraphBuilder.routeComposable(
     val settingsNavigation =
         route == "settings" || route.startsWith("settings/") ||
             arrival.from == "settings" || arrival.from?.startsWith("settings/") == true
+    val showScrollAwayHeader = route in setOf("home", "library", "history", "stats")
+    // Each route owns its own header offset. It is a peer of scrollable
+    // content, NEVER an item in Home's LazyColumn or the Activity's fixed bar.
+    // It therefore stays below an entering settings sheet during navigation.
+    val headerHeight = AppBarHeight + with(LocalDensity.current) {
+        WindowInsets.systemBars.getTop(this).toDp()
+    }
+    val hiddenPx = with(LocalDensity.current) { headerHeight.toPx() }
+    var headerOffsetPx by remember(entry) { mutableFloatStateOf(0f) }
+    val scrollAwayConnection = remember(entry, hiddenPx) {
+        object : NestedScrollConnection {
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
+                if (consumed.y < 0f) {
+                    // Draw the header off-screen with the first portion of
+                    // real content scroll; later scrolls do NO more header work.
+                    headerOffsetPx = (headerOffsetPx + consumed.y)
+                        .coerceIn(-hiddenPx, 0f)
+                } else if (available.y > 0f && source == NestedScrollSource.UserInput) {
+                    // Only reveal at the ACTUAL top of the list, never when
+                    // simply scrolling upwards halfway down a long library.
+                    headerOffsetPx = 0f
+                }
+                return Offset.Zero
+            }
+        }
+    }
+    val snappedHeaderPx by animateFloatAsState(
+        targetValue = headerOffsetPx,
+        animationSpec = tween(230, easing = CapsuleStandardEasing),
+        label = "capsuleStandaloneHeaderScroll",
+    )
     CompositionLocalProvider(LocalNavBackStackEntry provides entry) {
         CapsuleRouteSurface {
             Box(
-                modifier = if (settingsNavigation) Modifier else
-                    Modifier.destinationEntrance(motion, arrival.direction),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(if (showScrollAwayHeader) Modifier.nestedScroll(scrollAwayConnection) else Modifier),
             ) {
-                with(contentScope) { content(entry) }
+                Box(
+                    modifier = if (settingsNavigation) Modifier else
+                        Modifier.destinationEntrance(motion, arrival.direction),
+                ) {
+                    with(contentScope) { content(entry) }
+                }
+                if (showScrollAwayHeader) {
+                    val navController = LocalCapsuleHeaderNavController.current
+                    CapsuleStandaloneHeader(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .offset { IntOffset(0, snappedHeaderPx.toInt()) },
+                        onAccountClick = { navController?.navigate("settings/account") },
+                        onSettingsClick = { navController?.navigate("settings") },
+                    )
+                }
             }
         }
     }
@@ -102,6 +187,49 @@ internal fun resetNavigationHistory() = NavigationHistory.clear()
  * cannot be destroyed while that composition is alive, and it never changes underneath the screen.
  */
 val LocalNavBackStackEntry = compositionLocalOf<NavBackStackEntry?> { null }
+
+/** Account and navigation come from the Activity, but the header itself belongs
+ * to its NavHost destination so it stays visually attached during transitions. */
+val LocalCapsuleHeaderAccountName = compositionLocalOf<String?> { null }
+val LocalCapsuleHeaderAccountImage = compositionLocalOf<String?> { null }
+val LocalCapsuleHeaderNavController = compositionLocalOf<NavHostController?> { null }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CapsuleStandaloneHeader(
+    modifier: Modifier,
+    onAccountClick: () -> Unit,
+    onSettingsClick: () -> Unit,
+) {
+    TopAppBar(
+        modifier = modifier,
+        windowInsets = WindowInsets.safeDrawing.only(
+            WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+        ),
+        title = {
+            StandardHeaderTitle(
+                accountName = LocalCapsuleHeaderAccountName.current,
+                accountImageUrl = LocalCapsuleHeaderAccountImage.current,
+                onAccountClick = onAccountClick,
+            )
+        },
+        actions = {
+            IconButton(onClick = onSettingsClick) {
+                Icon(
+                    painter = painterResource(R.drawable.settings),
+                    contentDescription = stringResource(R.string.settings),
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = androidx.compose.ui.graphics.Color.Transparent,
+            scrolledContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+            titleContentColor = MaterialTheme.colorScheme.onSurface,
+        ),
+    )
+}
+
 
 @Composable
 internal fun CapsuleRouteSurface(content: @Composable () -> Unit) {
