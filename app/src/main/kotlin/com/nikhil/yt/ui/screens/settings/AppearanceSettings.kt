@@ -46,6 +46,7 @@ import com.nikhil.yt.R
 import com.nikhil.yt.constants.CapsuleLightLyricLineKey
 import com.nikhil.yt.constants.CapsulePlayerDesign
 import com.nikhil.yt.constants.ReleaseAppearanceDefaults
+import com.nikhil.yt.constants.SettingsAdvancedModeKey
 import com.nikhil.yt.constants.CapsulePlayerDesignKey
 import com.nikhil.yt.constants.ChipSortTypeKey
 import com.nikhil.yt.constants.CropThumbnailToSquareKey
@@ -98,6 +99,7 @@ fun AppearanceSettings(
     navController: NavController,
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
+    val (advancedSettings, _) = rememberPreference(SettingsAdvancedModeKey, false)
     val (playerDesign, onPlayerDesignChange) = rememberEnumPreference(
         CapsulePlayerDesignKey,
         defaultValue = ReleaseAppearanceDefaults.playerDesign,
@@ -556,6 +558,7 @@ fun AppearanceSettings(
             },
         )
 
+        if (advancedSettings) {
         AnimatedVisibility(
             visible =
                 useDarkTheme ||
@@ -582,7 +585,9 @@ fun AppearanceSettings(
                     onPureBlackChange,
             )
         }
+        }
 
+        if (advancedSettings) {
         SwitchPreference(
             title = {
                 Text(
@@ -607,6 +612,7 @@ fun AppearanceSettings(
             onCheckedChange =
                 onDisableBlurChange,
         )
+        }
 
 
         /*
@@ -615,13 +621,16 @@ fun AppearanceSettings(
          * =========================
          */
 
+        if (advancedSettings) {
         PreferenceGroupTitle(
             title =
                 stringResource(
                     R.string.filter_library,
                 ),
         )
+        }
 
+        if (advancedSettings) {
         SwitchPreference(
             title = {
                 Text(
@@ -647,6 +656,7 @@ fun AppearanceSettings(
             onCheckedChange =
                 onUseNewLibraryDesignChange,
         )
+        }
 
         /*
          * =========================
@@ -767,6 +777,7 @@ fun AppearanceSettings(
             },
         )
 
+        if (advancedSettings) {
         SwitchPreference(
             title = {
                 Text(
@@ -792,7 +803,9 @@ fun AppearanceSettings(
             onCheckedChange =
                 onHidePlayerThumbnailChange,
         )
+        }
 
+        if (advancedSettings) {
         SwitchPreference(
             title = {
                 Text(
@@ -818,7 +831,9 @@ fun AppearanceSettings(
             onCheckedChange =
                 onCropThumbnailToSquareChange,
         )
+        }
 
+        if (advancedSettings) {
         SwitchPreference(
             title = {
                 Text(
@@ -839,7 +854,9 @@ fun AppearanceSettings(
             onCheckedChange =
                 onSwipeThumbnailChange,
         )
+        }
 
+        if (advancedSettings) {
         AnimatedVisibility(
             swipeThumbnail,
         ) {
@@ -993,6 +1010,7 @@ fun AppearanceSettings(
                 },
             )
         }
+        }
 
         /*
          * =========================
@@ -1122,6 +1140,7 @@ fun AppearanceSettings(
             },
         )
 
+        if (advancedSettings) {
         SwitchPreference(
             title = {
                 Text(
@@ -1142,7 +1161,9 @@ fun AppearanceSettings(
             onCheckedChange =
                 onLyricsClickChange,
         )
+        }
 
+        if (advancedSettings) {
         SwitchPreference(
             title = {
                 Text(
@@ -1163,13 +1184,14 @@ fun AppearanceSettings(
             onCheckedChange =
                 onLyricsScrollChange,
         )
+        }
 
         var showLyricsTextSizeDialog by
             rememberSaveable {
                 mutableStateOf(false)
             }
 
-        if (showLyricsTextSizeDialog) {
+        if (advancedSettings && showLyricsTextSizeDialog) {
             var tempTextSize by
                 remember {
                     mutableFloatStateOf(
@@ -1283,6 +1305,7 @@ fun AppearanceSettings(
             }
         }
 
+        if (advancedSettings) {
         PreferenceEntry(
             title = {
                 Text(
@@ -1305,13 +1328,14 @@ fun AppearanceSettings(
                 showLyricsTextSizeDialog = true
             },
         )
+        }
 
         var showLyricsLineSpacingDialog by
             rememberSaveable {
                 mutableStateOf(false)
             }
 
-        if (showLyricsLineSpacingDialog) {
+        if (advancedSettings && showLyricsLineSpacingDialog) {
             var tempLineSpacing by
                 remember {
                     mutableFloatStateOf(
@@ -1430,6 +1454,7 @@ fun AppearanceSettings(
             }
         }
 
+        if (advancedSettings) {
         PreferenceEntry(
             title = {
                 Text(
@@ -1457,6 +1482,7 @@ fun AppearanceSettings(
                 showLyricsLineSpacingDialog = true
             },
         )
+        }
 
         /*
          * =========================
@@ -1464,13 +1490,16 @@ fun AppearanceSettings(
          * =========================
          */
 
+        if (advancedSettings) {
         PreferenceGroupTitle(
             title =
                 stringResource(
                     R.string.misc,
                 ),
         )
+        }
 
+        if (advancedSettings) {
         EnumListPreference(
             title = {
                 Text(
@@ -1510,7 +1539,9 @@ fun AppearanceSettings(
                 }
             },
         )
+        }
 
+        if (advancedSettings) {
         ListPreference(
             title = {
                 Text(
@@ -1567,7 +1598,9 @@ fun AppearanceSettings(
             onValueSelected =
                 onDefaultChipChange,
         )
+        }
 
+        if (advancedSettings) {
         SwitchPreference(
             title = {
                 Text(
@@ -1593,7 +1626,9 @@ fun AppearanceSettings(
             onCheckedChange =
                 onShowTagsInLibraryChange,
         )
+        }
 
+        if (advancedSettings) {
         SwitchPreference(
             title = {
                 Text(
@@ -1614,7 +1649,9 @@ fun AppearanceSettings(
             onCheckedChange =
                 onSwipeToSongChange,
         )
+        }
 
+        if (advancedSettings) {
         SwitchPreference(
             title = {
                 Text(
@@ -1635,7 +1672,9 @@ fun AppearanceSettings(
             onCheckedChange =
                 onSlimNavChange,
         )
+        }
 
+        if (advancedSettings) {
         EnumListPreference(
             title = {
                 Text(
@@ -1669,6 +1708,7 @@ fun AppearanceSettings(
                 }
             },
         )
+        }
 
         /*
          * =========================
@@ -1676,13 +1716,16 @@ fun AppearanceSettings(
          * =========================
          */
 
+        if (advancedSettings) {
         PreferenceGroupTitle(
             title =
                 stringResource(
                     R.string.auto_playlists,
                 ),
         )
+        }
 
+        if (advancedSettings) {
         SwitchPreference(
             title = {
                 Text(
@@ -1704,7 +1747,9 @@ fun AppearanceSettings(
             onCheckedChange =
                 onShowLikedPlaylistChange,
         )
+        }
 
+        if (advancedSettings) {
         SwitchPreference(
             title = {
                 Text(
@@ -1726,7 +1771,9 @@ fun AppearanceSettings(
             onCheckedChange =
                 onShowDownloadedPlaylistChange,
         )
+        }
 
+        if (advancedSettings) {
         SwitchPreference(
             title = {
                 Text(
@@ -1748,7 +1795,9 @@ fun AppearanceSettings(
             onCheckedChange =
                 onShowTopPlaylistChange,
         )
+        }
 
+        if (advancedSettings) {
         SwitchPreference(
             title = {
                 Text(
@@ -1770,6 +1819,7 @@ fun AppearanceSettings(
             onCheckedChange =
                 onShowCachedPlaylistChange,
         )
+        }
 
         // Preserve the old safe scroll range without cutting the backdrop off above the player.
         Spacer(Modifier.height(playerAwareBottomPadding))
