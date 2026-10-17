@@ -50,4 +50,51 @@ class MotionEnergyStructuralRegressionTest {
         assertTrue(content.contains("BackHandler(enabled = state.isVisible)"))
         assertFalse(content.contains("visible = state.isVisible,"))
     }
+
+    @Test
+    fun settingsPressIsPhysicalButDoesNotRelayoutOrCreateRippleOverlays() {
+        val preference = source("component/Preference.kt")
+        val category = source("screens/settings/VeluneSettingsScreen.kt")
+        assertTrue(preference.contains("collectIsPressedAsState()"))
+        assertTrue(preference.contains("label = \"preferenceRowPress\""))
+        assertTrue(preference.contains("indication = null"))
+        assertTrue(category.contains("settingsRowPress(onClick)"))
+        assertTrue(category.contains("label = \"settingsCategoryPress\""))
+        assertTrue(category.contains("scaleX = scale"))
+        assertFalse(category.contains(".clickable(onClick = onClick)"))
+    }
+
+    @Test
+    fun settingsSwitchUsesNativeThumbGrowthWithoutTransparentTapHalo() {
+        val source = source("component/Preference.kt")
+        assertTrue(source.contains("LocalRippleConfiguration provides null"))
+        assertTrue(source.contains("thumbContent = if (checked)"))
+        assertTrue(source.contains("} else {\n                        null\n                    },"))
+        assertFalse(source.contains("R.drawable.close"))
+    }
+
+    @Test
+    fun dragPriorityHasNonBouncyNeighbourMovementAndNoPersistPerCrossing() {
+        val source = source("screens/settings/PriorityOrderDialog.kt")
+        assertTrue(source.contains("animateItemModifier = Modifier.animateItem("))
+        assertTrue(source.contains("placementSpec = PriorityMoveSpec"))
+        assertTrue(source.contains("dampingRatio = Spring.DampingRatioNoBouncy"))
+        assertTrue(source.contains("pendingOrderChange = true"))
+        assertTrue(source.contains("onDragStopped = {"))
+        assertTrue(source.contains("saveSettledOrder()"))
+        val onMove = source.substringAfter("rememberReorderableLazyListState(lazyListState) { from, to ->")
+            .substringBefore("Dialog(onDismissRequest")
+        assertFalse("Do not write DataStore once per crossing", onMove.contains("onOrderChange(reordered)"))
+        assertTrue(source.contains("shadowElevation = lift"))
+    }
+
+    @Test
+    fun sharedSettingsDialogsUseFiniteEntranceOnly() {
+        val helper = source("motion/SettingsDialogEntrance.kt")
+        val dialog = source("component/Dialog.kt")
+        assertTrue(helper.contains("LaunchedEffect(Unit)"))
+        assertTrue(helper.contains("scale.animateTo("))
+        assertFalse(helper.contains("rememberInfiniteTransition"))
+        assertTrue(dialog.contains(".capsuleDialogEntrance()"))
+    }
 }

@@ -43,9 +43,19 @@ internal fun NavGraphBuilder.routeComposable(
     // The motion depends on where the destination was reached from, not only on what it is: opening
     // settings and stepping back to its root are different events landing on the same route.
     val motion = remember(arrival) { destinationMotionFor(route, arrival.from) }
+    // Settings alone uses real NavHost spatial transitions: its outgoing
+    // canvas must uncover the previously composed Home/settings page. Never
+    // animate that canvas AGAIN inside its own route wrapper, or the two
+    // independent transforms will hitch and the Home page will slide too.
+    val settingsNavigation =
+        route == "settings" || route.startsWith("settings/") ||
+            arrival.from == "settings" || arrival.from?.startsWith("settings/") == true
     CompositionLocalProvider(LocalNavBackStackEntry provides entry) {
         CapsuleRouteSurface {
-            Box(modifier = Modifier.destinationEntrance(motion, arrival.direction)) {
+            Box(
+                modifier = if (settingsNavigation) Modifier else
+                    Modifier.destinationEntrance(motion, arrival.direction),
+            ) {
                 with(contentScope) { content(entry) }
             }
         }

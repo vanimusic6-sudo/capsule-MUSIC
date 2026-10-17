@@ -30,6 +30,8 @@ on:
       - fix/immersion-return-sampled-muted-colour-20261016
       - fix/immersion-restore-original-white-soft-only-20261016
       - audit/global-motion-physics-energy-20261017
+      - feature/settings-motion-physics-20261017
+      - feature/settings-motion-v2-20261017
       - fix/video-timeline-morph-20261014
 
 permissions:

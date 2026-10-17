@@ -5,9 +5,11 @@
 package com.nikhil.yt.ui.screens.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.animation.core.Spring
@@ -30,6 +32,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -537,12 +543,14 @@ private fun SettingsModeSegmentedToggle(
 ) {
     val scheme = MaterialTheme.colorScheme
     val trackShape = RoundedCornerShape(11.dp)
-    val thumbShape = RoundedCornerShape(9.dp)
-    val position by animateFloatAsState(
+    // One physical position drives BOTH movement and elastic width.
+    // Sample the spring during draw rather than remeasuring a variable-width
+    // Box every frame. Width, displacement and impact cannot fall out of sync.
+    val position = animateFloatAsState(
         targetValue = if (advancedSettings) 1f else 0f,
         animationSpec = spring(
-            dampingRatio = 0.73f,
-            stiffness = 240f,
+            dampingRatio = 0.86f,
+            stiffness = 260f,
             visibilityThreshold = 0.001f,
         ),
         label = "settingsModeRoll",
@@ -563,30 +571,30 @@ private fun SettingsModeSegmentedToggle(
                 .border(0.8.dp, scheme.onSurface.copy(alpha = 0.13f), trackShape)
                 .padding(2.dp),
         ) {
-            BoxWithConstraints(Modifier.fillMaxSize()) {
-                val density = LocalDensity.current
-                val baseWidth = maxWidth * 0.32f
-                val developerWidth = maxWidth - baseWidth
-                // Clamp only the size; leave limited translation overshoot
-                // visible inside the clipped track, like AUDIO / VIDEO.
-                val widthProgress = position.coerceIn(0f, 1f)
-                val thumbWidth =
-                    baseWidth + (developerWidth - baseWidth) * widthProgress
-                val travelPx = with(density) { baseWidth.toPx() }
-                Box(
-                    modifier = Modifier
-                        .width(thumbWidth)
-                        .fillMaxHeight()
-                        .graphicsLayer {
-                            translationX = travelPx * position.coerceIn(-0.045f, 1.045f)
-                            val movement = sin(widthProgress.toDouble() * PI).toFloat()
-                            scaleX = 1f + movement * 0.055f
-                            scaleY = 1f - movement * 0.04f
-                            rotationZ = (sin(position.toDouble() * PI) * 0.8).toFloat()
-                        }
-                        .clip(thumbShape)
-                        .background(scheme.onSurface.copy(alpha = 0.16f))
-                        .border(0.7.dp, scheme.onSurface.copy(alpha = 0.08f), thumbShape),
+            val thumbColor = scheme.onSurface.copy(alpha = 0.16f)
+            val edgeColor = scheme.onSurface.copy(alpha = 0.08f)
+            Canvas(Modifier.fillMaxSize()) {
+                val springPosition = position.value
+                val progress = springPosition.coerceIn(0f, 1f)
+                val baseWidth = size.width * 0.32f
+                val expandedWidth = size.width - baseWidth
+                val thumbWidth = baseWidth + (expandedWidth - baseWidth) * progress
+                val travelPx = baseWidth * springPosition.coerceIn(-0.02f, 1.02f)
+                // The centre flexes slightly during travel, but the final
+                // rectangle is stable; no rotation or deformed corner radius.
+                val stretch = sin(progress.toDouble() * PI).toFloat() * 0.023f
+                val thumbHeight = size.height * (1f - stretch)
+                val top = (size.height - thumbHeight) / 2f
+                val corner = CornerRadius(9.dp.toPx())
+                val origin = Offset(travelPx, top)
+                val bounds = Size(thumbWidth, thumbHeight)
+                drawRoundRect(thumbColor, topLeft = origin, size = bounds, cornerRadius = corner)
+                drawRoundRect(
+                    edgeColor,
+                    topLeft = origin,
+                    size = bounds,
+                    cornerRadius = corner,
+                    style = Stroke(width = 0.7.dp.toPx()),
                 )
             }
         }
@@ -662,6 +670,33 @@ private fun SettingsModeSegment(
     }
 }
 
+/**
+ * The tap belongs to the row, not to its icon or text separately.
+ *
+ * Material gestures stay accessible; only the visual ripple is replaced by
+ * a restrained scale under the finger. The spring reads through graphicsLayer
+ * (draw phase), so holding a settings category does not remeasure the LazyColumn.
+ */
+@Composable
+private fun Modifier.settingsRowPress(onClick: () -> Unit): Modifier {
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val scale = animateFloatAsState(
+        targetValue = if (pressed) 0.982f else 1f,
+        animationSpec = spring(
+            dampingRatio = 0.93f,
+            stiffness = Spring.StiffnessMedium,
+        ),
+        label = "settingsCategoryPress",
+    )
+    return this
+        .graphicsLayer {
+            scaleX = scale.value
+            scaleY = scale.value
+        }
+        .clickable(interactionSource = source, indication = null, onClick = onClick)
+}
+
 @Composable
 private fun SettingsItemScreenshotStyle(
     icon: Painter,
@@ -671,7 +706,7 @@ private fun SettingsItemScreenshotStyle(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .settingsRowPress(onClick)
             .padding(vertical = 30.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -708,7 +743,7 @@ private fun SettingsItemAccountStyle(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .settingsRowPress(onClick)
             .padding(vertical = 22.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

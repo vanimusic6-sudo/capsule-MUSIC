@@ -2,41 +2,104 @@ package com.nikhil.yt.ui.screens
 
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.unit.IntOffset
 
 /**
- * Route changes are instant. No destination is ever drawn on top of another one.
+ * Capsule settings navigation: a single physical page with a right-side origin.
  *
- * A timed route transition keeps both destinations composed for its whole duration, and that costs
- * three things at once:
+ * IMPORTANT: the entire settings destination (its opaque canvas + content) owns ONE
+ * NavHost transition. Never animate it a second time in CapsuleRouteSurface or
+ * assign alpha to an opaque route: the previous page is real content below it.
  *
- * - a hitch on each tab switch, because two full destinations are composed and drawn together;
- * - transitions that feel different per tab, because the cost depends on what each screen builds;
- * - a crash. Once an entry is destroyed, touching its ViewModels throws, and a destination still
- *   composed 290ms after it was popped will recompose inside that window. Rapid tab switching
- *   destroys entries while they are still on screen, and that is exactly the
- *   `IllegalStateException: You cannot access the NavBackStackEntry's ViewModels after the
- *   NavBackStackEntry is destroyed` seen on device.
+ * The root page grows from the vicinity of the top-right Settings action.
+ * Detail pages enter from the right, much like the lyrics ink aperture,
+ * but remain opaque throughout: no grey seams, nested fades, or text delays.
  *
- * With no transition the outgoing destination is gone within a frame, so the window closes.
- *
- * There used to be one exception: leaving a settings page faded and slid out, so that stepping back
- * out of the tree read as movement rather than a page ceasing to exist. It is gone, and it is worth
- * saying why, because the reasoning applies to any future exit. An exit transition is by definition
- * two destinations on screen at once, and a *fading* exit is by definition the screen behind showing
- * through the one leaving. However brief and however slight the opacity, that is one screen pasted
- * over another, which is the single effect this app does not want anywhere.
- *
- * The feel it was there for is kept, and kept honestly: leaving a settings page is now expressed by
- * the page that *arrives*, which slides in from the leading edge — the direction you came from —
- * instead of the trailing edge it uses going deeper. One screen moves, one screen is on display, and
- * the pair still reads as a step along a path. See [DestinationMotion.Settings].
+ * Other routes NEVER animate both destinations. Keeping two heavy artwork
+ * destinations composed caused an actual back-stack/ViewModel lifecycle crash.
  */
-object ScreenTransitions {
-    @Suppress("UNUSED_PARAMETER")
-    fun enter(from: String?, to: String?, isPop: Boolean = false): EnterTransition =
-        EnterTransition.None
+private fun String?.isSettingsPage(): Boolean =
+    this == "settings" || this?.startsWith("settings/") == true
 
-    @Suppress("UNUSED_PARAMETER")
-    fun exit(from: String?, to: String?, isPop: Boolean = false): ExitTransition =
-        ExitTransition.None
+private val SettingsCorner = TransformOrigin(pivotFractionX = 1f, pivotFractionY = 0.09f)
+
+// The sizes and travel share the SAME spring. Mismatched independent clocks
+// are the cause of the "knock" at the end when scale settles before travel.
+private val PageArriveOffset = spring<IntOffset>(
+    dampingRatio = 0.88f,
+    stiffness = Spring.StiffnessMediumLow,
+)
+private val PageArriveScale = spring<Float>(
+    dampingRatio = 0.88f,
+    stiffness = Spring.StiffnessMediumLow,
+)
+private val PageLeaveOffset = spring<IntOffset>(
+    dampingRatio = 0.94f,
+    stiffness = Spring.StiffnessMedium,
+)
+private val PageLeaveScale = spring<Float>(
+    dampingRatio = 0.94f,
+    stiffness = Spring.StiffnessMedium,
+)
+
+// Reversible geometry, not pixel-by-pixel delays or competing fades.
+internal data class SettingsPageTravel(
+    val startOffsetFraction: Float,
+    val startScale: Float,
+)
+
+// A full screen is entering from the Settings button side. It begins mostly
+// outside the viewport while it is small, and grows as its leading edge crosses.
+private val SettingsRootTravel = SettingsPageTravel(
+    startOffsetFraction = 0.88f,
+    startScale = 0.76f,
+)
+
+// Inside settings, category pages behave more like opening lyrics:
+// a lateral page reveal with a tiny perspective-like expansion.
+private val SettingsDetailTravel = SettingsPageTravel(
+    startOffsetFraction = 0.73f,
+    startScale = 0.94f,
+)
+
+internal fun settingsPageTravel(from: String?): SettingsPageTravel =
+    if (from.isSettingsPage()) SettingsDetailTravel else SettingsRootTravel
+
+object ScreenTransitions {
+    fun enter(from: String?, to: String?, isPop: Boolean = false): EnterTransition {
+        if (isPop || !to.isSettingsPage()) return EnterTransition.None
+
+        val travel = settingsPageTravel(from)
+        return slideInHorizontally(
+            initialOffsetX = { width -> (width * travel.startOffsetFraction).toInt() },
+            animationSpec = PageArriveOffset,
+        ) + scaleIn(
+            initialScale = travel.startScale,
+            transformOrigin = SettingsCorner,
+            animationSpec = PageArriveScale,
+        )
+    }
+
+    fun exit(from: String?, to: String?, isPop: Boolean = false): ExitTransition {
+        if (!isPop || !from.isSettingsPage()) return ExitTransition.None
+
+        // A page going Back retraces the SAME geometry it arrived along.
+        // Its parent/home is not animated, only uncovered below the page.
+        val travel = if (to.isSettingsPage()) SettingsDetailTravel else SettingsRootTravel
+        return slideOutHorizontally(
+            targetOffsetX = { width -> (width * travel.startOffsetFraction).toInt() },
+            animationSpec = PageLeaveOffset,
+        ) + scaleOut(
+            targetScale = travel.startScale,
+            transformOrigin = SettingsCorner,
+            animationSpec = PageLeaveScale,
+        )
+    }
 }
