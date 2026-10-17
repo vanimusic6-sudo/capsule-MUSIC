@@ -100,6 +100,11 @@ class SettingsModeRegressionTest {
             "com/nikhil/yt/viewmodels/OnlineSearchViewModel.kt",
             "com/nikhil/yt/viewmodels/YouTubeBrowseViewModel.kt",
             "com/nikhil/yt/utils/ForYouSuggestionEngine.kt",
+            "com/nikhil/yt/viewmodels/ArtistItemsViewModel.kt",
+            "com/nikhil/yt/viewmodels/AutoPlaylistViewModel.kt",
+            "com/nikhil/yt/ui/component/FluidSlidingNavigationBar.kt",
+            "com/nikhil/yt/ui/component/LyricsImageCard.kt",
+            "com/nikhil/yt/ui/player/MiniPlayer.kt",
         )
         files.forEach { file ->
             val text = source(file)

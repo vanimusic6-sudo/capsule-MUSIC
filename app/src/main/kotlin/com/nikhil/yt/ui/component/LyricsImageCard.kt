@@ -52,9 +52,7 @@ import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.backdrops.rememberCanvasBackdrop
 import com.nikhil.yt.R
-import com.nikhil.yt.constants.UseSystemFontKey
 import com.nikhil.yt.models.MediaMetadata
-import com.nikhil.yt.utils.rememberPreference
 
 @Composable
 fun rememberAdjustedFontSize(
@@ -152,10 +150,7 @@ fun LyricsImageCard(
     val context = LocalContext.current
     val resources = LocalResources.current
     val density = LocalDensity.current
-    val (useSystemFont) = rememberPreference(UseSystemFontKey, defaultValue = false)
-    val lyricsFontFamily = remember(useSystemFont) {
-        if (useSystemFont) null else FontFamily(Font(R.font.sfprodisplaybold))
-    }
+    val lyricsFontFamily = remember { FontFamily(Font(R.font.sfprodisplaybold)) }
 
     val cardSizeDp = 340.dp
     val glassCornerRadius = 24.dp

@@ -17,7 +17,6 @@ import com.nikhil.yt.constants.AutoPlaylistSongSortDescendingKey
 import com.nikhil.yt.constants.AutoPlaylistSongSortType
 import com.nikhil.yt.constants.AutoPlaylistSongSortTypeKey
 import com.nikhil.yt.constants.HideExplicitKey
-import com.nikhil.yt.constants.HideVideoKey
 import com.nikhil.yt.constants.SongSortType
 import com.nikhil.yt.db.MusicDatabase
 import com.nikhil.yt.extensions.filterExplicit
@@ -71,19 +70,18 @@ constructor(
     val likedSongs =
         context.dataStore.data
             .map {
-                Triple(
+                Pair(
                     it[AutoPlaylistSongSortTypeKey].toEnum(AutoPlaylistSongSortType.CREATE_DATE) to (it[AutoPlaylistSongSortDescendingKey]
                         ?: true),
                     it[HideExplicitKey] ?: false,
-                    it[HideVideoKey] ?: false,
                 )
             }
             .distinctUntilChanged()
-            .flatMapLatest { (sortDesc, hideExplicit, hideVideo) ->
+            .flatMapLatest { (sortDesc, hideExplicit) ->
                 val (sortType, descending) = sortDesc
                 val songSortType = sortType.toSongSortType()
                 when (playlist) {
-                    "liked" -> database.likedSongs(songSortType, descending, hideVideo).map { it.filterExplicit(hideExplicit) }
+                    "liked" -> database.likedSongs(songSortType, descending, false).map { it.filterExplicit(hideExplicit) }
                     "downloaded" -> downloadUtil.downloads.flatMapLatest { downloads ->
                         database.allSongs()
                             .flowOn(Dispatchers.IO)

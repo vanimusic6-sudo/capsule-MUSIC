@@ -176,7 +176,6 @@ import com.nikhil.yt.playback.queues.EmptyQueue
 import com.nikhil.yt.playback.queues.Queue
 import com.nikhil.yt.playback.queues.YouTubeQueue
 import com.nikhil.yt.playback.queues.filterExplicit
-import com.nikhil.yt.playback.queues.filterVideo
 import com.nikhil.yt.playback.video.CAPSULE_VIDEO_CACHE_PREFIX
 import com.nikhil.yt.playback.video.CAPSULE_VIDEO_SCHEME
 import com.nikhil.yt.playback.video.CAPSULE_VIDEO_STREAM_CACHE_PREFIX
