@@ -5,40 +5,50 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Structural guard for header position; real scroll gestures require instrumentation. */
+/**
+ * The shared greeting/settings header is neither a LazyColumn row nor a
+ * permanently pinned outer Scaffold app bar. It belongs to each NavHost
+ * destination, alongside the list, and leaves when content scrolls down.
+ */
 class HomeScrollableHeaderTest {
     private fun source(relative: String) = listOf(
         File("src/main/kotlin/com/nikhil/yt/$relative"),
         File("app/src/main/kotlin/com/nikhil/yt/$relative"),
     ).first { it.isFile }.readText()
 
-    @Test fun theHeaderIsTheFirstLazyItemNotAStickyOverlay() {
+    @Test fun homeContentNoLongerHoldsHeaderInsideItsLazyList() {
         val home = source("ui/screens/HomeScreen.kt")
-        assertTrue(home.contains("item(key = \"home:header\""))
-        assertTrue(home.indexOf("item(key = \"home:header\"") < home.indexOf("item(key = \"home:quick-hero\""))
-        assertTrue(home.contains("top = (oldContentPadding.calculateTopPadding() - AppBarHeight)"))
+        assertFalse(home.contains("item(key = \"home:header\""))
+        assertTrue(home.contains("item(key = \"home:quick-hero\""))
+        assertTrue(home.contains("contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()"))
         assertFalse(home.contains("stickyHeader("))
+        assertFalse(home.contains("StandardHeaderTitle("))
     }
 
-    @Test fun homeSkipsScaffoldBarAndItsNestedScrollConnection() {
+    @Test fun mainScreensUseTheirOwnSeparateHeaderAndActivityOnlySearch() {
         val activity = source("MainActivity.kt")
-        assertTrue(activity.contains("if (shouldShowTopBar && currentRoute != Screens.Home.route)"))
-        assertTrue(activity.contains("if (currentRoute == Screens.Home.route) Modifier"))
-        assertTrue(activity.contains("else Modifier.nestedScroll(searchBarScrollBehavior.nestedScrollConnection)"))
+        val routes = source("ui/screens/CapsuleRouteSurface.kt")
+        assertFalse(activity.contains("if (shouldShowTopBar"))
+        assertFalse(activity.contains("var shouldShowTopBar"))
+        assertTrue(activity.contains("LocalCapsuleHeaderNavController provides navController"))
+        assertTrue(activity.contains("LocalCapsuleHeaderAccountName provides headerAccountName"))
+        assertTrue(activity.contains("if (currentRoute in topLevelScreens) Modifier"))
+        assertTrue(routes.contains("showScrollAwayHeader"))
+        assertTrue(routes.contains("route in setOf(\"home\", \"library\", \"history\", \"stats\")"))
+        assertTrue(routes.contains("private fun CapsuleStandaloneHeader("))
+        assertTrue(routes.contains("Modifier.nestedScroll(scrollAwayConnection)"))
+        assertTrue(routes.contains("headerOffsetPx = (headerOffsetPx + consumed.y)"))
+        assertTrue(routes.contains("available.y > 0f"))
+        assertTrue(routes.contains("snappedHeaderPx.value.toInt()"))
+        assertFalse(routes.contains("stickyHeader("))
     }
 
-    @Test fun everyMainRouteUsesOneGreetingAndNoDelayedLegacyHeader() {
+    @Test fun greetingIsSharedAndNeverShowsOldCapsuleTextOrAvatar() {
         val activity = source("MainActivity.kt")
         val chrome = source("ui/component/StandardChrome.kt")
-        val home = source("ui/screens/HomeScreen.kt")
-        assertTrue(activity.contains("val shouldShowTopBar ="))
-        assertTrue(activity.contains("!active && currentRoute in topLevelScreens"))
-        assertFalse(activity.contains("var shouldShowTopBar by rememberSaveable"))
-        assertFalse(activity.contains("LaunchedEffect(navBackStackEntry)"))
-        assertFalse(activity.contains("showHomeGreeting = false"))
-        assertFalse(activity.contains("showHomeGreeting = currentRoute"))
-        assertTrue(home.contains("StandardHeaderTitle("))
-        assertTrue(activity.contains("StandardHeaderTitle("))
+        val routes = source("ui/screens/CapsuleRouteSurface.kt")
+        assertFalse(activity.contains("LaunchedEffect(navBackStackEntry) {\n                        shouldShowTopBar"))
+        assertTrue(routes.contains("StandardHeaderTitle("))
         assertTrue(chrome.contains("val dayPeriod = rememberHomeDayPeriod()"))
         assertTrue(chrome.contains("val title = stringResource(dayPeriod.greetingId)"))
         assertTrue(chrome.contains("val guestIcon = homeGuestIcon("))
