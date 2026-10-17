@@ -85,7 +85,9 @@ class MotionEnergyStructuralRegressionTest {
         val onMove = source.substringAfter("rememberReorderableLazyListState(lazyListState) { from, to ->")
             .substringBefore("Dialog(onDismissRequest")
         assertFalse("Do not write DataStore once per crossing", onMove.contains("onOrderChange(reordered)"))
-        assertTrue(source.contains("shadowElevation = lift"))
+        assertTrue(source.contains("shadowElevation = lift.value.toPx()"))
+        assertTrue(source.contains("shadowElevation = 0.dp"))
+        assertFalse(source.contains("val lift by animateDpAsState("))
     }
 
     @Test
