@@ -76,10 +76,10 @@ fun PreferenceEntry(
     // Reading the spring in graphicsLayer avoids relaying out all preference children every frame.
     val pressInteractions = remember { MutableInteractionSource() }
     val isPressed by pressInteractions.collectIsPressedAsState()
-    val pressScale by animateFloatAsState(
-        targetValue = if (isPressed && isEnabled && onClick != null) 0.985f else 1f,
+    val pressScale = animateFloatAsState(
+        targetValue = if (isPressed && isEnabled && onClick != null) 0.982f else 1f,
         animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
+            dampingRatio = 0.93f,
             stiffness = Spring.StiffnessMedium,
         ),
         label = "preferenceRowPress",
@@ -90,8 +90,8 @@ fun PreferenceEntry(
         modifier
             .fillMaxWidth()
             .graphicsLayer {
-                scaleX = pressScale
-                scaleY = pressScale
+                scaleX = pressScale.value
+                scaleY = pressScale.value
             }
             .clickable(
                 enabled = isEnabled && onClick != null,
