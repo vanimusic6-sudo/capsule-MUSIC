@@ -31,9 +31,11 @@ import androidx.navigation.NavHostController
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.AppBarHeight
 import com.nikhil.yt.ui.component.StandardHeaderTitle
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -41,6 +43,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavBackStackEntry
@@ -179,7 +182,11 @@ private fun RouteWithScrollAwayHeader(
     }
     val hiddenPx = with(LocalDensity.current) { headerHeight.toPx() }
     var headerOffsetPx by remember(entry) { mutableFloatStateOf(0f) }
-    val scrollAwayConnection = remember(entry, hiddenPx) {
+    val scope = rememberCoroutineScope()
+    // Job reference is NOT Compose state. Motion runs only once when the list
+    // actually reaches the top; finger-tracked scroll is written directly.
+    val revealJob = remember(entry) { arrayOfNulls<Job>(1) }
+    val scrollAwayConnection = remember(entry, hiddenPx, scope) {
         object : NestedScrollConnection {
             override fun onPostScroll(
                 consumed: Offset,
@@ -188,23 +195,37 @@ private fun RouteWithScrollAwayHeader(
             ): Offset {
                 when {
                     consumed.y < 0f -> {
+                        revealJob[0]?.cancel()
+                        revealJob[0] = null
+                        // Direct finger movement does not schedule a per-pixel
+                        // tween or recompose this destination. The state is
+                        // consumed only inside Modifier.offset placement.
                         headerOffsetPx = (headerOffsetPx + consumed.y)
                             .coerceIn(-hiddenPx, 0f)
                     }
-                    // A nested list can't consume this upward movement, so
-                    // the content has reached its top. Do NOT reveal simply
-                    // on a swipe up halfway down a feed.
-                    available.y > 0f -> headerOffsetPx = 0f
+                    available.y > 0f && headerOffsetPx < 0f &&
+                        revealJob[0]?.isActive != true -> {
+                        // Unconsumed positive drag means we are at the actual
+                        // top; one short animation returns the header gently.
+                        revealJob[0] = scope.launch {
+                            try {
+                                animate(
+                                    initialValue = headerOffsetPx,
+                                    targetValue = 0f,
+                                    animationSpec = tween(220, easing = CapsuleStandardEasing),
+                                ) { value, _ ->
+                                    headerOffsetPx = value
+                                }
+                            } finally {
+                                revealJob[0] = null
+                            }
+                        }
+                    }
                 }
                 return Offset.Zero
             }
         }
     }
-    val snappedHeaderPx = animateFloatAsState(
-        targetValue = headerOffsetPx,
-        animationSpec = tween(190, easing = CapsuleStandardEasing),
-        label = "capsuleStandaloneHeaderScroll",
-    )
     Box(
         modifier = Modifier.fillMaxSize().nestedScroll(scrollAwayConnection),
     ) {
@@ -213,7 +234,7 @@ private fun RouteWithScrollAwayHeader(
         CapsuleStandaloneHeader(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .offset { IntOffset(0, snappedHeaderPx.value.toInt()) },
+                .offset { IntOffset(0, headerOffsetPx.toInt()) },
             onAccountClick = { navController?.navigate("settings/account") },
             onSettingsClick = { navController?.navigate("settings") },
         )
