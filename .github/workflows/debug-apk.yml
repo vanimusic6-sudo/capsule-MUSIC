@@ -31,6 +31,7 @@ on:
       - fix/immersion-continuous-photo-to-floor-20261016
       - fix/immersion-return-sampled-muted-colour-20261016
       - fix/immersion-restore-original-white-soft-only-20261016
+      - audit/global-motion-physics-energy-20261017
       - fix/video-timeline-morph-20261014
 
 permissions:
@@ -143,6 +144,7 @@ jobs:
             --tests 'com.nikhil.yt.ui.CapsuleBackgroundMotionTest' \
             --tests 'com.nikhil.yt.playback.CrossfadeIdlePollTest' \
             --tests 'com.nikhil.yt.ui.UiEnergyRegressionTest' \
+            --tests 'com.nikhil.yt.ui.MotionEnergyStructuralRegressionTest' \
             --tests 'com.nikhil.yt.ui.player.CapsuleVideoArtworkTransitionTest' \
             --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveContentTest' \
             --tests 'com.nikhil.yt.ui.player.ImmersiveArtworkBackgroundTest' \
