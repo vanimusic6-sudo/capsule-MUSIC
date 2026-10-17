@@ -5,4 +5,7 @@
     <string name="artists">אמנים</string>
     <string name="latest_release">המהדורה האחרונה</string>
     <string name="artist_release_metadata">אלבום • %1$d</string>
+    <string name="capsule_advanced_mode_warning_title">הגדרות מפתחים</string>
+    <string name="capsule_advanced_mode_warning_body">שינוי הגדרות המפתחים עלול להאט את האפליקציה או לפגוע בפעולתה. מפתחי Capsule כבר בחרו את ההגדרות המתאימות ביותר לרוב המשתמשים. יש לשנות אותן בזהירות ולבדוק את ההשפעה 😉</string>
+    <string name="capsule_advanced_mode_warning_confirm">הבנתי</string>
 </resources>

@@ -326,4 +326,7 @@
     <string name="palette_grape_purple">Viinamari</string>
     <string name="latest_release">Viimane väljalase</string>
     <string name="artist_release_metadata">Album • %1$d</string>
+    <string name="capsule_advanced_mode_warning_title">Arendajaseaded</string>
+    <string name="capsule_advanced_mode_warning_body">Arendajaseadete muutmine võib rakendust aeglustada või selle tööd häirida. Capsule’i arendajad on enamiku kasutajate jaoks sobivaimad seaded juba valinud. Muuda neid ettevaatlikult ja jälgi tulemust 😉</string>
+    <string name="capsule_advanced_mode_warning_confirm">Sain aru</string>
 </resources>

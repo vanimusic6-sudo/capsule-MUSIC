@@ -730,4 +730,7 @@ Velune sẽ chỉ trích xuất token của bạn, và mọi thứ khác đượ
     <string name="together_token_missing">Phiên bản này không hỗ trợ phát nhạc trực tuyến</string>
     <string name="latest_release">Bản phát hành mới nhất</string>
     <string name="artist_release_metadata">Album • %1$d</string>
+    <string name="capsule_advanced_mode_warning_title">Cài đặt nhà phát triển</string>
+    <string name="capsule_advanced_mode_warning_body">Thay đổi cài đặt dành cho nhà phát triển có thể khiến ứng dụng chậm đi hoặc hoạt động không ổn định. Nhóm phát triển Capsule đã chọn sẵn các thiết lập phù hợp nhất với đa số người dùng. Hãy thay đổi cẩn thận và theo dõi kết quả 😉</string>
+    <string name="capsule_advanced_mode_warning_confirm">Đã hiểu</string>
 </resources>

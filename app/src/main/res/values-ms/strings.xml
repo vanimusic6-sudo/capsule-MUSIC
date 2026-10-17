@@ -2,4 +2,7 @@
 <resources>
         <string name="latest_release">Keluaran terbaru</string>
     <string name="artist_release_metadata">Album • %1$d</string>
+    <string name="capsule_advanced_mode_warning_title">Tetapan pembangun</string>
+    <string name="capsule_advanced_mode_warning_body">Mengubah tetapan pembangun boleh memperlahankan aplikasi atau menjejaskan fungsinya. Pembangun Capsule telah memilih tetapan yang paling sesuai untuk kebanyakan pengguna. Buat perubahan dengan berhati-hati dan pantau kesannya 😉</string>
+    <string name="capsule_advanced_mode_warning_confirm">Faham</string>
 </resources>

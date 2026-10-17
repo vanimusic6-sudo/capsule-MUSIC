@@ -954,4 +954,7 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="capsule_settings_mode_user">Basic</string>
     <string name="capsule_settings_mode_advanced_compact">Developer</string>
     <string name="capsule_settings_mode_advanced">For developers</string>
+    <string name="capsule_advanced_mode_warning_title">Developer settings</string>
+    <string name="capsule_advanced_mode_warning_body">Changing developer settings may slow down the app or cause it to malfunction. The Capsule developers have already chosen settings that work best for most people. Change them carefully and keep an eye on how the app behaves 😉</string>
+    <string name="capsule_advanced_mode_warning_confirm">Got it</string>
 </resources>

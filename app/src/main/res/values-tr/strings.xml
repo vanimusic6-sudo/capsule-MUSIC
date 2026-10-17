@@ -612,4 +612,7 @@
     <string name="allow">İzin ver</string>
     <string name="latest_release">En son yayın</string>
     <string name="artist_release_metadata">Albüm • %1$d</string>
+    <string name="capsule_advanced_mode_warning_title">Geliştirici ayarları</string>
+    <string name="capsule_advanced_mode_warning_body">Geliştirici ayarlarını değiştirmek uygulamayı yavaşlatabilir veya çalışmasını bozabilir. Capsule geliştiricileri çoğu kullanıcı için en uygun ayarları zaten seçti. Ayarları dikkatlice değiştirin ve sonucu kontrol edin 😉</string>
+    <string name="capsule_advanced_mode_warning_confirm">Anladım</string>
 </resources>

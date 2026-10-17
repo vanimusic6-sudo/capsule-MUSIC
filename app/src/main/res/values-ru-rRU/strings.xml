@@ -818,4 +818,7 @@
     <string name="capsule_settings_mode_user">Базовые</string>
     <string name="capsule_settings_mode_advanced_compact">Разработка</string>
     <string name="capsule_settings_mode_advanced">Для разработчиков</string>
+    <string name="capsule_advanced_mode_warning_title">Настройки для разработчиков</string>
+    <string name="capsule_advanced_mode_warning_body">Изменяя настройки для разработчиков, вы можете замедлить или нарушить работу приложения. Разработчики Capsule уже подобрали оптимальные настройки для удобства большинства пользователей. Меняйте параметры осторожно и следите за результатом 😉</string>
+    <string name="capsule_advanced_mode_warning_confirm">Понятно</string>
 </resources>

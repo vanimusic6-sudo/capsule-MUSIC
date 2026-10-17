@@ -715,4 +715,7 @@
     <string name="together_welcome_permissions_body">ホストは、曲の追加、再生の制御、参加の承認要求をゲストに許可するかどうかを決定できます。</string>
     <string name="latest_release">最新リリース</string>
     <string name="artist_release_metadata">アルバム • %1$d</string>
+    <string name="capsule_advanced_mode_warning_title">開発者向け設定</string>
+    <string name="capsule_advanced_mode_warning_body">開発者向け設定を変更すると、アプリの動作が遅くなったり、不具合が生じたりすることがあります。Capsule の開発チームは、ほとんどのユーザーに適した設定をすでに選んでいます。変更するときは慎重に、動作を確認しながら進めてください 😉</string>
+    <string name="capsule_advanced_mode_warning_confirm">了解</string>
 </resources>

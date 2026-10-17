@@ -765,4 +765,7 @@
     <string name="extracting_from_url">Extracting tokens from URL…</string>
     <string name="latest_release">Rilisan terbaru</string>
     <string name="artist_release_metadata">Album • %1$d</string>
+    <string name="capsule_advanced_mode_warning_title">Pengaturan pengembang</string>
+    <string name="capsule_advanced_mode_warning_body">Mengubah pengaturan pengembang dapat memperlambat aplikasi atau mengganggu fungsinya. Pengembang Capsule sudah memilih pengaturan terbaik bagi sebagian besar pengguna. Ubah dengan hati-hati dan perhatikan dampaknya 😉</string>
+    <string name="capsule_advanced_mode_warning_confirm">Mengerti</string>
 </resources>

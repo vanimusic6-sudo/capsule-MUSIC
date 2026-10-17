@@ -2,4 +2,7 @@
 <resources>
     <string name="latest_release">Nieuwste release</string>
     <string name="artist_release_metadata">Album • %1$d</string>
+    <string name="capsule_advanced_mode_warning_title">Ontwikkelaarsinstellingen</string>
+    <string name="capsule_advanced_mode_warning_body">Het wijzigen van ontwikkelaarsinstellingen kan de app vertragen of de werking verstoren. De ontwikkelaars van Capsule hebben al de beste instellingen voor de meeste gebruikers gekozen. Pas ze voorzichtig aan en houd het resultaat in de gaten 😉</string>
+    <string name="capsule_advanced_mode_warning_confirm">Begrepen</string>
 </resources>

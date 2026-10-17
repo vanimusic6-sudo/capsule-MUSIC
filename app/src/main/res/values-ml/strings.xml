@@ -2,4 +2,7 @@
 <resources>
     <string name="latest_release">ഏറ്റവും പുതിയ റിലീസ്</string>
     <string name="artist_release_metadata">ആൽബം • %1$d</string>
+    <string name="capsule_advanced_mode_warning_title">ഡെവലപ്പർ ക്രമീകരണങ്ങൾ</string>
+    <string name="capsule_advanced_mode_warning_body">ഡെവലപ്പർ ക്രമീകരണങ്ങൾ മാറ്റുന്നത് ആപ്പ് മന്ദഗതിയിലാക്കുകയോ പ്രവർത്തനത്തെ ബാധിക്കുകയോ ചെയ്യാം. ഭൂരിഭാഗം ഉപയോക്താക്കൾക്കും അനുയോജ്യമായ ക്രമീകരണങ്ങൾ Capsule ഡെവലപ്പർമാർ ഇതിനകം തിരഞ്ഞെടുത്തിട്ടുണ്ട്. ശ്രദ്ധയോടെ മാറ്റങ്ങൾ വരുത്തുകയും ഫലം പരിശോധിക്കുകയും ചെയ്യുക 😉</string>
+    <string name="capsule_advanced_mode_warning_confirm">മനസ്സിലായി</string>
 </resources>

@@ -100,7 +100,7 @@ class SettingsModeRegressionTest {
         assertTrue(home.contains("SettingsAdvancedWarningSeenKey"))
         assertTrue(home.contains("shouldShowAdvancedModeWarning("))
         assertTrue(home.contains("showAdvancedWarning"))
-        assertEquals(14, Regex("""\\.animateItem\\(""").findAll(home).count())
+        assertEquals(14, home.split(".animateItem(").size - 1)
         assertTrue(home.contains("placementSpec = spring("))
         assertTrue(home.contains("listState.animateScrollToItem(0)"))
         assertFalse(home.contains("Switch("))
@@ -123,6 +123,31 @@ class SettingsModeRegressionTest {
         )
         assertEquals(4, Regex("""(?m)^            if \(advancedSettings\) \{""").findAll(home).count())
         assertTrue(home.contains("SettingsAdvancedModeKey, false"))
+    }
+
+    @Test fun everySupportedLocaleHasFirstEntryDeveloperWarning() {
+        val locales = listOf(
+            "values", "values-ar", "values-de-rDE", "values-es-rES", "values-es",
+            "values-et", "values-fr-rFR", "values-fr", "values-hi-rIN",
+            "values-in-rID", "values-it", "values-iw", "values-ja", "values-ko",
+            "values-ml", "values-ms", "values-nl", "values-pt-rBR",
+            "values-ru-rRU", "values-ru", "values-tr", "values-vi",
+            "values-zh-rCN",
+        )
+        for (locale in locales) {
+            val file = listOf(
+                File("src/main/res/$locale/strings.xml"),
+                File("app/src/main/res/$locale/strings.xml"),
+            ).firstOrNull(File::isFile) ?: error("Missing locale $locale")
+            val xml = file.readText()
+            for (key in listOf(
+                "capsule_advanced_mode_warning_title",
+                "capsule_advanced_mode_warning_body",
+                "capsule_advanced_mode_warning_confirm",
+            )) {
+                assertTrue("Missing $key in $locale", xml.contains(key))
+            }
+        }
     }
 
     @Test fun userScreensGateExtrasWithoutReplacingTheirHandlers() {

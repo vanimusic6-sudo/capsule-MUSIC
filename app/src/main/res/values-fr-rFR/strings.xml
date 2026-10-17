@@ -784,4 +784,7 @@ Velune se contente d\'extraire votre jeton ; toutes les autres données sont sto
     <string name="extracting_from_url">Extracting tokens from URL…</string>
     <string name="latest_release">Dernière sortie</string>
     <string name="artist_release_metadata">Album • %1$d</string>
+    <string name="capsule_advanced_mode_warning_title">Paramètres développeur</string>
+    <string name="capsule_advanced_mode_warning_body">Modifier les paramètres avancés peut ralentir l’application ou perturber son fonctionnement. L’équipe de Capsule a déjà choisi les réglages les plus adaptés à la majorité des utilisateurs. Modifiez-les avec prudence et surveillez les effets 😉</string>
+    <string name="capsule_advanced_mode_warning_confirm">Compris</string>
 </resources>

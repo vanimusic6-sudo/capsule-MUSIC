@@ -783,4 +783,7 @@
     <string name="extracting_from_url">Extracting tokens from URL…</string>
     <string name="latest_release">Lançamento mais recente</string>
     <string name="artist_release_metadata">Álbum • %1$d</string>
+    <string name="capsule_advanced_mode_warning_title">Configurações de desenvolvedor</string>
+    <string name="capsule_advanced_mode_warning_body">Alterar as configurações de desenvolvedor pode deixar o aplicativo mais lento ou prejudicar seu funcionamento. A equipe do Capsule já escolheu as configurações mais adequadas para a maioria dos usuários. Faça alterações com cuidado e acompanhe o resultado 😉</string>
+    <string name="capsule_advanced_mode_warning_confirm">Entendi</string>
 </resources>
