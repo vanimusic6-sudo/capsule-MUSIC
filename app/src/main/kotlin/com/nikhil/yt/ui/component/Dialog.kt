@@ -283,6 +283,10 @@ fun ListDialog(
                 .navigationBarsPadding(),
             contentAlignment = Alignment.Center,
         ) {
+            // Capture the BoxWithConstraints receiver here. ColumnScope and
+            // LazyListScope are also layout receivers and cannot implicitly
+            // access maxHeight from their nested DSL-marked lambdas.
+            val listMaxHeight = (maxHeight - 24.dp).coerceAtLeast(0.dp)
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -298,7 +302,7 @@ fun ListDialog(
                     modifier = modifier.padding(vertical = 12.dp),
                 ) {
                     LazyColumn(
-                        modifier = Modifier.heightIn(max = maxHeight - 24.dp),
+                        modifier = Modifier.heightIn(max = listMaxHeight),
                         content = content,
                     )
                 }
