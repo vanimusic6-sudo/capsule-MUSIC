@@ -62,6 +62,7 @@ import com.nikhil.yt.viewmodels.HomeViewModel
 import androidx.compose.ui.platform.LocalContext
 import com.nikhil.yt.App.Companion.forgetAccount
 import com.nikhil.yt.utils.rememberPreference
+import com.nikhil.yt.ui.motion.capsuleDialogEntrance
 import com.nikhil.yt.constants.InnerTubeCookieKey
 import com.nikhil.yt.constants.SettingsAdvancedModeKey
 import com.nikhil.yt.constants.SettingsAdvancedWarningSeenKey
@@ -470,6 +471,7 @@ fun VeluneSettingsScreen(
 
         if (showAdvancedWarning) {
             AlertDialog(
+                modifier = Modifier.capsuleDialogEntrance(),
                 onDismissRequest = {
                     showAdvancedWarning = false
                     onAdvancedWarningSeenChange(true)
@@ -491,6 +493,7 @@ fun VeluneSettingsScreen(
 
         if (showLogoutDialog) {
             AlertDialog(
+                modifier = Modifier.capsuleDialogEntrance(),
                 onDismissRequest = { showLogoutDialog = false },
                 title = { Text(stringResource(R.string.capsule_settings_sign_out)) },
                 text = { Text(stringResource(R.string.capsule_settings_sign_out_confirm)) },
