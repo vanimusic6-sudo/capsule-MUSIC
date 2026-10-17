@@ -2,7 +2,6 @@ package com.nikhil.yt.ui.screens
 
 import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
@@ -84,65 +83,26 @@ internal fun NavGraphBuilder.routeComposable(
         route == "settings" || route.startsWith("settings/") ||
             arrival.from == "settings" || arrival.from?.startsWith("settings/") == true
     val showScrollAwayHeader = route in setOf("home", "library", "history", "stats")
-    // Each route owns its own header offset. It is a peer of scrollable
-    // content, NEVER an item in Home's LazyColumn or the Activity's fixed bar.
-    // It therefore stays below an entering settings sheet during navigation.
-    val headerHeight = AppBarHeight + with(LocalDensity.current) {
-        WindowInsets.systemBars.getTop(this).toDp()
-    }
-    val hiddenPx = with(LocalDensity.current) { headerHeight.toPx() }
-    var headerOffsetPx by remember(entry) { mutableFloatStateOf(0f) }
-    val scrollAwayConnection = remember(entry, hiddenPx) {
-        object : NestedScrollConnection {
-            override fun onPostScroll(
-                consumed: Offset,
-                available: Offset,
-                source: NestedScrollSource,
-            ): Offset {
-                if (consumed.y < 0f) {
-                    // Draw the header off-screen with the first portion of
-                    // real content scroll; later scrolls do NO more header work.
-                    headerOffsetPx = (headerOffsetPx + consumed.y)
-                        .coerceIn(-hiddenPx, 0f)
-                } else if (available.y > 0f && source == NestedScrollSource.UserInput) {
-                    // Only reveal at the ACTUAL top of the list, never when
-                    // simply scrolling upwards halfway down a long library.
-                    headerOffsetPx = 0f
-                }
-                return Offset.Zero
-            }
-        }
-    }
-    // Keep the animated state read in the placement lambda, not composition.
-    // Scrolling may update the target every frame; no route recomposition
-    // should be triggered just to move its standalone chrome.
-    val snappedHeaderPx = animateFloatAsState(
-        targetValue = headerOffsetPx,
-        animationSpec = tween(230, easing = CapsuleStandardEasing),
-        label = "capsuleStandaloneHeaderScroll",
-    )
     CompositionLocalProvider(LocalNavBackStackEntry provides entry) {
         CapsuleRouteSurface {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .then(if (showScrollAwayHeader) Modifier.nestedScroll(scrollAwayConnection) else Modifier),
-            ) {
+            if (showScrollAwayHeader) {
+                // Main pages own their chrome and scroll it away. Settings and
+                // other detail destinations do not create any header observer,
+                // spring or second layer.
+                RouteWithScrollAwayHeader(entry) {
+                    Box(
+                        modifier = if (settingsNavigation) Modifier else
+                            Modifier.destinationEntrance(motion, arrival.direction),
+                    ) {
+                        with(contentScope) { content(entry) }
+                    }
+                }
+            } else {
                 Box(
                     modifier = if (settingsNavigation) Modifier else
                         Modifier.destinationEntrance(motion, arrival.direction),
                 ) {
                     with(contentScope) { content(entry) }
-                }
-                if (showScrollAwayHeader) {
-                    val navController = LocalCapsuleHeaderNavController.current
-                    CapsuleStandaloneHeader(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                             .offset { IntOffset(0, snappedHeaderPx.value.toInt()) },
-                        onAccountClick = { navController?.navigate("settings/account") },
-                        onSettingsClick = { navController?.navigate("settings") },
-                    )
                 }
             }
         }
@@ -195,6 +155,70 @@ val LocalNavBackStackEntry = compositionLocalOf<NavBackStackEntry?> { null }
 val LocalCapsuleHeaderAccountName = compositionLocalOf<String?> { null }
 val LocalCapsuleHeaderAccountImage = compositionLocalOf<String?> { null }
 val LocalCapsuleHeaderNavController = compositionLocalOf<NavHostController?> { null }
+
+/**
+ * Independent viewport chrome owned by one NavBackStackEntry.
+ *
+ * It is NEVER an item in a LazyColumn and NEVER a fixed Activity topBar.
+ * On scrolling down the first bar-height worth of consumed pixels shifts
+ * the header away; scrolling up in the middle of the list does not make it
+ * reappear. Only reaching the real top (unconsumed upwards gesture) reveals
+ * the whole header. A single short tween smooths that final return.
+ *
+ * Animated state is read in Modifier.offset's placement lambda. The NavHost
+ * destination and its whole LazyColumn do not have to recompose for each
+ * animation frame. When the header is fully hidden, no updates occur.
+ */
+@Composable
+private fun RouteWithScrollAwayHeader(
+    entry: NavBackStackEntry,
+    content: @Composable () -> Unit,
+) {
+    val headerHeight = AppBarHeight + with(LocalDensity.current) {
+        WindowInsets.systemBars.getTop(this).toDp()
+    }
+    val hiddenPx = with(LocalDensity.current) { headerHeight.toPx() }
+    var headerOffsetPx by remember(entry) { mutableFloatStateOf(0f) }
+    val scrollAwayConnection = remember(entry, hiddenPx) {
+        object : NestedScrollConnection {
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
+                when {
+                    consumed.y < 0f -> {
+                        headerOffsetPx = (headerOffsetPx + consumed.y)
+                            .coerceIn(-hiddenPx, 0f)
+                    }
+                    // A nested list can't consume this upward movement, so
+                    // the content has reached its top. Do NOT reveal simply
+                    // on a swipe up halfway down a feed.
+                    available.y > 0f -> headerOffsetPx = 0f
+                }
+                return Offset.Zero
+            }
+        }
+    }
+    val snappedHeaderPx = animateFloatAsState(
+        targetValue = headerOffsetPx,
+        animationSpec = tween(190, easing = CapsuleStandardEasing),
+        label = "capsuleStandaloneHeaderScroll",
+    )
+    Box(
+        modifier = Modifier.fillMaxSize().nestedScroll(scrollAwayConnection),
+    ) {
+        content()
+        val navController = LocalCapsuleHeaderNavController.current
+        CapsuleStandaloneHeader(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset { IntOffset(0, snappedHeaderPx.value.toInt()) },
+            onAccountClick = { navController?.navigate("settings/account") },
+            onSettingsClick = { navController?.navigate("settings") },
+        )
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
