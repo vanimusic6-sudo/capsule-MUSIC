@@ -7,10 +7,11 @@ package com.nikhil.yt.ui.screens.settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -24,6 +25,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
@@ -35,6 +40,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.PI
+import kotlin.math.sin
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
@@ -283,12 +290,13 @@ fun VeluneSettingsScreen(
 
 
 /**
- * Integrated two-segment setting mode picker.
+ * Basic / Developer selector. Uses the same low-damping physical roll as the
+ * AUDIO / VIDEO player control (CapsuleRollingSelection): 0.73 / 240 spring,
+ * slight overshoot and a subtle rotation/stretch through the midpoint.
  *
- * Previous failures came from the big opaque grey slab, the tiny text, and
- * an even split for labels of very different lengths. Keep the visible
- * surface compact but the touch targets 44dp high, and animate only the
- * selected thumb while leaving the Settings header/layout unchanged.
+ * The thumb *position and width* follow the same spring progress; changing
+ * width immediately would produce a discontinuity on the first frame.
+ * Segment gestures are ripple-free: no extra press backdrop is drawn.
  */
 @Composable
 private fun SettingsModeSegmentedToggle(
@@ -301,16 +309,14 @@ private fun SettingsModeSegmentedToggle(
     val scheme = MaterialTheme.colorScheme
     val trackShape = RoundedCornerShape(11.dp)
     val thumbShape = RoundedCornerShape(9.dp)
-    val trackWidth = width - 4.dp // 2dp inset on either side
-    val basicWidth = trackWidth * 0.32f
-    val advancedWidth = trackWidth - basicWidth
-    val thumbOffset by animateDpAsState(
-        targetValue = if (advancedSettings) basicWidth else 0.dp,
+    val position by animateFloatAsState(
+        targetValue = if (advancedSettings) 1f else 0f,
         animationSpec = spring(
-            dampingRatio = 0.92f,
-            stiffness = Spring.StiffnessMedium,
+            dampingRatio = 0.73f,
+            stiffness = 240f,
+            visibilityThreshold = 0.001f,
         ),
-        label = "settingsModeThumb",
+        label = "settingsModeRoll",
     )
 
     Box(
@@ -328,15 +334,32 @@ private fun SettingsModeSegmentedToggle(
                 .border(0.8.dp, scheme.onSurface.copy(alpha = 0.13f), trackShape)
                 .padding(2.dp),
         ) {
-            Box(
-                modifier = Modifier
-                    .offset(x = thumbOffset)
-                    .width(if (advancedSettings) advancedWidth else basicWidth)
-                    .fillMaxHeight()
-                    .clip(thumbShape)
-                    .background(scheme.onSurface.copy(alpha = 0.16f))
-                    .border(0.7.dp, scheme.onSurface.copy(alpha = 0.08f), thumbShape),
-            )
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val density = LocalDensity.current
+                val baseWidth = maxWidth * 0.32f
+                val developerWidth = maxWidth - baseWidth
+                // Clamp only the size; leave limited translation overshoot
+                // visible inside the clipped track, like AUDIO / VIDEO.
+                val widthProgress = position.coerceIn(0f, 1f)
+                val thumbWidth =
+                    baseWidth + (developerWidth - baseWidth) * widthProgress
+                val travelPx = with(density) { baseWidth.toPx() }
+                Box(
+                    modifier = Modifier
+                        .width(thumbWidth)
+                        .fillMaxHeight()
+                        .graphicsLayer {
+                            translationX = travelPx * position.coerceIn(-0.045f, 1.045f)
+                            val movement = sin(widthProgress.toDouble() * PI).toFloat()
+                            scaleX = 1f + movement * 0.055f
+                            scaleY = 1f - movement * 0.04f
+                            rotationZ = (sin(position.toDouble() * PI) * 0.8).toFloat()
+                        }
+                        .clip(thumbShape)
+                        .background(scheme.onSurface.copy(alpha = 0.16f))
+                        .border(0.7.dp, scheme.onSurface.copy(alpha = 0.08f), thumbShape),
+                )
+            }
         }
 
         Row(
@@ -379,13 +402,21 @@ private fun SettingsModeSegment(
     unselectedTextColor: Color,
     modifier: Modifier = Modifier,
 ) {
+    val haptics = LocalHapticFeedback.current
     Box(
         modifier = modifier
             .fillMaxHeight()
             .selectable(
                 selected = selected,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
                 role = Role.Tab,
-                onClick = { if (!selected) onClick() },
+                onClick = {
+                    if (!selected) {
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onClick()
+                    }
+                },
             ),
         contentAlignment = Alignment.Center,
     ) {
