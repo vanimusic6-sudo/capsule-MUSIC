@@ -14,7 +14,6 @@ import com.nikhil.yt.ui.screens.ScreenTransitions
 import com.nikhil.yt.ui.screens.LocalCapsuleHeaderAccountName
 import com.nikhil.yt.ui.screens.LocalCapsuleHeaderAccountImage
 import com.nikhil.yt.ui.screens.LocalCapsuleHeaderNavController
-import com.nikhil.yt.ui.screens.CapsulePinnedHeader
 import com.nikhil.yt.ui.screens.rememberMainTabNavigator
 import androidx.compose.ui.draw.clipToBounds
 import com.nikhil.yt.ui.component.StandardChrome
@@ -1080,10 +1079,10 @@ class MainActivity : ComponentActivity() {
                                 }
                             horizontalInsets
                                 .add(topInsets)
-                                // The permanent bar occupies AppBarHeight
-                                // in addition to the visible status area.
-                                // Content is scrolled UNDER it, never beneath
-                                // an empty placeholder or a second feed item.
+                                // Main destination routes own the fixed
+                                // header and reserve this amount locally too,
+                                // so an outgoing feed keeps its top geometry
+                                // stable after currentRoute switches to Settings.
                                 .add(WindowInsets(
                                     top = if (currentRoute in topLevelScreens) AppBarHeight else 0.dp,
                                     bottom = bottom,
@@ -1429,13 +1428,11 @@ class MainActivity : ComponentActivity() {
 
                             Scaffold(
                                 topBar = {
-                                    // A single pinned opaque chrome, like Spotify:
-                                    // main destinations share it, never animate
-                                    // or react to feed scroll. Search replaces
-                                    // it, while details/settings omit it.
-                                    if (currentRoute in topLevelScreens && !active) {
-                                        CapsulePinnedHeader()
-                                    } else {
+                                    // The pinned main-route greeting now belongs
+                                    // to each NavHost canvas so Settings Back
+                                    // transitions carry it and its background
+                                    // together with the returning page.
+                                    // This slot is ONLY for the active search.
                                     AnimatedVisibility(
                                         visible = active || navBackStackEntry?.destination?.route?.startsWith("search/") == true,
                                         enter = fadeIn(animationSpec = tween(durationMillis = 300)),
@@ -1605,7 +1602,6 @@ class MainActivity : ComponentActivity() {
                                                 }
                                             }
                                         }
-                                    }
                                     }
                                 },
                                 bottomBar = {
