@@ -25,34 +25,21 @@ class ScreenTransitionsTest {
         "artist/abc", "album/xyz", "search/query",
     )
 
-    @Test fun `only settings have NavHost transitions and nested pages form a full push`() {
+    @Test fun `ArchiveTune settings boundary animates both pages and other routes remain instant`() {
         routes.forEach { from ->
             routes.forEach { to ->
                 listOf(false, true).forEach { pop ->
-                    val nested = com.nikhil.yt.ui.screens.settingsRouteMotion(from, to) ==
-                        com.nikhil.yt.ui.screens.SettingsRouteMotion.NESTED
-                    val toSettings = to == "settings" || to?.startsWith("settings/") == true
-                    val fromSettings = from == "settings" || from?.startsWith("settings/") == true
+                    val behavior = com.nikhil.yt.ui.screens.settingsRouteMotion(from, to)
                     val enter = ScreenTransitions.enter(from, to, pop)
                     val exit = ScreenTransitions.exit(from, to, pop)
-
-                    when {
-                        nested -> {
-                            assertTrue("both adjacent pages move; $from -> $to, pop=$pop", enter != EnterTransition.None)
-                            assertTrue("both adjacent pages move; $from -> $to, pop=$pop", exit != ExitTransition.None)
-                        }
-                        !pop && toSettings -> {
-                            assertTrue("root settings slides in", enter != EnterTransition.None)
-                            assertEquals("old Home is stationary", ExitTransition.None, exit)
-                        }
-                        pop && fromSettings -> {
-                            assertEquals("previous Home is stationary", EnterTransition.None, enter)
-                            assertTrue("root settings flies back", exit != ExitTransition.None)
-                        }
-                        else -> {
-                            assertEquals(EnterTransition.None, enter)
-                            assertEquals(ExitTransition.None, exit)
-                        }
+                    if (behavior == com.nikhil.yt.ui.screens.SettingsRouteMotion.NONE) {
+                        assertEquals("outside Settings stays instant $from → $to", EnterTransition.None, enter)
+                        assertEquals("outside Settings stays instant $from → $to", ExitTransition.None, exit)
+                    } else {
+                        // ArchiveTune's key detail is that BOTH previous and
+                        // new route participate (cross-fade plus half push).
+                        assertTrue("enter $from → $to, pop=$pop", enter != EnterTransition.None)
+                        assertTrue("exit $from → $to, pop=$pop", exit != ExitTransition.None)
                     }
                 }
             }
@@ -62,8 +49,8 @@ class ScreenTransitionsTest {
     @Test fun `inside settings travelling pages stay full size in both directions`() {
         val root = com.nikhil.yt.ui.screens.settingsPageTravel("home")
         val nested = com.nikhil.yt.ui.screens.settingsPageTravel("settings")
-        assertTrue(root.startScale < 1f)
-        assertTrue(root.startOffsetFraction < 1f)
+        assertEquals("no distorted page scale", 1f, root.startScale)
+        assertEquals("half-screen route push", 0.5f, root.startOffsetFraction)
         assertEquals(1f, nested.startScale)
         assertEquals(1f, nested.startOffsetFraction)
         assertEquals(
