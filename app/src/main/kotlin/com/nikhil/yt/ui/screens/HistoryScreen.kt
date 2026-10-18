@@ -316,9 +316,7 @@ fun HistoryScreen(
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
             modifier = Modifier
         ) {
-            item(key = "capsule:feed-header") {
-                CapsuleCanvasHeader()
-            }
+
 
             item {
                 ChipsRow(
