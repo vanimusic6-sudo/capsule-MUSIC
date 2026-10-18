@@ -2,54 +2,36 @@ package com.nikhil.yt.ui.screens
 
 import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.dp
-import androidx.navigation.NavHostController
-import com.nikhil.yt.R
-import com.nikhil.yt.constants.AppBarHeight
-import com.nikhil.yt.ui.component.StandardHeaderTitle
-import androidx.compose.animation.core.animate
-import androidx.compose.animation.core.tween
-import com.nikhil.yt.ui.motion.CapsuleStandardEasing
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.navigation.NavHostController
 import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDeepLink
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
+import com.nikhil.yt.R
+import com.nikhil.yt.constants.AppBarHeight
+import com.nikhil.yt.ui.component.StandardHeaderTitle
 
 /**
  * Registers a destination that owns an opaque full-screen canvas.
@@ -85,28 +67,16 @@ internal fun NavGraphBuilder.routeComposable(
     val settingsNavigation =
         route == "settings" || route.startsWith("settings/") ||
             arrival.from == "settings" || arrival.from?.startsWith("settings/") == true
-    val showScrollAwayHeader = route in setOf("home", "library", "history", "stats")
+    // Main pages now render the greeting as the FIRST item of their real
+    // LazyColumn/LazyVerticalGrid. No route-owned floating header, no
+    // overscroll observer, custom offset or animation coroutine exists.
     CompositionLocalProvider(LocalNavBackStackEntry provides entry) {
         CapsuleRouteSurface {
-            if (showScrollAwayHeader) {
-                // Main pages own their chrome and scroll it away. Settings and
-                // other detail destinations do not create any header observer,
-                // spring or second layer.
-                RouteWithScrollAwayHeader(entry) {
-                    Box(
-                        modifier = if (settingsNavigation) Modifier else
-                            Modifier.destinationEntrance(motion, arrival.direction),
-                    ) {
-                        with(contentScope) { content(entry) }
-                    }
-                }
-            } else {
-                Box(
-                    modifier = if (settingsNavigation) Modifier else
-                        Modifier.destinationEntrance(motion, arrival.direction),
-                ) {
-                    with(contentScope) { content(entry) }
-                }
+            Box(
+                modifier = if (settingsNavigation) Modifier else
+                    Modifier.destinationEntrance(motion, arrival.direction),
+            ) {
+                with(contentScope) { content(entry) }
             }
         }
     }
@@ -160,127 +130,43 @@ val LocalCapsuleHeaderAccountImage = compositionLocalOf<String?> { null }
 val LocalCapsuleHeaderNavController = compositionLocalOf<NavHostController?> { null }
 
 /**
- * Independent viewport chrome owned by one NavBackStackEntry.
+ * Header as an ordinary first item INSIDE each main feed.
  *
- * It is NEVER an item in a LazyColumn and NEVER a fixed Activity topBar.
- * On scrolling down the first bar-height worth of consumed pixels shifts
- * the header away; scrolling up in the middle of the list does not make it
- * reappear. Only reaching the real top (unconsumed upwards gesture) reveals
- * the whole header. A single short tween smooths that final return.
+ * This composable has no background, scrolling state, animated visibility,
+ * nested-scroll interception or extra elevation/layer. Scrolling its list
+ * naturally carries the greeting/account/settings away and back, with no
+ * separate floating piece that can get stuck above the viewport.
  *
- * Animated state is read in Modifier.offset's placement lambda. The NavHost
- * destination and its whole LazyColumn do not have to recompose for each
- * animation frame. When the header is fully hidden, no updates occur.
+ * Caller supplies the LazyColumn/LazyVerticalGrid item, including a stable
+ * "capsule:feed-header" key. The page's existing window insets also apply.
  */
 @Composable
-private fun RouteWithScrollAwayHeader(
-    entry: NavBackStackEntry,
-    content: @Composable () -> Unit,
-) {
-    val headerHeight = AppBarHeight + with(LocalDensity.current) {
-        WindowInsets.systemBars.getTop(this).toDp()
-    }
-    val hiddenPx = with(LocalDensity.current) { headerHeight.toPx() }
-    var headerOffsetPx by remember(entry) { mutableFloatStateOf(0f) }
-    val scope = rememberCoroutineScope()
-    val revealJob = remember(entry) { arrayOfNulls<Job>(1) }
-    // No overscroll threshold: on phones a LazyColumn can reach the top
-    // without ever producing an additional 12/36dp of leftover drag.
-    // The old threshold permanently stranded the header above the display.
-    //
-    // Positive UNCONSUMED movement means the child reached its upper end.
-    // Reveal immediately, with one cancellable short motion. Ignore tiny
-    // negative bounce frames, and let only a real finger scroll cancel a
-    // reveal already in progress. There is no busy frame/scroll polling.
-    val hideNoiseFloorPx = with(LocalDensity.current) { 1.5.dp.toPx() }
-    val scrollAwayConnection = remember(entry, hiddenPx, scope, hideNoiseFloorPx) {
-        object : NestedScrollConnection {
-            override fun onPostScroll(
-                consumed: Offset,
-                available: Offset,
-                source: NestedScrollSource,
-            ): Offset {
-                if (available.y > 0f && consumed.y >= 0f && headerOffsetPx < 0f) {
-                    if (revealJob[0]?.isActive != true) {
-                        revealJob[0] = scope.launch {
-                            animate(
-                                initialValue = headerOffsetPx,
-                                targetValue = 0f,
-                                animationSpec = tween(220, easing = CapsuleStandardEasing),
-                            ) { value, _ -> headerOffsetPx = value }
-                        }
-                    }
-                } else if (consumed.y < -hideNoiseFloorPx) {
-                    // An inertial bounce must not cancel the reveal started
-                    // at the true top. A deliberate opposite finger gesture
-                    // cancels it immediately, following the finger again.
-                    val userGesture = source == NestedScrollSource.UserInput
-                    if (userGesture && revealJob[0]?.isActive == true) {
-                        revealJob[0]?.cancel()
-                        revealJob[0] = null
-                    }
-                    if (revealJob[0]?.isActive != true) {
-                        headerOffsetPx = (headerOffsetPx + consumed.y)
-                            .coerceIn(-hiddenPx, 0f)
-                    }
-                }
-                return Offset.Zero
-            }
+fun CapsuleCanvasHeader() {
+    val navController = LocalCapsuleHeaderNavController.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(AppBarHeight)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        StandardHeaderTitle(
+            accountName = LocalCapsuleHeaderAccountName.current,
+            accountImageUrl = LocalCapsuleHeaderAccountImage.current,
+            onAccountClick = { navController?.navigate("settings/account") },
+        )
+        IconButton(
+            onClick = { navController?.navigate("settings") },
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.settings),
+                contentDescription = stringResource(R.string.settings),
+                modifier = Modifier.size(24.dp),
+            )
         }
     }
-    Box(
-        modifier = Modifier.fillMaxSize().nestedScroll(scrollAwayConnection),
-    ) {
-        content()
-        val navController = LocalCapsuleHeaderNavController.current
-        CapsuleStandaloneHeader(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset { IntOffset(0, headerOffsetPx.toInt()) },
-            onAccountClick = { navController?.navigate("settings/account") },
-            onSettingsClick = { navController?.navigate("settings") },
-        )
-    }
 }
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun CapsuleStandaloneHeader(
-    modifier: Modifier,
-    onAccountClick: () -> Unit,
-    onSettingsClick: () -> Unit,
-) {
-    TopAppBar(
-        modifier = modifier,
-        windowInsets = WindowInsets.safeDrawing.only(
-            WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
-        ),
-        title = {
-            StandardHeaderTitle(
-                accountName = LocalCapsuleHeaderAccountName.current,
-                accountImageUrl = LocalCapsuleHeaderAccountImage.current,
-                onAccountClick = onAccountClick,
-            )
-        },
-        actions = {
-            IconButton(onClick = onSettingsClick) {
-                Icon(
-                    painter = painterResource(R.drawable.settings),
-                    contentDescription = stringResource(R.string.settings),
-                    modifier = Modifier.size(24.dp),
-                )
-            }
-        },
-        colors = TopAppBarDefaults.topAppBarColors(
-            // Opaque header surface prevents list artwork/text showing
-            // through the greeting while the chrome slides out.
-            containerColor = MaterialTheme.colorScheme.surface,
-            scrolledContainerColor = MaterialTheme.colorScheme.surface,
-            titleContentColor = MaterialTheme.colorScheme.onSurface,
-        ),
-    )
-}
-
 
 @Composable
 internal fun CapsuleRouteSurface(content: @Composable () -> Unit) {
