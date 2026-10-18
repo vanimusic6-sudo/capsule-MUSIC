@@ -552,8 +552,10 @@ private fun SettingsModeSegmentedToggle(
     val position = animateFloatAsState(
         targetValue = if (advancedSettings) 1f else 0f,
         animationSpec = spring(
-            dampingRatio = 0.86f,
-            stiffness = 260f,
+            // Same soft, near-critically damped feel as the small switches:
+            // one draw-only spring handles the indicator's width and position.
+            dampingRatio = 0.94f,
+            stiffness = 220f,
             visibilityThreshold = 0.001f,
         ),
         label = "settingsModeRoll",
