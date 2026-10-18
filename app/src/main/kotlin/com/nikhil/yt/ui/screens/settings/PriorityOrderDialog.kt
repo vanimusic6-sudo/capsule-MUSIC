@@ -53,6 +53,7 @@ import androidx.compose.ui.window.Dialog
 import com.nikhil.yt.R
 import com.nikhil.yt.ui.motion.capsuleDialogEntrance
 import com.nikhil.yt.ui.motion.CapsuleMotionDialog
+import com.nikhil.yt.ui.motion.LocalCapsuleModalClosing
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
@@ -135,6 +136,7 @@ internal fun PriorityOrderDialog(
         onDismiss()
     }
     CapsuleMotionDialog(onDismissRequest = dismissAfterSave) { closeModal ->
+        val dialogClosing = LocalCapsuleModalClosing.current
         // The previous dialog could exceed the phone's available height:
         // its 430dp list plus note and buttons pushed Done/Reset almost
         // underneath the system navigation bar (clearly visible at 29s).
@@ -190,15 +192,16 @@ internal fun PriorityOrderDialog(
                                 sublabel = sublabel(id),
                                 showRawId = showRawId,
                                 isDragging = isDragging,
-                                dragHandleModifier = Modifier.draggableHandle(
-                                    onDragStarted = {
-                                        isReordering = true
-                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    },
-                                    onDragStopped = {
-                                        isReordering = false
-                                    },
-                                ),
+                                dragHandleModifier =
+                                    if (dialogClosing) Modifier else Modifier.draggableHandle(
+                                        onDragStarted = {
+                                            isReordering = true
+                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        },
+                                        onDragStopped = {
+                                            isReordering = false
+                                        },
+                                    ),
                             )
                         }
                     }
@@ -219,7 +222,7 @@ internal fun PriorityOrderDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     TextButton(
-                        enabled = !isReordering,
+                        enabled = !isReordering && !dialogClosing,
                         onClick = {
                             val reset = onReset()
                             orderedIds = reset
@@ -230,7 +233,7 @@ internal fun PriorityOrderDialog(
                         Text(stringResource(R.string.audio_client_priority_reset))
                     }
                     TextButton(
-                        enabled = !isReordering,
+                        enabled = !isReordering && !dialogClosing,
                         onClick = { closeModal(dismissAfterSave) },
                     ) {
                         Text(stringResource(R.string.audio_client_priority_done))
