@@ -884,7 +884,7 @@ fun AppearanceSettings(
                             false
                     },
                     buttons = {
-                    val closeDialog = LocalCapsuleModalClose.current
+                        val closeDialog = LocalCapsuleModalClose.current
                         TextButton(
                             onClick = {
                                 tempSensitivity =
