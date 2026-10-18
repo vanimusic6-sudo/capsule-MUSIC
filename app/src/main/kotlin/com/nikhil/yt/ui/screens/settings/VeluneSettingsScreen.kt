@@ -62,7 +62,8 @@ import com.nikhil.yt.viewmodels.HomeViewModel
 import androidx.compose.ui.platform.LocalContext
 import com.nikhil.yt.App.Companion.forgetAccount
 import com.nikhil.yt.utils.rememberPreference
-import com.nikhil.yt.ui.motion.capsuleDialogEntrance
+import com.nikhil.yt.ui.motion.LocalCapsuleModalClose
+import com.nikhil.yt.ui.component.DefaultDialog
 import com.nikhil.yt.constants.InnerTubeCookieKey
 import com.nikhil.yt.constants.SettingsAdvancedModeKey
 import com.nikhil.yt.constants.SettingsAdvancedWarningSeenKey
@@ -470,48 +471,48 @@ fun VeluneSettingsScreen(
         }
 
         if (showAdvancedWarning) {
-            AlertDialog(
-                modifier = Modifier.capsuleDialogEntrance(),
-                onDismissRequest = {
-                    showAdvancedWarning = false
-                    onAdvancedWarningSeenChange(true)
-                },
+            val dismissWarning = {
+                showAdvancedWarning = false
+                onAdvancedWarningSeenChange(true)
+            }
+            DefaultDialog(
+                onDismiss = dismissWarning,
                 title = { Text(stringResource(R.string.capsule_advanced_mode_warning_title)) },
-                text = { Text(stringResource(R.string.capsule_advanced_mode_warning_body)) },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            showAdvancedWarning = false
-                            onAdvancedWarningSeenChange(true)
-                        },
-                    ) {
+                buttons = {
+                    val closeDialog = LocalCapsuleModalClose.current
+                    TextButton(onClick = { closeDialog(dismissWarning) }) {
                         Text(stringResource(R.string.capsule_advanced_mode_warning_confirm))
                     }
                 },
-            )
+            ) {
+                Text(stringResource(R.string.capsule_advanced_mode_warning_body))
+            }
         }
 
         if (showLogoutDialog) {
-            AlertDialog(
-                modifier = Modifier.capsuleDialogEntrance(),
-                onDismissRequest = { showLogoutDialog = false },
+            DefaultDialog(
+                onDismiss = { showLogoutDialog = false },
                 title = { Text(stringResource(R.string.capsule_settings_sign_out)) },
-                text = { Text(stringResource(R.string.capsule_settings_sign_out_confirm)) },
-                confirmButton = {
+                buttons = {
+                    val closeDialog = LocalCapsuleModalClose.current
                     TextButton(onClick = {
-                        showLogoutDialog = false
-                        onInnerTubeCookieChange("")
-                        forgetAccount(context)
+                        closeDialog {
+                            showLogoutDialog = false
+                            onInnerTubeCookieChange("")
+                            forgetAccount(context)
+                        }
                     }) {
                         Text(stringResource(R.string.capsule_settings_sign_out))
                     }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showLogoutDialog = false }) {
+                    TextButton(onClick = {
+                        closeDialog { showLogoutDialog = false }
+                    }) {
                         Text(stringResource(R.string.capsule_settings_cancel))
                     }
-                }
-            )
+                },
+            ) {
+                Text(stringResource(R.string.capsule_settings_sign_out_confirm))
+            }
         }
     }
 }
