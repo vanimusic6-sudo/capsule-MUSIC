@@ -6,9 +6,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Capsule main chrome must be fixed, opaque, and owned exactly once by
- * Scaffold.topBar (Spotify model). Feeds scroll UNDER it, without reserving
- * phantom space or composing duplicate greeting rows.
+ * Capsule main chrome is fixed inside each top-level destination, not an
+ * independently animated Activity bar. NavHost must move page and header
+ * together when Settings opens/closes, while their feed does not scroll it
+ * away. Colors must match the underlying screen, including Home's wash.
  */
 class HomeScrollableHeaderTest {
     private fun source(relative: String) = listOf(
@@ -16,26 +17,47 @@ class HomeScrollableHeaderTest {
         File("app/src/main/kotlin/com/nikhil/yt/$relative"),
     ).first { it.isFile }.readText()
 
-    @Test fun activityOwnsOnePinnedHeaderForEveryMainRouteOnly() {
+    @Test fun navDestinationOwnsPinnedHeaderAndSharedSettingsTransition() {
         val activity = source("MainActivity.kt")
-        val topBar = activity.substringAfter("Scaffold(\n                                topBar = {")
+        val host = source("ui/screens/CapsuleRouteSurface.kt")
+        val transition = source("ui/screens/ScreenTransitions.kt")
+        val topBar = activity.substringAfter("Scaffold(\\n                                topBar = {")
             .substringBefore("bottomBar = {")
-        assertTrue(topBar.contains("if (currentRoute in topLevelScreens && !active)"))
-        assertTrue(topBar.contains("CapsulePinnedHeader()"))
-        assertTrue(topBar.contains("TopSearch("))
-        assertFalse(topBar.contains("CapsuleCanvasHeader()"))
-        assertFalse(topBar.contains("rememberInfiniteTransition"))
+        assertTrue("search overlay remains in Scaffold", topBar.contains("TopSearch("))
+        assertFalse("Activity bar would pop independently on Settings Back",
+            activity.contains("CapsulePinnedHeader()"))
+        assertTrue("main destination draws header inside NavHost scene",
+            host.contains("if (mainDestination && LocalCapsulePinnedHeaderVisible.current)"))
+        assertTrue(host.contains("CapsulePinnedHeader(route = route)"))
+        assertTrue(host.contains("CapsuleRouteSurface {"))
+        assertTrue(host.contains("Box(modifier = Modifier.fillMaxSize())"))
+        assertTrue("Settings transition must not be replaced with a second independent animation",
+            transition.contains("SettingsRouteMotion.ROOT"))
+        assertTrue(transition.contains("if (isPop) width / 2 else -width / 2"))
+        assertTrue("search must suppress the pinned background and buttons",
+            activity.contains("LocalCapsulePinnedHeaderVisible provides !active"))
     }
 
-    @Test fun headerHasOpaqueBackgroundAndNoScrollOrAnimatedState() {
+    @Test fun headerBackgroundMatchesUnderlyingRouteAndHasNoScrollAnimations() {
         val host = source("ui/screens/CapsuleRouteSurface.kt")
-        val header = host.substringAfter("fun CapsulePinnedHeader()")
+        val home = source("ui/screens/HomeScreen.kt")
+        val library = source("ui/screens/library/LibraryScreen.kt")
+        val header = host.substringAfter("fun CapsulePinnedHeader(route: String)")
             .substringBefore("internal fun CapsuleRouteSurface(")
-        assertTrue(header.contains(".background(MaterialTheme.colorScheme.surface)"))
+        assertTrue(header.contains("if (isHome) StandardChrome.background else MaterialTheme.colorScheme.surface"))
+        assertTrue(header.contains(".background(base)"))
         assertTrue(header.contains(".statusBarsPadding()"))
         assertTrue(header.contains(".height(AppBarHeight)"))
         assertTrue(header.contains("StandardHeaderTitle("))
         assertTrue(header.contains("R.drawable.settings"))
+        // Home's pinned strip paints precisely the same 430dp tonal wash
+        // over exactly the same neutral base as the Home canvas.
+        assertTrue(home.contains(".background(StandardChrome.background)"))
+        assertTrue(home.contains(".height(430.dp)"))
+        assertTrue(header.contains("0f to tonalStart.copy(alpha = 0.30f)"))
+        assertTrue(header.contains("0.42f to tonalMiddle.copy(alpha = 0.14f)"))
+        assertTrue(header.contains("endY = 430.dp.toPx()"))
+        assertTrue(library.contains("val surfaceColor = MaterialTheme.colorScheme.surface"))
         assertFalse(header.contains("AnimatedVisibility("))
         assertFalse(header.contains("animateFloatAsState("))
         assertFalse(header.contains(".nestedScroll("))
@@ -75,6 +97,13 @@ class HomeScrollableHeaderTest {
         assertTrue(insets.contains("top = if (currentRoute in topLevelScreens) AppBarHeight else 0.dp"))
         assertFalse(insets.contains("WindowInsets(top = AppBarHeight"))
         assertTrue(activity.contains("val visibleStatusBarInsets = WindowInsets.statusBars"))
+        // Under NavHost transition, the global route changes before the
+        // departing feed leaves the screen. Its own top inset MUST stay fixed.
+        val host = source("ui/screens/CapsuleRouteSurface.kt")
+        assertTrue(host.contains("parentInsets.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)"))
+        assertTrue(host.contains(".add(WindowInsets.statusBars.only(WindowInsetsSides.Top))"))
+        assertTrue(host.contains(".add(WindowInsets(top = AppBarHeight))"))
+        assertTrue(host.contains("LocalPlayerAwareWindowInsets provides destinationInsets"))
     }
 
     @Test fun sameModernGreetingIsUsedOnAllPinnedTabs() {
