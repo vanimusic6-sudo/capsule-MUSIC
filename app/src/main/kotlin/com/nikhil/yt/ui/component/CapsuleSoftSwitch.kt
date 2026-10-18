@@ -12,6 +12,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import kotlin.math.PI
+import kotlin.math.sin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.semantics.Role
@@ -38,8 +40,8 @@ internal fun CapsuleSoftSwitch(
     val motion = animateFloatAsState(
         targetValue = if (checked) 1f else 0f,
         animationSpec = spring(
-            dampingRatio = 0.94f,
-            stiffness = 220f,
+            dampingRatio = 0.72f,
+            stiffness = 680f,
             visibilityThreshold = 0.001f,
         ),
         label = "capsuleSwitchSlide",
@@ -57,6 +59,7 @@ internal fun CapsuleSoftSwitch(
             ),
     ) {
         val amount = motion.value.coerceIn(0f, 1f)
+        val physicalPosition = motion.value.coerceIn(-0.075f, 1.075f)
         val enabledAlpha = if (isEnabled) 1f else 0.38f
         val background = lerp(
             scheme.surfaceContainerHighest,
@@ -80,10 +83,20 @@ internal fun CapsuleSoftSwitch(
                 style = Stroke(width = 2.dp.toPx()),
             )
         }
-        // Position and radius use ONE interpolant, so neither snaps ahead
-        // when checked state is changed mid-spring or rapidly double-tapped.
-        val x = (16f + 20f * amount).dp.toPx()
-        val radius = (8f + 4f * amount).dp.toPx()
-        drawCircle(color = thumbColor, radius = radius, center = Offset(x, size.height / 2f))
+        // The same QUICK under-damped spring briefly passes the destination.
+        // Let its position overshoot by at most 1.5dp; don't clamp the
+        // physics at 0/1 or the user can't feel its return impulse.
+        // Squash the thumb very slightly at peak travel, with NO second
+        // animation/clock. Interruption mid-flight stays continuous.
+        val x = (16f + 20f * physicalPosition).dp.toPx()
+        val compression = sin(PI * amount.toDouble()).toFloat().coerceAtLeast(0f)
+        val thumbRadius = 8f + 4f * amount
+        val horizontalRadiusPx = (thumbRadius + 1.35f * compression).dp.toPx()
+        val verticalRadiusPx = (thumbRadius - 0.65f * compression).dp.toPx()
+        drawOval(
+            color = thumbColor,
+            topLeft = Offset(x - horizontalRadiusPx, size.height / 2f - verticalRadiusPx),
+            size = Size(horizontalRadiusPx * 2f, verticalRadiusPx * 2f),
+        )
     }
 }
