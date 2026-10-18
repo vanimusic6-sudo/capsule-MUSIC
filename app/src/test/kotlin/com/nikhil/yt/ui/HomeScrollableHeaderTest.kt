@@ -6,9 +6,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The shared greeting/settings header is neither a LazyColumn row nor a
- * permanently pinned outer Scaffold app bar. It belongs to each NavHost
- * destination, alongside the list, and leaves when content scrolls down.
+ * Regression guards: greeting/account/settings are the first native item
+ * of each main page's existing scrolling surface, never a separate animated
+ * overlay that must guess when a fling has reached the top.
  */
 class HomeScrollableHeaderTest {
     private fun source(relative: String) = listOf(
@@ -16,66 +16,81 @@ class HomeScrollableHeaderTest {
         File("app/src/main/kotlin/com/nikhil/yt/$relative"),
     ).first { it.isFile }.readText()
 
-    @Test fun homeContentNoLongerHoldsHeaderInsideItsLazyList() {
+    @Test fun homeHeaderIsFirstFeedItemWithNoIndependentScrollOwner() {
         val home = source("ui/screens/HomeScreen.kt")
-        assertFalse(home.contains("item(key = \"home:header\""))
-        assertTrue(home.contains("item(key = \"home:quick-hero\""))
+        val start = home.substringAfter("LazyColumn(\n                state = lazylistState")
+            .substringBefore("quickPicks?.takeIf")
+        assertTrue(start.contains("item(key = \"capsule:feed-header\")"))
+        assertTrue(start.contains("CapsuleCanvasHeader()"))
         assertTrue(home.contains("contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()"))
         assertFalse(home.contains("stickyHeader("))
-        assertFalse(home.contains("StandardHeaderTitle("))
     }
 
-    @Test fun mainScreensUseTheirOwnSeparateHeaderAndActivityOnlySearch() {
-        val activity = source("MainActivity.kt")
+    @Test fun everyLibraryLayoutPutsCanvasHeaderAheadOfFilter() {
+        listOf("LibraryMixScreen", "LibraryPlaylistsScreen", "LibrarySongsScreen",
+               "LibraryAlbumsScreen", "LibraryArtistsScreen").forEach { name ->
+            val source = source("ui/screens/library/$name.kt")
+            val header = source.indexOf("key = \"capsule:feed-header\"")
+            val filter = source.indexOf("key = \"filter\"")
+            assertTrue("$name: greeting before filter chips", header in 0 until filter)
+            assertTrue("$name: common greeting", source.contains("CapsuleCanvasHeader()"))
+            if (name != "LibrarySongsScreen") {
+                assertTrue("$name: grid header spans the entire width",
+                    source.contains("key = \"capsule:feed-header\",\n" +
+                        "                        span = { GridItemSpan(maxLineSpan) }"))
+            }
+        }
+    }
+
+    @Test fun historyAndStatsAlsoScrollTheirHeaderWithTheFeed() {
+        listOf("HistoryScreen", "StatsScreen").forEach { name ->
+            val source = source("ui/screens/$name.kt")
+            val list = source.substringAfter("LazyColumn(")
+            val header = list.indexOf("item(key = \"capsule:feed-header\")")
+            assertTrue("$name starts with a real header row", header >= 0)
+            assertTrue("$name header appears before content rows", header < list.indexOf("item {"))
+        }
+    }
+
+    @Test fun routeHostHasNoFloatingHeaderAnimationsOrScrollInterception() {
         val routes = source("ui/screens/CapsuleRouteSurface.kt")
-        assertFalse(activity.contains("if (shouldShowTopBar"))
-        assertFalse(activity.contains("var shouldShowTopBar"))
+        val activity = source("MainActivity.kt")
+        assertTrue(routes.contains("fun CapsuleCanvasHeader()"))
+        assertTrue(routes.contains("StandardHeaderTitle("))
+        assertTrue(routes.contains("LocalCapsuleHeaderNavController.current"))
+        assertFalse(routes.contains("RouteWithScrollAwayHeader"))
+        assertFalse(routes.contains("scrollAwayConnection"))
+        assertFalse(routes.contains("headerOffsetPx"))
+        assertFalse(routes.contains("NestedScrollConnection"))
+        assertFalse(routes.contains(".nestedScroll("))
+        assertFalse(routes.contains("TopAppBar("))
+        assertFalse(routes.contains("animateFloatAsState"))
+        assertFalse(routes.contains("rememberCoroutineScope"))
+        assertFalse(routes.contains("WindowInsets.systemBars"))
         assertTrue(activity.contains("LocalCapsuleHeaderNavController provides navController"))
         assertTrue(activity.contains("LocalCapsuleHeaderAccountName provides headerAccountName"))
-        assertTrue(activity.contains("if (currentRoute in topLevelScreens) Modifier"))
-        assertTrue(routes.contains("showScrollAwayHeader"))
-        assertTrue(routes.contains("route in setOf(\"home\", \"library\", \"history\", \"stats\")"))
-        assertTrue(routes.contains("private fun CapsuleStandaloneHeader("))
-        assertTrue(routes.contains("RouteWithScrollAwayHeader(entry)"))
-        assertTrue(routes.contains(".nestedScroll(scrollAwayConnection)"))
-        assertTrue(routes.contains("headerOffsetPx = (headerOffsetPx + consumed.y)"))
-        assertTrue(routes.contains("available.y > 0f"))
-        assertTrue(routes.contains("headerOffsetPx.toInt()"))
-        assertTrue(routes.contains("revealJob[0] = scope.launch"))
-        assertTrue(routes.contains("available.y > 0f && consumed.y >= 0f && headerOffsetPx < 0f"))
-        assertFalse(routes.contains("stickyHeader("))
     }
 
-    @Test fun headerReturnsAtRealListTopWithoutExtraOverscroll() {
-        val routes = source("ui/screens/CapsuleRouteSurface.kt")
-        assertTrue(routes.contains("available.y > 0f && consumed.y >= 0f && headerOffsetPx < 0f"))
-        assertTrue(routes.contains("revealJob[0] = scope.launch"))
-        assertTrue(routes.contains("animationSpec = tween(220, easing = CapsuleStandardEasing)"))
-        assertTrue(routes.contains("val hideNoiseFloorPx"))
-        assertTrue(routes.contains("source == NestedScrollSource.UserInput"))
-        assertTrue(routes.contains("revealJob[0]?.cancel()"))
-        assertTrue(routes.contains("headerOffsetPx = (headerOffsetPx + consumed.y)"))
-        assertTrue(routes.contains("headerOffsetPx.toInt()"))
-        // Specifically forbid the previous two regressions: a 12dp finger
-        // threshold and a 36dp fling threshold blocked natural return.
-        assertFalse(routes.contains("pullThresholdPx"))
-        assertFalse(routes.contains("positiveOverscroll"))
-        // Retain an opaque small header, preventing feed text drawing through.
-        assertTrue(routes.contains("containerColor = MaterialTheme.colorScheme.surface"))
-        assertTrue(routes.contains("scrolledContainerColor = MaterialTheme.colorScheme.surface"))
-        assertFalse(routes.contains("containerColor = androidx.compose.ui.graphics.Color.Transparent"))
-    }
-
-    @Test fun greetingIsSharedAndNeverShowsOldCapsuleTextOrAvatar() {
-        val activity = source("MainActivity.kt")
+    @Test fun greetingRemainsModernOnEveryPageAndNeverReturnsTheOldLogo() {
         val chrome = source("ui/component/StandardChrome.kt")
-        val routes = source("ui/screens/CapsuleRouteSurface.kt")
-        assertFalse(activity.contains("LaunchedEffect(navBackStackEntry) {\n                        shouldShowTopBar"))
-        assertTrue(routes.contains("StandardHeaderTitle("))
         assertTrue(chrome.contains("val dayPeriod = rememberHomeDayPeriod()"))
         assertTrue(chrome.contains("val title = stringResource(dayPeriod.greetingId)"))
         assertTrue(chrome.contains("val guestIcon = homeGuestIcon("))
         assertFalse(chrome.contains("stringResource(R.string.app_name)"))
         assertFalse(chrome.contains("showHomeGreeting"))
+    }
+
+    @Test fun listenTogetherAndSwitchTouchSurfacesDoNotDrawPressedScrims() {
+        val together = source("ui/screens/settings/MusicTogetherScreen.kt")
+        val softSwitch = source("ui/component/CapsuleSoftSwitch.kt")
+        val row = together.substringAfter("private fun ToggleRow(")
+            .substringBefore("private fun StatusCard(")
+        assertTrue(row.contains("CapsuleSoftSwitch("))
+        assertTrue(row.contains("indication = null"))
+        assertFalse(row.contains("SwitchDefaults"))
+        assertFalse(row.contains("R.drawable.close"))
+        assertTrue(softSwitch.contains("indication = null"))
+        assertTrue(softSwitch.contains("interactionSource = pressSource"))
+        assertTrue(softSwitch.contains("role = Role.Switch"))
     }
 }
