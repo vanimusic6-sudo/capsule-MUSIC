@@ -372,7 +372,8 @@ fun TextFieldDialog(
         title = title,
         contentScrollable = true,
         buttons = {
-            TextButton(onClick = onDismiss) {
+            val animateClose = LocalCapsuleModalClose.current
+            TextButton(onClick = { animateClose(onDismiss) }) {
                 Text(text = stringResource(android.R.string.cancel))
             }
 
@@ -382,12 +383,14 @@ fun TextFieldDialog(
             TextButton(
                 enabled = isValid,
                 onClick = {
-                    if (textFields != null && onDoneMultiple != null) {
-                        onDoneMultiple(textFields.map { it.second.text })
-                    } else {
-                        onDone(legacyFieldState.value.text)
+                    animateClose {
+                        if (textFields != null && onDoneMultiple != null) {
+                            onDoneMultiple(textFields.map { it.second.text })
+                        } else {
+                            onDone(legacyFieldState.value.text)
+                        }
+                        onDismiss()
                     }
-                    onDismiss()
                 },
             ) {
                 Text(text = stringResource(android.R.string.ok))
@@ -408,8 +411,10 @@ fun TextFieldDialog(
                         keyboardActions = KeyboardActions(
                             onDone = {
                                 if (onDoneMultiple != null) {
-                                    onDoneMultiple(textFields.map { it.second.text })
-                                    onDismiss()
+                                    animateClose {
+                                        onDoneMultiple(textFields.map { it.second.text })
+                                        onDismiss()
+                                    }
                                 }
                             },
                         ),
@@ -506,15 +511,18 @@ fun EditPlaylistDialog(
         title = { Text(text = stringResource(R.string.edit_playlist)) },
         contentScrollable = true,
         buttons = {
-            TextButton(onClick = onDismiss) {
+            val animateClose = LocalCapsuleModalClose.current
+            TextButton(onClick = { animateClose(onDismiss) }) {
                 Text(text = stringResource(android.R.string.cancel))
             }
             TextButton(
                 enabled = canSave,
                 onClick = {
                     keyboardController?.hide()
-                    onSave(nameField.text.trim(), thumbnailUrl?.takeUnless { it.isBlank() })
-                    onDismiss()
+                    animateClose {
+                        onSave(nameField.text.trim(), thumbnailUrl?.takeUnless { it.isBlank() })
+                        onDismiss()
+                    }
                 },
             ) {
                 Text(text = stringResource(R.string.save))
