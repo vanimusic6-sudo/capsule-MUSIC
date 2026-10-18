@@ -235,15 +235,14 @@ fun SwitchPreference(
         description = description,
         icon = icon,
         trailingContent = {
-            // Preserve Material3's native thumb size/position animation; a
-            // thumb icon forced both states to use the larger selected size.
-            // No checked tick, no unchecked X, no custom halo on press.
+            // Material3 Switch does not expose a motion spec for its thumb.
+            // This visually compatible draw-only surface gives the thumb and
+            // track a softer common spring; it never renders a check icon.
             CompositionLocalProvider(LocalRippleConfiguration provides null) {
-                Switch(
+                CapsuleSoftSwitch(
                     checked = checked,
                     onCheckedChange = onCheckedChange,
-                    enabled = isEnabled,
-                    thumbContent = null,
+                    isEnabled = isEnabled,
                 )
             }
         },
