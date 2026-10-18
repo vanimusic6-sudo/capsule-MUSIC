@@ -397,6 +397,9 @@ fun TextFieldDialog(
             }
         },
     ) {
+        // The content lambda and buttons lambda have separate scopes.
+        // The keyboard Done handler must capture its OWN provided closer.
+        val animateClose = LocalCapsuleModalClose.current
         Column {
             if (textFields != null) {
                 textFields.forEachIndexed { index, (label, value) ->
