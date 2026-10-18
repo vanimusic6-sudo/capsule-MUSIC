@@ -73,8 +73,8 @@ object ScreenTransitions {
                     initialOffsetX = { width -> direction * width / 2 },
                     animationSpec = tween(ROOT_ENTER_MS, easing = NavigationEase),
                 ) + fadeIn(
-                    initialAlpha = 0.02f,
-                    animationSpec = tween(ROOT_ENTER_MS, easing = NavigationEase),
+                    initialAlpha = 0.82f,
+                    animationSpec = tween(130, easing = NavigationEase),
                 )
             }
             SettingsRouteMotion.NESTED ->
@@ -84,8 +84,8 @@ object ScreenTransitions {
                     initialOffsetX = { width -> if (isPop) -width / 2 else width / 2 },
                     animationSpec = tween(NESTED_ENTER_MS, easing = NavigationEase),
                 ) + fadeIn(
-                    initialAlpha = 0.02f,
-                    animationSpec = tween(NESTED_ENTER_MS, easing = NavigationEase),
+                    initialAlpha = 0.82f,
+                    animationSpec = tween(110, easing = NavigationEase),
                 )
         }
 
@@ -101,7 +101,7 @@ object ScreenTransitions {
                     animationSpec = tween(ROOT_EXIT_MS, easing = ExitEase),
                 ) + fadeOut(
                     targetAlpha = 0f,
-                    animationSpec = tween(ROOT_EXIT_MS, easing = ExitEase),
+                    animationSpec = tween(110, easing = ExitEase),
                 )
             }
             SettingsRouteMotion.NESTED ->
@@ -112,7 +112,7 @@ object ScreenTransitions {
                     // Old labels dissolve throughout the movement rather than
                     // leaving two readable settings pages side by side.
                     targetAlpha = 0f,
-                    animationSpec = tween(NESTED_EXIT_MS, easing = ExitEase),
+                    animationSpec = tween(85, easing = ExitEase),
                 )
         }
 }

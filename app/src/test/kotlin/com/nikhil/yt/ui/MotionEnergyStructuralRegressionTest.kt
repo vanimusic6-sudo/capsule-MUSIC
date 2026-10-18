@@ -72,13 +72,16 @@ class MotionEnergyStructuralRegressionTest {
         assertTrue(preference.contains("CapsuleSoftSwitch("))
         assertFalse(preference.contains("thumbContent = if (checked)"))
         assertFalse(preference.contains("R.drawable.check"))
-        assertTrue(softSwitch.contains("dampingRatio = 0.94f"))
-        assertTrue(softSwitch.contains("stiffness = 220f"))
+        assertTrue(softSwitch.contains("dampingRatio = 0.72f"))
+        assertTrue(softSwitch.contains("stiffness = 680f"))
         assertTrue(softSwitch.contains("val motion = animateFloatAsState("))
         assertTrue(softSwitch.contains("val amount = motion.value.coerceIn(0f, 1f)"))
         assertTrue(softSwitch.contains("role = Role.Switch"))
-        assertTrue(softSwitch.contains("16f + 20f * amount"))
+        assertTrue(softSwitch.contains("16f + 20f * physicalPosition"))
         assertTrue(softSwitch.contains("8f + 4f * amount"))
+        assertTrue(softSwitch.contains("drawOval("))
+        assertTrue(softSwitch.contains("val compression = sin("))
+        assertTrue(softSwitch.contains("physicalPosition = motion.value.coerceIn(-0.075f, 1.075f)"))
         assertTrue(softSwitch.contains(".minimumInteractiveComponentSize()"))
         assertFalse(softSwitch.contains("rememberInfiniteTransition"))
     }
@@ -134,6 +137,17 @@ class MotionEnergyStructuralRegressionTest {
     }
 
     @Test
+    fun rootTransitionPreventsTwoReadableSettingsScreensOverlapping() {
+        val routes = source("screens/ScreenTransitions.kt")
+        assertTrue(routes.contains("initialAlpha = 0.82f"))
+        assertTrue(routes.contains("animationSpec = tween(110, easing = ExitEase)"))
+        assertTrue(routes.contains("animationSpec = tween(85, easing = ExitEase)"))
+        assertTrue(routes.contains("animationSpec = tween(130, easing = NavigationEase)"))
+        assertTrue(routes.contains("animationSpec = tween(110, easing = NavigationEase)"))
+        assertFalse(routes.contains("initialAlpha = 0.02f"))
+    }
+
+    @Test
     fun settingsArchiveTuneBoundaryMatchesHalfWidthAndCrossFade() {
         val routes = source("screens/ScreenTransitions.kt")
         assertTrue(routes.contains("SettingsRouteMotion.NESTED"))
@@ -157,11 +171,17 @@ class MotionEnergyStructuralRegressionTest {
         val prefs = source("component/Preference.kt")
         assertTrue(helper.contains("parentProgress ?: localProgress"))
         assertTrue(helper.contains("LocalCapsuleModalExit.current"))
-        assertTrue(helper.contains("alpha = (1f - leaving).coerceIn(0f, 1f)"))
-        assertTrue(helper.contains("leaving * 0.014f"))
+        assertTrue(helper.contains("alpha = departureAlpha"))
+        assertTrue(helper.contains("down * 21f"))
+        assertTrue(helper.contains("val lift = -2.5f"))
+        assertTrue(helper.contains("down * 0.022f"))
+        val settings = source("screens/settings/VeluneSettingsScreen.kt")
+        assertTrue(settings.contains("val closeDialog = LocalCapsuleModalClose.current"))
+        assertTrue(settings.contains("DefaultDialog("))
+        assertFalse(settings.contains("AlertDialog("))
         assertTrue(modal.contains("exitProgress.animateTo("))
         assertTrue(modal.contains("targetValue = 1f"))
-        assertTrue(modal.contains("durationMillis = 190"))
+        assertTrue(modal.contains("durationMillis = 185"))
         assertFalse(modal.contains("targetValue = 0f,"))
         assertTrue(modal.contains("LocalCapsuleModalExit provides exitProgress"))
         assertTrue(dialog.contains("CapsuleMotionDialog("))
