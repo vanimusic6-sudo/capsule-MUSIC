@@ -8,6 +8,8 @@
 
 package com.nikhil.yt.ui.screens
 
+// Natural feed header: moves with content, not via a floating offset.
+
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.layout.offset
@@ -330,6 +332,10 @@ fun StatsScreen(
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
             modifier = Modifier
         ) {
+            item(key = "capsule:feed-header") {
+                CapsuleCanvasHeader()
+            }
+
             item {
                 Spacer(modifier = Modifier.height(10.dp))
                 ChoiceChipsRow(
