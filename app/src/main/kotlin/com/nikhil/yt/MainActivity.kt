@@ -69,6 +69,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.systemBarsIgnoringVisibility
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -1041,6 +1042,14 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
+                    // For main feeds the greeting is now the first real item
+                    // in the list. Reserve ONLY a *visible* status bar above it.
+                    // systemBarsIgnoringVisibility preserved a tall empty
+                    // notch/status region even when the bar was hidden,
+                    // producing the black band shown in the screenshot.
+                    // Detail/player screens keep their stable ignoringVisibility
+                    // geometry so immersive playback does not jump.
+                    val visibleStatusBarInsets = WindowInsets.statusBars
                     val playerAwareWindowInsets =
                         remember(
                             useRail,
@@ -1048,6 +1057,7 @@ class MainActivity : ComponentActivity() {
                             shouldShowNavigationBar,
                             playerBottomSheetState.isDismissed,
                             navVisibleHeight,
+                            currentRoute,
                         ) {
                             var bottom = bottomInset
                             if (shouldShowNavigationBar && !useRail) bottom += getBottomNavPadding()
@@ -1055,13 +1065,20 @@ class MainActivity : ComponentActivity() {
                                 bottom += MiniPlayerHeight
                                 bottom += MiniPlayerBottomSpacing
                             }
-                            windowsInsets
-                                .only((if(useRail) {
-                                    WindowInsetsSides.Right
-                                } else WindowInsetsSides.Horizontal) + WindowInsetsSides.Top)
-                                // The greeting is now the first REAL lazy item on main feeds.
-                                // Do not reserve another AppBarHeight above it: that
-                                // creates a blank band equal to the old floating header.
+                            val horizontalInsets = windowsInsets.only(
+                                if (useRail) WindowInsetsSides.Right
+                                else WindowInsetsSides.Horizontal
+                            )
+                            val topInsets =
+                                if (currentRoute in topLevelScreens) {
+                                    // No hidden status-bar reservation, no old
+                                    // Scaffold/AppBar-sized empty strip.
+                                    visibleStatusBarInsets.only(WindowInsetsSides.Top)
+                                } else {
+                                    windowsInsets.only(WindowInsetsSides.Top)
+                                }
+                            horizontalInsets
+                                .add(topInsets)
                                 .add(WindowInsets(bottom = bottom))
                         }
 
