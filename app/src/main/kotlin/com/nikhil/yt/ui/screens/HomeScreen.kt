@@ -243,13 +243,15 @@ fun HomeScreen(
                 )
             }
 
-            // The header is a separate, route-owned chrome sibling ABOVE the
-            // list. Preserve the original top reservation for its 64dp bar:
-            // content travels underneath as the header scrolls out of view.
+            // One natural scroll surface. Greeting and controls are simply
+            // the first row of the feed: no independent element/animation.
             LazyColumn(
                 state = lazylistState,
                 contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
             ) {
+                item(key = "capsule:feed-header") {
+                    CapsuleCanvasHeader()
+                }
                     quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
             /*
                 item {

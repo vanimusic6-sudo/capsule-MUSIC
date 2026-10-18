@@ -8,6 +8,8 @@
 
 package com.nikhil.yt.ui.screens
 
+// Natural feed header: moves with content, not via a floating offset.
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -314,6 +316,10 @@ fun HistoryScreen(
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
             modifier = Modifier
         ) {
+            item(key = "capsule:feed-header") {
+                CapsuleCanvasHeader()
+            }
+
             item {
                 ChipsRow(
                     chips = if (isLoggedIn) listOf(

@@ -1059,7 +1059,10 @@ class MainActivity : ComponentActivity() {
                                 .only((if(useRail) {
                                     WindowInsetsSides.Right
                                 } else WindowInsetsSides.Horizontal) + WindowInsetsSides.Top)
-                                .add(WindowInsets(top = AppBarHeight, bottom = bottom))
+                                // The greeting is now the first REAL lazy item on main feeds.
+                                // Do not reserve another AppBarHeight above it: that
+                                // creates a blank band equal to the old floating header.
+                                .add(WindowInsets(bottom = bottom))
                         }
 
                     appBarScrollBehavior(
