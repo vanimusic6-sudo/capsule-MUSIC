@@ -8,6 +8,8 @@
 
 package com.nikhil.yt.ui.screens.library
 
+import com.nikhil.yt.ui.screens.CapsuleCanvasHeader
+
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -242,6 +244,8 @@ fun LibraryArtistsScreen(
                     state = lazyListState,
                     contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
                 ) {
+                    item(key = "capsule:feed-header") { CapsuleCanvasHeader() }
+
                     item(
                         key = "filter",
                         contentType = CONTENT_TYPE_HEADER,
@@ -291,6 +295,11 @@ fun LibraryArtistsScreen(
                     ),
                     contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
                 ) {
+                    item(
+                        key = "capsule:feed-header",
+                        span = { GridItemSpan(maxLineSpan) },
+                    ) { CapsuleCanvasHeader() }
+
                     item(
                         key = "filter",
                         span = { GridItemSpan(maxLineSpan) },
