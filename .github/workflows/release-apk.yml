@@ -43,6 +43,7 @@ on:
       - fix/inline-scroll-header-together-no-ripple-20261018
       - fix/feed-header-status-inset-20261018
       - refactor/spotify-pinned-header-20261018
+      - fix/pinned-header-color-settings-transition-20261018
       - fix/video-timeline-morph-20261014
 
 permissions:
