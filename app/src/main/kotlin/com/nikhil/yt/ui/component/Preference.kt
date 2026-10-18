@@ -60,6 +60,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.nikhil.yt.R
 import com.nikhil.yt.ui.motion.LocalCapsuleModalClose
+import com.nikhil.yt.ui.motion.LocalCapsuleModalClosing
 import kotlin.math.roundToInt
 
 @Composable
@@ -154,31 +155,53 @@ fun <T> ListPreference(
         mutableStateOf(false)
     }
     if (showDialog) {
+        // React immediately to the selected row while the 190ms close plays.
+        // Otherwise the old radio remains selected until after the window
+        // vanishes, making the tap feel as though it was ignored.
+        val visibleChoice = remember { mutableStateOf(selectedValue) }
         ListDialog(
             onDismiss = { showDialog = false },
         ) {
             items(values) { value ->
                 val closeSelection = LocalCapsuleModalClose.current
+                val isDialogClosing = LocalCapsuleModalClosing.current
+                val touch = remember(value) { MutableInteractionSource() }
+                val pressed by touch.collectIsPressedAsState()
+                val pressedScale = animateFloatAsState(
+                    targetValue = if (pressed) 0.984f else 1f,
+                    animationSpec = spring(dampingRatio = 0.93f, stiffness = 360f),
+                    label = "choiceRowPress",
+                )
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier =
-                    Modifier
+                    modifier = Modifier
                         .fillMaxWidth()
-                        .clickable {
+                        .graphicsLayer {
+                            scaleX = pressedScale.value
+                            scaleY = pressedScale.value
+                        }
+                        .clickable(
+                            enabled = !isDialogClosing,
+                            interactionSource = touch,
+                            indication = null,
+                        ) {
+                            visibleChoice.value = value
                             closeSelection {
                                 showDialog = false
                                 onValueSelected(value)
                             }
-                        }.padding(horizontal = 16.dp, vertical = 12.dp),
+                        }
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
                 ) {
                     RadioButton(
-                        selected = value == selectedValue,
+                        selected = value == visibleChoice.value,
                         onClick = null,
                     )
-
                     Text(
                         text = valueText(value),
                         style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(start = 16.dp),
                     )
                 }
@@ -235,15 +258,14 @@ fun SwitchPreference(
         description = description,
         icon = icon,
         trailingContent = {
-            // Preserve Material3's native thumb size/position animation; a
-            // thumb icon forced both states to use the larger selected size.
-            // No checked tick, no unchecked X, no custom halo on press.
+            // Material3 Switch does not expose a motion spec for its thumb.
+            // This visually compatible draw-only surface gives the thumb and
+            // track a softer common spring; it never renders a check icon.
             CompositionLocalProvider(LocalRippleConfiguration provides null) {
-                Switch(
+                CapsuleSoftSwitch(
                     checked = checked,
                     onCheckedChange = onCheckedChange,
-                    enabled = isEnabled,
-                    thumbContent = null,
+                    isEnabled = isEnabled,
                 )
             }
         },

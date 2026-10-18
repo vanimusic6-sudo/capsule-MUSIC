@@ -37,6 +37,10 @@ internal val LocalCapsuleModalExit =
 internal val LocalCapsuleModalClose =
     compositionLocalOf<((() -> Unit) -> Unit)> { { completed -> completed() } }
 
+/** Input remains shielded during the exit so the dismissed dialog can't
+ * switch selection or trigger another reorder while visually fading. */
+internal val LocalCapsuleModalClosing = compositionLocalOf { false }
+
 @Composable
 internal fun CapsuleMotionDialog(
     onDismissRequest: () -> Unit,
@@ -88,6 +92,7 @@ internal fun CapsuleMotionDialog(
             LocalCapsuleModalProgress provides progress,
             LocalCapsuleModalExit provides exitProgress,
             LocalCapsuleModalClose provides close,
+            LocalCapsuleModalClosing provides closing,
         ) {
             content(close)
         }

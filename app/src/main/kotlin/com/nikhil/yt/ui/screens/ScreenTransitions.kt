@@ -34,8 +34,12 @@ private val ExitEase = CubicBezierEasing(0.32f, 0f, 0.75f, 1f)
 
 private const val ROOT_ENTER_MS = 255
 private const val ROOT_EXIT_MS = 205
-private const val NESTED_ENTER_MS = 215
-private const val NESTED_EXIT_MS = 170
+// Sections (Appearance, Library, Content, Player, and their children)
+// use the same half-width fade/push as the root Settings panel. They are
+// 20ms / 15ms faster, so navigation remains effortless and doesn't expose
+// the previous page's text for the whole duration.
+private const val NESTED_ENTER_MS = 235
+private const val NESTED_EXIT_MS = 190
 
 // Retain the public helper for existing structural/unit tests and change
 // its meaning to truthful full-size destinations (no root shrinking).
@@ -73,13 +77,16 @@ object ScreenTransitions {
                     animationSpec = tween(ROOT_ENTER_MS, easing = NavigationEase),
                 )
             }
-            SettingsRouteMotion.NESTED -> slideInHorizontally(
-                initialOffsetX = { width -> if (isPop) -width else width },
-                animationSpec = tween(NESTED_ENTER_MS, easing = NavigationEase),
-            ) + fadeIn(
-                initialAlpha = 0.30f,
-                animationSpec = tween(90, easing = NavigationEase),
-            )
+            SettingsRouteMotion.NESTED ->
+                // Exactly the ArchiveTune-style root geometry, just a little
+                // quicker. No full-screen slide exposing two sets of settings.
+                slideInHorizontally(
+                    initialOffsetX = { width -> if (isPop) -width / 2 else width / 2 },
+                    animationSpec = tween(NESTED_ENTER_MS, easing = NavigationEase),
+                ) + fadeIn(
+                    initialAlpha = 0.02f,
+                    animationSpec = tween(NESTED_ENTER_MS, easing = NavigationEase),
+                )
         }
 
     fun exit(from: String?, to: String?, isPop: Boolean = false): ExitTransition =
@@ -97,12 +104,15 @@ object ScreenTransitions {
                     animationSpec = tween(ROOT_EXIT_MS, easing = ExitEase),
                 )
             }
-            SettingsRouteMotion.NESTED -> slideOutHorizontally(
-                targetOffsetX = { width -> if (isPop) width else -width },
-                animationSpec = tween(NESTED_EXIT_MS, easing = ExitEase),
-            ) + fadeOut(
-                targetAlpha = 0f,
-                animationSpec = tween(120, easing = ExitEase),
-            )
+            SettingsRouteMotion.NESTED ->
+                slideOutHorizontally(
+                    targetOffsetX = { width -> if (isPop) width / 2 else -width / 2 },
+                    animationSpec = tween(NESTED_EXIT_MS, easing = ExitEase),
+                ) + fadeOut(
+                    // Old labels dissolve throughout the movement rather than
+                    // leaving two readable settings pages side by side.
+                    targetAlpha = 0f,
+                    animationSpec = tween(NESTED_EXIT_MS, easing = ExitEase),
+                )
         }
 }

@@ -65,12 +65,22 @@ class MotionEnergyStructuralRegressionTest {
     }
 
     @Test
-    fun settingsSwitchUsesNativeThumbGrowthWithoutTransparentTapHalo() {
-        val source = source("component/Preference.kt")
-        assertTrue(source.contains("LocalRippleConfiguration provides null"))
-        assertTrue(source.contains("thumbContent = null,"))
-        assertFalse(source.contains("R.drawable.check"))
-        assertFalse(source.contains("R.drawable.close"))
+    fun settingsSwitchUsesOneSofterSpringForThumbColorAndPosition() {
+        val preference = source("component/Preference.kt")
+        val softSwitch = source("component/CapsuleSoftSwitch.kt")
+        assertTrue(preference.contains("LocalRippleConfiguration provides null"))
+        assertTrue(preference.contains("CapsuleSoftSwitch("))
+        assertFalse(preference.contains("thumbContent = if (checked)"))
+        assertFalse(preference.contains("R.drawable.check"))
+        assertTrue(softSwitch.contains("dampingRatio = 0.94f"))
+        assertTrue(softSwitch.contains("stiffness = 220f"))
+        assertTrue(softSwitch.contains("val motion = animateFloatAsState("))
+        assertTrue(softSwitch.contains("val amount = motion.value.coerceIn(0f, 1f)"))
+        assertTrue(softSwitch.contains("role = Role.Switch"))
+        assertTrue(softSwitch.contains("16f + 20f * amount"))
+        assertTrue(softSwitch.contains("8f + 4f * amount"))
+        assertTrue(softSwitch.contains(".minimumInteractiveComponentSize()"))
+        assertFalse(softSwitch.contains("rememberInfiniteTransition"))
     }
 
     @Test
@@ -78,8 +88,8 @@ class MotionEnergyStructuralRegressionTest {
         val source = source("screens/settings/PriorityOrderDialog.kt")
         assertTrue(source.contains("animateItemModifier = Modifier.animateItem("))
         assertTrue(source.contains("placementSpec = PriorityMoveSpec"))
-        assertTrue(source.contains("dampingRatio = 0.86f"))
-        assertTrue(source.contains("stiffness = 190f"))
+        assertTrue(source.contains("dampingRatio = 0.93f"))
+        assertTrue(source.contains("stiffness = 235f"))
         assertTrue(source.contains("pendingOrderChange = true"))
         assertTrue(source.contains("onDragStopped = {"))
         assertTrue(source.contains("saveSettledOrder()"))
@@ -97,7 +107,11 @@ class MotionEnergyStructuralRegressionTest {
         assertTrue(source.contains("var isReordering by remember"))
         assertTrue(source.contains("LaunchedEffect(isReordering, pendingOrderChange)"))
         assertTrue(source.contains("if (!isReordering && pendingOrderChange)"))
-        assertTrue(source.contains("delay(420)"))
+        assertTrue(source.contains("delay(310)"))
+        assertTrue(source.contains("enabled = !isReordering && !dialogClosing"))
+        assertTrue(source.contains("if (dialogClosing) Modifier else Modifier.draggableHandle("))
+        assertTrue(source.contains("targetState = position"))
+        assertTrue(source.contains("label = \"priorityRankChange\""))
         assertFalse("no immediate DataStore write on finger-up", source.contains("onDragStopped = {\n                                        saveSettledOrder()"))
         assertTrue(source.contains(".heightIn(max = maxHeight - 24.dp)"))
         assertTrue(source.contains(".weight(1f, fill = false)"))
@@ -105,6 +119,18 @@ class MotionEnergyStructuralRegressionTest {
         assertTrue(source.contains(".heightIn(min = 104.dp)"))
         assertTrue(source.contains("maxLines = 2"))
         assertTrue(source.contains("scaleX = scale.value"))
+    }
+
+    @Test
+    fun settingsSubpagesUseTheSameShorterHalfPushAsRoot() {
+        val routes = source("screens/ScreenTransitions.kt")
+        assertTrue(routes.contains("NESTED_ENTER_MS = 235"))
+        assertTrue(routes.contains("NESTED_EXIT_MS = 190"))
+        assertTrue(routes.contains("if (isPop) -width / 2 else width / 2"))
+        assertTrue(routes.contains("if (isPop) width / 2 else -width / 2"))
+        assertTrue(routes.contains("animationSpec = tween(NESTED_ENTER_MS, easing = NavigationEase)"))
+        assertTrue(routes.contains("animationSpec = tween(NESTED_EXIT_MS, easing = ExitEase)"))
+        assertFalse(routes.contains("if (isPop) -width else width"))
     }
 
     @Test
@@ -140,6 +166,8 @@ class MotionEnergyStructuralRegressionTest {
         assertTrue(modal.contains("LocalCapsuleModalExit provides exitProgress"))
         assertTrue(dialog.contains("CapsuleMotionDialog("))
         assertTrue(prefs.contains("closeSelection {"))
+        assertTrue(prefs.contains("enabled = !isDialogClosing"))
+        assertTrue(modal.contains("LocalCapsuleModalClosing provides closing"))
         assertTrue(dialog.contains(".capsuleDialogEntrance()"))
         assertFalse(modal.contains("rememberInfiniteTransition"))
     }
