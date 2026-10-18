@@ -8,7 +8,6 @@
 
 package com.nikhil.yt.ui.screens.library
 
-import com.nikhil.yt.ui.screens.CapsuleCanvasHeader
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
@@ -427,7 +426,7 @@ fun LibraryMixScreen(
                     state = lazyListState,
                     contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
                 ) {
-                    item(key = "capsule:feed-header") { CapsuleCanvasHeader() }
+
 
                     item(
                         key = "filter",
@@ -769,10 +768,7 @@ fun LibraryMixScreen(
                     ),
                     contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
                 ) {
-                    item(
-                        key = "capsule:feed-header",
-                        span = { GridItemSpan(maxLineSpan) },
-                    ) { CapsuleCanvasHeader() }
+
 
                     item(
                         key = "filter",

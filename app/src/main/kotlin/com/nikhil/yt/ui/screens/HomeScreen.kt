@@ -249,9 +249,7 @@ fun HomeScreen(
                 state = lazylistState,
                 contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
             ) {
-                item(key = "capsule:feed-header") {
-                    CapsuleCanvasHeader()
-                }
+
                     quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
             /*
                 item {

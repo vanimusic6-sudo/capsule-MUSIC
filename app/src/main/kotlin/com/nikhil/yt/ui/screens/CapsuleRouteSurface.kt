@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -67,9 +68,9 @@ internal fun NavGraphBuilder.routeComposable(
     val settingsNavigation =
         route == "settings" || route.startsWith("settings/") ||
             arrival.from == "settings" || arrival.from?.startsWith("settings/") == true
-    // Main pages now render the greeting as the FIRST item of their real
-    // LazyColumn/LazyVerticalGrid. No route-owned floating header, no
-    // overscroll observer, custom offset or animation coroutine exists.
+    // Main screens render one persistent opaque top bar in the Activity
+    // Scaffold. No destination draws an additional greeting, so settings
+    // animation/back navigation cannot leave a duplicate on the canvas.
     CompositionLocalProvider(LocalNavBackStackEntry provides entry) {
         CapsuleRouteSurface {
             Box(
@@ -130,29 +131,26 @@ val LocalCapsuleHeaderAccountImage = compositionLocalOf<String?> { null }
 val LocalCapsuleHeaderNavController = compositionLocalOf<NavHostController?> { null }
 
 /**
- * Header as an ordinary first item INSIDE each main feed.
+ * Spotify-like pinned greeting/account/Settings bar shared by all main routes.
  *
- * This composable has no background, scrolling state, animated visibility,
- * nested-scroll interception or extra elevation/layer. Scrolling its list
- * naturally carries the greeting/account/settings away and back, with no
- * separate floating piece that can get stuck above the viewport.
- *
- * Caller supplies the LazyColumn/LazyVerticalGrid item, including a stable
- * "capsule:feed-header" key. The page's existing window insets also apply.
+ * Drawn EXACTLY ONCE in MainActivity's Scaffold.topBar, not in any LazyList,
+ * and not animated or attached to scroll progress. The opaque theme surface
+ * also covers the status bar inset so rows underneath never ghost through.
+ * The main feeds reserve this exact bar height in their content insets.
  */
 @Composable
-fun CapsuleCanvasHeader() {
+fun CapsulePinnedHeader() {
     val navController = LocalCapsuleHeaderNavController.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .statusBarsPadding()
             .height(AppBarHeight)
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        // Reserve a real, stable hit target for Settings even with long
-        // translated greetings or large accessibility font scaling.
         Box(modifier = Modifier.weight(1f)) {
             StandardHeaderTitle(
                 accountName = LocalCapsuleHeaderAccountName.current,
@@ -160,9 +158,7 @@ fun CapsuleCanvasHeader() {
                 onAccountClick = { navController?.navigate("settings/account") },
             )
         }
-        IconButton(
-            onClick = { navController?.navigate("settings") },
-        ) {
+        IconButton(onClick = { navController?.navigate("settings") }) {
             Icon(
                 painter = painterResource(R.drawable.settings),
                 contentDescription = stringResource(R.string.settings),
