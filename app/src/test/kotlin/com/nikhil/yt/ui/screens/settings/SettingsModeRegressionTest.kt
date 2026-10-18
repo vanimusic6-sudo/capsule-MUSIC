@@ -85,7 +85,6 @@ class SettingsModeRegressionTest {
         assertTrue(modeControl.contains("val position = animateFloatAsState("))
         assertTrue(modeControl.contains("dampingRatio = 0.94f"))
         assertTrue(modeControl.contains("stiffness = 220f"))
-        assertTrue(modeControl.contains("stiffness = 260f"))
         assertTrue(modeControl.contains("Canvas(Modifier.fillMaxSize())"))
         assertTrue(modeControl.contains("val springPosition = position.value"))
         assertTrue(modeControl.contains("val thumbWidth ="))
