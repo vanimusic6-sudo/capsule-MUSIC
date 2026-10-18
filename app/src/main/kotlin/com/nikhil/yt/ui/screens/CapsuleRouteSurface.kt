@@ -188,8 +188,9 @@ private fun RouteWithScrollAwayHeader(
     // rebounds and system flings, making the header pop back mid-scroll,
     // immediately disappear, and sometimes overlay the feed.
     //
-    // Require a meaningful user pull while the list is ACTUALLY at top.
-    // Ignore sub-pixel recoil and fling oscillations. No new animation
+    // Require meaningful upward overscroll while the list is ACTUALLY
+    // at top: 12dp for finger drag or 36dp leftover from a top-reaching
+    // fling. Ignore sub-pixel recoil. No new animation
     // controllers are allocated per gesture or per frame.
     val pullThresholdPx = with(LocalDensity.current) { 12.dp.toPx() }
     val hideNoiseFloorPx = with(LocalDensity.current) { 1.5.dp.toPx() }
@@ -204,11 +205,28 @@ private fun RouteWithScrollAwayHeader(
                 source: NestedScrollSource,
             ): Offset {
                 if (source != NestedScrollSource.UserInput) {
-                    // Inertial scrolling can hide the chrome but must NOT
-                    // re-trigger its return on overscroll/bounce frames.
-                    if (consumed.y < -hideNoiseFloorPx && headerOffsetPx > -hiddenPx) {
-                        revealJob[0]?.cancel()
-                        revealJob[0] = null
+                    // A fling reaching the top should reveal the greeting
+                    // automatically, not require another intentional pull.
+                    // Tiny overscroll spring-back isn't a genuine arrival:
+                    // require a sufficiently large positive leftover.
+                    if (consumed.y >= 0f &&
+                        available.y >= pullThresholdPx * 3f &&
+                        headerOffsetPx < 0f &&
+                        revealJob[0]?.isActive != true
+                    ) {
+                        revealJob[0] = scope.launch {
+                            animate(
+                                initialValue = headerOffsetPx,
+                                targetValue = 0f,
+                                animationSpec = tween(240, easing = returnEasing),
+                            ) { value, _ -> headerOffsetPx = value }
+                        }
+                    } else if (consumed.y < -hideNoiseFloorPx &&
+                        headerOffsetPx > -hiddenPx &&
+                        revealJob[0]?.isActive != true
+                    ) {
+                        // After return begins ignore inertial rebound. Only a
+                        // *new finger drag* may interrupt the visible header.
                         headerOffsetPx = (headerOffsetPx + consumed.y).coerceIn(-hiddenPx, 0f)
                     }
                     return Offset.Zero
