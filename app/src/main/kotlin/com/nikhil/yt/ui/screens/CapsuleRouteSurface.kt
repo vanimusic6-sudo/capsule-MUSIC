@@ -151,11 +151,15 @@ fun CapsuleCanvasHeader() {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        StandardHeaderTitle(
-            accountName = LocalCapsuleHeaderAccountName.current,
-            accountImageUrl = LocalCapsuleHeaderAccountImage.current,
-            onAccountClick = { navController?.navigate("settings/account") },
-        )
+        // Reserve a real, stable hit target for Settings even with long
+        // translated greetings or large accessibility font scaling.
+        Box(modifier = Modifier.weight(1f)) {
+            StandardHeaderTitle(
+                accountName = LocalCapsuleHeaderAccountName.current,
+                accountImageUrl = LocalCapsuleHeaderAccountImage.current,
+                onAccountClick = { navController?.navigate("settings/account") },
+            )
+        }
         IconButton(
             onClick = { navController?.navigate("settings") },
         ) {
