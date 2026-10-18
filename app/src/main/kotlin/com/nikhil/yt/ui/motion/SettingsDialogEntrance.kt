@@ -11,33 +11,32 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 
 /**
- * One finite motion per popup, used by settings choice lists, editor prompts
- * and confirmation dialogs. A small rise and expansion share ONE spring value.
+ * One draw-phase transform for both appearing and departing.
  *
- * The old scale-only effect had no approach and appeared to snap from 95.7%
- * size at a fixed position. The motion now grows from a point just below
- * the final rectangle and settles without a second animation phase.
- *
- * No blur, layout animation, shadow animation, alpha crossfade, extra
- * infinite frame-clock or CPU polling. Only the render layer changes per
- * frame; controls retain stable tap targets and layout bounds.
+ * Inside CapsuleMotionDialog, the parent owns a single 0->1->0
+ * progress clock; the dialog remains composed until reverse motion ends.
+ * Standalone AlertDialogs retain their existing one-shot entrance.
+ * No alpha-only exit, no per-frame measure, no animation of text separately.
  */
 @Composable
 fun Modifier.capsuleDialogEntrance(): Modifier {
-    val arrival = remember { Animatable(0f) }
-    LaunchedEffect(arrival) {
-        arrival.animateTo(
-            targetValue = 1f,
-            animationSpec = spring(
-                dampingRatio = 0.93f,
-                stiffness = 290f,
-                visibilityThreshold = 0.001f,
-            ),
-        )
+    val parentProgress = LocalCapsuleModalProgress.current
+    val localProgress = remember { Animatable(0f) }
+    if (parentProgress == null) {
+        LaunchedEffect(localProgress) {
+            localProgress.animateTo(
+                1f,
+                animationSpec = spring(
+                    dampingRatio = 0.93f,
+                    stiffness = 290f,
+                    visibilityThreshold = 0.001f,
+                ),
+            )
+        }
     }
+    val animation = parentProgress ?: localProgress
     return this.graphicsLayer {
-        val progress = arrival.value
-        val remaining = 1f - progress
+        val remaining = 1f - animation.value
         val sizeFactor = 1f - remaining * 0.065f
         scaleX = sizeFactor
         scaleY = sizeFactor
