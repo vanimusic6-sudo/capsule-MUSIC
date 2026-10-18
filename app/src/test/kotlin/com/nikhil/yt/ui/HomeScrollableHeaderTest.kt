@@ -42,22 +42,25 @@ class HomeScrollableHeaderTest {
         assertTrue(routes.contains("available.y > 0f"))
         assertTrue(routes.contains("headerOffsetPx.toInt()"))
         assertTrue(routes.contains("revealJob[0] = scope.launch"))
-        assertTrue(routes.contains("available.y > 0f && headerOffsetPx < 0f"))
+        assertTrue(routes.contains("available.y > 0f && consumed.y >= 0f && headerOffsetPx < 0f"))
         assertFalse(routes.contains("stickyHeader("))
     }
 
-    @Test fun topHeaderDoesNotBounceBackFromFlingOrTinyOverscroll() {
+    @Test fun headerReturnsAtRealListTopWithoutExtraOverscroll() {
         val routes = source("ui/screens/CapsuleRouteSurface.kt")
-        assertTrue(routes.contains("val pullThresholdPx"))
-        assertTrue(routes.contains("12.dp.toPx()"))
+        assertTrue(routes.contains("available.y > 0f && consumed.y >= 0f && headerOffsetPx < 0f"))
+        assertTrue(routes.contains("revealJob[0] = scope.launch"))
+        assertTrue(routes.contains("animationSpec = tween(220, easing = CapsuleStandardEasing)"))
         assertTrue(routes.contains("val hideNoiseFloorPx"))
-        assertTrue(routes.contains("source != NestedScrollSource.UserInput"))
-        assertTrue(routes.contains("available.y >= pullThresholdPx * 3f"))
-        assertTrue(routes.contains("positiveOverscroll >= pullThresholdPx"))
-        assertTrue(routes.contains("revealJob[0]?.isActive != true"))
+        assertTrue(routes.contains("source == NestedScrollSource.UserInput"))
+        assertTrue(routes.contains("revealJob[0]?.cancel()"))
         assertTrue(routes.contains("headerOffsetPx = (headerOffsetPx + consumed.y)"))
-        // An opaque bar avoids card/text 'afterimages' shining through its
-        // fading/moving surface, exactly as seen in recording 9496.
+        assertTrue(routes.contains("headerOffsetPx.toInt()"))
+        // Specifically forbid the previous two regressions: a 12dp finger
+        // threshold and a 36dp fling threshold blocked natural return.
+        assertFalse(routes.contains("pullThresholdPx"))
+        assertFalse(routes.contains("positiveOverscroll"))
+        // Retain an opaque small header, preventing feed text drawing through.
         assertTrue(routes.contains("containerColor = MaterialTheme.colorScheme.surface"))
         assertTrue(routes.contains("scrolledContainerColor = MaterialTheme.colorScheme.surface"))
         assertFalse(routes.contains("containerColor = androidx.compose.ui.graphics.Color.Transparent"))

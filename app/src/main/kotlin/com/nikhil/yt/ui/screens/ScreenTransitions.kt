@@ -25,6 +25,12 @@ import androidx.compose.ui.unit.IntOffset
  *
  * Enter / exit both participate for home <-> settings. Never apply a
  * second transform in CapsuleRouteSurface. No full-screen scale at all.
+ *
+ * 9496 follow-up: a page appearing at 82% opacity on the FIRST frame
+ * looks like a sudden flash, and a departure fading to zero in only
+ * 85-110ms looks like an instant disappearance while the page still
+ * slides. The old/new translucency envelope now changes over the
+ * entire soft movement, with no abrupt jumps, and remains bounded.
  */
 private fun String?.isSettingsPage(): Boolean =
     this == "settings" || this?.startsWith("settings/") == true
@@ -32,14 +38,14 @@ private fun String?.isSettingsPage(): Boolean =
 private val NavigationEase = CubicBezierEasing(0.24f, 0.02f, 0.72f, 1f)
 private val ExitEase = CubicBezierEasing(0.32f, 0f, 0.75f, 1f)
 
-private const val ROOT_ENTER_MS = 255
-private const val ROOT_EXIT_MS = 205
+private const val ROOT_ENTER_MS = 270
+private const val ROOT_EXIT_MS = 230
 // Sections (Appearance, Library, Content, Player, and their children)
 // use the same half-width fade/push as the root Settings panel. They are
-// 20ms / 15ms faster, so navigation remains effortless and doesn't expose
-// the previous page's text for the whole duration.
-private const val NESTED_ENTER_MS = 235
-private const val NESTED_EXIT_MS = 190
+// 25ms / 20ms faster. Allow the old content to dissolve gracefully,
+// rather than blinking off at 85ms while both pages are still travelling.
+private const val NESTED_ENTER_MS = 245
+private const val NESTED_EXIT_MS = 210
 
 // Retain the public helper for existing structural/unit tests and change
 // its meaning to truthful full-size destinations (no root shrinking).
@@ -73,8 +79,8 @@ object ScreenTransitions {
                     initialOffsetX = { width -> direction * width / 2 },
                     animationSpec = tween(ROOT_ENTER_MS, easing = NavigationEase),
                 ) + fadeIn(
-                    initialAlpha = 0.82f,
-                    animationSpec = tween(130, easing = NavigationEase),
+                    initialAlpha = 0.35f,
+                    animationSpec = tween(210, easing = NavigationEase),
                 )
             }
             SettingsRouteMotion.NESTED ->
@@ -84,8 +90,8 @@ object ScreenTransitions {
                     initialOffsetX = { width -> if (isPop) -width / 2 else width / 2 },
                     animationSpec = tween(NESTED_ENTER_MS, easing = NavigationEase),
                 ) + fadeIn(
-                    initialAlpha = 0.82f,
-                    animationSpec = tween(110, easing = NavigationEase),
+                    initialAlpha = 0.35f,
+                    animationSpec = tween(185, easing = NavigationEase),
                 )
         }
 
@@ -101,7 +107,7 @@ object ScreenTransitions {
                     animationSpec = tween(ROOT_EXIT_MS, easing = ExitEase),
                 ) + fadeOut(
                     targetAlpha = 0f,
-                    animationSpec = tween(110, easing = ExitEase),
+                    animationSpec = tween(190, easing = ExitEase),
                 )
             }
             SettingsRouteMotion.NESTED ->
@@ -112,7 +118,7 @@ object ScreenTransitions {
                     // Old labels dissolve throughout the movement rather than
                     // leaving two readable settings pages side by side.
                     targetAlpha = 0f,
-                    animationSpec = tween(85, easing = ExitEase),
+                    animationSpec = tween(170, easing = ExitEase),
                 )
         }
 }

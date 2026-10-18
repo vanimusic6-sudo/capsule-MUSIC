@@ -127,8 +127,8 @@ class MotionEnergyStructuralRegressionTest {
     @Test
     fun settingsSubpagesUseTheSameShorterHalfPushAsRoot() {
         val routes = source("screens/ScreenTransitions.kt")
-        assertTrue(routes.contains("NESTED_ENTER_MS = 235"))
-        assertTrue(routes.contains("NESTED_EXIT_MS = 190"))
+        assertTrue(routes.contains("NESTED_ENTER_MS = 245"))
+        assertTrue(routes.contains("NESTED_EXIT_MS = 210"))
         assertTrue(routes.contains("if (isPop) -width / 2 else width / 2"))
         assertTrue(routes.contains("if (isPop) width / 2 else -width / 2"))
         assertTrue(routes.contains("animationSpec = tween(NESTED_ENTER_MS, easing = NavigationEase)"))
@@ -137,14 +137,25 @@ class MotionEnergyStructuralRegressionTest {
     }
 
     @Test
-    fun rootTransitionPreventsTwoReadableSettingsScreensOverlapping() {
+    fun navigationFadesRunAlongsideMotionWithoutAnAbruptOpacityJump() {
         val routes = source("screens/ScreenTransitions.kt")
-        assertTrue(routes.contains("initialAlpha = 0.82f"))
-        assertTrue(routes.contains("animationSpec = tween(110, easing = ExitEase)"))
-        assertTrue(routes.contains("animationSpec = tween(85, easing = ExitEase)"))
-        assertTrue(routes.contains("animationSpec = tween(130, easing = NavigationEase)"))
-        assertTrue(routes.contains("animationSpec = tween(110, easing = NavigationEase)"))
-        assertFalse(routes.contains("initialAlpha = 0.02f"))
+        assertTrue(routes.contains("initialAlpha = 0.35f"))
+        assertTrue(routes.contains("animationSpec = tween(210, easing = NavigationEase)"))
+        assertTrue(routes.contains("animationSpec = tween(185, easing = NavigationEase)"))
+        assertTrue(routes.contains("animationSpec = tween(190, easing = ExitEase)"))
+        assertTrue(routes.contains("animationSpec = tween(170, easing = ExitEase)"))
+        assertFalse(routes.contains("initialAlpha = 0.82f"))
+        assertFalse(routes.contains("animationSpec = tween(85, easing = ExitEase)"))
+    }
+
+    @Test
+    fun listenTogetherTogglesHaveTheSameCapsuleSwitchSkin() {
+        val together = source("screens/settings/MusicTogetherScreen.kt")
+        assertTrue(together.contains("CapsuleSoftSwitch("))
+        assertFalse(together.contains("SwitchDefaults.IconSize"))
+        assertFalse(together.contains("id = if (checked) R.drawable.check else R.drawable.close"))
+        assertFalse(together.contains("import androidx.compose.material3.Switch"))
+        assertTrue(together.contains("onCheckedChange = onCheckedChange"))
     }
 
     @Test
@@ -155,8 +166,8 @@ class MotionEnergyStructuralRegressionTest {
         assertTrue(routes.contains("SettingsPageTravel(0.5f, 1f)"))
         assertTrue(routes.contains("if (isPop) width / 2 else -width / 2"))
         assertTrue(routes.contains("direction * width / 2"))
-        assertTrue(routes.contains("ROOT_ENTER_MS = 255"))
-        assertTrue(routes.contains("ROOT_EXIT_MS = 205"))
+        assertTrue(routes.contains("ROOT_ENTER_MS = 270"))
+        assertTrue(routes.contains("ROOT_EXIT_MS = 230"))
         assertTrue(routes.contains("fadeIn("))
         assertTrue(routes.contains("fadeOut("))
         assertFalse("No half-shrunken page should pop at destination disposal", routes.contains("scaleOut("))

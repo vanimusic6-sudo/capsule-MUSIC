@@ -48,8 +48,6 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -93,6 +91,7 @@ import com.nikhil.yt.together.TogetherRole
 import com.nikhil.yt.together.TogetherRoomSettings
 import com.nikhil.yt.together.TogetherSessionState
 import com.nikhil.yt.ui.component.IconButton as AtIconButton
+import com.nikhil.yt.ui.component.CapsuleSoftSwitch
 import com.nikhil.yt.ui.component.TextFieldDialog
 import com.nikhil.yt.ui.utils.backToMain
 import com.nikhil.yt.utils.rememberPreference
@@ -859,18 +858,11 @@ private fun ToggleRow(
             modifier = Modifier.weight(1f),
         )
 
-        Switch(
+        // Use the SAME animated Capsule thumb as every other settings
+        // screen. This used to be the retired check/X Material3 Switch.
+        CapsuleSoftSwitch(
             checked = checked,
             onCheckedChange = onCheckedChange,
-            thumbContent = {
-                Icon(
-                    painter = painterResource(
-                        id = if (checked) R.drawable.check else R.drawable.close,
-                    ),
-                    contentDescription = null,
-                    modifier = Modifier.size(SwitchDefaults.IconSize),
-                )
-            },
         )
     }
 }
