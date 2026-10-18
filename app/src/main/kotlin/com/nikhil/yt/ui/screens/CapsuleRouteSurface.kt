@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.drawRect
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -112,7 +111,7 @@ internal fun NavGraphBuilder.routeComposable(
                 ) {
                     with(contentScope) { content(entry) }
                 }
-                if (mainDestination) {
+                if (mainDestination && LocalCapsulePinnedHeaderVisible.current) {
                     CapsulePinnedHeader(route = route)
                 }
             }
@@ -166,6 +165,7 @@ val LocalNavBackStackEntry = compositionLocalOf<NavBackStackEntry?> { null }
 val LocalCapsuleHeaderAccountName = compositionLocalOf<String?> { null }
 val LocalCapsuleHeaderAccountImage = compositionLocalOf<String?> { null }
 val LocalCapsuleHeaderNavController = compositionLocalOf<NavHostController?> { null }
+val LocalCapsulePinnedHeaderVisible = compositionLocalOf { true }
 
 /**
  * Pinned (scroll-independent) header that belongs to the same NavHost
