@@ -37,6 +37,7 @@ on:
       - fix/settings-motion-header-standalone-20261017
       - fix/motion-9481-nav-dialogs-priorities-20261018
       - fix/archive-settings-nav-dialog-exit-20261018
+      - polish/settings-section-modal-switch-motion-20261018
       - fix/video-timeline-morph-20261014
 
 permissions:
