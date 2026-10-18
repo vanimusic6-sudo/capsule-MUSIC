@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.nikhil.yt.R
+import com.nikhil.yt.ui.motion.LocalCapsuleModalClose
 import kotlin.math.roundToInt
 
 @Composable
@@ -157,14 +158,17 @@ fun <T> ListPreference(
             onDismiss = { showDialog = false },
         ) {
             items(values) { value ->
+                val closeSelection = LocalCapsuleModalClose.current
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier =
                     Modifier
                         .fillMaxWidth()
                         .clickable {
-                            showDialog = false
-                            onValueSelected(value)
+                            closeSelection {
+                                showDialog = false
+                                onValueSelected(value)
+                            }
                         }.padding(horizontal = 16.dp, vertical = 12.dp),
                 ) {
                     RadioButton(
@@ -231,25 +235,15 @@ fun SwitchPreference(
         description = description,
         icon = icon,
         trailingContent = {
-            // Material 3 supplies the correct native unselected->selected thumb size spring,
-            // but ONLY if the unchecked thumb has no icon content. The old "X" made both
-            // states equally large. Suppress the separate circular ripple/halo on press.
+            // Preserve Material3's native thumb size/position animation; a
+            // thumb icon forced both states to use the larger selected size.
+            // No checked tick, no unchecked X, no custom halo on press.
             CompositionLocalProvider(LocalRippleConfiguration provides null) {
                 Switch(
                     checked = checked,
                     onCheckedChange = onCheckedChange,
                     enabled = isEnabled,
-                    thumbContent = if (checked) {
-                        {
-                            Icon(
-                                painter = painterResource(R.drawable.check),
-                                contentDescription = null,
-                                modifier = Modifier.size(SwitchDefaults.IconSize),
-                            )
-                        }
-                    } else {
-                        null
-                    },
+                    thumbContent = null,
                 )
             }
         },
