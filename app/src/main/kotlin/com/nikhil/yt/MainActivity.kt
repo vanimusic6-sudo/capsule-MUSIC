@@ -14,6 +14,7 @@ import com.nikhil.yt.ui.screens.ScreenTransitions
 import com.nikhil.yt.ui.screens.LocalCapsuleHeaderAccountName
 import com.nikhil.yt.ui.screens.LocalCapsuleHeaderAccountImage
 import com.nikhil.yt.ui.screens.LocalCapsuleHeaderNavController
+import com.nikhil.yt.ui.screens.LocalCapsulePinnedHeaderVisible
 import com.nikhil.yt.ui.screens.rememberMainTabNavigator
 import androidx.compose.ui.draw.clipToBounds
 import com.nikhil.yt.ui.component.StandardChrome
@@ -1359,6 +1360,7 @@ class MainActivity : ComponentActivity() {
                         LocalCapsuleHeaderAccountName provides headerAccountName,
                         LocalCapsuleHeaderAccountImage provides headerAccountImage,
                         LocalCapsuleHeaderNavController provides navController,
+                        LocalCapsulePinnedHeaderVisible provides !active,
                         LocalContentColor provides if (pureBlack) Color.White else contentColorFor(MaterialTheme.colorScheme.surface),
                         LocalPlayerConnection provides playerConnection,
                         LocalPlayerAwareWindowInsets provides playerAwareWindowInsets,
