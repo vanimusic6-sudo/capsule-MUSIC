@@ -6,6 +6,8 @@
 
 package com.nikhil.yt.ui.screens.settings
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -55,12 +57,14 @@ import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
 private val PriorityMoveSpec = spring<IntOffset>(
-    dampingRatio = 0.86f,
-    stiffness = 190f,
+    // Previous .86/190 left the neighbours wobbling long after the finger
+    // moved. Settle more promptly, preserving the yielding (non-rigid) feel.
+    dampingRatio = 0.93f,
+    stiffness = 235f,
 )
 private val PriorityLiftSpec = spring<Float>(
-    dampingRatio = 0.91f,
-    stiffness = 240f,
+    dampingRatio = 0.94f,
+    stiffness = 245f,
 )
 
 /**
@@ -103,7 +107,7 @@ internal fun PriorityOrderDialog(
     // synchronously on every crossing to keep the item under the finger.
     LaunchedEffect(isReordering, pendingOrderChange) {
         if (!isReordering && pendingOrderChange) {
-            delay(420)
+            delay(310)
             saveSettledOrder()
         }
     }
@@ -215,6 +219,7 @@ internal fun PriorityOrderDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     TextButton(
+                        enabled = !isReordering,
                         onClick = {
                             val reset = onReset()
                             orderedIds = reset
@@ -224,7 +229,10 @@ internal fun PriorityOrderDialog(
                     ) {
                         Text(stringResource(R.string.audio_client_priority_reset))
                     }
-                    TextButton(onClick = { closeModal(dismissAfterSave) }) {
+                    TextButton(
+                        enabled = !isReordering,
+                        onClick = { closeModal(dismissAfterSave) },
+                    ) {
                         Text(stringResource(R.string.audio_client_priority_done))
                     }
                 }
@@ -247,12 +255,12 @@ private fun PriorityRow(
     // The lifted item remains attached to the finger; its neighbours move
     // with one non-bouncy placement spring instead of snapping or leapfrogging.
     val lift = animateDpAsState(
-        targetValue = if (isDragging) 6.dp else 0.dp,
-        animationSpec = spring(dampingRatio = 0.91f, stiffness = 240f),
+        targetValue = if (isDragging) 5.dp else 0.dp,
+        animationSpec = spring(dampingRatio = 0.94f, stiffness = 245f),
         label = "priorityRowLift",
     )
     val scale = animateFloatAsState(
-        targetValue = if (isDragging) 1.012f else 1f,
+        targetValue = if (isDragging) 1.01f else 1f,
         animationSpec = PriorityLiftSpec,
         label = "priorityRowPressedScale",
     )
@@ -279,12 +287,21 @@ private fun PriorityRow(
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = position.toString(),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary,
+            // Ordinals used to teleport to their new rank before the
+            // corresponding row physically arrived at its new position.
+            // Only animate the changing digits, not the entire row or list.
+            Crossfade(
+                targetState = position,
+                animationSpec = tween(durationMillis = 115),
+                label = "priorityRankChange",
                 modifier = Modifier.width(30.dp),
-            )
+            ) { rank ->
+                Text(
+                    text = rank.toString(),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
