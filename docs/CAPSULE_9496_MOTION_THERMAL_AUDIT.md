@@ -8,9 +8,9 @@ Date: 2026-10-18. Recording: 9.62 seconds, 592x1280, approximately 60 frames/s; 
 
 **Why:** RouteWithScrollAwayHeader previously launched a 220ms reveal as soon as available.y > 0, even for tiny overscroll rebounds. New negative consumed.y cancelled it instantly. Alternating small positive and negative signals made the upper bar flicker. The bar itself was transparent, letting list labels and covers paint through it.
 
-**Repair:** Require 12dp of genuine unconsumed user pull at the TOP of the list before revealing; ignore inertial reveal and sub-1.5dp negative backlash; keep one finite reveal coroutine and route-scoped scroll connection. Bar now paints the existing Material surface behind its controls. Motion reads state only in placement through Modifier.offset.
+**Repair:** Require 12dp of genuine unconsumed user pull at the TOP of the list, or 36dp of positive unconsumed top-reaching fling. Ignore tiny recoil and sub-1.5dp negative backlash; once the fling reveal begins, only a new finger drag can interrupt it. Keep a single finite reveal coroutine and route-scoped scroll connection. Bar now paints the existing Material surface behind its controls. Motion reads state only in placement through Modifier.offset.
 
-**Caveat:** Reaching the exact top without slightly pulling farther may leave it hidden. Device review should confirm this feels natural, otherwise expose actual LazyListState top signals.
+**Caveat:** a programmatic scrollToItem(0) without any nested-scroll events may not trigger a reveal. Device review should verify these cases; if needed, expose actual LazyListState top signals rather than guessing from scroll direction.
 
 ## 2. Settings overlap
 
