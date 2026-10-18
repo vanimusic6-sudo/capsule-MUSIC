@@ -332,9 +332,7 @@ fun StatsScreen(
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
             modifier = Modifier
         ) {
-            item(key = "capsule:feed-header") {
-                CapsuleCanvasHeader()
-            }
+
 
             item {
                 Spacer(modifier = Modifier.height(10.dp))
