@@ -108,34 +108,36 @@ class MotionEnergyStructuralRegressionTest {
     }
 
     @Test
-    fun settingsRootActuallyLeavesEntireScreenAndNestedOldContentFades() {
+    fun settingsArchiveTuneBoundaryMatchesHalfWidthAndCrossFade() {
         val routes = source("screens/ScreenTransitions.kt")
         assertTrue(routes.contains("SettingsRouteMotion.NESTED"))
-        assertTrue(routes.contains("initialOffsetX = { if (isPop) -it else it }"))
-        assertTrue(routes.contains("targetOffsetX = { if (isPop) it else -it }"))
-        assertTrue(routes.contains("targetOffsetX = { it }"))
-        assertTrue(routes.contains("SettingsRootInitialScale = 0.96f"))
-        assertTrue(routes.contains("durationMillis = RootExitMs"))
-        assertTrue(routes.contains("1f at 190"))
-        assertTrue(routes.contains("durationMillis = 340").not())
-        assertTrue(routes.contains("NestedMs = 215"))
+        assertTrue(routes.contains("SettingsRootInitialScale = 1f"))
+        assertTrue(routes.contains("SettingsPageTravel(0.5f, 1f)"))
+        assertTrue(routes.contains("if (isPop) width / 2 else -width / 2"))
+        assertTrue(routes.contains("direction * width / 2"))
+        assertTrue(routes.contains("ROOT_ENTER_MS = 255"))
+        assertTrue(routes.contains("ROOT_EXIT_MS = 205"))
+        assertTrue(routes.contains("fadeIn("))
         assertTrue(routes.contains("fadeOut("))
-        assertFalse(routes.contains("targetScale = SettingsRootInitialScale"))
-        assertFalse(routes.contains("spring<Float>("))
+        assertFalse("No half-shrunken page should pop at destination disposal", routes.contains("scaleOut("))
+        assertFalse("No full-viewport page slide should hang offscreen", routes.contains("targetOffsetX = { it }"))
     }
 
     @Test
-    fun dialogsReverseThePhysicalEntranceBeforeClosing() {
+    fun dialogsFadeAwayBeforeWindowDisposalInsteadOfReversingEntrance() {
         val helper = source("motion/SettingsDialogEntrance.kt")
         val modal = source("motion/CapsuleModalDialog.kt")
         val dialog = source("component/Dialog.kt")
         val prefs = source("component/Preference.kt")
         assertTrue(helper.contains("parentProgress ?: localProgress"))
-        assertTrue(helper.contains("translationY = remaining * 16.dp.toPx()"))
-        assertTrue(helper.contains("scaleX = sizeFactor"))
-        assertTrue(modal.contains("progress.animateTo("))
-        assertTrue(modal.contains("targetValue = 0f"))
-        assertTrue(modal.contains("durationMillis = 165"))
+        assertTrue(helper.contains("LocalCapsuleModalExit.current"))
+        assertTrue(helper.contains("alpha = (1f - leaving).coerceIn(0f, 1f)"))
+        assertTrue(helper.contains("leaving * 0.014f"))
+        assertTrue(modal.contains("exitProgress.animateTo("))
+        assertTrue(modal.contains("targetValue = 1f"))
+        assertTrue(modal.contains("durationMillis = 190"))
+        assertFalse(modal.contains("targetValue = 0f,"))
+        assertTrue(modal.contains("LocalCapsuleModalExit provides exitProgress"))
         assertTrue(dialog.contains("CapsuleMotionDialog("))
         assertTrue(prefs.contains("closeSelection {"))
         assertTrue(dialog.contains(".capsuleDialogEntrance()"))

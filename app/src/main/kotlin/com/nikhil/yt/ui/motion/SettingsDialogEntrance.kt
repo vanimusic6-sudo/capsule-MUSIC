@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun Modifier.capsuleDialogEntrance(): Modifier {
     val parentProgress = LocalCapsuleModalProgress.current
+    val exitProgress = LocalCapsuleModalExit.current
     val localProgress = remember { Animatable(0f) }
     if (parentProgress == null) {
         LaunchedEffect(localProgress) {
@@ -37,10 +38,14 @@ fun Modifier.capsuleDialogEntrance(): Modifier {
     val animation = parentProgress ?: localProgress
     return this.graphicsLayer {
         val remaining = 1f - animation.value
-        val sizeFactor = 1f - remaining * 0.065f
+        val leaving = exitProgress?.value ?: 0f
+        // Entrance remains exactly as approved; exit uses its OWN shallow
+        // travel + a real fade, complete before the dialog is disposed.
+        val sizeFactor = (1f - remaining * 0.065f) * (1f - leaving * 0.014f)
         scaleX = sizeFactor
         scaleY = sizeFactor
-        translationY = remaining * 16.dp.toPx()
+        translationY = (remaining * 16f + leaving * 6f).dp.toPx()
+        alpha = (1f - leaving).coerceIn(0f, 1f)
         transformOrigin = TransformOrigin(0.5f, 0.85f)
     }
 }

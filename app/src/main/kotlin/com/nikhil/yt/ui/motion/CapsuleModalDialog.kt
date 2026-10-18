@@ -29,6 +29,11 @@ import androidx.compose.ui.window.DialogProperties
 internal val LocalCapsuleModalProgress =
     compositionLocalOf<Animatable<Float, AnimationVector1D>?> { null }
 
+/** Separate dismiss progression. Entry stays at 1 throughout the exit, so
+ * popup closure never runs the opening trajectory backwards. */
+internal val LocalCapsuleModalExit =
+    compositionLocalOf<Animatable<Float, AnimationVector1D>?> { null }
+
 internal val LocalCapsuleModalClose =
     compositionLocalOf<((() -> Unit) -> Unit)> { { completed -> completed() } }
 
@@ -39,6 +44,7 @@ internal fun CapsuleMotionDialog(
     content: @Composable (requestClose: (() -> Unit) -> Unit) -> Unit,
 ) {
     val progress = remember { Animatable(0f) }
+    val exitProgress = remember { Animatable(0f) }
     var closing by remember { mutableStateOf(false) }
     var afterClose by remember { mutableStateOf<(() -> Unit)?>(null) }
 
@@ -51,11 +57,13 @@ internal fun CapsuleMotionDialog(
 
     LaunchedEffect(closing) {
         if (closing) {
-            // Reverse the same physical approach as opening. Crucially, do
-            // not dispose at mid-scale or use a fade-only dismiss.
-            progress.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(durationMillis = 165, easing = CapsuleExitEasing),
+            // EXIT IS NOT REVERSED ENTRY: the former 6.5% shrink and 16dp
+            // drop left a hard-edged small window that suddenly disappeared.
+            // Keep entry fully resolved; content quietly dissolves while
+            // moving only a few dp and shrinking imperceptibly.
+            exitProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 190, easing = CapsuleExitEasing),
             )
             (afterClose ?: onDismissRequest).invoke()
         } else {
@@ -78,6 +86,7 @@ internal fun CapsuleMotionDialog(
     ) {
         CompositionLocalProvider(
             LocalCapsuleModalProgress provides progress,
+            LocalCapsuleModalExit provides exitProgress,
             LocalCapsuleModalClose provides close,
         ) {
             content(close)
