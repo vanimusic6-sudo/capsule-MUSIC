@@ -3,6 +3,7 @@ package com.nikhil.yt.ui.motion
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -58,9 +59,15 @@ internal fun CapsuleMotionDialog(
             )
             (afterClose ?: onDismissRequest).invoke()
         } else {
+            // Keep the spring arrival from the version the user liked.
+            // Only the close was defective (old parent disappeared instantly).
             progress.animateTo(
                 targetValue = 1f,
-                animationSpec = tween(durationMillis = 235, easing = CapsuleEnterEasing),
+                animationSpec = spring(
+                    dampingRatio = 0.93f,
+                    stiffness = 290f,
+                    visibilityThreshold = 0.001f,
+                ),
             )
         }
     }
