@@ -3,6 +3,8 @@ package com.nikhil.yt.ui.component
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +49,7 @@ internal fun CapsuleSoftSwitch(
         label = "capsuleSwitchSlide",
     )
 
+    val pressSource = remember { MutableInteractionSource() }
     Canvas(
         modifier = modifier
             .minimumInteractiveComponentSize()
@@ -55,6 +58,8 @@ internal fun CapsuleSoftSwitch(
                 value = checked,
                 enabled = isEnabled,
                 role = Role.Switch,
+                interactionSource = pressSource,
+                indication = null, // No Material press scrim/ripple over Capsule.
                 onValueChange = onCheckedChange,
             ),
     ) {
