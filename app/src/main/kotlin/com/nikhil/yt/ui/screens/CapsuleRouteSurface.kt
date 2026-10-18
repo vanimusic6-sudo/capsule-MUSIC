@@ -184,81 +184,44 @@ private fun RouteWithScrollAwayHeader(
     var headerOffsetPx by remember(entry) { mutableFloatStateOf(0f) }
     val scope = rememberCoroutineScope()
     val revealJob = remember(entry) { arrayOfNulls<Job>(1) }
-    // Recording 9496: 'available.y > 0' alone fired on tiny overscroll
-    // rebounds and system flings, making the header pop back mid-scroll,
-    // immediately disappear, and sometimes overlay the feed.
+    // No overscroll threshold: on phones a LazyColumn can reach the top
+    // without ever producing an additional 12/36dp of leftover drag.
+    // The old threshold permanently stranded the header above the display.
     //
-    // Require meaningful upward overscroll while the list is ACTUALLY
-    // at top: 12dp for finger drag or 36dp leftover from a top-reaching
-    // fling. Ignore sub-pixel recoil. No new animation
-    // controllers are allocated per gesture or per frame.
-    val pullThresholdPx = with(LocalDensity.current) { 12.dp.toPx() }
+    // Positive UNCONSUMED movement means the child reached its upper end.
+    // Reveal immediately, with one cancellable short motion. Ignore tiny
+    // negative bounce frames, and let only a real finger scroll cancel a
+    // reveal already in progress. There is no busy frame/scroll polling.
     val hideNoiseFloorPx = with(LocalDensity.current) { 1.5.dp.toPx() }
-    val returnEasing = CapsuleStandardEasing
-    val scrollAwayConnection = remember(entry, hiddenPx, scope, pullThresholdPx, hideNoiseFloorPx) {
+    val scrollAwayConnection = remember(entry, hiddenPx, scope, hideNoiseFloorPx) {
         object : NestedScrollConnection {
-            private var positiveOverscroll = 0f
-
             override fun onPostScroll(
                 consumed: Offset,
                 available: Offset,
                 source: NestedScrollSource,
             ): Offset {
-                if (source != NestedScrollSource.UserInput) {
-                    // A fling reaching the top should reveal the greeting
-                    // automatically, not require another intentional pull.
-                    // Tiny overscroll spring-back isn't a genuine arrival:
-                    // require a sufficiently large positive leftover.
-                    if (consumed.y >= 0f &&
-                        available.y >= pullThresholdPx * 3f &&
-                        headerOffsetPx < 0f &&
-                        revealJob[0]?.isActive != true
-                    ) {
+                if (available.y > 0f && consumed.y >= 0f && headerOffsetPx < 0f) {
+                    if (revealJob[0]?.isActive != true) {
                         revealJob[0] = scope.launch {
                             animate(
                                 initialValue = headerOffsetPx,
                                 targetValue = 0f,
-                                animationSpec = tween(240, easing = returnEasing),
+                                animationSpec = tween(220, easing = CapsuleStandardEasing),
                             ) { value, _ -> headerOffsetPx = value }
                         }
-                    } else if (consumed.y < -hideNoiseFloorPx &&
-                        headerOffsetPx > -hiddenPx &&
-                        revealJob[0]?.isActive != true
-                    ) {
-                        // After return begins ignore inertial rebound. Only a
-                        // *new finger drag* may interrupt the visible header.
-                        headerOffsetPx = (headerOffsetPx + consumed.y).coerceIn(-hiddenPx, 0f)
                     }
-                    return Offset.Zero
-                }
-                when {
-                    consumed.y < -hideNoiseFloorPx -> {
-                        positiveOverscroll = 0f
+                } else if (consumed.y < -hideNoiseFloorPx) {
+                    // An inertial bounce must not cancel the reveal started
+                    // at the true top. A deliberate opposite finger gesture
+                    // cancels it immediately, following the finger again.
+                    val userGesture = source == NestedScrollSource.UserInput
+                    if (userGesture && revealJob[0]?.isActive == true) {
                         revealJob[0]?.cancel()
                         revealJob[0] = null
+                    }
+                    if (revealJob[0]?.isActive != true) {
                         headerOffsetPx = (headerOffsetPx + consumed.y)
                             .coerceIn(-hiddenPx, 0f)
-                    }
-                    // A list consuming upward travel means we're in the
-                    // middle of content. Keep the header tucked away.
-                    consumed.y > 0f -> positiveOverscroll = 0f
-                    available.y > 0f && headerOffsetPx < 0f -> {
-                        positiveOverscroll =
-                            (positiveOverscroll + available.y).coerceAtMost(pullThresholdPx * 2f)
-                        if (positiveOverscroll >= pullThresholdPx &&
-                            revealJob[0]?.isActive != true
-                        ) {
-                            positiveOverscroll = 0f
-                            revealJob[0] = scope.launch {
-                                animate(
-                                    initialValue = headerOffsetPx,
-                                    targetValue = 0f,
-                                    animationSpec = tween(240, easing = returnEasing),
-                                ) { value, _ ->
-                                    headerOffsetPx = value
-                                }
-                            }
-                        }
                     }
                 }
                 return Offset.Zero
