@@ -71,6 +71,21 @@ class HomeScrollableHeaderTest {
         assertTrue(activity.contains("LocalCapsuleHeaderAccountName provides headerAccountName"))
     }
 
+    @Test fun mainFeedsUseOnlyVisibleStatusInsetNotReservedInvisibleChrome() {
+        val activity = source("MainActivity.kt")
+        val insets = activity.substringAfter("val playerAwareWindowInsets =")
+            .substringBefore("appBarScrollBehavior(")
+        assertTrue("only main feeds use visibility-aware status inset",
+            insets.contains("currentRoute in topLevelScreens"))
+        assertTrue("a hidden status bar must not reserve empty pixels",
+            insets.contains("visibleStatusBarInsets.only(WindowInsetsSides.Top)"))
+        assertTrue("details retain stable insets for the player",
+            insets.contains("windowsInsets.only(WindowInsetsSides.Top)"))
+        assertFalse("old AppBar reservation would duplicate the feed header",
+            insets.contains("WindowInsets(top = AppBarHeight"))
+        assertTrue(activity.contains("val visibleStatusBarInsets = WindowInsets.statusBars"))
+    }
+
     @Test fun greetingRemainsModernOnEveryPageAndNeverReturnsTheOldLogo() {
         val chrome = source("ui/component/StandardChrome.kt")
         assertTrue(chrome.contains("val dayPeriod = rememberHomeDayPeriod()"))

@@ -43,6 +43,7 @@ on:
       - polish/soft-motion-thermal-header-9496-20261018
       - fix/header-reveal-soft-nav-together-toggle-20261018
       - fix/inline-scroll-header-together-no-ripple-20261018
+      - fix/feed-header-status-inset-20261018
       - fix/video-timeline-morph-20261014
 
 permissions:
