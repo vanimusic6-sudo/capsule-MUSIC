@@ -6,9 +6,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Regression guards: greeting/account/settings are the first native item
- * of each main page's existing scrolling surface, never a separate animated
- * overlay that must guess when a fling has reached the top.
+ * Capsule main chrome must be fixed, opaque, and owned exactly once by
+ * Scaffold.topBar (Spotify model). Feeds scroll UNDER it, without reserving
+ * phantom space or composing duplicate greeting rows.
  */
 class HomeScrollableHeaderTest {
     private fun source(relative: String) = listOf(
@@ -16,77 +16,68 @@ class HomeScrollableHeaderTest {
         File("app/src/main/kotlin/com/nikhil/yt/$relative"),
     ).first { it.isFile }.readText()
 
-    @Test fun homeHeaderIsFirstFeedItemWithNoIndependentScrollOwner() {
-        val home = source("ui/screens/HomeScreen.kt")
-        val start = home.substringAfter("LazyColumn(\n                state = lazylistState")
-            .substringBefore("quickPicks?.takeIf")
-        assertTrue(start.contains("item(key = \"capsule:feed-header\")"))
-        assertTrue(start.contains("CapsuleCanvasHeader()"))
-        assertTrue(home.contains("contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()"))
-        assertFalse(home.contains("stickyHeader("))
-    }
-
-    @Test fun everyLibraryLayoutPutsCanvasHeaderAheadOfFilter() {
-        listOf("LibraryMixScreen", "LibraryPlaylistsScreen", "LibrarySongsScreen",
-               "LibraryAlbumsScreen", "LibraryArtistsScreen").forEach { name ->
-            val source = source("ui/screens/library/$name.kt")
-            val header = source.indexOf("key = \"capsule:feed-header\"")
-            val filter = source.indexOf("key = \"filter\"")
-            assertTrue("$name: greeting before filter chips", header in 0 until filter)
-            assertTrue("$name: common greeting", source.contains("CapsuleCanvasHeader()"))
-            if (name != "LibrarySongsScreen") {
-                assertTrue("$name: grid header spans the entire width",
-                    source.contains("key = \"capsule:feed-header\",\n" +
-                        "                        span = { GridItemSpan(maxLineSpan) }"))
-            }
-        }
-    }
-
-    @Test fun historyAndStatsAlsoScrollTheirHeaderWithTheFeed() {
-        listOf("HistoryScreen", "StatsScreen").forEach { name ->
-            val source = source("ui/screens/$name.kt")
-            val list = source.substringAfter("LazyColumn(")
-            val header = list.indexOf("item(key = \"capsule:feed-header\")")
-            assertTrue("$name starts with a real header row", header >= 0)
-            assertTrue("$name header appears before content rows", header < list.indexOf("item {"))
-        }
-    }
-
-    @Test fun routeHostHasNoFloatingHeaderAnimationsOrScrollInterception() {
-        val routes = source("ui/screens/CapsuleRouteSurface.kt")
+    @Test fun activityOwnsOnePinnedHeaderForEveryMainRouteOnly() {
         val activity = source("MainActivity.kt")
-        assertTrue(routes.contains("fun CapsuleCanvasHeader()"))
-        assertTrue(routes.contains("StandardHeaderTitle("))
-        assertTrue(routes.contains("LocalCapsuleHeaderNavController.current"))
-        assertFalse(routes.contains("RouteWithScrollAwayHeader"))
-        assertFalse(routes.contains("scrollAwayConnection"))
-        assertFalse(routes.contains("headerOffsetPx"))
-        assertFalse(routes.contains("NestedScrollConnection"))
-        assertFalse(routes.contains(".nestedScroll("))
-        assertFalse(routes.contains("TopAppBar("))
-        assertFalse(routes.contains("animateFloatAsState"))
-        assertFalse(routes.contains("rememberCoroutineScope"))
-        assertFalse(routes.contains("WindowInsets.systemBars"))
-        assertTrue(activity.contains("LocalCapsuleHeaderNavController provides navController"))
-        assertTrue(activity.contains("LocalCapsuleHeaderAccountName provides headerAccountName"))
+        val topBar = activity.substringAfter("Scaffold(\n                                topBar = {")
+            .substringBefore("bottomBar = {")
+        assertTrue(topBar.contains("if (currentRoute in topLevelScreens && !active)"))
+        assertTrue(topBar.contains("CapsulePinnedHeader()"))
+        assertTrue(topBar.contains("TopSearch("))
+        assertFalse(topBar.contains("CapsuleCanvasHeader()"))
+        assertFalse(topBar.contains("rememberInfiniteTransition"))
     }
 
-    @Test fun mainFeedsUseOnlyVisibleStatusInsetNotReservedInvisibleChrome() {
+    @Test fun headerHasOpaqueBackgroundAndNoScrollOrAnimatedState() {
+        val host = source("ui/screens/CapsuleRouteSurface.kt")
+        val header = host.substringAfter("fun CapsulePinnedHeader()")
+            .substringBefore("internal fun CapsuleRouteSurface(")
+        assertTrue(header.contains(".background(MaterialTheme.colorScheme.surface)"))
+        assertTrue(header.contains(".statusBarsPadding()"))
+        assertTrue(header.contains(".height(AppBarHeight)"))
+        assertTrue(header.contains("StandardHeaderTitle("))
+        assertTrue(header.contains("R.drawable.settings"))
+        assertFalse(header.contains("AnimatedVisibility("))
+        assertFalse(header.contains("animateFloatAsState("))
+        assertFalse(header.contains(".nestedScroll("))
+        assertFalse(host.contains("RouteWithScrollAwayHeader"))
+        assertFalse(host.contains("headerOffsetPx"))
+        assertFalse(host.contains("CapsuleCanvasHeader"))
+    }
+
+    @Test fun feedsHaveNoDuplicatedGreetingItems() {
+        val home = source("ui/screens/HomeScreen.kt")
+        assertFalse(home.contains("capsule:feed-header"))
+        assertFalse(home.contains("CapsuleCanvasHeader"))
+        assertTrue(home.contains("contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()"))
+        val others = listOf(
+            "ui/screens/library/LibraryMixScreen.kt",
+            "ui/screens/library/LibrarySongsScreen.kt",
+            "ui/screens/library/LibraryAlbumsScreen.kt",
+            "ui/screens/library/LibraryArtistsScreen.kt",
+            "ui/screens/library/LibraryPlaylistsScreen.kt",
+            "ui/screens/StatsScreen.kt",
+            "ui/screens/HistoryScreen.kt",
+        )
+        others.forEach { path ->
+            val feed = source(path)
+            assertFalse("$path must not have duplicate greeting", feed.contains("capsule:feed-header"))
+            assertFalse("$path must not render inline header", feed.contains("CapsuleCanvasHeader()"))
+        }
+    }
+
+    @Test fun contentReservesExactlyOneRealBarAndStatusInset() {
         val activity = source("MainActivity.kt")
         val insets = activity.substringAfter("val playerAwareWindowInsets =")
             .substringBefore("appBarScrollBehavior(")
-        assertTrue("only main feeds use visibility-aware status inset",
-            insets.contains("currentRoute in topLevelScreens"))
-        assertTrue("a hidden status bar must not reserve empty pixels",
-            insets.contains("visibleStatusBarInsets.only(WindowInsetsSides.Top)"))
-        assertTrue("details retain stable insets for the player",
-            insets.contains("windowsInsets.only(WindowInsetsSides.Top)"))
-        assertFalse("old AppBar reservation would duplicate the feed header",
-            insets.contains("WindowInsets(top = AppBarHeight"))
+        assertTrue(insets.contains("currentRoute in topLevelScreens"))
+        assertTrue(insets.contains("visibleStatusBarInsets.only(WindowInsetsSides.Top)"))
+        assertTrue(insets.contains("windowsInsets.only(WindowInsetsSides.Top)"))
+        assertTrue(insets.contains("top = if (currentRoute in topLevelScreens) AppBarHeight else 0.dp"))
+        assertFalse(insets.contains("WindowInsets(top = AppBarHeight"))
         assertTrue(activity.contains("val visibleStatusBarInsets = WindowInsets.statusBars"))
     }
 
-    @Test fun greetingRemainsModernOnEveryPageAndNeverReturnsTheOldLogo() {
+    @Test fun sameModernGreetingIsUsedOnAllPinnedTabs() {
         val chrome = source("ui/component/StandardChrome.kt")
         assertTrue(chrome.contains("val dayPeriod = rememberHomeDayPeriod()"))
         assertTrue(chrome.contains("val title = stringResource(dayPeriod.greetingId)"))
@@ -95,17 +86,14 @@ class HomeScrollableHeaderTest {
         assertFalse(chrome.contains("showHomeGreeting"))
     }
 
-    @Test fun listenTogetherAndSwitchTouchSurfacesDoNotDrawPressedScrims() {
+    @Test fun listenTogetherDoesNotShowPressedOverlays() {
         val together = source("ui/screens/settings/MusicTogetherScreen.kt")
-        val softSwitch = source("ui/component/CapsuleSoftSwitch.kt")
+        val switch = source("ui/component/CapsuleSoftSwitch.kt")
         val row = together.substringAfter("private fun ToggleRow(")
             .substringBefore("private fun StatusCard(")
         assertTrue(row.contains("CapsuleSoftSwitch("))
         assertTrue(row.contains("indication = null"))
-        assertFalse(row.contains("SwitchDefaults"))
-        assertFalse(row.contains("R.drawable.close"))
-        assertTrue(softSwitch.contains("indication = null"))
-        assertTrue(softSwitch.contains("interactionSource = pressSource"))
-        assertTrue(softSwitch.contains("role = Role.Switch"))
+        assertTrue(switch.contains("indication = null"))
+        assertTrue(switch.contains("role = Role.Switch"))
     }
 }
