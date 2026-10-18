@@ -68,8 +68,8 @@ class MotionEnergyStructuralRegressionTest {
     fun settingsSwitchUsesNativeThumbGrowthWithoutTransparentTapHalo() {
         val source = source("component/Preference.kt")
         assertTrue(source.contains("LocalRippleConfiguration provides null"))
-        assertTrue(source.contains("thumbContent = if (checked)"))
-        assertTrue(source.contains("} else {\n                        null\n                    },"))
+        assertTrue(source.contains("thumbContent = null,"))
+        assertFalse(source.contains("R.drawable.check"))
         assertFalse(source.contains("R.drawable.close"))
     }
 
@@ -78,12 +78,13 @@ class MotionEnergyStructuralRegressionTest {
         val source = source("screens/settings/PriorityOrderDialog.kt")
         assertTrue(source.contains("animateItemModifier = Modifier.animateItem("))
         assertTrue(source.contains("placementSpec = PriorityMoveSpec"))
-        assertTrue(source.contains("dampingRatio = Spring.DampingRatioNoBouncy"))
+        assertTrue(source.contains("dampingRatio = 0.86f"))
+        assertTrue(source.contains("stiffness = 190f"))
         assertTrue(source.contains("pendingOrderChange = true"))
         assertTrue(source.contains("onDragStopped = {"))
         assertTrue(source.contains("saveSettledOrder()"))
         val onMove = source.substringAfter("rememberReorderableLazyListState(lazyListState) { from, to ->")
-            .substringBefore("Dialog(onDismissRequest")
+            .substringBefore("CapsuleMotionDialog(onDismissRequest")
         assertFalse("Do not write DataStore once per crossing", onMove.contains("onOrderChange(reordered)"))
         assertTrue(source.contains("shadowElevation = lift.value.toPx()"))
         assertTrue(source.contains("shadowElevation = 0.dp"))
@@ -96,7 +97,7 @@ class MotionEnergyStructuralRegressionTest {
         assertTrue(source.contains("var isReordering by remember"))
         assertTrue(source.contains("LaunchedEffect(isReordering, pendingOrderChange)"))
         assertTrue(source.contains("if (!isReordering && pendingOrderChange)"))
-        assertTrue(source.contains("delay(320)"))
+        assertTrue(source.contains("delay(420)"))
         assertFalse("no immediate DataStore write on finger-up", source.contains("onDragStopped = {\n                                        saveSettledOrder()"))
         assertTrue(source.contains(".heightIn(max = maxHeight - 24.dp)"))
         assertTrue(source.contains(".weight(1f, fill = false)"))
@@ -107,33 +108,37 @@ class MotionEnergyStructuralRegressionTest {
     }
 
     @Test
-    fun settingsNavigationIsFullWidthPushWithoutNestedScaleOrFade() {
+    fun settingsRootActuallyLeavesEntireScreenAndNestedOldContentFades() {
         val routes = source("screens/ScreenTransitions.kt")
         assertTrue(routes.contains("SettingsRouteMotion.NESTED"))
         assertTrue(routes.contains("initialOffsetX = { if (isPop) -it else it }"))
         assertTrue(routes.contains("targetOffsetX = { if (isPop) it else -it }"))
-        assertTrue(routes.contains("TopRight = TransformOrigin(1f, 0f)"))
-        assertTrue(routes.contains("initialScale = SettingsRootInitialScale"))
-        assertTrue(routes.contains("targetScale = SettingsRootInitialScale"))
-        assertTrue(routes.contains("durationMillis = 340"))
-        assertFalse(routes.contains("settingsRootOffset"))
-        assertFalse(routes.contains("slideIn(\n"))
-        val nested = routes.substringAfter("SettingsRouteMotion.NESTED ->")
-            .substringBefore("SettingsRouteMotion.ROOT ->")
-        assertFalse("nested route must not squeeze glyphs", nested.contains("scaleIn("))
-        assertFalse("nested route must not fade and overlap", nested.contains("fadeIn("))
+        assertTrue(routes.contains("targetOffsetX = { it }"))
+        assertTrue(routes.contains("SettingsRootInitialScale = 0.96f"))
+        assertTrue(routes.contains("durationMillis = RootExitMs"))
+        assertTrue(routes.contains("1f at 190"))
+        assertTrue(routes.contains("durationMillis = 340").not())
+        assertTrue(routes.contains("NestedMs = 215"))
+        assertTrue(routes.contains("fadeOut("))
+        assertFalse(routes.contains("targetScale = SettingsRootInitialScale"))
+        assertFalse(routes.contains("spring<Float>("))
     }
 
     @Test
-    fun sharedSettingsDialogsUseFiniteEntranceOnly() {
+    fun dialogsReverseThePhysicalEntranceBeforeClosing() {
         val helper = source("motion/SettingsDialogEntrance.kt")
+        val modal = source("motion/CapsuleModalDialog.kt")
         val dialog = source("component/Dialog.kt")
-        assertTrue(helper.contains("LaunchedEffect(arrival)"))
-        assertTrue(helper.contains("arrival.animateTo("))
+        val prefs = source("component/Preference.kt")
+        assertTrue(helper.contains("parentProgress ?: localProgress"))
         assertTrue(helper.contains("translationY = remaining * 16.dp.toPx()"))
         assertTrue(helper.contains("scaleX = sizeFactor"))
-        assertTrue(helper.contains("dampingRatio = 0.93f"))
-        assertFalse(helper.contains("rememberInfiniteTransition"))
+        assertTrue(modal.contains("progress.animateTo("))
+        assertTrue(modal.contains("targetValue = 0f"))
+        assertTrue(modal.contains("durationMillis = 165"))
+        assertTrue(dialog.contains("CapsuleMotionDialog("))
+        assertTrue(prefs.contains("closeSelection {"))
         assertTrue(dialog.contains(".capsuleDialogEntrance()"))
+        assertFalse(modal.contains("rememberInfiniteTransition"))
     }
 }
