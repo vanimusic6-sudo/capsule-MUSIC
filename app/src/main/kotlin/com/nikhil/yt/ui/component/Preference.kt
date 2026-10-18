@@ -154,31 +154,51 @@ fun <T> ListPreference(
         mutableStateOf(false)
     }
     if (showDialog) {
+        // React immediately to the selected row while the 190ms close plays.
+        // Otherwise the old radio remains selected until after the window
+        // vanishes, making the tap feel as though it was ignored.
+        val visibleChoice = remember { mutableStateOf(selectedValue) }
         ListDialog(
             onDismiss = { showDialog = false },
         ) {
             items(values) { value ->
                 val closeSelection = LocalCapsuleModalClose.current
+                val touch = remember(value) { MutableInteractionSource() }
+                val pressed by touch.collectIsPressedAsState()
+                val pressedScale = animateFloatAsState(
+                    targetValue = if (pressed) 0.984f else 1f,
+                    animationSpec = spring(dampingRatio = 0.93f, stiffness = 360f),
+                    label = "choiceRowPress",
+                )
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier =
-                    Modifier
+                    modifier = Modifier
                         .fillMaxWidth()
-                        .clickable {
+                        .graphicsLayer {
+                            scaleX = pressedScale.value
+                            scaleY = pressedScale.value
+                        }
+                        .clickable(
+                            interactionSource = touch,
+                            indication = null,
+                        ) {
+                            visibleChoice.value = value
                             closeSelection {
                                 showDialog = false
                                 onValueSelected(value)
                             }
-                        }.padding(horizontal = 16.dp, vertical = 12.dp),
+                        }
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
                 ) {
                     RadioButton(
-                        selected = value == selectedValue,
+                        selected = value == visibleChoice.value,
                         onClick = null,
                     )
-
                     Text(
                         text = valueText(value),
                         style = MaterialTheme.typography.bodyLarge,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(start = 16.dp),
                     )
                 }
