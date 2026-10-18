@@ -50,16 +50,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.nikhil.yt.R
 import com.nikhil.yt.ui.motion.capsuleDialogEntrance
+import com.nikhil.yt.ui.motion.CapsuleMotionDialog
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
 private val PriorityMoveSpec = spring<IntOffset>(
-    dampingRatio = Spring.DampingRatioNoBouncy,
-    stiffness = Spring.StiffnessMedium,
+    dampingRatio = 0.86f,
+    stiffness = 190f,
 )
 private val PriorityLiftSpec = spring<Float>(
-    dampingRatio = Spring.DampingRatioNoBouncy,
-    stiffness = Spring.StiffnessMedium,
+    dampingRatio = 0.91f,
+    stiffness = 240f,
 )
 
 /**
@@ -102,7 +103,7 @@ internal fun PriorityOrderDialog(
     // synchronously on every crossing to keep the item under the finger.
     LaunchedEffect(isReordering, pendingOrderChange) {
         if (!isReordering && pendingOrderChange) {
-            delay(320)
+            delay(420)
             saveSettledOrder()
         }
     }
@@ -129,7 +130,7 @@ internal fun PriorityOrderDialog(
         saveSettledOrder()
         onDismiss()
     }
-    Dialog(onDismissRequest = dismissAfterSave) {
+    CapsuleMotionDialog(onDismissRequest = dismissAfterSave) { closeModal ->
         // The previous dialog could exceed the phone's available height:
         // its 430dp list plus note and buttons pushed Done/Reset almost
         // underneath the system navigation bar (clearly visible at 29s).
@@ -223,7 +224,7 @@ internal fun PriorityOrderDialog(
                     ) {
                         Text(stringResource(R.string.audio_client_priority_reset))
                     }
-                    TextButton(onClick = dismissAfterSave) {
+                    TextButton(onClick = { closeModal(dismissAfterSave) }) {
                         Text(stringResource(R.string.audio_client_priority_done))
                     }
                 }
@@ -246,12 +247,12 @@ private fun PriorityRow(
     // The lifted item remains attached to the finger; its neighbours move
     // with one non-bouncy placement spring instead of snapping or leapfrogging.
     val lift = animateDpAsState(
-        targetValue = if (isDragging) 8.dp else 0.dp,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium),
+        targetValue = if (isDragging) 6.dp else 0.dp,
+        animationSpec = spring(dampingRatio = 0.91f, stiffness = 240f),
         label = "priorityRowLift",
     )
     val scale = animateFloatAsState(
-        targetValue = if (isDragging) 1.016f else 1f,
+        targetValue = if (isDragging) 1.012f else 1f,
         animationSpec = PriorityLiftSpec,
         label = "priorityRowPressedScale",
     )

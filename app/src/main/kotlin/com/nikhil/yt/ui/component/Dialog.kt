@@ -88,6 +88,8 @@ import androidx.compose.ui.window.Popup
 import androidx.navigation.NavController
 import com.nikhil.yt.R
 import com.nikhil.yt.ui.motion.capsuleDialogEntrance
+import com.nikhil.yt.ui.motion.CapsuleMotionDialog
+import com.nikhil.yt.ui.motion.LocalCapsuleModalClose
 
 import kotlinx.coroutines.delay
 import androidx.compose.ui.platform.LocalContext
@@ -103,10 +105,10 @@ fun DefaultDialog(
     contentScrollable: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Dialog(
+    CapsuleMotionDialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) { closeModal ->
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
@@ -198,10 +200,10 @@ fun ActionPromptDialog(
     onCancel: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit = {}
 ) {
-    Dialog(
+    CapsuleMotionDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
+    ) { closeModal ->
         Surface(
             modifier = Modifier.padding(24.dp).capsuleDialogEntrance(),
             shape = AlertDialogDefaults.shape,
@@ -246,14 +248,14 @@ fun ActionPromptDialog(
 
                     if (onCancel != null) {
                         TextButton(
-                            onClick = { onCancel() }
+                            onClick = { closeModal(onCancel) }
                         ) {
                             Text(stringResource(android.R.string.cancel))
                         }
                     }
 
                     TextButton(
-                        onClick = { onConfirm() }
+                        onClick = { closeModal(onConfirm) }
                     ) {
                         Text(stringResource(android.R.string.ok))
                     }
@@ -269,10 +271,10 @@ fun ListDialog(
     modifier: Modifier = Modifier,
     content: LazyListScope.() -> Unit,
 ) {
-    Dialog(
+    CapsuleMotionDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
+    ) { closeModal ->
         // Long lists must scroll INSIDE the dialog. Previously a large list
         // could consume the entire viewport and hide its own last options.
         // Keep the surface at a stable size while only the render layer grows.
@@ -370,7 +372,8 @@ fun TextFieldDialog(
         title = title,
         contentScrollable = true,
         buttons = {
-            TextButton(onClick = onDismiss) {
+            val animateClose = LocalCapsuleModalClose.current
+            TextButton(onClick = { animateClose(onDismiss) }) {
                 Text(text = stringResource(android.R.string.cancel))
             }
 
@@ -380,18 +383,23 @@ fun TextFieldDialog(
             TextButton(
                 enabled = isValid,
                 onClick = {
-                    if (textFields != null && onDoneMultiple != null) {
-                        onDoneMultiple(textFields.map { it.second.text })
-                    } else {
-                        onDone(legacyFieldState.value.text)
+                    animateClose {
+                        if (textFields != null && onDoneMultiple != null) {
+                            onDoneMultiple(textFields.map { it.second.text })
+                        } else {
+                            onDone(legacyFieldState.value.text)
+                        }
+                        onDismiss()
                     }
-                    onDismiss()
                 },
             ) {
                 Text(text = stringResource(android.R.string.ok))
             }
         },
     ) {
+        // The content lambda and buttons lambda have separate scopes.
+        // The keyboard Done handler must capture its OWN provided closer.
+        val animateClose = LocalCapsuleModalClose.current
         Column {
             if (textFields != null) {
                 textFields.forEachIndexed { index, (label, value) ->
@@ -406,8 +414,10 @@ fun TextFieldDialog(
                         keyboardActions = KeyboardActions(
                             onDone = {
                                 if (onDoneMultiple != null) {
-                                    onDoneMultiple(textFields.map { it.second.text })
-                                    onDismiss()
+                                    animateClose {
+                                        onDoneMultiple(textFields.map { it.second.text })
+                                        onDismiss()
+                                    }
                                 }
                             },
                         ),
@@ -504,15 +514,18 @@ fun EditPlaylistDialog(
         title = { Text(text = stringResource(R.string.edit_playlist)) },
         contentScrollable = true,
         buttons = {
-            TextButton(onClick = onDismiss) {
+            val animateClose = LocalCapsuleModalClose.current
+            TextButton(onClick = { animateClose(onDismiss) }) {
                 Text(text = stringResource(android.R.string.cancel))
             }
             TextButton(
                 enabled = canSave,
                 onClick = {
                     keyboardController?.hide()
-                    onSave(nameField.text.trim(), thumbnailUrl?.takeUnless { it.isBlank() })
-                    onDismiss()
+                    animateClose {
+                        onSave(nameField.text.trim(), thumbnailUrl?.takeUnless { it.isBlank() })
+                        onDismiss()
+                    }
                 },
             ) {
                 Text(text = stringResource(R.string.save))
