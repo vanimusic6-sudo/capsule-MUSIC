@@ -77,6 +77,8 @@ class MotionEnergyStructuralRegressionTest {
         assertTrue(softSwitch.contains("val motion = animateFloatAsState("))
         assertTrue(softSwitch.contains("val amount = motion.value.coerceIn(0f, 1f)"))
         assertTrue(softSwitch.contains("role = Role.Switch"))
+        assertTrue(softSwitch.contains("16f + 20f * amount"))
+        assertTrue(softSwitch.contains("8f + 4f * amount"))
         assertTrue(softSwitch.contains(".minimumInteractiveComponentSize()"))
         assertFalse(softSwitch.contains("rememberInfiniteTransition"))
     }
@@ -106,7 +108,8 @@ class MotionEnergyStructuralRegressionTest {
         assertTrue(source.contains("LaunchedEffect(isReordering, pendingOrderChange)"))
         assertTrue(source.contains("if (!isReordering && pendingOrderChange)"))
         assertTrue(source.contains("delay(310)"))
-        assertTrue(source.contains("enabled = !isReordering"))
+        assertTrue(source.contains("enabled = !isReordering && !dialogClosing"))
+        assertTrue(source.contains("if (dialogClosing) Modifier else Modifier.draggableHandle("))
         assertTrue(source.contains("targetState = position"))
         assertTrue(source.contains("label = \"priorityRankChange\""))
         assertFalse("no immediate DataStore write on finger-up", source.contains("onDragStopped = {\n                                        saveSettledOrder()"))
@@ -163,6 +166,8 @@ class MotionEnergyStructuralRegressionTest {
         assertTrue(modal.contains("LocalCapsuleModalExit provides exitProgress"))
         assertTrue(dialog.contains("CapsuleMotionDialog("))
         assertTrue(prefs.contains("closeSelection {"))
+        assertTrue(prefs.contains("enabled = !isDialogClosing"))
+        assertTrue(modal.contains("LocalCapsuleModalClosing provides closing"))
         assertTrue(dialog.contains(".capsuleDialogEntrance()"))
         assertFalse(modal.contains("rememberInfiniteTransition"))
     }
