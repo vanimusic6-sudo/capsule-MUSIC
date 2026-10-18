@@ -52,6 +52,7 @@ class HomeScrollableHeaderTest {
         assertTrue(routes.contains("12.dp.toPx()"))
         assertTrue(routes.contains("val hideNoiseFloorPx"))
         assertTrue(routes.contains("source != NestedScrollSource.UserInput"))
+        assertTrue(routes.contains("available.y >= pullThresholdPx * 3f"))
         assertTrue(routes.contains("positiveOverscroll >= pullThresholdPx"))
         assertTrue(routes.contains("revealJob[0]?.isActive != true"))
         assertTrue(routes.contains("headerOffsetPx = (headerOffsetPx + consumed.y)"))
