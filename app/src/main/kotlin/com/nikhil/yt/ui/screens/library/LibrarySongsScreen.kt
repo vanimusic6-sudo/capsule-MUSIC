@@ -8,7 +8,6 @@
 
 package com.nikhil.yt.ui.screens.library
 
-import com.nikhil.yt.ui.screens.CapsuleCanvasHeader
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -155,7 +154,7 @@ fun LibrarySongsScreen(
             state = lazyListState,
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
         ) {
-            item(key = "capsule:feed-header") { CapsuleCanvasHeader() }
+
 
             item(
                 key = "filter",
