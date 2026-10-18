@@ -60,6 +60,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.nikhil.yt.R
 import com.nikhil.yt.ui.motion.LocalCapsuleModalClose
+import com.nikhil.yt.ui.motion.LocalCapsuleModalClosing
 import kotlin.math.roundToInt
 
 @Composable
@@ -163,6 +164,7 @@ fun <T> ListPreference(
         ) {
             items(values) { value ->
                 val closeSelection = LocalCapsuleModalClose.current
+                val isDialogClosing = LocalCapsuleModalClosing.current
                 val touch = remember(value) { MutableInteractionSource() }
                 val pressed by touch.collectIsPressedAsState()
                 val pressedScale = animateFloatAsState(
@@ -179,6 +181,7 @@ fun <T> ListPreference(
                             scaleY = pressedScale.value
                         }
                         .clickable(
+                            enabled = !isDialogClosing,
                             interactionSource = touch,
                             indication = null,
                         ) {
