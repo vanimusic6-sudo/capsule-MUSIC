@@ -183,37 +183,62 @@ private fun RouteWithScrollAwayHeader(
     val hiddenPx = with(LocalDensity.current) { headerHeight.toPx() }
     var headerOffsetPx by remember(entry) { mutableFloatStateOf(0f) }
     val scope = rememberCoroutineScope()
-    // Job reference is NOT Compose state. Motion runs only once when the list
-    // actually reaches the top; finger-tracked scroll is written directly.
     val revealJob = remember(entry) { arrayOfNulls<Job>(1) }
-    val scrollAwayConnection = remember(entry, hiddenPx, scope) {
+    // Recording 9496: 'available.y > 0' alone fired on tiny overscroll
+    // rebounds and system flings, making the header pop back mid-scroll,
+    // immediately disappear, and sometimes overlay the feed.
+    //
+    // Require a meaningful user pull while the list is ACTUALLY at top.
+    // Ignore sub-pixel recoil and fling oscillations. No new animation
+    // controllers are allocated per gesture or per frame.
+    val pullThresholdPx = with(LocalDensity.current) { 12.dp.toPx() }
+    val hideNoiseFloorPx = with(LocalDensity.current) { 1.5.dp.toPx() }
+    val returnEasing = CapsuleStandardEasing
+    val scrollAwayConnection = remember(entry, hiddenPx, scope, pullThresholdPx, hideNoiseFloorPx) {
         object : NestedScrollConnection {
+            private var positiveOverscroll = 0f
+
             override fun onPostScroll(
                 consumed: Offset,
                 available: Offset,
                 source: NestedScrollSource,
             ): Offset {
-                when {
-                    consumed.y < 0f -> {
+                if (source != NestedScrollSource.UserInput) {
+                    // Inertial scrolling can hide the chrome but must NOT
+                    // re-trigger its return on overscroll/bounce frames.
+                    if (consumed.y < -hideNoiseFloorPx && headerOffsetPx > -hiddenPx) {
                         revealJob[0]?.cancel()
                         revealJob[0] = null
-                        // Direct finger movement does not schedule a per-pixel
-                        // tween or recompose this destination. The state is
-                        // consumed only inside Modifier.offset placement.
+                        headerOffsetPx = (headerOffsetPx + consumed.y).coerceIn(-hiddenPx, 0f)
+                    }
+                    return Offset.Zero
+                }
+                when {
+                    consumed.y < -hideNoiseFloorPx -> {
+                        positiveOverscroll = 0f
+                        revealJob[0]?.cancel()
+                        revealJob[0] = null
                         headerOffsetPx = (headerOffsetPx + consumed.y)
                             .coerceIn(-hiddenPx, 0f)
                     }
-                    available.y > 0f && headerOffsetPx < 0f &&
-                        revealJob[0]?.isActive != true -> {
-                        // Unconsumed positive drag means we are at the actual
-                        // top; one short animation returns the header gently.
-                        revealJob[0] = scope.launch {
-                            animate(
-                                initialValue = headerOffsetPx,
-                                targetValue = 0f,
-                                animationSpec = tween(220, easing = CapsuleStandardEasing),
-                            ) { value, _ ->
-                                headerOffsetPx = value
+                    // A list consuming upward travel means we're in the
+                    // middle of content. Keep the header tucked away.
+                    consumed.y > 0f -> positiveOverscroll = 0f
+                    available.y > 0f && headerOffsetPx < 0f -> {
+                        positiveOverscroll =
+                            (positiveOverscroll + available.y).coerceAtMost(pullThresholdPx * 2f)
+                        if (positiveOverscroll >= pullThresholdPx &&
+                            revealJob[0]?.isActive != true
+                        ) {
+                            positiveOverscroll = 0f
+                            revealJob[0] = scope.launch {
+                                animate(
+                                    initialValue = headerOffsetPx,
+                                    targetValue = 0f,
+                                    animationSpec = tween(240, easing = returnEasing),
+                                ) { value, _ ->
+                                    headerOffsetPx = value
+                                }
                             }
                         }
                     }
@@ -266,8 +291,10 @@ private fun CapsuleStandaloneHeader(
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = androidx.compose.ui.graphics.Color.Transparent,
-            scrolledContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+            // Opaque header surface prevents list artwork/text showing
+            // through the greeting while the chrome slides out.
+            containerColor = MaterialTheme.colorScheme.surface,
+            scrolledContainerColor = MaterialTheme.colorScheme.surface,
             titleContentColor = MaterialTheme.colorScheme.onSurface,
         ),
     )
