@@ -16,7 +16,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 
 /**
- * Keeps the dialog's window AND content alive for a short reverse movement.
+ * Keeps the dialog's window AND content alive for its own directed exit.
  *
  * Previously, button selection immediately cleared the parent's showDialog
  * flag, disposing the entire window; Compose's default window fade made
@@ -61,13 +61,13 @@ internal fun CapsuleMotionDialog(
 
     LaunchedEffect(closing) {
         if (closing) {
-            // EXIT IS NOT REVERSED ENTRY: the former 6.5% shrink and 16dp
-            // drop left a hard-edged small window that suddenly disappeared.
-            // Keep entry fully resolved; content quietly dissolves while
-            // moving only a few dp and shrinking imperceptibly.
+            // The exit deliberately differs from entrance: a compact lift
+            // followed by a soft retreat/downward dissolve, always reaching
+            // alpha=0 BEFORE the window is disposed. There is no second fade
+            // running on a different clock or transient full-screen blur.
             exitProgress.animateTo(
                 targetValue = 1f,
-                animationSpec = tween(durationMillis = 190, easing = CapsuleExitEasing),
+                animationSpec = tween(durationMillis = 185, easing = CapsuleExitEasing),
             )
             (afterClose ?: onDismissRequest).invoke()
         } else {
