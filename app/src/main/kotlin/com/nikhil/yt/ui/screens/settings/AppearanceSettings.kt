@@ -6,6 +6,8 @@
 
 package com.nikhil.yt.ui.screens.settings
 
+import com.nikhil.yt.ui.motion.LocalCapsuleModalClose
+
 import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -882,6 +884,7 @@ fun AppearanceSettings(
                             false
                     },
                     buttons = {
+                    val closeDialog = LocalCapsuleModalClose.current
                         TextButton(
                             onClick = {
                                 tempSensitivity =
@@ -901,13 +904,13 @@ fun AppearanceSettings(
                         )
 
                         TextButton(
-                            onClick = {
+                            onClick = { closeDialog {
                                 tempSensitivity =
                                     swipeSensitivity
 
                                 showSensitivityDialog =
                                     false
-                            },
+                            } },
                         ) {
                             Text(
                                 stringResource(
@@ -917,14 +920,14 @@ fun AppearanceSettings(
                         }
 
                         TextButton(
-                            onClick = {
+                            onClick = { closeDialog {
                                 onSwipeSensitivityChange(
                                     tempSensitivity,
                                 )
 
                                 showSensitivityDialog =
                                     false
-                            },
+                            } },
                         ) {
                             Text(
                                 stringResource(
@@ -1208,6 +1211,7 @@ fun AppearanceSettings(
                         false
                 },
                 buttons = {
+                    val closeDialog = LocalCapsuleModalClose.current
                     TextButton(
                         onClick = {
                             tempTextSize = 24f
@@ -1226,13 +1230,13 @@ fun AppearanceSettings(
                     )
 
                     TextButton(
-                        onClick = {
+                        onClick = { closeDialog {
                             tempTextSize =
                                 lyricsTextSize
 
                             showLyricsTextSizeDialog =
                                 false
-                        },
+                        } },
                     ) {
                         Text(
                             stringResource(
@@ -1242,14 +1246,14 @@ fun AppearanceSettings(
                     }
 
                     TextButton(
-                        onClick = {
+                        onClick = { closeDialog {
                             onLyricsTextSizeChange(
                                 tempTextSize,
                             )
 
                             showLyricsTextSizeDialog =
                                 false
-                        },
+                        } },
                     ) {
                         Text(
                             stringResource(
@@ -1352,6 +1356,7 @@ fun AppearanceSettings(
                         false
                 },
                 buttons = {
+                    val closeDialog = LocalCapsuleModalClose.current
                     TextButton(
                         onClick = {
                             tempLineSpacing = 1.3f
@@ -1370,13 +1375,13 @@ fun AppearanceSettings(
                     )
 
                     TextButton(
-                        onClick = {
+                        onClick = { closeDialog {
                             tempLineSpacing =
                                 lyricsLineSpacing
 
                             showLyricsLineSpacingDialog =
                                 false
-                        },
+                        } },
                     ) {
                         Text(
                             stringResource(
@@ -1386,14 +1391,14 @@ fun AppearanceSettings(
                     }
 
                     TextButton(
-                        onClick = {
+                        onClick = { closeDialog {
                             onLyricsLineSpacingChange(
                                 tempLineSpacing,
                             )
 
                             showLyricsLineSpacingDialog =
                                 false
-                        },
+                        } },
                     ) {
                         Text(
                             stringResource(
