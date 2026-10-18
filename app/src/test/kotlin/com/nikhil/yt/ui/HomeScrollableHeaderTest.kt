@@ -46,6 +46,22 @@ class HomeScrollableHeaderTest {
         assertFalse(routes.contains("stickyHeader("))
     }
 
+    @Test fun topHeaderDoesNotBounceBackFromFlingOrTinyOverscroll() {
+        val routes = source("ui/screens/CapsuleRouteSurface.kt")
+        assertTrue(routes.contains("val pullThresholdPx"))
+        assertTrue(routes.contains("12.dp.toPx()"))
+        assertTrue(routes.contains("val hideNoiseFloorPx"))
+        assertTrue(routes.contains("source != NestedScrollSource.UserInput"))
+        assertTrue(routes.contains("positiveOverscroll >= pullThresholdPx"))
+        assertTrue(routes.contains("revealJob[0]?.isActive != true"))
+        assertTrue(routes.contains("headerOffsetPx = (headerOffsetPx + consumed.y)"))
+        // An opaque bar avoids card/text 'afterimages' shining through its
+        // fading/moving surface, exactly as seen in recording 9496.
+        assertTrue(routes.contains("containerColor = MaterialTheme.colorScheme.surface"))
+        assertTrue(routes.contains("scrolledContainerColor = MaterialTheme.colorScheme.surface"))
+        assertFalse(routes.contains("containerColor = androidx.compose.ui.graphics.Color.Transparent"))
+    }
+
     @Test fun greetingIsSharedAndNeverShowsOldCapsuleTextOrAvatar() {
         val activity = source("MainActivity.kt")
         val chrome = source("ui/component/StandardChrome.kt")
