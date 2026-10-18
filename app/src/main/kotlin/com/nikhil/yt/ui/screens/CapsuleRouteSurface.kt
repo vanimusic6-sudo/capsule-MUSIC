@@ -2,6 +2,15 @@ package com.nikhil.yt.ui.screens
 
 import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.add
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.drawRect
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -32,7 +41,9 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.AppBarHeight
+import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.ui.component.StandardHeaderTitle
+import com.nikhil.yt.ui.component.StandardChrome
 
 /**
  * Registers a destination that owns an opaque full-screen canvas.
@@ -68,16 +79,42 @@ internal fun NavGraphBuilder.routeComposable(
     val settingsNavigation =
         route == "settings" || route.startsWith("settings/") ||
             arrival.from == "settings" || arrival.from?.startsWith("settings/") == true
-    // Main screens render one persistent opaque top bar in the Activity
-    // Scaffold. No destination draws an additional greeting, so settings
-    // animation/back navigation cannot leave a duplicate on the canvas.
-    CompositionLocalProvider(LocalNavBackStackEntry provides entry) {
+    // Settings animates the *whole destination*. A pinned Activity Scaffold
+    // topBar lived outside NavHost: it could pop in/out while the returning
+    // Home/Library canvas was still halfway through its ArchiveTune transition.
+    //
+    // Own the fixed (non-scrollable) bar INSIDE the main destination instead.
+    // No scroll observer or own animation: NavHost's EXISTING slide/fade
+    // carries both the page and its chrome together during Settings Back.
+    val mainDestination = route in setOf("home", "library", "history", "stats")
+
+    // Do not derive a departing main page's top padding from the global
+    // currentRoute: while Settings enters, currentRoute already says
+    // "settings", even though the old Home is still on screen animating.
+    // Preserve the main destination's status-bar + fixed chrome top
+    // reservation; delegate bottom/horizontal to the live app shell.
+    val parentInsets = LocalPlayerAwareWindowInsets.current
+    val destinationInsets = if (mainDestination) {
+        parentInsets.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
+            .add(WindowInsets.statusBars.only(WindowInsetsSides.Top))
+            .add(WindowInsets(top = AppBarHeight))
+    } else parentInsets
+
+    CompositionLocalProvider(
+        LocalNavBackStackEntry provides entry,
+        LocalPlayerAwareWindowInsets provides destinationInsets,
+    ) {
         CapsuleRouteSurface {
-            Box(
-                modifier = if (settingsNavigation) Modifier else
-                    Modifier.destinationEntrance(motion, arrival.direction),
-            ) {
-                with(contentScope) { content(entry) }
+            Box(modifier = Modifier.fillMaxSize()) {
+                Box(
+                    modifier = if (settingsNavigation) Modifier else
+                        Modifier.destinationEntrance(motion, arrival.direction),
+                ) {
+                    with(contentScope) { content(entry) }
+                }
+                if (mainDestination) {
+                    CapsulePinnedHeader(route = route)
+                }
             }
         }
     }
@@ -131,20 +168,40 @@ val LocalCapsuleHeaderAccountImage = compositionLocalOf<String?> { null }
 val LocalCapsuleHeaderNavController = compositionLocalOf<NavHostController?> { null }
 
 /**
- * Spotify-like pinned greeting/account/Settings bar shared by all main routes.
+ * Pinned (scroll-independent) header that belongs to the same NavHost
+ * destination as the main feed. No separate scale, fade or scroll physics.
  *
- * Drawn EXACTLY ONCE in MainActivity's Scaffold.topBar, not in any LazyList,
- * and not animated or attached to scroll progress. The opaque theme surface
- * also covers the status bar inset so rows underneath never ghost through.
- * The main feeds reserve this exact bar height in their content insets.
+ * Colors follow the *screen* instead of blindly using Material surface:
+ * Home paints StandardChrome.background + the 430dp tonal wash; Library,
+ * History and Stats paint MaterialTheme.surface as their foundation.
+ * Replicating only the Home wash's first few pixels costs one tiny
+ * drawWithCache rect and avoids a visible solid-color strip above the feed.
  */
 @Composable
-fun CapsulePinnedHeader() {
+fun CapsulePinnedHeader(route: String) {
     val navController = LocalCapsuleHeaderNavController.current
+    val isHome = route == "home"
+    val base = if (isHome) StandardChrome.background else MaterialTheme.colorScheme.surface
+    val tonalStart = MaterialTheme.colorScheme.primaryContainer
+    val tonalMiddle = MaterialTheme.colorScheme.secondaryContainer
+    val backdrop = if (isHome) {
+        Modifier.drawWithCache {
+            val wash = Brush.verticalGradient(
+                0f to tonalStart.copy(alpha = 0.30f),
+                0.42f to tonalMiddle.copy(alpha = 0.14f),
+                1f to Color.Transparent,
+                startY = 0f,
+                endY = 430.dp.toPx(),
+            )
+            onDrawBehind { drawRect(brush = wash) }
+        }
+    } else Modifier
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
+            .background(base)
+            .then(backdrop)
             .statusBarsPadding()
             .height(AppBarHeight)
             .padding(horizontal = 16.dp),
