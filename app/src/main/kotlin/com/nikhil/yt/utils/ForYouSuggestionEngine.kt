@@ -35,7 +35,9 @@ class ForYouSuggestionEngine @Inject constructor(
 ) {
 
     companion object {
-        const val MAX_SUGGESTIONS = 24
+        const val MAX_SUGGESTIONS = 30
+        private const val MAX_PER_RECOMMENDED_ARTIST = 3
+        private const val RECENT_SKIP_WINDOW_MS = 60L * 86_400_000L
         private const val MAX_SEED_SONGS = 6
         private const val MIN_SEED_SONGS = 4
         private const val MIN_UNIQUE_LISTENED_SONGS = 8
@@ -156,7 +158,8 @@ class ForYouSuggestionEngine @Inject constructor(
                 .size
         if (seedArtistCount < MIN_SEED_ARTISTS) return emptyList()
 
-        val seedIds = seedSongs.mapTo(mutableSetOf()) { it.id }
+        // Discovery must not be a second copy of recently played tracks.
+        val alreadyPlayedIds = allSongs.mapTo(mutableSetOf()) { it.id }
         val relatedBuckets = mutableListOf<List<SongItem>>()
 
         for (seed in seedSongs) {
@@ -171,9 +174,21 @@ class ForYouSuggestionEngine @Inject constructor(
                 val bucket =
                     related.songs
                         .filterExplicit(hideExplicit)
-                        .filter { it.id !in seedIds }
+                        .filter { item ->
+                            item.id !in alreadyPlayedIds &&
+                                item.title.isNotBlank() &&
+                                item.artists.isNotEmpty() &&
+                                (item.duration == null || item.duration in 30..900) &&
+                                // Skipping a candidate repeatedly is negative feedback,
+                                // even when it appears under another seed radio.
+                                !(skipMap[item.id]?.let {
+                                    it.skipCount >= 2 &&
+                                        System.currentTimeMillis() - it.lastSkippedAt <
+                                            RECENT_SKIP_WINDOW_MS
+                                } ?: false)
+                        }
                         .distinctBy { it.id }
-                        .take(10)
+                        .take(12)
                 if (bucket.isNotEmpty()) relatedBuckets += bucket
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -182,16 +197,24 @@ class ForYouSuggestionEngine @Inject constructor(
             }
         }
 
-        if (relatedBuckets.size < MIN_SEED_ARTISTS) return emptyList()
+        // Three genuinely different seeds are required, but one temporarily failing
+        // provider request should not erase the entire shelf.
+        if (relatedBuckets.size < 2) return emptyList()
 
         // Interleave sources so one favourite track cannot dominate the whole shelf.
         val suggestions = mutableListOf<SongItem>()
-        val seenIds = seedIds.toMutableSet()
+        val seenIds = alreadyPlayedIds
+        val artistCounts = mutableMapOf<String, Int>()
         val longestBucket = relatedBuckets.maxOfOrNull { it.size } ?: 0
         for (index in 0 until longestBucket) {
             for (bucket in relatedBuckets) {
                 val item = bucket.getOrNull(index) ?: continue
-                if (seenIds.add(item.id)) suggestions += item
+                if (item.id in seenIds) continue
+                val artistKey = item.artists.first().name.trim().lowercase()
+                if ((artistCounts[artistKey] ?: 0) >= MAX_PER_RECOMMENDED_ARTIST) continue
+                seenIds += item.id
+                artistCounts[artistKey] = (artistCounts[artistKey] ?: 0) + 1
+                suggestions += item
                 if (suggestions.size >= MAX_SUGGESTIONS) return suggestions
             }
         }
