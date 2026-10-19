@@ -77,7 +77,7 @@ class HomeViewModel @Inject constructor(
     private var tasteRecommendationsJob: Job? = null
     private var exploreJob: Job? = null
     private val attemptedContinuations = ConcurrentHashMap.newKeySet<String>()
-    private val continuationBudget = 4
+    private val continuationBudget = 10
     private var homeTasteArtists: Set<String> = emptySet()
 
     val recentActivity = MutableStateFlow<List<YTItem>?>(null)
