@@ -1005,6 +1005,7 @@ fun YouTubeGridItem(
     isActive: Boolean = false,
     isPlaying: Boolean = false,
     fillMaxWidth: Boolean = false,
+    animateTitle: Boolean = true,
 ) = GridItem(
     title = {
         Text(
@@ -1014,7 +1015,7 @@ fun YouTubeGridItem(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = if (item is ArtistItem) TextAlign.Center else TextAlign.Start,
-            modifier = Modifier.basicMarquee().fillMaxWidth()
+            modifier = if (animateTitle) Modifier.basicMarquee().fillMaxWidth() else Modifier.fillMaxWidth()
         )
     },
     subtitle = {
