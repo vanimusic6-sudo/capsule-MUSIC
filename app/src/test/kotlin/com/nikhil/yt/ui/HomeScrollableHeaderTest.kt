@@ -50,13 +50,13 @@ class HomeScrollableHeaderTest {
         assertTrue(header.contains(".height(AppBarHeight)"))
         assertTrue(header.contains("StandardHeaderTitle("))
         assertTrue(header.contains("R.drawable.settings"))
-        // Home's pinned strip paints precisely the same 430dp tonal wash
-        // over exactly the same neutral base as the Home canvas.
+        // Home and the pinned header use one identical opaque backdrop.
+        // No short gradient ending at 430dp may leave horizontal seams.
         assertTrue(home.contains(".background(StandardChrome.background)"))
-        assertTrue(home.contains(".height(430.dp)"))
-        assertTrue(header.contains("0f to tonalStart.copy(alpha = 0.30f)"))
-        assertTrue(header.contains("0.42f to tonalMiddle.copy(alpha = 0.14f)"))
-        assertTrue(header.contains("endY = 430.dp.toPx()"))
+        assertFalse(home.contains(".height(430.dp)"))
+        assertTrue(header.contains(".background(base)"))
+        assertFalse(header.contains("val wash = Brush.verticalGradient"))
+        assertFalse(header.contains(".then(backdrop)"))
         assertTrue(library.contains("val surfaceColor = MaterialTheme.colorScheme.surface"))
         assertFalse(header.contains("AnimatedVisibility("))
         assertFalse(header.contains("animateFloatAsState("))
