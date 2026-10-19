@@ -11,6 +11,9 @@ package com.nikhil.yt.ui.screens
 import com.nikhil.yt.ui.utils.liveSavedStateHandle
 import com.nikhil.yt.ui.component.StandardChrome
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.FlingBehavior
+import androidx.compose.foundation.gestures.ScrollScope
+import androidx.compose.foundation.gestures.ScrollableDefaults
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -64,6 +67,7 @@ import com.nikhil.yt.innertube.models.AlbumItem
 import com.nikhil.yt.innertube.models.ArtistItem
 import com.nikhil.yt.innertube.models.PlaylistItem
 import com.nikhil.yt.innertube.models.SongItem
+import com.nikhil.yt.innertube.pages.HomePage
 import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.LocalPlayerConnection
@@ -120,6 +124,7 @@ fun HomeScreen(
     val keepListening by viewModel.keepListening.collectAsState()
     val homePage by viewModel.homePage.collectAsState()
     val explorePage by viewModel.explorePage.collectAsState()
+    val newReleaseAlbums by viewModel.newReleaseAlbums.collectAsState()
     val forYouSuggestions by viewModel.forYouSuggestions.collectAsState()
 
     val allLocalItems by viewModel.allLocalItems.collectAsState()
@@ -193,38 +198,19 @@ fun HomeScreen(
     // Database emissions must not forcibly reset the nested favorites grid.
 
 
-    val tonalStart = MaterialTheme.colorScheme.primaryContainer
-    val tonalMiddle = MaterialTheme.colorScheme.secondaryContainer
+    // One solid page surface. The former short, three-stop overlay ended after
+    // 430dp and produced visible horizontal bands while scrolling the feed.
+    val nativeFling = ScrollableDefaults.flingBehavior()
+    val homeFling = remember(nativeFling) {
+        object : FlingBehavior {
+            override suspend fun ScrollScope.performFling(initialVelocity: Float): Float =
+                with(nativeFling) { performFling(initialVelocity * 0.84f) }
+        }
+    }
 
     Box(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .background(StandardChrome.background),
+        modifier = Modifier.fillMaxSize().background(StandardChrome.background),
     ) {
-        /*
-         * Match ArchiveTune's restrained Home backdrop: one short tonal wash that dissolves into
-         * the neutral page. The previous five radial glows made Home look busier and also kept a
-         * much larger draw area alive. Quick Picks and every section below are deliberately left
-         * untouched.
-         */
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(430.dp)
-                    .align(Alignment.TopCenter)
-                    .drawWithCache {
-                        val brush =
-                            Brush.verticalGradient(
-                                0f to tonalStart.copy(alpha = 0.30f),
-                                0.42f to tonalMiddle.copy(alpha = 0.14f),
-                                1f to Color.Transparent,
-                            )
-                        onDrawBehind { drawRect(brush) }
-                    },
-        )
-        
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
@@ -250,6 +236,9 @@ fun HomeScreen(
             LazyColumn(
                 state = lazylistState,
                 contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+                flingBehavior = homeFling,
+                // No abrupt edge stretching/recoil; the list settles at its real bounds.
+                overscrollEffect = null,
             ) {
 
                     quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
@@ -308,6 +297,38 @@ fun HomeScreen(
                 }
             }
 
+
+            // This is the current YouTube Music release catalog, not a static
+            // local playlist or a rebranded recommendation shelf.
+            newReleaseAlbums.takeIf { it.isNotEmpty() }?.let { albums ->
+                item(key = "home:youtube-new-release-albums") {
+                    val releases = remember(albums) {
+                        HomePage.Section(
+                            title = "",
+                            label = null,
+                            thumbnail = null,
+                            endpoint = null,
+                            items = albums,
+                        )
+                    }
+                    Column {
+                        NavigationTitle(
+                            title = stringResource(R.string.new_release_albums),
+                            onClick = { navController.navigate("new_release") },
+                        )
+                        HomePageSectionContent(
+                            section = releases,
+                            mediaMetadata = mediaMetadata,
+                            isPlaying = isPlaying,
+                            navController = navController,
+                            playerConnection = playerConnection,
+                            menuState = menuState,
+                            haptic = haptic,
+                            scope = scope,
+                        )
+                    }
+                }
+            }
 
             forgottenFavorites?.takeIf { it.isNotEmpty() }?.let { favorites ->
                 item(key = "home:forgotten") {
