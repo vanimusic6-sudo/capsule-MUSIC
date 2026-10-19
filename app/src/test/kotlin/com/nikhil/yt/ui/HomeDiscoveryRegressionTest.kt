@@ -77,6 +77,36 @@ class HomeDiscoveryRegressionTest {
     }
 
     @Test
+    fun newReleasesHaveOnlyOneVisibleShelf() {
+        val home = source("ui/screens/HomeScreen.kt")
+        assertTrue(home.contains("fun isYouTubeReleaseShelf(section: HomePage.Section)"))
+        assertTrue(home.contains("newReleaseAlbums.isNotEmpty() && isYouTubeReleaseShelf(it)"))
+        assertTrue(home.contains("home:youtube-new-release-albums"))
+        assertTrue(home.contains("home:yt:releases"))
+    }
+
+    @Test
+    fun verticalScrollingFreezesOnlyHorizontalShelves() {
+        val home = source("ui/screens/HomeScreen.kt")
+        val components = source("ui/screens/HomeScreenComponents.kt")
+        assertTrue(home.contains("horizontalShelvesEnabled = !lazylistState.isScrollInProgress"))
+        assertTrue(home.contains("flingBehavior = homeFling"))
+        assertTrue(home.contains("userScrollEnabled = horizontalShelvesEnabled"))
+        val sections = listOf(
+            "QuickPicksSection", "KeepListeningSection", "ForgottenFavoritesSection",
+            "HomePageSectionContent", "MoodAndGenresSection", "CommunityPlaylistsSection",
+            "TasteRecommendationsSection",
+        )
+        for (name in sections) {
+            val body = components.substringAfter("fun $name(").substringBefore("\n}\n")
+            assertTrue("$name should support vertical gesture locking",
+                body.contains("userScrollEnabled: Boolean = true"))
+            assertTrue("$name must disable horizontal gestures during vertical scrolling",
+                body.contains("userScrollEnabled = userScrollEnabled"))
+        }
+    }
+
+    @Test
     fun musicCardsAndEdgesUseMusicLayoutNotVideoLayout() {
         val components = source("ui/screens/HomeScreenComponents.kt")
         val screen = source("ui/screens/HomeScreen.kt")
