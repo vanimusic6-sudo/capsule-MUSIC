@@ -177,14 +177,16 @@ fun HomeScreen(
                 }
                 previousIndex = frame.index
                 previousOffset = frame.offset
-                if (frame.lastVisible != null &&
-                    frame.totalItems > 0 &&
-                    frame.lastVisible >= frame.totalItems - 3
-                ) {
-                    viewModel.loadMoreYouTubeItems(homePage?.continuation)
-                }
             } else {
                 previousIndex = -1
+            }
+            // A short feed might already be at the end without any scroll
+            // gesture. Its continuation must still be eligible for loading.
+            if (frame.lastVisible != null &&
+                frame.totalItems > 0 &&
+                frame.lastVisible >= frame.totalItems - 3
+            ) {
+                viewModel.loadMoreYouTubeItems(homePage?.continuation)
             }
         }
     }
