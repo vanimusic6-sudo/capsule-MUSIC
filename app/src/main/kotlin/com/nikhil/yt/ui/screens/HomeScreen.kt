@@ -136,6 +136,7 @@ fun HomeScreen(
     val homePage by viewModel.homePage.collectAsState()
     val explorePage by viewModel.explorePage.collectAsState()
     val newReleaseAlbums by viewModel.newReleaseAlbums.collectAsState()
+    val providerHasReleaseShelf = homePage?.sections?.any(::isYouTubeReleaseShelf) == true
     val forYouSuggestions by viewModel.forYouSuggestions.collectAsState()
 
     val allLocalItems by viewModel.allLocalItems.collectAsState()
@@ -317,7 +318,10 @@ fun HomeScreen(
 
             // This is the current YouTube Music release catalog, not a static
             // local playlist or a rebranded recommendation shelf.
-            newReleaseAlbums.takeIf { it.isNotEmpty() }?.let { albums ->
+            // Only add a release section when YouTube's Home feed has none.
+            // Otherwise refresh the existing section in place to avoid a
+            // duplicated carousel and a mid-scroll insert/remove jump.
+            newReleaseAlbums.takeIf { it.isNotEmpty() && !providerHasReleaseShelf }?.let { albums ->
                 item(key = "home:youtube-new-release-albums") {
                     val releases = remember(albums) {
                         HomePage.Section(
@@ -370,11 +374,15 @@ fun HomeScreen(
             }
 
             homePage?.sections
-                ?.filterNot { newReleaseAlbums.isNotEmpty() && isYouTubeReleaseShelf(it) }
-                // If the dedicated catalog fails, still show one provider releases shelf.
+                // If the provider repeats the release shelf, keep its first position.
                 ?.distinctBy { if (isYouTubeReleaseShelf(it)) "home:yt:releases" else
                     "home:yt:${it.endpoint?.browseId}:${it.title}:${it.items.firstOrNull()?.id}" }
-                ?.forEach { section ->
+                ?.forEach { providerSection ->
+                // Fresh YouTube Music album results replace stale albums in situ:
+                // no duplicate New Releases shelf and no unnecessary feed reflow.
+                val section = if (isYouTubeReleaseShelf(providerSection) && newReleaseAlbums.isNotEmpty()) {
+                    providerSection.copy(items = newReleaseAlbums)
+                } else providerSection
                 val sectionKey =
                     "home:yt:${section.endpoint?.browseId.orEmpty()}:${section.title}:${section.items.firstOrNull()?.id.orEmpty()}"
                 val isPlaylistCarousel =
