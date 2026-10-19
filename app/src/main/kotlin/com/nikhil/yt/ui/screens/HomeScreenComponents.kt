@@ -136,7 +136,8 @@ fun QuickPicksSection(
     playerConnection: PlayerConnection,
     menuState: MenuState,
     haptic: HapticFeedback,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    userScrollEnabled: Boolean = true,
 ) {
     val distinctQuickPicks = remember(quickPicks) { quickPicks.distinctBy { it.id } }
     val density = LocalDensity.current
@@ -144,6 +145,7 @@ fun QuickPicksSection(
     val requestHeightPx = with(density) { 218.dp.roundToPx().coerceAtLeast(1) }
 
     HorizontalUncontainedCarousel(
+        userScrollEnabled = userScrollEnabled,
         state = rememberCarouselState { distinctQuickPicks.size },
         itemWidth = 184.dp,
         itemSpacing = 8.dp,
@@ -274,6 +276,7 @@ fun KeepListeningSection(
     menuState: MenuState,
     haptic: HapticFeedback,
     modifier: Modifier = Modifier,
+    userScrollEnabled: Boolean = true,
 ) {
     val distinctSongs = remember(keepListening) { keepListening.distinctBy { it.id } }
     val pages = remember(distinctSongs) { distinctSongs.chunked(4) }
@@ -281,6 +284,7 @@ fun KeepListeningSection(
 
     Column(modifier = modifier.fillMaxWidth()) {
         androidx.compose.foundation.pager.HorizontalPager(
+            userScrollEnabled = userScrollEnabled,
             state = pagerState,
             contentPadding = PaddingValues(horizontal = 12.dp),
             pageSpacing = 8.dp,
@@ -442,12 +446,14 @@ fun ForgottenFavoritesSection(
     playerConnection: PlayerConnection,
     menuState: MenuState,
     haptic: HapticFeedback,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    userScrollEnabled: Boolean = true,
 ) {
     val rows = min(4, forgottenFavorites.size)
     val distinctForgottenFavorites = remember(forgottenFavorites) { forgottenFavorites.distinctBy { it.id } }
     
     LazyHorizontalGrid(
+        userScrollEnabled = userScrollEnabled,
         state = lazyGridState,
         rows = GridCells.Fixed(rows),
         flingBehavior = rememberSnapFlingBehavior(snapLayoutInfoProvider),
@@ -569,9 +575,11 @@ fun HomePageSectionContent(
     menuState: MenuState,
     haptic: HapticFeedback,
     scope: CoroutineScope,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    userScrollEnabled: Boolean = true,
 ) {
     LazyRow(
+        userScrollEnabled = userScrollEnabled,
         // GridItem already adds 12.dp; the first artwork starts at 4 + 12 = 16dp.
         contentPadding = PaddingValues(horizontal = 4.dp),
         // Fix the viewport height: 1- vs 2-line subtitles must not remeasure the
@@ -603,9 +611,11 @@ fun HomePageSectionContent(
 fun MoodAndGenresSection(
     moodAndGenres: List<MoodAndGenres.Item>,
     navController: NavController,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    userScrollEnabled: Boolean = true,
 ) {
     LazyHorizontalGrid(
+        userScrollEnabled = userScrollEnabled,
         rows = GridCells.Fixed(2),
         contentPadding = PaddingValues(6.dp),
         modifier = modifier.height((MoodAndGenresButtonHeight + 12.dp) * 2 + 12.dp)
@@ -1097,7 +1107,8 @@ fun CommunityPlaylistsSection(
     menuState: MenuState,
     haptic: HapticFeedback,
     scope: CoroutineScope,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    userScrollEnabled: Boolean = true,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
@@ -1114,6 +1125,7 @@ fun CommunityPlaylistsSection(
         }
 
         LazyRow(
+            userScrollEnabled = userScrollEnabled,
             contentPadding = PaddingValues(horizontal = 4.dp),
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth().height(GridThumbnailHeight + 104.dp),
@@ -1154,6 +1166,7 @@ fun TasteRecommendationsSection(
     menuState: MenuState,
     haptic: HapticFeedback,
     modifier: Modifier = Modifier,
+    userScrollEnabled: Boolean = true,
 ) {
     val distinctSuggestions = remember(suggestions) { suggestions.distinctBy { it.id } }
     if (distinctSuggestions.isEmpty()) return
@@ -1181,6 +1194,7 @@ fun TasteRecommendationsSection(
         }
 
         androidx.compose.foundation.pager.HorizontalPager(
+            userScrollEnabled = userScrollEnabled,
             state = pagerState,
             contentPadding = PaddingValues(horizontal = 12.dp),
             pageSpacing = 8.dp,
