@@ -37,7 +37,7 @@ class ForYouSuggestionEngine @Inject constructor(
     companion object {
         const val MAX_SUGGESTIONS = 24
         private const val MAX_SEED_SONGS = 5
-        private const val MIN_SEED_SONGS = 3
+        private const val MIN_SEED_SONGS = 2
         private const val MIN_UNIQUE_LISTENED_SONGS = 8
         private const val MIN_SEED_ARTISTS = 2
         private const val MIN_WINDOW_PLAY_TIME_MS = 20L * 60L * 1000L
