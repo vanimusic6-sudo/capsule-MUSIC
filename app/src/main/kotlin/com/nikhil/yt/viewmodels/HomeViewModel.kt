@@ -38,6 +38,8 @@ import com.nikhil.yt.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
@@ -86,6 +88,10 @@ class HomeViewModel @Inject constructor(
     // Track if we're currently processing account data
     private var isProcessingAccountData = false
     private var wasLoggedIn = false
+    private var forYouJob: Job? = null
+    private var similarJob: Job? = null
+    private var continuationPagesLoaded = 0
+    private val maxContinuationPages = 3
 
     private fun filterHomeChips(chips: List<HomePage.Chip>?): List<HomePage.Chip>? {
         return chips?.filterNot { it.title.contains("podcasts", ignoreCase = true) }
@@ -93,7 +99,7 @@ class HomeViewModel @Inject constructor(
 
     private suspend fun getQuickPicks(){
         when (quickPicksEnum.first()) {
-            QuickPicks.QUICK_PICKS -> quickPicks.value = database.quickPicks().first().shuffled().take(20)
+            QuickPicks.QUICK_PICKS -> quickPicks.value = database.quickPicks().first().distinctBy { it.id }.take(20)
             QuickPicks.LAST_LISTEN -> songLoad()
         }
     }
@@ -104,33 +110,27 @@ class HomeViewModel @Inject constructor(
         
         try {
             supervisorScope {
+                // The first Home request must use the saved account, not race the
+                // separate account-info observer (which used to yield a guest feed).
+                val cookie = context.dataStore.get(InnerTubeCookieKey, "")
+                YouTube.cookie = cookie
                 val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                 val hideVideo = context.dataStore.get(HideVideoKey, false)
-                val fromTimeStamp = System.currentTimeMillis() - 86400000 * 7 * 2
+                val fromTimeStamp = System.currentTimeMillis() - 86400000L * 14
 
                 launch { getQuickPicks() }
-                launch { forgottenFavorites.value = database.forgottenFavorites().first().shuffled().take(20) }
+                launch { forgottenFavorites.value = database.forgottenFavorites().first().distinctBy { it.id }.take(20) }
+
+                // "Keep listening" should contain songs only. Do not mix albums,
+                // artists and shuffled history into a supposedly familiar shelf.
                 launch {
-                    try {
-                        val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-                        val hideVideo = context.dataStore.get(HideVideoKey, false)
-                        forYouSuggestions.value = forYouEngine.getSuggestions(hideExplicit, hideVideo)
-                    } catch (_: Exception) {}
-                }
-                
-                launch {
-                    val keepListeningSongs = database.mostPlayedSongs(fromTimeStamp, limit = 15, offset = 5)
-                        .first().shuffled().take(10)
-                    val keepListeningAlbums = database.mostPlayedAlbums(fromTimeStamp, limit = 8, offset = 2)
-                        .first().filter { it.album.thumbnailUrl != null }.shuffled().take(5)
-                    val keepListeningArtists = database.mostPlayedArtists(fromTimeStamp)
-                        .first().filter { it.artist.isYouTubeArtist && it.artist.thumbnailUrl != null }
-                        .shuffled().take(5)
-                    keepListening.value = (keepListeningSongs + keepListeningAlbums + keepListeningArtists).shuffled()
+                    keepListening.value = database.mostPlayedSongs(fromTimeStamp, limit = 12)
+                        .first().distinctBy { it.id }
                 }
 
                 launch {
                         YouTube.home().onSuccess { page ->
+                        continuationPagesLoaded = 0
                         homePage.value = page.copy(
                             chips = filterHomeChips(page.chips),
                             sections = page.sections.map { section ->
@@ -175,8 +175,21 @@ class HomeViewModel @Inject constructor(
             allLocalItems.value = (quickPicks.value.orEmpty() + forgottenFavorites.value.orEmpty() + keepListening.value.orEmpty())
                 .filter { it is Song || it is Album }
 
-            viewModelScope.launch(Dispatchers.IO) {
+            // Local browsing must render as soon as Home/Explore arrive; never
+            // keep the first-screen loading indicator alive for many related calls.
+            similarJob?.cancel()
+            similarJob = viewModelScope.launch(Dispatchers.IO) {
                 loadSimilarRecommendations()
+            }
+            forYouJob?.cancel()
+            forYouJob = viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    forYouSuggestions.value = forYouEngine.getSuggestions(hideExplicit, hideVideo)
+                } catch (cancel: CancellationException) {
+                    throw cancel
+                } catch (error: Exception) {
+                    Timber.w(error, "Discovery shelf failed")
+                }
             }
 
             allYtItems.value = similarRecommendations.value?.flatMap { it.items }.orEmpty() +
@@ -197,7 +210,7 @@ class HomeViewModel @Inject constructor(
         
         val artistRecommendations = database.mostPlayedArtists(fromTimeStamp, limit = 10).first()
             .filter { it.artist.isYouTubeArtist }
-            .shuffled().take(3)
+            .take(2)
             .mapNotNull {
                 val items = mutableListOf<YTItem>()
                 YouTube.artist(it.id).onSuccess { page ->
@@ -206,30 +219,31 @@ class HomeViewModel @Inject constructor(
                 }
                 SimilarRecommendation(
                     title = it,
-                    items = items.filterExplicit(hideExplicit).filterVideo(hideVideo).shuffled().ifEmpty { return@mapNotNull null }
+                    items = items.filterExplicit(hideExplicit).filterVideo(hideVideo)
+                        .distinctBy { item -> item.id }.ifEmpty { return@mapNotNull null }
                 )
             }
 
         val songRecommendations = database.mostPlayedSongs(fromTimeStamp, limit = 10).first()
             .filter { it.album != null }
-            .shuffled().take(2)
+            .take(1)
             .mapNotNull { song ->
                 val endpoint = YouTube.next(WatchEndpoint(videoId = song.id)).getOrNull()?.relatedEndpoint
                     ?: return@mapNotNull null
                 val page = YouTube.related(endpoint).getOrNull() ?: return@mapNotNull null
                 SimilarRecommendation(
                     title = song,
-                    items = (page.songs.shuffled().take(8) +
-                            page.albums.shuffled().take(4) +
-                            page.artists.shuffled().take(4) +
-                            page.playlists.shuffled().take(4))
+                    items = (page.songs.take(10) +
+                            page.albums.take(4) +
+                            page.artists.take(3) +
+                            page.playlists.take(3))
                         .filterExplicit(hideExplicit).filterVideo(hideVideo)
-                        .shuffled()
+                        .distinctBy { it.id }
                         .ifEmpty { return@mapNotNull null }
                 )
             }
 
-        similarRecommendations.value = (artistRecommendations + songRecommendations).shuffled()
+        similarRecommendations.value = artistRecommendations + songRecommendations
         
         allYtItems.value = similarRecommendations.value?.flatMap { it.items }.orEmpty() +
                 homePage.value?.sections?.flatMap { it.items }.orEmpty()
@@ -246,25 +260,37 @@ class HomeViewModel @Inject constructor(
     }
 
     private val _isLoadingMore = MutableStateFlow(false)
+    val isLoadingMore = _isLoadingMore.asStateFlow()
+
     fun loadMoreYouTubeItems(continuation: String?) {
-        if (continuation == null || _isLoadingMore.value) return
-        val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-        val hideVideo = context.dataStore.get(HideVideoKey, false)
+        if (continuation == null || _isLoadingMore.value ||
+            continuationPagesLoaded >= maxContinuationPages
+        ) return
 
         viewModelScope.launch(Dispatchers.IO) {
+            if (_isLoadingMore.value) return@launch
             _isLoadingMore.value = true
-            val nextSections = YouTube.home(continuation).getOrNull() ?: run {
+            try {
+                val hideExplicit = context.dataStore.get(HideExplicitKey, false)
+                val hideVideo = context.dataStore.get(HideVideoKey, false)
+                val next = YouTube.home(continuation).getOrNull() ?: return@launch
+                val current = homePage.value ?: return@launch
+                continuationPagesLoaded++
+                homePage.value = current.copy(
+                    sections = current.sections + next.sections.map { section ->
+                        section.copy(items = section.items
+                            .filterExplicit(hideExplicit).filterVideo(hideVideo))
+                    },
+                    continuation = next.continuation.takeIf {
+                        continuationPagesLoaded < maxContinuationPages
+                    }
+                )
+                allYtItems.value = similarRecommendations.value
+                    ?.flatMap { it.items }.orEmpty() +
+                    homePage.value?.sections?.flatMap { it.items }.orEmpty()
+            } finally {
                 _isLoadingMore.value = false
-                return@launch
             }
-
-            homePage.value = nextSections.copy(
-                chips = homePage.value?.chips,
-                sections = (homePage.value?.sections.orEmpty() + nextSections.sections).map { section ->
-                    section.copy(items = section.items.filterExplicit(hideExplicit).filterVideo(hideVideo))
-                }
-            )
-            _isLoadingMore.value = false
         }
     }
 
@@ -358,7 +384,9 @@ class HomeViewModel @Inject constructor(
                 .collect { cookie ->
                     if (isProcessingAccountData) return@collect
                     
+                    val cookieChanged = lastProcessedCookie != null && lastProcessedCookie != cookie
                     lastProcessedCookie = cookie
+                    if (cookieChanged && isInitialLoadComplete.value) refresh()
                     isProcessingAccountData = true
                     
                     try {
