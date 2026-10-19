@@ -696,8 +696,10 @@ private fun YouTubeGridItemWrapper(
         isPlaying = isPlaying,
         coroutineScope = scope,
         animateTitle = false,
-        // Let the item choose its natural Home aspect ratio (songs are wide, albums stay square)
-        // instead of forcing every recommendation into the same square card.
+        // Home is a music feed: song artwork belongs in square music cards.
+        // The default YouTubeGridItem SongItem ratio is 16:9 for video contexts,
+        // which stretched music recommendations into mismatched video layouts.
+        thumbnailRatio = 1f,
         modifier = modifier.combinedClickable(
             onClick = {
                 when (item) {
