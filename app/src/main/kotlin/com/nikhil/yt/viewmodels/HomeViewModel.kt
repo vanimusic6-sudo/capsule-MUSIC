@@ -71,6 +71,8 @@ class HomeViewModel @Inject constructor(
     val accountPlaylists = MutableStateFlow<List<PlaylistItem>?>(null)
     val homePage = MutableStateFlow<HomePage?>(null)
     val explorePage = MutableStateFlow<ExplorePage?>(null)
+    // Fresh catalog releases come from YouTube Music's dedicated albums endpoint.
+    val newReleaseAlbums = MutableStateFlow<List<AlbumItem>>(emptyList())
     private var loadMoreJob: Job? = null
     private var tasteRecommendationsJob: Job? = null
     private var exploreJob: Job? = null
@@ -268,58 +270,28 @@ class HomeViewModel @Inject constructor(
     }
 
     /**
-     * Normal Home retains the existing curated Capsule sections (new releases, hits,
-     * community playlists, long listening and personal shelves). There are no longer
-     * themed chip feeds to classify, cache or merge.
+     * YouTube Music already provides the shelves for this account. Do not guess which
+     * localized section titles are "allowed": filtering unknown titles removed mixes,
+     * personal albums and playlists by other users, leaving Home almost empty.
+     *
+     * Filter invalid/explicit content, not legitimate discovery categories.
      */
     private fun cleanYouTubeHomePage(
         page: HomePage,
         hideExplicit: Boolean,
     ): HomePage {
         val sections = page.sections.mapNotNull { section ->
-            val knownKind = classifyYouTubeHomeSection(section)
-            if (knownKind == HomeSectionKind.SHALLOW_SIMILARITY) return@mapNotNull null
-
-            // YouTube localizes section headings freely. Instead of dropping
-            // every unknown title, admit one with actual overlap with repeated
-            // listening. Unknown, generic sections remain excluded.
-            val affinity = section.items.count { item ->
-                val names = when (item) {
-                    is SongItem -> item.artists.map { it.name }
-                    is AlbumItem -> item.artists.orEmpty().map { it.name }
-                    else -> emptyList()
-                }
-                names.any { it.trim().lowercase() in homeTasteArtists }
-            }
-            val kind = knownKind ?: if (affinity >= 2) {
-                HomeSectionKind.PERSONALIZED
-            } else {
-                return@mapNotNull null
-            }
-
             val items = section.items
                 .filterExplicit(hideExplicit)
                 .filter { item ->
-                    when (kind) {
-                        HomeSectionKind.COMMUNITY_PLAYLISTS -> item is PlaylistItem
-                        HomeSectionKind.PERSONALIZED,
-                        HomeSectionKind.TRENDING,
-                        HomeSectionKind.LONG_LISTEN ->
-                            item is SongItem || item is AlbumItem || item is PlaylistItem
-                        else -> item is SongItem || item is AlbumItem
-                    }
+                    item is SongItem || item is AlbumItem ||
+                        item is PlaylistItem || item is com.nikhil.yt.innertube.models.ArtistItem
                 }
                 .distinctBy { it.id }
-
-            if (items.isEmpty()) return@mapNotNull null
-            val title = when (kind) {
-                HomeSectionKind.COMMUNITY_PLAYLISTS ->
-                    context.getString(R.string.home_community_playlists)
-                HomeSectionKind.LONG_LISTEN ->
-                    context.getString(R.string.home_long_listens)
-                else -> section.title
-            }
-            section.copy(title = title, items = items)
+            if (items.isEmpty()) null else section.copy(items = items)
+        }.distinctBy { section ->
+            // The provider can repeat the same shelf in continuation pages.
+            section.title to section.items.first().id
         }
         return page.copy(sections = sections)
     }
@@ -401,7 +373,7 @@ class HomeViewModel @Inject constructor(
 
                 launch { getQuickPicks() }
                 launch { forgottenFavorites.value = database.forgottenFavorites().first().distinctBy { it.id }.take(20) }
-                launch { keepListening.value = locallyPlayed.drop(4).take(12) }
+                launch { keepListening.value = database.recentlyListenedSongs(limit = 16).first() }
 
                 launch {
                     YouTube.home().onSuccess { page ->
@@ -495,6 +467,14 @@ class HomeViewModel @Inject constructor(
                             }.filterExplicit(hideExplicit)
                     )
                 }.onFailure { reportException(it) }
+                    // Use YouTube Music's dedicated release catalog; Explore is a fallback.
+                    val direct = YouTube.newReleaseAlbums().getOrNull()
+                        ?.filterExplicit(hideExplicit)
+                        ?.distinctBy { it.id }
+                        .orEmpty()
+                    newReleaseAlbums.value = direct.ifEmpty {
+                        explorePage.value?.newReleaseAlbums.orEmpty()
+                    }.take(24)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
