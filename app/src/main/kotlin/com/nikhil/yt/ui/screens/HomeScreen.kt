@@ -323,7 +323,8 @@ fun HomeScreen(
                     }
                 }
 
-                // One compact track shelf; the old 290dp carousel showed the\n                // same songs a second time and kept an extra animated layout.\n\n            quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
+                // One compact track shelf; do not duplicate it in a 290dp carousel.
+                quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
                 item {
                     QuickPicksListSection(
                         quickPicks = picks,
