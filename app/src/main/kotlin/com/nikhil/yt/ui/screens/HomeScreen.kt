@@ -95,6 +95,17 @@ import kotlinx.coroutines.withContext
 import kotlin.random.Random
 
 
+/** Recognize the release shelf returned by the same YouTube Music Home feed. */
+private fun isYouTubeReleaseShelf(section: HomePage.Section): Boolean {
+    if (section.endpoint?.browseId == "FEmusic_new_releases_albums") return true
+    val title = section.title.trim().lowercase()
+    return listOf(
+        "new release", "latest release", "new albums", "recent releases",
+        "новые релизы", "новинки", "свежие релизы", "нові релізи",
+        "nuevos lanzamientos", "nouvelles sorties", "neue veröffentlichungen",
+    ).any(title::contains)
+}
+
 /** Immutable scroll sample, collected outside Compose's measure/draw passes. */
 private data class HomeScrollSnapshot(
     val scrolling: Boolean,
@@ -141,6 +152,9 @@ fun HomeScreen(
 
     val scope = rememberCoroutineScope()
     val lazylistState = rememberLazyListState()
+    // During vertical motion, sideways drags must not turn the recommendation carousels.
+    // Their ordinary horizontal gestures remain available when the feed is idle.
+    val horizontalShelvesEnabled = !lazylistState.isScrollInProgress
     var scrollingUp by remember(lazylistState) { mutableStateOf(true) }
     // This screen's own entry: it cannot be destroyed while this composition is alive,
     // and observing it does not recompose the screen on unrelated navigation.
@@ -254,6 +268,7 @@ fun HomeScreen(
                 item(key = "home:quick-hero") {
                     QuickPicksSection(
                         quickPicks = picks,
+                        userScrollEnabled = horizontalShelvesEnabled,
                         mediaMetadata = mediaMetadata,
                         isPlaying = isPlaying,
                         navController = navController,
@@ -271,6 +286,7 @@ fun HomeScreen(
                         NavigationTitle(title = stringResource(R.string.keep_listening))
                         KeepListeningSection(
                             keepListening = songs,
+                            userScrollEnabled = horizontalShelvesEnabled,
                             mediaMetadata = mediaMetadata,
                             isPlaying = isPlaying,
                             navController = navController,
@@ -286,6 +302,7 @@ fun HomeScreen(
                 item(key = "home:taste") {
                     TasteRecommendationsSection(
                         suggestions = suggestions,
+                        userScrollEnabled = horizontalShelvesEnabled,
                         mediaMetadata = mediaMetadata,
                         isPlaying = isPlaying,
                         navController = navController,
@@ -318,6 +335,7 @@ fun HomeScreen(
                         )
                         HomePageSectionContent(
                             section = releases,
+                            userScrollEnabled = horizontalShelvesEnabled,
                             mediaMetadata = mediaMetadata,
                             isPlaying = isPlaying,
                             navController = navController,
@@ -336,6 +354,7 @@ fun HomeScreen(
                         NavigationTitle(title = stringResource(R.string.forgotten_favorites))
                         ForgottenFavoritesSection(
                             forgottenFavorites = favorites,
+                            userScrollEnabled = horizontalShelvesEnabled,
                             mediaMetadata = mediaMetadata,
                             isPlaying = isPlaying,
                             horizontalLazyGridItemWidth = horizontalLazyGridItemWidth,
@@ -350,7 +369,12 @@ fun HomeScreen(
                 }
             }
 
-            homePage?.sections?.forEach { section ->
+            homePage?.sections
+                ?.filterNot { newReleaseAlbums.isNotEmpty() && isYouTubeReleaseShelf(it) }
+                // If the dedicated catalog fails, still show one provider releases shelf.
+                ?.distinctBy { if (isYouTubeReleaseShelf(it)) "home:yt:releases" else
+                    "home:yt:${it.endpoint?.browseId}:${it.title}:${it.items.firstOrNull()?.id}" }
+                ?.forEach { section ->
                 val sectionKey =
                     "home:yt:${section.endpoint?.browseId.orEmpty()}:${section.title}:${section.items.firstOrNull()?.id.orEmpty()}"
                 val isPlaylistCarousel =
@@ -361,6 +385,7 @@ fun HomeScreen(
                     if (isPlaylistCarousel) {
                         CommunityPlaylistsSection(
                             section = section,
+                            userScrollEnabled = horizontalShelvesEnabled,
                             mediaMetadata = mediaMetadata,
                             isPlaying = isPlaying,
                             navController = navController,
@@ -377,6 +402,7 @@ fun HomeScreen(
                             )
                             HomePageSectionContent(
                                 section = section,
+                                userScrollEnabled = horizontalShelvesEnabled,
                                 mediaMetadata = mediaMetadata,
                                 isPlaying = isPlaying,
                                 navController = navController,
@@ -424,6 +450,7 @@ fun HomeScreen(
                             )
                             MoodAndGenresSection(
                                 moodAndGenres = genres,
+                                userScrollEnabled = horizontalShelvesEnabled,
                                 navController = navController,
                             )
                         }
