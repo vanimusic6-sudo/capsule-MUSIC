@@ -384,7 +384,7 @@ fun HomeScreen(
                     providerSection.copy(items = newReleaseAlbums)
                 } else providerSection
                 val sectionKey =
-                    "home:yt:${section.endpoint?.browseId.orEmpty()}:${section.title}:${section.items.firstOrNull()?.id.orEmpty()}"
+                    "home:yt:${providerSection.endpoint?.browseId.orEmpty()}:${providerSection.title}:${providerSection.items.firstOrNull()?.id.orEmpty()}"
                 val isPlaylistCarousel =
                     section.items.isNotEmpty() &&
                         section.items.all { it is com.nikhil.yt.innertube.models.PlaylistItem }
