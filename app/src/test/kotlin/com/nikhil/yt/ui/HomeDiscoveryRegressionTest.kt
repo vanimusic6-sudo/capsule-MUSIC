@@ -80,7 +80,8 @@ class HomeDiscoveryRegressionTest {
     fun newReleasesHaveOnlyOneVisibleShelf() {
         val home = source("ui/screens/HomeScreen.kt")
         assertTrue(home.contains("fun isYouTubeReleaseShelf(section: HomePage.Section)"))
-        assertTrue(home.contains("newReleaseAlbums.isNotEmpty() && isYouTubeReleaseShelf(it)"))
+        assertTrue(home.contains("!providerHasReleaseShelf"))
+        assertTrue(home.contains("providerSection.copy(items = newReleaseAlbums)"))
         assertTrue(home.contains("home:youtube-new-release-albums"))
         assertTrue(home.contains("home:yt:releases"))
     }
