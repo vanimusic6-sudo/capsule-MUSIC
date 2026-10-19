@@ -137,6 +137,7 @@ jobs:
         run: |
           gradle :app:testUniversalDebugUnitTest \
             --tests 'com.nikhil.yt.ui.HomePerformanceRegressionTest' \
+            --tests 'com.nikhil.yt.ui.HomeDiscoveryRegressionTest' \
             --tests 'com.nikhil.yt.ui.player.PlayerArtworkReliabilityTest' \
             --tests 'com.nikhil.yt.ui.player.ImmersiveVideoArtworkClipRegressionTest' \
             --tests 'com.nikhil.yt.ui.component.MiniPlayerGestureArbiterTest' \
