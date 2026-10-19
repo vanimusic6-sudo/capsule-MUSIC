@@ -61,6 +61,22 @@ class HomeDiscoveryRegressionTest {
     }
 
     @Test
+    fun ytMusicDoesNotRequireOptionalPlaylistMenuButtonsToShowMixes() {
+        val parser = listOf(
+            File("../innertube/src/main/kotlin/com/nikhil/yt/innertube/pages/HomePage.kt"),
+            File("innertube/src/main/kotlin/com/nikhil/yt/innertube/pages/HomePage.kt"),
+        ).firstOrNull { it.isFile }?.readText() ?: error("Missing innertube HomePage parser")
+        val provider = listOf(
+            File("../innertube/src/main/kotlin/com/nikhil/yt/innertube/YouTube.kt"),
+            File("innertube/src/main/kotlin/com/nikhil/yt/innertube/YouTube.kt"),
+        ).firstOrNull { it.isFile }?.readText() ?: error("Missing innertube YouTube client")
+        assertTrue(parser.contains("radioEndpoint = renderer.menu?.menuRenderer?.items?.find"))
+        assertFalse(parser.contains("watchPlaylistEndpoint ?: return null"))
+        assertTrue(provider.contains("continuation = continuation, setLogin = true"))
+        assertTrue(provider.contains("browseId = \"FEmusic_new_releases_albums\", setLogin = true"))
+    }
+
+    @Test
     fun musicCardsAndEdgesUseMusicLayoutNotVideoLayout() {
         val components = source("ui/screens/HomeScreenComponents.kt")
         val screen = source("ui/screens/HomeScreen.kt")
