@@ -14,6 +14,7 @@ import androidx.lifecycle.viewModelScope
 import com.nikhil.yt.R
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.AlbumItem
+import com.nikhil.yt.innertube.models.ArtistItem
 import com.nikhil.yt.innertube.models.PlaylistItem
 import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.YTItem
@@ -73,6 +74,10 @@ class HomeViewModel @Inject constructor(
     private var loadMoreJob: Job? = null
     private var tasteRecommendationsJob: Job? = null
     private var exploreJob: Job? = null
+    private var continuationPagesLoaded = 0
+    private var failedContinuation: String? = null
+    private var failedContinuationAt = 0L
+    private val maxContinuationPages = 3
 
     val recentActivity = MutableStateFlow<List<YTItem>?>(null)
     val recentPlaylistsDb = MutableStateFlow<List<Playlist>?>(null)
@@ -98,6 +103,8 @@ class HomeViewModel @Inject constructor(
         COMMUNITY_PLAYLISTS,
         LONG_LISTEN,
         PERSONALIZED,
+        ALBUMS,
+        ARTISTS,
         SHALLOW_SIMILARITY,
     }
 
@@ -110,6 +117,9 @@ class HomeViewModel @Inject constructor(
                     append(it)
                 }
             }.lowercase()
+        if (listOf("podcast", "подкаст", "audiobook", "аудиокниг").any(title::contains)) {
+            return null
+        }
         val browseId = section.endpoint?.browseId.orEmpty()
         val playlistOnly =
             section.items.isNotEmpty() &&
@@ -223,6 +233,18 @@ class HomeViewModel @Inject constructor(
 
         if (isLongListen) return HomeSectionKind.LONG_LISTEN
 
+        // YouTube frequently supplies useful albums/artists under neutral headings.
+        // Dropping them made the feed only four homogeneous carousels tall.
+        if (
+            section.items.any { it is ArtistItem } &&
+            listOf("artists", "performers", "исполнители", "артисты").any(title::contains)
+        ) return HomeSectionKind.ARTISTS
+
+        if (
+            section.items.any { it is AlbumItem } &&
+            listOf("albums", "singles", "альбом", "синглы", "релизы").any(title::contains)
+        ) return HomeSectionKind.ALBUMS
+
         val isCommunityPlaylists =
             playlistOnly &&
                 listOf(
@@ -283,6 +305,8 @@ class HomeViewModel @Inject constructor(
                 .filter { item ->
                     when (kind) {
                         HomeSectionKind.COMMUNITY_PLAYLISTS -> item is PlaylistItem
+                        HomeSectionKind.ARTISTS -> item is ArtistItem
+                        HomeSectionKind.ALBUMS -> item is AlbumItem
                         HomeSectionKind.PERSONALIZED,
                         HomeSectionKind.TRENDING,
                         HomeSectionKind.LONG_LISTEN ->
@@ -313,7 +337,7 @@ class HomeViewModel @Inject constructor(
 
     private suspend fun getQuickPicks(){
         when (quickPicksEnum.first()) {
-            QuickPicks.QUICK_PICKS -> quickPicks.value = database.quickPicks().first().shuffled().take(20)
+            QuickPicks.QUICK_PICKS -> quickPicks.value = database.quickPicks().first().distinctBy { it.id }.take(20)
             QuickPicks.LAST_LISTEN -> songLoad()
         }
     }
@@ -323,6 +347,8 @@ class HomeViewModel @Inject constructor(
 
         loadMoreJob?.cancel()
         _isLoadingMore.value = false
+        continuationPagesLoaded = 0
+        failedContinuation = null
         tasteRecommendationsJob?.cancel()
         exploreJob?.cancel()
 
@@ -340,10 +366,10 @@ class HomeViewModel @Inject constructor(
                 val fromTimeStamp = System.currentTimeMillis() - 86400000 * 7 * 2
 
                 launch { getQuickPicks() }
-                launch { forgottenFavorites.value = database.forgottenFavorites().first().shuffled().take(20) }
+                launch { forgottenFavorites.value = database.forgottenFavorites().first().distinctBy { it.id }.take(20) }
                 launch {
                     keepListening.value = database.mostPlayedSongs(fromTimeStamp, limit = 15, offset = 5)
-                        .first().distinctBy { it.id }.shuffled().take(12)
+                        .first().distinctBy { it.id }.take(12)
                 }
 
                 launch {
@@ -466,19 +492,33 @@ class HomeViewModel @Inject constructor(
     val isLoadingMore = _isLoadingMore.asStateFlow()
 
     fun loadMoreYouTubeItems(continuation: String?) {
-        if (continuation == null || _isLoadingMore.value) return
+        if (continuation == null || _isLoadingMore.value ||
+            continuationPagesLoaded >= maxContinuationPages
+        ) return
+        // A failed continuation should not be hammered on every scroll frame.
+        if (continuation == failedContinuation &&
+            System.currentTimeMillis() - failedContinuationAt < 30_000L
+        ) return
+
         _isLoadingMore.value = true
         loadMoreJob = viewModelScope.launch(Dispatchers.IO) {
             try {
                 val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                 val next = YouTube.home(continuation = continuation).getOrNull()
-                    ?: return@launch
+                if (next == null) {
+                    failedContinuation = continuation
+                    failedContinuationAt = System.currentTimeMillis()
+                    return@launch
+                }
                 val current = homePage.value
-                // The only feed is the default Home. Preserve its sections and append
-                // provider continuations without overwriting newer refresh results.
                 if (current?.continuation != continuation) return@launch
-                val merged = next.copy(
+                continuationPagesLoaded++
+                val nextToken = next.continuation.takeIf {
+                    it != continuation && continuationPagesLoaded < maxContinuationPages
+                }
+                val merged = current.copy(
                     sections = current.sections + next.sections,
+                    continuation = nextToken,
                 )
                 homePage.value = cleanYouTubeHomePage(
                     page = merged,
@@ -488,6 +528,8 @@ class HomeViewModel @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
+                failedContinuation = continuation
+                failedContinuationAt = System.currentTimeMillis()
                 reportRecoverableException("HomeViewModel", "load Home continuation", error)
             } finally {
                 _isLoadingMore.value = false
@@ -554,7 +596,9 @@ class HomeViewModel @Inject constructor(
                 .collect { cookie ->
                     if (isProcessingAccountData) return@collect
                     
+                    val accountChanged = lastProcessedCookie != null && lastProcessedCookie != cookie
                     lastProcessedCookie = cookie
+                    if (accountChanged && isInitialLoadComplete.value) refresh()
                     isProcessingAccountData = true
                     
                     try {
