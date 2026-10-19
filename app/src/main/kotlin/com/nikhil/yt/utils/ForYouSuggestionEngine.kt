@@ -1,181 +1,144 @@
 /*
- * Velune - by Nikhil
+ * Capsule Music — local-first music discovery.
  * Licensed Under GPL-3.0
  */
-
 package com.nikhil.yt.utils
 
 import com.nikhil.yt.db.MusicDatabase
 import com.nikhil.yt.db.entities.Song
 import com.nikhil.yt.db.entities.SongSkipEntity
 import com.nikhil.yt.innertube.YouTube
+import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.WatchEndpoint
 import com.nikhil.yt.innertube.models.filterExplicit
 import com.nikhil.yt.innertube.models.filterVideo
-import com.nikhil.yt.innertube.models.SongItem
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
-import java.time.LocalTime
+import kotlin.math.ln
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Velune For You — Suggestion engine
+ * A discovery shelf, not a second copy of the listening history.
  *
- * Scores songs based on:
- * - Play count (higher = better)
- * - Skip count (higher = worse)
- * - Liked status (liked = bonus)
- * - Time of day (matches listening habits)
- * - Recency (recently played gets a boost)
+ * Seed selection uses listening time in units of complete plays (not raw
+ * milliseconds), likes and skips. Each seed supplies a small, interleaved
+ * batch of related tracks; skipped or already heard tracks are excluded.
+ * No remote recommendation requests are made until local preferences are
+ * sufficiently established.
  */
 @Singleton
 class ForYouSuggestionEngine @Inject constructor(
     private val database: MusicDatabase
 ) {
-
     companion object {
-        const val MAX_SUGGESTIONS = 50
-        private const val PLAY_WEIGHT = 2.0f
-        private const val SKIP_PENALTY = 3.0f
-        private const val LIKED_BONUS = 5.0f
-        private const val RECENCY_BONUS = 1.5f
-        private const val TIME_OF_DAY_BONUS = 1.3f
-        private val MORNING = 6..11
-        private val AFTERNOON = 12..17
-        private val EVENING = 18..21
-        private val NIGHT = 22..23
+        const val MAX_SUGGESTIONS = 40
+        private const val MAX_SEEDS = 4
+        private const val CANDIDATES_PER_SEED = 15
+        private const val MAX_TRACKS_PER_ARTIST = 3
+        private const val MIN_DISTINCT_TRACKS = 8
+        private const val MIN_LISTENED_MS = 20 * 60 * 1000L
+        private const val MILLIS_PER_DAY = 86_400_000L
     }
 
-    /**
-     * Get current time of day category
-     */
-    private fun getTimeOfDay(): String {
-        val hour = LocalTime.now().hour
-        return when (hour) {
-            in MORNING -> "morning"
-            in AFTERNOON -> "afternoon"
-            in EVENING -> "evening"
-            else -> "night"
-        }
-    }
-
-    /**
-     * Score a song based on play count, skips, liked status and recency
-     */
-    private fun scoreSong(
+    private fun scoreSeed(
         song: Song,
-        skipMap: Map<String, SongSkipEntity>,
-        likedIds: Set<String>,
-        recentIds: Set<String>,
-        timeOfDay: String
-    ): Float {
-        val playTime = song.song.totalPlayTime.toFloat()
-        val skipCount = skipMap[song.id]?.skipCount?.toFloat() ?: 0f
-        val isLiked = song.id in likedIds
-        val isRecent = song.id in recentIds
+        skips: Map<String, SongSkipEntity>,
+        liked: Set<String>,
+        recent: Set<String>
+    ): Double {
+        val durationMs = song.song.duration
+            .takeIf { it > 0 }?.times(1000L) ?: 180_000L
+        val equivalentPlays = song.song.totalPlayTime.toDouble() / durationMs
+        val skipCount = skips[song.id]?.skipCount ?: 0
 
-        var score = playTime * PLAY_WEIGHT
-        score -= skipCount * SKIP_PENALTY
-        if (isLiked) score += LIKED_BONUS
-        if (isRecent) score += RECENCY_BONUS
-
-        // Time of day boost — morning = upbeat, night = chill
-        // We can't detect tempo from local data so we just boost
-        // recently discovered songs at certain times
-        val hourBonus = when (timeOfDay) {
-            "morning" -> if (isRecent) TIME_OF_DAY_BONUS else 1.0f
-            "night" -> if (isLiked) TIME_OF_DAY_BONUS else 1.0f
-            else -> 1.0f
-        }
-        score *= hourBonus
-
-        return score.coerceAtLeast(0f)
+        return ln(1.0 + equivalentPlays.coerceAtLeast(0.0)) * 4.0 +
+            (if (song.id in liked) 3.5 else 0.0) +
+            (if (song.id in recent) 0.8 else 0.0) -
+            skipCount * 2.5
     }
 
-    /**
-     * Build the For You suggestion list from local + YouTube related songs
-     */
     suspend fun getSuggestions(
         hideExplicit: Boolean = false,
         hideVideo: Boolean = false
     ): List<SongItem> {
-        val fromTimeStamp = System.currentTimeMillis() - 86400000L * 30 // last 30 days
-        val timeOfDay = getTimeOfDay()
-
-        // Fetch local data
-        val allSongs = database.mostPlayedSongs(fromTimeStamp, limit = 100).first()
+        val now = System.currentTimeMillis()
+        val allSongs = database.mostPlayedSongs(now - 30 * MILLIS_PER_DAY, limit = 100)
+            .first().distinctBy { it.id }
         val likedSongs = database.likedSongsByPlayTimeAsc().first()
-        val skips = database.getAllSkips().first()
         val recentEvents = database.events().first().take(20)
+        val skips = database.getAllSkips().first().associateBy { it.songId }
 
-        val likedIds = likedSongs.map { it.id }.toSet()
-        val recentIds = recentEvents.mapNotNull { it.song?.id }.toSet()
-        val skipMap = skips.associateBy { it.songId }
+        // Sparse history cannot reliably identify a person's tastes.
+        val heard = allSongs.filter { it.song.totalPlayTime >= 30_000L }
+        if (heard.size < MIN_DISTINCT_TRACKS ||
+            heard.sumOf { it.song.totalPlayTime.coerceAtLeast(0L) } < MIN_LISTENED_MS
+        ) return emptyList()
 
-        // Score and sort all songs
-        val scoredSongs = allSongs
-            .map { song -> song to scoreSong(song, skipMap, likedIds, recentIds, timeOfDay) }
-            .sortedByDescending { it.second }
-            .map { it.first }
+        val likedIds = likedSongs.mapTo(hashSetOf()) { it.id }
+        val recentIds = recentEvents.mapNotNullTo(hashSetOf()) { it.song?.id }
+        val seeds = allSongs
+            .asSequence()
+            .filter { it.song.totalPlayTime >= 30_000L || it.id in likedIds }
+            .filter { (skips[it.id]?.skipCount ?: 0) < 3 || it.id in likedIds }
+            .sortedByDescending { scoreSeed(it, skips, likedIds, recentIds) }
+            // Prevent one heavily replayed artist from monopolizing discovery.
+            .distinctBy { it.artists.firstOrNull()?.id ?: it.id }
+            .take(MAX_SEEDS)
+            .toList()
 
-        // Use top scored songs as seeds for YouTube related songs
-        val seedSongs = scoredSongs.take(5)
+        if (seeds.isEmpty()) return emptyList()
 
-        val suggestions = mutableListOf<SongItem>()
-        val seenIds = mutableSetOf<String>()
-
-        for (seed in seedSongs) {
-            if (suggestions.size >= MAX_SUGGESTIONS) break
+        val groups = mutableListOf<List<SongItem>>()
+        for (seed in seeds) {
             try {
-                val endpoint = YouTube.next(
-                    WatchEndpoint(videoId = seed.id)
-                ).getOrNull()?.relatedEndpoint ?: continue
-
-                val related = YouTube.related(endpoint).getOrNull() ?: continue
-
-                val filtered = related.songs
+                val endpoint = YouTube.next(WatchEndpoint(videoId = seed.id))
+                    .getOrNull()?.relatedEndpoint ?: continue
+                val page = YouTube.related(endpoint).getOrNull() ?: continue
+                groups += page.songs
                     .filterExplicit(hideExplicit)
                     .filterVideo(hideVideo)
-                    .filter { it.id !in seenIds }
-                    .shuffled()
-                    .take(10)
-
-                suggestions.addAll(filtered)
-                seenIds.addAll(filtered.map { it.id })
-            } catch (_: Exception) {}
-        }
-
-        // Fill remaining from liked songs radio if needed
-        if (suggestions.size < MAX_SUGGESTIONS && likedSongs.isNotEmpty()) {
-            val likedSeed = likedSongs.shuffled().firstOrNull()
-            if (likedSeed != null) {
-                try {
-                    val endpoint = YouTube.next(
-                        WatchEndpoint(videoId = likedSeed.id)
-                    ).getOrNull()?.relatedEndpoint
-
-                    if (endpoint != null) {
-                        val related = YouTube.related(endpoint).getOrNull()
-                        val filtered = related?.songs
-                            ?.filterExplicit(hideExplicit)
-                            ?.filterVideo(hideVideo)
-                            ?.filter { it.id !in seenIds }
-                            ?.shuffled()
-                            ?.take(MAX_SUGGESTIONS - suggestions.size)
-                            ?: emptyList()
-
-                        suggestions.addAll(filtered)
+                    .filter { item ->
+                        item.title.isNotBlank() &&
+                            (item.duration == null || item.duration in 30..900) &&
+                            // Explicit negative feedback is stronger than a related match.
+                            !(skips[item.id]?.let {
+                                it.skipCount >= 2 &&
+                                    now - it.lastSkippedAt < 60 * MILLIS_PER_DAY
+                            } ?: false)
                     }
-                } catch (_: Exception) {}
+                    .take(CANDIDATES_PER_SEED)
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (_: Exception) {
+                // A failed related shelf must not block the remaining seeds.
             }
         }
 
-        return suggestions.take(MAX_SUGGESTIONS)
+        val seen = allSongs.mapTo(hashSetOf()) { it.id }
+        seen.addAll(recentIds)
+        val artistCounts = mutableMapOf<String, Int>()
+        val result = ArrayList<SongItem>(MAX_SUGGESTIONS)
+
+        // Interleave different seeds rather than filling one entire artist radio first.
+        for (position in 0 until CANDIDATES_PER_SEED) {
+            for (group in groups) {
+                val song = group.getOrNull(position) ?: continue
+                if (song.id in seen) continue
+                val artistKey = song.artists.firstOrNull()?.name
+                    ?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: song.id
+                val count = artistCounts[artistKey] ?: 0
+                if (count >= MAX_TRACKS_PER_ARTIST) continue
+
+                seen += song.id
+                artistCounts[artistKey] = count + 1
+                result += song
+                if (result.size == MAX_SUGGESTIONS) return result
+            }
+        }
+        return result
     }
 
-    /**
-     * Record a skip for a song
-     */
     suspend fun recordSkip(songId: String) {
         val existing = database.getSkip(songId)
         if (existing != null) {
