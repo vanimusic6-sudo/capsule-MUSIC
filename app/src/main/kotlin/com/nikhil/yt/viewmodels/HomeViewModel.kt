@@ -349,7 +349,12 @@ class HomeViewModel @Inject constructor(
             }
             names.any { it.trim().lowercase() in familiarArtists }
         }
-        return categoryPriority + overlaps.coerceAtMost(5) * 8
+        // A generic "for you" heading is not proof of personalized music.
+        // Without recognizable taste anchors, it should not eclipse a good
+        // new-release shelf. Discovery still remains available lower down.
+        val relevantPriority =
+            if (categoryPriority == 60 && overlaps == 0) 22 else categoryPriority
+        return relevantPriority + overlaps.coerceAtMost(5) * 8
     }
 
     private fun refreshAllYouTubeItems() {
