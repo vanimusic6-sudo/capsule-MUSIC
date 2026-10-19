@@ -43,6 +43,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
+import java.util.concurrent.ConcurrentHashMap
 import timber.log.Timber
 import javax.inject.Inject
 
@@ -73,6 +74,8 @@ class HomeViewModel @Inject constructor(
     private var loadMoreJob: Job? = null
     private var tasteRecommendationsJob: Job? = null
     private var exploreJob: Job? = null
+    private val attemptedContinuations = ConcurrentHashMap.newKeySet<String>()
+    private val continuationBudget = 4
 
     val recentActivity = MutableStateFlow<List<YTItem>?>(null)
     val recentPlaylistsDb = MutableStateFlow<List<Playlist>?>(null)
@@ -305,6 +308,34 @@ class HomeViewModel @Inject constructor(
         return page.copy(sections = sections)
     }
 
+    // Put likely personal material first without changing the order each
+    // time the user fetches the next page. Browsing categories are still
+    // retained as discovery, but generic charts no longer dominate the top.
+    private fun sectionInterest(
+        section: HomePage.Section,
+        familiarArtists: Set<String>,
+    ): Int {
+        val categoryPriority = when (classifyYouTubeHomeSection(section)) {
+            HomeSectionKind.PERSONALIZED -> 60
+            HomeSectionKind.NEW_RELEASES -> 47
+            HomeSectionKind.LONG_LISTEN -> 43
+            HomeSectionKind.COMMUNITY_PLAYLISTS -> 32
+            HomeSectionKind.HITS -> 24
+            HomeSectionKind.TRENDING -> 12
+            else -> 0
+        }
+        if (familiarArtists.isEmpty()) return categoryPriority
+        val overlaps = section.items.count { item ->
+            val names = when (item) {
+                is SongItem -> item.artists.map { it.name }
+                is AlbumItem -> item.artists.orEmpty().map { it.name }
+                else -> emptyList()
+            }
+            names.any { it.trim().lowercase() in familiarArtists }
+        }
+        return categoryPriority + overlaps.coerceAtMost(5) * 8
+    }
+
     private fun refreshAllYouTubeItems() {
         allYtItems.value =
             forYouSuggestions.value.orEmpty() +
@@ -313,7 +344,7 @@ class HomeViewModel @Inject constructor(
 
     private suspend fun getQuickPicks(){
         when (quickPicksEnum.first()) {
-            QuickPicks.QUICK_PICKS -> quickPicks.value = database.quickPicks().first().shuffled().take(20)
+            QuickPicks.QUICK_PICKS -> quickPicks.value = database.quickPicks().first().distinctBy { it.id }.take(20)
             QuickPicks.LAST_LISTEN -> songLoad()
         }
     }
@@ -323,6 +354,7 @@ class HomeViewModel @Inject constructor(
 
         loadMoreJob?.cancel()
         _isLoadingMore.value = false
+        attemptedContinuations.clear()
         tasteRecommendationsJob?.cancel()
         exploreJob?.cancel()
 
@@ -337,14 +369,17 @@ class HomeViewModel @Inject constructor(
                 val hideExplicit = preferences[HideExplicitKey] ?: false
                 val startupCookie = preferences[InnerTubeCookieKey]
                 if (YouTube.cookie != startupCookie) YouTube.cookie = startupCookie
-                val fromTimeStamp = System.currentTimeMillis() - 86400000 * 7 * 2
+                val fromTimeStamp = System.currentTimeMillis() - 86400000L * 14
+                val locallyPlayed = database.mostPlayedSongs(fromTimeStamp, limit = 45)
+                    .first().distinctBy { it.id }
+                val familiarArtists = locallyPlayed
+                    .filter { it.song.totalPlayTime >= 90_000L || it.song.liked }
+                    .flatMap { song -> song.artists.map { it.name.trim().lowercase() } }
+                    .filter { it.isNotBlank() }.toSet()
 
                 launch { getQuickPicks() }
-                launch { forgottenFavorites.value = database.forgottenFavorites().first().shuffled().take(20) }
-                launch {
-                    keepListening.value = database.mostPlayedSongs(fromTimeStamp, limit = 15, offset = 5)
-                        .first().distinctBy { it.id }.shuffled().take(12)
-                }
+                launch { forgottenFavorites.value = database.forgottenFavorites().first().distinctBy { it.id }.take(20) }
+                launch { keepListening.value = locallyPlayed.drop(4).take(12) }
 
                 launch {
                     YouTube.home().onSuccess { page ->
@@ -376,7 +411,11 @@ class HomeViewModel @Inject constructor(
                             checkedContinuations++
                             if (repeatedToken) break
                         }
-                        homePage.value = cleaned
+                        homePage.value = cleaned.copy(
+                            sections = cleaned.sections.sortedByDescending {
+                                sectionInterest(it, familiarArtists)
+                            },
+                        )
                     }.onFailure {
                         homeFeedError.value = true
                         reportException(it)
@@ -467,6 +506,10 @@ class HomeViewModel @Inject constructor(
 
     fun loadMoreYouTubeItems(continuation: String?) {
         if (continuation == null || _isLoadingMore.value) return
+        // Never hammer a failing/repeated provider token on every scroll pixel.
+        if (attemptedContinuations.size >= continuationBudget ||
+            !attemptedContinuations.add(continuation)
+        ) return
         _isLoadingMore.value = true
         loadMoreJob = viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -479,6 +522,9 @@ class HomeViewModel @Inject constructor(
                 if (current?.continuation != continuation) return@launch
                 val merged = next.copy(
                     sections = current.sections + next.sections,
+                    continuation = next.continuation.takeUnless {
+                        it == continuation || attemptedContinuations.size >= continuationBudget
+                    },
                 )
                 homePage.value = cleanYouTubeHomePage(
                     page = merged,
