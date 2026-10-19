@@ -274,21 +274,6 @@ fun HomeScreen(
             }
 
 
-            quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
-                item(key = "home:quick-list") {
-                    QuickPicksListSection(
-                        quickPicks = picks,
-                        mediaMetadata = mediaMetadata,
-                        isPlaying = isPlaying,
-                        navController = navController,
-                        playerConnection = playerConnection,
-                        menuState = menuState,
-                        haptic = haptic,
-                        modifier = Modifier
-                    )
-                }
-            }
-
             keepListening?.takeIf { it.isNotEmpty() }?.let { songs ->
                 item(key = "home:keep-listening") {
                     Column {
@@ -297,26 +282,6 @@ fun HomeScreen(
                             keepListening = songs,
                             mediaMetadata = mediaMetadata,
                             isPlaying = isPlaying,
-                            navController = navController,
-                            playerConnection = playerConnection,
-                            menuState = menuState,
-                            haptic = haptic,
-                        )
-                    }
-                }
-            }
-
-            forgottenFavorites?.takeIf { it.isNotEmpty() }?.let { favorites ->
-                item(key = "home:forgotten") {
-                    Column {
-                        NavigationTitle(title = stringResource(R.string.forgotten_favorites))
-                        ForgottenFavoritesSection(
-                            forgottenFavorites = favorites,
-                            mediaMetadata = mediaMetadata,
-                            isPlaying = isPlaying,
-                            horizontalLazyGridItemWidth = horizontalLazyGridItemWidth,
-                            lazyGridState = forgottenFavoritesLazyGridState,
-                            snapLayoutInfoProvider = forgottenFavoritesSnapLayoutInfoProvider,
                             navController = navController,
                             playerConnection = playerConnection,
                             menuState = menuState,
@@ -338,6 +303,27 @@ fun HomeScreen(
                         haptic = haptic,
                         modifier = Modifier
                     )
+                }
+            }
+
+
+            forgottenFavorites?.takeIf { it.isNotEmpty() }?.let { favorites ->
+                item(key = "home:forgotten") {
+                    Column {
+                        NavigationTitle(title = stringResource(R.string.forgotten_favorites))
+                        ForgottenFavoritesSection(
+                            forgottenFavorites = favorites,
+                            mediaMetadata = mediaMetadata,
+                            isPlaying = isPlaying,
+                            horizontalLazyGridItemWidth = horizontalLazyGridItemWidth,
+                            lazyGridState = forgottenFavoritesLazyGridState,
+                            snapLayoutInfoProvider = forgottenFavoritesSnapLayoutInfoProvider,
+                            navController = navController,
+                            playerConnection = playerConnection,
+                            menuState = menuState,
+                            haptic = haptic,
+                        )
+                    }
                 }
             }
 
