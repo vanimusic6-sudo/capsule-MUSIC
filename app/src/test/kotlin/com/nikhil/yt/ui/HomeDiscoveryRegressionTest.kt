@@ -37,12 +37,37 @@ class HomeDiscoveryRegressionTest {
     }
 
     @Test
-    fun curatedHomeRemainsBoundedAndRetainsRealPersonalShelves() {
+    fun feedDoesNotThrowAwayYouTubePersonalizationOrMixedPlaylists() {
         val vm = source("viewmodels/HomeViewModel.kt")
         assertTrue(vm.contains("attemptedContinuations.add(continuation)"))
-        assertTrue(vm.contains("continuationBudget = 4"))
+        assertTrue(vm.contains("continuationBudget = 10"))
         assertTrue(vm.contains("sectionInterest(it, familiarArtists)"))
-        assertTrue(vm.contains("if (affinity >= 2)"))
+        assertTrue(vm.contains("section.copy(items = items)"))
+        assertFalse(vm.contains("if (affinity >= 2)"))
+        assertTrue(vm.contains("item is PlaylistItem"))
+        assertTrue(vm.contains("YouTube.newReleaseAlbums()"))
         assertTrue(vm.contains("homeTasteArtists = familiarArtists"))
+    }
+
+    @Test
+    fun recentListeningIsNotTheFifthMostPlayedTrack() {
+        val vm = source("viewmodels/HomeViewModel.kt")
+        val dao = source("db/DatabaseDao.kt")
+        val screen = source("ui/screens/HomeScreen.kt")
+        assertTrue(vm.contains("recentlyListenedSongs(limit = 16).first()"))
+        assertTrue(dao.contains("fun recentlyListenedSongs(limit: Int = 16)"))
+        assertFalse(vm.contains("locallyPlayed.drop(4)"))
+        assertTrue(screen.contains("home:keep-listening"))
+    }
+
+    @Test
+    fun musicCardsAndEdgesUseMusicLayoutNotVideoLayout() {
+        val components = source("ui/screens/HomeScreenComponents.kt")
+        val screen = source("ui/screens/HomeScreen.kt")
+        assertTrue(components.contains("thumbnailRatio = 1f"))
+        assertTrue(screen.contains("overscrollEffect = null"))
+        assertTrue(screen.contains("flingBehavior = homeFling"))
+        assertFalse(screen.contains("height(430.dp)"))
+        assertTrue(screen.contains("home:youtube-new-release-albums"))
     }
 }
