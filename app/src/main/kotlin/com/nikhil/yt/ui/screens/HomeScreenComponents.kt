@@ -140,17 +140,17 @@ fun QuickPicksSection(
 ) {
     val distinctQuickPicks = remember(quickPicks) { quickPicks.distinctBy { it.id } }
     val density = LocalDensity.current
-    val requestWidthPx = with(density) { 250.dp.roundToPx().coerceAtLeast(1) }
-    val requestHeightPx = with(density) { 290.dp.roundToPx().coerceAtLeast(1) }
+    val requestWidthPx = with(density) { 184.dp.roundToPx().coerceAtLeast(1) }
+    val requestHeightPx = with(density) { 218.dp.roundToPx().coerceAtLeast(1) }
 
     HorizontalUncontainedCarousel(
         state = rememberCarouselState { distinctQuickPicks.size },
-        itemWidth = 250.dp,
+        itemWidth = 184.dp,
         itemSpacing = 8.dp,
         contentPadding = PaddingValues(horizontal = 16.dp),
         modifier = modifier
             .fillMaxWidth()
-            .height(290.dp)
+            .height(218.dp)
     ) { index ->
         val song = distinctQuickPicks[index]
         val isActive = song.id == mediaMetadata?.id
@@ -576,7 +576,7 @@ fun HomePageSectionContent(
         contentPadding = PaddingValues(horizontal = 4.dp),
         // Fix the viewport height: 1- vs 2-line subtitles must not remeasure the
         // entire LazyRow and move every section below it during horizontal swipes.
-        modifier = modifier.fillMaxWidth().height(GridThumbnailHeight + 104.dp),
+        modifier = modifier.fillMaxWidth().height(GridThumbnailHeight + 88.dp),
     ) {
         items(
             items = section.items,
@@ -606,9 +606,9 @@ fun MoodAndGenresSection(
     modifier: Modifier = Modifier
 ) {
     LazyHorizontalGrid(
-        rows = GridCells.Fixed(4),
+        rows = GridCells.Fixed(2),
         contentPadding = PaddingValues(6.dp),
-        modifier = modifier.height((MoodAndGenresButtonHeight + 12.dp) * 4 + 12.dp)
+        modifier = modifier.height((MoodAndGenresButtonHeight + 12.dp) * 2 + 12.dp)
     ) {
         items(moodAndGenres) {
             MoodAndGenresButton(
@@ -1188,8 +1188,8 @@ fun TasteRecommendationsSection(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f))
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.10f))
                     .padding(vertical = 4.dp)
             ) {
                 pages.getOrNull(pageIndex).orEmpty().forEach { song ->
