@@ -11,6 +11,7 @@ package com.nikhil.yt.ui.screens
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -74,6 +75,9 @@ import com.nikhil.yt.utils.rememberPreference
 import com.nikhil.yt.viewmodels.HomeViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.random.Random
@@ -100,6 +104,8 @@ fun HomeScreen(
     val homePage by viewModel.homePage.collectAsState()
     val explorePage by viewModel.explorePage.collectAsState()
     val forYouSuggestions by viewModel.forYouSuggestions.collectAsState()
+    val similarRecommendations by viewModel.similarRecommendations.collectAsState()
+    val isLoadingMore by viewModel.isLoadingMore.collectAsState()
 
     val allLocalItems by viewModel.allLocalItems.collectAsState()
     val allYtItems by viewModel.allYtItems.collectAsState()
@@ -135,13 +141,19 @@ fun HomeScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        snapshotFlow { lazylistState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
-            .collect { lastVisibleIndex ->
-                val len = lazylistState.layoutInfo.totalItemsCount
-                if (lastVisibleIndex != null && lastVisibleIndex >= len - 3) {
-                    viewModel.loadMoreYouTubeItems(homePage?.continuation)
-                }
+    LaunchedEffect(viewModel, lazylistState) {
+        // Observe BOTH scroll and changing continuations. Previously this
+        // coroutine retained the initial null HomePage and never loaded more.
+        val nearEnd = snapshotFlow {
+            val layout = lazylistState.layoutInfo
+            layout.totalItemsCount > 0 &&
+                (layout.visibleItemsInfo.lastOrNull()?.index ?: -1) >= layout.totalItemsCount - 4
+        }.distinctUntilChanged()
+        nearEnd.combine(
+            viewModel.homePage.map { it?.continuation }.distinctUntilChanged()
+        ) { visible, continuation -> visible to continuation }
+            .collect { (visible, continuation) ->
+                if (visible) viewModel.loadMoreYouTubeItems(continuation)
             }
     }
 
@@ -311,31 +323,7 @@ fun HomeScreen(
                     }
                 }
 
-                quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
-            /*
-                item {
-                    NavigationTitle(
-                        title = stringResource(R.string.quick_picks),
-                        modifier = Modifier.animateItem()
-                    )
-                }
-            */
-
-                item {
-                    QuickPicksSection(
-                        quickPicks = picks,
-                        mediaMetadata = mediaMetadata,
-                        isPlaying = isPlaying,
-                        navController = navController,
-                        playerConnection = playerConnection,
-                        menuState = menuState,
-                        haptic = haptic
-                    )
-                }
-            }
-
-
-            quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
+                // One compact track shelf; the old 290dp carousel showed the\n                // same songs a second time and kept an extra animated layout.\n\n            quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
                 item {
                     QuickPicksListSection(
                         quickPicks = picks,
@@ -345,7 +333,7 @@ fun HomeScreen(
                         playerConnection = playerConnection,
                         menuState = menuState,
                         haptic = haptic,
-                        modifier = Modifier.animateItem()
+                        modifier = Modifier
                     )
                 }
             }
@@ -354,7 +342,7 @@ fun HomeScreen(
                 item {
                     NavigationTitle(
                         title = stringResource(R.string.keep_listening),
-                        modifier = Modifier.animateItem()
+                        modifier = Modifier
                     )
                 }
 
@@ -371,6 +359,22 @@ fun HomeScreen(
                     )
                 }
             }
+
+            forYouSuggestions?.takeIf { it.isNotEmpty() }?.let { suggestions ->
+                item {
+                    ForYouSection(
+                        suggestions = suggestions,
+                        mediaMetadata = mediaMetadata,
+                        isPlaying = isPlaying,
+                        navController = navController,
+                        playerConnection = playerConnection,
+                        menuState = menuState,
+                        haptic = haptic,
+                        modifier = Modifier
+                    )
+                }
+            }
+
 
             AccountPlaylistsContainer(
                 viewModel = viewModel,
@@ -389,7 +393,7 @@ fun HomeScreen(
                 item {
                     NavigationTitle(
                         title = stringResource(R.string.forgotten_favorites),
-                        modifier = Modifier.animateItem()
+                        modifier = Modifier
                     )
                 }
 
@@ -409,25 +413,37 @@ fun HomeScreen(
                 }
             }
 
-            SimilarRecommendationsContainer(
-                viewModel = viewModel,
-                mediaMetadata = mediaMetadata,
-                isPlaying = isPlaying,
-                navController = navController,
-                playerConnection = playerConnection,
-                menuState = menuState,
-                haptic = haptic,
-                scope = scope
-            )
+            // Each shelf is a separate LazyColumn item. The previous single
+            // Column composed every nested row even when far off-screen.
+            similarRecommendations?.forEach { recommendation ->
+                item(key = "similar-${recommendation.title.id}") {
+                    Column {
+                        SimilarRecommendationsTitle(
+                            recommendation = recommendation,
+                            navController = navController
+                        )
+                        SimilarRecommendationsSection(
+                            recommendation = recommendation,
+                            mediaMetadata = mediaMetadata,
+                            isPlaying = isPlaying,
+                            navController = navController,
+                            playerConnection = playerConnection,
+                            menuState = menuState,
+                            haptic = haptic,
+                            scope = scope
+                        )
+                    }
+                }
+            }
 
-            homePage?.sections?.forEach { section ->
+            homePage?.sections?.forEachIndexed { sectionIndex, section ->
                 val isCommunity = section.title?.contains("community", ignoreCase = true) == true ||
                     section.title?.contains("From the", ignoreCase = true) == true ||
                     section.title?.contains("Trending", ignoreCase = true) == true &&
                     section.items.all { it is com.nikhil.yt.innertube.models.PlaylistItem }
 
                 if (isCommunity) {
-                    item {
+                    item(key = "home-community-$sectionIndex") {
                         CommunityPlaylistsSection(
                             section = section,
                             mediaMetadata = mediaMetadata,
@@ -437,19 +453,19 @@ fun HomeScreen(
                             menuState = menuState,
                             haptic = haptic,
                             scope = scope,
-                            modifier = Modifier.animateItem()
+                            modifier = Modifier
                         )
                     }
                 } else {
-                    item {
+                    item(key = "home-title-$sectionIndex") {
                         HomePageSectionTitle(
                             section = section,
                             navController = navController,
-                            modifier = Modifier.animateItem()
+                            modifier = Modifier
                         )
                     }
 
-                    item {
+                    item(key = "home-content-$sectionIndex") {
                         HomePageSectionContent(
                             section = section,
                             mediaMetadata = mediaMetadata,
@@ -464,24 +480,9 @@ fun HomeScreen(
                 }
             }
 
-            if (isLoading || homePage?.continuation != null && homePage?.sections?.isNotEmpty() == true) {
+            if (isLoading || isLoadingMore) {
                 item {
-                    HomeLoadingShimmer(modifier = Modifier.animateItem())
-                }
-            }
-
-            forYouSuggestions?.takeIf { it.isNotEmpty() }?.let { suggestions ->
-                item {
-                    ForYouSection(
-                        suggestions = suggestions,
-                        mediaMetadata = mediaMetadata,
-                        isPlaying = isPlaying,
-                        navController = navController,
-                        playerConnection = playerConnection,
-                        menuState = menuState,
-                        haptic = haptic,
-                        modifier = Modifier.animateItem()
-                    )
+                    HomeLoadingShimmer(modifier = Modifier)
                 }
             }
 
@@ -490,7 +491,7 @@ fun HomeScreen(
                     NavigationTitle(
                         title = stringResource(R.string.mood_and_genres),
                         onClick = { navController.navigate("mood_and_genres") },
-                        modifier = Modifier.animateItem()
+                        modifier = Modifier
                     )
                 }
                 item {
@@ -503,7 +504,7 @@ fun HomeScreen(
 
             if (isMoodAndGenresLoading) {
                 item {
-                    MoodAndGenresLoadingShimmer(modifier = Modifier.animateItem())
+                    MoodAndGenresLoadingShimmer(modifier = Modifier)
                 }
             }
             }
