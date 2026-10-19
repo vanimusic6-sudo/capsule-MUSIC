@@ -1142,6 +1142,25 @@ interface DatabaseDao {
     ): Flow<List<Playlist>>
 
     @Transaction
+    // Keep Listening uses actual recent plays, not a popularity-sorted list with its first four removed.
+    // Aggregate before joining songs: one row per track and only the requested number of results.
+    @Transaction
+    @Query(
+        """
+        SELECT song.*
+        FROM song
+        JOIN (
+            SELECT songId, MAX(timestamp) AS lastPlayed
+            FROM event
+            GROUP BY songId
+            ORDER BY lastPlayed DESC
+            LIMIT :limit
+        ) AS recent ON recent.songId = song.id
+        ORDER BY recent.lastPlayed DESC
+        """,
+    )
+    fun recentlyListenedSongs(limit: Int = 16): Flow<List<Song>>
+
     @Query("SELECT * FROM event ORDER BY rowId DESC")
     fun events(): Flow<List<EventWithSong>>
 
