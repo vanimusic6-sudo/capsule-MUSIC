@@ -46,6 +46,7 @@ on:
       - fix/feed-header-status-inset-20261018
       - refactor/spotify-pinned-header-20261018
       - fix/pinned-header-color-settings-transition-20261018
+      - feature/home-feed-airy-discovery-20261019
       - fix/video-timeline-morph-20261014
 
 permissions:
