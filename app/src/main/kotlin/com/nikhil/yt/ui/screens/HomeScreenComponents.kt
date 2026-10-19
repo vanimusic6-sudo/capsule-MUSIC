@@ -516,9 +516,9 @@ fun MoodAndGenresSection(
     modifier: Modifier = Modifier
 ) {
     LazyHorizontalGrid(
-        rows = GridCells.Fixed(4),
+        rows = GridCells.Fixed(2),
         contentPadding = PaddingValues(6.dp),
-        modifier = modifier.height((MoodAndGenresButtonHeight + 12.dp) * 4 + 12.dp)
+        modifier = modifier.height((MoodAndGenresButtonHeight + 12.dp) * 2 + 12.dp)
     ) {
         items(moodAndGenres) {
             MoodAndGenresButton(
@@ -606,6 +606,7 @@ private fun YouTubeGridItemWrapper(
         isPlaying = isPlaying,
         coroutineScope = scope,
         thumbnailRatio = 1f,
+        animateTitle = false,
         modifier = modifier.combinedClickable(
             onClick = {
                 when (item) {
@@ -869,7 +870,7 @@ fun LazyListScope.AccountPlaylistsContainer(
     haptic: HapticFeedback,
     scope: CoroutineScope
 ) {
-    item {
+    item(key = "home-account-playlists") {
         val accountPlaylists by viewModel.accountPlaylists.collectAsState()
         
         // Check if list is not null and not empty
@@ -957,27 +958,7 @@ fun QuickPicksListSection(
     val pagerState = androidx.compose.foundation.pager.rememberPagerState { pages.size }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Quick picks",
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f)
-            )
-            Text(
-                text = "Play all",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
-                    .padding(horizontal = 12.dp, vertical = 4.dp)
-            )
-        }
+        NavigationTitle(title = stringResource(R.string.quick_picks))
 
         androidx.compose.foundation.pager.HorizontalPager(
             state = pagerState,
@@ -1135,6 +1116,7 @@ fun ForYouSection(
     modifier: Modifier = Modifier
 ) {
     if (suggestions.isEmpty()) return
+    val itemScope = rememberCoroutineScope()
 
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
@@ -1173,7 +1155,7 @@ fun ForYouSection(
                         playerConnection = playerConnection,
                         menuState = menuState,
                         haptic = haptic,
-                        scope = rememberCoroutineScope()
+                        scope = itemScope
                     )
                 }
             }
