@@ -76,6 +76,7 @@ class HomeViewModel @Inject constructor(
     private var exploreJob: Job? = null
     private val attemptedContinuations = ConcurrentHashMap.newKeySet<String>()
     private val continuationBudget = 4
+    private var homeTasteArtists: Set<String> = emptySet()
 
     val recentActivity = MutableStateFlow<List<YTItem>?>(null)
     val recentPlaylistsDb = MutableStateFlow<List<Playlist>?>(null)
@@ -276,8 +277,23 @@ class HomeViewModel @Inject constructor(
         hideExplicit: Boolean,
     ): HomePage {
         val sections = page.sections.mapNotNull { section ->
-            val kind = classifyYouTubeHomeSection(section)
-            if (kind == null || kind == HomeSectionKind.SHALLOW_SIMILARITY) {
+            val knownKind = classifyYouTubeHomeSection(section)
+            if (knownKind == HomeSectionKind.SHALLOW_SIMILARITY) return@mapNotNull null
+
+            // YouTube localizes section headings freely. Instead of dropping
+            // every unknown title, admit one with actual overlap with repeated
+            // listening. Unknown, generic sections remain excluded.
+            val affinity = section.items.count { item ->
+                val names = when (item) {
+                    is SongItem -> item.artists.map { it.name }
+                    is AlbumItem -> item.artists.orEmpty().map { it.name }
+                    else -> emptyList()
+                }
+                names.any { it.trim().lowercase() in homeTasteArtists }
+            }
+            val kind = knownKind ?: if (affinity >= 2) {
+                HomeSectionKind.PERSONALIZED
+            } else {
                 return@mapNotNull null
             }
 
@@ -376,6 +392,7 @@ class HomeViewModel @Inject constructor(
                     .filter { it.song.totalPlayTime >= 90_000L || it.song.liked }
                     .flatMap { song -> song.artists.map { it.name.trim().lowercase() } }
                     .filter { it.isNotBlank() }.toSet()
+                homeTasteArtists = familiarArtists
 
                 launch { getQuickPicks() }
                 launch { forgottenFavorites.value = database.forgottenFavorites().first().distinctBy { it.id }.take(20) }
