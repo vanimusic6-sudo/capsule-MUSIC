@@ -589,6 +589,14 @@ class HomeViewModel @Inject constructor(
             load()
         }
 
+        // Stay current when playback history changes while Home remains in the
+        // navigation back stack. A one-time snapshot left Continue Listening stale.
+        viewModelScope.launch(Dispatchers.IO) {
+            database.recentlyListenedSongs(limit = 16)
+                .distinctUntilChanged()
+                .collect { keepListening.value = it }
+        }
+
         viewModelScope.launch(Dispatchers.IO) {
             kotlinx.coroutines.delay(3000)
             
