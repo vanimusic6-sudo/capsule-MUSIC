@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -88,7 +89,9 @@ fun NewReleaseScreen(
     ) {
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = GridThumbnailHeight + 24.dp),
-            contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+            contentPadding = LocalPlayerAwareWindowInsets.current
+            .add(WindowInsets(top = com.nikhil.yt.constants.AppBarHeight))
+            .asPaddingValues(),
         ) {
             items(
                 items = newReleaseAlbums.distinctBy { it.id },
