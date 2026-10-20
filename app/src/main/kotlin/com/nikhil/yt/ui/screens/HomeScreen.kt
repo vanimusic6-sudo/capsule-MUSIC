@@ -136,7 +136,14 @@ fun HomeScreen(
     val homePage by viewModel.homePage.collectAsState()
     val explorePage by viewModel.explorePage.collectAsState()
     val newReleaseAlbums by viewModel.newReleaseAlbums.collectAsState()
+    val listenerPlaylists by viewModel.communityPlaylists.collectAsState()
     val providerHasReleaseShelf = homePage?.sections?.any(::isYouTubeReleaseShelf) == true
+    val providerHasCommunityShelf = homePage?.sections?.any { section ->
+        section.items.isNotEmpty() &&
+            section.items.all { it is PlaylistItem } &&
+            listOf("community", "listener playlist", "playlists by", "плейлисты пользователей")
+                .any { section.title.lowercase().contains(it) }
+    } == true
     val forYouSuggestions by viewModel.forYouSuggestions.collectAsState()
 
     val allLocalItems by viewModel.allLocalItems.collectAsState()
@@ -213,13 +220,16 @@ fun HomeScreen(
     // Database emissions must not forcibly reset the nested favorites grid.
 
 
+    // Spotify-like glide: the previous 0.84 multiplier deliberately slowed each
+    // fling and made long feeds feel sticky. Do not introduce extra springs or
+    // draw-time allocations; allow momentum while retaining bounded edges.
     // One solid page surface. The former short, three-stop overlay ended after
     // 430dp and produced visible horizontal bands while scrolling the feed.
     val nativeFling = ScrollableDefaults.flingBehavior()
     val homeFling = remember(nativeFling) {
         object : FlingBehavior {
             override suspend fun ScrollScope.performFling(initialVelocity: Float): Float =
-                with(nativeFling) { performFling(initialVelocity * 0.84f) }
+                with(nativeFling) { performFling(initialVelocity * 1.20f) }
         }
     }
 
@@ -370,6 +380,35 @@ fun HomeScreen(
                             haptic = haptic,
                         )
                     }
+                }
+            }
+
+            // YouTube's Home endpoint does not guarantee public playlists on every
+            // account. Use filtered public-playlist search results when it omits them.
+            listenerPlaylists.takeIf { it.isNotEmpty() && !providerHasCommunityShelf }?.let { playlists ->
+                item(key = "home:listener-community-playlists") {
+                    val listenerSection = remember(playlists) {
+                        HomePage.Section(
+                            title = "",
+                            label = null,
+                            thumbnail = null,
+                            endpoint = null,
+                            items = playlists,
+                        )
+                    }
+                    CommunityPlaylistsSection(
+                        section = listenerSection.copy(
+                            title = stringResource(R.string.home_community_playlists),
+                        ),
+                        userScrollEnabled = horizontalShelvesEnabled,
+                        mediaMetadata = mediaMetadata,
+                        isPlaying = isPlaying,
+                        navController = navController,
+                        playerConnection = playerConnection,
+                        menuState = menuState,
+                        haptic = haptic,
+                        scope = scope,
+                    )
                 }
             }
 
