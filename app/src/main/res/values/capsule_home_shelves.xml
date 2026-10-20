@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Localized labels for YouTube Music Home shelf types; actual music and playlists are never renamed. -->
+    <string name="home_shelf_albums_for_you">Albums for you</string>
+    <string name="home_shelf_mixes_for_you">Mixes for you</string>
+    <string name="home_shelf_playlists_for_you">Playlists for you</string>
+    <string name="home_shelf_trending_for_you">Trending tracks for you</string>
+    <string name="home_shelf_popular_albums">Popular albums and singles</string>
+    <string name="home_shelf_new_releases">New releases</string>
+    <string name="home_shelf_made_for_you">Made for you</string>
+    <string name="home_shelf_the_sound_of_autumn">The sound of autumn</string>
+    <string name="home_shelf_the_sound_of_winter">The sound of winter</string>
+    <string name="home_shelf_the_sound_of_spring">The sound of spring</string>
+    <string name="home_shelf_the_sound_of_summer">The sound of summer</string>
+    <string name="home_shelf_you_might_like">You might like</string>
+    <string name="home_shelf_your_mixes">Your mixes</string>
+    <string name="home_shelf_trending">Trending</string>
+    <string name="home_shelf_top_hits">Top hits</string>
+    <string name="home_shelf_because_you_listened">Because you listened</string>
+    <string name="home_shelf_recently_played">Recently played</string>
+</resources>
