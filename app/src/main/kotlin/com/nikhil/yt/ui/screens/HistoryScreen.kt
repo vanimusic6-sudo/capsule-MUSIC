@@ -16,6 +16,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -313,7 +314,14 @@ fun HistoryScreen(
 
         LazyColumn(
             state = lazyListState,
-            contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+            // When the contextual search/selection bar is open it sits below
+            // the pinned Activity header, never behind it or over the first row.
+            contentPadding = LocalPlayerAwareWindowInsets.current
+                .add(
+                    androidx.compose.foundation.layout.WindowInsets(
+                        top = if (selection || isSearching) 64.dp else 0.dp,
+                    ),
+                ).asPaddingValues(),
             modifier = Modifier
         ) {
 
@@ -518,6 +526,7 @@ fun HistoryScreen(
         exit = fadeOut()
     ) {
         TopAppBar(
+        modifier = Modifier.padding(top = com.nikhil.yt.constants.AppBarHeight),
         title = {
             if (selection) {
                 val count = allWrappedItems.count { it.isSelected }
