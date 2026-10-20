@@ -897,7 +897,7 @@ private fun localizedHomeShelfTitle(section: HomePage.Section): String {
     val lower = name.lowercase(java.util.Locale.ROOT)
     val playlistOnly = section.items.isNotEmpty() && section.items.all { it is PlaylistItem }
     val albumOnly = section.items.isNotEmpty() && section.items.all { it is AlbumItem }
-    val matches = { vararg words: String -> words.any(lower::contains) }
+    fun matches(vararg words: String): Boolean = words.any(lower::contains)
     val id = when {
         matches("the sound of autumn") -> R.string.home_shelf_the_sound_of_autumn
         matches("the sound of winter") -> R.string.home_shelf_the_sound_of_winter
