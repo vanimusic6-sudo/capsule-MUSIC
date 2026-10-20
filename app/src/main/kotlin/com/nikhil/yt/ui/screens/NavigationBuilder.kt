@@ -94,10 +94,10 @@ fun NavGraphBuilder.navigationBuilder(
     routeComposable(Screens.Home.route) {
         HomeScreen(navController)
     }
-    routeComposable("home_collections") {
-        // Share Home's ViewModel. A fresh one would re-fetch the whole catalog
-        // on every opening and could interfere with playback/network resources.
-        val homeEntry = remember(navController) {
+    routeComposable("home_collections") { collectionsEntry ->
+        // Scope the saved Home ViewModel to the real Home back-stack entry, but
+        // key the lookup by this destination entry as Navigation Compose requires.
+        val homeEntry = remember(navController, collectionsEntry) {
             navController.getBackStackEntry(Screens.Home.route)
         }
         HomeCollectionsScreen(navController, viewModel = hiltViewModel(homeEntry))
