@@ -11,6 +11,9 @@
 package com.nikhil.yt.playback
 
 import android.app.Notification
+import android.graphics.Bitmap
+import java.io.ByteArrayOutputStream
+import java.util.concurrent.TimeUnit
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.KeyguardManager
@@ -543,6 +546,11 @@ class MusicService :
     private var scopeJob = Job()
     private var scope = CoroutineScope(Dispatchers.Main + scopeJob)
     private var ioScope = CoroutineScope(Dispatchers.IO + scopeJob)
+    private val sessionArtworkLoader by lazy(LazyThreadSafetyMode.NONE) {
+        CacheBitmapLoader(CoilBitmapLoader(this, scope))
+    }
+    private var systemArtworkJob: Job? = null
+
     private val songMutationMutex = Mutex()
     private val binder = MusicBinder()
     private val togetherShutdownGate = TogetherShutdownGate()
@@ -1887,7 +1895,7 @@ class MusicService :
                     // Wrapped, because the session, the notification and whatever the OEM builds on
                     // top of them each ask for the same artwork. Without a cache in front, one track
                     // change is several identical loads.
-                    CacheBitmapLoader(CoilBitmapLoader(this, scope)),
+                    sessionArtworkLoader,
                 )
                 .build()
         setMediaNotificationProvider(
@@ -2455,6 +2463,67 @@ class MusicService :
         when (decision.action) {
             TerminalPlaybackAction.SKIP -> skipOnError()
             TerminalPlaybackAction.STOP -> stopOnError()
+        }
+    }
+
+    /**
+     * HONOR MagicOS and some Android media surfaces prefer actual artwork
+     * bytes in the active Media3 session over a remote image URI.
+     * Image loading and JPEG encoding happen off the playback thread.
+     *
+     * The replacement has exactly the same media ID, URI and cache key. Never
+     * reset playback, seek, prepare or rebuild the audio/video source here.
+     */
+    private fun publishSystemArtwork(item: MediaItem?) {
+        systemArtworkJob?.cancel()
+        systemArtworkJob = null
+        val requested = item ?: return
+        val uri = requested.mediaMetadata.artworkUri ?: return
+        if (requested.mediaMetadata.artworkData != null) return
+
+        systemArtworkJob = scope.launch {
+            val encoded = try {
+                withContext(Dispatchers.IO) {
+                    val bitmap = sessionArtworkLoader.loadBitmap(uri)
+                        .get(8, TimeUnit.SECONDS)
+                    ByteArrayOutputStream().use { stream ->
+                        if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 82, stream)) {
+                            throw IllegalStateException("Artwork compression failed")
+                        }
+                        stream.toByteArray().takeIf { it.isNotEmpty() && it.size < 400_000 }
+                    }
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                reportRecoverableException("MusicService", "system media artwork", failure)
+                null
+            } ?: return@launch
+
+            val current = player.currentMediaItem ?: return@launch
+            if (current.mediaId != requested.mediaId ||
+                current.mediaMetadata.artworkUri != uri ||
+                current.mediaMetadata.artworkData != null
+            ) return@launch
+            val index = player.currentMediaItemIndex
+            if (index < 0 || index >= player.mediaItemCount) return@launch
+            if (!player.isCommandAvailable(Player.COMMAND_CHANGE_MEDIA_ITEMS)) return@launch
+
+            runCatching {
+                player.replaceMediaItem(
+                    index,
+                    current.buildUpon()
+                        .setMediaMetadata(
+                            current.mediaMetadata.buildUpon()
+                                .setArtworkData(
+                                    encoded,
+                                    androidx.media3.common.MediaMetadata.PICTURE_TYPE_FRONT_COVER,
+                                ).build(),
+                        ).build(),
+                )
+            }.onFailure {
+                reportRecoverableException("MusicService", "publish media artwork bytes", it)
+            }
         }
     }
 
@@ -3618,6 +3687,7 @@ class MusicService :
 
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         super.onMediaItemTransition(mediaItem, reason)
+        publishSystemArtwork(mediaItem)
 
         if (mediaItem?.mediaId?.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX) == true) {
             // Keep SoundCloud visible in the normal player without feeding its ID
