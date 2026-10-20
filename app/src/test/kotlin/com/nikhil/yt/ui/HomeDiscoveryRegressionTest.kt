@@ -108,6 +108,45 @@ class HomeDiscoveryRegressionTest {
     }
 
     @Test
+    fun communityPlaylistsComeFromYouTubeMusicNotRenamedHomeMixes() {
+        val vm = source("viewmodels/HomeViewModel.kt")
+        val home = source("ui/screens/HomeScreen.kt")
+        val parser = listOf(
+            File("../innertube/src/main/kotlin/com/nikhil/yt/innertube/pages/SearchPage.kt"),
+            File("innertube/src/main/kotlin/com/nikhil/yt/innertube/pages/SearchPage.kt"),
+        ).first { it.isFile }.readText()
+        val youtube = listOf(
+            File("../innertube/src/main/kotlin/com/nikhil/yt/innertube/YouTube.kt"),
+            File("innertube/src/main/kotlin/com/nikhil/yt/innertube/YouTube.kt"),
+        ).first { it.isFile }.readText()
+        assertTrue(vm.contains("YouTube.SearchFilter.FILTER_COMMUNITY_PLAYLIST"))
+        assertTrue(vm.contains("loadCommunityPlaylists("))
+        assertTrue(vm.contains("communityPlaylists.value = results"))
+        assertTrue(home.contains("home:listener-community-playlists"))
+        assertTrue(home.contains("!providerHasCommunityShelf"))
+        assertTrue(parser.contains("Only the browsable playlist id and its title are required."))
+        assertTrue(parser.contains("radioEndpoint = renderer.menu?.menuRenderer?.items?.find"))
+        assertTrue(youtube.contains("val shelves = response.contents?.tabbedSearchResultsRenderer"))
+    }
+
+    @Test
+    fun nativeMomentumIsNotArtificiallyShortenedAndHeadingsAreLocalized() {
+        val home = source("ui/screens/HomeScreen.kt")
+        val components = source("ui/screens/HomeScreenComponents.kt")
+        assertFalse(home.contains("initialVelocity * 0.84f"))
+        assertTrue(home.contains("initialVelocity * 1.20f"))
+        assertTrue(components.contains("localizedHomeShelfTitle(section)"))
+        val ru = listOf(
+            File("src/main/res/values-ru/capsule_home_shelves.xml"),
+            File("app/src/main/res/values-ru/capsule_home_shelves.xml"),
+        ).first { it.isFile }.readText()
+        assertTrue(ru.contains("Альбомы для вас"))
+        assertTrue(ru.contains("Миксы для вас"))
+        assertTrue(ru.contains("Популярные альбомы и синглы"))
+        assertTrue(ru.contains("Звуки осени"))
+    }
+
+    @Test
     fun musicCardsAndEdgesUseMusicLayoutNotVideoLayout() {
         val components = source("ui/screens/HomeScreenComponents.kt")
         val screen = source("ui/screens/HomeScreen.kt")
