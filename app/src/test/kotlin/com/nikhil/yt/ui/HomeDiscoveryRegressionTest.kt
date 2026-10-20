@@ -90,9 +90,10 @@ class HomeDiscoveryRegressionTest {
     fun verticalScrollingFreezesOnlyHorizontalShelves() {
         val home = source("ui/screens/HomeScreen.kt")
         val components = source("ui/screens/HomeScreenComponents.kt")
-        assertTrue(home.contains("horizontalShelvesEnabled = !lazylistState.isScrollInProgress"))
+        assertTrue(home.contains("horizontalShelvesEnabled = remember(lazylistState)"))
+        assertTrue(home.contains("derivedStateOf { !lazylistState.isScrollInProgress }"))
         assertTrue(home.contains("flingBehavior = homeFling"))
-        assertTrue(home.contains("userScrollEnabled = horizontalShelvesEnabled"))
+        assertTrue(home.contains("userScrollEnabled = horizontalShelvesEnabled.value"))
         val sections = listOf(
             "QuickPicksSection", "KeepListeningSection", "ForgottenFavoritesSection",
             "HomePageSectionContent", "MoodAndGenresSection", "CommunityPlaylistsSection",
