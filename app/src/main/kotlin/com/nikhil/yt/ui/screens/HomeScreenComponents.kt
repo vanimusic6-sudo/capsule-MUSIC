@@ -1161,18 +1161,8 @@ fun CommunityPlaylistsSection(
     userScrollEnabled: Boolean = true,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = localizedHomeShelfTitle(section),
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f)
-            )
-        }
+        // Use the same typography, baseline and padding as every other shelf.
+        NavigationTitle(title = localizedHomeShelfTitle(section))
 
         LazyRow(
             userScrollEnabled = userScrollEnabled,
@@ -1225,23 +1215,10 @@ fun TasteRecommendationsSection(
     val pagerState = androidx.compose.foundation.pager.rememberPagerState { pages.size }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.taste_recommendations),
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = stringResource(R.string.taste_recommendations_subtitle),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-        }
+        NavigationTitle(
+            title = stringResource(R.string.taste_recommendations),
+            subtitle = stringResource(R.string.taste_recommendations_subtitle),
+        )
 
         androidx.compose.foundation.pager.HorizontalPager(
             userScrollEnabled = userScrollEnabled,
