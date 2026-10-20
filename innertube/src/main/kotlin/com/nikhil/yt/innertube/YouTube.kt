@@ -249,15 +249,19 @@ object YouTube {
 
     suspend fun search(query: String, filter: SearchFilter): Result<SearchResult> = runCatchingCancellable {
         val response = innerTube.search(WEB_REMIX, query, filter.value).body<SearchResponse>()
+        // Filtered playlists and mixes are not always in the last shelf.
+        // Ignore non-shelf sections without discarding earlier valid results.
+        val shelves = response.contents?.tabbedSearchResultsRenderer?.tabs?.firstOrNull()
+            ?.tabRenderer?.content?.sectionListRenderer?.contents.orEmpty()
+            .mapNotNull { it.musicShelfRenderer }
         SearchResult(
-            items = response.contents?.tabbedSearchResultsRenderer?.tabs?.firstOrNull()
-                ?.tabRenderer?.content?.sectionListRenderer?.contents?.lastOrNull()
-                ?.musicShelfRenderer?.contents?.getItems()?.mapNotNull {
+            items = shelves.flatMap { shelf ->
+                shelf.contents.orEmpty().getItems().mapNotNull {
                     SearchPage.toYTItem(it, selectedFromVideoResults = filter == SearchFilter.FILTER_VIDEO)
-                }.orEmpty(),
-            continuation = response.contents?.tabbedSearchResultsRenderer?.tabs?.firstOrNull()
-                ?.tabRenderer?.content?.sectionListRenderer?.contents?.lastOrNull()
-                ?.musicShelfRenderer?.continuations?.getContinuation()
+                }
+            }.distinctBy { it.id },
+            continuation = shelves.lastOrNull { it.continuations?.getContinuation() != null }
+                ?.continuations?.getContinuation(),
         )
     }
 
