@@ -73,9 +73,12 @@ class HomeViewModel @Inject constructor(
     val explorePage = MutableStateFlow<ExplorePage?>(null)
     // Fresh catalog releases come from YouTube Music's dedicated albums endpoint.
     val newReleaseAlbums = MutableStateFlow<List<AlbumItem>>(emptyList())
+    // Real public user-created playlists, returned by YouTube Music's community filter.
+    val communityPlaylists = MutableStateFlow<List<PlaylistItem>>(emptyList())
     private var loadMoreJob: Job? = null
     private var tasteRecommendationsJob: Job? = null
     private var exploreJob: Job? = null
+    private var communityPlaylistsJob: Job? = null
     private val attemptedContinuations = ConcurrentHashMap.newKeySet<String>()
     private val continuationBudget = 10
     private var homeTasteArtists: Set<String> = emptySet()
@@ -335,6 +338,40 @@ class HomeViewModel @Inject constructor(
                 homePage.value?.sections.orEmpty().flatMap { it.items }
     }
 
+    // Community playlists are a different catalog from YouTube Music's personalized
+    // Home shelves. Query its public-playlist filter with the user's actual taste
+    // instead of renaming a generic mix as a listener-created playlist.
+    private suspend fun loadCommunityPlaylists(artistSeeds: List<String>) {
+        val requests = artistSeeds
+            .map { "$it playlist" }
+            .distinct()
+            .take(2)
+            .ifEmpty { listOf("music playlist") }
+        val results = mutableListOf<PlaylistItem>()
+        for (query in requests) {
+            val playlists = YouTube.search(
+                query,
+                YouTube.SearchFilter.FILTER_COMMUNITY_PLAYLIST,
+            ).getOrNull()?.items.orEmpty().filterIsInstance<PlaylistItem>()
+            results.addAll(playlists)
+            if (results.distinctBy { it.id }.size >= 8) break
+        }
+        // No listening history, or no matches for the first two artists:
+        // use one real YouTube Music public-playlist search as a fallback.
+        if (results.size < 3 && requests != listOf("music playlist")) {
+            results.addAll(
+                YouTube.search(
+                    "music playlist",
+                    YouTube.SearchFilter.FILTER_COMMUNITY_PLAYLIST,
+                ).getOrNull()?.items.orEmpty().filterIsInstance<PlaylistItem>(),
+            )
+        }
+        communityPlaylists.value = results
+            .filter { it.id.isNotBlank() && !it.thumbnail.isNullOrBlank() }
+            .distinctBy { it.id }
+            .take(18)
+    }
+
     private suspend fun getQuickPicks(){
         when (quickPicksEnum.first()) {
             QuickPicks.QUICK_PICKS -> quickPicks.value = database.quickPicks().first().distinctBy { it.id }.take(20)
@@ -350,6 +387,7 @@ class HomeViewModel @Inject constructor(
         attemptedContinuations.clear()
         tasteRecommendationsJob?.cancel()
         exploreJob?.cancel()
+        communityPlaylistsJob?.cancel()
 
         isLoading.value = true
         homeFeedError.value = false
@@ -421,6 +459,20 @@ class HomeViewModel @Inject constructor(
             allLocalItems.value =
                 (quickPicks.value.orEmpty() + forgottenFavorites.value.orEmpty() + keepListening.value.orEmpty())
                     .distinctBy { it.id }
+
+            // Fetch listener-made playlists separately from the Home continuation.
+            // Failures are isolated and never block the music feed or playback.
+            communityPlaylistsJob = viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    loadCommunityPlaylists(
+                        homeTasteArtists.toList().take(2),
+                    )
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    reportRecoverableException("HomeViewModel", "load community playlists", error)
+                }
+            }
 
             // MetroList's initial Home only waits for cheap DB data and the primary feed.
             // Recommendations (up to several "related" requests) and Explore are non-critical.
