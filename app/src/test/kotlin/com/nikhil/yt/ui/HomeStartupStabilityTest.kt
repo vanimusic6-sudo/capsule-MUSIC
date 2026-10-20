@@ -53,8 +53,9 @@ class HomeStartupStabilityTest {
     @Test
     fun failedHomeRequestOffersExplicitRetryWithoutDiscardingOtherShelves() {
         val home = source("HomeScreen.kt")
-        assertTrue(home.contains("homeFeedError && homePage?.sections.isNullOrEmpty() && !isLoading"))
-        assertTrue(home.contains("TextButton(onClick = viewModel::refresh)"))
+        val collections = source("HomeCollectionsScreen.kt")
+        assertTrue(collections.contains("feedError && home?.sections.isNullOrEmpty() && !loading"))
+        assertTrue(collections.contains("onClick = viewModel::refresh"))
         assertTrue(home.contains("onRefresh = viewModel::refresh"))
     }
 }
