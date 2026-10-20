@@ -73,6 +73,7 @@ fun HomeCollectionsScreen(
     val loading by viewModel.isLoading.collectAsState()
     val loadingMore by viewModel.isLoadingMore.collectAsState()
     val feedError by viewModel.homeFeedError.collectAsState()
+    LaunchedEffect(viewModel) { viewModel.activateDiscovery() }
 
     val listState = rememberLazyListState()
     val favoritesState = rememberLazyGridState()
