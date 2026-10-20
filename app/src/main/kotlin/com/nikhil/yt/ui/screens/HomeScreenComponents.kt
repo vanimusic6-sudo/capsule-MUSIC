@@ -887,6 +887,56 @@ fun AccountPlaylistsTitle(
 }
 
 /**
+ * Localize known YouTube Music shelf types at display time, so changing the app
+ * language doesn't require reloading the network feed. Never translate actual
+ * playlist/album/artist names or invent catalog categories.
+ */
+@Composable
+private fun localizedHomeShelfTitle(section: HomePage.Section): String {
+    val name = section.title.trim()
+    val lower = name.lowercase(java.util.Locale.ROOT)
+    val playlistOnly = section.items.isNotEmpty() && section.items.all { it is PlaylistItem }
+    val albumOnly = section.items.isNotEmpty() && section.items.all { it is AlbumItem }
+    val matches = { vararg words: String -> words.any(lower::contains) }
+    val id = when {
+        matches("the sound of autumn") -> R.string.home_shelf_the_sound_of_autumn
+        matches("the sound of winter") -> R.string.home_shelf_the_sound_of_winter
+        matches("the sound of spring") -> R.string.home_shelf_the_sound_of_spring
+        matches("the sound of summer") -> R.string.home_shelf_the_sound_of_summer
+        matches("popular albums and singles", "popular albums & singles") ->
+            R.string.home_shelf_popular_albums
+        matches("trending tracks for you", "trending songs for you") ->
+            R.string.home_shelf_trending_for_you
+        matches("albums for you", "recommended albums", "albums you might like") ->
+            R.string.home_shelf_albums_for_you
+        matches("mixes for you", "your mixes", "personal mixes") ->
+            R.string.home_shelf_mixes_for_you
+        matches("playlists for you", "recommended playlists") ->
+            R.string.home_shelf_playlists_for_you
+        matches("community playlists", "listener playlists", "playlists by other users") && playlistOnly ->
+            R.string.home_community_playlists
+        matches("new releases", "latest releases", "fresh releases") ->
+            R.string.home_shelf_new_releases
+        matches("made for you", "crafted for you") -> R.string.home_shelf_made_for_you
+        matches("because you listened", "based on your listening") ->
+            R.string.home_shelf_because_you_listened
+        matches("recently played", "recently listened") ->
+            R.string.home_shelf_recently_played
+        matches("you might like", "you may like") ->
+            R.string.home_shelf_you_might_like
+        matches("top hits", "biggest hits") -> R.string.home_shelf_top_hits
+        matches("trending", "popular right now") -> R.string.home_shelf_trending
+        lower == "for you" || lower == "just for you" -> when {
+            albumOnly -> R.string.home_shelf_albums_for_you
+            playlistOnly -> R.string.home_shelf_playlists_for_you
+            else -> R.string.home_shelf_made_for_you
+        }
+        else -> null
+    }
+    return id?.let { stringResource(it) } ?: name
+}
+
+/**
  * HomePage section navigation title
  */
 @Composable
@@ -896,7 +946,7 @@ fun HomePageSectionTitle(
     modifier: Modifier = Modifier
 ) {
     NavigationTitle(
-        title = section.title,
+        title = localizedHomeShelfTitle(section),
         label = section.label,
         thumbnail = section.thumbnail?.let { thumbnailUrl ->
             {
@@ -1118,7 +1168,7 @@ fun CommunityPlaylistsSection(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = section.title ?: "From the community",
+                text = localizedHomeShelfTitle(section),
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f)
             )
