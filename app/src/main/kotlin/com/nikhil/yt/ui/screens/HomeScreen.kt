@@ -41,6 +41,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.Indicator
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -162,7 +163,11 @@ fun HomeScreen(
     val lazylistState = rememberLazyListState()
     // During vertical motion, sideways drags must not turn the recommendation carousels.
     // Their ordinary horizontal gestures remain available when the feed is idle.
-    val horizontalShelvesEnabled = !lazylistState.isScrollInProgress
+    // The visible shelves observe scroll state individually. Do not recompose
+    // the entire HomeScreen every time a vertical fling starts or stops.
+    val horizontalShelvesEnabled = remember(lazylistState) {
+        derivedStateOf { !lazylistState.isScrollInProgress }
+    }
     var scrollingUp by remember(lazylistState) { mutableStateOf(true) }
     // This screen's own entry: it cannot be destroyed while this composition is alive,
     // and observing it does not recompose the screen on unrelated navigation.
@@ -279,7 +284,7 @@ fun HomeScreen(
                 item(key = "home:quick-hero") {
                     QuickPicksSection(
                         quickPicks = picks,
-                        userScrollEnabled = horizontalShelvesEnabled,
+                        userScrollEnabled = horizontalShelvesEnabled.value,
                         mediaMetadata = mediaMetadata,
                         isPlaying = isPlaying,
                         navController = navController,
@@ -297,7 +302,7 @@ fun HomeScreen(
                         NavigationTitle(title = stringResource(R.string.keep_listening))
                         KeepListeningSection(
                             keepListening = songs,
-                            userScrollEnabled = horizontalShelvesEnabled,
+                            userScrollEnabled = horizontalShelvesEnabled.value,
                             mediaMetadata = mediaMetadata,
                             isPlaying = isPlaying,
                             navController = navController,
@@ -313,7 +318,7 @@ fun HomeScreen(
                 item(key = "home:taste") {
                     TasteRecommendationsSection(
                         suggestions = suggestions,
-                        userScrollEnabled = horizontalShelvesEnabled,
+                        userScrollEnabled = horizontalShelvesEnabled.value,
                         mediaMetadata = mediaMetadata,
                         isPlaying = isPlaying,
                         navController = navController,
@@ -349,7 +354,7 @@ fun HomeScreen(
                         )
                         HomePageSectionContent(
                             section = releases,
-                            userScrollEnabled = horizontalShelvesEnabled,
+                            userScrollEnabled = horizontalShelvesEnabled.value,
                             mediaMetadata = mediaMetadata,
                             isPlaying = isPlaying,
                             navController = navController,
@@ -368,7 +373,7 @@ fun HomeScreen(
                         NavigationTitle(title = stringResource(R.string.forgotten_favorites))
                         ForgottenFavoritesSection(
                             forgottenFavorites = favorites,
-                            userScrollEnabled = horizontalShelvesEnabled,
+                            userScrollEnabled = horizontalShelvesEnabled.value,
                             mediaMetadata = mediaMetadata,
                             isPlaying = isPlaying,
                             horizontalLazyGridItemWidth = horizontalLazyGridItemWidth,
@@ -400,7 +405,7 @@ fun HomeScreen(
                         section = listenerSection.copy(
                             title = stringResource(R.string.home_community_playlists),
                         ),
-                        userScrollEnabled = horizontalShelvesEnabled,
+                        userScrollEnabled = horizontalShelvesEnabled.value,
                         mediaMetadata = mediaMetadata,
                         isPlaying = isPlaying,
                         navController = navController,
@@ -432,7 +437,7 @@ fun HomeScreen(
                     if (isPlaylistCarousel) {
                         CommunityPlaylistsSection(
                             section = section,
-                            userScrollEnabled = horizontalShelvesEnabled,
+                            userScrollEnabled = horizontalShelvesEnabled.value,
                             mediaMetadata = mediaMetadata,
                             isPlaying = isPlaying,
                             navController = navController,
@@ -449,7 +454,7 @@ fun HomeScreen(
                             )
                             HomePageSectionContent(
                                 section = section,
-                                userScrollEnabled = horizontalShelvesEnabled,
+                                userScrollEnabled = horizontalShelvesEnabled.value,
                                 mediaMetadata = mediaMetadata,
                                 isPlaying = isPlaying,
                                 navController = navController,
@@ -497,7 +502,7 @@ fun HomeScreen(
                             )
                             MoodAndGenresSection(
                                 moodAndGenres = genres,
-                                userScrollEnabled = horizontalShelvesEnabled,
+                                userScrollEnabled = horizontalShelvesEnabled.value,
                                 navController = navController,
                             )
                         }
