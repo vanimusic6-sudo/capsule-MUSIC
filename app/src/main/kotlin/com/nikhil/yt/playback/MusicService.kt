@@ -13,7 +13,6 @@ package com.nikhil.yt.playback
 import android.app.Notification
 import android.graphics.Bitmap
 import java.io.ByteArrayOutputStream
-import java.util.concurrent.TimeUnit
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.KeyguardManager
