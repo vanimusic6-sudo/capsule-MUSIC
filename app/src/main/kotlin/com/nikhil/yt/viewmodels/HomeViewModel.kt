@@ -83,6 +83,21 @@ class HomeViewModel @Inject constructor(
     private val continuationBudget = 10
     private var homeTasteArtists: Set<String> = emptySet()
 
+    // Home itself only needs the two local shelves. Network discovery is
+    // activated when the user opens Collections; this avoids initiating
+    // multiple expensive Home/Search/Explore HTTP requests while scrolling Home.
+    @Volatile private var discoveryEnabled = false
+
+    fun activateDiscovery() {
+        if (discoveryEnabled) return
+        discoveryEnabled = true
+        viewModelScope.launch(Dispatchers.IO) {
+            isInitialLoadComplete.first { it }
+            load()
+        }
+    }
+
+
     val recentActivity = MutableStateFlow<List<YTItem>?>(null)
     val recentPlaylistsDb = MutableStateFlow<List<Playlist>?>(null)
 
@@ -413,7 +428,7 @@ class HomeViewModel @Inject constructor(
                 launch { forgottenFavorites.value = database.forgottenFavorites().first().distinctBy { it.id }.take(20) }
                 launch { keepListening.value = database.recentlyListenedSongs(limit = 16).first() }
 
-                launch {
+                if (discoveryEnabled) launch {
                     YouTube.home().onSuccess { page ->
                         var cleaned = cleanYouTubeHomePage(page, hideExplicit)
                         // Some provider pages contain no usable shelves but do have a
@@ -462,7 +477,7 @@ class HomeViewModel @Inject constructor(
 
             // Fetch listener-made playlists separately from the Home continuation.
             // Failures are isolated and never block the music feed or playback.
-            communityPlaylistsJob = viewModelScope.launch(Dispatchers.IO) {
+            if (discoveryEnabled) communityPlaylistsJob = viewModelScope.launch(Dispatchers.IO) {
                 try {
                     loadCommunityPlaylists(
                         homeTasteArtists.toList().take(2),
@@ -476,7 +491,7 @@ class HomeViewModel @Inject constructor(
 
             // MetroList's initial Home only waits for cheap DB data and the primary feed.
             // Recommendations (up to several "related" requests) and Explore are non-critical.
-            tasteRecommendationsJob = viewModelScope.launch(Dispatchers.IO) {
+            if (discoveryEnabled) tasteRecommendationsJob = viewModelScope.launch(Dispatchers.IO) {
                 try {
                     val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                         forYouSuggestions.value = forYouEngine.getSuggestions(hideExplicit)
@@ -488,7 +503,7 @@ class HomeViewModel @Inject constructor(
                 }
             }
 
-            exploreJob = viewModelScope.launch(Dispatchers.IO) {
+            if (discoveryEnabled) exploreJob = viewModelScope.launch(Dispatchers.IO) {
                 try {
                     val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                 YouTube.explore().onSuccess { page ->
