@@ -3,6 +3,7 @@ package com.nikhil.yt.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
@@ -142,17 +143,21 @@ fun HomeCollectionsScreen(
                 item(key = "collections:forgotten") {
                     Column {
                         NavigationTitle(title = stringResource(R.string.forgotten_favorites))
-                        Box(modifier = Modifier.fillMaxWidth()) {
-                            // State/layout owned by this shelf; never recompute on
-                            // every vertical pixel change.
-                            val snap = remember(favoritesState) {
-                                SnapLayoutInfoProvider(favoritesState)
+                        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                            val widthFactor = if (maxWidth * 0.475f >= 320.dp) 0.475f else 0.9f
+                            val snap = remember(favoritesState, widthFactor) {
+                                SnapLayoutInfoProvider(
+                                    lazyGridState = favoritesState,
+                                    positionInLayout = { layoutSize, itemSize ->
+                                        (layoutSize * widthFactor / 2f - itemSize / 2f)
+                                    },
+                                )
                             }
                             ForgottenFavoritesSection(
                                 forgottenFavorites = songs,
                                 mediaMetadata = mediaMetadata,
                                 isPlaying = isPlaying,
-                                horizontalLazyGridItemWidth = 310.dp,
+                                horizontalLazyGridItemWidth = maxWidth * widthFactor,
                                 lazyGridState = favoritesState,
                                 snapLayoutInfoProvider = snap,
                                 navController = navController,
