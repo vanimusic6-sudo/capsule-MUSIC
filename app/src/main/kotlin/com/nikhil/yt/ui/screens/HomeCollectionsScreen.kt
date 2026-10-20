@@ -1,5 +1,6 @@
 package com.nikhil.yt.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -52,7 +53,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
  * at the bottom of Home. Shares Home's ViewModel (and HTTP requests) through its
  * navigation back-stack entry instead of creating a second feed on each visit.
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun HomeCollectionsScreen(
     navController: NavController,
