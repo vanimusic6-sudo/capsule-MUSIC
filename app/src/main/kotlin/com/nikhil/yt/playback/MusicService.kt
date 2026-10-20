@@ -2475,6 +2475,11 @@ class MusicService :
      * reset playback, seek, prepare or rebuild the audio/video source here.
      */
     private fun publishSystemArtwork(item: MediaItem?) {
+        // Media3 already supplies the URI to most Android skins. Only HONOR/
+        // Huawei need the explicit compressed cover workaround for their island.
+        if (!Build.MANUFACTURER.equals("HONOR", ignoreCase = true) &&
+            !Build.MANUFACTURER.equals("HUAWEI", ignoreCase = true)
+        ) return
         systemArtworkJob?.cancel()
         systemArtworkJob = null
         val requested = item ?: return
