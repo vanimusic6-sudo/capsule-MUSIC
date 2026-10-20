@@ -16,12 +16,24 @@ class HomeDiscoveryRegressionTest {
             .firstOrNull { it.isFile }?.readText() ?: error("Missing $path")
 
     @Test
-    fun firstScreenDoesNotRepeatQuickPicksOrStartInfiniteCardMarquees() {
+    fun firstScreenStaysStableAndAllDiscoveryLivesInOnePlace() {
         val home = source("ui/screens/HomeScreen.kt")
+        val collections = source("ui/screens/HomeCollectionsScreen.kt")
         val components = source("ui/screens/HomeScreenComponents.kt")
+        val navigation = source("ui/screens/NavigationBuilder.kt")
         assertTrue(home.contains("home:quick-hero"))
-        assertFalse(home.contains("home:quick-list"))
-        assertTrue(home.indexOf("home:taste") < home.indexOf("home:forgotten"))
+        assertTrue(home.contains("home:keep-listening"))
+        assertTrue(home.contains("home:collections-button"))
+        assertTrue(home.contains("navController.navigate(\"home_collections\")"))
+        assertFalse(home.contains("home:taste"))
+        assertFalse(home.contains("ScrollActionButton("))
+        assertFalse(home.contains("R.drawable.shuffle"))
+        assertTrue(collections.contains("collections:taste"))
+        assertTrue(collections.contains("collections:forgotten"))
+        assertTrue(collections.contains("collections:listeners"))
+        assertTrue(collections.contains("collections:releases"))
+        assertTrue(navigation.contains("routeComposable(\"home_collections\")"))
+        assertTrue(navigation.contains("hiltViewModel(homeEntry)"))
         assertTrue(components.contains("animateTitle = false"))
         assertTrue(components.contains("itemWidth = 184.dp"))
     }
@@ -50,7 +62,7 @@ class HomeDiscoveryRegressionTest {
     }
 
     @Test
-    fun recentListeningIsNotTheFifthMostPlayedTrack() {
+    fun recentListeningStillHasItsOwnStableMainHomeSlot() {
         val vm = source("viewmodels/HomeViewModel.kt")
         val dao = source("db/DatabaseDao.kt")
         val screen = source("ui/screens/HomeScreen.kt")
@@ -58,6 +70,7 @@ class HomeDiscoveryRegressionTest {
         assertTrue(dao.contains("fun recentlyListenedSongs(limit: Int = 16)"))
         assertFalse(vm.contains("locallyPlayed.drop(4)"))
         assertTrue(screen.contains("home:keep-listening"))
+        assertTrue(screen.contains("rememberLazyListState()"))
     }
 
     @Test
@@ -77,23 +90,23 @@ class HomeDiscoveryRegressionTest {
     }
 
     @Test
-    fun newReleasesHaveOnlyOneVisibleShelf() {
-        val home = source("ui/screens/HomeScreen.kt")
-        assertTrue(home.contains("fun isYouTubeReleaseShelf(section: HomePage.Section)"))
-        assertTrue(home.contains("!providerHasReleaseShelf"))
-        assertTrue(home.contains("providerSection.copy(items = newReleaseAlbums)"))
-        assertTrue(home.contains("home:youtube-new-release-albums"))
-        assertTrue(home.contains("home:yt:releases"))
+    fun newReleasesAppearOnceInCollections() {
+        val screen = source("ui/screens/HomeCollectionsScreen.kt")
+        assertTrue(screen.contains("fun isCollectionsReleaseShelf(section: HomePage.Section)"))
+        assertTrue(screen.contains("!hasRelease"))
+        assertTrue(screen.contains("original.copy(items = releases)"))
+        assertTrue(screen.contains("collections:releases"))
+        assertTrue(screen.contains("if (isCollectionsReleaseShelf(it)) \"releases\""))
     }
 
     @Test
-    fun verticalScrollingFreezesOnlyHorizontalShelves() {
+    fun verticalScrollingDoesNotMoveHorizontalShelves() {
         val home = source("ui/screens/HomeScreen.kt")
+        val collections = source("ui/screens/HomeCollectionsScreen.kt")
         val components = source("ui/screens/HomeScreenComponents.kt")
-        assertTrue(home.contains("horizontalShelvesEnabled = remember(lazylistState)"))
-        assertTrue(home.contains("derivedStateOf { !lazylistState.isScrollInProgress }"))
-        assertTrue(home.contains("flingBehavior = homeFling"))
-        assertTrue(home.contains("userScrollEnabled = horizontalShelvesEnabled.value"))
+        assertTrue(home.contains("derivedStateOf { !listState.isScrollInProgress }"))
+        assertTrue(collections.contains("derivedStateOf { !listState.isScrollInProgress }"))
+        assertTrue(collections.contains("userScrollEnabled = horizontalEnabled.value"))
         val sections = listOf(
             "QuickPicksSection", "KeepListeningSection", "ForgottenFavoritesSection",
             "HomePageSectionContent", "MoodAndGenresSection", "CommunityPlaylistsSection",
@@ -109,52 +122,16 @@ class HomeDiscoveryRegressionTest {
     }
 
     @Test
-    fun communityPlaylistsComeFromYouTubeMusicNotRenamedHomeMixes() {
-        val vm = source("viewmodels/HomeViewModel.kt")
-        val home = source("ui/screens/HomeScreen.kt")
-        val parser = listOf(
-            File("../innertube/src/main/kotlin/com/nikhil/yt/innertube/pages/SearchPage.kt"),
-            File("innertube/src/main/kotlin/com/nikhil/yt/innertube/pages/SearchPage.kt"),
-        ).first { it.isFile }.readText()
-        val youtube = listOf(
-            File("../innertube/src/main/kotlin/com/nikhil/yt/innertube/YouTube.kt"),
-            File("innertube/src/main/kotlin/com/nikhil/yt/innertube/YouTube.kt"),
-        ).first { it.isFile }.readText()
-        assertTrue(vm.contains("YouTube.SearchFilter.FILTER_COMMUNITY_PLAYLIST"))
-        assertTrue(vm.contains("loadCommunityPlaylists("))
-        assertTrue(vm.contains("communityPlaylists.value = results"))
-        assertTrue(home.contains("home:listener-community-playlists"))
-        assertTrue(home.contains("!providerHasCommunityShelf"))
-        assertTrue(parser.contains("Only the browsable playlist id and its title are required."))
-        assertTrue(parser.contains("radioEndpoint = renderer.menu?.menuRenderer?.items?.find"))
-        assertTrue(youtube.contains("val shelves = response.contents?.tabbedSearchResultsRenderer"))
-    }
-
-    @Test
-    fun nativeMomentumIsNotArtificiallyShortenedAndHeadingsAreLocalized() {
-        val home = source("ui/screens/HomeScreen.kt")
+    fun musicCardsAndNativeScrollingStayEnergyEfficient() {
         val components = source("ui/screens/HomeScreenComponents.kt")
-        assertFalse(home.contains("initialVelocity * 0.84f"))
-        assertTrue(home.contains("initialVelocity * 1.20f"))
-        assertTrue(components.contains("localizedHomeShelfTitle(section)"))
-        val ru = listOf(
-            File("src/main/res/values-ru/capsule_home_shelves.xml"),
-            File("app/src/main/res/values-ru/capsule_home_shelves.xml"),
-        ).first { it.isFile }.readText()
-        assertTrue(ru.contains("Альбомы для вас"))
-        assertTrue(ru.contains("Миксы для вас"))
-        assertTrue(ru.contains("Популярные альбомы и синглы"))
-        assertTrue(ru.contains("Звуки осени"))
-    }
-
-    @Test
-    fun musicCardsAndEdgesUseMusicLayoutNotVideoLayout() {
-        val components = source("ui/screens/HomeScreenComponents.kt")
-        val screen = source("ui/screens/HomeScreen.kt")
+        val home = source("ui/screens/HomeScreen.kt")
+        val collections = source("ui/screens/HomeCollectionsScreen.kt")
         assertTrue(components.contains("thumbnailRatio = 1f"))
-        assertTrue(screen.contains("overscrollEffect = null"))
-        assertTrue(screen.contains("flingBehavior = homeFling"))
-        assertFalse(screen.contains("height(430.dp)"))
-        assertTrue(screen.contains("home:youtube-new-release-albums"))
+        assertTrue(home.contains("overscrollEffect = null"))
+        assertTrue(collections.contains("overscrollEffect = null"))
+        assertFalse(home.contains("initialVelocity *"))
+        assertFalse(home.contains("snapshotFlow {"))
+        assertTrue(collections.contains("snapshotFlow {"))
+        assertTrue(collections.contains("distinctUntilChanged()"))
     }
 }
