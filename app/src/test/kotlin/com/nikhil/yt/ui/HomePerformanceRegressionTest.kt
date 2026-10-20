@@ -25,22 +25,25 @@ class HomePerformanceRegressionTest {
         assertTrue(source("ui/component/Items.kt").contains("showActiveBackground: Boolean = true"))
     }
 
-    @Test fun homeDoesNotRecomposeItsFloatingButtonForEveryScrollPixel() {
+    @Test fun homeHasNoFloatingShuffleOrPerPixelPaginationWork() {
         val home = source("ui/screens/HomeScreen.kt")
-        assertTrue(home.contains("HomeScrollSnapshot("))
-        assertTrue(home.contains("if (scrollingUp != movingUp) scrollingUp = movingUp"))
-        assertTrue(home.contains("ScrollActionButton("))
+        val collections = source("ui/screens/HomeCollectionsScreen.kt")
+        assertFalse(home.contains("ScrollActionButton("))
         assertFalse(home.contains("HideOnScrollFAB("))
-        assertFalse(home.contains("LaunchedEffect(forgottenFavorites)"))
-        assertTrue(home.contains("remember(forgottenFavoritesLazyGridState, horizontalLazyGridItemWidthFactor)"))
+        assertFalse(home.contains("snapshotFlow {"))
+        assertTrue(collections.contains("snapshotFlow {"))
+        assertTrue(collections.contains("distinctUntilChanged()"))
+        assertTrue(home.contains("home:collections-button"))
     }
 
-    @Test fun paginationAndTask01StateStayIntact() {
+    @Test fun paginationMovesToCollectionsWithoutBreakingSharedState() {
+        val collections = source("ui/screens/HomeCollectionsScreen.kt")
         val home = source("ui/screens/HomeScreen.kt")
-        assertTrue(home.contains("isLoading || isLoadingMore"))
-        assertTrue(home.contains("firstOrNull()?.id.orEmpty()"))
+        assertTrue(collections.contains("loading || loadingMore"))
+        assertTrue(collections.contains("original.items.firstOrNull()?.id"))
         assertTrue(source("viewmodels/HomeViewModel.kt").contains("val isLoadingMore = _isLoadingMore.asStateFlow()"))
         assertTrue(source("viewmodels/HomeViewModel.kt").contains("checkedContinuations < 2"))
         assertTrue(source("ui/screens/HomeScreenComponents.kt").contains("verticalAlignment = Alignment.Top"))
+        assertTrue(home.contains("keepListening?.takeIf { it.isNotEmpty() }"))
     }
 }
