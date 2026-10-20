@@ -943,24 +943,13 @@ private fun localizedHomeShelfTitle(section: HomePage.Section): String {
 fun HomePageSectionTitle(
     section: HomePage.Section,
     navController: NavController,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
+    // A title-only header gives every discovery shelf one baseline, font,
+    // color and horizontal inset. Thumbnail/strapline in the provider header
+    // previously pushed some titles right or down relative to other shelves.
     NavigationTitle(
         title = localizedHomeShelfTitle(section),
-        label = section.label,
-        thumbnail = section.thumbnail?.let { thumbnailUrl ->
-            {
-                val shape = if (section.endpoint?.isArtistEndpoint == true) CircleShape 
-                    else RoundedCornerShape(ThumbnailCornerRadius)
-                AsyncImage(
-                    model = thumbnailUrl,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(ListThumbnailSize)
-                        .clip(shape)
-                )
-            }
-        },
         onClick = section.endpoint?.browseId?.let { browseId ->
             {
                 if (browseId == "FEmusic_moods_and_genres")
@@ -969,7 +958,7 @@ fun HomePageSectionTitle(
                     navController.navigate("browse/$browseId")
             }
         },
-        modifier = modifier
+        modifier = modifier,
     )
 }
 
@@ -1215,10 +1204,7 @@ fun TasteRecommendationsSection(
     val pagerState = androidx.compose.foundation.pager.rememberPagerState { pages.size }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        NavigationTitle(
-            title = stringResource(R.string.taste_recommendations),
-            subtitle = stringResource(R.string.taste_recommendations_subtitle),
-        )
+        NavigationTitle(title = stringResource(R.string.taste_recommendations))
 
         androidx.compose.foundation.pager.HorizontalPager(
             userScrollEnabled = userScrollEnabled,
