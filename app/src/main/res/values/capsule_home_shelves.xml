@@ -18,5 +18,6 @@
     <string name="home_shelf_top_hits">Top hits</string>
     <string name="home_shelf_because_you_listened">Because you listened</string>
     <string name="home_shelf_recently_played">Recently played</string>
+    <string name="home_collections_subtitle">Moods and genres</string>
     <string name="home_collections">Collections</string>
 </resources>
