@@ -27,23 +27,24 @@ class HomePerformanceRegressionTest {
 
     @Test fun homeHasNoFloatingShuffleOrPerPixelPaginationWork() {
         val home = source("ui/screens/HomeScreen.kt")
-        val collections = source("ui/screens/HomeCollectionsScreen.kt")
         assertFalse(home.contains("ScrollActionButton("))
         assertFalse(home.contains("HideOnScrollFAB("))
-        assertFalse(home.contains("snapshotFlow {"))
-        assertTrue(collections.contains("snapshotFlow {"))
-        assertTrue(collections.contains("distinctUntilChanged()"))
+        assertTrue(home.contains("snapshotFlow {"))
+        assertTrue(home.contains("distinctUntilChanged()"))
+        assertFalse(home.contains("HomeScrollSnapshot("))
         assertTrue(home.contains("home:collections-button"))
     }
 
-    @Test fun paginationMovesToCollectionsWithoutBreakingSharedState() {
-        val collections = source("ui/screens/HomeCollectionsScreen.kt")
+    @Test fun personalizedMusicShelvesAndPagingStayOnMainHome() {
         val home = source("ui/screens/HomeScreen.kt")
-        assertTrue(collections.contains("loading || loadingMore"))
-        assertTrue(collections.contains("original.items.firstOrNull()?.id"))
+        assertTrue(home.contains("isLoading || isLoadingMore"))
+        assertTrue(home.contains("homePage?.sections"))
+        assertTrue(home.contains("home:listener-community-playlists"))
+        assertTrue(home.contains("home:youtube-new-release-albums"))
         assertTrue(source("viewmodels/HomeViewModel.kt").contains("val isLoadingMore = _isLoadingMore.asStateFlow()"))
         assertTrue(source("viewmodels/HomeViewModel.kt").contains("checkedContinuations < 2"))
         assertTrue(source("ui/screens/HomeScreenComponents.kt").contains("verticalAlignment = Alignment.Top"))
         assertTrue(home.contains("keepListening?.takeIf { it.isNotEmpty() }"))
+        assertTrue(home.contains("navController.navigate(\"mood_and_genres\")"))
     }
 }
