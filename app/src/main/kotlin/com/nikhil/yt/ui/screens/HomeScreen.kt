@@ -12,8 +12,11 @@ import com.nikhil.yt.ui.utils.liveSavedStateHandle
 import com.nikhil.yt.ui.component.StandardChrome
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.asPaddingValues
@@ -39,15 +42,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Surface
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.nikhil.yt.innertube.pages.HomePage
@@ -380,18 +385,54 @@ fun HomeScreen(
                 // "Подборки" means situations (road, sleep, party etc).
                 // Music shelves stay on the Home page.
                 item(key = "home:collections-button") {
-                    FilledTonalButton(
+                    // A Capsule card, not the oversized Material pill. Padding
+                    // below the card lifts it clear of the mini-player, while
+                    // the existing player-aware list inset remains untouched.
+                    Surface(
+                        onClick = { navController.navigate("mood_and_genres") },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        onClick = { navController.navigate("mood_and_genres") },
+                            .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 40.dp)
+                            .height(76.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        color = StandardChrome.panel,
+                        contentColor = StandardChrome.text,
+                        tonalElevation = 0.dp,
                     ) {
-                        Text(stringResource(R.string.home_collections))
-                        Icon(
-                            painter = painterResource(R.drawable.arrow_forward),
-                            contentDescription = null,
-                            modifier = Modifier.padding(start = 8.dp),
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 18.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.home_collections),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = StandardChrome.text,
+                                )
+                                Text(
+                                    text = stringResource(R.string.home_collections_subtitle),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = StandardChrome.muted,
+                                )
+                            }
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(RoundedCornerShape(13.dp))
+                                    .background(StandardChrome.selected),
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.arrow_forward),
+                                    contentDescription = null,
+                                    tint = StandardChrome.text,
+                                    modifier = Modifier.size(21.dp),
+                                )
+                            }
+                        }
                     }
                 }
             }
