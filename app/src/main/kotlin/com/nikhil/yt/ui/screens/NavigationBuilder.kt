@@ -10,7 +10,6 @@ package com.nikhil.yt.ui.screens
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.padding
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -93,14 +92,6 @@ fun NavGraphBuilder.navigationBuilder(
 ) {
     routeComposable(Screens.Home.route) {
         HomeScreen(navController)
-    }
-    routeComposable("home_collections") { collectionsEntry ->
-        // Scope the saved Home ViewModel to the real Home back-stack entry, but
-        // key the lookup by this destination entry as Navigation Compose requires.
-        val homeEntry = remember(navController, collectionsEntry) {
-            navController.getBackStackEntry(Screens.Home.route)
-        }
-        HomeCollectionsScreen(navController, viewModel = hiltViewModel(homeEntry))
     }
     routeComposable(
         Screens.Library.route,
