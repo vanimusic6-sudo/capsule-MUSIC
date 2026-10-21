@@ -119,6 +119,20 @@ class HomeDiscoveryRegressionTest {
     }
 
     @Test
+    fun capsuleCollectionsCardRestsAboveMiniPlayerWithoutMovingOtherShelves() {
+        val home = source("ui/screens/HomeScreen.kt")
+        assertTrue(home.contains("item(key = \"home:collections-button\")"))
+        assertTrue(home.contains("onClick = { navController.navigate(\"mood_and_genres\") }"))
+        assertTrue(home.contains("shape = RoundedCornerShape(20.dp)"))
+        assertTrue(home.contains("color = StandardChrome.panel"))
+        assertTrue(home.contains("bottom = 40.dp"))
+        assertTrue(home.contains("home_collections_subtitle"))
+        assertFalse(home.contains("FilledTonalButton("))
+        assertTrue(home.contains("homePage?.sections"))
+        assertTrue(home.contains("home:keep-listening"))
+    }
+
+    @Test
     fun musicCardsAndNativeScrollingStayEnergyEfficient() {
         val components = source("ui/screens/HomeScreenComponents.kt")
         val home = source("ui/screens/HomeScreen.kt")
