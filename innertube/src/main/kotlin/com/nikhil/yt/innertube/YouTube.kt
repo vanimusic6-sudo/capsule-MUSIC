@@ -249,15 +249,19 @@ object YouTube {
 
     suspend fun search(query: String, filter: SearchFilter): Result<SearchResult> = runCatchingCancellable {
         val response = innerTube.search(WEB_REMIX, query, filter.value).body<SearchResponse>()
+        // Filtered playlists and mixes are not always in the last shelf.
+        // Ignore non-shelf sections without discarding earlier valid results.
+        val shelves = response.contents?.tabbedSearchResultsRenderer?.tabs?.firstOrNull()
+            ?.tabRenderer?.content?.sectionListRenderer?.contents.orEmpty()
+            .mapNotNull { it.musicShelfRenderer }
         SearchResult(
-            items = response.contents?.tabbedSearchResultsRenderer?.tabs?.firstOrNull()
-                ?.tabRenderer?.content?.sectionListRenderer?.contents?.lastOrNull()
-                ?.musicShelfRenderer?.contents?.getItems()?.mapNotNull {
+            items = shelves.flatMap { shelf ->
+                shelf.contents.orEmpty().getItems().mapNotNull {
                     SearchPage.toYTItem(it, selectedFromVideoResults = filter == SearchFilter.FILTER_VIDEO)
-                }.orEmpty(),
-            continuation = response.contents?.tabbedSearchResultsRenderer?.tabs?.firstOrNull()
-                ?.tabRenderer?.content?.sectionListRenderer?.contents?.lastOrNull()
-                ?.musicShelfRenderer?.continuations?.getContinuation()
+                }
+            }.distinctBy { it.id },
+            continuation = shelves.lastOrNull { it.continuations?.getContinuation() != null }
+                ?.continuations?.getContinuation(),
         )
     }
 
@@ -627,7 +631,7 @@ object YouTube {
 
     private suspend fun homeContinuation(continuation: String): Result<HomePage> = runCatchingCancellable {
         val response =
-            innerTube.browse(WEB_REMIX, continuation = continuation).body<BrowseResponse>()
+            innerTube.browse(WEB_REMIX, continuation = continuation, setLogin = true).body<BrowseResponse>()
         val sections = response.continuationContents?.sectionListContinuation?.contents
             ?.mapNotNull { it.musicCarouselShelfRenderer }
             ?.mapNotNull {
@@ -643,7 +647,7 @@ object YouTube {
     }
 
     suspend fun explore(): Result<ExplorePage> = runCatchingCancellable {
-        val response = innerTube.browse(WEB_REMIX, browseId = "FEmusic_explore").body<BrowseResponse>()
+        val response = innerTube.browse(WEB_REMIX, browseId = "FEmusic_explore", setLogin = true).body<BrowseResponse>()
         ExplorePage(
             newReleaseAlbums = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()?.tabRenderer?.content?.sectionListRenderer?.contents?.find {
                 it.musicCarouselShelfRenderer?.header?.musicCarouselShelfBasicHeaderRenderer?.moreContentButton?.buttonRenderer?.navigationEndpoint?.browseEndpoint?.browseId == "FEmusic_new_releases_albums"
@@ -660,7 +664,7 @@ object YouTube {
     }
 
     suspend fun newReleaseAlbums(): Result<List<AlbumItem>> = runCatchingCancellable {
-        val response = innerTube.browse(WEB_REMIX, browseId = "FEmusic_new_releases_albums").body<BrowseResponse>()
+        val response = innerTube.browse(WEB_REMIX, browseId = "FEmusic_new_releases_albums", setLogin = true).body<BrowseResponse>()
         val contents =
             response.contents
                 ?.singleColumnBrowseResultsRenderer

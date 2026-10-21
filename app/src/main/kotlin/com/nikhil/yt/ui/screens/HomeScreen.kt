@@ -12,13 +12,12 @@ import com.nikhil.yt.ui.utils.liveSavedStateHandle
 import com.nikhil.yt.ui.component.StandardChrome
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.calculateStartPadding
-import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,9 +29,6 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.Indicator
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -40,65 +36,45 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Surface
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.nikhil.yt.innertube.models.AlbumItem
-import com.nikhil.yt.innertube.models.ArtistItem
-import com.nikhil.yt.innertube.models.PlaylistItem
-import com.nikhil.yt.innertube.models.SongItem
-import com.nikhil.yt.LocalDatabase
+import com.nikhil.yt.innertube.pages.HomePage
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
-import com.nikhil.yt.constants.AppBarHeight
-import com.nikhil.yt.ui.component.StandardHeaderTitle
-import com.nikhil.yt.db.entities.Album
-import com.nikhil.yt.db.entities.Artist
-import com.nikhil.yt.db.entities.Playlist
-import com.nikhil.yt.db.entities.Song
-import com.nikhil.yt.models.toMediaMetadata
-import com.nikhil.yt.playback.queues.LocalAlbumRadio
-import com.nikhil.yt.playback.queues.YouTubeAlbumRadio
-import com.nikhil.yt.playback.queues.YouTubeQueue
-import com.nikhil.yt.ui.component.ScrollActionButton
-import com.nikhil.yt.ui.component.LocalBottomSheetPageState
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.NavigationTitle
 import com.nikhil.yt.ui.utils.SnapLayoutInfoProvider
 import com.nikhil.yt.viewmodels.HomeViewModel
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlin.random.Random
 
 
-/** Immutable scroll sample, collected outside Compose's measure/draw passes. */
-private data class HomeScrollSnapshot(
-    val scrolling: Boolean,
-    val index: Int,
-    val offset: Int,
-    val lastVisible: Int?,
-    val totalItems: Int,
-)
+/** Recognize the release shelf returned by the same YouTube Music Home feed. */
+private fun isYouTubeReleaseShelf(section: HomePage.Section): Boolean {
+    if (section.endpoint?.browseId == "FEmusic_new_releases_albums") return true
+    val title = section.title.trim().lowercase()
+    return listOf(
+        "new release", "latest release", "new albums", "recent releases",
+        "новые релизы", "новинки", "свежие релизы", "нові релізи",
+        "nuevos lanzamientos", "nouvelles sorties", "neue veröffentlichungen",
+    ).any(title::contains)
+}
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -107,8 +83,6 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val menuState = LocalMenuState.current
-    val bottomSheetPageState = LocalBottomSheetPageState.current
-    val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val haptic = LocalHapticFeedback.current
 
@@ -119,16 +93,15 @@ fun HomeScreen(
     val forgottenFavorites by viewModel.forgottenFavorites.collectAsState()
     val keepListening by viewModel.keepListening.collectAsState()
     val homePage by viewModel.homePage.collectAsState()
-    val explorePage by viewModel.explorePage.collectAsState()
+    val newReleaseAlbums by viewModel.newReleaseAlbums.collectAsState()
+    val providerHasReleaseShelf = homePage?.sections?.any(::isYouTubeReleaseShelf) == true
     val forYouSuggestions by viewModel.forYouSuggestions.collectAsState()
+    val listenerPlaylists by viewModel.communityPlaylists.collectAsState()
 
-    val allLocalItems by viewModel.allLocalItems.collectAsState()
-    val allYtItems by viewModel.allYtItems.collectAsState()
 
     val isLoading: Boolean by viewModel.isLoading.collectAsState()
     val isLoadingMore by viewModel.isLoadingMore.collectAsState()
     val homeFeedError by viewModel.homeFeedError.collectAsState()
-    val isMoodAndGenresLoading = isLoading && explorePage?.moodAndGenres == null
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val pullRefreshState = rememberPullToRefreshState()
 
@@ -136,7 +109,11 @@ fun HomeScreen(
 
     val scope = rememberCoroutineScope()
     val lazylistState = rememberLazyListState()
-    var scrollingUp by remember(lazylistState) { mutableStateOf(true) }
+    // During vertical motion, sideways drags must not turn the recommendation carousels.
+    // Their ordinary horizontal gestures remain available when the feed is idle.
+    val horizontalShelvesEnabled = remember(lazylistState) {
+        derivedStateOf { !lazylistState.isScrollInProgress }
+    }
     // This screen's own entry: it cannot be destroyed while this composition is alive,
     // and observing it does not recompose the screen on unrelated navigation.
     val backStackEntry = LocalNavBackStackEntry.current
@@ -150,79 +127,24 @@ fun HomeScreen(
         }
     }
 
+    // Paginate on the edge transition, never on every scroll pixel.
     LaunchedEffect(lazylistState, homePage?.continuation) {
-        var previousIndex = -1
-        var previousOffset = 0
-        // One event-driven scroll observer serves pagination and the floating button.
-        // Unlike ScrollUtils.isScrollingUp(), this never writes inside derivedStateOf.
         snapshotFlow {
-            HomeScrollSnapshot(
-                scrolling = lazylistState.isScrollInProgress,
-                index = lazylistState.firstVisibleItemIndex,
-                offset = lazylistState.firstVisibleItemScrollOffset,
-                lastVisible = lazylistState.layoutInfo.visibleItemsInfo.lastOrNull()?.index,
-                totalItems = lazylistState.layoutInfo.totalItemsCount,
-            )
-        }.collect { frame ->
-            if (frame.scrolling) {
-                if (previousIndex >= 0) {
-                    val movingUp = when {
-                        frame.index < previousIndex -> true
-                        frame.index > previousIndex -> false
-                        frame.offset < previousOffset -> true
-                        frame.offset > previousOffset -> false
-                        else -> scrollingUp
-                    }
-                    if (scrollingUp != movingUp) scrollingUp = movingUp
-                }
-                previousIndex = frame.index
-                previousOffset = frame.offset
-                if (frame.lastVisible != null &&
-                    frame.totalItems > 0 &&
-                    frame.lastVisible >= frame.totalItems - 3
-                ) {
-                    viewModel.loadMoreYouTubeItems(homePage?.continuation)
-                }
-            } else {
-                previousIndex = -1
-            }
+            val info = lazylistState.layoutInfo
+            info.totalItemsCount > 0 &&
+                (info.visibleItemsInfo.lastOrNull()?.index ?: -1) >= info.totalItemsCount - 3
+        }.distinctUntilChanged().collect { nearBottom ->
+            if (nearBottom) viewModel.loadMoreYouTubeItems(homePage?.continuation)
         }
     }
     // Database emissions must not forcibly reset the nested favorites grid.
 
 
-    val tonalStart = MaterialTheme.colorScheme.primaryContainer
-    val tonalMiddle = MaterialTheme.colorScheme.secondaryContainer
-
+    // One solid page surface. The former short, three-stop overlay ended after
+    // 430dp and produced visible horizontal bands while scrolling the feed.
     Box(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .background(StandardChrome.background),
+        modifier = Modifier.fillMaxSize().background(StandardChrome.background),
     ) {
-        /*
-         * Match ArchiveTune's restrained Home backdrop: one short tonal wash that dissolves into
-         * the neutral page. The previous five radial glows made Home look busier and also kept a
-         * much larger draw area alive. Quick Picks and every section below are deliberately left
-         * untouched.
-         */
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(430.dp)
-                    .align(Alignment.TopCenter)
-                    .drawWithCache {
-                        val brush =
-                            Brush.verticalGradient(
-                                0f to tonalStart.copy(alpha = 0.30f),
-                                0.42f to tonalMiddle.copy(alpha = 0.14f),
-                                1f to Color.Transparent,
-                            )
-                        onDrawBehind { drawRect(brush) }
-                    },
-        )
-        
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
@@ -247,22 +169,17 @@ fun HomeScreen(
             // the first row of the feed: no independent element/animation.
             LazyColumn(
                 state = lazylistState,
+                verticalArrangement = Arrangement.spacedBy(18.dp),
                 contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+                // No abrupt edge stretching/recoil; the list settles at its real bounds.
+                overscrollEffect = null,
             ) {
 
                     quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
-            /*
-                item {
-                    NavigationTitle(
-                        title = stringResource(R.string.quick_picks),
-                        modifier = Modifier
-                    )
-                }
-            */
-
                 item(key = "home:quick-hero") {
                     QuickPicksSection(
                         quickPicks = picks,
+                        userScrollEnabled = horizontalShelvesEnabled.value,
                         mediaMetadata = mediaMetadata,
                         isPlaying = isPlaying,
                         navController = navController,
@@ -274,27 +191,13 @@ fun HomeScreen(
             }
 
 
-            quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
-                item(key = "home:quick-list") {
-                    QuickPicksListSection(
-                        quickPicks = picks,
-                        mediaMetadata = mediaMetadata,
-                        isPlaying = isPlaying,
-                        navController = navController,
-                        playerConnection = playerConnection,
-                        menuState = menuState,
-                        haptic = haptic,
-                        modifier = Modifier
-                    )
-                }
-            }
-
             keepListening?.takeIf { it.isNotEmpty() }?.let { songs ->
                 item(key = "home:keep-listening") {
                     Column {
                         NavigationTitle(title = stringResource(R.string.keep_listening))
                         KeepListeningSection(
                             keepListening = songs,
+                            userScrollEnabled = horizontalShelvesEnabled.value,
                             mediaMetadata = mediaMetadata,
                             isPlaying = isPlaying,
                             navController = navController,
@@ -306,12 +209,66 @@ fun HomeScreen(
                 }
             }
 
+            forYouSuggestions?.takeIf { it.isNotEmpty() }?.let { suggestions ->
+                item(key = "home:taste") {
+                    TasteRecommendationsSection(
+                        suggestions = suggestions,
+                        userScrollEnabled = horizontalShelvesEnabled.value,
+                        mediaMetadata = mediaMetadata,
+                        isPlaying = isPlaying,
+                        navController = navController,
+                        playerConnection = playerConnection,
+                        menuState = menuState,
+                        haptic = haptic,
+                        modifier = Modifier
+                    )
+                }
+            }
+
+
+            // This is the current YouTube Music release catalog, not a static
+            // local playlist or a rebranded recommendation shelf.
+            // Only add a release section when YouTube's Home feed has none.
+            // Otherwise refresh the existing section in place to avoid a
+            // duplicated carousel and a mid-scroll insert/remove jump.
+            newReleaseAlbums.takeIf { it.isNotEmpty() && !providerHasReleaseShelf }?.let { albums ->
+                item(key = "home:youtube-new-release-albums") {
+                    val releases = remember(albums) {
+                        HomePage.Section(
+                            title = "",
+                            label = null,
+                            thumbnail = null,
+                            endpoint = null,
+                            items = albums,
+                        )
+                    }
+                    Column {
+                        NavigationTitle(
+                            title = stringResource(R.string.new_release_albums),
+                            onClick = { navController.navigate("new_release") },
+                        )
+                        HomePageSectionContent(
+                            section = releases,
+                            userScrollEnabled = horizontalShelvesEnabled.value,
+                            mediaMetadata = mediaMetadata,
+                            isPlaying = isPlaying,
+                            navController = navController,
+                            playerConnection = playerConnection,
+                            menuState = menuState,
+                            haptic = haptic,
+                            scope = scope,
+                        )
+                    }
+                }
+            }
+
             forgottenFavorites?.takeIf { it.isNotEmpty() }?.let { favorites ->
                 item(key = "home:forgotten") {
                     Column {
                         NavigationTitle(title = stringResource(R.string.forgotten_favorites))
                         ForgottenFavoritesSection(
                             forgottenFavorites = favorites,
+                            userScrollEnabled = horizontalShelvesEnabled.value,
                             mediaMetadata = mediaMetadata,
                             isPlaying = isPlaying,
                             horizontalLazyGridItemWidth = horizontalLazyGridItemWidth,
@@ -326,24 +283,40 @@ fun HomeScreen(
                 }
             }
 
-            forYouSuggestions?.takeIf { it.isNotEmpty() }?.let { suggestions ->
-                item(key = "home:taste") {
-                    TasteRecommendationsSection(
-                        suggestions = suggestions,
+            // Discover genuine user-created YouTube Music playlists in the feed.
+            listenerPlaylists.takeIf { it.isNotEmpty() }?.let { playlists ->
+                item(key = "home:listener-community-playlists") {
+                    CommunityPlaylistsSection(
+                        section = remember(playlists) {
+                            HomePage.Section(
+                                title = "", label = null, thumbnail = null,
+                                endpoint = null, items = playlists,
+                            )
+                        }.copy(title = stringResource(R.string.home_community_playlists)),
+                        userScrollEnabled = horizontalShelvesEnabled.value,
                         mediaMetadata = mediaMetadata,
                         isPlaying = isPlaying,
                         navController = navController,
                         playerConnection = playerConnection,
                         menuState = menuState,
                         haptic = haptic,
-                        modifier = Modifier
+                        scope = scope,
                     )
                 }
             }
 
-            homePage?.sections?.forEach { section ->
+            homePage?.sections
+                // If the provider repeats the release shelf, keep its first position.
+                ?.distinctBy { if (isYouTubeReleaseShelf(it)) "home:yt:releases" else
+                    "home:yt:${it.endpoint?.browseId}:${it.title}:${it.items.firstOrNull()?.id}" }
+                ?.forEach { providerSection ->
+                // Fresh YouTube Music album results replace stale albums in situ:
+                // no duplicate New Releases shelf and no unnecessary feed reflow.
+                val section = if (isYouTubeReleaseShelf(providerSection) && newReleaseAlbums.isNotEmpty()) {
+                    providerSection.copy(items = newReleaseAlbums)
+                } else providerSection
                 val sectionKey =
-                    "home:yt:${section.endpoint?.browseId.orEmpty()}:${section.title}:${section.items.firstOrNull()?.id.orEmpty()}"
+                    "home:yt:${providerSection.endpoint?.browseId.orEmpty()}:${providerSection.title}:${providerSection.items.firstOrNull()?.id.orEmpty()}"
                 val isPlaylistCarousel =
                     section.items.isNotEmpty() &&
                         section.items.all { it is com.nikhil.yt.innertube.models.PlaylistItem }
@@ -352,6 +325,7 @@ fun HomeScreen(
                     if (isPlaylistCarousel) {
                         CommunityPlaylistsSection(
                             section = section,
+                            userScrollEnabled = horizontalShelvesEnabled.value,
                             mediaMetadata = mediaMetadata,
                             isPlaying = isPlaying,
                             navController = navController,
@@ -368,6 +342,7 @@ fun HomeScreen(
                             )
                             HomePageSectionContent(
                                 section = section,
+                                userScrollEnabled = horizontalShelvesEnabled.value,
                                 mediaMetadata = mediaMetadata,
                                 isPlaying = isPlaying,
                                 navController = navController,
@@ -406,68 +381,61 @@ fun HomeScreen(
                 }
             }
 
-                explorePage?.moodAndGenres?.let { genres ->
-                    item(key = "home:genres") {
-                        Column {
-                            NavigationTitle(
-                                title = stringResource(R.string.mood_and_genres),
-                                onClick = { navController.navigate("mood_and_genres") },
-                            )
-                            MoodAndGenresSection(
-                                moodAndGenres = genres,
-                                navController = navController,
-                            )
-                        }
-                    }
-                }
 
-                if (isMoodAndGenresLoading) {
-                    item(key = "home:genre-loading") {
-                        MoodAndGenresLoadingShimmer()
+                // "Подборки" means situations (road, sleep, party etc).
+                // Music shelves stay on the Home page.
+                item(key = "home:collections-button") {
+                    // A Capsule card, not the oversized Material pill. Padding
+                    // below the card lifts it clear of the mini-player, while
+                    // the existing player-aware list inset remains untouched.
+                    Surface(
+                        onClick = { navController.navigate("mood_and_genres") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 40.dp)
+                            .height(76.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        color = StandardChrome.panel,
+                        contentColor = StandardChrome.text,
+                        tonalElevation = 0.dp,
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 18.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.home_collections),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = StandardChrome.text,
+                                )
+                                Text(
+                                    text = stringResource(R.string.home_collections_subtitle),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = StandardChrome.muted,
+                                )
+                            }
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(RoundedCornerShape(13.dp))
+                                    .background(StandardChrome.selected),
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.arrow_forward),
+                                    contentDescription = null,
+                                    tint = StandardChrome.text,
+                                    modifier = Modifier.size(21.dp),
+                                )
+                            }
+                        }
                     }
                 }
             }
-
-            ScrollActionButton(
-                visible = (allLocalItems.isNotEmpty() || allYtItems.isNotEmpty()) && scrollingUp,
-                icon = R.drawable.shuffle,
-                onClick = {
-                    val local = when {
-                        allLocalItems.isNotEmpty() && allYtItems.isNotEmpty() ->
-                            Random.nextFloat() < 0.5f
-                        allLocalItems.isNotEmpty() -> true
-                        else -> false
-                    }
-                    scope.launch(Dispatchers.Main) {
-                        if (local) {
-                            when (val luckyItem = allLocalItems.random()) {
-                                is Song -> playerConnection.playQueue(YouTubeQueue.radio(luckyItem.toMediaMetadata()))
-                                is Album -> {
-                                    val albumWithSongs = withContext(Dispatchers.IO) {
-                                        database.albumWithSongs(luckyItem.id).first()
-                                    }
-                                    albumWithSongs?.let {
-                                        playerConnection.playQueue(LocalAlbumRadio(it))
-                                    }
-                                }
-                                is Artist -> {}
-                                is Playlist -> {}
-                            }
-                        } else {
-                            when (val luckyItem = allYtItems.random()) {
-                                is SongItem -> playerConnection.playQueue(YouTubeQueue.radio(luckyItem.toMediaMetadata()))
-                                is AlbumItem -> playerConnection.playQueue(YouTubeAlbumRadio(luckyItem.playlistId))
-                                is ArtistItem -> luckyItem.radioEndpoint?.let {
-                                    playerConnection.playQueue(YouTubeQueue(it))
-                                }
-                                is PlaylistItem -> luckyItem.playEndpoint?.let {
-                                    playerConnection.playQueue(YouTubeQueue(it))
-                                }
-                            }
-                        }
-                    }
-                }
-            )
 
             Indicator(
                 isRefreshing = isRefreshing,

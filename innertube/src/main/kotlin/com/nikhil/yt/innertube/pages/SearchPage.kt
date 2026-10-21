@@ -147,57 +147,35 @@ object SearchPage {
                 )
             }
             renderer.isPlaylist -> {
+                // Search results may omit play/shuffle/radio menu buttons and song
+                // counts. Only the browsable playlist id and its title are required.
+                val id = renderer.navigationEndpoint?.browseEndpoint?.browseId
+                    ?.removePrefix("VL")
+                    ?: renderer.overlay?.musicItemThumbnailOverlayRenderer?.content
+                        ?.musicPlayButtonRenderer?.playNavigationEndpoint
+                        ?.watchPlaylistEndpoint?.playlistId
+                    ?: return null
+                val title = renderer.flexColumns.firstOrNull()
+                    ?.musicResponsiveListItemFlexColumnRenderer?.text
+                    ?.runs?.firstOrNull()?.text ?: return null
                 PlaylistItem(
-                    id =
-                        renderer.navigationEndpoint
-                            ?.browseEndpoint
-                            ?.browseId
-                            ?.removePrefix("VL") ?: return null,
-                    title =
-                        renderer.flexColumns
-                            .firstOrNull()
-                            ?.musicResponsiveListItemFlexColumnRenderer
-                            ?.text
-                            ?.runs
-                            ?.firstOrNull()
-                            ?.text ?: return null,
-                    author =
-                        secondaryLine.firstOrNull()?.firstOrNull()?.let {
-                            Artist(
-                                name = it.text,
-                                id = it.navigationEndpoint?.browseEndpoint?.browseId,
-                            )
-                        } ?: return null,
-                    songCountText =
-                        renderer.flexColumns
-                            .getOrNull(1)
-                            ?.musicResponsiveListItemFlexColumnRenderer
-                            ?.text
-                            ?.runs
-                            ?.lastOrNull()
-                            ?.text ?: return null,
-                    thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
-                    playEndpoint =
-                        renderer.overlay
-                            ?.musicItemThumbnailOverlayRenderer
-                            ?.content
-                            ?.musicPlayButtonRenderer
-                            ?.playNavigationEndpoint
-                            ?.watchPlaylistEndpoint ?: return null,
-                    shuffleEndpoint =
-                        renderer.menu
-                            ?.menuRenderer
-                            ?.items
-                            ?.find { it.menuNavigationItemRenderer?.icon?.iconType == "MUSIC_SHUFFLE" }
-                            ?.menuNavigationItemRenderer
-                            ?.navigationEndpoint
-                            ?.watchPlaylistEndpoint ?: return null,
-                    radioEndpoint =
-                        renderer.menu.menuRenderer.items
-                            .find { it.menuNavigationItemRenderer?.icon?.iconType == "MIX" }
-                            ?.menuNavigationItemRenderer
-                            ?.navigationEndpoint
-                            ?.watchPlaylistEndpoint ?: return null,
+                    id = id,
+                    title = title,
+                    author = secondaryLine.firstOrNull()?.firstOrNull()
+                        ?.takeIf { it.text.isNotBlank() }
+                        ?.let { Artist(name = it.text, id = it.navigationEndpoint?.browseEndpoint?.browseId) },
+                    songCountText = renderer.flexColumns.getOrNull(1)
+                        ?.musicResponsiveListItemFlexColumnRenderer?.text
+                        ?.runs?.lastOrNull()?.text,
+                    thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl(),
+                    playEndpoint = renderer.overlay?.musicItemThumbnailOverlayRenderer?.content
+                        ?.musicPlayButtonRenderer?.playNavigationEndpoint?.watchPlaylistEndpoint,
+                    shuffleEndpoint = renderer.menu?.menuRenderer?.items?.find {
+                        it.menuNavigationItemRenderer?.icon?.iconType == "MUSIC_SHUFFLE"
+                    }?.menuNavigationItemRenderer?.navigationEndpoint?.watchPlaylistEndpoint,
+                    radioEndpoint = renderer.menu?.menuRenderer?.items?.find {
+                        it.menuNavigationItemRenderer?.icon?.iconType == "MIX"
+                    }?.menuNavigationItemRenderer?.navigationEndpoint?.watchPlaylistEndpoint,
                 )
             }
             else -> null

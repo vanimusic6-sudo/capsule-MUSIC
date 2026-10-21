@@ -43,6 +43,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
+import java.util.concurrent.ConcurrentHashMap
 import timber.log.Timber
 import javax.inject.Inject
 
@@ -70,9 +71,17 @@ class HomeViewModel @Inject constructor(
     val accountPlaylists = MutableStateFlow<List<PlaylistItem>?>(null)
     val homePage = MutableStateFlow<HomePage?>(null)
     val explorePage = MutableStateFlow<ExplorePage?>(null)
+    // Fresh catalog releases come from YouTube Music's dedicated albums endpoint.
+    val newReleaseAlbums = MutableStateFlow<List<AlbumItem>>(emptyList())
+    // Real public user-created playlists, returned by YouTube Music's community filter.
+    val communityPlaylists = MutableStateFlow<List<PlaylistItem>>(emptyList())
     private var loadMoreJob: Job? = null
     private var tasteRecommendationsJob: Job? = null
     private var exploreJob: Job? = null
+    private var communityPlaylistsJob: Job? = null
+    private val attemptedContinuations = ConcurrentHashMap.newKeySet<String>()
+    private val continuationBudget = 10
+    private var homeTasteArtists: Set<String> = emptySet()
 
     val recentActivity = MutableStateFlow<List<YTItem>?>(null)
     val recentPlaylistsDb = MutableStateFlow<List<Playlist>?>(null)
@@ -264,45 +273,63 @@ class HomeViewModel @Inject constructor(
     }
 
     /**
-     * Normal Home retains the existing curated Capsule sections (new releases, hits,
-     * community playlists, long listening and personal shelves). There are no longer
-     * themed chip feeds to classify, cache or merge.
+     * YouTube Music already provides the shelves for this account. Do not guess which
+     * localized section titles are "allowed": filtering unknown titles removed mixes,
+     * personal albums and playlists by other users, leaving Home almost empty.
+     *
+     * Filter invalid/explicit content, not legitimate discovery categories.
      */
     private fun cleanYouTubeHomePage(
         page: HomePage,
         hideExplicit: Boolean,
     ): HomePage {
         val sections = page.sections.mapNotNull { section ->
-            val kind = classifyYouTubeHomeSection(section)
-            if (kind == null || kind == HomeSectionKind.SHALLOW_SIMILARITY) {
-                return@mapNotNull null
-            }
-
             val items = section.items
                 .filterExplicit(hideExplicit)
                 .filter { item ->
-                    when (kind) {
-                        HomeSectionKind.COMMUNITY_PLAYLISTS -> item is PlaylistItem
-                        HomeSectionKind.PERSONALIZED,
-                        HomeSectionKind.TRENDING,
-                        HomeSectionKind.LONG_LISTEN ->
-                            item is SongItem || item is AlbumItem || item is PlaylistItem
-                        else -> item is SongItem || item is AlbumItem
-                    }
+                    item is SongItem || item is AlbumItem ||
+                        item is PlaylistItem || item is com.nikhil.yt.innertube.models.ArtistItem
                 }
                 .distinctBy { it.id }
-
-            if (items.isEmpty()) return@mapNotNull null
-            val title = when (kind) {
-                HomeSectionKind.COMMUNITY_PLAYLISTS ->
-                    context.getString(R.string.home_community_playlists)
-                HomeSectionKind.LONG_LISTEN ->
-                    context.getString(R.string.home_long_listens)
-                else -> section.title
-            }
-            section.copy(title = title, items = items)
+            if (items.isEmpty()) null else section.copy(items = items)
+        }.distinctBy { section ->
+            // The provider can repeat the same shelf in continuation pages.
+            section.title to section.items.first().id
         }
         return page.copy(sections = sections)
+    }
+
+    // Put likely personal material first without changing the order each
+    // time the user fetches the next page. Browsing categories are still
+    // retained as discovery, but generic charts no longer dominate the top.
+    private fun sectionInterest(
+        section: HomePage.Section,
+        familiarArtists: Set<String>,
+    ): Int {
+        val categoryPriority = when (classifyYouTubeHomeSection(section)) {
+            HomeSectionKind.PERSONALIZED -> 60
+            HomeSectionKind.NEW_RELEASES -> 47
+            HomeSectionKind.LONG_LISTEN -> 43
+            HomeSectionKind.COMMUNITY_PLAYLISTS -> 32
+            HomeSectionKind.HITS -> 24
+            HomeSectionKind.TRENDING -> 12
+            else -> 0
+        }
+        if (familiarArtists.isEmpty()) return categoryPriority
+        val overlaps = section.items.count { item ->
+            val names = when (item) {
+                is SongItem -> item.artists.map { it.name }
+                is AlbumItem -> item.artists.orEmpty().map { it.name }
+                else -> emptyList()
+            }
+            names.any { it.trim().lowercase() in familiarArtists }
+        }
+        // A generic "for you" heading is not proof of personalized music.
+        // Without recognizable taste anchors, it should not eclipse a good
+        // new-release shelf. Discovery still remains available lower down.
+        val relevantPriority =
+            if (categoryPriority == 60 && overlaps == 0) 22 else categoryPriority
+        return relevantPriority + overlaps.coerceAtMost(5) * 8
     }
 
     private fun refreshAllYouTubeItems() {
@@ -311,9 +338,43 @@ class HomeViewModel @Inject constructor(
                 homePage.value?.sections.orEmpty().flatMap { it.items }
     }
 
+    // Community playlists are a different catalog from YouTube Music's personalized
+    // Home shelves. Query its public-playlist filter with the user's actual taste
+    // instead of renaming a generic mix as a listener-created playlist.
+    private suspend fun loadCommunityPlaylists(artistSeeds: List<String>) {
+        val requests = artistSeeds
+            .map { "$it playlist" }
+            .distinct()
+            .take(2)
+            .ifEmpty { listOf("music playlist") }
+        val results = mutableListOf<PlaylistItem>()
+        for (query in requests) {
+            val playlists = YouTube.search(
+                query,
+                YouTube.SearchFilter.FILTER_COMMUNITY_PLAYLIST,
+            ).getOrNull()?.items.orEmpty().filterIsInstance<PlaylistItem>()
+            results.addAll(playlists)
+            if (results.distinctBy { it.id }.size >= 8) break
+        }
+        // No listening history, or no matches for the first two artists:
+        // use one real YouTube Music public-playlist search as a fallback.
+        if (results.size < 3 && requests != listOf("music playlist")) {
+            results.addAll(
+                YouTube.search(
+                    "music playlist",
+                    YouTube.SearchFilter.FILTER_COMMUNITY_PLAYLIST,
+                ).getOrNull()?.items.orEmpty().filterIsInstance<PlaylistItem>(),
+            )
+        }
+        communityPlaylists.value = results
+            .filter { it.id.isNotBlank() && !it.thumbnail.isNullOrBlank() }
+            .distinctBy { it.id }
+            .take(18)
+    }
+
     private suspend fun getQuickPicks(){
         when (quickPicksEnum.first()) {
-            QuickPicks.QUICK_PICKS -> quickPicks.value = database.quickPicks().first().shuffled().take(20)
+            QuickPicks.QUICK_PICKS -> quickPicks.value = database.quickPicks().first().distinctBy { it.id }.take(20)
             QuickPicks.LAST_LISTEN -> songLoad()
         }
     }
@@ -323,8 +384,10 @@ class HomeViewModel @Inject constructor(
 
         loadMoreJob?.cancel()
         _isLoadingMore.value = false
+        attemptedContinuations.clear()
         tasteRecommendationsJob?.cancel()
         exploreJob?.cancel()
+        communityPlaylistsJob?.cancel()
 
         isLoading.value = true
         homeFeedError.value = false
@@ -337,14 +400,18 @@ class HomeViewModel @Inject constructor(
                 val hideExplicit = preferences[HideExplicitKey] ?: false
                 val startupCookie = preferences[InnerTubeCookieKey]
                 if (YouTube.cookie != startupCookie) YouTube.cookie = startupCookie
-                val fromTimeStamp = System.currentTimeMillis() - 86400000 * 7 * 2
+                val fromTimeStamp = System.currentTimeMillis() - 86400000L * 14
+                val locallyPlayed = database.mostPlayedSongs(fromTimeStamp, limit = 45)
+                    .first().distinctBy { it.id }
+                val familiarArtists = locallyPlayed
+                    .filter { it.song.totalPlayTime >= 90_000L || it.song.liked }
+                    .flatMap { song -> song.artists.map { it.name.trim().lowercase() } }
+                    .filter { it.isNotBlank() }.toSet()
+                homeTasteArtists = familiarArtists
 
                 launch { getQuickPicks() }
-                launch { forgottenFavorites.value = database.forgottenFavorites().first().shuffled().take(20) }
-                launch {
-                    keepListening.value = database.mostPlayedSongs(fromTimeStamp, limit = 15, offset = 5)
-                        .first().distinctBy { it.id }.shuffled().take(12)
-                }
+                launch { forgottenFavorites.value = database.forgottenFavorites().first().distinctBy { it.id }.take(20) }
+                launch { keepListening.value = database.recentlyListenedSongs(limit = 16).first() }
 
                 launch {
                     YouTube.home().onSuccess { page ->
@@ -376,7 +443,11 @@ class HomeViewModel @Inject constructor(
                             checkedContinuations++
                             if (repeatedToken) break
                         }
-                        homePage.value = cleaned
+                        homePage.value = cleaned.copy(
+                            sections = cleaned.sections.sortedByDescending {
+                                sectionInterest(it, familiarArtists)
+                            },
+                        )
                     }.onFailure {
                         homeFeedError.value = true
                         reportException(it)
@@ -388,6 +459,20 @@ class HomeViewModel @Inject constructor(
             allLocalItems.value =
                 (quickPicks.value.orEmpty() + forgottenFavorites.value.orEmpty() + keepListening.value.orEmpty())
                     .distinctBy { it.id }
+
+            // Fetch listener-made playlists separately from the Home continuation.
+            // Failures are isolated and never block the music feed or playback.
+            communityPlaylistsJob = viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    loadCommunityPlaylists(
+                        homeTasteArtists.toList().take(2),
+                    )
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    reportRecoverableException("HomeViewModel", "load community playlists", error)
+                }
+            }
 
             // MetroList's initial Home only waits for cheap DB data and the primary feed.
             // Recommendations (up to several "related" requests) and Explore are non-critical.
@@ -434,6 +519,14 @@ class HomeViewModel @Inject constructor(
                             }.filterExplicit(hideExplicit)
                     )
                 }.onFailure { reportException(it) }
+                    // Use YouTube Music's dedicated release catalog; Explore is a fallback.
+                    val direct = YouTube.newReleaseAlbums().getOrNull()
+                        ?.filterExplicit(hideExplicit)
+                        ?.distinctBy { it.id }
+                        .orEmpty()
+                    newReleaseAlbums.value = direct.ifEmpty {
+                        explorePage.value?.newReleaseAlbums.orEmpty()
+                    }.take(24)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
@@ -467,6 +560,10 @@ class HomeViewModel @Inject constructor(
 
     fun loadMoreYouTubeItems(continuation: String?) {
         if (continuation == null || _isLoadingMore.value) return
+        // Never hammer a failing/repeated provider token on every scroll pixel.
+        if (attemptedContinuations.size >= continuationBudget ||
+            !attemptedContinuations.add(continuation)
+        ) return
         _isLoadingMore.value = true
         loadMoreJob = viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -479,6 +576,9 @@ class HomeViewModel @Inject constructor(
                 if (current?.continuation != continuation) return@launch
                 val merged = next.copy(
                     sections = current.sections + next.sections,
+                    continuation = next.continuation.takeUnless {
+                        it == continuation || attemptedContinuations.size >= continuationBudget
+                    },
                 )
                 homePage.value = cleanYouTubeHomePage(
                     page = merged,
@@ -539,6 +639,14 @@ class HomeViewModel @Inject constructor(
     init {
         viewModelScope.launch(Dispatchers.IO) {
             load()
+        }
+
+        // Stay current when playback history changes while Home remains in the
+        // navigation back stack. A one-time snapshot left Continue Listening stale.
+        viewModelScope.launch(Dispatchers.IO) {
+            database.recentlyListenedSongs(limit = 16)
+                .distinctUntilChanged()
+                .collect { keepListening.value = it }
         }
 
         viewModelScope.launch(Dispatchers.IO) {

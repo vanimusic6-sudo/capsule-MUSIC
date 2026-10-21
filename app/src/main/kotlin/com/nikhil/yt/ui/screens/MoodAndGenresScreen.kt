@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -61,7 +63,9 @@ fun MoodAndGenresScreen(
     val moodAndGenresList by viewModel.moodAndGenres.collectAsState()
 
     LazyColumn(
-        contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+        contentPadding = LocalPlayerAwareWindowInsets.current
+            .add(WindowInsets(top = com.nikhil.yt.constants.AppBarHeight))
+            .asPaddingValues(),
     ) {
         if (moodAndGenresList == null) {
             item {

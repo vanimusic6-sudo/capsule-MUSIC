@@ -11,6 +11,8 @@ package com.nikhil.yt.ui.screens.artist
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -46,6 +48,7 @@ import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.WatchEndpoint
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.LocalPlayerConnection
+import com.nikhil.yt.constants.AppBarHeight
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.GridThumbnailHeight
 import com.nikhil.yt.extensions.togglePlayPause
@@ -105,7 +108,7 @@ fun ArtistItemsScreen(
 
     if (itemsPage == null) {
         ShimmerHost(
-            modifier = Modifier.windowInsetsPadding(LocalPlayerAwareWindowInsets.current),
+            modifier = Modifier.windowInsetsPadding(LocalPlayerAwareWindowInsets.current.add(WindowInsets(top = AppBarHeight))),
         ) {
             repeat(8) {
                 ListItemPlaceHolder()
@@ -116,7 +119,9 @@ fun ArtistItemsScreen(
     if (itemsPage?.items?.firstOrNull() is SongItem) {
         LazyColumn(
             state = lazyListState,
-            contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+            contentPadding = LocalPlayerAwareWindowInsets.current
+                .add(WindowInsets(top = AppBarHeight))
+                .asPaddingValues(),
         ) {
             items(
                 items = itemsPage?.items.orEmpty().distinctBy { it.id },
@@ -211,7 +216,9 @@ fun ArtistItemsScreen(
         LazyVerticalGrid(
             state = lazyGridState,
             columns = GridCells.Adaptive(minSize = GridThumbnailHeight + 24.dp),
-            contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()
+            contentPadding = LocalPlayerAwareWindowInsets.current
+                .add(WindowInsets(top = AppBarHeight))
+                .asPaddingValues()
         ) {
             items(
                 items = itemsPage?.items.orEmpty().distinctBy { it.id },

@@ -136,21 +136,23 @@ fun QuickPicksSection(
     playerConnection: PlayerConnection,
     menuState: MenuState,
     haptic: HapticFeedback,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    userScrollEnabled: Boolean = true,
 ) {
     val distinctQuickPicks = remember(quickPicks) { quickPicks.distinctBy { it.id } }
     val density = LocalDensity.current
-    val requestWidthPx = with(density) { 250.dp.roundToPx().coerceAtLeast(1) }
-    val requestHeightPx = with(density) { 290.dp.roundToPx().coerceAtLeast(1) }
+    val requestWidthPx = with(density) { 184.dp.roundToPx().coerceAtLeast(1) }
+    val requestHeightPx = with(density) { 218.dp.roundToPx().coerceAtLeast(1) }
 
     HorizontalUncontainedCarousel(
+        userScrollEnabled = userScrollEnabled,
         state = rememberCarouselState { distinctQuickPicks.size },
-        itemWidth = 250.dp,
+        itemWidth = 184.dp,
         itemSpacing = 8.dp,
         contentPadding = PaddingValues(horizontal = 16.dp),
         modifier = modifier
             .fillMaxWidth()
-            .height(290.dp)
+            .height(218.dp)
     ) { index ->
         val song = distinctQuickPicks[index]
         val isActive = song.id == mediaMetadata?.id
@@ -274,6 +276,7 @@ fun KeepListeningSection(
     menuState: MenuState,
     haptic: HapticFeedback,
     modifier: Modifier = Modifier,
+    userScrollEnabled: Boolean = true,
 ) {
     val distinctSongs = remember(keepListening) { keepListening.distinctBy { it.id } }
     val pages = remember(distinctSongs) { distinctSongs.chunked(4) }
@@ -281,6 +284,7 @@ fun KeepListeningSection(
 
     Column(modifier = modifier.fillMaxWidth()) {
         androidx.compose.foundation.pager.HorizontalPager(
+            userScrollEnabled = userScrollEnabled,
             state = pagerState,
             contentPadding = PaddingValues(horizontal = 12.dp),
             pageSpacing = 8.dp,
@@ -442,12 +446,14 @@ fun ForgottenFavoritesSection(
     playerConnection: PlayerConnection,
     menuState: MenuState,
     haptic: HapticFeedback,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    userScrollEnabled: Boolean = true,
 ) {
     val rows = min(4, forgottenFavorites.size)
     val distinctForgottenFavorites = remember(forgottenFavorites) { forgottenFavorites.distinctBy { it.id } }
     
     LazyHorizontalGrid(
+        userScrollEnabled = userScrollEnabled,
         state = lazyGridState,
         rows = GridCells.Fixed(rows),
         flingBehavior = rememberSnapFlingBehavior(snapLayoutInfoProvider),
@@ -569,14 +575,16 @@ fun HomePageSectionContent(
     menuState: MenuState,
     haptic: HapticFeedback,
     scope: CoroutineScope,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    userScrollEnabled: Boolean = true,
 ) {
     LazyRow(
+        userScrollEnabled = userScrollEnabled,
         // GridItem already adds 12.dp; the first artwork starts at 4 + 12 = 16dp.
         contentPadding = PaddingValues(horizontal = 4.dp),
         // Fix the viewport height: 1- vs 2-line subtitles must not remeasure the
         // entire LazyRow and move every section below it during horizontal swipes.
-        modifier = modifier.fillMaxWidth().height(GridThumbnailHeight + 104.dp),
+        modifier = modifier.fillMaxWidth().height(GridThumbnailHeight + 88.dp),
     ) {
         items(
             items = section.items,
@@ -603,12 +611,14 @@ fun HomePageSectionContent(
 fun MoodAndGenresSection(
     moodAndGenres: List<MoodAndGenres.Item>,
     navController: NavController,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    userScrollEnabled: Boolean = true,
 ) {
     LazyHorizontalGrid(
-        rows = GridCells.Fixed(4),
+        userScrollEnabled = userScrollEnabled,
+        rows = GridCells.Fixed(2),
         contentPadding = PaddingValues(6.dp),
-        modifier = modifier.height((MoodAndGenresButtonHeight + 12.dp) * 4 + 12.dp)
+        modifier = modifier.height((MoodAndGenresButtonHeight + 12.dp) * 2 + 12.dp)
     ) {
         items(moodAndGenres) {
             MoodAndGenresButton(
@@ -695,8 +705,11 @@ private fun YouTubeGridItemWrapper(
         isActive = item.id in listOf(mediaMetadata?.album?.id, mediaMetadata?.id),
         isPlaying = isPlaying,
         coroutineScope = scope,
-        // Let the item choose its natural Home aspect ratio (songs are wide, albums stay square)
-        // instead of forcing every recommendation into the same square card.
+        animateTitle = false,
+        // Home is a music feed: song artwork belongs in square music cards.
+        // The default YouTubeGridItem SongItem ratio is 16:9 for video contexts,
+        // which stretched music recommendations into mismatched video layouts.
+        thumbnailRatio = 1f,
         modifier = modifier.combinedClickable(
             onClick = {
                 when (item) {
@@ -874,30 +887,69 @@ fun AccountPlaylistsTitle(
 }
 
 /**
+ * Localize known YouTube Music shelf types at display time, so changing the app
+ * language doesn't require reloading the network feed. Never translate actual
+ * playlist/album/artist names or invent catalog categories.
+ */
+@Composable
+private fun localizedHomeShelfTitle(section: HomePage.Section): String {
+    val name = section.title.trim()
+    val lower = name.lowercase(java.util.Locale.ROOT)
+    val playlistOnly = section.items.isNotEmpty() && section.items.all { it is PlaylistItem }
+    val albumOnly = section.items.isNotEmpty() && section.items.all { it is AlbumItem }
+    fun matches(vararg words: String): Boolean = words.any(lower::contains)
+    val id = when {
+        matches("the sound of autumn") -> R.string.home_shelf_the_sound_of_autumn
+        matches("the sound of winter") -> R.string.home_shelf_the_sound_of_winter
+        matches("the sound of spring") -> R.string.home_shelf_the_sound_of_spring
+        matches("the sound of summer") -> R.string.home_shelf_the_sound_of_summer
+        matches("popular albums and singles", "popular albums & singles") ->
+            R.string.home_shelf_popular_albums
+        matches("trending tracks for you", "trending songs for you") ->
+            R.string.home_shelf_trending_for_you
+        matches("albums for you", "recommended albums", "albums you might like") ->
+            R.string.home_shelf_albums_for_you
+        matches("mixes for you", "your mixes", "personal mixes") ->
+            R.string.home_shelf_mixes_for_you
+        matches("playlists for you", "recommended playlists") ->
+            R.string.home_shelf_playlists_for_you
+        matches("community playlists", "listener playlists", "playlists by other users") && playlistOnly ->
+            R.string.home_community_playlists
+        matches("new releases", "latest releases", "fresh releases") ->
+            R.string.home_shelf_new_releases
+        matches("made for you", "crafted for you") -> R.string.home_shelf_made_for_you
+        matches("because you listened", "based on your listening") ->
+            R.string.home_shelf_because_you_listened
+        matches("recently played", "recently listened") ->
+            R.string.home_shelf_recently_played
+        matches("you might like", "you may like") ->
+            R.string.home_shelf_you_might_like
+        matches("top hits", "biggest hits") -> R.string.home_shelf_top_hits
+        matches("trending", "popular right now") -> R.string.home_shelf_trending
+        lower == "for you" || lower == "just for you" -> when {
+            albumOnly -> R.string.home_shelf_albums_for_you
+            playlistOnly -> R.string.home_shelf_playlists_for_you
+            else -> R.string.home_shelf_made_for_you
+        }
+        else -> null
+    }
+    return id?.let { stringResource(it) } ?: name
+}
+
+/**
  * HomePage section navigation title
  */
 @Composable
 fun HomePageSectionTitle(
     section: HomePage.Section,
     navController: NavController,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
+    // A title-only header gives every discovery shelf one baseline, font,
+    // color and horizontal inset. Thumbnail/strapline in the provider header
+    // previously pushed some titles right or down relative to other shelves.
     NavigationTitle(
-        title = section.title,
-        label = section.label,
-        thumbnail = section.thumbnail?.let { thumbnailUrl ->
-            {
-                val shape = if (section.endpoint?.isArtistEndpoint == true) CircleShape 
-                    else RoundedCornerShape(ThumbnailCornerRadius)
-                AsyncImage(
-                    model = thumbnailUrl,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(ListThumbnailSize)
-                        .clip(shape)
-                )
-            }
-        },
+        title = localizedHomeShelfTitle(section),
         onClick = section.endpoint?.browseId?.let { browseId ->
             {
                 if (browseId == "FEmusic_moods_and_genres")
@@ -906,7 +958,7 @@ fun HomePageSectionTitle(
                     navController.navigate("browse/$browseId")
             }
         },
-        modifier = modifier
+        modifier = modifier,
     )
 }
 
@@ -1094,23 +1146,15 @@ fun CommunityPlaylistsSection(
     menuState: MenuState,
     haptic: HapticFeedback,
     scope: CoroutineScope,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    userScrollEnabled: Boolean = true,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = section.title ?: "From the community",
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f)
-            )
-        }
+        // Use the same typography, baseline and padding as every other shelf.
+        NavigationTitle(title = localizedHomeShelfTitle(section))
 
         LazyRow(
+            userScrollEnabled = userScrollEnabled,
             contentPadding = PaddingValues(horizontal = 4.dp),
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth().height(GridThumbnailHeight + 104.dp),
@@ -1151,6 +1195,7 @@ fun TasteRecommendationsSection(
     menuState: MenuState,
     haptic: HapticFeedback,
     modifier: Modifier = Modifier,
+    userScrollEnabled: Boolean = true,
 ) {
     val distinctSuggestions = remember(suggestions) { suggestions.distinctBy { it.id } }
     if (distinctSuggestions.isEmpty()) return
@@ -1159,25 +1204,10 @@ fun TasteRecommendationsSection(
     val pagerState = androidx.compose.foundation.pager.rememberPagerState { pages.size }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.taste_recommendations),
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = stringResource(R.string.taste_recommendations_subtitle),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-        }
+        NavigationTitle(title = stringResource(R.string.taste_recommendations))
 
         androidx.compose.foundation.pager.HorizontalPager(
+            userScrollEnabled = userScrollEnabled,
             state = pagerState,
             contentPadding = PaddingValues(horizontal = 12.dp),
             pageSpacing = 8.dp,
@@ -1188,8 +1218,8 @@ fun TasteRecommendationsSection(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f))
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.10f))
                     .padding(vertical = 4.dp)
             ) {
                 pages.getOrNull(pageIndex).orEmpty().forEach { song ->

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Localized labels for YouTube Music Home shelf types; actual music and playlists are never renamed. -->
+    <string name="home_shelf_albums_for_you">Альбомы для вас</string>
+    <string name="home_shelf_mixes_for_you">Миксы для вас</string>
+    <string name="home_shelf_playlists_for_you">Плейлисты для вас</string>
+    <string name="home_shelf_trending_for_you">Трендовые треки для вас</string>
+    <string name="home_shelf_popular_albums">Популярные альбомы и синглы</string>
+    <string name="home_shelf_new_releases">Новые релизы</string>
+    <string name="home_shelf_made_for_you">Создано для вас</string>
+    <string name="home_shelf_the_sound_of_autumn">Звуки осени</string>
+    <string name="home_shelf_the_sound_of_winter">Звуки зимы</string>
+    <string name="home_shelf_the_sound_of_spring">Звуки весны</string>
+    <string name="home_shelf_the_sound_of_summer">Звуки лета</string>
+    <string name="home_shelf_you_might_like">Вам может понравиться</string>
+    <string name="home_shelf_your_mixes">Ваши миксы</string>
+    <string name="home_shelf_trending">В тренде</string>
+    <string name="home_shelf_top_hits">Главные хиты</string>
+    <string name="home_shelf_because_you_listened">По вашим прослушиваниям</string>
+    <string name="home_shelf_recently_played">Недавно слушали</string>
+    <string name="home_collections_subtitle">По настроению и жанру</string>
+    <string name="home_collections">Подборки</string>
+</resources>

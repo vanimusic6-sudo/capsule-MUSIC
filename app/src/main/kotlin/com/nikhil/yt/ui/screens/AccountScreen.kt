@@ -10,6 +10,8 @@ package com.nikhil.yt.ui.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -33,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
+import com.nikhil.yt.constants.AppBarHeight
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.GridThumbnailHeight
 import com.nikhil.yt.ui.component.ChipsRow
@@ -67,7 +70,9 @@ fun AccountScreen(
 
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = GridThumbnailHeight + 24.dp),
-        contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+        contentPadding = LocalPlayerAwareWindowInsets.current
+                .add(WindowInsets(top = AppBarHeight))
+                .asPaddingValues(),
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             ChipsRow(

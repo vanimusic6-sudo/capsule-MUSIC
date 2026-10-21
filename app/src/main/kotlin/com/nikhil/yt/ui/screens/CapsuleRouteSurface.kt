@@ -7,9 +7,6 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -182,26 +179,13 @@ fun CapsulePinnedHeader(route: String) {
     val navController = LocalCapsuleHeaderNavController.current
     val isHome = route == "home"
     val base = if (isHome) StandardChrome.background else MaterialTheme.colorScheme.surface
-    val tonalStart = MaterialTheme.colorScheme.primaryContainer
-    val tonalMiddle = MaterialTheme.colorScheme.secondaryContainer
-    val backdrop = if (isHome) {
-        Modifier.drawWithCache {
-            val wash = Brush.verticalGradient(
-                0f to tonalStart.copy(alpha = 0.30f),
-                0.42f to tonalMiddle.copy(alpha = 0.14f),
-                1f to Color.Transparent,
-                startY = 0f,
-                endY = 430.dp.toPx(),
-            )
-            onDrawBehind { drawRect(brush = wash) }
-        }
-    } else Modifier
+    // Home and its pinned header must paint exactly the same opaque surface.
+    // The earlier header-only tonal wash produced a visible horizontal seam.
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(base)
-            .then(backdrop)
             .statusBarsPadding()
             .height(AppBarHeight)
             .padding(horizontal = 16.dp),

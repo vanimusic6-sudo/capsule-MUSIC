@@ -25,22 +25,26 @@ class HomePerformanceRegressionTest {
         assertTrue(source("ui/component/Items.kt").contains("showActiveBackground: Boolean = true"))
     }
 
-    @Test fun homeDoesNotRecomposeItsFloatingButtonForEveryScrollPixel() {
+    @Test fun homeHasNoFloatingShuffleOrPerPixelPaginationWork() {
         val home = source("ui/screens/HomeScreen.kt")
-        assertTrue(home.contains("HomeScrollSnapshot("))
-        assertTrue(home.contains("if (scrollingUp != movingUp) scrollingUp = movingUp"))
-        assertTrue(home.contains("ScrollActionButton("))
+        assertFalse(home.contains("ScrollActionButton("))
         assertFalse(home.contains("HideOnScrollFAB("))
-        assertFalse(home.contains("LaunchedEffect(forgottenFavorites)"))
-        assertTrue(home.contains("remember(forgottenFavoritesLazyGridState, horizontalLazyGridItemWidthFactor)"))
+        assertTrue(home.contains("snapshotFlow {"))
+        assertTrue(home.contains("distinctUntilChanged()"))
+        assertFalse(home.contains("HomeScrollSnapshot("))
+        assertTrue(home.contains("home:collections-button"))
     }
 
-    @Test fun paginationAndTask01StateStayIntact() {
+    @Test fun personalizedMusicShelvesAndPagingStayOnMainHome() {
         val home = source("ui/screens/HomeScreen.kt")
         assertTrue(home.contains("isLoading || isLoadingMore"))
-        assertTrue(home.contains("firstOrNull()?.id.orEmpty()"))
+        assertTrue(home.contains("homePage?.sections"))
+        assertTrue(home.contains("home:listener-community-playlists"))
+        assertTrue(home.contains("home:youtube-new-release-albums"))
         assertTrue(source("viewmodels/HomeViewModel.kt").contains("val isLoadingMore = _isLoadingMore.asStateFlow()"))
         assertTrue(source("viewmodels/HomeViewModel.kt").contains("checkedContinuations < 2"))
         assertTrue(source("ui/screens/HomeScreenComponents.kt").contains("verticalAlignment = Alignment.Top"))
+        assertTrue(home.contains("keepListening?.takeIf { it.isNotEmpty() }"))
+        assertTrue(home.contains("navController.navigate(\"mood_and_genres\")"))
     }
 }

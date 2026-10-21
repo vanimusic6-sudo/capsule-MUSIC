@@ -10,7 +10,9 @@ package com.nikhil.yt.ui.screens
  
  import androidx.compose.foundation.ExperimentalFoundationApi
  import androidx.compose.foundation.combinedClickable
- import androidx.compose.foundation.layout.asPaddingValues
+ import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.add
+import androidx.compose.foundation.layout.asPaddingValues
  import androidx.compose.foundation.lazy.grid.GridCells
  import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
  import androidx.compose.foundation.lazy.grid.items
@@ -67,7 +69,9 @@ package com.nikhil.yt.ui.screens
  
      LazyVerticalGrid(
          columns = GridCells.Adaptive(minSize = GridThumbnailHeight + 24.dp),
-         contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()
+         contentPadding = LocalPlayerAwareWindowInsets.current
+            .add(WindowInsets(top = com.nikhil.yt.constants.AppBarHeight))
+            .asPaddingValues()
      ) {
          items?.let { items ->
              items(
