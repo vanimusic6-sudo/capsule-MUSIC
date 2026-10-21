@@ -379,9 +379,14 @@ fun OnlineSearchResult(
     CompositionLocalProvider(LocalSongListVisuals provides ArchiveSearchListVisuals) {
         LazyColumn(
             state = lazyListState,
+        // The SearchBar belongs to the outer Scaffold.topBar, while the
+        // filters are a pinned sibling drawn over this LazyColumn. Neither
+        // reserves space in LocalPlayerAwareWindowInsets on search/{query}.
+        // Reserve BOTH rows here (64dp search + 48dp filters) so the first
+        // artist/song is never rendered underneath their opaque surfaces.
         contentPadding =
             LocalPlayerAwareWindowInsets.current
-                .add(WindowInsets(top = SearchFilterHeight + 8.dp))
+                .add(WindowInsets(top = AppBarHeight + SearchFilterHeight + 8.dp))
                 .asPaddingValues(),
     ) {
         val showYouTubeResults =
