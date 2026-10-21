@@ -16,24 +16,23 @@ class HomeDiscoveryRegressionTest {
             .firstOrNull { it.isFile }?.readText() ?: error("Missing $path")
 
     @Test
-    fun firstScreenStaysStableAndAllDiscoveryLivesInOnePlace() {
+    fun homeKeepsEveryRecommendationShelfAndCollectionsOnlyContainsMoods() {
         val home = source("ui/screens/HomeScreen.kt")
-        val collections = source("ui/screens/HomeCollectionsScreen.kt")
         val components = source("ui/screens/HomeScreenComponents.kt")
         val navigation = source("ui/screens/NavigationBuilder.kt")
         assertTrue(home.contains("home:quick-hero"))
         assertTrue(home.contains("home:keep-listening"))
+        assertTrue(home.contains("home:taste"))
+        assertTrue(home.contains("home:forgotten"))
+        assertTrue(home.contains("home:listener-community-playlists"))
+        assertTrue(home.contains("home:yt:"))
         assertTrue(home.contains("home:collections-button"))
-        assertTrue(home.contains("navController.navigate(\"home_collections\")"))
-        assertFalse(home.contains("home:taste"))
+        assertTrue(home.contains("navController.navigate(\"mood_and_genres\")"))
+        assertFalse(home.contains("navController.navigate(\"home_collections\")"))
+        assertFalse(navigation.contains("routeComposable(\"home_collections\")"))
         assertFalse(home.contains("ScrollActionButton("))
-        assertFalse(home.contains("R.drawable.shuffle"))
-        assertTrue(collections.contains("collections:taste"))
-        assertTrue(collections.contains("collections:forgotten"))
-        assertTrue(collections.contains("collections:listeners"))
-        assertTrue(collections.contains("collections:releases"))
-        assertTrue(navigation.contains("routeComposable(\"home_collections\")"))
-        assertTrue(navigation.contains("hiltViewModel(homeEntry)"))
+        assertFalse(home.contains("Spacer(Modifier.height(218.dp))"))
+        assertTrue(home.contains("quickPicks?.takeIf { it.isNotEmpty() }"))
         assertTrue(components.contains("animateTitle = false"))
         assertTrue(components.contains("itemWidth = 184.dp"))
     }
@@ -90,26 +89,24 @@ class HomeDiscoveryRegressionTest {
     }
 
     @Test
-    fun newReleasesAppearOnceInCollections() {
-        val screen = source("ui/screens/HomeCollectionsScreen.kt")
-        assertTrue(screen.contains("fun isCollectionsReleaseShelf(section: HomePage.Section)"))
-        assertTrue(screen.contains("!hasRelease"))
-        assertTrue(screen.contains("original.copy(items = releases)"))
-        assertTrue(screen.contains("collections:releases"))
-        assertTrue(screen.contains("if (isCollectionsReleaseShelf(it)) \"releases\""))
+    fun newReleasesAppearOnceOnHome() {
+        val home = source("ui/screens/HomeScreen.kt")
+        assertTrue(home.contains("isYouTubeReleaseShelf(section: HomePage.Section)"))
+        assertTrue(home.contains("!providerHasReleaseShelf"))
+        assertTrue(home.contains("providerSection.copy(items = newReleaseAlbums)"))
+        assertTrue(home.contains("home:youtube-new-release-albums"))
+        assertTrue(home.contains("home:yt:releases"))
     }
 
     @Test
     fun verticalScrollingDoesNotMoveHorizontalShelves() {
         val home = source("ui/screens/HomeScreen.kt")
-        val collections = source("ui/screens/HomeCollectionsScreen.kt")
         val components = source("ui/screens/HomeScreenComponents.kt")
-        assertTrue(home.contains("derivedStateOf { !listState.isScrollInProgress }"))
-        assertTrue(collections.contains("derivedStateOf { !listState.isScrollInProgress }"))
-        assertTrue(collections.contains("userScrollEnabled = horizontalEnabled.value"))
+        assertTrue(home.contains("derivedStateOf { !lazylistState.isScrollInProgress }"))
+        assertTrue(home.contains("userScrollEnabled = horizontalShelvesEnabled.value"))
         val sections = listOf(
             "QuickPicksSection", "KeepListeningSection", "ForgottenFavoritesSection",
-            "HomePageSectionContent", "MoodAndGenresSection", "CommunityPlaylistsSection",
+            "HomePageSectionContent", "CommunityPlaylistsSection",
             "TasteRecommendationsSection",
         )
         for (name in sections) {
@@ -125,13 +122,11 @@ class HomeDiscoveryRegressionTest {
     fun musicCardsAndNativeScrollingStayEnergyEfficient() {
         val components = source("ui/screens/HomeScreenComponents.kt")
         val home = source("ui/screens/HomeScreen.kt")
-        val collections = source("ui/screens/HomeCollectionsScreen.kt")
         assertTrue(components.contains("thumbnailRatio = 1f"))
         assertTrue(home.contains("overscrollEffect = null"))
-        assertTrue(collections.contains("overscrollEffect = null"))
         assertFalse(home.contains("initialVelocity *"))
-        assertFalse(home.contains("snapshotFlow {"))
-        assertTrue(collections.contains("snapshotFlow {"))
-        assertTrue(collections.contains("distinctUntilChanged()"))
+        assertTrue(home.contains("snapshotFlow {"))
+        assertTrue(home.contains("distinctUntilChanged()"))
+        assertFalse(home.contains("ScrollActionButton("))
     }
 }
