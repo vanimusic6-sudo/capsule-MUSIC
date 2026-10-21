@@ -15,11 +15,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.calculateStartPadding
-import androidx.compose.foundation.layout.calculateEndPadding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -31,9 +26,6 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults.Indicator
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -43,18 +35,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -64,26 +50,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.nikhil.yt.innertube.models.AlbumItem
-import com.nikhil.yt.innertube.models.ArtistItem
-import com.nikhil.yt.innertube.models.PlaylistItem
-import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.pages.HomePage
-import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
-import com.nikhil.yt.constants.AppBarHeight
-import com.nikhil.yt.ui.component.StandardHeaderTitle
-import com.nikhil.yt.db.entities.Album
-import com.nikhil.yt.db.entities.Artist
-import com.nikhil.yt.db.entities.Playlist
-import com.nikhil.yt.db.entities.Song
-import com.nikhil.yt.models.toMediaMetadata
-import com.nikhil.yt.playback.queues.LocalAlbumRadio
-import com.nikhil.yt.playback.queues.YouTubeAlbumRadio
-import com.nikhil.yt.playback.queues.YouTubeQueue
-import com.nikhil.yt.ui.component.LocalBottomSheetPageState
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.NavigationTitle
 import com.nikhil.yt.ui.utils.SnapLayoutInfoProvider
@@ -101,15 +71,6 @@ private fun isYouTubeReleaseShelf(section: HomePage.Section): Boolean {
     ).any(title::contains)
 }
 
-/** Immutable scroll sample, collected outside Compose's measure/draw passes. */
-private data class HomeScrollSnapshot(
-    val scrolling: Boolean,
-    val index: Int,
-    val offset: Int,
-    val lastVisible: Int?,
-    val totalItems: Int,
-)
-
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
@@ -117,8 +78,6 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val menuState = LocalMenuState.current
-    val bottomSheetPageState = LocalBottomSheetPageState.current
-    val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val haptic = LocalHapticFeedback.current
 
@@ -129,19 +88,15 @@ fun HomeScreen(
     val forgottenFavorites by viewModel.forgottenFavorites.collectAsState()
     val keepListening by viewModel.keepListening.collectAsState()
     val homePage by viewModel.homePage.collectAsState()
-    val explorePage by viewModel.explorePage.collectAsState()
     val newReleaseAlbums by viewModel.newReleaseAlbums.collectAsState()
     val providerHasReleaseShelf = homePage?.sections?.any(::isYouTubeReleaseShelf) == true
     val forYouSuggestions by viewModel.forYouSuggestions.collectAsState()
     val listenerPlaylists by viewModel.communityPlaylists.collectAsState()
 
-    val allLocalItems by viewModel.allLocalItems.collectAsState()
-    val allYtItems by viewModel.allYtItems.collectAsState()
 
     val isLoading: Boolean by viewModel.isLoading.collectAsState()
     val isLoadingMore by viewModel.isLoadingMore.collectAsState()
     val homeFeedError by viewModel.homeFeedError.collectAsState()
-    val isMoodAndGenresLoading = isLoading && explorePage?.moodAndGenres == null
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val pullRefreshState = rememberPullToRefreshState()
 
@@ -216,15 +171,6 @@ fun HomeScreen(
             ) {
 
                     quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
-            /*
-                item {
-                    NavigationTitle(
-                        title = stringResource(R.string.quick_picks),
-                        modifier = Modifier
-                    )
-                }
-            */
-
                 item(key = "home:quick-hero") {
                     QuickPicksSection(
                         quickPicks = picks,
