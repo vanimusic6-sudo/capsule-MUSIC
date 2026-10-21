@@ -2,6 +2,7 @@ package com.nikhil.yt.ui
 
 import java.io.File
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 /**
@@ -52,4 +53,42 @@ class SearchBarInsetTest {
             ),
         )
     }
+    @Test
+    fun `search first result is below BOTH the search box and filter chips`() {
+        val source = source("com/nikhil/yt/ui/screens/search/OnlineSearchResult.kt")
+        // Search route is not a top-level pinned-header destination. Its list
+        // receives only the system inset from LocalPlayerAwareWindowInsets.
+        // 64dp search bar + 48dp filter bar + 8dp breathing room belong here.
+        assertTrue(source.contains(
+            ".add(WindowInsets(top = AppBarHeight + SearchFilterHeight + 8.dp))",
+        ))
+        assertFalse(source.contains(
+            ".add(WindowInsets(top = SearchFilterHeight + 8.dp))",
+        ))
+        // The chip surface must continue to anchor under the outer search bar.
+        assertTrue(source.contains(
+            ".add(WindowInsets(top = AppBarHeight))",
+        ))
+    }
+
+    @Test
+    fun `other detail pages with overlaid headers reserve toolbar height`() {
+        val paths = listOf(
+            "com/nikhil/yt/ui/screens/AccountScreen.kt",
+            "com/nikhil/yt/ui/screens/artist/ArtistAlbumsScreen.kt",
+            "com/nikhil/yt/ui/screens/artist/ArtistSongsScreen.kt",
+            "com/nikhil/yt/ui/screens/artist/ArtistItemsScreen.kt",
+        )
+        paths.forEach { path ->
+            val screen = source(path)
+            assertTrue("$path lacks pinned TopAppBar", screen.contains("TopAppBar("))
+            assertTrue("$path draws its first row below its TopAppBar",
+                screen.contains(".add(WindowInsets(top = AppBarHeight))"))
+        }
+        val artistItems = source("com/nikhil/yt/ui/screens/artist/ArtistItemsScreen.kt")
+        assertTrue(artistItems.contains(
+            "windowInsetsPadding(LocalPlayerAwareWindowInsets.current.add(WindowInsets(top = AppBarHeight)))",
+        ))
+    }
+
 }
