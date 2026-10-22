@@ -219,14 +219,18 @@ object ExperimentalCatalog {
                 throw java.io.IOException("Provider HTTP ${connection.responseCode}")
             }
             connection.inputStream.bufferedReader().use { input ->
-                // Limit malformed/oversized catalog responses and memory pressure.
-                val text = CharArray(512 * 1024)
-                val size = input.read(text)
-                if (size < 0) throw java.io.IOException("Empty response")
-                // Catalog federation can be larger; don't parse a truncated JSON response.
-                val rest = input.read()
-                if (rest != -1) throw java.io.IOException("Catalog too large")
-                JSONObject(String(text, 0, size))
+                val buffer = CharArray(8192)
+                val body = StringBuilder()
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    if (body.length + count > 512 * 1024) {
+                        throw java.io.IOException("Catalog response too large")
+                    }
+                    body.append(buffer, 0, count)
+                }
+                if (body.isEmpty()) throw java.io.IOException("Empty catalog response")
+                JSONObject(body.toString())
             }
         } finally { connection.disconnect() }
     }
