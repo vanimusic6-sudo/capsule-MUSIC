@@ -9,9 +9,9 @@ import com.nikhil.yt.playback.queues.Queue
 fun ExperimentalCatalog.Track.toCapsuleMetadata() = MediaMetadata(
     id = mediaId,
     title = title,
-    artists = listOf(MediaMetadata.Artist(id = null, name = artist)),
+    artists = listOf(MediaMetadata.Artist(id = artistId ?: artist, name = artist)),
     duration = durationSeconds,
-    thumbnailUrl = artwork,
+    thumbnailUrl = artworkLarge ?: artwork,
     sourceUrl = sourcePage,
 )
 

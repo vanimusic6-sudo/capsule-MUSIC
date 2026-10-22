@@ -50,6 +50,7 @@ import com.nikhil.yt.ui.screens.artist.ArtistAlbumsScreen
 import com.nikhil.yt.ui.screens.artist.ArtistItemsScreen
 import com.nikhil.yt.ui.screens.artist.ArtistScreen
 import com.nikhil.yt.ui.screens.artist.ArtistSongsScreen
+import com.nikhil.yt.ui.screens.discovery.ExperimentalArtistScreen
 import com.nikhil.yt.ui.screens.library.LibraryScreen
 import com.nikhil.yt.ui.screens.playlist.AutoPlaylistScreen
 import com.nikhil.yt.ui.screens.playlist.LocalPlaylistScreen
@@ -140,6 +141,24 @@ fun NavGraphBuilder.navigationBuilder(
     ) {
         OnlineSearchResult(navController)
     }
+    routeComposable(
+        route = "discovery/artist?source={source}&name={name}&id={id}&url={url}",
+        arguments = listOf(
+            navArgument("source") { type = NavType.StringType; defaultValue = "" },
+            navArgument("name") { type = NavType.StringType; defaultValue = "" },
+            navArgument("id") { type = NavType.StringType; defaultValue = "" },
+            navArgument("url") { type = NavType.StringType; defaultValue = "" },
+        ),
+    ) { entry ->
+        ExperimentalArtistScreen(
+            navController = navController,
+            sourceName = entry.arguments?.getString("source").orEmpty(),
+            artist = entry.arguments?.getString("name").orEmpty(),
+            artistId = entry.arguments?.getString("id"),
+            originalPage = entry.arguments?.getString("url"),
+        )
+    }
+
     routeComposable(
         route = "album/{albumId}",
         arguments =

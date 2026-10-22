@@ -830,4 +830,9 @@
     <string name="capsule_discovery_electronic">Электроника</string>
     <string name="capsule_discovery_unavailable">Источник временно недоступен. Повторите попытку позже.</string>
     <string name="capsule_discovery_home_title">За пределами привычного</string>
+    <string name="capsule_discovery_open_source">Открыть оригинальный релиз</string>
+    <string name="capsule_discovery_license">Лицензия записи</string>
+    <string name="capsule_discovery_retry">Повторить</string>
+    <string name="capsule_discovery_partial_catalog">В доступной части федеративного каталога Mirlo совпадений нет. Попробуйте имя исполнителя или другой запрос.</string>
+    <string name="capsule_discovery_author_archive">Записи автора в Internet Archive ↗</string>
 </resources>

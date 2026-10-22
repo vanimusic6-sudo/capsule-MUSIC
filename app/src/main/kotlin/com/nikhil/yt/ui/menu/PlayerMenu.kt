@@ -116,6 +116,7 @@ import com.nikhil.yt.constants.EqualizerSelectedProfileIdKey
 import com.nikhil.yt.constants.EqualizerVirtualizerEnabledKey
 import com.nikhil.yt.constants.EqualizerVirtualizerStrengthKey
 import com.nikhil.yt.constants.ListItemHeight
+import com.nikhil.yt.discovery.ExperimentalArtistRoute
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.playback.EqCapabilities
 import com.nikhil.yt.playback.EqProfile
@@ -237,7 +238,9 @@ fun PlayerMenu(
                     thumbnailUrl = splitArtist.originalArtist?.thumbnailUrl,
                     onClick = {
                         val id = splitArtist.originalArtist?.id ?: return@ArtistSelectionItem
-                        navController.navigate("artist/$id")
+                        navController.navigate(
+                            ExperimentalArtistRoute.forMetadata(mediaMetadata) ?: "artist/$id"
+                        )
                         showSelectArtistDialog = false
                         playerBottomSheetState.collapseSoft()
                         onDismiss()
@@ -512,7 +515,10 @@ fun PlayerMenu(
                                         if (splitArtists.size == 1 && splitArtists[0].originalArtist != null) {
                                             onDismiss()
                                             playerBottomSheetState.snapTo(playerBottomSheetState.collapsedBound)
-                                            navController.navigate("artist/${splitArtists[0].originalArtist!!.id}")
+                                            navController.navigate(
+                                                ExperimentalArtistRoute.forMetadata(mediaMetadata)
+                                                    ?: "artist/${splitArtists[0].originalArtist!!.id}"
+                                            )
                                         } else {
                                             showSelectArtistDialog = true
                                         }

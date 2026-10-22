@@ -122,6 +122,12 @@ constructor(
         }
     }
 
+    fun retryExperimentalSearch(source: ExperimentalCatalog.Source) {
+        experimentalSearchJob?.cancel()
+        experimentalResults.remove(source)
+        ensureExperimentalSearch(source)
+    }
+
     fun disableExperimentalSearch() {
         experimentalSearchJob?.cancel()
         experimentalResults.clear()

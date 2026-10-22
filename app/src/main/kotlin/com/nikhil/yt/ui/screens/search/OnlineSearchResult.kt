@@ -37,6 +37,7 @@ import com.nikhil.yt.R
 import com.nikhil.yt.constants.AppBarHeight
 import com.nikhil.yt.constants.ExperimentalSourcesEnabledKey
 import com.nikhil.yt.constants.SearchFilterHeight
+import com.nikhil.yt.discovery.ExperimentalArtistRoute
 import com.nikhil.yt.discovery.ExperimentalCatalog
 import com.nikhil.yt.discovery.ExperimentalTrackQueue
 import com.nikhil.yt.extensions.togglePlayPause
@@ -89,7 +90,8 @@ private fun RareTrackRow(
     track: ExperimentalCatalog.Track,
     active: Boolean,
     onClick: () -> Unit,
-    onSourceClick: () -> Unit,
+    onArtistClick: () -> Unit,
+    onMenuClick: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
@@ -112,6 +114,7 @@ private fun RareTrackRow(
                 style = MaterialTheme.typography.bodyLarge,
             )
             Text(
+                modifier = Modifier.clickable(onClick = onArtistClick),
                 text = track.artist + " · " + track.source.title +
                     if (track.playable) "" else " · ↗",
                 style = MaterialTheme.typography.bodySmall,
@@ -120,8 +123,8 @@ private fun RareTrackRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        TextButton(onClick = onSourceClick) {
-            Text("↗", color = MaterialTheme.colorScheme.primary)
+        IconButton(onClick = onMenuClick) {
+            Icon(painterResource(R.drawable.more_vert), contentDescription = "More")
         }
     }
 }
@@ -264,19 +267,32 @@ fun OnlineSearchResult(
                     }
                 is OnlineSearchViewModel.ExperimentalSearchState.Failed ->
                     item(key = "rare-error") {
-                        Text(
-                            stringResource(R.string.capsule_discovery_unavailable),
-                            modifier = Modifier.padding(20.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        Column(Modifier.padding(20.dp)) {
+                            Text(
+                                stringResource(R.string.capsule_discovery_unavailable),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            TextButton(onClick = {
+                                rareSource?.let(viewModel::retryExperimentalSearch)
+                            }) {
+                                Text(stringResource(R.string.capsule_discovery_retry))
+                            }
+                        }
                     }
                 is OnlineSearchViewModel.ExperimentalSearchState.Ready -> {
                     if (visibleRareTracks.isEmpty()) {
                         item(key = "rare-empty") {
-                            EmptyPlaceholder(
-                                icon = R.drawable.search,
-                                text = stringResource(R.string.no_results_found),
-                            )
+                            Column(Modifier.padding(20.dp)) {
+                                Text(
+                                    if (rareSource == ExperimentalCatalog.Source.MIRLO)
+                                        stringResource(R.string.capsule_discovery_partial_catalog)
+                                    else stringResource(R.string.no_results_found),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                TextButton(onClick = { rareSource?.let(viewModel::retryExperimentalSearch) }) {
+                                    Text(stringResource(R.string.capsule_discovery_retry))
+                                }
+                            }
                         }
                     }
                     items(visibleRareTracks, key = { "rare-${it.mediaId}" }) { track ->
@@ -298,9 +314,43 @@ fun OnlineSearchResult(
                                     }
                                 }
                             },
-                            onSourceClick = {
-                                runCatching {
-                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(track.sourcePage)))
+                            onArtistClick = {
+                                navController.navigate(ExperimentalArtistRoute.forTrack(track))
+                            },
+                            onMenuClick = {
+                                menuState.show {
+                                    ListItem(
+                                        headlineContent = { Text(stringResource(R.string.view_artist)) },
+                                        supportingContent = { Text(track.artist) },
+                                        leadingContent = { Icon(painterResource(R.drawable.artist), null) },
+                                        modifier = Modifier.clickable {
+                                            menuState.dismiss()
+                                            navController.navigate(ExperimentalArtistRoute.forTrack(track))
+                                        },
+                                    )
+                                    ListItem(
+                                        headlineContent = { Text(stringResource(R.string.capsule_discovery_open_source)) },
+                                        supportingContent = { Text(track.source.title) },
+                                        leadingContent = { Icon(painterResource(R.drawable.info), null) },
+                                        modifier = Modifier.clickable {
+                                            menuState.dismiss()
+                                            runCatching {
+                                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(track.sourcePage)))
+                                            }
+                                        },
+                                    )
+                                    track.license?.let { license ->
+                                        ListItem(
+                                            headlineContent = { Text(stringResource(R.string.capsule_discovery_license)) },
+                                            supportingContent = { Text(license, maxLines = 2) },
+                                            modifier = Modifier.clickable {
+                                                menuState.dismiss()
+                                                runCatching {
+                                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(license)))
+                                                }
+                                            },
+                                        )
+                                    }
                                 }
                             },
                         )

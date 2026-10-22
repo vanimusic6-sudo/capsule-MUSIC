@@ -237,7 +237,7 @@ fun HomeScreen(
                             .distinct()
                             .take(2)
                     }
-                    ExperimentalDiscoveryShelf(tasteArtists = tastes)
+                    ExperimentalDiscoveryShelf(tasteArtists = tastes, navController = navController)
                 }
             }
 

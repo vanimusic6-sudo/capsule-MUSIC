@@ -6,6 +6,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.navigation.NavController
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
@@ -22,6 +25,8 @@ import coil3.compose.AsyncImage
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
 import com.nikhil.yt.discovery.ExperimentalCatalog
+import com.nikhil.yt.discovery.ExperimentalRanking
+import com.nikhil.yt.discovery.ExperimentalArtistRoute
 import com.nikhil.yt.discovery.ExperimentalTrackQueue
 import kotlinx.coroutines.CancellationException
 
@@ -30,7 +35,7 @@ import kotlinx.coroutines.CancellationException
  * Remote discovery never runs while this shelf is absent from composition.
  */
 @Composable
-internal fun ExperimentalDiscoveryShelf(tasteArtists: List<String>) {
+internal fun ExperimentalDiscoveryShelf(tasteArtists: List<String>, navController: NavController) {
     val context = LocalContext.current
     val playerConnection = LocalPlayerConnection.current ?: return
     var candidates by remember { mutableStateOf<List<ExperimentalCatalog.Track>>(emptyList()) }
@@ -38,12 +43,28 @@ internal fun ExperimentalDiscoveryShelf(tasteArtists: List<String>) {
 
     LaunchedEffect(tasteKey) {
         candidates = emptyList()
-        try {
-            candidates = ExperimentalCatalog.recommend(tasteArtists)
-        } catch (cancel: CancellationException) {
-            throw cancel
-        } catch (_: Exception) {
-            candidates = emptyList()
+        // Show Audius immediately. Archive and Mirlo are independent lanes:
+        // their timeouts cannot keep the entire shelf invisible.
+        supervisorScope {
+            val discovered = mutableListOf<ExperimentalCatalog.Track>()
+            for (source in ExperimentalCatalog.Source.entries) {
+                launch {
+                    val lane = try {
+                        ExperimentalCatalog.discoveryFrom(source, tasteArtists)
+                    } catch (cancel: CancellationException) {
+                        throw cancel
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                    if (lane.isNotEmpty()) {
+                        discovered.addAll(lane)
+                        candidates = ExperimentalRanking.select(
+                            discovered.toList(),
+                            java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay(),
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -95,6 +116,9 @@ internal fun ExperimentalDiscoveryShelf(tasteArtists: List<String>) {
                             )
                             Text(
                                 track.artist,
+                                modifier = Modifier.clickable {
+                                    navController.navigate(ExperimentalArtistRoute.forTrack(track))
+                                },
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.bodySmall,

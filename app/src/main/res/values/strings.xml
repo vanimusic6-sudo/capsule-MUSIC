@@ -966,4 +966,9 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="capsule_discovery_electronic">Electronic</string>
     <string name="capsule_discovery_unavailable">This source is temporarily unavailable. Try again later.</string>
     <string name="capsule_discovery_home_title">Beyond the familiar</string>
+    <string name="capsule_discovery_open_source">Open original release</string>
+    <string name="capsule_discovery_license">Music license</string>
+    <string name="capsule_discovery_retry">Try again</string>
+    <string name="capsule_discovery_partial_catalog">No matches in Mirlo’s currently accessible federated catalog. Try an artist name or another search.</string>
+    <string name="capsule_discovery_author_archive">Browse credited creator on Internet Archive ↗</string>
 </resources>
