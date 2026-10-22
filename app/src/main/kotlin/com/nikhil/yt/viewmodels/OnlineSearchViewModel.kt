@@ -100,6 +100,10 @@ constructor(
     fun ensureExperimentalSearch(source: ExperimentalCatalog.Source) {
         if (experimentalResults[source] != null) return
         experimentalSearchJob?.cancel()
+        // A cancelled previous source must not remain stuck in Loading on return.
+        experimentalResults.entries.removeAll { (otherSource, state) ->
+            otherSource != source && state is ExperimentalSearchState.Loading
+        }
         experimentalResults[source] = ExperimentalSearchState.Loading
         experimentalSearchJob = viewModelScope.launch {
             try {
