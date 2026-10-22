@@ -38,14 +38,6 @@ import com.nikhil.yt.db.entities.SongEntity
 import com.nikhil.yt.di.DownloadCache
 import com.nikhil.yt.di.PlayerCache
 import com.nikhil.yt.innertube.YouTube
-import com.nikhil.yt.innertube.soundcloud.SoundCloudNewPipe
-import com.nikhil.yt.soundcloud.SOUNDCLOUD_MEDIA_ID_PREFIX
-import com.nikhil.yt.soundcloud.SoundCloudCatalog
-import com.nikhil.yt.soundcloud.soundCloudMediaId
-import com.nikhil.yt.soundcloud.hasSoundCloudDownload
-import com.nikhil.yt.soundcloud.soundCloudDownloadFile
-import com.nikhil.yt.soundcloud.soundCloudDownloadPartFile
-import com.nikhil.yt.soundcloud.toSoundCloudMetadata
 import com.nikhil.yt.playback.audio.CapsuleAudioEngine
 import com.nikhil.yt.playback.audio.CapsulePlaybackSafety
 import com.nikhil.yt.utils.StreamClientUtils
@@ -113,100 +105,6 @@ constructor(
     }
 
     val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
-    val soundCloudPending = MutableStateFlow<Set<String>>(emptySet())
-
-    private val soundCloudDownloadScope =
-        CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-    internal fun enqueueSoundCloud(
-        track: SoundCloudCatalog.Track,
-    ) {
-        if (track.downloadable == false) return
-
-        val mediaId = soundCloudMediaId(track.permalink)
-        val current = downloads.value[mediaId]
-        val currentHasCanonicalTrackUri =
-            current == null ||
-                SoundCloudNewPipe.isTrackUrl(current.request.uri.toString())
-
-        if (
-            (current?.state == Download.STATE_COMPLETED &&
-                hasSoundCloudDownload(context, mediaId)) ||
-            (
-                currentHasCanonicalTrackUri &&
-                    (
-                        current?.state == Download.STATE_QUEUED ||
-                            current?.state == Download.STATE_DOWNLOADING
-                    )
-            )
-        ) {
-            return
-        }
-
-        if (current != null && !currentHasCanonicalTrackUri) {
-            Timber.tag("SoundCloudDownload").w(
-                "replacing-legacy-request id=%s state=%d scheme=%s host=%s",
-                mediaId,
-                current.state,
-                current.request.uri.scheme ?: "?",
-                current.request.uri.host ?: "?",
-            )
-        }
-
-        synchronized(soundCloudPending) {
-            if (mediaId in soundCloudPending.value) return
-            soundCloudPending.value = soundCloudPending.value + mediaId
-        }
-
-        Timber.tag("SoundCloudDownload").i(
-            "enqueue id=%s title=%s previousState=%s hasFile=%s",
-            mediaId,
-            track.title,
-            current?.state?.toString() ?: "none",
-            hasSoundCloudDownload(context, mediaId),
-        )
-
-        // Builds before the cache split could leave ordinary playback bytes in
-        // the persistent download cache under this exact id. They are not a
-        // valid resumable download and can also keep a stale format boundary,
-        // so start the first fixed download from a clean offline entry.
-        runCatching {
-            downloadCache.removeResource(mediaId)
-        }
-
-        database.transaction {
-            insert(track.toSoundCloudMetadata())
-        }
-
-        // Persist the canonical SoundCloud permalink. The Downloader resolves
-        // a fresh progressive CDN URL when it actually runs and can recover
-        // from an expired signed URL without changing the download identity.
-        val request =
-            DownloadRequest.Builder(
-                mediaId,
-                android.net.Uri.parse(track.permalink),
-            )
-                .setCustomCacheKey(mediaId)
-                .setData(track.title.toByteArray())
-                .build()
-
-        DownloadService.sendAddDownload(
-            context,
-            ExoDownloadService::class.java,
-            request,
-            false,
-        )
-
-        soundCloudDownloadScope.launch {
-            // DownloadManager publishes QUEUED asynchronously. Keep the
-            // immediate resolving indicator long enough to bridge that gap.
-            delay(1_500L)
-            soundCloudPending.update { pending ->
-                pending - mediaId
-            }
-        }
-    }
-
     private suspend fun awaitDownloadResolveWindow() {
         downloadResolveMutex.withLock {
             while (true) {
@@ -269,12 +167,6 @@ constructor(
     }
 
     private val downloaderFactory = DownloaderFactory { request ->
-        if (request.id.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX)) {
-            SoundCloudDownloader(
-                context = context,
-                request = request,
-            )
-        } else {
             ResolvingAudioDownloader(
                 mediaId = request.id,
                 cache = downloadCache,
@@ -296,7 +188,6 @@ constructor(
                         )
                 },
             )
-        }
     }
 
     private fun storeDownloadMetadata(mediaId: String, playbackData: CapsuleAudioEngine.PlaybackData) {
@@ -350,53 +241,7 @@ constructor(
     val downloadNotificationHelper =
         DownloadNotificationHelper(context, ExoDownloadService.CHANNEL_ID)
 
-    /*
-     * SoundCloud download requests survive APK updates in Media3's download
-     * index. Early SoundCloud builds stored the short-lived resolved CDN URL in
-     * request.uri. The file downloader introduced later expects request.uri to
-     * be the canonical SoundCloud track permalink, so those legacy rows can
-     * never resolve and DownloadManager keeps retrying them.
-     *
-     * Purge them before DownloadManager is constructed, otherwise Media3 will
-     * immediately resume the stale request on process start before the user can
-     * replace it.
-     */
-    private val downloadIndex =
-        DefaultDownloadIndex(databaseProvider).also { index ->
-            runCatching {
-                val staleSoundCloudIds = mutableListOf<String>()
-                index.getDownloads().use { cursor ->
-                    while (cursor.moveToNext()) {
-                        val download = cursor.download
-                        if (
-                            download.request.id.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX) &&
-                            !SoundCloudNewPipe.isTrackUrl(download.request.uri.toString())
-                        ) {
-                            staleSoundCloudIds += download.request.id
-                            Timber.tag("SoundCloudDownload").w(
-                                "purge-legacy-request id=%s state=%d scheme=%s host=%s",
-                                download.request.id,
-                                download.state,
-                                download.request.uri.scheme ?: "?",
-                                download.request.uri.host ?: "?",
-                            )
-                        }
-                    }
-                }
-
-                staleSoundCloudIds.forEach { id ->
-                    index.removeDownload(id)
-                    runCatching { downloadCache.removeResource(id) }
-                    runCatching { soundCloudDownloadPartFile(context, id).delete() }
-                    runCatching { soundCloudDownloadFile(context, id).delete() }
-                }
-            }.onFailure { failure ->
-                Timber.tag("SoundCloudDownload").w(
-                    failure,
-                    "legacy-request-migration-failed",
-                )
-            }
-        }
+    private val downloadIndex = DefaultDownloadIndex(databaseProvider)
 
     val downloadManager: DownloadManager =
         DownloadManager(
@@ -412,44 +257,17 @@ constructor(
                         download: Download,
                         finalException: Exception?,
                     ) {
-                        val isSoundCloud =
-                            download.request.id.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX)
-
-                        if (isSoundCloud) {
-                            Timber.tag("SoundCloudDownload").i(
-                                "manager-state id=%s state=%d stopReason=%d failureReason=%d bytes=%d percent=%.2f",
-                                download.request.id,
-                                download.state,
-                                download.stopReason,
-                                download.failureReason,
-                                download.bytesDownloaded,
-                                download.percentDownloaded,
-                            )
-                        }
-
                         if (download.state == Download.STATE_FAILED) {
-                            if (isSoundCloud) {
-                                Timber.tag("SoundCloudDownload").w(
-                                    finalException,
-                                    "manager-failed id=%s bytes=%d percent=%.2f",
-                                    download.request.id,
-                                    download.bytesDownloaded,
-                                    download.percentDownloaded,
-                                )
-                            } else {
-                                CapsuleAudioEngine.invalidateCachedStreamUrls(download.request.id)
-                                if (
-                                    finalException != null &&
-                                    CapsuleAudioEngine.isRateLimitedException(finalException)
-                                ) {
-                                    CapsuleAudioEngine.markRateLimitedFailure()
-                                }
-                                registerThrottleSignal(finalException)
+                            CapsuleAudioEngine.invalidateCachedStreamUrls(download.request.id)
+                            if (
+                                finalException != null &&
+                                CapsuleAudioEngine.isRateLimitedException(finalException)
+                            ) {
+                                CapsuleAudioEngine.markRateLimitedFailure()
                             }
+                            registerThrottleSignal(finalException)
                         } else if (download.state == Download.STATE_COMPLETED) {
-                            if (!isSoundCloud) {
-                                clearThrottleSignal()
-                            }
+                            clearThrottleSignal()
                             database.query {
                                 getSongByIdBlocking(download.request.id)?.song?.let { song ->
                                     if (song.dateDownload == null) update(song.copy(dateDownload = LocalDateTime.now()))
