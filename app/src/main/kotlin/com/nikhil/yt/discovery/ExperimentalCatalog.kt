@@ -191,7 +191,14 @@ object ExperimentalCatalog {
                     ?.takeIf { id -> id.matches(Regex("[A-Za-z0-9._-]+")) }
             }
         }
-        val licensedIds = safely { results("$base AND licenseurl:*creativecommons*") }
+        val licensedIds: List<String> = try {
+            results("$base AND licenseurl:http*")
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (error: Exception) {
+            Timber.tag("CapsuleDiscovery").w(error, "Archive licensed search failed")
+            emptyList()
+        }
         val candidates = if (licensedIds.isNotEmpty()) licensedIds else results(base)
         // Limit remote metadata reads; a single broken item must not poison the page.
         // Archive is large: each item commonly contains multiple derivative audio files.
