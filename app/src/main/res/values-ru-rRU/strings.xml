@@ -821,4 +821,13 @@
     <string name="capsule_advanced_mode_warning_title">Настройки для разработчиков</string>
     <string name="capsule_advanced_mode_warning_body">Изменяя настройки для разработчиков, вы можете замедлить или нарушить работу приложения. Разработчики Capsule уже подобрали оптимальные настройки для удобства большинства пользователей. Меняйте параметры осторожно и следите за результатом 😉</string>
     <string name="capsule_advanced_mode_warning_confirm">Понятно</string>
+    <string name="capsule_discovery_experimental">Экспериментальные источники</string>
+    <string name="capsule_discovery_toggle">Редкая и независимая музыка</string>
+    <string name="capsule_discovery_toggle_desc">Включает Audius, Internet Archive и Mirlo в поиске и рекомендациях. Для воспроизведения Mirlo требуется разрешённый API-доступ: пока доступна ссылка на платформу. При выключении экспериментальные запросы прекращаются.</string>
+    <string name="capsule_discovery_short">До 4 минут</string>
+    <string name="capsule_discovery_long">Более 4 минут</string>
+    <string name="capsule_discovery_old">До 2000 года</string>
+    <string name="capsule_discovery_electronic">Электроника</string>
+    <string name="capsule_discovery_unavailable">Источник временно недоступен. Повторите попытку позже.</string>
+    <string name="capsule_discovery_home_title">За пределами привычного</string>
 </resources>
