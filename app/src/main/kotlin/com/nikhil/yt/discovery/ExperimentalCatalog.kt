@@ -202,13 +202,14 @@ object ExperimentalCatalog {
         val candidates = if (licensedIds.isNotEmpty()) licensedIds else results(base)
         // Limit remote metadata reads; a single broken item must not poison the page.
         // Archive is large: each item commonly contains multiple derivative audio files.
-        return candidates.take(12).mapNotNull { id ->
+        return candidates.take(9).mapNotNull { id ->
             try {
                 val root = requestJson("https://archive.org/metadata/${enc(id)}")
                 val meta = root.optJSONObject("metadata") ?: return@mapNotNull null
                 val license = meta.optString("licenseurl")
-                if (!license.startsWith("https://creativecommons.org/") &&
-                    !license.startsWith("http://creativecommons.org/")) return@mapNotNull null
+                val licensedForPlayback =
+                    license.startsWith("https://creativecommons.org/") ||
+                    license.startsWith("http://creativecommons.org/")
                 val files = root.optJSONArray("files") ?: return@mapNotNull null
                 val file = (0 until files.length()).asSequence()
                     .mapNotNull { files.optJSONObject(it) }
@@ -234,7 +235,10 @@ object ExperimentalCatalog {
                     title = title,
                     artist = creator,
                     artwork = "https://archive.org/services/img/${enc(id)}",
-                    streamUrl = "https://archive.org/download/${enc(id)}/$nameUrl",
+                    // Items without a verified CC tag remain discoverable only:
+                    // send the user to Archive rather than assuming playback rights.
+                    streamUrl = if (licensedForPlayback)
+                        "https://archive.org/download/${enc(id)}/$nameUrl" else null,
                     sourcePage = "https://archive.org/details/${enc(id)}",
                     artistId = creator,
                     artistPage = creatorSearch,
@@ -252,12 +256,13 @@ object ExperimentalCatalog {
 
     private fun mirlo(query: String?): List<Track> {
         val matches = mutableListOf<Track>()
+        val fallback = mutableListOf<Track>()
         var succeeded = false
         val needle = query?.trim()?.lowercase().orEmpty()
         // Canimus has documented offset pagination, not a server-side text query.
         // Fetch small pages (large artist trees can exceed response limits), and
         // inspect several pages instead of always searching only the first 18 artists.
-        for (page in 0 until (if (needle.isEmpty()) 4 else 10)) {
+        for (page in 0 until (if (needle.isEmpty()) 4 else 6)) {
             val root = try {
                 requestJson("https://mirlo.space/v1/sm/canimus.json?skip=${page * 3}&take=3",
                     maxBytes = 4 * 1024 * 1024)
@@ -280,25 +285,23 @@ object ExperimentalCatalog {
                     nodeUrl else ownerPage
                 val img = node.optJSONObject("images")?.optJSONObject("cover")
                     ?.optString("src")?.takeIf { it.startsWith("https://") } ?: cover
-                if (type == "track" && nodeUrl.startsWith("https://") && name.isNotBlank() &&
-                    (needle.isEmpty() || listOf(name, currentArtist).any {
-                        it.contains(needle, ignoreCase = true)
-                    })
-                ) {
-                    matches.add(
-                        Track(
-                            source = Source.MIRLO,
-                            id = nodeUrl,
-                            title = name,
-                            artist = currentArtist.ifBlank { "Mirlo" },
-                            artwork = img,
-                            streamUrl = null, // Official client-key + per-user token required.
-                            sourcePage = nodeUrl,
-                            durationSeconds = node.optDouble("duration", 0.0).toInt(),
-                            artistId = currentPage,
-                            artistPage = currentPage,
-                        ),
+                if (type == "track" && nodeUrl.startsWith("https://") && name.isNotBlank()) {
+                    val track = Track(
+                        source = Source.MIRLO,
+                        id = nodeUrl,
+                        title = name,
+                        artist = currentArtist.ifBlank { "Mirlo" },
+                        artwork = img,
+                        streamUrl = null, // Authorized HLS tokens required by Mirlo.
+                        sourcePage = nodeUrl,
+                        durationSeconds = node.optDouble("duration", 0.0).toInt(),
+                        artistId = currentPage,
+                        artistPage = currentPage,
                     )
+                    if (fallback.size < 32) fallback.add(track)
+                    if (needle.isEmpty() || listOf(name, currentArtist).any {
+                            it.contains(needle, ignoreCase = true)
+                        }) matches.add(track)
                 }
                 val nested = node.optJSONArray("children") ?: return
                 for (i in 0 until nested.length()) nested.optJSONObject(i)?.let {
@@ -310,7 +313,11 @@ object ExperimentalCatalog {
             }
             if (matches.size >= 32) break
         }
-        return matches.distinctBy { it.mediaId }.take(32)
+        // The federation offers paging, but not a server-side full-text index.
+        // Returning opt-in artists as discoveries is preferable to claiming
+        // the entire Mirlo catalog has no tracks matching a local substring.
+        return (if (matches.isNotEmpty()) matches else fallback)
+            .distinctBy { it.mediaId }.take(32)
     }
 
     private fun enc(value: String): String = Uri.encode(value)
