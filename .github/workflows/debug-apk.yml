@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - experimental/discovery-open-catalogs-20261022
       - main
       - cleanup/capsule-player-only
       - next/capsule-clay
