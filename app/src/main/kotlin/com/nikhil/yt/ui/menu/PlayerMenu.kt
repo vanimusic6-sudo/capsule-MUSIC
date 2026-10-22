@@ -117,8 +117,6 @@ import com.nikhil.yt.constants.EqualizerVirtualizerEnabledKey
 import com.nikhil.yt.constants.EqualizerVirtualizerStrengthKey
 import com.nikhil.yt.constants.ListItemHeight
 import com.nikhil.yt.models.MediaMetadata
-import com.nikhil.yt.soundcloud.SOUNDCLOUD_MEDIA_ID_PREFIX
-import com.nikhil.yt.soundcloud.SoundCloudCatalog
 import com.nikhil.yt.playback.EqCapabilities
 import com.nikhil.yt.playback.EqProfile
 import com.nikhil.yt.playback.EqProfilesPayload
@@ -163,7 +161,7 @@ fun PlayerMenu(
     val downloadUtil = LocalDownloadUtil.current
     val download by downloadUtil.getDownload(mediaMetadata.id)
         .collectAsState(initial = null)
-    val isSoundCloud = mediaMetadata.id.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX)
+    val isExternalCatalog = mediaMetadata.id.startsWith("capsule-open:")
 
     val artists =
         remember(mediaMetadata.artists) {
@@ -615,28 +613,9 @@ fun PlayerMenu(
                             )
                         },
                         modifier = Modifier.clickable(
-                            enabled = !isSoundCloud || !mediaMetadata.sourceUrl.isNullOrBlank(),
+                            enabled = !isExternalCatalog,
                         ) {
-                            if (isSoundCloud) {
-                                val permalink = mediaMetadata.sourceUrl
-                                    ?.takeIf { it.startsWith("https://") }
-                                    ?: return@clickable
-
-                                downloadUtil.enqueueSoundCloud(
-                                    SoundCloudCatalog.Track(
-                                        title = mediaMetadata.title,
-                                        artist = mediaMetadata.artists.firstOrNull()?.name
-                                            ?: "SoundCloud",
-                                        uploaderUrl = mediaMetadata.artists.firstOrNull()?.id,
-                                        artworkUrl = mediaMetadata.thumbnailUrl,
-                                        permalink = permalink,
-                                        durationSeconds = mediaMetadata.duration
-                                            .coerceAtLeast(0)
-                                            .toLong(),
-                                        downloadable = null,
-                                    ),
-                                )
-                            } else {
+                            if (isExternalCatalog) return@clickable
                                 database.transaction {
                                     insert(mediaMetadata)
                                 }
@@ -652,7 +631,6 @@ fun PlayerMenu(
                                     downloadRequest,
                                     false,
                                 )
-                            }
                         }
                         , colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         )
