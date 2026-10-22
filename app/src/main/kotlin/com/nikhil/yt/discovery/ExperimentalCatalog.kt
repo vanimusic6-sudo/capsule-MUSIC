@@ -4,7 +4,6 @@ import android.net.Uri
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -177,7 +176,7 @@ object ExperimentalCatalog {
     private fun mirlo(query: String?): List<Track> {
         // Federation contains only artists who opted in. Streaming additionally needs
         // a client key and per-listener token; do not bypass that authorization.
-        val root = requestJson("https://mirlo.space/v1/sm/canimus.json?take=70")
+        val root = requestJson("https://mirlo.space/v1/sm/canimus.json?take=18")
         val found = mutableListOf<Track>()
         fun visit(node: JSONObject, artist: String, artwork: String?, depth: Int) {
             if (depth > 5 || found.size >= 90) return
@@ -224,7 +223,7 @@ object ExperimentalCatalog {
                 while (true) {
                     val count = input.read(buffer)
                     if (count < 0) break
-                    if (body.length + count > 512 * 1024) {
+                    if (body.length + count > 2 * 1024 * 1024) {
                         throw java.io.IOException("Catalog response too large")
                     }
                     body.append(buffer, 0, count)
