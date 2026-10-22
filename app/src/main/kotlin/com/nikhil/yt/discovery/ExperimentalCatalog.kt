@@ -63,24 +63,11 @@ object ExperimentalCatalog {
             }
             val archivePool = safely { archive(null) }
             val mirloPool = safely { mirlo(null) }
-            val lanes = listOf(audiusPool, archivePool, mirloPool)
-            val seen = mutableSetOf<String>()
-            val artists = mutableMapOf<String, Int>()
-            val result = mutableListOf<Track>()
-            var pos = 0
-            while (result.size < 18 && pos < 40) {
-                for (lane in lanes) {
-                    val track = lane.getOrNull(pos) ?: continue
-                    if (track.title.isBlank() || track.artist.isBlank()) continue
-                    if (track.durationSeconds > 1200) continue
-                    val artistKey = track.artist.trim().lowercase()
-                    if ((artists[artistKey] ?: 0) >= 2 || !seen.add(track.mediaId)) continue
-                    artists[artistKey] = (artists[artistKey] ?: 0) + 1
-                    result.add(track)
-                }
-                pos++
-            }
-            result
+            val dayKey = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay()
+            ExperimentalRanking.select(
+                tracks = audiusPool + archivePool + mirloPool,
+                dayKey = dayKey,
+            )
         }
     }
 
@@ -131,7 +118,7 @@ object ExperimentalCatalog {
             "mediatype:audio AND (title:(${query.take(80)}) OR creator:(${query.take(80)}))"
         }
         val url = "https://archive.org/advancedsearch.php?q=${enc(q)}" +
-            "&fl[]=identifier&rows=12&output=json&sort[]=downloads+desc"
+            "&fl[]=identifier&rows=8&output=json&sort[]=downloads+desc"
         val docs = requestJson(url).optJSONObject("response")?.optJSONArray("docs")
             ?: return emptyList()
         return (0 until docs.length()).mapNotNull { index ->
