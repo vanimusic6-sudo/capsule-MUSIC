@@ -23,7 +23,7 @@ class IncomingTrackLinksTest {
         assertEquals("RDAMVM$id", (IncomingTrackLinks.parse(examples.first()) as IncomingTrackLink.YouTube).playlistId)
     }
 
-    @Test fun recognizesSpotifyAndSoundCloudTracksIncludingSharedText() {
+    @Test fun recognizesSpotifyTracksIncludingSharedText() {
         val id = "4uLU6hMCjMI75M1A2tKUQC"
         val spotify = IncomingTrackLinks.parse("Listen on Spotify: https://open.spotify.com/track/$id?si=xyz")
         assertEquals("https://open.spotify.com/track/$id", (spotify as IncomingTrackLink.External).url)
@@ -31,10 +31,8 @@ class IncomingTrackLinksTest {
         val localized = IncomingTrackLinks.parse("https://open.spotify.com/intl-de/track/$id")
         assertEquals(spotify, localized)
         assertEquals(spotify, IncomingTrackLinks.parse("spotify:track:$id"))
-        val soundcloud = IncomingTrackLinks.parse("Take a listen: https://soundcloud.com/artist-name/track-name?utm_source=clipboard")
-        assertEquals(IncomingTrackLink.Provider.SOUNDCLOUD, (soundcloud as IncomingTrackLink.External).provider)
         assertTrue(IncomingTrackLinks.parse("https://spotify.link/abc123") is IncomingTrackLink.External)
-        assertTrue(IncomingTrackLinks.parse("https://on.soundcloud.com/abc123") is IncomingTrackLink.External)
+        assertNull(IncomingTrackLinks.parse("https://on.soundcloud.com/abc123"))
     }
 
     @Test fun skLaneIsNotAnAcceptedMusicProvider() {
