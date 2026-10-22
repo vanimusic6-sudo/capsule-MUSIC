@@ -9,7 +9,7 @@ internal sealed interface IncomingTrackLink {
     data class YouTube(val videoId: String, val playlistId: String?) : IncomingTrackLink
     data class External(val provider: Provider, val url: String) : IncomingTrackLink
 
-    enum class Provider { SPOTIFY, SOUNDCLOUD }
+    enum class Provider { SPOTIFY }
 }
 
 /** Pure URL parser: also accepts a link embedded in a Share sheet's descriptive text. */
@@ -66,16 +66,6 @@ internal object IncomingTrackLinks {
             }
             "spotify.link" -> if (parts.isNotEmpty()) {
                 IncomingTrackLink.External(IncomingTrackLink.Provider.SPOTIFY, raw)
-            } else null
-            "soundcloud.com", "www.soundcloud.com", "m.soundcloud.com" -> {
-                // SoundCloud uses /artist/track; do not pretend that sets, profiles or likes are tracks.
-                val excluded = setOf("sets", "likes", "reposts", "tracks", "albums", "discover", "you", "stream", "search")
-                if (parts.size >= 2 && first !in excluded && parts[1].lowercase() !in excluded) {
-                    IncomingTrackLink.External(IncomingTrackLink.Provider.SOUNDCLOUD, raw)
-                } else null
-            }
-            "on.soundcloud.com", "snd.sc" -> if (parts.isNotEmpty()) {
-                IncomingTrackLink.External(IncomingTrackLink.Provider.SOUNDCLOUD, raw)
             } else null
             else -> null
         }
