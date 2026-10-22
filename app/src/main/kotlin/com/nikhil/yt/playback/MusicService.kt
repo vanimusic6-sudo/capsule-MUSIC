@@ -2697,11 +2697,11 @@ class MusicService :
         autoAddedMediaIds.clear()
         queue.preloadItem?.let { preloadItem ->
             if (preloadItem.id.startsWith(EXPERIMENTAL_MEDIA_PREFIX)) {
+                // No resolved HTTPS URL exists until the asynchronous queue has loaded.
+                // Never hand a "capsule-open:" placeholder URI to MediaSourceFactory.
                 player.stop()
-                player.setMediaItem(preloadItem.toMediaItem())
+                player.clearMediaItems()
                 currentMediaMetadata.value = preloadItem
-                // External URLs are already provided by the queue and never resolved via YouTube.
-                player.playWhenReady = playWhenReady
             } else {
                 player.setMediaItem(preloadItem.toMediaItem())
                 player.prepare()
@@ -2722,7 +2722,7 @@ class MusicService :
                 if (
                     failedPreload?.id?.startsWith(EXPERIMENTAL_MEDIA_PREFIX) == true &&
                     currentQueue === queue &&
-                    player.currentMediaItem?.mediaId == failedPreload.id
+                    player.currentMediaItem == null
                 ) {
                     player.playWhenReady = false
                 }
@@ -2733,7 +2733,7 @@ class MusicService :
                 if (preload.id.startsWith(EXPERIMENTAL_MEDIA_PREFIX)) {
                     // A complete HTTPS queue is available immediately. No YouTube metadata
                     // resolving and no late third-party look-ahead mutation.
-                    if (currentQueue !== queue || player.currentMediaItem?.mediaId != preload.id) return@launch
+                    if (currentQueue !== queue) return@launch
                     player.setMediaItems(initialStatus.items, initialStatus.mediaItemIndex, initialStatus.position)
                     player.prepare()
                     player.playWhenReady = playWhenReady
