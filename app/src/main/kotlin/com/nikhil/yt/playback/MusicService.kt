@@ -208,8 +208,7 @@ import com.nikhil.yt.utils.SyncUtils
 import com.nikhil.yt.utils.GlobalLog
 import com.nikhil.yt.utils.isTransientClosedTlsHandshake
 import com.nikhil.yt.playback.audio.AudioCacheDataSource
-import com.nikhil.yt.soundcloud.SOUNDCLOUD_MEDIA_ID_PREFIX
-import com.nikhil.yt.soundcloud.soundCloudDownloadFile
+import com.nikhil.yt.discovery.ExperimentalCatalog.EXPERIMENTAL_MEDIA_PREFIX
 import com.nikhil.yt.playback.audio.AudioChunkedDataSource
 import com.nikhil.yt.playback.audio.AudioCacheSource
 import com.nikhil.yt.playback.audio.AudioNetworkDiagnosticDataSource
@@ -877,8 +876,8 @@ class MusicService :
             isUpcomingAudioNetworkEligible(mediaId)
 
     private fun prefetchUpcomingAudio() {
-        // SoundCloud has its own extractor and MediaSource; no YouTube prefetch.
-        if (player.currentMediaItem?.mediaId?.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX) == true) {
+        // External discovery tracks use their own HTTPS MediaSource; never YouTube prefetch.
+        if (player.currentMediaItem?.mediaId?.startsWith(EXPERIMENTAL_MEDIA_PREFIX) == true) {
             prefetchScheduleJob?.cancel()
             prefetchScheduleJob = null
             audioResolveCoordinator.cancelAll()
@@ -2679,13 +2678,11 @@ class MusicService :
         automixRuntime.seedMediaId = null
         autoAddedMediaIds.clear()
         queue.preloadItem?.let { preloadItem ->
-            if (preloadItem.id.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX)) {
+            if (preloadItem.id.startsWith(EXPERIMENTAL_MEDIA_PREFIX)) {
                 player.stop()
                 player.setMediaItem(preloadItem.toMediaItem())
                 currentMediaMetadata.value = preloadItem
-                // Match YouTube semantics: the user pressed play. While the
-                // signed SoundCloud URL is resolving the UI stays in the
-                // playing/loading state instead of looking manually paused.
+                // External URLs are already provided by the queue and never resolved via YouTube.
                 player.playWhenReady = playWhenReady
             } else {
                 player.setMediaItem(preloadItem.toMediaItem())
@@ -2705,7 +2702,7 @@ class MusicService :
             if (initialStatus.items.isEmpty()) {
                 val failedPreload = queue.preloadItem
                 if (
-                    failedPreload?.id?.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX) == true &&
+                    failedPreload?.id?.startsWith(EXPERIMENTAL_MEDIA_PREFIX) == true &&
                     currentQueue === queue &&
                     player.currentMediaItem?.mediaId == failedPreload.id
                 ) {
@@ -2715,42 +2712,13 @@ class MusicService :
             }
             val preload = queue.preloadItem
             if (preload != null) {
-                if (preload.id.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX)) {
-                    val resolvedItem = initialStatus.items.getOrNull(initialStatus.mediaItemIndex)
-                        ?: return@launch
+                if (preload.id.startsWith(EXPERIMENTAL_MEDIA_PREFIX)) {
+                    // A complete HTTPS queue is available immediately. No YouTube metadata
+                    // resolving and no late SoundCloud-style look-ahead mutation.
                     if (currentQueue !== queue || player.currentMediaItem?.mediaId != preload.id) return@launch
-                    player.setMediaItem(resolvedItem, initialStatus.position)
+                    player.setMediaItems(initialStatus.items, initialStatus.mediaItemIndex, initialStatus.position)
                     player.prepare()
                     player.playWhenReady = playWhenReady
-
-                    // A SoundCloud queue used to contain only the currently
-                    // playing item until Media3 emitted a later transition.
-                    // Resolve the first look-ahead page immediately so Queue UI,
-                    // next/previous and playlist playback behave like YouTube.
-                    launch(SilentHandler) {
-                        val lookAhead =
-                            withContext(Dispatchers.IO) {
-                                queue.nextPage()
-                                    .filterExplicit(
-                                        dataStore.get(HideExplicitKey, false),
-                                    )
-                                    
-                            }
-                        if (currentQueue !== queue) return@launch
-
-                        val existingIds =
-                            (0 until player.mediaItemCount)
-                                .map { player.getMediaItemAt(it).mediaId }
-                                .toHashSet()
-                        val additions =
-                            lookAhead
-                                .drop(1)
-                                .filter { it.mediaId !in existingIds }
-
-                        if (additions.isNotEmpty()) {
-                            player.addMediaItems(additions)
-                        }
-                    }
                 } else {
                     player.addMediaItems(0, initialStatus.items.subList(0, initialStatus.mediaItemIndex))
                     player.addMediaItems(
@@ -3693,9 +3661,8 @@ class MusicService :
         super.onMediaItemTransition(mediaItem, reason)
         publishSystemArtwork(mediaItem)
 
-        if (mediaItem?.mediaId?.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX) == true) {
-            // Keep SoundCloud visible in the normal player without feeding its ID
-            // to YouTube metadata, prefetch, automix, 403 recovery or stream caches.
+        if (mediaItem?.mediaId?.startsWith(EXPERIMENTAL_MEDIA_PREFIX) == true) {
+            // External catalogs are strictly isolated from YouTube resolver and recovery.
             streamRetryJob?.cancel()
             streamRetryJob = null
             prefetchScheduleJob?.cancel()
@@ -3952,8 +3919,8 @@ class MusicService :
 
     override fun onPlaybackStateChanged(@Player.State playbackState: Int) {
     super.onPlaybackStateChanged(playbackState)
-    if (player.currentMediaItem?.mediaId?.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX) == true) {
-        // Neither Youtube CDN readiness nor Youtube end-of-queue automix applies.
+    if (player.currentMediaItem?.mediaId?.startsWith(EXPERIMENTAL_MEDIA_PREFIX) == true) {
+        // Neither YouTube CDN readiness nor YouTube automix applies.
         return
     }
 
@@ -4274,9 +4241,9 @@ class MusicService :
     override fun onPlayerError(error: PlaybackException) {
         super.onPlayerError(error)
 
-        if (player.currentMediaItem?.mediaId?.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX) == true) {
-            // Do not classify a SoundCloud refusal as YouTube 403/bot detection.
-            Timber.tag("SoundCloud").w(error, "SoundCloud playback failed")
+        if (player.currentMediaItem?.mediaId?.startsWith(EXPERIMENTAL_MEDIA_PREFIX) == true) {
+            // Never classify an external source failure as a YouTube 403/bot check.
+            Timber.tag("CapsuleDiscovery").w(error, "External catalog playback failed")
             player.pause()
             return
         }
@@ -5661,30 +5628,18 @@ class MusicService :
 
 
     private fun createMediaSourceFactory(): MediaSource.Factory {
-        // SoundCloud playback and SoundCloud downloads must use different
-        // storage. NewPipe downloads to a dedicated file while playback stays
-        // independent. Previously Capsule streamed into downloadCache using the
-        // same key as DownloadManager. When the current track was also being
-        // downloaded, playback could hold the cache hole and CacheWriter would
-        // read the CDN bytes without being able to persist them.
-        val soundCloudStreamingSource = DefaultMediaSourceFactory(
-            CacheDataSource.Factory()
-                .setCache(playerCache)
-                .setUpstreamDataSourceFactory(
-                    DefaultDataSource.Factory(
-                        this,
-                        OkHttpDataSource.Factory(
-                            OkHttpClient.Builder()
-                                .followRedirects(true)
-                                .followSslRedirects(true)
-                                .build(),
-                        ),
-                    ),
-                )
-                .setFlags(FLAG_IGNORE_CACHE_ON_ERROR),
-        )
-        val soundCloudOfflineSource = DefaultMediaSourceFactory(
-            DefaultDataSource.Factory(this),
+        // No cache or YouTube request interceptor on experimental third-party streams.
+        // Avoids leaking external catalog IDs to our stable InnerTube/Audio CDN path.
+        val externalStreamingSource = DefaultMediaSourceFactory(
+            DefaultDataSource.Factory(
+                this,
+                OkHttpDataSource.Factory(
+                    OkHttpClient.Builder()
+                        .followRedirects(true)
+                        .followSslRedirects(true)
+                        .build(),
+                ),
+            ),
         )
         val dataSourceFactory = createDataSourceFactory()
         val extractorsFactory =
@@ -5708,56 +5663,10 @@ class MusicService :
 
         return object : MediaSource.Factory {
             override fun createMediaSource(mediaItem: MediaItem): MediaSource {
-                if (mediaItem.mediaId.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX)) {
-                    /*
-                     * The queue can already contain an older online MediaItem when a
-                     * SoundCloud download finishes. Do not trust that item's URI to
-                     * decide whether playback should be offline. The downloaded file
-                     * is the source of truth.
-                     *
-                     * This also fixes restored/generic items whose URI is the internal
-                     * "soundcloud:<hash>" id: if the file exists, replace that URI
-                     * before any OkHttp-backed source sees it.
-                     */
-                    val downloadedFile =
-                        soundCloudDownloadFile(this@MusicService, mediaItem.mediaId)
-                            .takeIf { it.isFile && it.length() > 0L }
-
-                    if (downloadedFile != null) {
-                        val offlineItem =
-                            mediaItem
-                                .buildUpon()
-                                .setUri(android.net.Uri.fromFile(downloadedFile))
-                                .build()
-
-                        Timber.tag("SoundCloud").i(
-                            "offline-hit id=%s bytes=%d uriScheme=%s",
-                            mediaItem.mediaId,
-                            downloadedFile.length(),
-                            mediaItem.localConfiguration?.uri?.scheme ?: "none",
-                        )
-                        return soundCloudOfflineSource.createMediaSource(offlineItem)
-                    }
-
-                    val localConfiguration = mediaItem.localConfiguration
-                    val isOfflineSoundCloudItem =
-                        localConfiguration?.uri?.scheme.equals("file", ignoreCase = true)
-
-                    if (isOfflineSoundCloudItem) {
-                        Timber.tag("SoundCloud").w(
-                            "offline-file-missing id=%s uri=%s",
-                            mediaItem.mediaId,
-                            localConfiguration?.uri,
-                        )
-                        return soundCloudOfflineSource.createMediaSource(mediaItem)
-                    }
-
-                    Timber.tag("SoundCloud").d(
-                        "network-source id=%s uriScheme=%s",
-                        mediaItem.mediaId,
-                        localConfiguration?.uri?.scheme ?: "none",
-                    )
-                    return soundCloudStreamingSource.createMediaSource(mediaItem)
+                if (mediaItem.mediaId.startsWith(EXPERIMENTAL_MEDIA_PREFIX)) {
+                    val uri = mediaItem.localConfiguration?.uri
+                    require(uri?.scheme == "https") { "External media must use a resolved HTTPS stream URL" }
+                    return externalStreamingSource.createMediaSource(mediaItem)
                 }
                 val legacyVideoItem = mediaItem.localConfiguration?.uri?.scheme == CAPSULE_VIDEO_SCHEME
                 val musicItem = if (legacyVideoItem) mediaItem.buildUpon()
@@ -5772,8 +5681,7 @@ class MusicService :
                 drmSessionManagerProvider: DrmSessionManagerProvider,
             ): MediaSource.Factory {
                 delegate.setDrmSessionManagerProvider(drmSessionManagerProvider)
-                soundCloudStreamingSource.setDrmSessionManagerProvider(drmSessionManagerProvider)
-                soundCloudOfflineSource.setDrmSessionManagerProvider(drmSessionManagerProvider)
+                externalStreamingSource.setDrmSessionManagerProvider(drmSessionManagerProvider)
                 return this
             }
 
@@ -5781,8 +5689,7 @@ class MusicService :
                 loadErrorHandlingPolicy: LoadErrorHandlingPolicy,
             ): MediaSource.Factory {
                 delegate.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
-                soundCloudStreamingSource.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
-                soundCloudOfflineSource.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
+                externalStreamingSource.setLoadErrorHandlingPolicy(loadErrorHandlingPolicy)
                 return this
             }
         }
