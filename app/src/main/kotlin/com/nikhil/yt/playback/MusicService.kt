@@ -2714,7 +2714,7 @@ class MusicService :
             if (preload != null) {
                 if (preload.id.startsWith(EXPERIMENTAL_MEDIA_PREFIX)) {
                     // A complete HTTPS queue is available immediately. No YouTube metadata
-                    // resolving and no late SoundCloud-style look-ahead mutation.
+                    // resolving and no late third-party look-ahead mutation.
                     if (currentQueue !== queue || player.currentMediaItem?.mediaId != preload.id) return@launch
                     player.setMediaItems(initialStatus.items, initialStatus.mediaItemIndex, initialStatus.position)
                     player.prepare()
