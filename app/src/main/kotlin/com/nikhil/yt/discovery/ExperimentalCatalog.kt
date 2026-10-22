@@ -1,6 +1,8 @@
 package com.nikhil.yt.discovery
 
 import android.net.Uri
+import com.nikhil.yt.innertube.YouTube
+import java.net.Proxy
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -307,7 +309,10 @@ object ExperimentalCatalog {
     private fun enc(value: String): String = Uri.encode(value)
     private fun requestJson(url: String, maxBytes: Int = 2 * 1024 * 1024): JSONObject {
         require(url.startsWith("https://"))
-        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+        // Respect Capsule's configured network proxy, especially when Archive/Mirlo
+        // are unreachable on networks where Audius still works.
+        val networkProxy = YouTube.streamProxy
+        val connection = (URL(url).openConnection(networkProxy ?: Proxy.NO_PROXY) as HttpURLConnection).apply {
             connectTimeout = 4500
             readTimeout = 6500
             setRequestProperty("Accept", "application/json")

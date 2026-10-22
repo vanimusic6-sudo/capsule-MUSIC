@@ -621,7 +621,7 @@ fun PlayerMenu(
                         modifier = Modifier.clickable(
                             enabled = !isExternalCatalog,
                         ) {
-                            if (isExternalCatalog) return@clickable
+                            if (!isExternalCatalog) {
                                 database.transaction {
                                     insert(mediaMetadata)
                                 }
@@ -637,6 +637,7 @@ fun PlayerMenu(
                                     downloadRequest,
                                     false,
                                 )
+                            }
                         }
                         , colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         )
