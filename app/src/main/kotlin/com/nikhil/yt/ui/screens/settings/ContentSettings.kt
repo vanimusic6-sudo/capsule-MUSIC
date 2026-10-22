@@ -72,6 +72,8 @@ fun ContentSettings(
     val (contentLanguage, onContentLanguageChange) = rememberPreference(key = ContentLanguageKey, defaultValue = "system")
     val (contentCountry, onContentCountryChange) = rememberPreference(key = ContentCountryKey, defaultValue = "system")
     val (hideExplicit, onHideExplicitChange) = rememberPreference(key = HideExplicitKey, defaultValue = false)
+    val (experimentalSourcesEnabled, setExperimentalSourcesEnabled) =
+        rememberPreference(ExperimentalSourcesEnabledKey, false)
     val (proxyEnabled, onProxyEnabledChange) = rememberPreference(key = ProxyEnabledKey, defaultValue = false)
     val (proxyType, onProxyTypeChange) = rememberEnumPreference(key = ProxyTypeKey, defaultValue = Proxy.Type.HTTP)
     val (proxyUrl, onProxyUrlChange) = rememberPreference(key = ProxyUrlKey, defaultValue = "host:port")
@@ -165,6 +167,15 @@ fun ContentSettings(
             onCheckedChange = onHideExplicitChange,
         )
 
+
+        PreferenceGroupTitle(title = stringResource(R.string.capsule_discovery_experimental))
+        SwitchPreference(
+            title = { Text(stringResource(R.string.capsule_discovery_toggle)) },
+            description = stringResource(R.string.capsule_discovery_toggle_desc),
+            icon = { Icon(painterResource(R.drawable.music_note), null) },
+            checked = experimentalSourcesEnabled,
+            onCheckedChange = setExperimentalSourcesEnabled,
+        )
 
         PreferenceGroupTitle(title = stringResource(R.string.app_language))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
