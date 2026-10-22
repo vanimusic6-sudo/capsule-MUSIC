@@ -63,6 +63,8 @@ import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.NavigationTitle
 import com.nikhil.yt.ui.utils.SnapLayoutInfoProvider
 import com.nikhil.yt.viewmodels.HomeViewModel
+import com.nikhil.yt.constants.ExperimentalSourcesEnabledKey
+import com.nikhil.yt.utils.rememberPreference
 
 
 /** Recognize the release shelf returned by the same YouTube Music Home feed. */
@@ -96,6 +98,7 @@ fun HomeScreen(
     val newReleaseAlbums by viewModel.newReleaseAlbums.collectAsState()
     val providerHasReleaseShelf = homePage?.sections?.any(::isYouTubeReleaseShelf) == true
     val forYouSuggestions by viewModel.forYouSuggestions.collectAsState()
+    val (experimentalSourcesEnabled, _) = rememberPreference(ExperimentalSourcesEnabledKey, false)
     val listenerPlaylists by viewModel.communityPlaylists.collectAsState()
 
 
@@ -225,6 +228,18 @@ fun HomeScreen(
                 }
             }
 
+
+            if (experimentalSourcesEnabled) {
+                item(key = "home:experimental-discovery") {
+                    val tastes = remember(forYouSuggestions) {
+                        forYouSuggestions.orEmpty()
+                            .mapNotNull { it.artists.firstOrNull()?.name }
+                            .distinct()
+                            .take(2)
+                    }
+                    ExperimentalDiscoveryShelf(tasteArtists = tastes)
+                }
+            }
 
             // This is the current YouTube Music release catalog, not a static
             // local playlist or a rebranded recommendation shelf.
