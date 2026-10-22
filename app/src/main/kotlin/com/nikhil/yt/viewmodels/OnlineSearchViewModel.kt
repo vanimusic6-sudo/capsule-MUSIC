@@ -21,18 +21,18 @@ import com.nikhil.yt.innertube.models.filterExplicit
 import com.nikhil.yt.innertube.pages.SearchSummaryPage
 import com.nikhil.yt.constants.HideExplicitKey
 import com.nikhil.yt.models.ItemsPage
-import com.nikhil.yt.soundcloud.SoundCloudCatalog
+import com.nikhil.yt.discovery.ExperimentalCatalog
+import com.nikhil.yt.constants.ExperimentalSourcesEnabledKey
 import com.nikhil.yt.utils.dataStore
 import com.nikhil.yt.utils.get
 import com.nikhil.yt.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -48,11 +48,14 @@ constructor(
     var summaryPage by mutableStateOf<SearchSummaryPage?>(null)
     val viewStateMap = mutableStateMapOf<String, ItemsPage?>()
 
-    internal var soundCloudResult by
-        mutableStateOf<SoundCloudCatalog.Result<SoundCloudCatalog.SearchPage>?>(null)
-        private set
+    sealed interface ExperimentalSearchState {
+        data object Loading : ExperimentalSearchState
+        data class Ready(val tracks: List<ExperimentalCatalog.Track>) : ExperimentalSearchState
+        data class Failed(val message: String) : ExperimentalSearchState
+    }
 
-    private var soundCloudSearchJob: Job? = null
+    val experimentalResults = mutableStateMapOf<ExperimentalCatalog.Source, ExperimentalSearchState>()
+    private var experimentalSearchJob: Job? = null
     private var loadMoreJob: Job? = null
 
     init {
@@ -94,68 +97,30 @@ constructor(
         }
     }
 
-    fun ensureSoundCloudSearch() {
-        if (soundCloudResult != null || soundCloudSearchJob?.isActive == true) return
-
-        soundCloudSearchJob = viewModelScope.launch {
-            delay(280L)
-
-            val initial = runInterruptible(Dispatchers.IO) {
-                SoundCloudCatalog.search(query)
-            }
-
-            if (initial !is SoundCloudCatalog.Result.Success) {
-                soundCloudResult = initial
-                return@launch
-            }
-
-            var page = initial.value.copy(
-                tracks = SoundCloudCatalog.validateTracks(
-                    initial.value.tracks,
-                ),
-            )
-            soundCloudResult = SoundCloudCatalog.Result.Success(page)
-
-            var continuation = page.continuation
-            var pagesLoaded = 0
-
-            while (
-                continuation != null &&
-                pagesLoaded < MAX_SOUNDCLOUD_SEARCH_PAGES &&
-                (
-                    page.tracks.size < MAX_SOUNDCLOUD_SEARCH_TRACKS ||
-                        page.users.size < MAX_SOUNDCLOUD_SEARCH_SECONDARY ||
-                        page.playlists.size < MAX_SOUNDCLOUD_SEARCH_SECONDARY
-                )
-            ) {
-                val request = continuation ?: break
-                val more = runInterruptible(Dispatchers.IO) {
-                    SoundCloudCatalog.searchMore(request)
+    fun ensureExperimentalSearch(source: ExperimentalCatalog.Source) {
+        if (experimentalResults[source] != null) return
+        experimentalSearchJob?.cancel()
+        experimentalResults[source] = ExperimentalSearchState.Loading
+        experimentalSearchJob = viewModelScope.launch {
+            try {
+                delay(220L)
+                if (!context.dataStore.get(ExperimentalSourcesEnabledKey, false)) return@launch
+                val tracks = ExperimentalCatalog.search(source, query)
+                if (context.dataStore.get(ExperimentalSourcesEnabledKey, false)) {
+                    experimentalResults[source] = ExperimentalSearchState.Ready(tracks)
                 }
-                if (more !is SoundCloudCatalog.Result.Success) break
-
-                val playableTracks =
-                    SoundCloudCatalog.validateTracks(
-                        more.value.tracks,
-                    )
-
-                page = page.copy(
-                    tracks = (page.tracks + playableTracks)
-                        .distinctBy { it.permalink }
-                        .take(MAX_SOUNDCLOUD_SEARCH_TRACKS),
-                    users = (page.users + more.value.users)
-                        .distinctBy { it.url }
-                        .take(MAX_SOUNDCLOUD_SEARCH_SECONDARY),
-                    playlists = (page.playlists + more.value.playlists)
-                        .distinctBy { it.url }
-                        .take(MAX_SOUNDCLOUD_SEARCH_SECONDARY),
-                    continuation = more.value.continuation,
-                )
-                soundCloudResult = SoundCloudCatalog.Result.Success(page)
-                continuation = more.value.continuation
-                pagesLoaded++
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (failure: Exception) {
+                experimentalResults[source] =
+                    ExperimentalSearchState.Failed(failure.message ?: "Source unavailable")
             }
         }
+    }
+
+    fun disableExperimentalSearch() {
+        experimentalSearchJob?.cancel()
+        experimentalResults.clear()
     }
 
     fun loadMore() {
@@ -178,11 +143,6 @@ constructor(
                         searchResult.continuation,
                     )
             }
-    }
-    private companion object {
-        const val MAX_SOUNDCLOUD_SEARCH_TRACKS = 50
-        const val MAX_SOUNDCLOUD_SEARCH_SECONDARY = 20
-        const val MAX_SOUNDCLOUD_SEARCH_PAGES = 5
     }
 
 }
