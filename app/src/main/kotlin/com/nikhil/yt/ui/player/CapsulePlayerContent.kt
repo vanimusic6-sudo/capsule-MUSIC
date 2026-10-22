@@ -601,7 +601,7 @@ fun CapsulePlayerContent(
                         val originalArtworkUrl = mediaMetadata.thumbnailUrl
                         val highResArtworkUrl = remember(mediaMetadata.id, originalArtworkUrl) {
                             originalArtworkUrl?.let { artwork ->
-                                if (mediaMetadata.id.startsWith("soundcloud:")) artwork
+                                if (mediaMetadata.id.startsWith("capsule-open:")) artwork
                                 else artwork.toHighResThumbnail()
                             }
                         }
