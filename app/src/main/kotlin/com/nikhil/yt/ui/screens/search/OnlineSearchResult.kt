@@ -3,6 +3,7 @@ package com.nikhil.yt.ui.screens.search
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -125,7 +126,7 @@ private fun RareTrackRow(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun OnlineSearchResult(
     navController: NavController,
@@ -336,17 +337,19 @@ fun OnlineSearchResult(
                 }
             }
         } else {
-            if (filteredPage == null) {
+            // Snapshot the Compose state into a stable local value for Kotlin smart casts.
+            val page = filteredPage
+            if (page == null) {
                 item(key = "filtered-loading") {
                     ShimmerHost { repeat(6) { ListItemPlaceHolder() } }
                 }
             } else {
-                items(filteredPage.items.distinctBy { it.id },
+                items(page.items.distinctBy { it.id },
                     key = { "filtered_${it.id}" }, itemContent = youtubeItemContent)
-                if (filteredPage.continuation != null) item(key = "loading") {
+                if (page.continuation != null) item(key = "loading") {
                     ShimmerHost { repeat(3) { ListItemPlaceHolder() } }
                 }
-                if (filteredPage.items.isEmpty()) item(key = "filtered-empty") {
+                if (page.items.isEmpty()) item(key = "filtered-empty") {
                     EmptyPlaceholder(icon = R.drawable.search,
                         text = stringResource(R.string.no_results_found))
                 }
