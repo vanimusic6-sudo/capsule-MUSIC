@@ -88,6 +88,7 @@ private fun RareTrackRow(
     track: ExperimentalCatalog.Track,
     active: Boolean,
     onClick: () -> Unit,
+    onSourceClick: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
@@ -118,8 +119,8 @@ private fun RareTrackRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        if (!track.playable) {
-            Icon(painterResource(R.drawable.arrow_top_left), contentDescription = null)
+        TextButton(onClick = onSourceClick) {
+            Text("↗", color = MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -278,21 +279,30 @@ fun OnlineSearchResult(
                         }
                     }
                     items(visibleRareTracks, key = { "rare-${it.mediaId}" }) { track ->
-                        RareTrackRow(track, mediaMetadata?.id == track.mediaId) {
-                            if (track.playable) {
-                                if (mediaMetadata?.id == track.mediaId) {
-                                    playerConnection.player.togglePlayPause()
+                        RareTrackRow(
+                            track = track,
+                            active = mediaMetadata?.id == track.mediaId,
+                            onClick = {
+                                if (track.playable) {
+                                    if (mediaMetadata?.id == track.mediaId) {
+                                        playerConnection.player.togglePlayPause()
+                                    } else {
+                                        ExperimentalTrackQueue.create(
+                                            viewModel.query, visibleRareTracks, track
+                                        )?.let(playerConnection::playQueue)
+                                    }
                                 } else {
-                                    ExperimentalTrackQueue.create(
-                                        viewModel.query, visibleRareTracks, track)
-                                        ?.let(playerConnection::playQueue)
+                                    runCatching {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(track.sourcePage)))
+                                    }
                                 }
-                            } else {
+                            },
+                            onSourceClick = {
                                 runCatching {
                                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(track.sourcePage)))
                                 }
-                            }
-                        }
+                            },
+                        )
                     }
                 }
             }
