@@ -209,6 +209,7 @@ import com.nikhil.yt.utils.GlobalLog
 import com.nikhil.yt.utils.isTransientClosedTlsHandshake
 import com.nikhil.yt.playback.audio.AudioCacheDataSource
 import com.nikhil.yt.discovery.ExperimentalCatalog.EXPERIMENTAL_MEDIA_PREFIX
+import com.nikhil.yt.constants.ExperimentalSourcesEnabledKey
 import com.nikhil.yt.playback.audio.AudioChunkedDataSource
 import com.nikhil.yt.playback.audio.AudioCacheSource
 import com.nikhil.yt.playback.audio.AudioNetworkDiagnosticDataSource
@@ -1961,6 +1962,20 @@ class MusicService :
                 }
             }
 
+        // Changing the Content kill switch revokes external streaming immediately.
+        dataStore.data
+            .map { it[ExperimentalSourcesEnabledKey] ?: false }
+            .distinctUntilChanged()
+            .collect(scope) { enabled ->
+                if (!enabled &&
+                    player.currentMediaItem?.mediaId?.startsWith(EXPERIMENTAL_MEDIA_PREFIX) == true
+                ) {
+                    player.stop()
+                    player.clearMediaItems()
+                    currentMediaMetadata.value = null
+                }
+            }
+
         scope.launch {
             connectivityObserver.networkStatus.collect { isConnected ->
                 isNetworkConnected.value = isConnected
@@ -2603,6 +2618,9 @@ class MusicService :
         queue: Queue,
         playWhenReady: Boolean = true,
     ) {
+        if (queue.preloadItem?.id?.startsWith(EXPERIMENTAL_MEDIA_PREFIX) == true &&
+            !dataStore.get(ExperimentalSourcesEnabledKey, false)
+        ) return
         val joined = togetherSessionState.value as? com.nikhil.yt.together.TogetherSessionState.Joined
         if (!isTogetherApplyingRemote() && joined?.role is com.nikhil.yt.together.TogetherRole.Guest) {
             if (!joined.roomState.settings.allowGuestsToControlPlayback) {
@@ -5666,6 +5684,9 @@ class MusicService :
                 if (mediaItem.mediaId.startsWith(EXPERIMENTAL_MEDIA_PREFIX)) {
                     val uri = mediaItem.localConfiguration?.uri
                     require(uri?.scheme == "https") { "External media must use a resolved HTTPS stream URL" }
+                    require(dataStore.get(ExperimentalSourcesEnabledKey, false)) {
+                        "Experimental sources are disabled"
+                    }
                     return externalStreamingSource.createMediaSource(mediaItem)
                 }
                 val legacyVideoItem = mediaItem.localConfiguration?.uri?.scheme == CAPSULE_VIDEO_SCHEME
