@@ -470,6 +470,10 @@ fun OnlineSearchResult(
                 SearchChip.OPENVERSE to R.drawable.ic_capsule_openverse,
             ),
             persistentIconValues = setOf(SearchChip.AUDIUS, SearchChip.OPENVERSE),
+            iconAccentColors = mapOf(
+                SearchChip.AUDIUS to Color(0xFF7B39E8),
+                SearchChip.OPENVERSE to Color(0xFF138C9B),
+            ),
         )
     }
 }
