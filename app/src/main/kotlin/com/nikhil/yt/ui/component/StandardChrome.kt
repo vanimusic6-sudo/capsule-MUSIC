@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -64,6 +65,7 @@ fun StandardHeaderTitle(
     accountImageUrl: String?,
     sourceIcon: Int? = null,
     sourceContentDescription: String? = null,
+    sourceAccents: List<Color> = emptyList(),
     onAccountClick: () -> Unit,
 ) {
     val accountLabel = stringResource(R.string.account)
@@ -88,7 +90,14 @@ fun StandardHeaderTitle(
                 .clickable(role = Role.Button, onClick = onAccountClick)
                 .semantics { contentDescription = sourceContentDescription ?: accountLabel },
         ) {
-            Box(Modifier.size(30.dp).clip(CircleShape).background(Color(0xFFBC3606)), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier.size(30.dp).clip(CircleShape)
+                    .background(sourceAccents.firstOrNull() ?: Color(0xFFBC3606))
+                    .then(if (sourceAccents.size > 1)
+                        Modifier.background(Brush.sweepGradient(sourceAccents + sourceAccents.first()))
+                        else Modifier),
+                contentAlignment = Alignment.Center,
+            ) {
                 if (sourceIcon != null) {
                     Icon(
                         painter = painterResource(sourceIcon),

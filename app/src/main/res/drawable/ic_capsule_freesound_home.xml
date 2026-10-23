@@ -1,1 +1,9 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="@android:color/transparent" android:strokeColor="@android:color/white" android:strokeWidth="2.1" android:strokeLineCap="round" android:pathData="M4,10 L4,14 M8,6 L8,18 M12,3 L12,21 M16,7 L16,17 M20,10 L20,14"/></vector>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <!-- Balanced filled audio-wave columns: legible at 22dp. -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M3.4,9.3 Q3.4,8.3 4.4,8.3 L5.7,8.3 Q6.7,8.3 6.7,9.3 L6.7,14.7 Q6.7,15.7 5.7,15.7 L4.4,15.7 Q3.4,15.7 3.4,14.7 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M8.3,5.9 Q8.3,4.9 9.3,4.9 L10.3,4.9 Q11.3,4.9 11.3,5.9 L11.3,18.1 Q11.3,19.1 10.3,19.1 L9.3,19.1 Q8.3,19.1 8.3,18.1 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M12.9,3.7 Q12.9,2.7 13.9,2.7 L14.9,2.7 Q15.9,2.7 15.9,3.7 L15.9,20.3 Q15.9,21.3 14.9,21.3 L13.9,21.3 Q12.9,21.3 12.9,20.3 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M17.5,8.1 Q17.5,7.1 18.5,7.1 L19.6,7.1 Q20.6,7.1 20.6,8.1 L20.6,15.9 Q20.6,16.9 19.6,16.9 L18.5,16.9 Q17.5,16.9 17.5,15.9 Z"/>
+</vector>

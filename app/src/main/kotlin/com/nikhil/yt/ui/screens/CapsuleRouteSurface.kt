@@ -221,6 +221,7 @@ fun CapsulePinnedHeader(route: String) {
                     accountImageUrl = LocalCapsuleHeaderAccountImage.current,
                     onAccountClick = { chooserOpen = true },
                     sourceIcon = sourceIcon,
+                    sourceAccents = effective.map { it.accent },
                     sourceContentDescription = stringResource(R.string.capsule_home_source_pick),
                 )
                 DropdownMenu(
@@ -252,11 +253,19 @@ fun CapsulePinnedHeader(route: String) {
                         DropdownMenuItem(
                             text = { Text(source.label) },
                             leadingIcon = {
-                                Icon(
-                                    painter = painterResource(source.icon),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(22.dp),
-                                )
+                                Box(
+                                    modifier = Modifier.size(30.dp).background(
+                                        source.accent, androidx.compose.foundation.shape.CircleShape,
+                                    ),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        painter = painterResource(source.icon),
+                                        contentDescription = null,
+                                        tint = androidx.compose.ui.graphics.Color.White,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
                             },
                             trailingIcon = {
                                 if (active) Icon(
