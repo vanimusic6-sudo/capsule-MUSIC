@@ -246,6 +246,21 @@ fun CapsulePinnedHeader(route: String) {
                             setExperimental(true)
                         },
                     )
+                    // Reset only Home's selected providers. Leave the user's
+                    // optional catalog/search preference unchanged.
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.capsule_home_reset_youtube)) },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(R.drawable.restore),
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = {
+                            setRaw(HomeFeedSource.DEFAULT)
+                            chooserOpen = false
+                        },
+                    )
                     HomeFeedSource.entries.forEach { source ->
                         // Show what actually feeds Home. Experimental catalogs are
                         // inactive until opted in, regardless of stored defaults.
