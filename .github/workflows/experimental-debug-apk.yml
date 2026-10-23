@@ -69,6 +69,64 @@ jobs:
                   print(label, "FAILED", type(e).__name__, str(e)[:200])
           PY
 
+      - name: Probe real source URLs and independent archives (diagnostic only)
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import json
+          import urllib.request
+          import urllib.parse
+          def data(url, timeout=10):
+              req = urllib.request.Request(url, headers={
+                  "User-Agent": "CapsuleMusic/1.0 (+https://github.com/vanimusic6-sudo/capsule-MUSIC)",
+                  "Accept": "application/json"})
+              with urllib.request.urlopen(req, timeout=timeout) as rsp:
+                  return json.load(rsp)
+          def range_test(url):
+              if not url or not url.startswith("https://"):
+                  return "no HTTPS candidate"
+              req = urllib.request.Request(url, headers={"Range":"bytes=0-31",
+                  "User-Agent":"CapsuleMusic/1.0"})
+              try:
+                  with urllib.request.urlopen(req, timeout=9) as rsp:
+                      first = rsp.read(16)
+                      return f"status={rsp.status},type={rsp.headers.get('Content-Type')},bytes={len(first)}"
+              except Exception as ex:
+                  return f"{type(ex).__name__}: {str(ex)[:80]}"
+          try:
+              x=data("https://api.openverse.org/v1/audio/?q=ambient&source=jamendo&page_size=3&category=music")
+              for item in x.get("results", [])[:2]:
+                  print("Jamendo indexed", item.get("category"), "stream probe:",
+                        range_test(item.get("url")))
+          except Exception as ex:
+              print("Jamendo metadata", type(ex).__name__, str(ex)[:120])
+          try:
+              q=urllib.parse.quote("collection:netlabels AND mediatype:audio")
+              x=data("https://archive.org/advancedsearch.php?q="+q+
+                  "&fl%5B%5D=identifier&rows=2&output=json")
+              ids=[d.get("identifier") for d in x.get("response",{}).get("docs",[])]
+              print("Archive search IDs:", len(ids))
+              for name in ids[:1]:
+                  item=data("https://archive.org/metadata/"+name)
+                  audio=next((f for f in item.get("files", [])
+                    if f.get("name","").lower().endswith(".mp3")), None)
+                  license=item.get("metadata",{}).get("licenseurl")
+                  print("Archive metadata:", bool(license),bool(audio))
+                  if audio:
+                      link="https://archive.org/download/"+name+"/"+urllib.parse.quote(audio["name"],safe="/")
+                      print("Archive byte range:",range_test(link))
+          except Exception as ex:
+              print("Archive probe",type(ex).__name__,str(ex)[:120])
+          try:
+              query=urllib.parse.quote("music filetype:audio")
+              x=data("https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrlimit=5&gsrsearch="+query+"&prop=imageinfo&iiprop=url%7Cmime%7Csize%7Cextmetadata&format=json")
+              files=[i.get("imageinfo",[{}])[0] for i in x.get("query",{}).get("pages",{}).values() if i.get("imageinfo")]
+              print("Commons native API file count:",len(files),
+                    "audio MIME count:",sum(1 for i in files if i.get("mime","").startswith("audio/")))
+          except Exception as ex:
+              print("Commons probe",type(ex).__name__,str(ex)[:120])
+          PY
+
       - name: Assemble universal debug APK
         run: |
           gradle :app:verifyAndroidJsonRuntime :app:assembleUniversalDebug \
