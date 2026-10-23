@@ -86,7 +86,15 @@ internal fun rememberCatalogHomeState(
                     .forEach { source ->
                         launch(Dispatchers.IO) {
                             val lanes = try {
-                                ExperimentalCatalog.homeLanes(source, tasteArtists)
+                                ExperimentalCatalog.homeLanes(source, tasteArtists) { lane ->
+                                    withContext(Dispatchers.Main) {
+                                        state.lanes = (state.lanes + lane).sortedWith(
+                                            compareBy<ExperimentalCatalog.HomeLane> {
+                                                HomeFeedSource.entries.indexOf(it.source)
+                                            }.thenBy { it.kind.ordinal },
+                                        )
+                                    }
+                                }
                             } catch (cancel: CancellationException) {
                                 throw cancel
                             } catch (error: Exception) {
@@ -95,11 +103,6 @@ internal fun rememberCatalogHomeState(
                             }
                             withContext(Dispatchers.Main) {
                                 if (lanes.isEmpty()) state.failed = state.failed + source
-                                else state.lanes = (state.lanes + lanes).sortedWith(
-                                    compareBy<ExperimentalCatalog.HomeLane> {
-                                        HomeFeedSource.entries.indexOf(it.source)
-                                    }.thenBy { it.kind.ordinal },
-                                )
                             }
                         }
                     }

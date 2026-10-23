@@ -140,8 +140,11 @@ object ExperimentalCatalog {
      * Preserve metadata-only Openverse results, whose original release page is still
      * useful even when a publisher doesn't expose a safe direct HTTPS stream.
      */
-    suspend fun homeLanes(source: HomeFeedSource, tasteArtists: List<String>): List<HomeLane> =
-        withContext(Dispatchers.IO) {
+    suspend fun homeLanes(
+        source: HomeFeedSource,
+        tasteArtists: List<String>,
+        onLane: suspend (HomeLane) -> Unit = {},
+    ): List<HomeLane> = withContext(Dispatchers.IO) {
             if (source == HomeFeedSource.YOUTUBE) return@withContext emptyList()
             val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay()
             val upstream = source.openverseId
@@ -169,7 +172,8 @@ object ExperimentalCatalog {
                 HomeLaneKind.FOR_YOU to { openverse(query = searchTaste, sourceFilter = upstream) },
             ) else emptyList()
             val used = mutableSetOf<String>()
-            queries.mapNotNull { (kind, loader) ->
+            val lanes = mutableListOf<HomeLane>()
+            for ((kind, loader) in queries) {
                 val candidates = safely {
                     cached("homelane:${source.id}:${kind.name}:$day:${searchTaste.orEmpty().lowercase()}") { loader() }
                 }
@@ -191,8 +195,15 @@ object ExperimentalCatalog {
                         .thenByDescending { it.playCount })
                     .filter { used.add(it.mediaId) }
                     .take(16).toList()
-                ordered.takeIf { it.isNotEmpty() }?.let { HomeLane(source, kind, it) }
+                if (ordered.isNotEmpty()) {
+                    val lane = HomeLane(source, kind, ordered)
+                    lanes.add(lane)
+                    // A slow or failing second Openverse query must not hold
+                    // back results already returned by the first one.
+                    onLane(lane)
+                }
             }
+            lanes
         }
 
     suspend fun artistTracks(source: Source, artist: String, id: String?): List<Track> =
