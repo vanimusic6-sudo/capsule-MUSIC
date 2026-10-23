@@ -30,11 +30,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -90,6 +92,8 @@ import com.nikhil.yt.extensions.toMediaItem
 import com.nikhil.yt.extensions.togglePlayPause
 import com.nikhil.yt.playback.ExoDownloadService
 import com.nikhil.yt.playback.queues.ListQueue
+import com.nikhil.yt.discovery.ExperimentalDownload
+import com.nikhil.yt.discovery.OfflineAudioQueue
 import com.nikhil.yt.ui.component.DefaultDialog
 import com.nikhil.yt.ui.component.DraggableScrollbar
 import com.nikhil.yt.ui.component.EmptyPlaceholder
@@ -148,6 +152,13 @@ fun AutoPlaylistScreen(
         "liked" -> PlaylistType.LIKE
         "downloaded" -> PlaylistType.DOWNLOAD
         else -> PlaylistType.OTHER
+    }
+
+    val downloadStates by ExperimentalDownload.states.collectAsState()
+    var externalSaved by remember { mutableStateOf<List<ExperimentalDownload.SavedAudio>>(emptyList()) }
+    LaunchedEffect(playlistType, downloadStates) {
+        externalSaved = if (playlistType == PlaylistType.DOWNLOAD)
+            ExperimentalDownload.savedFiles(context) else emptyList()
     }
 
     val wrappedSongs = remember(songs) {
@@ -281,7 +292,7 @@ fun AutoPlaylistScreen(
                 .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom).asPaddingValues(),
         ) {
             if (songs != null) {
-                if (songs!!.isEmpty()) {
+                if (songs!!.isEmpty() && externalSaved.isEmpty()) {
                     item {
                         EmptyPlaceholder(
                             icon = R.drawable.music_note,
@@ -289,7 +300,7 @@ fun AutoPlaylistScreen(
                         )
                     }
                 } else {
-                    if (!isSearching) {
+                    if (!isSearching && songs!!.isNotEmpty()) {
                         // Hero Header Item
                         item(key = "header") {
                             PlaylistHero(
@@ -372,8 +383,34 @@ fun AutoPlaylistScreen(
                         }
                     }
 
+                    if (playlistType == PlaylistType.DOWNLOAD && externalSaved.isNotEmpty()) {
+                        item(key = "capsule:offline:external-title") {
+                            Text(
+                                text = "Audius · " + stringResource(R.string.filter_downloaded),
+                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                        }
+                        items(externalSaved, key = { "capsule:offline:" + it.id }) { file ->
+                            ListItem(
+                                headlineContent = { Text(file.title, maxLines = 1) },
+                                supportingContent = { Text(file.artist + " · Audius") },
+                                leadingContent = {
+                                    Icon(painterResource(R.drawable.offline), contentDescription = null)
+                                },
+                                modifier = Modifier.fillMaxWidth().combinedClickable(
+                                    onClick = {
+                                        OfflineAudioQueue.create(externalSaved, file)
+                                            ?.let(playerConnection::playQueue)
+                                    },
+                                    onLongClick = {},
+                                ),
+                            )
+                        }
+                    }
+
                     // Sort Header
-                    item(key = "sortHeader") {
+                    if (songs!!.isNotEmpty()) item(key = "sortHeader") {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(start = 16.dp),
