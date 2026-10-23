@@ -335,7 +335,7 @@ object ExperimentalCatalog {
         category: String? = null,
     ): List<Track> {
         val args = mutableListOf(
-            "page_size=" + if (sourceFilter == "freesound") "12" else "20",
+            "page_size=${if (sourceFilter == "freesound") 12 else 20}",
             "filter_dead=true",
         )
         if (!query.isNullOrBlank()) args.add("q=${enc(query.take(100))}")
