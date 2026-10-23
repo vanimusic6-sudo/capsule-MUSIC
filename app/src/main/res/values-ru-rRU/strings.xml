@@ -837,4 +837,6 @@
     <string name="capsule_discovery_forgotten_title">Давно забытое</string>
     <string name="capsule_discovery_forgotten_description">Редкие записи из открытых архивов · уникальность не подтверждена</string>
     <string name="capsule_discovery_loading">Загружаем независимые музыкальные каталоги…</string>
+    <string name="capsule_home_source_pick">Источники главной</string>
+    <string name="capsule_home_all_sources">Все доступные источники</string>
 </resources>

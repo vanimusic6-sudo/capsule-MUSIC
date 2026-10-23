@@ -32,9 +32,24 @@ class HomeDiscoveryRegressionTest {
         assertFalse(navigation.contains("routeComposable(\"home_collections\")"))
         assertFalse(home.contains("ScrollActionButton("))
         assertFalse(home.contains("Spacer(Modifier.height(218.dp))"))
-        assertTrue(home.contains("quickPicks?.takeIf { it.isNotEmpty() }"))
+        assertTrue(home.contains("quickPicks?.takeIf { includeYouTube && it.isNotEmpty() }"))
         assertTrue(components.contains("animateTitle = false"))
         assertTrue(components.contains("itemWidth = 184.dp"))
+    }
+
+    @Test
+    fun sourcePickerOnlyAffectsHomeAndOldForgottenShelfIsGone() {
+        val home = source("ui/screens/HomeScreen.kt")
+        val header = source("ui/screens/CapsuleRouteSurface.kt")
+        val shelf = source("ui/screens/ExperimentalDiscoveryShelf.kt")
+        assertTrue(home.contains("HomeFeedSource.parse(homeSourceSetting)"))
+        assertTrue(home.contains("rareSources.isNotEmpty()"))
+        assertTrue(home.contains("includeYouTube"))
+        assertFalse(home.contains("ExperimentalForgottenShelf("))
+        assertTrue(header.contains("if (isHome)"))
+        assertTrue(header.contains("HomeFeedSource.entries.forEach"))
+        assertTrue(shelf.contains("discoveryFromHome(source, tasteArtists)"))
+        assertFalse(shelf.contains("ExperimentalForgottenShelf"))
     }
 
     @Test

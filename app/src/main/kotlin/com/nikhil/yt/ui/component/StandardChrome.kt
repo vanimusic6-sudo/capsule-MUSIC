@@ -63,6 +63,8 @@ fun StandardHeaderTitle(
     accountName: String?,
     accountImageUrl: String?,
     onAccountClick: () -> Unit,
+    sourceIcon: Int? = null,
+    sourceContentDescription: String? = null,
 ) {
     val accountLabel = stringResource(R.string.account)
     // The preference snapshot is primed before Compose. A returning signed-in
@@ -84,10 +86,17 @@ fun StandardHeaderTitle(
             contentAlignment = Alignment.Center,
             modifier = Modifier.size(40.dp).clip(CircleShape)
                 .clickable(role = Role.Button, onClick = onAccountClick)
-                .semantics { contentDescription = accountLabel },
+                .semantics { contentDescription = sourceContentDescription ?: accountLabel },
         ) {
             Box(Modifier.size(30.dp).clip(CircleShape).background(Color(0xFFBC3606)), contentAlignment = Alignment.Center) {
-                if (guestIcon != null) {
+                if (sourceIcon != null) {
+                    Icon(
+                        painter = painterResource(sourceIcon),
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp),
+                    )
+                } else if (guestIcon != null) {
                     Icon(
                         painter = painterResource(guestIcon),
                         contentDescription = null,

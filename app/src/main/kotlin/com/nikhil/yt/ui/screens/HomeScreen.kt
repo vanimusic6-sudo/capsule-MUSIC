@@ -64,6 +64,8 @@ import com.nikhil.yt.ui.component.NavigationTitle
 import com.nikhil.yt.ui.utils.SnapLayoutInfoProvider
 import com.nikhil.yt.viewmodels.HomeViewModel
 import com.nikhil.yt.constants.ExperimentalSourcesEnabledKey
+import com.nikhil.yt.constants.HomeFeedSourcesKey
+import com.nikhil.yt.discovery.HomeFeedSource
 import com.nikhil.yt.utils.rememberPreference
 
 
@@ -99,6 +101,11 @@ fun HomeScreen(
     val providerHasReleaseShelf = homePage?.sections?.any(::isYouTubeReleaseShelf) == true
     val forYouSuggestions by viewModel.forYouSuggestions.collectAsState()
     val (experimentalSourcesEnabled, _) = rememberPreference(ExperimentalSourcesEnabledKey, false)
+    val (homeSourceSetting, _) = rememberPreference(HomeFeedSourcesKey, HomeFeedSource.DEFAULT)
+    val homeSources = remember(homeSourceSetting) { HomeFeedSource.parse(homeSourceSetting) }
+    val includeYouTube = HomeFeedSource.YOUTUBE in homeSources
+    val rareSources = if (experimentalSourcesEnabled) homeSources - HomeFeedSource.YOUTUBE
+        else emptySet()
     val listenerPlaylists by viewModel.communityPlaylists.collectAsState()
 
 
@@ -178,7 +185,7 @@ fun HomeScreen(
                 overscrollEffect = null,
             ) {
 
-                    quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
+                    quickPicks?.takeIf { includeYouTube && it.isNotEmpty() }?.let { picks ->
                 item(key = "home:quick-hero") {
                     QuickPicksSection(
                         quickPicks = picks,
@@ -194,7 +201,7 @@ fun HomeScreen(
             }
 
 
-            keepListening?.takeIf { it.isNotEmpty() }?.let { songs ->
+            keepListening?.takeIf { includeYouTube && it.isNotEmpty() }?.let { songs ->
                 item(key = "home:keep-listening") {
                     Column {
                         NavigationTitle(title = stringResource(R.string.keep_listening))
@@ -212,7 +219,7 @@ fun HomeScreen(
                 }
             }
 
-            forYouSuggestions?.takeIf { it.isNotEmpty() }?.let { suggestions ->
+            forYouSuggestions?.takeIf { includeYouTube && it.isNotEmpty() }?.let { suggestions ->
                 item(key = "home:taste") {
                     TasteRecommendationsSection(
                         suggestions = suggestions,
@@ -229,7 +236,7 @@ fun HomeScreen(
             }
 
 
-            if (experimentalSourcesEnabled) {
+            if (rareSources.isNotEmpty()) {
                 item(key = "home:experimental-discovery") {
                     val tastes = remember(forYouSuggestions) {
                         forYouSuggestions.orEmpty()
@@ -237,10 +244,11 @@ fun HomeScreen(
                             .distinct()
                             .take(2)
                     }
-                    ExperimentalDiscoveryShelf(tasteArtists = tastes, navController = navController)
-                }
-                item(key = "home:experimental-forgotten") {
-                    ExperimentalForgottenShelf(navController = navController)
+                    ExperimentalDiscoveryShelf(
+                        tasteArtists = tastes,
+                        navController = navController,
+                        sources = rareSources,
+                    )
                 }
             }
 
@@ -249,7 +257,7 @@ fun HomeScreen(
             // Only add a release section when YouTube's Home feed has none.
             // Otherwise refresh the existing section in place to avoid a
             // duplicated carousel and a mid-scroll insert/remove jump.
-            newReleaseAlbums.takeIf { it.isNotEmpty() && !providerHasReleaseShelf }?.let { albums ->
+            newReleaseAlbums.takeIf { includeYouTube && it.isNotEmpty() && !providerHasReleaseShelf }?.let { albums ->
                 item(key = "home:youtube-new-release-albums") {
                     val releases = remember(albums) {
                         HomePage.Section(
@@ -280,7 +288,7 @@ fun HomeScreen(
                 }
             }
 
-            forgottenFavorites?.takeIf { it.isNotEmpty() }?.let { favorites ->
+            forgottenFavorites?.takeIf { includeYouTube && it.isNotEmpty() }?.let { favorites ->
                 item(key = "home:forgotten") {
                     Column {
                         NavigationTitle(title = stringResource(R.string.forgotten_favorites))
@@ -302,7 +310,7 @@ fun HomeScreen(
             }
 
             // Discover genuine user-created YouTube Music playlists in the feed.
-            listenerPlaylists.takeIf { it.isNotEmpty() }?.let { playlists ->
+            listenerPlaylists.takeIf { includeYouTube && it.isNotEmpty() }?.let { playlists ->
                 item(key = "home:listener-community-playlists") {
                     CommunityPlaylistsSection(
                         section = remember(playlists) {
@@ -323,7 +331,7 @@ fun HomeScreen(
                 }
             }
 
-            homePage?.sections
+            homePage?.sections?.takeIf { includeYouTube }
                 // If the provider repeats the release shelf, keep its first position.
                 ?.distinctBy { if (isYouTubeReleaseShelf(it)) "home:yt:releases" else
                     "home:yt:${it.endpoint?.browseId}:${it.title}:${it.items.firstOrNull()?.id}" }
@@ -374,7 +382,7 @@ fun HomeScreen(
                 }
             }
 
-            if (homeFeedError && homePage?.sections.isNullOrEmpty() && !isLoading) {
+            if (includeYouTube && homeFeedError && homePage?.sections.isNullOrEmpty() && !isLoading) {
                 item(key = "home:feed-error") {
                     Column(
                         modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -392,7 +400,7 @@ fun HomeScreen(
             }
 
             if (
-                isLoading || isLoadingMore
+                includeYouTube && (isLoading || isLoadingMore)
             ) {
                 item(key = "home:loading") {
                     HomeLoadingShimmer()
@@ -402,7 +410,7 @@ fun HomeScreen(
 
                 // "Подборки" means situations (road, sleep, party etc).
                 // Music shelves stay on the Home page.
-                item(key = "home:collections-button") {
+                if (includeYouTube) item(key = "home:collections-button") {
                     // A Capsule card, not the oversized Material pill. Padding
                     // below the card lifts it clear of the mini-player, while
                     // the existing player-aware list inset remains untouched.

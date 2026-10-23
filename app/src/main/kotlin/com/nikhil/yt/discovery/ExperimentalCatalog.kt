@@ -68,88 +68,63 @@ object ExperimentalCatalog {
      * no direct Jamendo API credentials, HTML scraping or accounts.
      */
     suspend fun recommend(tasteArtists: List<String>): List<Track> = coroutineScope {
-        val lanes = Source.entries.map { source ->
-            async(Dispatchers.IO) { discoveryFrom(source, tasteArtists) }
-        }
+        val lanes = HomeFeedSource.entries.filter { it != HomeFeedSource.YOUTUBE }
+            .map { source -> async(Dispatchers.IO) { safely { discoveryFromHome(source, tasteArtists) } } }
         ExperimentalRanking.select(
             tracks = lanes.flatMap { it.await() },
             dayKey = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay(),
+            tasteArtists = tasteArtists,
         )
     }
 
-    /** Each provider is independent. The home shelf paints each result as it arrives. */
+    /** Legacy callers: Audius or Jamendo-indexed results. */
     suspend fun discoveryFrom(source: Source, tasteArtists: List<String>): List<Track> =
-        withContext(Dispatchers.IO) {
-            cached("lane:${source.name}:" + tasteArtists.take(2).joinToString("|").lowercase()) {
-                when (source) {
-                        Source.AUDIUS -> audius("/tracks/trending/underground?limit=25") +
-                            tasteArtists.take(2).filter(String::isNotBlank).flatMap {
-                                safely { audius("/tracks/search?query=${enc(it)}&limit=4") }
-                            }
-                        Source.OPENVERSE -> {
-                            // Rotate the *genre*, not the listening history: niche
-                            // artists need not share names with mainstream favorites.
-                            val themes = listOf(
-                                "ambient", "electronic", "indie", "jazz",
-                                "instrumental", "downtempo", "experimental", "lofi",
-                            )
-                            val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC)
-                                .toEpochDay()
-                            val theme = themes[Math.floorMod(day, themes.size.toLong()).toInt()]
-                            val featured = openverse(query = theme, sourceFilter = "jamendo")
-                            if (featured.isNotEmpty()) featured else
-                                openverse(query = theme, category = "music")
-                        }
-                    }
-            }
+        when (source) {
+            Source.AUDIUS -> discoveryFromHome(HomeFeedSource.AUDIUS, tasteArtists)
+            Source.OPENVERSE -> discoveryFromHome(HomeFeedSource.JAMENDO, tasteArtists)
         }
 
     /**
-     * Independent, low-traffic archive/obscurity shelf.
-     *
-     * Openverse currently indexes Wikimedia Commons, Freesound and Jamendo audio.
-     * It does NOT index Internet Archive audio as an official source.
-     * "Forgotten" means curation from small/archival catalogs, not a provable
-     * claim that copies do not exist elsewhere on the internet.
+     * Source-selective Home discovery. Every provider has its own cache key;
+     * one unreachable Openverse upstream never stops Audius from appearing.
+     * Use only the official anonymous Openverse API for all three origins.
      */
-    suspend fun forgotten(): List<Track> = withContext(Dispatchers.IO) {
+    suspend fun discoveryFromHome(
+        source: HomeFeedSource,
+        tasteArtists: List<String>,
+    ): List<Track> = withContext(Dispatchers.IO) {
         val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay()
-        cached("forgotten:$day") {
-            val historical = listOf(
-                "traditional folk music", "vintage jazz", "historic recording",
-                "traditional song", "old blues", "archive folk song",
-                "phonograph music", "traditional instrumental",
-            )
-            val unusual = listOf(
-                "traditional music", "folk instrument", "rare instrument",
-                "field recording music", "old recording", "early electronic",
-            )
-            val primaryQuery = historical[Math.floorMod(day, historical.size.toLong()).toInt()]
-            var failed: Exception? = null
-            val primary = try {
-                openverse(query = primaryQuery, sourceFilter = "wikimedia_audio")
-            } catch (cancel: CancellationException) {
-                throw cancel
-            } catch (error: Exception) {
-                Timber.tag("CapsuleDiscovery").w(error, "Openverse historical lookup failed")
-                failed = error
-                emptyList()
-            }
-            val secondary = if (ForgottenDiscovery.select(primary, day, 12).size < 8) {
-                val fallbackQuery = unusual[Math.floorMod(day + 3, unusual.size.toLong()).toInt()]
-                try {
-                    openverse(query = fallbackQuery, sourceFilter = "freesound")
-                } catch (cancel: CancellationException) {
-                    throw cancel
-                } catch (error: Exception) {
-                    Timber.tag("CapsuleDiscovery").w(error, "Openverse secondary lookup failed")
-                    if (failed == null) failed = error
-                    emptyList()
+        cached("home:${source.id}:$day:" + tasteArtists.take(2).joinToString("|").lowercase()) {
+            when (source) {
+                HomeFeedSource.YOUTUBE -> emptyList()
+                HomeFeedSource.AUDIUS -> {
+                    val underground = audius("/tracks/trending/underground?limit=25")
+                    val artistMatches = tasteArtists.take(2).filter(String::isNotBlank).flatMap {
+                        safely { audius("/tracks/search?query=${enc(it)}&limit=5") }
+                    }
+                    underground + artistMatches
                 }
-            } else emptyList()
-            val result = ForgottenDiscovery.select(primary + secondary, day)
-            if (result.isEmpty() && failed != null) throw requireNotNull(failed)
-            result
+                else -> {
+                    val themes = when (source) {
+                        HomeFeedSource.JAMENDO -> listOf(
+                            "indie", "electronic", "jazz", "ambient", "rock", "experimental",
+                            "instrumental", "downtempo",
+                        )
+                        HomeFeedSource.WIKIMEDIA -> listOf(
+                            "folk music", "traditional song", "vintage jazz",
+                            "classical music", "instrumental music", "traditional music",
+                        )
+                        HomeFeedSource.FREESOUND -> listOf(
+                            "melodic music", "piano music", "ambient music",
+                            "instrumental", "guitar music", "electronic music",
+                        )
+                        else -> emptyList()
+                    }
+                    val theme = themes[Math.floorMod(day, themes.size.toLong()).toInt()]
+                    val upstream = requireNotNull(source.openverseId)
+                    openverse(query = theme, sourceFilter = upstream)
+                }
+            }
         }
     }
 

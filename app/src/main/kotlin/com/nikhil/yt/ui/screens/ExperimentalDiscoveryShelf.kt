@@ -26,6 +26,7 @@ import coil3.compose.AsyncImage
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
 import com.nikhil.yt.discovery.ExperimentalCatalog
+import com.nikhil.yt.discovery.HomeFeedSource
 import com.nikhil.yt.discovery.ExperimentalRanking
 import com.nikhil.yt.discovery.ExperimentalArtistRoute
 import com.nikhil.yt.discovery.ExperimentalTrackQueue
@@ -37,16 +38,21 @@ import timber.log.Timber
  * Remote discovery never runs while this shelf is absent from composition.
  */
 @Composable
-internal fun ExperimentalDiscoveryShelf(tasteArtists: List<String>, navController: NavController) {
+internal fun ExperimentalDiscoveryShelf(
+    tasteArtists: List<String>,
+    navController: NavController,
+    sources: Set<HomeFeedSource>,
+) {
     val context = LocalContext.current
     val playerConnection = LocalPlayerConnection.current ?: return
     var candidates by remember { mutableStateOf<List<ExperimentalCatalog.Track>>(emptyList()) }
     val tasteKey = remember(tasteArtists) { tasteArtists.take(2).joinToString("|") }
+    val sourcesKey = remember(sources) { HomeFeedSource.encode(sources) }
     var retry by remember { mutableIntStateOf(0) }
     var loading by remember { mutableStateOf(true) }
-    var failedSources by remember { mutableStateOf<Set<ExperimentalCatalog.Source>>(emptySet()) }
+    var failedSources by remember { mutableStateOf<Set<HomeFeedSource>>(emptySet()) }
 
-    LaunchedEffect(tasteKey, retry) {
+    LaunchedEffect(tasteKey, sourcesKey, retry) {
         candidates = emptyList()
         failedSources = emptySet()
         loading = true
@@ -54,10 +60,10 @@ internal fun ExperimentalDiscoveryShelf(tasteArtists: List<String>, navControlle
         // Its latency cannot hide or block the Audius shelf.
         supervisorScope {
             val discovered = mutableListOf<ExperimentalCatalog.Track>()
-            for (source in ExperimentalCatalog.Source.entries) {
+            for (source in HomeFeedSource.entries.filter { it in sources && it != HomeFeedSource.YOUTUBE }) {
                 launch {
                     val lane = try {
-                        ExperimentalCatalog.discoveryFrom(source, tasteArtists)
+                        ExperimentalCatalog.discoveryFromHome(source, tasteArtists)
                     } catch (cancel: CancellationException) {
                         throw cancel
                     } catch (error: Exception) {
@@ -70,6 +76,7 @@ internal fun ExperimentalDiscoveryShelf(tasteArtists: List<String>, navControlle
                         candidates = ExperimentalRanking.select(
                             discovered.toList(),
                             java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay(),
+                            tasteArtists = tasteArtists,
                         )
                     }
                 }
@@ -170,131 +177,3 @@ internal fun ExperimentalDiscoveryShelf(tasteArtists: List<String>, navControlle
     }
 }
 
-/**
- * The forgotten shelf runs independently of the Audius/Jamendo shelf and
- * stays dormant while the experimental Content preference is disabled.
- * It only uses Openverse's Wikimedia Commons and Freesound audio index.
- */
-@Composable
-internal fun ExperimentalForgottenShelf(navController: NavController) {
-    val context = LocalContext.current
-    val playerConnection = LocalPlayerConnection.current ?: return
-    var tracks by remember { mutableStateOf<List<ExperimentalCatalog.Track>>(emptyList()) }
-    var retry by remember { mutableIntStateOf(0) }
-    var loading by remember { mutableStateOf(true) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(retry) {
-        tracks = emptyList()
-        errorMessage = null
-        loading = true
-        try {
-            tracks = ExperimentalCatalog.forgotten()
-        } catch (cancel: CancellationException) {
-            throw cancel
-        } catch (error: Exception) {
-            Timber.tag("CapsuleDiscovery").w(error, "Forgotten Openverse shelf unavailable")
-            errorMessage = error.message ?: "Network error"
-        } finally {
-            loading = false
-        }
-    }
-    // Read localized copy via Compose resources so configuration changes
-    // (including Capsule's language switch) are applied without stale text.
-    val queueTitle = stringResource(R.string.capsule_discovery_forgotten_title)
-
-    Column(Modifier.fillMaxWidth()) {
-        Text(
-            text = stringResource(R.string.capsule_discovery_forgotten_title),
-            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 4.dp),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            text = stringResource(R.string.capsule_discovery_forgotten_description),
-            modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (tracks.isEmpty()) {
-            Text(
-                text = if (loading) stringResource(R.string.capsule_discovery_loading)
-                    else if (errorMessage != null) stringResource(R.string.capsule_discovery_unavailable) +
-                        " (" + errorMessage + ")"
-                    else stringResource(R.string.no_results_found),
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-            if (!loading) TextButton(
-                onClick = { retry++ },
-                modifier = Modifier.padding(horizontal = 12.dp),
-            ) { Text(stringResource(R.string.capsule_discovery_retry)) }
-        } else {
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(horizontal = 20.dp),
-            ) {
-                items(tracks, key = { "forgotten-${it.mediaId}" }) { track ->
-                Card(
-                    modifier = Modifier.width(152.dp).clickable {
-                        if (track.playable) {
-                            ExperimentalTrackQueue.create(
-                                title = queueTitle,
-                                tracks = tracks,
-                                start = track,
-                            )?.let(playerConnection::playQueue)
-                        } else {
-                            runCatching {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, Uri.parse(track.sourcePage)),
-                                )
-                            }
-                        }
-                    },
-                ) {
-                    Column {
-                        AsyncImage(
-                            model = track.artwork,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxWidth().height(152.dp)
-                                .clip(RoundedCornerShape(12.dp)),
-                        )
-                        Column(Modifier.padding(10.dp)) {
-                            Text(
-                                track.title,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(
-                                track.artist,
-                                modifier = Modifier.clickable {
-                                    navController.navigate(ExperimentalArtistRoute.forTrack(track))
-                                },
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                            Text(
-                                track.catalogProvider?.let {
-                                    when (it) {
-                                        "wikimedia_audio" -> "Wikimedia Commons"
-                                        "freesound" -> "Freesound"
-                                        else -> it
-                                    }
-                                } ?: "Openverse",
-                                color = MaterialTheme.colorScheme.primary,
-                                maxLines = 1,
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                        }
-                    }
-                }
-            }
-            }
-        }
-    }
-}

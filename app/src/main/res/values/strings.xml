@@ -973,4 +973,6 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="capsule_discovery_forgotten_title">Long forgotten</string>
     <string name="capsule_discovery_forgotten_description">Rare recordings from open archives · availability elsewhere is not verified</string>
     <string name="capsule_discovery_loading">Loading independent music catalogs…</string>
+    <string name="capsule_home_source_pick">Home music sources</string>
+    <string name="capsule_home_all_sources">All available sources</string>
 </resources>

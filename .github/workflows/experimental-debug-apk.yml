@@ -77,7 +77,7 @@ jobs:
       - name: Test independent discovery rankings
         run: |
           gradle :app:testUniversalDebugUnitTest \
-            --tests 'com.nikhil.yt.discovery.ForgottenDiscoveryTest' \
+            --tests 'com.nikhil.yt.discovery.HomeFeedSourceTest' \
             --tests 'com.nikhil.yt.discovery.ExperimentalRankingTest' \
             --no-daemon --stacktrace
 

@@ -55,6 +55,19 @@ class ExperimentalRankingTest {
         assertFalse(result.any { it.id == "4" })
     }
 
+    @Test fun picksPlayableMusicBeforeEffectsAndPreferTaste() {
+        val familiar = track(ExperimentalCatalog.Source.AUDIUS, 1, artist = "KnownArtist")
+        val effect = track(ExperimentalCatalog.Source.OPENVERSE, 2).copy(
+            title = "Alarm clock sound effect", audioCategory = "sound_effect",
+        )
+        val other = track(ExperimentalCatalog.Source.AUDIUS, 3, artist = "NewArtist")
+        val ranked = ExperimentalRanking.select(
+            listOf(effect, other, familiar), dayKey = 9L, tasteArtists = listOf("KnownArtist"),
+        )
+        assertEquals("KnownArtist", ranked.first().artist)
+        assertFalse(ranked.any { it.id == "2" })
+    }
+
     @Test fun missingSourceDoesNotLeaveAnEmptyShelf() {
         val pool = (0..35).map { track(ExperimentalCatalog.Source.AUDIUS, it) }
         assertEquals(18, ExperimentalRanking.select(pool, dayKey = 7).size)

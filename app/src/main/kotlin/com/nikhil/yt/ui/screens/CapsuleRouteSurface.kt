@@ -18,11 +18,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.Icon
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Text
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +46,10 @@ import com.nikhil.yt.constants.AppBarHeight
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.ui.component.StandardHeaderTitle
 import com.nikhil.yt.ui.component.StandardChrome
+import com.nikhil.yt.constants.HomeFeedSourcesKey
+import com.nikhil.yt.constants.ExperimentalSourcesEnabledKey
+import com.nikhil.yt.discovery.HomeFeedSource
+import com.nikhil.yt.utils.rememberPreference
 
 /**
  * Registers a destination that owns an opaque full-screen canvas.
@@ -193,11 +203,101 @@ fun CapsulePinnedHeader(route: String) {
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Box(modifier = Modifier.weight(1f)) {
-            StandardHeaderTitle(
-                accountName = LocalCapsuleHeaderAccountName.current,
-                accountImageUrl = LocalCapsuleHeaderAccountImage.current,
-                onAccountClick = { navController?.navigate("settings/account") },
-            )
+            if (isHome) {
+                val (raw, setRaw) = rememberPreference(
+                    HomeFeedSourcesKey, HomeFeedSource.DEFAULT,
+                )
+                val (experimental, setExperimental) = rememberPreference(
+                    ExperimentalSourcesEnabledKey, false,
+                )
+                var chooserOpen by remember { mutableStateOf(false) }
+                val selected = HomeFeedSource.parse(raw)
+                val effective = if (experimental) selected
+                    else selected.filterTo(linkedSetOf()) { it == HomeFeedSource.YOUTUBE }
+                val sourceIcon = if (effective.size == 1) effective.first().icon
+                    else R.drawable.ic_capsule_home_sources
+                StandardHeaderTitle(
+                    accountName = LocalCapsuleHeaderAccountName.current,
+                    accountImageUrl = LocalCapsuleHeaderAccountImage.current,
+                    onAccountClick = { chooserOpen = true },
+                    sourceIcon = sourceIcon,
+                    sourceContentDescription = stringResource(R.string.capsule_home_source_pick),
+                )
+                DropdownMenu(
+                    expanded = chooserOpen,
+                    onDismissRequest = { chooserOpen = false },
+                ) {
+                    Text(
+                        text = stringResource(R.string.capsule_home_source_pick),
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.capsule_home_all_sources)) },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_capsule_home_sources),
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = {
+                            setRaw(HomeFeedSource.DEFAULT)
+                            setExperimental(true)
+                        },
+                    )
+                    HomeFeedSource.entries.forEach { source ->
+                        val active = source in selected
+                        DropdownMenuItem(
+                            text = { Text(source.label) },
+                            leadingIcon = {
+                                Icon(
+                                    painter = painterResource(source.icon),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                            },
+                            trailingIcon = {
+                                if (active) Icon(
+                                    painter = painterResource(R.drawable.done),
+                                    contentDescription = null,
+                                )
+                            },
+                            onClick = {
+                                val next = selected.toMutableSet()
+                                // First tap on an unavailable/disabled source opts in
+                                // instead of confusingly unchecking an existing default.
+                                if (source != HomeFeedSource.YOUTUBE && !experimental) {
+                                    next.add(source)
+                                    setExperimental(true)
+                                } else {
+                                    if (active && next.size > 1) next.remove(source)
+                                    else next.add(source)
+                                }
+                                setRaw(HomeFeedSource.encode(next))
+                            },
+                        )
+                    }
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.account)) },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(R.drawable.person),
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = {
+                            chooserOpen = false
+                            navController?.navigate("settings/account")
+                        },
+                    )
+                }
+            } else {
+                StandardHeaderTitle(
+                    accountName = LocalCapsuleHeaderAccountName.current,
+                    accountImageUrl = LocalCapsuleHeaderAccountImage.current,
+                    onAccountClick = { navController?.navigate("settings/account") },
+                )
+            }
         }
         IconButton(onClick = { navController?.navigate("settings") }) {
             Icon(
