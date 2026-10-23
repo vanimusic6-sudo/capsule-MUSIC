@@ -106,12 +106,13 @@ jobs:
                   "&fl%5B%5D=identifier&rows=2&output=json")
               ids=[d.get("identifier") for d in x.get("response",{}).get("docs",[])]
               print("Archive search IDs:", len(ids))
-              for name in ids[:1]:
+              for name in ids[:2]:
                   item=data("https://archive.org/metadata/"+name)
                   audio=next((f for f in item.get("files", [])
-                    if f.get("name","").lower().endswith(".mp3")), None)
+                    if f.get("name","").lower().endswith((".mp3",".ogg",".oga",".opus",".flac",".m4a"))
+                    and 120000 <= int(f.get("size","0")) <= 40000000), None)
                   license=item.get("metadata",{}).get("licenseurl")
-                  print("Archive metadata:", bool(license),bool(audio))
+                  print("Archive metadata:", bool(license),bool(audio), "files",len(item.get("files",[])))
                   if audio:
                       link="https://archive.org/download/"+name+"/"+urllib.parse.quote(audio["name"],safe="/")
                       print("Archive byte range:",range_test(link))
