@@ -21,7 +21,7 @@ internal object ExperimentalRanking {
                 .filter { it.source == source }
                 .filter { it.title.isNotBlank() && it.artist.isNotBlank() }
                 .filter { it.durationSeconds in 0..1200 }
-                .filter { it.playable }
+                .filter { it.playable && it.source != ExperimentalCatalog.Source.RADIO }
                 .filter {
                     it.audioCategory.isNullOrBlank() ||
                         it.audioCategory.equals("music", true)

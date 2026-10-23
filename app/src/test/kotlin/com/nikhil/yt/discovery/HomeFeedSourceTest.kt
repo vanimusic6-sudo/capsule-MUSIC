@@ -25,6 +25,7 @@ class HomeFeedSourceTest {
         assertTrue(HomeFeedSource.YOUTUBE in sources)
         assertEquals(setOf(HomeFeedSource.YOUTUBE), sources)
         assertTrue(HomeFeedSource.ARCHIVE in HomeFeedSource.entries)
+        assertTrue(HomeFeedSource.RADIO in HomeFeedSource.entries)
     }
 
     @Test fun archiveCanBeSelectedWithoutChangingYoutubeAudio() {

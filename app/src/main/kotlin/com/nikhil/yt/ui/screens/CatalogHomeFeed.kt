@@ -248,7 +248,8 @@ internal fun CatalogHomeRow(
                                 // Archive/Wikimedia uploader metadata often lacks a
                                 // canonical artist. Never navigate to a dead page.
                                 modifier = Modifier.clickable {
-                                    if (track.artist.equals("Wikimedia Commons", true) ||
+                                    if (track.source == ExperimentalCatalog.Source.RADIO ||
+                                        track.artist.equals("Wikimedia Commons", true) ||
                                         track.artist.equals("Unknown artist", true)) {
                                         runCatching {
                                             context.startActivity(Intent(

@@ -14,7 +14,8 @@ enum class HomeFeedSource(val id: String, val label: String, val icon: Int, val 
     WIKIMEDIA("wikimedia_audio", "Wikimedia Commons", R.drawable.ic_capsule_wikimedia_home, Color(0xFF367CC3), "wikimedia_audio"),
     FREESOUND("freesound", "Freesound · Openverse", R.drawable.ic_capsule_freesound_home, Color(0xFF54A445), "freesound"),
     ARCHIVE("archive", "Internet Archive · Netlabels", R.drawable.ic_capsule_archive_home, Color(0xFFB87346), null),
-    CCMIXTER("ccmixter", "ccMixter · Creative Commons", R.drawable.ic_capsule_ccmixter_home, Color(0xFF18A995), null);
+    CCMIXTER("ccmixter", "ccMixter · Creative Commons", R.drawable.ic_capsule_ccmixter_home, Color(0xFF18A995), null),
+    RADIO("radio", "Open Radio · LIVE", R.drawable.ic_capsule_radio_home, Color(0xFF26A99E), null);
 
     companion object {
         const val DEFAULT = "youtube"

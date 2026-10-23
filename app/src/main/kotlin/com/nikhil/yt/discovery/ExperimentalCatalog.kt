@@ -19,7 +19,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object ExperimentalCatalog {
     enum class Source(val title: String) {
-        AUDIUS("Audius"), OPENVERSE("Openverse"), ARCHIVE("Internet Archive"), CCMIXTER("ccMixter")
+        AUDIUS("Audius"), OPENVERSE("Openverse"), ARCHIVE("Internet Archive"), CCMIXTER("ccMixter"), RADIO("Open Radio")
     }
 
     data class Track(
@@ -79,6 +79,7 @@ object ExperimentalCatalog {
                 Source.OPENVERSE -> validateSearchTracks(openverse(query = trimmed))
                 Source.ARCHIVE -> InternetArchiveMusic.artist(trimmed)
                 Source.CCMIXTER -> CCMixterMusic.search(trimmed)
+                Source.RADIO -> RadioBrowserMusic.search(trimmed)
             }
         }
     }
@@ -105,6 +106,7 @@ object ExperimentalCatalog {
             Source.OPENVERSE -> discoveryFromHome(HomeFeedSource.JAMENDO, tasteArtists)
             Source.ARCHIVE -> discoveryFromHome(HomeFeedSource.ARCHIVE, tasteArtists)
             Source.CCMIXTER -> discoveryFromHome(HomeFeedSource.CCMIXTER, tasteArtists)
+            Source.RADIO -> emptyList()
         }
 
     /**
@@ -129,6 +131,7 @@ object ExperimentalCatalog {
                 }
                 HomeFeedSource.ARCHIVE -> InternetArchiveMusic.browse(HomeLaneKind.DISCOVER)
                 HomeFeedSource.CCMIXTER -> CCMixterMusic.browse(HomeLaneKind.DISCOVER)
+                HomeFeedSource.RADIO -> RadioBrowserMusic.browse(HomeLaneKind.TRENDING)
                 else -> {
                     val themes = when (source) {
                         HomeFeedSource.JAMENDO -> listOf(
@@ -171,6 +174,7 @@ object ExperimentalCatalog {
                 HomeFeedSource.FREESOUND -> listOf("instrumental", "melody", "ambient", "piano")
                 HomeFeedSource.ARCHIVE -> listOf("ambient", "electronic", "jazz", "rock")
                 HomeFeedSource.CCMIXTER -> listOf("remix", "instrumental", "downtempo", "electronica")
+                HomeFeedSource.RADIO -> listOf("ambient", "jazz", "world", "electronic")
                 else -> emptyList()
             }
             val theme = themes.takeIf { it.isNotEmpty() }
@@ -178,7 +182,11 @@ object ExperimentalCatalog {
             val searchTaste = tasteArtists.firstOrNull { it.isNotBlank() }?.take(80)
             // Each lane has its own cache and failure boundary. If a source's
             // personalized search fails, its popular and new music still load.
-            val queries = if (source == HomeFeedSource.CCMIXTER) listOf(
+            val queries = if (source == HomeFeedSource.RADIO) listOf(
+                HomeLaneKind.TRENDING to { RadioBrowserMusic.browse(HomeLaneKind.TRENDING) },
+                HomeLaneKind.DISCOVER to { RadioBrowserMusic.browse(HomeLaneKind.DISCOVER, theme) },
+                HomeLaneKind.NEW to { RadioBrowserMusic.browse(HomeLaneKind.NEW) },
+            ) else if (source == HomeFeedSource.CCMIXTER) listOf(
                 HomeLaneKind.TRENDING to { CCMixterMusic.browse(HomeLaneKind.TRENDING) },
                 HomeLaneKind.NEW to { CCMixterMusic.browse(HomeLaneKind.NEW) },
                 HomeLaneKind.DISCOVER to { CCMixterMusic.browse(HomeLaneKind.DISCOVER, theme) },
@@ -279,6 +287,7 @@ object ExperimentalCatalog {
                     ))
                     Source.ARCHIVE -> InternetArchiveMusic.artist(artist)
                     Source.CCMIXTER -> CCMixterMusic.byArtist(id ?: artist)
+                    Source.RADIO -> emptyList()
                 }
             }
         }
