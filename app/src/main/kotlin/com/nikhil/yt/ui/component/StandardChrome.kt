@@ -113,22 +113,14 @@ fun StandardHeaderTitle(
                         else Modifier),
                 contentAlignment = Alignment.Center,
             ) {
-                if (sourceIcons.size > 1) {
-                    // The selected services themselves form the combined
-                    // identity: no anonymous generic app icon.
-                    Row(verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy((-3).dp)) {
-                        sourceIcons.take(3).forEach { glyph ->
-                            Icon(painterResource(glyph), contentDescription = null,
-                                tint = Color.White, modifier = Modifier.size(12.dp))
-                        }
-                    }
-                } else if (sourceIcon != null) {
+                if (sourceIcon != null) {
+                    // An original combined-catalog glyph is much clearer than
+                    // intersecting three tiny badges at 30dp.
                     Icon(
                         painter = painterResource(sourceIcon),
                         contentDescription = null,
                         tint = Color.White,
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(if (sourceIcons.size > 1) 20.dp else 22.dp),
                     )
                 } else if (guestIcon != null) {
                     Icon(

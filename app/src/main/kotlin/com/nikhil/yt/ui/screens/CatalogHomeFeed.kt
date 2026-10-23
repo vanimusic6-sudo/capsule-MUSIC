@@ -274,19 +274,7 @@ internal fun CatalogHomeRow(
                                     color = cardSource.accent,
                                     modifier = Modifier.weight(1f),
                                 )
-                                if (track.downloadUrl != null) {
-                                    IconButton(
-                                        onClick = { ExperimentalDownload.enqueue(context, track) },
-                                        modifier = Modifier.size(32.dp),
-                                    ) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.download),
-                                            contentDescription = stringResource(R.string.capsule_discovery_download),
-                                            tint = MaterialTheme.colorScheme.onSurface,
-                                            modifier = Modifier.size(18.dp),
-                                        )
-                                    }
-                                }
+
                             }
                         }
                     }
