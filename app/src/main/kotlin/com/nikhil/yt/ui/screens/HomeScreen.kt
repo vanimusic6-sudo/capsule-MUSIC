@@ -66,6 +66,8 @@ import com.nikhil.yt.viewmodels.HomeViewModel
 import com.nikhil.yt.constants.ExperimentalSourcesEnabledKey
 import com.nikhil.yt.constants.HomeFeedSourcesKey
 import com.nikhil.yt.discovery.HomeFeedSource
+import com.nikhil.yt.discovery.ExperimentalCatalog
+import com.nikhil.yt.discovery.ExperimentalRanking
 import com.nikhil.yt.utils.rememberPreference
 
 
@@ -107,6 +109,11 @@ fun HomeScreen(
     val includeYouTube = !experimentalSourcesEnabled || HomeFeedSource.YOUTUBE in homeSources
     val rareSources = if (experimentalSourcesEnabled) homeSources - HomeFeedSource.YOUTUBE
         else emptySet()
+    val tastes = remember(forYouSuggestions) {
+        forYouSuggestions.orEmpty().mapNotNull { it.artists.firstOrNull()?.name }
+            .distinct().take(2)
+    }
+    val catalogHome = rememberCatalogHomeState(rareSources, tastes)
     val listenerPlaylists by viewModel.communityPlaylists.collectAsState()
 
 
@@ -139,7 +146,8 @@ fun HomeScreen(
     }
 
     // Paginate on the edge transition, never on every scroll pixel.
-    LaunchedEffect(lazylistState, homePage?.continuation) {
+    LaunchedEffect(lazylistState, homePage?.continuation, includeYouTube) {
+        if (!includeYouTube) return@LaunchedEffect
         snapshotFlow {
             val info = lazylistState.layoutInfo
             info.totalItemsCount > 0 &&
@@ -161,8 +169,11 @@ fun HomeScreen(
                 .fillMaxSize()
                 .pullToRefresh(
                     state = pullRefreshState,
-                    isRefreshing = isRefreshing,
-                    onRefresh = viewModel::refresh
+                    isRefreshing = if (includeYouTube) isRefreshing else catalogHome.loading,
+                    onRefresh = {
+                        if (includeYouTube) viewModel.refresh()
+                        if (rareSources.isNotEmpty()) catalogHome.refresh()
+                    }
                 )
         ) {
             val horizontalLazyGridItemWidthFactor = if (maxWidth * 0.475f >= 320.dp) 0.475f else 0.9f
@@ -237,19 +248,56 @@ fun HomeScreen(
             }
 
 
+            // External sources are true Home providers. Render multiple
+            // independent catalog rows rather than one optional music shelf.
             if (rareSources.isNotEmpty()) {
-                item(key = "home:experimental-discovery") {
-                    val tastes = remember(forYouSuggestions) {
-                        forYouSuggestions.orEmpty()
-                            .mapNotNull { it.artists.firstOrNull()?.name }
-                            .distinct()
-                            .take(2)
-                    }
-                    ExperimentalDiscoveryShelf(
+                val allTracks = catalogHome.lanes.flatMap { it.tracks }.distinctBy { it.mediaId }
+                val beyond = remember(allTracks, tastes) {
+                    ExperimentalRanking.select(
+                        allTracks,
+                        dayKey = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay(),
                         tasteArtists = tastes,
-                        navController = navController,
-                        sources = rareSources,
                     )
+                }
+                if (beyond.isNotEmpty()) item(key = "home:catalog-beyond") {
+                    CatalogHomeRow(
+                        title = stringResource(R.string.capsule_discovery_home_title),
+                        source = null,
+                        tracks = beyond,
+                        userScrollEnabled = horizontalShelvesEnabled.value,
+                        playerConnection = playerConnection,
+                        navController = navController,
+                    )
+                }
+                catalogHome.lanes.forEach { lane ->
+                    item(key = "home:catalog:" + lane.source.id + ":" + lane.kind.name) {
+                        CatalogHomeRow(
+                            title = lane.source.label + " · " + catalogLaneTitle(lane.kind),
+                            source = lane.source,
+                            tracks = lane.tracks,
+                            userScrollEnabled = horizontalShelvesEnabled.value,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                        )
+                    }
+                }
+                if (catalogHome.loading && catalogHome.lanes.isEmpty()) {
+                    item(key = "home:catalog-loading") {
+                        Text(
+                            text = stringResource(R.string.capsule_discovery_loading),
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                if (!catalogHome.loading && catalogHome.lanes.isEmpty()) {
+                    item(key = "home:catalog-error") {
+                        CatalogHomeError(onRetry = catalogHome::refresh)
+                    }
+                } else if (catalogHome.failed.isNotEmpty()) {
+                    item(key = "home:catalog-partial-error") {
+                        CatalogHomeError(onRetry = catalogHome::refresh)
+                    }
                 }
             }
 
