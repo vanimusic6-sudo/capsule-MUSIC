@@ -61,6 +61,7 @@ internal class CatalogHomeState {
     var lanes by mutableStateOf<List<ExperimentalCatalog.HomeLane>>(emptyList())
     var failed by mutableStateOf<Set<HomeFeedSource>>(emptySet())
     var loading by mutableStateOf(false)
+    var loadedKey by mutableStateOf("")
     var revision by mutableIntStateOf(0)
     fun refresh() { revision++ }
 }
@@ -74,7 +75,12 @@ internal fun rememberCatalogHomeState(
     val key = HomeFeedSource.encode(sources)
     val tasteKey = tasteArtists.take(2).joinToString("|")
     LaunchedEffect(key, tasteKey, state.revision) {
-        state.lanes = emptyList()
+        // Refresh without flashing away functioning cards. Switching a provider
+        // invalidates its old lanes; retry does not.
+        if (state.loadedKey != key) {
+            state.lanes = emptyList()
+            state.loadedKey = key
+        }
         state.failed = emptySet()
         state.loading = sources.isNotEmpty()
         if (sources.isEmpty()) return@LaunchedEffect
@@ -88,7 +94,9 @@ internal fun rememberCatalogHomeState(
                             val lanes = try {
                                 ExperimentalCatalog.homeLanes(source, tasteArtists) { lane ->
                                     withContext(Dispatchers.Main) {
-                                        state.lanes = (state.lanes + lane).sortedWith(
+                                        state.lanes = (state.lanes.filterNot {
+                                            it.source == lane.source && it.kind == lane.kind
+                                        } + lane).sortedWith(
                                             compareBy<ExperimentalCatalog.HomeLane> {
                                                 HomeFeedSource.entries.indexOf(it.source)
                                             }.thenBy { it.kind.ordinal },
