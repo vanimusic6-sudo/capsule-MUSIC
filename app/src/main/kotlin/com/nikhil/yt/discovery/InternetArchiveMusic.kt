@@ -79,7 +79,7 @@ internal object InternetArchiveMusic {
         val data = fetchJson("https://archive.org/metadata/$id", maxBytes = 3 * 1024 * 1024)
         val info = data.optJSONObject("metadata") ?: return emptyList()
         if (info.optString("access-restricted-item") == "true") return emptyList()
-        val license = info.optString("licenseurl").trim().takeIf {
+        val license = jsonString(info, "licenseurl").takeIf {
             it.startsWith("https://creativecommons.org/") ||
                 it.startsWith("http://creativecommons.org/")
         }
