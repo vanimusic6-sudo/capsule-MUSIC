@@ -230,8 +230,22 @@ internal fun CatalogHomeRow(
                                 text = track.artist,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
+                                // Archive/Wikimedia uploader metadata often lacks a
+                                // canonical artist. Never navigate to a dead page.
                                 modifier = Modifier.clickable {
-                                    navController.navigate(ExperimentalArtistRoute.forTrack(track))
+                                    if (track.artist.equals("Wikimedia Commons", true) ||
+                                        track.artist.equals("Unknown artist", true)) {
+                                        runCatching {
+                                            context.startActivity(Intent(
+                                                Intent.ACTION_VIEW,
+                                                Uri.parse(track.sourcePage),
+                                            ))
+                                        }
+                                    } else {
+                                        val route = ExperimentalArtistRoute.forTrack(track)
+                                        runCatching { navController.navigate(route) }
+                                            .onFailure { Timber.tag("CapsuleArtist").w(it, "Artist route") }
+                                    }
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                             )
