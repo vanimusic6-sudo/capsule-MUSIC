@@ -905,4 +905,5 @@
     <string name="capsule_discovery_download_started">Загрузка начата · см. «Загрузки»</string>
     <string name="capsule_discovery_download_completed">Сохранено в Загрузки/Capsule Music</string>
     <string name="capsule_discovery_download_failed">Не удалось начать загрузку</string>
+    <string name="capsule_last_crash">Последний отчёт о сбое</string>
 </resources>
