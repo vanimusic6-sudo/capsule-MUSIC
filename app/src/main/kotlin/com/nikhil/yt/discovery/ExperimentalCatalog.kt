@@ -178,18 +178,18 @@ object ExperimentalCatalog {
             ) else emptyList() else listOf(
                 HomeLaneKind.TRENDING to { when (source) {
                     HomeFeedSource.WIKIMEDIA -> WikimediaMusic.browse("music")
-                    HomeFeedSource.FREESOUND -> openverse("music loop", sourceFilter = upstream)
+                    HomeFeedSource.FREESOUND -> openverse("ambient", sourceFilter = upstream)
                     else -> openverse("music", sourceFilter = upstream, category = "music")
                 } },
                 HomeLaneKind.DISCOVER to { when (source) {
                     HomeFeedSource.WIKIMEDIA -> WikimediaMusic.browse(theme ?: "instrumental")
-                    HomeFeedSource.FREESOUND -> openverse("music " + (theme ?: "ambient"), sourceFilter = upstream)
+                    HomeFeedSource.FREESOUND -> openverse(theme ?: "instrumental", sourceFilter = upstream)
                     else -> openverse(theme ?: "instrumental", sourceFilter = upstream, category = "music")
                 } },
             ) + if (searchTaste != null) listOf(
                 HomeLaneKind.FOR_YOU to { when (source) {
                     HomeFeedSource.WIKIMEDIA -> WikimediaMusic.browse(searchTaste)
-                    HomeFeedSource.FREESOUND -> openverse("music " + searchTaste, sourceFilter = upstream)
+                    HomeFeedSource.FREESOUND -> openverse("instrumental", sourceFilter = upstream)
                     else -> openverse(searchTaste, sourceFilter = upstream, category = "music")
                 } },
             ) else emptyList()
@@ -335,7 +335,7 @@ object ExperimentalCatalog {
         category: String? = null,
     ): List<Track> {
         val args = mutableListOf(
-            "page_size=20",
+            "page_size=" + if (sourceFilter == "freesound") "12" else "20",
             "filter_dead=true",
         )
         if (!query.isNullOrBlank()) args.add("q=${enc(query.take(100))}")
