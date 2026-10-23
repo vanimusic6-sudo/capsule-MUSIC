@@ -48,6 +48,8 @@ class HomeDiscoveryRegressionTest {
         assertFalse(home.contains("ExperimentalForgottenShelf("))
         assertTrue(header.contains("if (isHome)"))
         assertTrue(header.contains("HomeFeedSource.entries.forEach"))
+        assertTrue(header.contains("val active = source in effective"))
+        assertTrue(header.contains("val next = effective.toMutableSet()"))
         assertTrue(shelf.contains("discoveryFromHome(source, tasteArtists)"))
         assertFalse(shelf.contains("ExperimentalForgottenShelf"))
     }

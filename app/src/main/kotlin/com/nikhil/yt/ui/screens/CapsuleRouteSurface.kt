@@ -246,7 +246,9 @@ fun CapsulePinnedHeader(route: String) {
                         },
                     )
                     HomeFeedSource.entries.forEach { source ->
-                        val active = source in selected
+                        // Show what actually feeds Home. Experimental catalogs are
+                        // inactive until opted in, regardless of stored defaults.
+                        val active = source in effective
                         DropdownMenuItem(
                             text = { Text(source.label) },
                             leadingIcon = {
@@ -263,9 +265,10 @@ fun CapsulePinnedHeader(route: String) {
                                 )
                             },
                             onClick = {
-                                val next = selected.toMutableSet()
-                                // First tap on an unavailable/disabled source opts in
-                                // instead of confusingly unchecking an existing default.
+                                val next = effective.toMutableSet()
+                                // A first-time Audius/Openverse choice enables ONLY
+                                // that source alongside YouTube; do not silently start
+                                // every default-selected remote catalog.
                                 if (source != HomeFeedSource.YOUTUBE && !experimental) {
                                     next.add(source)
                                     setExperimental(true)
