@@ -980,4 +980,7 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="capsule_home_catalog_new">Fresh releases</string>
     <string name="capsule_home_catalog_discover">Hidden gems</string>
     <string name="capsule_home_catalog_for_you">Inspired by your music</string>
+    <string name="capsule_discovery_download">Download</string>
+    <string name="capsule_discovery_download_started">Download started · check Downloads</string>
+    <string name="capsule_discovery_download_failed">Could not start download</string>
 </resources>

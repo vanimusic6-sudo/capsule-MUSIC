@@ -25,6 +25,7 @@ import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.ExperimentalSourcesEnabledKey
 import com.nikhil.yt.discovery.ExperimentalCatalog
+import com.nikhil.yt.discovery.ExperimentalDownload
 import com.nikhil.yt.discovery.ExperimentalTrackQueue
 import com.nikhil.yt.utils.rememberPreference
 import kotlinx.coroutines.CancellationException
@@ -156,6 +157,14 @@ fun ExperimentalArtistScreen(
                             overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (track.downloadUrl != null) {
+                        IconButton(onClick = { ExperimentalDownload.enqueue(context, track) }) {
+                            Icon(
+                                painter = painterResource(R.drawable.download),
+                                contentDescription = stringResource(R.string.capsule_discovery_download),
+                            )
+                        }
                     }
                     TextButton(onClick = {
                         runCatching {

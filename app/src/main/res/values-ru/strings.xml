@@ -901,4 +901,7 @@
     <string name="capsule_home_catalog_new">Свежие релизы</string>
     <string name="capsule_home_catalog_discover">Неизведанное</string>
     <string name="capsule_home_catalog_for_you">На основе твоей музыки</string>
+    <string name="capsule_discovery_download">Скачать</string>
+    <string name="capsule_discovery_download_started">Загрузка начата · см. «Загрузки»</string>
+    <string name="capsule_discovery_download_failed">Не удалось начать загрузку</string>
 </resources>

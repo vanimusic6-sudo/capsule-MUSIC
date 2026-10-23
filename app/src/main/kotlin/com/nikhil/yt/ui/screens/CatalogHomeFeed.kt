@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -46,6 +47,7 @@ import coil3.compose.AsyncImage
 import com.nikhil.yt.R
 import com.nikhil.yt.discovery.ExperimentalArtistRoute
 import com.nikhil.yt.discovery.ExperimentalCatalog
+import com.nikhil.yt.discovery.ExperimentalDownload
 import com.nikhil.yt.discovery.ExperimentalTrackQueue
 import com.nikhil.yt.discovery.HomeFeedSource
 import com.nikhil.yt.playback.PlayerConnection
@@ -262,13 +264,29 @@ internal fun CatalogHomeRow(
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                             )
-                            Text(
-                                text = cardSource.label + if (track.playable) "" else " ↗",
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = cardSource.accent,
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = cardSource.label + if (track.playable) "" else " ↗",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = cardSource.accent,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                if (track.downloadUrl != null) {
+                                    IconButton(
+                                        onClick = { ExperimentalDownload.enqueue(context, track) },
+                                        modifier = Modifier.size(32.dp),
+                                    ) {
+                                        Icon(
+                                            painter = painterResource(R.drawable.download),
+                                            contentDescription = stringResource(R.string.capsule_discovery_download),
+                                            tint = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
