@@ -18,6 +18,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import timber.log.Timber
@@ -37,6 +40,15 @@ object ExperimentalDownload {
     private val jobs = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val permits = Semaphore(2)
     private val main = Handler(Looper.getMainLooper())
+    enum class State { DOWNLOADING, COMPLETED, FAILED }
+    private val _states = MutableStateFlow<Map<String, State>>(emptyMap())
+    val states = _states.asStateFlow()
+    private fun updateStatus(id: String, status: State) {
+        _states.update { current ->
+            val bounded = if (current.size > 200) emptyMap() else current
+            bounded + (id to status)
+        }
+    }
 
     fun enqueue(context: Context, track: ExperimentalCatalog.Track): Boolean {
         val address = track.downloadUrl ?: return false
@@ -68,6 +80,8 @@ object ExperimentalDownload {
         val displayName = "$name.$extension"
 
         if (Build.VERSION.SDK_INT < 29) return legacyEnqueue(app, uri, displayName, mime)
+        if (_states.value[track.mediaId] == State.DOWNLOADING) return false
+        updateStatus(track.mediaId, State.DOWNLOADING)
         jobs.launch {
             permits.withPermit {
                 var destination: Uri? = null
@@ -109,8 +123,10 @@ object ExperimentalDownload {
                     provider.update(safeUri, ContentValues().apply {
                         put(MediaStore.MediaColumns.IS_PENDING, 0)
                     }, null, null)
+                    updateStatus(track.mediaId, State.COMPLETED)
                     toast(app, R.string.capsule_discovery_download_completed)
                 } catch (e: Exception) {
+                    updateStatus(track.mediaId, State.FAILED)
                     destination?.let { runCatching { app.contentResolver.delete(it, null, null) } }
                     Timber.tag("CapsuleDownload").w(e, "External source download failed")
                     toast(app, R.string.capsule_discovery_download_failed)

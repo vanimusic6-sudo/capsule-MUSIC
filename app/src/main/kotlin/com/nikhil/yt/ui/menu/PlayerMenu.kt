@@ -171,6 +171,8 @@ fun PlayerMenu(
         ExperimentalCatalog.playingTrack(mediaMetadata.id)
     }
     val canDownloadAudius = isAudius && originalAudiusTrack?.downloadUrl != null
+    val externalDownloadStates by ExperimentalDownload.states.collectAsState()
+    val externalDownloadStatus = externalDownloadStates[mediaMetadata.id]
 
     val artists =
         remember(mediaMetadata.artists) {
@@ -575,13 +577,26 @@ fun PlayerMenu(
                 MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                     ListItem(
                         headlineContent = {
-                            Text(stringResource(if (canDownloadAudius) R.string.action_download
-                                else R.string.capsule_audius_not_downloadable))
+                            Text(stringResource(when {
+                                !canDownloadAudius -> R.string.capsule_audius_not_downloadable
+                                externalDownloadStatus == ExperimentalDownload.State.COMPLETED ->
+                                    R.string.capsule_discovery_download_completed
+                                externalDownloadStatus == ExperimentalDownload.State.DOWNLOADING ->
+                                    R.string.downloading
+                                else -> R.string.action_download
+                            }))
                         },
                         leadingContent = {
-                            Icon(painterResource(R.drawable.download), contentDescription = null)
+                            if (externalDownloadStatus == ExperimentalDownload.State.DOWNLOADING)
+                                VeluneLoader(size = 24.dp)
+                            else Icon(painterResource(
+                                if (externalDownloadStatus == ExperimentalDownload.State.COMPLETED)
+                                    R.drawable.offline else R.drawable.download),
+                                contentDescription = null)
                         },
-                        modifier = Modifier.clickable(enabled = canDownloadAudius) {
+                        modifier = Modifier.clickable(enabled = canDownloadAudius &&
+                            externalDownloadStatus != ExperimentalDownload.State.DOWNLOADING &&
+                            externalDownloadStatus != ExperimentalDownload.State.COMPLETED) {
                             originalAudiusTrack?.let { ExperimentalDownload.enqueue(context, it) }
                             onDismiss()
                         },
