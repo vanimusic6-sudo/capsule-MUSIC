@@ -423,7 +423,7 @@ fun HomeScreen(
                 }
             }
 
-            if (displayYouTube && homeFeedError && homePage?.sections.isNullOrEmpty() && !isLoading) {
+            if (includeYouTube && homeFeedError && homePage?.sections.isNullOrEmpty() && !isLoading) {
                 item(key = "home:feed-error") {
                     Column(
                         modifier = Modifier.fillMaxWidth().padding(16.dp),
