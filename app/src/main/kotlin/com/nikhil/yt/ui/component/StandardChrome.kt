@@ -7,7 +7,6 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.foundation.layout.Arrangement.spacedBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -118,7 +117,7 @@ fun StandardHeaderTitle(
                     // The selected services themselves form the combined
                     // identity: no anonymous generic app icon.
                     Row(verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = spacedBy((-3).dp)) {
+                        horizontalArrangement = Arrangement.spacedBy((-3).dp)) {
                         sourceIcons.take(3).forEach { glyph ->
                             Icon(painterResource(glyph), contentDescription = null,
                                 tint = Color.White, modifier = Modifier.size(12.dp))
