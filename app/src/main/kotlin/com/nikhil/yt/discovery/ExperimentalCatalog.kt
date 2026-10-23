@@ -19,7 +19,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object ExperimentalCatalog {
     enum class Source(val title: String) {
-        AUDIUS("Audius"), OPENVERSE("Openverse")
+        AUDIUS("Audius"), OPENVERSE("Openverse"), ARCHIVE("Internet Archive")
     }
 
     data class Track(
@@ -45,6 +45,8 @@ object ExperimentalCatalog {
         val playCount: Long = 0,
         val favoriteCount: Long = 0,
         val repostCount: Long = 0,
+        /** Openverse indexes candidate files; a candidate URL is not a working stream. */
+        val streamCandidates: List<String> = emptyList(),
     ) {
         val mediaId: String get() = EXPERIMENTAL_MEDIA_PREFIX + source.name.lowercase() + ":" + id
         val playable: Boolean get() = streamUrl?.startsWith("https://") == true
@@ -65,7 +67,8 @@ object ExperimentalCatalog {
         cached("search:${source.name}:${trimmed.lowercase()}") {
             when (source) {
                 Source.AUDIUS -> audius("/tracks/search?query=${enc(trimmed)}&limit=24")
-                Source.OPENVERSE -> openverse(query = trimmed)
+                Source.OPENVERSE -> validateSearchTracks(openverse(query = trimmed))
+                Source.ARCHIVE -> InternetArchiveMusic.artist(trimmed)
             }
         }
     }
@@ -90,6 +93,7 @@ object ExperimentalCatalog {
         when (source) {
             Source.AUDIUS -> discoveryFromHome(HomeFeedSource.AUDIUS, tasteArtists)
             Source.OPENVERSE -> discoveryFromHome(HomeFeedSource.JAMENDO, tasteArtists)
+            Source.ARCHIVE -> discoveryFromHome(HomeFeedSource.ARCHIVE, tasteArtists)
         }
 
     /**
@@ -112,8 +116,8 @@ object ExperimentalCatalog {
                     }
                     underground + artistMatches
                 }
+                HomeFeedSource.ARCHIVE -> InternetArchiveMusic.browse(HomeLaneKind.DISCOVER)
                 else -> {
-                    val themes = when (source) {
                         HomeFeedSource.JAMENDO -> listOf(
                             "indie", "electronic", "jazz", "ambient", "rock", "experimental",
                             "instrumental", "downtempo",
@@ -152,6 +156,7 @@ object ExperimentalCatalog {
                 HomeFeedSource.JAMENDO -> listOf("indie", "electronic", "jazz", "ambient")
                 HomeFeedSource.WIKIMEDIA -> listOf("folk music", "classical", "traditional", "jazz")
                 HomeFeedSource.FREESOUND -> listOf("instrumental", "melody", "ambient", "piano")
+                HomeFeedSource.ARCHIVE -> listOf("ambient", "electronic", "jazz", "rock")
                 else -> emptyList()
             }
             val theme = themes.takeIf { it.isNotEmpty() }
@@ -159,19 +164,27 @@ object ExperimentalCatalog {
             val searchTaste = tasteArtists.firstOrNull { it.isNotBlank() }?.take(80)
             // Each lane has its own cache and failure boundary. If a source's
             // personalized search fails, its popular and new music still load.
-            val queries = if (source == HomeFeedSource.AUDIUS) listOf(
+            val queries = if (source == HomeFeedSource.ARCHIVE) listOf(
+                HomeLaneKind.TRENDING to { InternetArchiveMusic.browse(HomeLaneKind.TRENDING) },
+                HomeLaneKind.NEW to { InternetArchiveMusic.browse(HomeLaneKind.NEW) },
+                HomeLaneKind.DISCOVER to { InternetArchiveMusic.browse(HomeLaneKind.DISCOVER, theme) },
+            ) else if (source == HomeFeedSource.AUDIUS) listOf(
                 HomeLaneKind.TRENDING to { audius("/tracks/trending?limit=30") },
                 HomeLaneKind.NEW to { audius("/tracks/latest?limit=30") },
                 HomeLaneKind.DISCOVER to { audius("/tracks/trending/underground?limit=30") },
             ) + if (searchTaste != null) listOf(
                 HomeLaneKind.FOR_YOU to { audius("/tracks/search?query=${enc(searchTaste)}&limit=25") },
             ) else emptyList() else listOf(
-                HomeLaneKind.TRENDING to { openverse(query = "music", sourceFilter = upstream) },
-                HomeLaneKind.DISCOVER to { openverse(query = theme ?: "instrumental", sourceFilter = upstream) },
+                HomeLaneKind.TRENDING to { if (source == HomeFeedSource.WIKIMEDIA)
+                    WikimediaMusic.browse("music") else openverse(query = "music", sourceFilter = upstream, category = "music") },
+                HomeLaneKind.DISCOVER to { if (source == HomeFeedSource.WIKIMEDIA)
+                    WikimediaMusic.browse(theme ?: "instrumental") else openverse(query = theme ?: "instrumental", sourceFilter = upstream, category = "music") },
             ) + if (searchTaste != null) listOf(
-                HomeLaneKind.FOR_YOU to { openverse(query = searchTaste, sourceFilter = upstream) },
+                HomeLaneKind.FOR_YOU to { if (source == HomeFeedSource.WIKIMEDIA)
+                    WikimediaMusic.browse(searchTaste) else openverse(query = searchTaste, sourceFilter = upstream, category = "music") },
             ) else emptyList()
             val used = mutableSetOf<String>()
+            var remainingStreamProbes = 7 // bounded across this entire source Home
             val lanes = mutableListOf<HomeLane>()
             for ((kind, loader) in queries) {
                 val candidates = safely {
@@ -195,6 +208,14 @@ object ExperimentalCatalog {
                         .thenByDescending { it.playCount })
                     .filter { used.add(it.mediaId) }
                     .take(16).toList()
+                    .map { track ->
+                        if (track.streamCandidates.isNotEmpty() && remainingStreamProbes-- > 0) {
+                            track.copy(streamUrl = track.streamCandidates
+                                .firstOrNull { verifyOpenverseAudio(it) })
+                        } else track
+                    }
+                    // Do not fill the Home with broken indexed stream links.
+                    .filter { it.playable }
                 if (ordered.isNotEmpty()) {
                     val lane = HomeLane(source, kind, ordered)
                     lanes.add(lane)
@@ -215,10 +236,11 @@ object ExperimentalCatalog {
                         audius("/users/${enc(id)}/tracks?limit=40")
                     } else audius("/tracks/search?query=${enc(artist)}&limit=35")
                         .filter { it.artist.equals(artist, true) }
-                    Source.OPENVERSE -> openverse(
+                    Source.OPENVERSE -> validateSearchTracks(openverse(
                         creator = artist,
                         sourceFilter = id?.takeIf { it.matches(Regex("[a-z_]{2,30}")) },
-                    )
+                    ))
+                    Source.ARCHIVE -> InternetArchiveMusic.artist(artist)
                 }
             }
         }
@@ -318,10 +340,11 @@ object ExperimentalCatalog {
                     it.startsWith("http://creativecommons.org/")
             }
             val alternates = obj.optJSONArray("alt_files")
-            val stream = obj.optString("url").takeIf { it.startsWith("https://") }
-                ?.takeIf { it.length < 2048 } ?: (0 until (alternates?.length() ?: 0))
-                    .asSequence().mapNotNull { alternates?.optJSONObject(it)?.optString("url") }
-                    .firstOrNull { it.startsWith("https://") && it.length < 2048 }
+            val candidates = (listOf(obj.optString("url")) +
+                (0 until (alternates?.length() ?: 0))
+                    .mapNotNull { alternates?.optJSONObject(it)?.optString("url") })
+                .filter { it.startsWith("https://") && it.length < 2048 }
+                .distinct().take(3)
             // A public index does not establish playback permission by itself.
             // Respect original publisher restrictions and expose the license.
             val mayStream = licenseUrl != null && obj.optString("license").isNotBlank()
@@ -354,7 +377,8 @@ object ExperimentalCatalog {
                 artist = artist,
                 artwork = cover,
                 artworkLarge = cover,
-                streamUrl = if (mayStream) stream else null,
+                streamUrl = null, // only set after a validated HTTPS audio Range response
+                streamCandidates = if (mayStream) candidates else emptyList(),
                 sourcePage = original,
                 durationSeconds = (millis / 1000L).coerceIn(0, 86400).toInt(),
                 license = licenseUrl,
@@ -365,6 +389,77 @@ object ExperimentalCatalog {
                 audioCategory = obj.optString("category").ifBlank { null },
             )
         }.distinctBy { it.id }
+    }
+
+    private data class StreamProbe(val good: Boolean, val testedAt: Long)
+    private val streamChecks = ConcurrentHashMap<String, StreamProbe>()
+
+    /**
+     * Openverse returns indexed media addresses, not a guarantee that the file
+     * still exists. Validate a tiny HTTP Range request before offering Play.
+     * Never follow a redirect off HTTPS or off the known catalog CDNs.
+     */
+    private fun verifyOpenverseAudio(address: String): Boolean {
+        val now = System.currentTimeMillis()
+        streamChecks[address]?.takeIf { now - it.testedAt < 15 * 60_000L }
+            ?.let { return it.good }
+        val verified = try { audioProbe(address) } catch (e: Exception) {
+            Timber.tag("CapsuleOpenverse").d(e, "Indexed audio unavailable")
+            false
+        }
+        if (streamChecks.size > 256) streamChecks.clear()
+        streamChecks[address] = StreamProbe(verified, now)
+        return verified
+    }
+
+    private fun audioProbe(address: String, hops: Int = 0): Boolean {
+        if (hops > 3) return false
+        val parsed = URL(address)
+        if (parsed.protocol != "https") return false
+        val host = parsed.host.lowercase()
+        if (listOf("jamendo.com", "wikimedia.org", "freesound.org")
+                .none { host == it || host.endsWith("." + it) }) return false
+        val proxy = YouTube.streamProxy
+        val conn = (if (proxy != null) parsed.openConnection(proxy)
+            else parsed.openConnection()) as HttpURLConnection
+        conn.instanceFollowRedirects = false
+        conn.connectTimeout = 2800
+        conn.readTimeout = 2800
+        conn.setRequestProperty("Range", "bytes=0-31")
+        conn.setRequestProperty("Accept", "audio/*")
+        conn.setRequestProperty("User-Agent", "CapsuleMusic/1.0")
+        try {
+            val status = conn.responseCode
+            if (status in listOf(301, 302, 303, 307, 308)) {
+                val destination = conn.getHeaderField("Location") ?: return false
+                val next = URL(parsed, destination)
+                return audioProbe(next.toString(), hops + 1)
+            }
+            if (status != 200 && status != 206) return false
+            val contentType = conn.contentType.orEmpty().lowercase()
+            // Repositories/CDNs sometimes emit application/octet-stream for MP3.
+            if (contentType.contains("text/") || contentType.contains("json") ||
+                contentType.contains("html") || contentType.contains("image/")) return false
+            val head = ByteArray(32)
+            val count = conn.inputStream.use { it.read(head) }
+            if (count <= 0) return false
+            val signature = String(head, 0, count.coerceAtMost(8), Charsets.US_ASCII)
+            return contentType.startsWith("audio/") ||
+                signature.startsWith("ID3") || signature.startsWith("OggS") ||
+                signature.startsWith("fLaC") ||
+                (count >= 2 && head[0].toInt() and 0xff == 0xff &&
+                    head[1].toInt() and 0xe0 == 0xe0)
+        } finally { conn.disconnect() }
+    }
+
+    private fun validateSearchTracks(tracks: List<Track>): List<Track> {
+        var quota = 5
+        return tracks.map { track ->
+            if (track.streamCandidates.isEmpty() || quota-- <= 0) track
+            else track.copy(streamUrl = track.streamCandidates.firstOrNull {
+                verifyOpenverseAudio(it)
+            })
+        }
     }
 
     /** Anonymous Openverse access: proactively space calls to avoid HTTP 429. */
