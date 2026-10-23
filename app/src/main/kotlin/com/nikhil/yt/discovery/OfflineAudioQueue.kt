@@ -29,6 +29,7 @@ class OfflineAudioQueue private constructor(
             fun metadata(file: ExperimentalDownload.SavedAudio) = MediaMetadata(
                 id = PREFIX + file.id,
                 title = file.title,
+                duration = -1,
                 artists = listOf(MediaMetadata.Artist(id = null, name = file.artist)),
                 sourceUrl = file.uri.toString(),
             )
