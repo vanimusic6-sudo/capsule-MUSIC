@@ -118,6 +118,7 @@ object ExperimentalCatalog {
                 }
                 HomeFeedSource.ARCHIVE -> InternetArchiveMusic.browse(HomeLaneKind.DISCOVER)
                 else -> {
+                    val themes = when (source) {
                         HomeFeedSource.JAMENDO -> listOf(
                             "indie", "electronic", "jazz", "ambient", "rock", "experimental",
                             "instrumental", "downtempo",
