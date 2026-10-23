@@ -24,15 +24,23 @@ No changes to app-wide search source priorities.
 
 ## Discovery curation
 
-The old "Long Forgotten" / "Давно забытое" shelf is removed. Every opted-in
-source contributes to **one** "Beyond the familiar" / "За пределами привычного"
-row on Home. Audius and each selected Openverse upstream are fetched
+The old "Long Forgotten" / "Давно забытое" shelf is removed. Opted-in sources create **full provider Home feeds**, not just a single carousel:
+Audius offers trending, newest, underground and taste-based rows; each
+Openverse upstream offers a general music row, themed discoveries and optional
+taste-based matches. Every section appears as soon as its response arrives;
+one slow source cannot block the others. A combined "Beyond the familiar" /
+"За пределами привычного" row still highlights playable tracks across the
+selected external catalogs. Audius and each selected Openverse upstream are fetched
 independently. Rankings prioritize valid streamable URLs, likely musical content,
 sensible music duration, genre metadata, artwork and the listener's artist
 hints. Deduplicate normalized artist/title, maximum two per artist, rotate tie
 breaks by UTC day, and cap per-upstream dominance when there are several
 upstreams. This is transparent heuristic quality scoring, **not** platform
 listener votes, human ratings, exclusivity or proven obscurity.
+
+An Openverse item that is licensed but lacks a safe direct HTTPS stream is
+visible as an original-release web link (↗), not falsely presented as playable.
+The Openverse index alone does not guarantee remote CDN playback.
 
 Failures show an empty/error state with Retry rather than removing the entire
 section. An unreachable Openverse API cannot hide functioning Audius tracks.
