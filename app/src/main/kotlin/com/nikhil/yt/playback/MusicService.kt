@@ -5648,16 +5648,35 @@ class MusicService :
     private fun createMediaSourceFactory(): MediaSource.Factory {
         // No cache or YouTube request interceptor on experimental third-party streams.
         // Avoids leaking external catalog IDs to our stable InnerTube/Audio CDN path.
+        val defaultExternalProxySelector = java.net.ProxySelector.getDefault()
+        // The Openverse Range probe and the real Media3 player MUST use the
+        // same configured route. Previously the probe respected streamProxy
+        // while the external OkHttp player ignored it, causing false positives
+        // and region-specific 403/connection failures.
+        val externalClient = OkHttpClient.Builder()
+            .proxySelector(object : java.net.ProxySelector() {
+                override fun select(uri: java.net.URI): List<java.net.Proxy> {
+                    YouTube.streamProxy?.let { return listOf(it) }
+                    return defaultExternalProxySelector?.select(uri)
+                        ?.takeIf { it.isNotEmpty() }
+                        ?: listOf(java.net.Proxy.NO_PROXY)
+                }
+                override fun connectFailed(
+                    uri: java.net.URI,
+                    sa: java.net.SocketAddress,
+                    ioe: java.io.IOException,
+                ) { defaultExternalProxySelector?.connectFailed(uri, sa, ioe) }
+            })
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .addInterceptor { chain ->
+                chain.proceed(chain.request().newBuilder()
+                    .header("User-Agent", "CapsuleMusic/1.0")
+                    .build())
+            }
+            .build()
         val externalStreamingSource = DefaultMediaSourceFactory(
-            DefaultDataSource.Factory(
-                this,
-                OkHttpDataSource.Factory(
-                    OkHttpClient.Builder()
-                        .followRedirects(true)
-                        .followSslRedirects(true)
-                        .build(),
-                ),
-            ),
+            DefaultDataSource.Factory(this, OkHttpDataSource.Factory(externalClient)),
         )
         val dataSourceFactory = createDataSourceFactory()
         val extractorsFactory =
