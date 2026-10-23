@@ -66,7 +66,14 @@ class DebugActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val stack = intent.getStringExtra(EXTRA_STACK_TRACE) ?: "No stack trace available"
+        // Retain the crash report even if Android lost the activity intent
+        // during a process restart. Reading never needs diagnostic logging ON.
+        val stack = intent.getStringExtra(EXTRA_STACK_TRACE)
+            ?: runCatching {
+                java.io.File(filesDir, "capsule-last-crash.txt")
+                    .takeIf { it.exists() }?.readText()?.take(160_000)
+            }.getOrNull()
+            ?: "No stack trace available"
         val previewText = stack.lineSequence().firstOrNull()?.take(100) ?: "Unknown error"
         val timestampText = runCatching {
             SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())

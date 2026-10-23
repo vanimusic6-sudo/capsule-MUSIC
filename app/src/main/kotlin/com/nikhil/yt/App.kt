@@ -265,6 +265,25 @@ class App : Application(), SingletonImageLoader.Factory {
                     val pw = PrintWriter(sw)
                     throwable.printStackTrace(pw)
                     val stack = sw.toString()
+                    // The crash activity may fail to open after low-memory
+                    // termination or process death. Persist a bounded stack
+                    // synchronously before handing off to the crash process.
+                    // This file is private to the app and never uploaded.
+                    runCatching {
+                        val target = java.io.File(filesDir, "capsule-last-crash.txt")
+                        val temp = java.io.File(filesDir, "capsule-last-crash.tmp")
+                        temp.writeText(
+                            "Capsule Music\n" +
+                                "Time: " + java.util.Date() + "\n" +
+                                "Build: " + BuildConfig.GIT_COMMIT + "\n" +
+                                "Thread: " + thread.name + "\n\n" +
+                                stack.take(160_000),
+                        )
+                        if (!temp.renameTo(target)) {
+                            temp.copyTo(target, overwrite = true)
+                            temp.delete()
+                        }
+                    }
 
                     val intent = Intent(this@App, DebugActivity::class.java).apply {
                         putExtra(DebugActivity.EXTRA_STACK_TRACE, stack)
