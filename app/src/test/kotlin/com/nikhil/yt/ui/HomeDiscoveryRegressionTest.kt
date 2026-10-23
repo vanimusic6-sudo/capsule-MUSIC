@@ -50,7 +50,7 @@ class HomeDiscoveryRegressionTest {
         assertTrue(home.contains("includeYouTube"))
         assertFalse(home.contains("ExperimentalForgottenShelf("))
         assertTrue(header.contains("if (isHome)"))
-        assertTrue(header.contains("HomeFeedSource.entries.forEach"))
+        assertTrue(header.contains("HomeFeedSource.selectable.forEach"))
         assertTrue(header.contains("val active = source in effective"))
         assertTrue(header.contains("val next = effective.toMutableSet()"))
         assertTrue(header.contains("capsule_home_reset_youtube"))
@@ -79,7 +79,7 @@ class HomeDiscoveryRegressionTest {
         assertTrue(archive.contains("streamUrl = null"))
         assertTrue(commons.contains("iiurlwidth=320"))
         assertTrue(commons.contains("fun artist(name: String)"))
-        assertTrue(selector.contains("HomeFeedSource.entries.toSet()"))
+        assertTrue(selector.contains("HomeFeedSource.selectable.toSet()"))
         assertTrue(catalog.contains("RadioBrowserMusic.browse("))
     }
 
