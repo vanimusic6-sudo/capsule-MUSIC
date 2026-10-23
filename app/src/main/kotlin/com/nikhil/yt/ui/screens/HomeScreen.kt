@@ -114,6 +114,10 @@ fun HomeScreen(
             .distinct().take(2)
     }
     val catalogHome = rememberCatalogHomeState(rareSources, tastes)
+    // An unavailable optional provider must never leave the Home permanently empty.
+    // Preserve the selected provider; the fallback is display-only.
+    val displayYouTube = includeYouTube ||
+        (rareSources.isNotEmpty() && catalogHome.finished && catalogHome.lanes.isEmpty())
     val catalogTracks = catalogHome.lanes.flatMap { it.tracks }.distinctBy { it.mediaId }
     // LazyListScope is not composable: calculate the mixed shelf BEFORE its DSL.
     val beyond = remember(catalogTracks, tastes) {
@@ -155,8 +159,8 @@ fun HomeScreen(
     }
 
     // Paginate on the edge transition, never on every scroll pixel.
-    LaunchedEffect(lazylistState, homePage?.continuation, includeYouTube) {
-        if (!includeYouTube) return@LaunchedEffect
+    LaunchedEffect(lazylistState, homePage?.continuation, displayYouTube) {
+        if (!displayYouTube) return@LaunchedEffect
         snapshotFlow {
             val info = lazylistState.layoutInfo
             info.totalItemsCount > 0 &&
@@ -206,7 +210,7 @@ fun HomeScreen(
                 overscrollEffect = null,
             ) {
 
-                    quickPicks?.takeIf { includeYouTube && it.isNotEmpty() }?.let { picks ->
+                    quickPicks?.takeIf { displayYouTube && it.isNotEmpty() }?.let { picks ->
                 item(key = "home:quick-hero") {
                     QuickPicksSection(
                         quickPicks = picks,
@@ -222,7 +226,7 @@ fun HomeScreen(
             }
 
 
-            keepListening?.takeIf { includeYouTube && it.isNotEmpty() }?.let { songs ->
+            keepListening?.takeIf { displayYouTube && it.isNotEmpty() }?.let { songs ->
                 item(key = "home:keep-listening") {
                     Column {
                         NavigationTitle(title = stringResource(R.string.keep_listening))
@@ -240,7 +244,7 @@ fun HomeScreen(
                 }
             }
 
-            forYouSuggestions?.takeIf { includeYouTube && it.isNotEmpty() }?.let { suggestions ->
+            forYouSuggestions?.takeIf { displayYouTube && it.isNotEmpty() }?.let { suggestions ->
                 item(key = "home:taste") {
                     TasteRecommendationsSection(
                         suggestions = suggestions,
@@ -283,23 +287,10 @@ fun HomeScreen(
                     }
                 }
                 if (catalogHome.loading && catalogHome.lanes.isEmpty()) {
-                    item(key = "home:catalog-loading") {
-                        Text(
-                            text = stringResource(R.string.capsule_discovery_loading),
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    item(key = "home:catalog-loading") { HomeLoadingShimmer() }
                 }
-                if (!catalogHome.loading && catalogHome.lanes.isEmpty()) {
-                    item(key = "home:catalog-error") {
-                        CatalogHomeError(onRetry = catalogHome::refresh)
-                    }
-                } else if (catalogHome.failed.isNotEmpty()) {
-                    item(key = "home:catalog-partial-error") {
-                        CatalogHomeError(onRetry = catalogHome::refresh)
-                    }
-                }
+                // Failed providers are omitted instead of leaving stale error text.
+
             }
 
             // This is the current YouTube Music release catalog, not a static
@@ -307,7 +298,7 @@ fun HomeScreen(
             // Only add a release section when YouTube's Home feed has none.
             // Otherwise refresh the existing section in place to avoid a
             // duplicated carousel and a mid-scroll insert/remove jump.
-            newReleaseAlbums.takeIf { includeYouTube && it.isNotEmpty() && !providerHasReleaseShelf }?.let { albums ->
+            newReleaseAlbums.takeIf { displayYouTube && it.isNotEmpty() && !providerHasReleaseShelf }?.let { albums ->
                 item(key = "home:youtube-new-release-albums") {
                     val releases = remember(albums) {
                         HomePage.Section(
@@ -338,7 +329,7 @@ fun HomeScreen(
                 }
             }
 
-            forgottenFavorites?.takeIf { includeYouTube && it.isNotEmpty() }?.let { favorites ->
+            forgottenFavorites?.takeIf { displayYouTube && it.isNotEmpty() }?.let { favorites ->
                 item(key = "home:forgotten") {
                     Column {
                         NavigationTitle(title = stringResource(R.string.forgotten_favorites))
@@ -360,7 +351,7 @@ fun HomeScreen(
             }
 
             // Discover genuine user-created YouTube Music playlists in the feed.
-            listenerPlaylists.takeIf { includeYouTube && it.isNotEmpty() }?.let { playlists ->
+            listenerPlaylists.takeIf { displayYouTube && it.isNotEmpty() }?.let { playlists ->
                 item(key = "home:listener-community-playlists") {
                     CommunityPlaylistsSection(
                         section = remember(playlists) {
@@ -381,7 +372,7 @@ fun HomeScreen(
                 }
             }
 
-            homePage?.sections?.takeIf { includeYouTube }
+            homePage?.sections?.takeIf { displayYouTube }
                 // If the provider repeats the release shelf, keep its first position.
                 ?.distinctBy { if (isYouTubeReleaseShelf(it)) "home:yt:releases" else
                     "home:yt:${it.endpoint?.browseId}:${it.title}:${it.items.firstOrNull()?.id}" }
@@ -432,7 +423,7 @@ fun HomeScreen(
                 }
             }
 
-            if (includeYouTube && homeFeedError && homePage?.sections.isNullOrEmpty() && !isLoading) {
+            if (displayYouTube && homeFeedError && homePage?.sections.isNullOrEmpty() && !isLoading) {
                 item(key = "home:feed-error") {
                     Column(
                         modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -450,7 +441,7 @@ fun HomeScreen(
             }
 
             if (
-                includeYouTube && (isLoading || isLoadingMore)
+                displayYouTube && (isLoading || isLoadingMore)
             ) {
                 item(key = "home:loading") {
                     HomeLoadingShimmer()
@@ -460,7 +451,7 @@ fun HomeScreen(
 
                 // "Подборки" means situations (road, sleep, party etc).
                 // Music shelves stay on the Home page.
-                if (includeYouTube) item(key = "home:collections-button") {
+                if (displayYouTube) item(key = "home:collections-button") {
                     // A Capsule card, not the oversized Material pill. Padding
                     // below the card lifts it clear of the mini-player, while
                     // the existing player-aware list inset remains untouched.
