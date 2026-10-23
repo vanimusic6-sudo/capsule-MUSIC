@@ -25,6 +25,9 @@ class HomeFeedSourceTest {
         assertTrue(HomeFeedSource.YOUTUBE in sources)
         assertEquals(setOf(HomeFeedSource.YOUTUBE), sources)
         assertTrue(HomeFeedSource.ARCHIVE in HomeFeedSource.entries)
+        assertTrue(HomeFeedSource.CCMIXTER in HomeFeedSource.entries)
+        assertEquals(HomeFeedSource.entries.toSet(),
+            HomeFeedSource.parse(HomeFeedSource.encode(HomeFeedSource.entries.toSet())))
         assertTrue(HomeFeedSource.RADIO in HomeFeedSource.entries)
     }
 
