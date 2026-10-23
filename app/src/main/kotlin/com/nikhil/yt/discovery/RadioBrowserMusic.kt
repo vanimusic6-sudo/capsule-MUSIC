@@ -49,39 +49,66 @@ internal object RadioBrowserMusic {
     private val supported = setOf("mp3","aac","aac+")
 
     fun browse(category: Category): List<ExperimentalCatalog.Track> {
-        // Country categories must be country-filtered on the SERVER and locally.
-        // For genre shelves ask for a precise tag, not an arbitrary top-voted
-        // station. More than one query is used only when initial results are weak.
-        val tagQueries = when (category) {
+        // The directory is crowdsourced. Votes are lifetime totals, not a
+        // reliable "best station" sort; mix recent listeners, growth and
+        // last successful verification instead.
+        val tags = when (category) {
             Category.RUSSIAN, Category.AMERICAN -> listOf(null as String?)
-            Category.MUSIC -> listOf("music","pop")
-            Category.NEWS -> listOf("news","talk")
-            Category.KIDS -> listOf("kids","children","детское")
+            Category.MUSIC -> listOf("music", "pop")
+            Category.NEWS -> listOf("news", "politics")
+            Category.KIDS -> listOf("kids", "children")
             Category.JAZZ -> listOf("jazz")
             Category.ROCK -> listOf("rock")
-            Category.ELECTRONIC -> listOf("electronic","house")
+            Category.ELECTRONIC -> listOf("electronic", "house")
         }
-        val output = linkedMapOf<String, ExperimentalCatalog.Track>()
-        for (tag in tagQueries) {
+        val records = linkedMapOf<String, Pair<ExperimentalCatalog.Track, Int>>()
+        for (tag in tags) {
             val args = buildList {
-                if (category.country != null) add("countrycode=${category.country}")
-                if (tag != null) add("tag=${Uri.encode(tag)}")
-                add("order=votes")
+                category.country?.let { add("countrycode=$it") }
+                tag?.let { add("tag=${Uri.encode(it)}") }
+                add("order=clickcount")
                 add("reverse=true")
-                add("limit=65")
+                add("limit=90")
                 add("hidebroken=true")
                 add("is_https=true")
             }.joinToString("&")
             val rows = fetchRows(args)
             for (i in 0 until rows.length()) {
-                val row = rows.optJSONObject(i) ?: continue
-                if (!matches(row, category)) continue
-                parse(row)?.let { output.putIfAbsent(it.id, it) }
-                if (output.size >= 15) break
+                val station = rows.optJSONObject(i) ?: continue
+                if (!matches(station, category)) continue
+                val track = parse(station) ?: continue
+                // Require an actual broadcaster favicon to earn a music card;
+                // no invented cover arts from arbitrary third-party hosts.
+                val score = qualityScore(station, category)
+                if (score < 6) continue
+                val current = records[track.id]
+                if (current == null || current.second < score) records[track.id] = track to score
             }
-            if (output.size >= 9) break
+            if (records.size >= 16) break
         }
-        return output.values.take(15)
+        val knownNames = mutableSetOf<String>()
+        return records.values.sortedByDescending { it.second }.map { it.first }
+            .filter { item ->
+                val name = item.title.lowercase().replace(Regex("[^\\p{L}\\p{N}]"), "")
+                knownNames.add(name)
+            }
+            .take(16)
+    }
+
+    private fun qualityScore(station: JSONObject, category: Category): Int {
+        val count = station.optInt("clickcount", 0)
+        val trend = station.optInt("clicktrend", 0)
+        val votes = station.optInt("votes", 0)
+        val bitRate = station.optInt("bitrate", 0)
+        val genres = station.optString("tags").lowercase().split(',').map(String::trim)
+        val matches = category.tags.count { keyword ->
+            genres.any { it == keyword || it.contains(keyword) }
+        }
+        return minOf(count, 250) / 18 + minOf(votes, 120) / 25 +
+            maxOf(0, minOf(trend, 80)) / 12 +
+            (if (bitRate >= 128) 4 else 2) +
+            (if (station.optString("favicon").startsWith("https://")) 7 else 0) +
+            matches.coerceAtMost(3) * 4
     }
 
     fun browse(kind: ExperimentalCatalog.HomeLaneKind, genre: String? = null):
@@ -127,7 +154,8 @@ internal object RadioBrowserMusic {
 
     private fun parse(row: JSONObject): ExperimentalCatalog.Track? {
         val id = row.optString("stationuuid").takeIf(uuid::matches) ?: return null
-        if (row.optInt("lastcheckok") != 1 || row.optInt("hls") != 0) return null
+        if (row.optInt("lastcheckok") != 1 || row.optInt("hls") != 0 ||
+            row.optInt("ssl_error") == 1) return null
         if (row.optString("codec").lowercase() !in supported ||
             row.optInt("bitrate") !in 64..400) return null
         val audio = row.optString("url_resolved").takeIf {
@@ -139,7 +167,7 @@ internal object RadioBrowserMusic {
         // Only real broadcaster artwork. No generic scraped or invented covers.
         val icon = row.optString("favicon").takeIf {
             it.startsWith("https://") && it.length < 500 &&
-                !it.endsWith(".svg",true)
+                !it.endsWith(".svg", true)
         } ?: return null
         val homepage = row.optString("homepage").takeIf { it.startsWith("https://") }
             ?: "https://www.radio-browser.info/"
