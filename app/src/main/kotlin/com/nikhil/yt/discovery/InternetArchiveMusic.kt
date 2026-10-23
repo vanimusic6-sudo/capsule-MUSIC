@@ -18,7 +18,8 @@ import timber.log.Timber
  * Never pass this source to InnerTube / the YouTube audio resolver.
  */
 internal object InternetArchiveMusic {
-    private const val MAX_SEARCH_ITEMS = 8
+    private const val MAX_SEARCH_ITEMS = 32
+    private const val MAX_METADATA_LOOKUPS = 9
     private val ident = Regex("[A-Za-z0-9_][A-Za-z0-9_.-]{1,90}")
     private val audioFile = Regex("(?i)\\.(mp3|ogg|oga|opus|m4a|flac)$")
     private val excluded = Regex("(?i)(\\bpreview\\b|\\binterview\\b|\\bpodcast\\b|\\bsample pack\\b)")
@@ -44,14 +45,24 @@ internal object InternetArchiveMusic {
 
     private fun search(query: String, sort: String): List<ExperimentalCatalog.Track> {
         val base = "https://archive.org/advancedsearch.php"
-        val url = "$base?q=${Uri.encode(query)}&fl%5B%5D=identifier" +
-            "&sort%5B%5D=${Uri.encode(sort)}&rows=$MAX_SEARCH_ITEMS&output=json"
-        val docs = fetchJson(url).optJSONObject("response")?.optJSONArray("docs")
-            ?: return emptyList()
+        fun searchDocuments(filter: String) = fetchJson(
+            "$base?q=${Uri.encode(filter)}&fl%5B%5D=identifier" +
+                "&fl%5B%5D=format&fl%5B%5D=licenseurl" +
+                "&sort%5B%5D=${Uri.encode(sort)}&rows=$MAX_SEARCH_ITEMS&output=json",
+        ).optJSONObject("response")?.optJSONArray("docs")
+        // Netlabels search could return metadata-only placeholders first.
+        // Ask the Archive index for items containing audio file formats; if
+        // the field is missing, retain the broader music-collection fallback.
+        val preferred = "$query AND (format:\"VBR MP3\" OR format:\"MP3\" OR format:\"Ogg Vorbis\" OR format:\"FLAC\")"
+        val docs = searchDocuments(preferred)?.takeIf { it.length() > 0 }
+            ?: searchDocuments(query) ?: return emptyList()
         val tracks = mutableListOf<ExperimentalCatalog.Track>()
+        var examined = 0
         for (index in 0 until minOf(docs.length(), MAX_SEARCH_ITEMS)) {
+            if (examined >= MAX_METADATA_LOOKUPS || tracks.size >= 18) break
             val id = docs.optJSONObject(index)?.optString("identifier")
                 ?.takeIf { ident.matches(it) } ?: continue
+            examined++
             val candidates = try {
                 itemCache[id] ?: readItem(id).also { if (it.isNotEmpty()) itemCache[id] = it }
             } catch (error: Exception) {
@@ -71,11 +82,20 @@ internal object InternetArchiveMusic {
         val license = info.optString("licenseurl").trim().takeIf {
             it.startsWith("https://creativecommons.org/") ||
                 it.startsWith("http://creativecommons.org/")
-        } ?: return emptyList()
+        }
+        // No clear CC metadata -> a browsable release link, NEVER an audio
+        // stream. The artist/album still belongs on the discovery Home.
         val creator = jsonString(info, "creator").ifBlank { "Netlabels" }
         val album = jsonString(info, "title").ifBlank { id }
-        val cover = "https://archive.org/services/img/$id"
-        val files = data.optJSONArray("files") ?: return emptyList()
+        val files = data.optJSONArray("files") ?: JSONArray()
+        val coverFile = (0 until files.length()).asSequence()
+            .mapNotNull { files.optJSONObject(it) }
+            .firstOrNull { img ->
+                img.optString("name").matches(Regex("(?i).*(itemimage|cover|front).*\\.(jpg|jpeg|png|webp)")) &&
+                    img.optString("size").toLongOrNull()?.let { it in 2_000..2_000_000 } == true
+            }?.optString("name")
+        val cover = coverFile?.let { "https://archive.org/download/$id/" + Uri.encode(it, "/") }
+            ?: "https://archive.org/services/img/$id"
         val audio = mutableListOf<ExperimentalCatalog.Track>()
         for (index in 0 until files.length()) {
             val file = files.optJSONObject(index) ?: continue
@@ -101,7 +121,7 @@ internal object InternetArchiveMusic {
                 artist = creator,
                 artwork = cover,
                 artworkLarge = cover,
-                streamUrl = stream,
+                streamUrl = stream.takeIf { license != null },
                 sourcePage = "https://archive.org/details/$id",
                 durationSeconds = duration,
                 license = license,
@@ -111,7 +131,23 @@ internal object InternetArchiveMusic {
             ))
             if (audio.size >= 3) break
         }
-        return audio
+        if (audio.isNotEmpty()) return audio
+        // Older Netlabels albums may be compressed archives or metadata-only.
+        // Never present them as playable, but provide a real source page.
+        return listOf(ExperimentalCatalog.Track(
+            source = ExperimentalCatalog.Source.ARCHIVE,
+            id = id,
+            title = album,
+            artist = creator,
+            artwork = cover,
+            artworkLarge = cover,
+            streamUrl = null,
+            sourcePage = "https://archive.org/details/$id",
+            license = license,
+            catalogProvider = "archive",
+            audioCategory = "music",
+            artistId = creator,
+        ))
     }
 
     private fun jsonString(obj: JSONObject, key: String): String {
