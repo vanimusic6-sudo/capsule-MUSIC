@@ -67,8 +67,9 @@ internal object ExperimentalRanking {
                 }
         }
         val quotas = mapOf(
-            ExperimentalCatalog.Source.AUDIUS to (maximum * 0.55).toInt().coerceAtLeast(1),
-            ExperimentalCatalog.Source.OPENVERSE to (maximum * 0.45).toInt().coerceAtLeast(1),
+            ExperimentalCatalog.Source.AUDIUS to (maximum * 0.40).toInt().coerceAtLeast(1),
+            ExperimentalCatalog.Source.OPENVERSE to (maximum * 0.30).toInt().coerceAtLeast(1),
+            ExperimentalCatalog.Source.ARCHIVE to (maximum * 0.30).toInt().coerceAtLeast(1),
         )
         val counts = mutableMapOf<ExperimentalCatalog.Source, Int>()
         val artists = mutableMapOf<String, Int>()
