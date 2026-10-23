@@ -834,4 +834,6 @@
     <string name="capsule_discovery_license">Лицензия записи</string>
     <string name="capsule_discovery_retry">Повторить</string>
     <string name="capsule_discovery_creator_original">Открыть страницу автора на исходной площадке ↗</string>
+    <string name="capsule_discovery_forgotten_title">Давно забытое</string>
+    <string name="capsule_discovery_forgotten_description">Редкие записи из открытых архивов · уникальность не подтверждена</string>
 </resources>

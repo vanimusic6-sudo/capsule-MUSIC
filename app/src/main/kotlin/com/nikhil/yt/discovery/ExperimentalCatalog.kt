@@ -40,6 +40,8 @@ object ExperimentalCatalog {
         val artworkLarge: String? = null,
         /** Original collection indexed by Openverse (e.g. jamendo). */
         val catalogProvider: String? = null,
+        /** Openverse audio category (music, sound_effect, pronunciation, etc.). */
+        val audioCategory: String? = null,
     ) {
         val mediaId: String get() = EXPERIMENTAL_MEDIA_PREFIX + source.name.lowercase() + ":" + id
         val playable: Boolean get() = streamUrl?.startsWith("https://") == true
@@ -102,6 +104,39 @@ object ExperimentalCatalog {
                 }
             }
         }
+
+    /**
+     * Independent, low-traffic archive/obscurity shelf.
+     *
+     * Openverse currently indexes Wikimedia Commons, Freesound and Jamendo audio.
+     * It does NOT index Internet Archive audio as an official source.
+     * "Forgotten" means curation from small/archival catalogs, not a provable
+     * claim that copies do not exist elsewhere on the internet.
+     */
+    suspend fun forgotten(): List<Track> = withContext(Dispatchers.IO) {
+        val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay()
+        cached("forgotten:$day") {
+            val historical = listOf(
+                "traditional folk music", "vintage jazz", "historic recording",
+                "traditional song", "old blues", "archive folk song",
+                "phonograph music", "traditional instrumental",
+            )
+            val unusual = listOf(
+                "traditional music", "folk instrument", "rare instrument",
+                "field recording music", "old recording", "early electronic",
+            )
+            val primaryQuery = historical[Math.floorMod(day, historical.size.toLong()).toInt()]
+            val primary = safely {
+                openverse(query = primaryQuery, sourceFilter = "wikimedia_audio")
+            }
+            val secondary = if (ForgottenDiscovery.select(primary, day, 12).size < 10) {
+                val secondaryQuery =
+                    unusual[Math.floorMod(day + 3, unusual.size.toLong()).toInt()]
+                safely { openverse(query = secondaryQuery, sourceFilter = "freesound") }
+            } else emptyList()
+            ForgottenDiscovery.select(primary + secondary, day)
+        }
+    }
 
     suspend fun artistTracks(source: Source, artist: String, id: String?): List<Track> =
         withContext(Dispatchers.IO) {
@@ -223,12 +258,10 @@ object ExperimentalCatalog {
             val tagGenre = (0 until (tags?.length() ?: 0))
                 .mapNotNull { tags?.optJSONObject(it)?.optString("name") }
                 .take(8).joinToString(", ")
-            val album = obj.optJSONObject("audio_set")
-            // Prefer small provider-hosted album art, avoiding an API request
-            // for *each* thumbnail under Openverse anonymous throttling.
-            val cover = album?.optString("url")?.takeIf {
-                it.startsWith("https://")
-            } ?: obj.optString("thumbnail").takeIf { it.startsWith("https://") }
+            // audio_set describes a group of recordings, not album artwork.
+            // Never feed its audio URL to Coil as an image.
+            val cover = obj.optString("thumbnail")
+                .takeIf { it.startsWith("https://") }
             val creatorPage = obj.optString("creator_url").takeIf {
                 it.startsWith("https://")
             }
@@ -251,6 +284,7 @@ object ExperimentalCatalog {
                 artistId = provider.takeIf(String::isNotBlank),
                 artistPage = creatorPage,
                 catalogProvider = provider.takeIf(String::isNotBlank),
+                audioCategory = obj.optString("category").ifBlank { null },
             )
         }.distinctBy { it.id }
     }
@@ -271,8 +305,7 @@ object ExperimentalCatalog {
     private fun enc(value: String): String = Uri.encode(value)
     private fun requestJson(url: String, maxBytes: Int = 2 * 1024 * 1024): JSONObject {
         require(url.startsWith("https://"))
-        // Respect Capsule's configured network proxy, especially when Archive/Mirlo
-        // are unreachable on networks where Audius still works.
+        // Respect Capsule's configured network proxy for Audius and Openverse.
         val networkProxy = YouTube.streamProxy
         val connection = (URL(url).openConnection(networkProxy ?: Proxy.NO_PROXY) as HttpURLConnection).apply {
             connectTimeout = 4500

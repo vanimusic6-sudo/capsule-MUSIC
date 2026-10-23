@@ -239,6 +239,9 @@ fun HomeScreen(
                     }
                     ExperimentalDiscoveryShelf(tasteArtists = tastes, navController = navController)
                 }
+                item(key = "home:experimental-forgotten") {
+                    ExperimentalForgottenShelf(navController = navController)
+                }
             }
 
             // This is the current YouTube Music release catalog, not a static

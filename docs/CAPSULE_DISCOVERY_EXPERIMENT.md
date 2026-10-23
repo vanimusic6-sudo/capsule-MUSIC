@@ -44,3 +44,24 @@ from this experimental integration. Remote publishers can restrict streaming.
 - Live network access from the build environment, playback rights for specific
   titles, rate-limit behavior in different regions, and device playback still
   require on-device smoke testing. Do **not** merge into stable untested.
+
+## Long Forgotten shelf
+
+The optional home screen presents a **separate** "Long forgotten" (Давно забытое)
+shelf. It uses only the official Openverse anonymous audio API, with historical
+and niche music query rotation against `wikimedia_audio` first and `freesound`
+as an optional musical fallback. Both are among Openverse's currently listed
+audio sources, alongside `jamendo`. **Internet Archive is NOT an indexed audio
+source in Openverse at the time of this change.** No direct Internet Archive,
+Freesound or Wikimedia client key, scraper or audio resolver is added.
+
+Curated results exclude short language pronunciations, generic effects,
+missing CC license and HTTPS audio, and duplicated artists/tracks.
+The input and ranking rotate daily and are cached, preserving anonymity and
+avoiding unnecessary calls. Failure never affects the main recommendation
+shelf or normal audio playback.
+
+**No exclusivity claim:** Openverse offers no evidence about whether any
+recording exists elsewhere. "Long forgotten" means niche or archival
+discoveries, not proven unique recordings, verified release dates, or absence
+from mainstream services. Show upstream creator links and license details.

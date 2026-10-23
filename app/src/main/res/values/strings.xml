@@ -970,4 +970,6 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="capsule_discovery_license">Music license</string>
     <string name="capsule_discovery_retry">Try again</string>
     <string name="capsule_discovery_creator_original">Open original creator page ↗</string>
+    <string name="capsule_discovery_forgotten_title">Long forgotten</string>
+    <string name="capsule_discovery_forgotten_description">Rare recordings from open archives · availability elsewhere is not verified</string>
 </resources>
