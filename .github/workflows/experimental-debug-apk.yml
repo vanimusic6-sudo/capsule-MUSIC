@@ -45,6 +45,13 @@ jobs:
           gradle :app:verifyAndroidJsonRuntime :app:assembleUniversalDebug \
             --no-daemon --stacktrace
 
+      - name: Test independent discovery rankings
+        run: |
+          gradle :app:testUniversalDebugUnitTest \
+            --tests 'com.nikhil.yt.discovery.ForgottenDiscoveryTest' \
+            --tests 'com.nikhil.yt.discovery.ExperimentalRankingTest' \
+            --no-daemon --stacktrace
+
       - name: Locate APK and checksum
         id: apk
         shell: bash
