@@ -98,7 +98,8 @@ fun ExperimentalArtistScreen(
                             fontWeight = FontWeight.SemiBold,
                         )
                         Text(
-                            (source?.title ?: "Capsule Discovery"),
+                            if (artistId == "wikimedia_audio") "Wikimedia Commons"
+                            else (source?.title ?: "Capsule Discovery"),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.labelMedium,
                         )
@@ -108,7 +109,8 @@ fun ExperimentalArtistScreen(
                     Text(stringResource(R.string.capsule_discovery_creator_original))
                 }
                 Text(
-                    "${tracks.size} · ${source?.title.orEmpty()}",
+                    "${tracks.size} · " + if (artistId == "wikimedia_audio")
+                        "Wikimedia Commons" else source?.title.orEmpty(),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
