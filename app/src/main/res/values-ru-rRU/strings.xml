@@ -839,6 +839,7 @@
     <string name="capsule_discovery_loading">Загружаем независимые музыкальные каталоги…</string>
     <string name="capsule_home_source_pick">Источники главной</string>
     <string name="capsule_home_all_sources">Все доступные источники</string>
+    <string name="capsule_home_reset_youtube">Сбросить на YouTube Music</string>
     <string name="capsule_home_catalog_trending">Популярное сейчас</string>
     <string name="capsule_home_catalog_new">Свежие релизы</string>
     <string name="capsule_home_catalog_discover">Неизведанное</string>
