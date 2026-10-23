@@ -63,6 +63,26 @@ class HomeDiscoveryRegressionTest {
     }
 
     @Test
+    fun externalCatalogsDoNotHideHomeAfterMissingRemoteStreams() {
+        val home = source("ui/screens/HomeScreen.kt")
+        val catalog = source("discovery/ExperimentalCatalog.kt")
+        val archive = source("discovery/InternetArchiveMusic.kt")
+        val commons = source("discovery/WikimediaMusic.kt")
+        val selector = source("ui/screens/CapsuleRouteSurface.kt")
+        assertTrue(home.contains("HomeLoadingShimmer()"))
+        assertFalse(home.contains("CatalogHomeError("))
+        assertTrue(home.contains("catalogHome.finished && catalogHome.lanes.isEmpty()"))
+        assertTrue(catalog.contains("HomeFeedSource.FREESOUND -> openverse"))
+        assertTrue(catalog.contains("WikimediaMusic.artist(artist)"))
+        assertTrue(catalog.contains("sortedByDescending { it.playable }"))
+        assertTrue(archive.contains("MAX_METADATA_LOOKUPS"))
+        assertTrue(archive.contains("streamUrl = null"))
+        assertTrue(commons.contains("iiurlwidth=320"))
+        assertTrue(commons.contains("fun artist(name: String)"))
+        assertTrue(selector.contains("HomeFeedSource.encode(HomeFeedSource.entries.toSet())"))
+    }
+
+    @Test
     fun recommendationStreamRejectsSeenTracksAndNegativeFeedback() {
         val engine = source("utils/ForYouSuggestionEngine.kt")
         assertTrue(engine.contains("candidate.id !in heardIds"))
