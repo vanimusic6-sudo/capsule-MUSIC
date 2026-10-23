@@ -7,6 +7,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import timber.log.Timber
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -180,16 +182,28 @@ object ExperimentalCatalog {
     ): List<HomeLane> = withContext(Dispatchers.IO) {
             if (source == HomeFeedSource.YOUTUBE) return@withContext emptyList()
             if (source == HomeFeedSource.RADIO) {
+                // Independent Radio Browser categories must not spend eight
+                // serial network windows blocking Home. Three parallel queries
+                // maximum avoids a burst of connections on mobile networks.
+                val permits = Semaphore(3)
+                val tasks = RadioBrowserMusic.categories.map { category ->
+                    async(Dispatchers.IO) {
+                        category to permits.withPermit {
+                            safely {
+                                cached("radio:${category.name}:${java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay()}") {
+                                    RadioBrowserMusic.browse(category)
+                                }
+                            }
+                        }
+                    }
+                }
                 val lanes = mutableListOf<HomeLane>()
                 val seen = mutableSetOf<String>()
-                for (category in RadioBrowserMusic.categories) {
-                    val songs = safely {
-                        cached("radio:${category.name}:${java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay()}") {
-                            RadioBrowserMusic.browse(category)
-                        }
-                    }.filter { seen.add(it.mediaId) }.take(14)
-                    if (songs.isNotEmpty()) {
-                        val lane = HomeLane(source, HomeLaneKind.DISCOVER, songs, category.titleRes)
+                for (task in tasks) {
+                    val (category, tracks) = task.await()
+                    val filtered = tracks.filter { seen.add(it.mediaId) }.take(14)
+                    if (filtered.isNotEmpty()) {
+                        val lane = HomeLane(source, HomeLaneKind.DISCOVER, filtered, category.titleRes)
                         lanes.add(lane)
                         onLane(lane)
                     }
