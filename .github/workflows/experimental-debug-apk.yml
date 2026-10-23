@@ -119,6 +119,31 @@ jobs:
           except Exception as ex:
               print("Archive probe",type(ex).__name__,str(ex)[:120])
           try:
+              for query in ["music loop", "ambient music"]:
+                  args=urllib.parse.urlencode({
+                      "q":query, "source":"freesound", "page_size":8})
+                  items=data("https://api.openverse.org/v1/audio/?"+args).get("results",[])
+                  print("Freesound index", query, "count",len(items),
+                        "categories",[x.get("category") for x in items[:4]],
+                        "https candidates",sum(bool(x.get("url","").startswith("https://")) for x in items))
+          except Exception as ex:
+              print("Freesound metadata probe",type(ex).__name__,str(ex)[:120])
+          try:
+              q='collection:netlabels AND mediatype:audio AND (format:"VBR MP3" OR format:"MP3" OR format:"Ogg Vorbis" OR format:"FLAC")'
+              x=data("https://archive.org/advancedsearch.php?q="+urllib.parse.quote(q)+
+                  "&fl%5B%5D=identifier&rows=8&output=json")
+              items=x.get("response",{}).get("docs",[])
+              print("Archive format-filtered results:",len(items))
+              for row in items[:2]:
+                  info=data("https://archive.org/metadata/"+row["identifier"])
+                  files=info.get("files",[])
+                  print("Archive matching item:",row["identifier"],
+                        "files",len(files),"audio",
+                        sum(str(y.get("name","")).lower().endswith((".mp3",".ogg",".flac",".m4a")) for y in files),
+                        "license",bool(info.get("metadata",{}).get("licenseurl")))
+          except Exception as ex:
+              print("Archive format probe",type(ex).__name__,str(ex)[:120])
+          try:
               query=urllib.parse.quote("music filetype:audio")
               x=data("https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrlimit=5&gsrsearch="+query+"&prop=imageinfo&iiprop=url%7Cmime%7Csize%7Cextmetadata&format=json")
               files=[i.get("imageinfo",[{}])[0] for i in x.get("query",{}).get("pages",{}).values() if i.get("imageinfo")]
