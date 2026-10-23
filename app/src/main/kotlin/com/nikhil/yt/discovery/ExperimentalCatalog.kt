@@ -63,7 +63,20 @@ object ExperimentalCatalog {
 
     /** Independent sections for an actual provider Home, not a single discovery carousel. */
     enum class HomeLaneKind { TRENDING, NEW, DISCOVER, FOR_YOU }
-    data class HomeLane(val source: HomeFeedSource, val kind: HomeLaneKind, val tracks: List<Track>)
+    data class HomeLane(
+        val source: HomeFeedSource, val kind: HomeLaneKind, val tracks: List<Track>,
+        /** Multiple curated shelves can share a kind and still have stable keys. */
+        val titleRes: Int? = null,
+    )
+
+    private val playbackTracks = ConcurrentHashMap<String, Track>()
+    fun registerPlayable(track: Track) {
+        if (track.playable) {
+            if (playbackTracks.size > 256) playbackTracks.clear()
+            playbackTracks[track.mediaId] = track
+        }
+    }
+    fun playingTrack(mediaId: String): Track? = playbackTracks[mediaId]
 
     const val EXPERIMENTAL_MEDIA_PREFIX = "capsule-open:"
     private const val CACHE_MS = 15 * 60_000L
@@ -90,7 +103,7 @@ object ExperimentalCatalog {
      * no direct Jamendo API credentials, HTML scraping or accounts.
      */
     suspend fun recommend(tasteArtists: List<String>): List<Track> = coroutineScope {
-        val lanes = HomeFeedSource.entries.filter { it != HomeFeedSource.YOUTUBE }
+        val lanes = HomeFeedSource.selectable.filter { it == HomeFeedSource.AUDIUS }
             .map { source -> async(Dispatchers.IO) { safely { discoveryFromHome(source, tasteArtists) } } }
         ExperimentalRanking.select(
             tracks = lanes.flatMap { it.await() },
@@ -166,6 +179,69 @@ object ExperimentalCatalog {
         onLane: suspend (HomeLane) -> Unit = {},
     ): List<HomeLane> = withContext(Dispatchers.IO) {
             if (source == HomeFeedSource.YOUTUBE) return@withContext emptyList()
+            if (source == HomeFeedSource.RADIO) {
+                val lanes = mutableListOf<HomeLane>()
+                val seen = mutableSetOf<String>()
+                for (category in RadioBrowserMusic.categories) {
+                    val songs = safely {
+                        cached("radio:${category.name}:${java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay()}") {
+                            RadioBrowserMusic.browse(category)
+                        }
+                    }.filter { seen.add(it.mediaId) }.take(14)
+                    if (songs.isNotEmpty()) {
+                        val lane = HomeLane(source, HomeLaneKind.DISCOVER, songs, category.titleRes)
+                        lanes.add(lane)
+                        onLane(lane)
+                    }
+                }
+                return@withContext lanes
+            }
+            if (source == HomeFeedSource.AUDIUS) {
+                // Mix ranking periods, editorial APIs, genre charts and deeper
+                // catalog cuts. Different daily offsets avoid replaying exactly
+                // the same global top 20 every time without using random tracks.
+                val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay()
+                val offset = (Math.floorMod(day, 4L) * 12).toInt()
+                val genre = listOf("Electronic","Hip-Hop/Rap","Jazz","Rock",
+                    "Pop","Alternative")[Math.floorMod(day, 6L).toInt()]
+                val endpoints = listOf(
+                    Triple(HomeLaneKind.TRENDING, com.nikhil.yt.R.string.capsule_audius_this_week,
+                        "/tracks/trending?time=week&limit=35"),
+                    Triple(HomeLaneKind.NEW, com.nikhil.yt.R.string.capsule_audius_new_releases,
+                        "/tracks/latest?limit=35"),
+                    Triple(HomeLaneKind.DISCOVER, com.nikhil.yt.R.string.capsule_audius_underground,
+                        "/tracks/trending/underground?limit=35"),
+                    Triple(HomeLaneKind.TRENDING, com.nikhil.yt.R.string.capsule_audius_genre_chart,
+                        "/tracks/trending?time=month&genre=${enc(genre)}&limit=35&offset=$offset"),
+                    Triple(HomeLaneKind.NEW, com.nikhil.yt.R.string.capsule_audius_fresh,
+                        "/tracks/best_new_releases?limit=35"),
+                    Triple(HomeLaneKind.DISCOVER, com.nikhil.yt.R.string.capsule_audius_radar,
+                        "/tracks/under_the_radar?limit=35"),
+                    Triple(HomeLaneKind.TRENDING, com.nikhil.yt.R.string.capsule_audius_month,
+                        "/tracks/trending?time=month&limit=35&offset=$offset"),
+                    Triple(HomeLaneKind.DISCOVER, com.nikhil.yt.R.string.capsule_audius_loved,
+                        "/tracks/most_loved?limit=35"),
+                ) + tasteArtists.firstOrNull { it.isNotBlank() }?.let {
+                    listOf(Triple(HomeLaneKind.FOR_YOU,
+                        com.nikhil.yt.R.string.capsule_home_catalog_for_you,
+                        "/tracks/search?query=${enc(it.take(60))}&limit=35"))
+                }.orEmpty()
+                val seen = mutableSetOf<String>()
+                val lanes = mutableListOf<HomeLane>()
+                for ((kind, label, endpoint) in endpoints) {
+                    val candidates = safely {
+                        cached("audius:${label}:${day}:${genre}:${endpoint}") { audius(endpoint) }
+                    }
+                    val tracks = candidates.filter { it.playable && it.durationSeconds in 1..2400 &&
+                        seen.add(it.mediaId) }.take(14)
+                    if (tracks.isNotEmpty()) {
+                        val lane = HomeLane(source,kind,tracks,label)
+                        lanes.add(lane)
+                        onLane(lane)
+                    }
+                }
+                return@withContext lanes
+            }
             val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay()
             val upstream = source.openverseId
             val themes = when (source) {

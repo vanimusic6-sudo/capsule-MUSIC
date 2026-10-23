@@ -250,7 +250,7 @@ fun CapsulePinnedHeader(route: String) {
                             // writes raced the experimental gate on first opt-in.
                             PreferenceStore.launchEdit(context.dataStore) {
                                 this[HomeFeedSourcesKey] =
-                                    HomeFeedSource.encode(HomeFeedSource.entries.toSet())
+                                    HomeFeedSource.encode(HomeFeedSource.selectable.toSet())
                                 this[ExperimentalSourcesEnabledKey] = true
                             }
                             chooserOpen = false
@@ -271,7 +271,7 @@ fun CapsulePinnedHeader(route: String) {
                             chooserOpen = false
                         },
                     )
-                    HomeFeedSource.entries.forEach { source ->
+                    HomeFeedSource.selectable.forEach { source ->
                         // Show what actually feeds Home. Experimental catalogs are
                         // inactive until opted in, regardless of stored defaults.
                         val active = source in effective

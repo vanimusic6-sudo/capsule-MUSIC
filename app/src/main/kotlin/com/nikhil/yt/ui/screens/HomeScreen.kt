@@ -274,9 +274,9 @@ fun HomeScreen(
                     )
                 }
                 catalogHome.lanes.forEach { lane ->
-                    item(key = "home:catalog:" + lane.source.id + ":" + lane.kind.name) {
+                    item(key = "home:catalog:" + lane.source.id + ":" + lane.kind.name + ":" + (lane.titleRes ?: 0)) {
                         CatalogHomeRow(
-                            title = lane.source.label + " · " + catalogLaneTitle(lane.kind),
+                            title = lane.source.label + " · " + (lane.titleRes?.let { stringResource(it) } ?: catalogLaneTitle(lane.kind)),
                             source = lane.source,
                             tracks = lane.tracks,
                             userScrollEnabled = horizontalShelvesEnabled.value,

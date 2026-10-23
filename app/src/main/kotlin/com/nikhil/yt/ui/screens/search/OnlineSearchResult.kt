@@ -440,9 +440,6 @@ fun OnlineSearchResult(
                 add(SearchChip.FEATURED_PLAYLISTS to stringResource(R.string.filter_featured_playlists))
                 if (experimentalEnabled) {
                     add(SearchChip.AUDIUS to "Audius")
-                    add(SearchChip.OPENVERSE to "Openverse")
-                    add(SearchChip.ARCHIVE to "Internet Archive")
-                    add(SearchChip.CCMIXTER to "ccMixter")
                     add(SearchChip.RADIO to "Open Radio")
                 }
             },

@@ -107,7 +107,7 @@ internal fun rememberCatalogHomeState(
                                 permits.withPermit { ExperimentalCatalog.homeLanes(source, tasteArtists) { lane ->
                                     withContext(Dispatchers.Main) {
                                         state.lanes = (state.lanes.filterNot {
-                                            it.source == lane.source && it.kind == lane.kind
+                                            it.source == lane.source && it.kind == lane.kind && it.titleRes == lane.titleRes
                                         } + lane).sortedWith(
                                             compareBy<ExperimentalCatalog.HomeLane> {
                                                 HomeFeedSource.entries.indexOf(it.source)

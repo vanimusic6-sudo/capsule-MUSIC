@@ -19,12 +19,15 @@ enum class HomeFeedSource(val id: String, val label: String, val icon: Int, val 
 
     companion object {
         const val DEFAULT = "youtube"
+        /** Only these providers are user-facing. Legacy IDs from old builds
+         * are discarded during parsing rather than silently re-enabled. */
+        val selectable = listOf(YOUTUBE, AUDIUS, RADIO)
         fun parse(raw: String): Set<HomeFeedSource> {
             val names = raw.split(',').toSet()
-            return entries.filterTo(linkedSetOf()) { it.id in names }
+            return selectable.filterTo(linkedSetOf()) { it.id in names }
                 .ifEmpty { linkedSetOf(YOUTUBE) }
         }
         fun encode(sources: Set<HomeFeedSource>): String =
-            entries.filter { it in sources }.joinToString(",") { it.id }
+            selectable.filter { it in sources }.joinToString(",") { it.id }
     }
 }
