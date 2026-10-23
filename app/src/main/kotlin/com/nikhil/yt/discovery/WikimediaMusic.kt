@@ -19,12 +19,22 @@ internal object WikimediaMusic {
     private val noise = listOf("pronunciation", "audio pronunciation", "spoken word",
         "speech recording", "test audio", "test tone", "dictation", "sound effect",
         "letter of the alphabet", "phonetic")
+    /** Commons artist metadata is separate from Openverse creator indexing. */
+    fun artist(name: String): List<ExperimentalCatalog.Track> {
+        val query = name.trim().take(60)
+        if (query.isBlank() || query.equals("Wikimedia Commons", true)) return emptyList()
+        val candidates = browse(query)
+        val matched = candidates.filter { it.artist.equals(query, true) ||
+            it.artist.contains(query, ignoreCase = true) }
+        return matched.ifEmpty { candidates }
+    }
+
     fun browse(query: String): List<ExperimentalCatalog.Track> {
         val q = "${query.trim().take(45)} filetype:audio"
         val url = "https://commons.wikimedia.org/w/api.php" +
             "?action=query&generator=search&gsrnamespace=6&gsrlimit=32" +
             "&gsrsearch=${Uri.encode(q)}&prop=imageinfo" +
-            "&iiprop=url%7Cmime%7Csize%7Cextmetadata&format=json&maxlag=5"
+            "&iiprop=url%7Cmime%7Csize%7Cextmetadata&iiurlwidth=320&format=json&maxlag=5"
         val pages = fetch(url).optJSONObject("query")?.optJSONObject("pages")
             ?: return emptyList()
         val tracks = mutableListOf<ExperimentalCatalog.Track>()
@@ -49,22 +59,34 @@ internal object WikimediaMusic {
                 ?: if (meta.optJSONObject("LicenseShortName")?.optString("value")
                         ?.contains("public domain", true) == true)
                     "https://creativecommons.org/publicdomain/mark/1.0/" else continue
-            val creator = meta.optJSONObject("Artist")?.optString("value").orEmpty()
-                .let { Html.fromHtml(it, Html.FROM_HTML_MODE_LEGACY).toString().trim() }
+            val artistHtml = meta.optJSONObject("Artist")?.optString("value").orEmpty()
+            val creator = Html.fromHtml(artistHtml, Html.FROM_HTML_MODE_LEGACY)
+                .toString().replace(Regex("\\s+"), " ").trim()
                 .take(90).ifBlank { "Wikimedia Commons" }
+            // Commons generates thumbnails for some audio uploads. Keep only
+            // actual image thumbnails, never try to decode the audio as artwork.
+            val artwork = file.optString("thumburl").takeIf {
+                it.startsWith("https://upload.wikimedia.org/") &&
+                    !audioExt.containsMatchIn(it.substringBefore('?'))
+            }
+            val artistLink = Regex("https://commons\\.wikimedia\\.org/wiki/User:[^\\s\\\"'<>]+")
+                .find(artistHtml)?.value
             tracks.add(ExperimentalCatalog.Track(
                 source = ExperimentalCatalog.Source.OPENVERSE,
                 id = "commons:${page.optLong("pageid")}",
                 title = name,
                 artist = creator,
-                artwork = null,
+                artwork = artwork,
+                artworkLarge = artwork,
                 streamUrl = stream,
                 sourcePage = "https://commons.wikimedia.org/wiki/${Uri.encode(title.replace(' ', '_'), ":")}",
                 license = license,
                 catalogProvider = "wikimedia_audio",
                 audioCategory = "music",
                 artistId = "wikimedia_audio",
-                artistPage = null,
+                artistPage = artistLink
+                    ?: "https://commons.wikimedia.org/w/index.php?search=" +
+                        Uri.encode(creator) + "&title=Special:MediaSearch&type=audio",
             ))
             if (tracks.size >= 22) break
         }
