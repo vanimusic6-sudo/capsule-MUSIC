@@ -1968,7 +1968,8 @@ class MusicService :
             .distinctUntilChanged()
             .collect(scope) { enabled ->
                 if (!enabled &&
-                    player.currentMediaItem?.mediaId?.startsWith(EXPERIMENTAL_MEDIA_PREFIX) == true
+                    player.currentMediaItem?.mediaId?.startsWith(EXPERIMENTAL_MEDIA_PREFIX) == true &&
+                    player.currentMediaItem?.mediaId?.startsWith("capsule-open:offline:") != true
                 ) {
                     player.stop()
                     player.clearMediaItems()
@@ -2619,6 +2620,7 @@ class MusicService :
         playWhenReady: Boolean = true,
     ) {
         if (queue.preloadItem?.id?.startsWith(EXPERIMENTAL_MEDIA_PREFIX) == true &&
+            queue.preloadItem?.id?.startsWith("capsule-open:offline:") != true &&
             !dataStore.get(ExperimentalSourcesEnabledKey, false)
         ) return
         val joined = togetherSessionState.value as? com.nikhil.yt.together.TogetherSessionState.Joined
@@ -5702,8 +5704,11 @@ class MusicService :
             override fun createMediaSource(mediaItem: MediaItem): MediaSource {
                 if (mediaItem.mediaId.startsWith(EXPERIMENTAL_MEDIA_PREFIX)) {
                     val uri = mediaItem.localConfiguration?.uri
-                    require(uri?.scheme == "https") { "External media must use a resolved HTTPS stream URL" }
-                    require(dataStore.get(ExperimentalSourcesEnabledKey, false)) {
+                    val localOffline = mediaItem.mediaId.startsWith("capsule-open:offline:")
+                    require(if (localOffline) uri?.scheme == "content" else uri?.scheme == "https") {
+                        "External item must use an allowed HTTPS or app-owned MediaStore content URL"
+                    }
+                    if (!localOffline) require(dataStore.get(ExperimentalSourcesEnabledKey, false)) {
                         "Experimental sources are disabled"
                     }
                     return externalStreamingSource.createMediaSource(mediaItem)
