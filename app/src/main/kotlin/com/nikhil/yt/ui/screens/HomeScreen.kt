@@ -114,10 +114,9 @@ fun HomeScreen(
             .distinct().take(2)
     }
     val catalogHome = rememberCatalogHomeState(rareSources, tastes)
-    // An unavailable optional provider must never leave the Home permanently empty.
-    // Preserve the selected provider; the fallback is display-only.
-    val displayYouTube = includeYouTube ||
-        (rareSources.isNotEmpty() && catalogHome.finished && catalogHome.lanes.isEmpty())
+    // Do not silently substitute YouTube when the user deliberately chose an
+    // external-only Home. Show a retry state for an unavailable source instead.
+    val displayYouTube = includeYouTube
     val catalogTracks = catalogHome.lanes.flatMap { it.tracks }.distinctBy { it.mediaId }
     // LazyListScope is not composable: calculate the mixed shelf BEFORE its DSL.
     val beyond = remember(catalogTracks, tastes) {
@@ -289,7 +288,13 @@ fun HomeScreen(
                 if (catalogHome.loading && catalogHome.lanes.isEmpty()) {
                     item(key = "home:catalog-loading") { HomeLoadingShimmer() }
                 }
-                // Failed providers are omitted instead of leaving stale error text.
+                if (catalogHome.finished && catalogHome.lanes.isEmpty() &&
+                    rareSources.isNotEmpty()) {
+                    item(key = "home:catalog-unavailable") {
+                        CatalogHomeError(onRetry = catalogHome::refresh)
+                    }
+                }
+                // Partial provider errors do not interrupt healthy shelves.
 
             }
 
