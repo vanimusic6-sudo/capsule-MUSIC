@@ -211,13 +211,18 @@ internal fun CatalogHomeRow(
                                 .background(cardSource.accent.copy(alpha = 0.22f)),
                             contentAlignment = Alignment.Center,
                         ) {
+                            var artFailed by remember(track.artwork) { mutableStateOf(false) }
                             AsyncImage(
                                 model = track.artwork,
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
+                                onError = { artFailed = true },
+                                onSuccess = { artFailed = false },
                                 modifier = Modifier.fillMaxSize(),
                             )
-                            if (track.artwork.isNullOrBlank()) Icon(
+                            // Commons audio sometimes has no real thumbnail.
+                            // If its image CDN fails, retain visible source art.
+                            if (track.artwork.isNullOrBlank() || artFailed) Icon(
                                 painter = painterResource(cardSource.icon),
                                 contentDescription = null,
                                 tint = cardSource.accent,
