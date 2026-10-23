@@ -176,13 +176,22 @@ object ExperimentalCatalog {
             ) + if (searchTaste != null) listOf(
                 HomeLaneKind.FOR_YOU to { audius("/tracks/search?query=${enc(searchTaste)}&limit=25") },
             ) else emptyList() else listOf(
-                HomeLaneKind.TRENDING to { if (source == HomeFeedSource.WIKIMEDIA)
-                    WikimediaMusic.browse("music") else openverse(query = "music", sourceFilter = upstream, category = "music") },
-                HomeLaneKind.DISCOVER to { if (source == HomeFeedSource.WIKIMEDIA)
-                    WikimediaMusic.browse(theme ?: "instrumental") else openverse(query = theme ?: "instrumental", sourceFilter = upstream, category = "music") },
+                HomeLaneKind.TRENDING to { when (source) {
+                    HomeFeedSource.WIKIMEDIA -> WikimediaMusic.browse("music")
+                    HomeFeedSource.FREESOUND -> openverse("music loop", sourceFilter = upstream)
+                    else -> openverse("music", sourceFilter = upstream, category = "music")
+                } },
+                HomeLaneKind.DISCOVER to { when (source) {
+                    HomeFeedSource.WIKIMEDIA -> WikimediaMusic.browse(theme ?: "instrumental")
+                    HomeFeedSource.FREESOUND -> openverse("music " + (theme ?: "ambient"), sourceFilter = upstream)
+                    else -> openverse(theme ?: "instrumental", sourceFilter = upstream, category = "music")
+                } },
             ) + if (searchTaste != null) listOf(
-                HomeLaneKind.FOR_YOU to { if (source == HomeFeedSource.WIKIMEDIA)
-                    WikimediaMusic.browse(searchTaste) else openverse(query = searchTaste, sourceFilter = upstream, category = "music") },
+                HomeLaneKind.FOR_YOU to { when (source) {
+                    HomeFeedSource.WIKIMEDIA -> WikimediaMusic.browse(searchTaste)
+                    HomeFeedSource.FREESOUND -> openverse("music " + searchTaste, sourceFilter = upstream)
+                    else -> openverse(searchTaste, sourceFilter = upstream, category = "music")
+                } },
             ) else emptyList()
             val used = mutableSetOf<String>()
             var remainingStreamProbes = 7 // bounded across this entire source Home
@@ -215,8 +224,10 @@ object ExperimentalCatalog {
                                 .firstOrNull { verifyOpenverseAudio(it) })
                         } else track
                     }
-                    // Do not fill the Home with broken indexed stream links.
-                    .filter { it.playable }
+                    // Keep licensed, curated index-only cards as ORIGINAL RELEASE
+                    // links. They are not playable, but their source Home must
+                    // remain discoverable when a CDN requires login/blocks Range.
+                    .sortedByDescending { it.playable }
                 if (ordered.isNotEmpty()) {
                     val lane = HomeLane(source, kind, ordered)
                     lanes.add(lane)
@@ -237,7 +248,9 @@ object ExperimentalCatalog {
                         audius("/users/${enc(id)}/tracks?limit=40")
                     } else audius("/tracks/search?query=${enc(artist)}&limit=35")
                         .filter { it.artist.equals(artist, true) }
-                    Source.OPENVERSE -> validateSearchTracks(openverse(
+                    Source.OPENVERSE -> if (id == "wikimedia_audio") {
+                        WikimediaMusic.artist(artist)
+                    } else validateSearchTracks(openverse(
                         creator = artist,
                         sourceFilter = id?.takeIf { it.matches(Regex("[a-z_]{2,30}")) },
                     ))
@@ -332,7 +345,28 @@ object ExperimentalCatalog {
             val id = obj.optString("id")
             if (!id.matches(Regex("[0-9a-fA-F-]{36}"))) return@mapNotNull null
             if (obj.optBoolean("mature", false)) return@mapNotNull null
-            if (obj.optString("category") == "sound_effect") return@mapNotNull null
+            val provider = obj.optString("source").lowercase()
+            // Freesound classifies even melodic loops as sound effects. Only
+            // admit items with strong musical title/tag evidence; never treat
+            // arbitrary effects as songs.
+            val musicText = buildString {
+                append(obj.optString("title"))
+                val itemTags = obj.optJSONArray("tags")
+                for (tagIndex in 0 until minOf(itemTags?.length() ?: 0, 12)) {
+                    append(" ")
+                    append(itemTags?.optJSONObject(tagIndex)?.optString("name").orEmpty())
+                }
+            }.lowercase()
+            val freesoundMusic = provider == "freesound" &&
+                listOf("music", "melody", "instrumental", "ambient", "piano",
+                    "guitar", "rhythm", "synth", "song", "beat", "musical",
+                    "chord", "loop").any(musicText::contains) &&
+                listOf("footstep", "explosion", "gunshot", "applause", "door slam",
+                    "alarm", "car engine", "bird call", "spoken",
+                    "pronunciation").none(musicText::contains)
+            if (provider == "freesound" && !freesoundMusic) return@mapNotNull null
+            if (provider != "freesound" &&
+                obj.optString("category") == "sound_effect") return@mapNotNull null
             val title = obj.optString("title").trim()
             if (title.isBlank()) return@mapNotNull null
             val artist = obj.optString("creator").ifBlank { "Unknown artist" }
@@ -349,7 +383,6 @@ object ExperimentalCatalog {
             // A public index does not establish playback permission by itself.
             // Respect original publisher restrictions and expose the license.
             val mayStream = licenseUrl != null && obj.optString("license").isNotBlank()
-            val provider = obj.optString("source").lowercase()
             val genres = obj.optJSONArray("genres")
             val genre = (0 until (genres?.length() ?: 0))
                 .mapNotNull { genres?.optString(it)?.takeIf(String::isNotBlank) }
@@ -387,7 +420,8 @@ object ExperimentalCatalog {
                 artistId = provider.takeIf(String::isNotBlank),
                 artistPage = creatorPage,
                 catalogProvider = provider.takeIf(String::isNotBlank),
-                audioCategory = obj.optString("category").ifBlank { null },
+                audioCategory = if (freesoundMusic) "music"
+                    else obj.optString("category").ifBlank { null },
             )
         }.distinctBy { it.id }
     }
