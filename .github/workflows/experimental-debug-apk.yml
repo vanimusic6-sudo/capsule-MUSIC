@@ -40,6 +40,35 @@ jobs:
           mkdir -p app/src/main/res
           echo 'unqualifiedResLocale=en-US' > app/src/main/res/resources.properties
 
+      - name: Probe official Openverse audio API (diagnostic only)
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import json
+          import urllib.request
+          import urllib.error
+          for label, query in [
+              ("Jamendo", "q=ambient&source=jamendo&page_size=3&category=music"),
+              ("Wikimedia", "q=folk&source=wikimedia_audio&page_size=3"),
+          ]:
+              url = "https://api.openverse.org/v1/audio/?" + query
+              try:
+                  req = urllib.request.Request(
+                      url, headers={
+                          "Accept": "application/json",
+                          "User-Agent": "CapsuleMusic/experimental-discovery",
+                      })
+                  with urllib.request.urlopen(req, timeout=12) as response:
+                      data = json.load(response)
+                      items = data.get("results", [])
+                      print(label, "HTTP", response.status, "found", data.get("result_count"),
+                            "returned", len(items), "example",
+                            [(x.get("source"), x.get("category"), bool(x.get("license_url")))
+                             for x in items[:2]])
+              except Exception as e:
+                  print(label, "FAILED", type(e).__name__, str(e)[:200])
+          PY
+
       - name: Assemble universal debug APK
         run: |
           gradle :app:verifyAndroidJsonRuntime :app:assembleUniversalDebug \

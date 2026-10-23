@@ -2,7 +2,6 @@ package com.nikhil.yt.discovery
 
 import android.net.Uri
 import com.nikhil.yt.innertube.YouTube
-import java.net.Proxy
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -82,8 +81,7 @@ object ExperimentalCatalog {
     suspend fun discoveryFrom(source: Source, tasteArtists: List<String>): List<Track> =
         withContext(Dispatchers.IO) {
             cached("lane:${source.name}:" + tasteArtists.take(2).joinToString("|").lowercase()) {
-                safely {
-                    when (source) {
+                when (source) {
                         Source.AUDIUS -> audius("/tracks/trending/underground?limit=25") +
                             tasteArtists.take(2).filter(String::isNotBlank).flatMap {
                                 safely { audius("/tracks/search?query=${enc(it)}&limit=4") }
@@ -98,10 +96,11 @@ object ExperimentalCatalog {
                             val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC)
                                 .toEpochDay()
                             val theme = themes[Math.floorMod(day, themes.size.toLong()).toInt()]
-                            openverse(query = theme, sourceFilter = "jamendo")
+                            val featured = openverse(query = theme, sourceFilter = "jamendo")
+                            if (featured.isNotEmpty()) featured else
+                                openverse(query = theme, category = "music")
                         }
                     }
-                }
             }
         }
 
@@ -126,15 +125,31 @@ object ExperimentalCatalog {
                 "field recording music", "old recording", "early electronic",
             )
             val primaryQuery = historical[Math.floorMod(day, historical.size.toLong()).toInt()]
-            val primary = safely {
+            var failed: Exception? = null
+            val primary = try {
                 openverse(query = primaryQuery, sourceFilter = "wikimedia_audio")
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (error: Exception) {
+                Timber.tag("CapsuleDiscovery").w(error, "Openverse historical lookup failed")
+                failed = error
+                emptyList()
             }
-            val secondary = if (ForgottenDiscovery.select(primary, day, 12).size < 10) {
-                val secondaryQuery =
-                    unusual[Math.floorMod(day + 3, unusual.size.toLong()).toInt()]
-                safely { openverse(query = secondaryQuery, sourceFilter = "freesound") }
+            val secondary = if (ForgottenDiscovery.select(primary, day, 12).size < 8) {
+                val fallbackQuery = unusual[Math.floorMod(day + 3, unusual.size.toLong()).toInt()]
+                try {
+                    openverse(query = fallbackQuery, sourceFilter = "freesound")
+                } catch (cancel: CancellationException) {
+                    throw cancel
+                } catch (error: Exception) {
+                    Timber.tag("CapsuleDiscovery").w(error, "Openverse secondary lookup failed")
+                    if (failed == null) failed = error
+                    emptyList()
+                }
             } else emptyList()
-            ForgottenDiscovery.select(primary + secondary, day)
+            val result = ForgottenDiscovery.select(primary + secondary, day)
+            if (result.isEmpty() && failed != null) throw requireNotNull(failed)
+            result
         }
     }
 
@@ -219,6 +234,7 @@ object ExperimentalCatalog {
         query: String? = null,
         creator: String? = null,
         sourceFilter: String? = null,
+        category: String? = null,
     ): List<Track> {
         val args = mutableListOf(
             "page_size=20",
@@ -228,6 +244,7 @@ object ExperimentalCatalog {
         else if (!creator.isNullOrBlank()) args.add("creator=${enc(creator.take(100))}")
         else return emptyList()
         if (!sourceFilter.isNullOrBlank()) args.add("source=${enc(sourceFilter)}")
+        if (category != null) args.add("category=${enc(category)}")
         val result = requestOpenverse("https://api.openverse.org/v1/audio/?"
             + args.joinToString("&"))
         val items = result.optJSONArray("results") ?: return emptyList()
@@ -258,9 +275,11 @@ object ExperimentalCatalog {
             val tagGenre = (0 until (tags?.length() ?: 0))
                 .mapNotNull { tags?.optJSONObject(it)?.optString("name") }
                 .take(8).joinToString(", ")
-            // audio_set describes a group of recordings, not album artwork.
-            // Never feed its audio URL to Coil as an image.
-            val cover = obj.optString("thumbnail")
+            // Jamendo's audio_set URL is album artwork; other providers
+            // use the official compressed Openverse thumbnail.
+            val albumArtwork = obj.optJSONObject("audio_set")?.optString("url")
+                ?.takeIf { provider == "jamendo" && it.startsWith("https://usercontent.jamendo.com") }
+            val cover = albumArtwork ?: obj.optString("thumbnail")
                 .takeIf { it.startsWith("https://") }
             val creatorPage = obj.optString("creator_url").takeIf {
                 it.startsWith("https://")
@@ -307,7 +326,11 @@ object ExperimentalCatalog {
         require(url.startsWith("https://"))
         // Respect Capsule's configured network proxy for Audius and Openverse.
         val networkProxy = YouTube.streamProxy
-        val connection = (URL(url).openConnection(networkProxy ?: Proxy.NO_PROXY) as HttpURLConnection).apply {
+        // No explicit proxy means use the Android/system default connection.
+        // Proxy.NO_PROXY incorrectly ignored legitimate system HTTP proxies.
+        val connection = (if (networkProxy != null) URL(url).openConnection(networkProxy)
+            else URL(url).openConnection()) as HttpURLConnection
+        connection.apply {
             connectTimeout = 4500
             readTimeout = 6500
             setRequestProperty("Accept", "application/json")
@@ -315,7 +338,9 @@ object ExperimentalCatalog {
         }
         return try {
             if (connection.responseCode !in 200..299) {
-                throw java.io.IOException("Provider HTTP ${connection.responseCode}")
+                val provider = if (url.startsWith("https://api.openverse.org/"))
+                    "Openverse" else "Audius"
+                throw java.io.IOException("$provider HTTP ${connection.responseCode}")
             }
             connection.inputStream.bufferedReader().use { input ->
                 val buffer = CharArray(8192)

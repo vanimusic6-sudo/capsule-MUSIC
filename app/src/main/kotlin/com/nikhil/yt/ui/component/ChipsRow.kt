@@ -69,6 +69,7 @@ fun <E> ChipsRow(
     modifier: Modifier = Modifier,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainer,
     icons: Map<E, Int> = emptyMap(),
+    persistentIconValues: Set<E> = emptySet(),
 ) {
     Row(
         modifier =
@@ -101,7 +102,7 @@ fun <E> ChipsRow(
                      * width change into the movement it always was. A chip that carries its own
                      * icon has no width change to make, so it is left alone.
                      */
-                    if (iconRes != null && !isSelected) {
+                    if (iconRes != null && (!isSelected || value in persistentIconValues)) {
                         Icon(
                             painter = painterResource(iconRes),
                             contentDescription = null,

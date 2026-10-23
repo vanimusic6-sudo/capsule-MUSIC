@@ -1,0 +1,24 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Original Capsule discovery glyph: an open orbit holding audio. -->
+    <path android:fillColor="@android:color/transparent"
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="1.75"
+        android:strokeLineCap="round"
+        android:pathData="M18.9,7.0 A8.4,8.4 0,1 0,20.0 15.0"/>
+    <path android:fillColor="@android:color/transparent"
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:pathData="M5.8,10.1 Q12.0,6.1 18.9,10.1 M5.8,14.1 Q12.0,18.1 18.9,14.1"/>
+    <path android:fillColor="@android:color/transparent"
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:pathData="M12,4.1 Q8.3,11.8 12,19.9 M12,4.1 Q15.7,11.8 12,19.9"/>
+    <path android:fillColor="@android:color/white"
+        android:pathData="M20.0,3.2 a1.65,1.65 0,1 0,3.3 0 a1.65,1.65 0,1 0,-3.3 0"/>
+</vector>

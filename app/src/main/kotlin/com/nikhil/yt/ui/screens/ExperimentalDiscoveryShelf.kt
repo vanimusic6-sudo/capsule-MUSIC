@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,6 +30,7 @@ import com.nikhil.yt.discovery.ExperimentalRanking
 import com.nikhil.yt.discovery.ExperimentalArtistRoute
 import com.nikhil.yt.discovery.ExperimentalTrackQueue
 import kotlinx.coroutines.CancellationException
+import timber.log.Timber
 
 /**
  * Dormant unless Content -> Experimental sources is enabled.
@@ -40,9 +42,14 @@ internal fun ExperimentalDiscoveryShelf(tasteArtists: List<String>, navControlle
     val playerConnection = LocalPlayerConnection.current ?: return
     var candidates by remember { mutableStateOf<List<ExperimentalCatalog.Track>>(emptyList()) }
     val tasteKey = remember(tasteArtists) { tasteArtists.take(2).joinToString("|") }
+    var retry by remember { mutableIntStateOf(0) }
+    var loading by remember { mutableStateOf(true) }
+    var failedSources by remember { mutableStateOf<Set<ExperimentalCatalog.Source>>(emptySet()) }
 
-    LaunchedEffect(tasteKey) {
+    LaunchedEffect(tasteKey, retry) {
         candidates = emptyList()
+        failedSources = emptySet()
+        loading = true
         // Show Audius promptly; Openverse is an independent async lane.
         // Its latency cannot hide or block the Audius shelf.
         supervisorScope {
@@ -53,7 +60,9 @@ internal fun ExperimentalDiscoveryShelf(tasteArtists: List<String>, navControlle
                         ExperimentalCatalog.discoveryFrom(source, tasteArtists)
                     } catch (cancel: CancellationException) {
                         throw cancel
-                    } catch (_: Exception) {
+                    } catch (error: Exception) {
+                        Timber.tag("CapsuleDiscovery").w(error, "%s recommendation failed", source.title)
+                        failedSources = failedSources + source
                         emptyList()
                     }
                     if (lane.isNotEmpty()) {
@@ -66,9 +75,9 @@ internal fun ExperimentalDiscoveryShelf(tasteArtists: List<String>, navControlle
                 }
             }
         }
+        loading = false
     }
 
-    if (candidates.isEmpty()) return
     Column(Modifier.fillMaxWidth()) {
         Text(
             text = stringResource(R.string.capsule_discovery_home_title),
@@ -76,12 +85,33 @@ internal fun ExperimentalDiscoveryShelf(tasteArtists: List<String>, navControlle
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
         )
-        LazyRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(horizontal = 20.dp),
-        ) {
-            items(candidates, key = { it.mediaId }) { track ->
+        if (candidates.isEmpty()) {
+            Text(
+                text = if (loading) stringResource(R.string.capsule_discovery_loading)
+                    else if (failedSources.isNotEmpty()) stringResource(R.string.capsule_discovery_unavailable)
+                    else stringResource(R.string.no_results_found),
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (!loading) TextButton(
+                onClick = { retry++ },
+                modifier = Modifier.padding(horizontal = 12.dp),
+            ) { Text(stringResource(R.string.capsule_discovery_retry)) }
+        } else {
+            if (failedSources.isNotEmpty()) {
+                TextButton(
+                    onClick = { retry++ },
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                ) { Text(failedSources.joinToString { it.title } + " · " +
+                    stringResource(R.string.capsule_discovery_retry)) }
+            }
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(horizontal = 20.dp),
+            ) {
+                items(candidates, key = { it.mediaId }) { track ->
                 Card(
                     modifier = Modifier.width(152.dp).clickable {
                         if (track.playable) {
@@ -135,6 +165,7 @@ internal fun ExperimentalDiscoveryShelf(tasteArtists: List<String>, navControlle
                     }
                 }
             }
+            }
         }
     }
 }
@@ -149,17 +180,25 @@ internal fun ExperimentalForgottenShelf(navController: NavController) {
     val context = LocalContext.current
     val playerConnection = LocalPlayerConnection.current ?: return
     var tracks by remember { mutableStateOf<List<ExperimentalCatalog.Track>>(emptyList()) }
+    var retry by remember { mutableIntStateOf(0) }
+    var loading by remember { mutableStateOf(true) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) {
-        tracks = try {
-            ExperimentalCatalog.forgotten()
+    LaunchedEffect(retry) {
+        tracks = emptyList()
+        errorMessage = null
+        loading = true
+        try {
+            tracks = ExperimentalCatalog.forgotten()
         } catch (cancel: CancellationException) {
             throw cancel
-        } catch (_: Exception) {
-            emptyList()
+        } catch (error: Exception) {
+            Timber.tag("CapsuleDiscovery").w(error, "Forgotten Openverse shelf unavailable")
+            errorMessage = error.message ?: "Network error"
+        } finally {
+            loading = false
         }
     }
-    if (tracks.isEmpty()) return
     // Read localized copy via Compose resources so configuration changes
     // (including Capsule's language switch) are applied without stale text.
     val queueTitle = stringResource(R.string.capsule_discovery_forgotten_title)
@@ -177,12 +216,27 @@ internal fun ExperimentalForgottenShelf(navController: NavController) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        LazyRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(horizontal = 20.dp),
-        ) {
-            items(tracks, key = { "forgotten-${it.mediaId}" }) { track ->
+        if (tracks.isEmpty()) {
+            Text(
+                text = if (loading) stringResource(R.string.capsule_discovery_loading)
+                    else if (errorMessage != null) stringResource(R.string.capsule_discovery_unavailable) +
+                        " (" + errorMessage + ")"
+                    else stringResource(R.string.no_results_found),
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (!loading) TextButton(
+                onClick = { retry++ },
+                modifier = Modifier.padding(horizontal = 12.dp),
+            ) { Text(stringResource(R.string.capsule_discovery_retry)) }
+        } else {
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(horizontal = 20.dp),
+            ) {
+                items(tracks, key = { "forgotten-${it.mediaId}" }) { track ->
                 Card(
                     modifier = Modifier.width(152.dp).clickable {
                         if (track.playable) {
@@ -239,6 +293,7 @@ internal fun ExperimentalForgottenShelf(navController: NavController) {
                         }
                     }
                 }
+            }
             }
         }
     }

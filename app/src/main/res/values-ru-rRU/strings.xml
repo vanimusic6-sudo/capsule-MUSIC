@@ -836,4 +836,5 @@
     <string name="capsule_discovery_creator_original">Открыть страницу автора на исходной площадке ↗</string>
     <string name="capsule_discovery_forgotten_title">Давно забытое</string>
     <string name="capsule_discovery_forgotten_description">Редкие записи из открытых архивов · уникальность не подтверждена</string>
+    <string name="capsule_discovery_loading">Загружаем независимые музыкальные каталоги…</string>
 </resources>

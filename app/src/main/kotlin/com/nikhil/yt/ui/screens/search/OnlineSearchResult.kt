@@ -268,7 +268,8 @@ fun OnlineSearchResult(
                     item(key = "rare-error") {
                         Column(Modifier.padding(20.dp)) {
                             Text(
-                                stringResource(R.string.capsule_discovery_unavailable),
+                                stringResource(R.string.capsule_discovery_unavailable) +
+                                    " · " + rareStatus.message.take(100),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             TextButton(onClick = {
@@ -465,9 +466,10 @@ fun OnlineSearchResult(
                 SearchChip.ARTISTS to R.drawable.person,
                 SearchChip.COMMUNITY_PLAYLISTS to R.drawable.queue_music,
                 SearchChip.FEATURED_PLAYLISTS to R.drawable.playlist_play,
-                SearchChip.AUDIUS to R.drawable.music_note,
-                SearchChip.OPENVERSE to R.drawable.album,
+                SearchChip.AUDIUS to R.drawable.ic_capsule_audius,
+                SearchChip.OPENVERSE to R.drawable.ic_capsule_openverse,
             ),
+            persistentIconValues = setOf(SearchChip.AUDIUS, SearchChip.OPENVERSE),
         )
     }
 }
