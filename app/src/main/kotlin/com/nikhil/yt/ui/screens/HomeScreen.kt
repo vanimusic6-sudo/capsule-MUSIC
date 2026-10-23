@@ -114,6 +114,15 @@ fun HomeScreen(
             .distinct().take(2)
     }
     val catalogHome = rememberCatalogHomeState(rareSources, tastes)
+    val catalogTracks = catalogHome.lanes.flatMap { it.tracks }.distinctBy { it.mediaId }
+    // LazyListScope is not composable: calculate the mixed shelf BEFORE its DSL.
+    val beyond = remember(catalogTracks, tastes) {
+        ExperimentalRanking.select(
+            catalogTracks,
+            dayKey = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay(),
+            tasteArtists = tastes,
+        )
+    }
     val listenerPlaylists by viewModel.communityPlaylists.collectAsState()
 
 
@@ -251,14 +260,6 @@ fun HomeScreen(
             // External sources are true Home providers. Render multiple
             // independent catalog rows rather than one optional music shelf.
             if (rareSources.isNotEmpty()) {
-                val allTracks = catalogHome.lanes.flatMap { it.tracks }.distinctBy { it.mediaId }
-                val beyond = remember(allTracks, tastes) {
-                    ExperimentalRanking.select(
-                        allTracks,
-                        dayKey = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay(),
-                        tasteArtists = tastes,
-                    )
-                }
                 if (beyond.isNotEmpty()) item(key = "home:catalog-beyond") {
                     CatalogHomeRow(
                         title = stringResource(R.string.capsule_discovery_home_title),
