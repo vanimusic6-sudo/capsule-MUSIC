@@ -31,6 +31,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -50,6 +51,8 @@ import com.nikhil.yt.constants.HomeFeedSourcesKey
 import com.nikhil.yt.constants.ExperimentalSourcesEnabledKey
 import com.nikhil.yt.discovery.HomeFeedSource
 import com.nikhil.yt.utils.rememberPreference
+import com.nikhil.yt.utils.PreferenceStore
+import com.nikhil.yt.utils.dataStore
 
 /**
  * Registers a destination that owns an opaque full-screen canvas.
@@ -204,6 +207,7 @@ fun CapsulePinnedHeader(route: String) {
     ) {
         Box(modifier = Modifier.weight(1f)) {
             if (isHome) {
+                val context = LocalContext.current
                 val (raw, setRaw) = rememberPreference(
                     HomeFeedSourcesKey, HomeFeedSource.DEFAULT,
                 )
@@ -242,8 +246,13 @@ fun CapsulePinnedHeader(route: String) {
                             )
                         },
                         onClick = {
-                            setRaw(HomeFeedSource.encode(HomeFeedSource.entries.toSet()))
-                            setExperimental(true)
+                            // Select all providers atomically: separate asynchronous
+                            // writes raced the experimental gate on first opt-in.
+                            PreferenceStore.launchEdit(context.dataStore) {
+                                this[HomeFeedSourcesKey] =
+                                    HomeFeedSource.encode(HomeFeedSource.entries.toSet())
+                                this[ExperimentalSourcesEnabledKey] = true
+                            }
                             chooserOpen = false
                         },
                     )
@@ -296,12 +305,16 @@ fun CapsulePinnedHeader(route: String) {
                                 // every default-selected remote catalog.
                                 if (source != HomeFeedSource.YOUTUBE && !experimental) {
                                     next.add(source)
-                                    setExperimental(true)
                                 } else {
                                     if (active && next.size > 1) next.remove(source)
                                     else next.add(source)
                                 }
-                                setRaw(HomeFeedSource.encode(next))
+                                PreferenceStore.launchEdit(context.dataStore) {
+                                    this[HomeFeedSourcesKey] = HomeFeedSource.encode(next)
+                                    if (source != HomeFeedSource.YOUTUBE) {
+                                        this[ExperimentalSourcesEnabledKey] = true
+                                    }
+                                }
                                 chooserOpen = false
                             },
                         )
