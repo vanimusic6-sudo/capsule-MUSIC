@@ -242,8 +242,9 @@ fun CapsulePinnedHeader(route: String) {
                             )
                         },
                         onClick = {
-                            setRaw(HomeFeedSource.DEFAULT)
+                            setRaw(HomeFeedSource.encode(HomeFeedSource.entries.toSet()))
                             setExperimental(true)
+                            chooserOpen = false
                         },
                     )
                     // Reset only Home's selected providers. Leave the user's
@@ -301,6 +302,7 @@ fun CapsulePinnedHeader(route: String) {
                                     else next.add(source)
                                 }
                                 setRaw(HomeFeedSource.encode(next))
+                                chooserOpen = false
                             },
                         )
                     }
