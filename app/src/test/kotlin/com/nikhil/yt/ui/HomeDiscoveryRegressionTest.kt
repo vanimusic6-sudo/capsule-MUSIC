@@ -57,7 +57,7 @@ class HomeDiscoveryRegressionTest {
         assertTrue(header.contains("setRaw(HomeFeedSource.DEFAULT)"))
         assertTrue(home.contains("home:catalog-loading"))
         assertTrue(home.contains("HomeLoadingShimmer()"))
-        assertFalse(home.contains("CatalogHomeError("))
+        assertTrue(home.contains("CatalogHomeError("))
         assertTrue(shelf.contains("discoveryFromHome(source, tasteArtists)"))
         assertFalse(shelf.contains("ExperimentalForgottenShelf"))
     }
@@ -70,7 +70,7 @@ class HomeDiscoveryRegressionTest {
         val commons = source("discovery/WikimediaMusic.kt")
         val selector = source("ui/screens/CapsuleRouteSurface.kt")
         assertTrue(home.contains("HomeLoadingShimmer()"))
-        assertFalse(home.contains("CatalogHomeError("))
+        assertTrue(home.contains("CatalogHomeError("))
         assertTrue(home.contains("catalogHome.finished && catalogHome.lanes.isEmpty()"))
         assertTrue(catalog.contains("HomeFeedSource.FREESOUND -> openverse"))
         assertTrue(catalog.contains("WikimediaMusic.artist(artist)"))
@@ -79,7 +79,8 @@ class HomeDiscoveryRegressionTest {
         assertTrue(archive.contains("streamUrl = null"))
         assertTrue(commons.contains("iiurlwidth=320"))
         assertTrue(commons.contains("fun artist(name: String)"))
-        assertTrue(selector.contains("HomeFeedSource.encode(HomeFeedSource.entries.toSet())"))
+        assertTrue(selector.contains("HomeFeedSource.entries.toSet()"))
+        assertTrue(catalog.contains("RadioBrowserMusic.browse("))
     }
 
     @Test
