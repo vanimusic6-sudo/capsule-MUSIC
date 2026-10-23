@@ -144,6 +144,23 @@ jobs:
           except Exception as ex:
               print("Archive format probe",type(ex).__name__,str(ex)[:120])
           try:
+              url="https://ccmixter.org/api/query?f=json&dataview=info&limit=3&tags=remix"
+              data_cc=data(url,timeout=12)
+              entries=data_cc if isinstance(data_cc,list) else (
+                  data_cc.get("results") or data_cc.get("items") or data_cc.get("uploads") or [])
+              print("ccMixter public query count:", len(entries))
+              for row in entries[:2]:
+                  files=row.get("files",row.get("upload_files",[]))
+                  print("ccMixter fields:",sorted(row.keys())[:32],
+                        "files:",len(files),"first file keys:",
+                        sorted(files[0].keys()) if files else [],
+                        "license:",row.get("upload_license_url") or row.get("license_url"))
+                  if files:
+                      example=files[0].get("filedownload_url") or files[0].get("download_url")
+                      print("ccMixter candidate audio:",range_test(example))
+          except Exception as ex:
+              print("ccMixter API probe:",type(ex).__name__,str(ex)[:120])
+          try:
               query=urllib.parse.quote("music filetype:audio")
               x=data("https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrlimit=5&gsrsearch="+query+"&prop=imageinfo&iiprop=url%7Cmime%7Csize%7Cextmetadata&format=json")
               files=[i.get("imageinfo",[{}])[0] for i in x.get("query",{}).get("pages",{}).values() if i.get("imageinfo")]
