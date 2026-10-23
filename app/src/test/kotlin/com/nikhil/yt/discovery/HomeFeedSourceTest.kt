@@ -6,6 +6,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HomeFeedSourceTest {
+    @Test fun homeLanesExposeRealSeparateCatalogRows() {
+        val kinds = ExperimentalCatalog.HomeLaneKind.entries
+        assertTrue(ExperimentalCatalog.HomeLaneKind.TRENDING in kinds)
+        assertTrue(ExperimentalCatalog.HomeLaneKind.NEW in kinds)
+        assertTrue(ExperimentalCatalog.HomeLaneKind.DISCOVER in kinds)
+        assertTrue(ExperimentalCatalog.HomeLaneKind.FOR_YOU in kinds)
+    }
+
     @Test fun userCanChooseIndependentSources() {
         val chosen = linkedSetOf(HomeFeedSource.AUDIUS, HomeFeedSource.WIKIMEDIA)
         assertEquals(chosen, HomeFeedSource.parse(HomeFeedSource.encode(chosen)))

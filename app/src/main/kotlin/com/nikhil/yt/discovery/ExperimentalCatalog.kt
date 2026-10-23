@@ -50,6 +50,10 @@ object ExperimentalCatalog {
         val playable: Boolean get() = streamUrl?.startsWith("https://") == true
     }
 
+    /** Independent sections for an actual provider Home, not a single discovery carousel. */
+    enum class HomeLaneKind { TRENDING, NEW, DISCOVER, FOR_YOU }
+    data class HomeLane(val source: HomeFeedSource, val kind: HomeLaneKind, val tracks: List<Track>)
+
     const val EXPERIMENTAL_MEDIA_PREFIX = "capsule-open:"
     private const val CACHE_MS = 15 * 60_000L
     private data class CacheEntry(val at: Long, val tracks: List<Track>)
@@ -131,6 +135,65 @@ object ExperimentalCatalog {
             }
         }
     }
+
+    /** Home catalog for a selected source. Queries never touch the YouTube audio core.
+     * Preserve metadata-only Openverse results, whose original release page is still
+     * useful even when a publisher doesn't expose a safe direct HTTPS stream.
+     */
+    suspend fun homeLanes(source: HomeFeedSource, tasteArtists: List<String>): List<HomeLane> =
+        withContext(Dispatchers.IO) {
+            if (source == HomeFeedSource.YOUTUBE) return@withContext emptyList()
+            val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay()
+            val upstream = source.openverseId
+            val themes = when (source) {
+                HomeFeedSource.JAMENDO -> listOf("indie", "electronic", "jazz", "ambient")
+                HomeFeedSource.WIKIMEDIA -> listOf("folk music", "classical", "traditional", "jazz")
+                HomeFeedSource.FREESOUND -> listOf("instrumental", "melody", "ambient", "piano")
+                else -> emptyList()
+            }
+            val theme = themes.takeIf { it.isNotEmpty() }
+                ?.let { it[Math.floorMod(day, it.size.toLong()).toInt()] }
+            val searchTaste = tasteArtists.firstOrNull { it.isNotBlank() }?.take(80)
+            // Each lane has its own cache and failure boundary. If a source's
+            // personalized search fails, its popular and new music still load.
+            val queries = if (source == HomeFeedSource.AUDIUS) listOf(
+                HomeLaneKind.TRENDING to { audius("/tracks/trending?limit=30") },
+                HomeLaneKind.NEW to { audius("/tracks/latest?limit=30") },
+                HomeLaneKind.DISCOVER to { audius("/tracks/trending/underground?limit=30") },
+            ) + if (searchTaste != null) listOf(
+                HomeLaneKind.FOR_YOU to { audius("/tracks/search?query=${enc(searchTaste)}&limit=25") },
+            ) else emptyList() else listOf(
+                HomeLaneKind.TRENDING to { openverse(query = "music", sourceFilter = upstream) },
+                HomeLaneKind.DISCOVER to { openverse(query = theme ?: "instrumental", sourceFilter = upstream) },
+            ) + if (searchTaste != null) listOf(
+                HomeLaneKind.FOR_YOU to { openverse(query = searchTaste, sourceFilter = upstream) },
+            ) else emptyList()
+            val used = mutableSetOf<String>()
+            queries.mapNotNull { (kind, loader) ->
+                val candidates = safely {
+                    cached("homelane:${source.id}:${kind.name}:$day:${searchTaste.orEmpty().lowercase()}") { loader() }
+                }
+                // Keep licensed non-streamable records discoverable by a link to
+                // their original page; playback itself remains HTTPS-only.
+                val ordered = candidates.asSequence()
+                    .filter { it.title.isNotBlank() && it.artist.isNotBlank() }
+                    .filter { it.durationSeconds in 0..2400 }
+                    .filter { it.audioCategory.isNullOrBlank() ||
+                        it.audioCategory.equals("music", ignoreCase = true) }
+                    .filter { t ->
+                        val name = t.title.lowercase()
+                        listOf("sound effect", "test tone", "pronunciation", "ringtone",
+                            "alarm clock").none(name::contains)
+                    }
+                    .distinctBy { it.mediaId }
+                    .sortedWith(compareByDescending<Track> { it.playable }
+                        .thenByDescending { it.favoriteCount + it.repostCount * 2L }
+                        .thenByDescending { it.playCount })
+                    .filter { used.add(it.mediaId) }
+                    .take(16).toList()
+                ordered.takeIf { it.isNotEmpty() }?.let { HomeLane(source, kind, it) }
+            }
+        }
 
     suspend fun artistTracks(source: Source, artist: String, id: String?): List<Track> =
         withContext(Dispatchers.IO) {
@@ -243,8 +306,11 @@ object ExperimentalCatalog {
                 it.startsWith("https://creativecommons.org/") ||
                     it.startsWith("http://creativecommons.org/")
             }
+            val alternates = obj.optJSONArray("alt_files")
             val stream = obj.optString("url").takeIf { it.startsWith("https://") }
-                ?.takeIf { it.length < 2048 }
+                ?.takeIf { it.length < 2048 } ?: (0 until (alternates?.length() ?: 0))
+                    .asSequence().mapNotNull { alternates?.optJSONObject(it)?.optString("url") }
+                    .firstOrNull { it.startsWith("https://") && it.length < 2048 }
             // A public index does not establish playback permission by itself.
             // Respect original publisher restrictions and expose the license.
             val mayStream = licenseUrl != null && obj.optString("license").isNotBlank()
