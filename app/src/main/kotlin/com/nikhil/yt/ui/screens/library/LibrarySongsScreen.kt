@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -28,6 +29,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.pullToRefresh
@@ -69,6 +71,8 @@ import com.nikhil.yt.constants.YtmSyncKey
 import com.nikhil.yt.extensions.toMediaItem
 import com.nikhil.yt.extensions.togglePlayPause
 import com.nikhil.yt.playback.queues.ListQueue
+import com.nikhil.yt.discovery.ExperimentalDownload
+import com.nikhil.yt.discovery.OfflineAudioQueue
 import com.nikhil.yt.ui.component.ChipsRow
 import com.nikhil.yt.ui.component.HideOnScrollFAB
 import com.nikhil.yt.ui.component.LocalMenuState
@@ -109,6 +113,16 @@ fun LibrarySongsScreen(
     val isRefreshing by viewModel.isRefreshing.collectAsState()
 
     var filter by rememberEnumPreference(SongFilterKey, SongFilter.LIKED)
+    val externalStates by ExperimentalDownload.states.collectAsState()
+    var externalSaved by remember { mutableStateOf<List<ExperimentalDownload.SavedAudio>>(emptyList()) }
+    // Media3's DownloadIndex covers YouTube only. Audius is persisted in the
+    // system MediaStore Downloads collection: join both *visibly*, but do not
+    // write fake media entries into YouTube's cache/index.
+    LaunchedEffect(filter, externalStates) {
+        if (filter == SongFilter.DOWNLOADED) {
+            externalSaved = ExperimentalDownload.savedFiles(context)
+        } else externalSaved = emptyList()
+    }
 
     LaunchedEffect(Unit) {
         if (ytmSync) {
@@ -278,8 +292,8 @@ fun LibrarySongsScreen(
                             Text(
                                 text = pluralStringResource(
                                     R.plurals.n_song,
-                                    songs.size,
-                                    songs.size
+                                    songs.size + if (filter == SongFilter.DOWNLOADED) externalSaved.size else 0,
+                                    songs.size + if (filter == SongFilter.DOWNLOADED) externalSaved.size else 0
                                 ),
                                 style = MaterialTheme.typography.titleSmall,
                                 color = MaterialTheme.colorScheme.secondary,
@@ -289,6 +303,36 @@ fun LibrarySongsScreen(
                 }
             }
 
+            if (filter == SongFilter.DOWNLOADED && externalSaved.isNotEmpty()) {
+                item(key = "capsule:external-downloads:heading") {
+                    Text(
+                        text = "Audius · " + stringResource(R.string.filter_downloaded),
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                }
+                items(externalSaved, key = { "capsule:download:" + it.id }) { file ->
+                    ListItem(
+                        headlineContent = { Text(file.title, maxLines = 1) },
+                        supportingContent = { Text(file.artist + " · Audius") },
+                        leadingContent = {
+                            Icon(
+                                painter = painterResource(R.drawable.offline),
+                                contentDescription = null,
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth().combinedClickable(
+                            onClick = {
+                                if (!selection) {
+                                    OfflineAudioQueue.create(externalSaved, file)
+                                        ?.let(playerConnection::playQueue)
+                                }
+                            },
+                            onLongClick = { /* No YouTube-only actions for local files */ },
+                        ),
+                    )
+                }
+            }
             val filteredSongs = if (hideExplicit) {
                 wrappedSongs.filter { !it.item.song.explicit }
             } else {
