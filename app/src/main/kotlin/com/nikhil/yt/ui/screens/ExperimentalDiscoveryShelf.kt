@@ -160,6 +160,9 @@ internal fun ExperimentalForgottenShelf(navController: NavController) {
         }
     }
     if (tracks.isEmpty()) return
+    // Read localized copy via Compose resources so configuration changes
+    // (including Capsule's language switch) are applied without stale text.
+    val queueTitle = stringResource(R.string.capsule_discovery_forgotten_title)
 
     Column(Modifier.fillMaxWidth()) {
         Text(
@@ -184,7 +187,7 @@ internal fun ExperimentalForgottenShelf(navController: NavController) {
                     modifier = Modifier.width(152.dp).clickable {
                         if (track.playable) {
                             ExperimentalTrackQueue.create(
-                                title = context.getString(R.string.capsule_discovery_forgotten_title),
+                                title = queueTitle,
                                 tracks = tracks,
                                 start = track,
                             )?.let(playerConnection::playQueue)
