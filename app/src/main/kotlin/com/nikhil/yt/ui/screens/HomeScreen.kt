@@ -117,7 +117,11 @@ fun HomeScreen(
     // Do not silently substitute YouTube when the user deliberately chose an
     // external-only Home. Show a retry state for an unavailable source instead.
     val displayYouTube = includeYouTube
-    val catalogTracks = catalogHome.lanes.flatMap { it.tracks }.distinctBy { it.mediaId }
+    // Live radio is not an on-demand track. Keep stations inside their
+    // curated radio shelves, never in a shuffled music-discovery carousel.
+    val catalogTracks = catalogHome.lanes.flatMap { it.tracks }
+        .filter { it.source != ExperimentalCatalog.Source.RADIO }
+        .distinctBy { it.mediaId }
     // LazyListScope is not composable: calculate the mixed shelf BEFORE its DSL.
     val beyond = remember(catalogTracks, tastes) {
         ExperimentalRanking.select(

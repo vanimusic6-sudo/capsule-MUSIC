@@ -166,6 +166,7 @@ fun PlayerMenu(
         .collectAsState(initial = null)
     val isExternalCatalog = mediaMetadata.id.startsWith("capsule-open:")
     val isAudius = mediaMetadata.id.startsWith("capsule-open:audius:")
+    val isRadio = mediaMetadata.id.startsWith("capsule-open:radio:")
     val originalAudiusTrack = remember(mediaMetadata.id) {
         ExperimentalCatalog.playingTrack(mediaMetadata.id)
     }
@@ -500,11 +501,11 @@ fun PlayerMenu(
         item(key = "actions-gap", contentType = "spacer") {
             Spacer(modifier = Modifier.height(12.dp))
         }
-        if (splitArtists.isNotEmpty() || mediaMetadata.album != null) {
+        if ((!isRadio && splitArtists.isNotEmpty()) || mediaMetadata.album != null) {
             item(key = "artists-album", contentType = "menu-section") {
                 MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                     Column {
-                        if (splitArtists.isNotEmpty()) {
+                        if (!isRadio && splitArtists.isNotEmpty()) {
                             ListItem(
                                 headlineContent = { Text(text = stringResource(R.string.view_artist)) },
                                 supportingContent = {
