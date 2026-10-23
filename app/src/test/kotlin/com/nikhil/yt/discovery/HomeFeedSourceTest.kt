@@ -23,7 +23,13 @@ class HomeFeedSourceTest {
     @Test fun defaultsPreserveExistingYoutubeHome() {
         val sources = HomeFeedSource.parse(HomeFeedSource.DEFAULT)
         assertTrue(HomeFeedSource.YOUTUBE in sources)
-        assertEquals(HomeFeedSource.entries.toSet(), sources)
+        assertEquals(setOf(HomeFeedSource.YOUTUBE), sources)
+        assertTrue(HomeFeedSource.ARCHIVE in HomeFeedSource.entries)
+    }
+
+    @Test fun archiveCanBeSelectedWithoutChangingYoutubeAudio() {
+        val chosen = setOf(HomeFeedSource.ARCHIVE)
+        assertEquals(chosen, HomeFeedSource.parse(HomeFeedSource.encode(chosen)))
     }
 
     @Test fun unrecognizedOrEmptyPreferenceKeepsHomeAccessible() {
