@@ -74,9 +74,11 @@ internal fun rememberCatalogHomeState(
     sources: Set<HomeFeedSource>,
     tasteArtists: List<String>,
 ): CatalogHomeState {
-    val state = remember { CatalogHomeState() }
     val key = HomeFeedSource.encode(sources)
     val tasteKey = tasteArtists.take(2).joinToString("|")
+    // A late result from an old source-selection session cannot mutate the
+    // currently visible feed or its loading/failure state.
+    val state = remember(key, tasteKey) { CatalogHomeState() }
     LaunchedEffect(key, tasteKey, state.revision) {
         // Refresh without flashing away functioning cards. Switching a provider
         // invalidates its old lanes; retry does not.
@@ -213,7 +215,7 @@ internal fun CatalogHomeRow(
                         ) {
                             var artFailed by remember(track.artwork) { mutableStateOf(false) }
                             AsyncImage(
-                                model = track.artwork,
+                                model = track.artworkLarge ?: track.artwork,
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
                                 onError = { artFailed = true },
