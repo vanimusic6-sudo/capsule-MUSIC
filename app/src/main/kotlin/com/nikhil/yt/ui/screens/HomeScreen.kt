@@ -103,7 +103,8 @@ fun HomeScreen(
     val (experimentalSourcesEnabled, _) = rememberPreference(ExperimentalSourcesEnabledKey, false)
     val (homeSourceSetting, _) = rememberPreference(HomeFeedSourcesKey, HomeFeedSource.DEFAULT)
     val homeSources = remember(homeSourceSetting) { HomeFeedSource.parse(homeSourceSetting) }
-    val includeYouTube = HomeFeedSource.YOUTUBE in homeSources
+    // A disabled experimental catalog never strands Home without content.
+    val includeYouTube = !experimentalSourcesEnabled || HomeFeedSource.YOUTUBE in homeSources
     val rareSources = if (experimentalSourcesEnabled) homeSources - HomeFeedSource.YOUTUBE
         else emptySet()
     val listenerPlaylists by viewModel.communityPlaylists.collectAsState()

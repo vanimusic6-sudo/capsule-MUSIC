@@ -213,7 +213,7 @@ fun CapsulePinnedHeader(route: String) {
                 var chooserOpen by remember { mutableStateOf(false) }
                 val selected = HomeFeedSource.parse(raw)
                 val effective = if (experimental) selected
-                    else selected.filterTo(linkedSetOf()) { it == HomeFeedSource.YOUTUBE }
+                    else setOf(HomeFeedSource.YOUTUBE)
                 val sourceIcon = if (effective.size == 1) effective.first().icon
                     else R.drawable.ic_capsule_home_sources
                 StandardHeaderTitle(

@@ -44,7 +44,10 @@ class HomePerformanceRegressionTest {
         assertTrue(source("viewmodels/HomeViewModel.kt").contains("val isLoadingMore = _isLoadingMore.asStateFlow()"))
         assertTrue(source("viewmodels/HomeViewModel.kt").contains("checkedContinuations < 2"))
         assertTrue(source("ui/screens/HomeScreenComponents.kt").contains("verticalAlignment = Alignment.Top"))
-        assertTrue(home.contains("keepListening?.takeIf { it.isNotEmpty() }"))
+        // Source selection intentionally hides YouTube shelves only when the user
+        // opts in and disables YouTube, never on an unconfigured Home.
+        assertTrue(home.contains("keepListening?.takeIf { includeYouTube && it.isNotEmpty() }"))
+        assertTrue(home.contains("!experimentalSourcesEnabled || HomeFeedSource.YOUTUBE in homeSources"))
         assertTrue(home.contains("navController.navigate(\"mood_and_genres\")"))
     }
 }
