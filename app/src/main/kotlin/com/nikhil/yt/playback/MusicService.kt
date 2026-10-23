@@ -5705,8 +5705,13 @@ class MusicService :
                 if (mediaItem.mediaId.startsWith(EXPERIMENTAL_MEDIA_PREFIX)) {
                     val uri = mediaItem.localConfiguration?.uri
                     val localOffline = mediaItem.mediaId.startsWith("capsule-open:offline:")
-                    require(if (localOffline) uri?.scheme == "content" else uri?.scheme == "https") {
-                        "External item must use an allowed HTTPS or app-owned MediaStore content URL"
+                    require(
+                        if (localOffline) uri?.scheme == "content" &&
+                            uri.authority == "media" &&
+                            uri.path?.contains("/downloads/") == true
+                        else uri?.scheme == "https"
+                    ) {
+                        "External item must use HTTPS or a MediaStore Downloads content URL"
                     }
                     if (!localOffline) require(dataStore.get(ExperimentalSourcesEnabledKey, false)) {
                         "Experimental sources are disabled"
