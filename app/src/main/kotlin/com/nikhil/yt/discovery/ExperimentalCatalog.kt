@@ -407,7 +407,7 @@ object ExperimentalCatalog {
                 title = item.optString("title").takeIf(String::isNotBlank) ?: return@mapNotNull null,
                 artist = ownerName,
                 artwork = image(photo, 480) ?: image(photo, 150),
-                artworkLarge = image(photo, 480) ?: image(photo, 1000)
+                artworkLarge = image(photo, 1000) ?: image(photo, 480)
                     ?: image(photo, 150),
                 streamUrl = "https://api.audius.co/v1/tracks/${enc(id)}/stream",
                 sourcePage = item.optString("permalink").takeIf { it.startsWith("https://") }
