@@ -53,6 +53,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 
@@ -88,13 +90,17 @@ internal fun rememberCatalogHomeState(
         if (sources.isEmpty()) return@LaunchedEffect
         try {
             supervisorScope {
+                // Bound expensive independent source initializations. The old
+                // all-sources selector could open 5 catalog fetchers together
+                // and flood low-memory devices with JSON/metadata buffers.
+                val permits = Semaphore(2)
                 // All network and parsing stays off the UI thread. Each selected
                 // provider has its own error boundary so partial Home still works.
                 HomeFeedSource.entries.filter { it in sources && it != HomeFeedSource.YOUTUBE }
                     .forEach { source ->
                         launch(Dispatchers.IO) {
                             val lanes = try {
-                                ExperimentalCatalog.homeLanes(source, tasteArtists) { lane ->
+                                permits.withPermit { ExperimentalCatalog.homeLanes(source, tasteArtists) { lane ->
                                     withContext(Dispatchers.Main) {
                                         state.lanes = (state.lanes.filterNot {
                                             it.source == lane.source && it.kind == lane.kind
@@ -104,7 +110,7 @@ internal fun rememberCatalogHomeState(
                                             }.thenBy { it.kind.ordinal },
                                         )
                                     }
-                                }
+                                } }
                             } catch (cancel: CancellationException) {
                                 throw cancel
                             } catch (error: Exception) {
