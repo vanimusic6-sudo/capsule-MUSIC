@@ -249,7 +249,13 @@ object ExperimentalCatalog {
                     } else audius("/tracks/search?query=${enc(artist)}&limit=35")
                         .filter { it.artist.equals(artist, true) }
                     Source.OPENVERSE -> if (id == "wikimedia_audio") {
-                        WikimediaMusic.artist(artist)
+                        WikimediaMusic.artist(artist).ifEmpty {
+                            // Commons full-text search does not always index
+                            // the uploader/performer field. Index fallback is
+                            // for creator discovery only: unverified files are
+                            // original links, never presumed playable.
+                            validateSearchTracks(openverse(creator = artist, sourceFilter = id))
+                        }
                     } else validateSearchTracks(openverse(
                         creator = artist,
                         sourceFilter = id?.takeIf { it.matches(Regex("[a-z_]{2,30}")) },
