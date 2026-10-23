@@ -161,7 +161,7 @@ internal fun ExperimentalDiscoveryShelf(
                                 style = MaterialTheme.typography.bodySmall,
                             )
                             Text(
-                                track.source.label +
+                                track.source.title +
                                     (track.catalogProvider?.let { " · $it" } ?: "") +
                                     if (track.playable) "" else " ↗",
                                 color = MaterialTheme.colorScheme.primary,
