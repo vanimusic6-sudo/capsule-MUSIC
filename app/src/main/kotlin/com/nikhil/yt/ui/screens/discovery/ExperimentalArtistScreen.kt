@@ -109,8 +109,8 @@ fun ExperimentalArtistScreen(
                     Text(stringResource(R.string.capsule_discovery_creator_original))
                 }
                 Text(
-                    "${tracks.size} · " + if (artistId == "wikimedia_audio")
-                        "Wikimedia Commons" else source?.title.orEmpty(),
+                    "${tracks.size} · " + (if (artistId == "wikimedia_audio")
+                        "Wikimedia Commons" else source?.title.orEmpty()),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
