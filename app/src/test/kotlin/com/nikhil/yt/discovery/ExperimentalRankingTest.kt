@@ -68,6 +68,22 @@ class ExperimentalRankingTest {
         assertFalse(ranked.any { it.id == "2" })
     }
 
+    @Test fun audiusEngagementActuallyInfluencesDiscoveryRanking() {
+        val ordinary = track(ExperimentalCatalog.Source.AUDIUS, 1)
+        val fanFavorite = track(ExperimentalCatalog.Source.AUDIUS, 2).copy(
+            playCount = 25_000, favoriteCount = 240, repostCount = 32,
+        )
+        val ranked = ExperimentalRanking.select(listOf(ordinary, fanFavorite), dayKey = 21L)
+        assertEquals(fanFavorite.mediaId, ranked.first().mediaId)
+    }
+
+    @Test fun unavailableRatingsAreNeverInventedForOpenverse() {
+        val audio = track(ExperimentalCatalog.Source.OPENVERSE, 3)
+        assertEquals(0L, audio.playCount)
+        assertEquals(0L, audio.favoriteCount)
+        assertEquals(0L, audio.repostCount)
+    }
+
     @Test fun missingSourceDoesNotLeaveAnEmptyShelf() {
         val pool = (0..35).map { track(ExperimentalCatalog.Source.AUDIUS, it) }
         assertEquals(18, ExperimentalRanking.select(pool, dayKey = 7).size)

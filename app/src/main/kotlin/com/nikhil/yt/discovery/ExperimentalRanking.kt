@@ -44,7 +44,23 @@ internal object ExperimentalRanking {
                     if (!track.genre.isNullOrBlank()) score += 2
                     if (track.audioCategory.equals("music", true)) score += 3
                     if (track.license != null) score += 1
-                    if (track.artist.lowercase() in taste) score += 6
+                    if (track.artist.trim().lowercase() in taste) score += 8
+                    // Only Audius provides actual engagement; Openverse does not.
+                    // Capped tiers avoid reducing discovery to a popularity chart.
+                    if (track.source == ExperimentalCatalog.Source.AUDIUS) {
+                        score += when {
+                            track.favoriteCount >= 1_000 || track.repostCount >= 500 -> 7
+                            track.favoriteCount >= 100 || track.repostCount >= 50 -> 5
+                            track.favoriteCount >= 15 || track.repostCount >= 8 -> 3
+                            else -> 0
+                        }
+                        score += when {
+                            track.playCount >= 100_000 -> 3
+                            track.playCount >= 10_000 -> 2
+                            track.playCount >= 1_000 -> 1
+                            else -> 0
+                        }
+                    }
                     if (track.catalogProvider == "freesound" &&
                         track.durationSeconds < 75) score -= 3
                     score

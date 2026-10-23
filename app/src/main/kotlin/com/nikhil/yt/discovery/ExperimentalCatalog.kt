@@ -41,6 +41,10 @@ object ExperimentalCatalog {
         val catalogProvider: String? = null,
         /** Openverse audio category (music, sound_effect, pronunciation, etc.). */
         val audioCategory: String? = null,
+        /** Actual provider-reported engagement; available for Audius only. */
+        val playCount: Long = 0,
+        val favoriteCount: Long = 0,
+        val repostCount: Long = 0,
     ) {
         val mediaId: String get() = EXPERIMENTAL_MEDIA_PREFIX + source.name.lowercase() + ":" + id
         val playable: Boolean get() = streamUrl?.startsWith("https://") == true
@@ -190,6 +194,9 @@ object ExperimentalCatalog {
                 sourcePage = item.optString("permalink").takeIf { it.startsWith("https://") }
                     ?: "https://audius.co",
                 durationSeconds = item.optInt("duration").coerceAtLeast(0),
+                playCount = item.optLong("play_count").coerceAtLeast(0),
+                favoriteCount = item.optLong("favorite_count").coerceAtLeast(0),
+                repostCount = item.optLong("repost_count").coerceAtLeast(0),
                 genre = item.optString("genre").ifBlank { null },
                 artistId = owner?.optString("id")?.takeIf { it.isNotBlank() },
                 artistPage = handle.takeIf { it.isNotBlank() }
