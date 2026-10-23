@@ -985,4 +985,22 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="capsule_discovery_download_completed">Saved to Downloads/Capsule Music</string>
     <string name="capsule_discovery_download_failed">Could not start download</string>
     <string name="capsule_last_crash">Last crash report</string>
+    <string name="capsule_radio_russian">Russian stations</string>
+    <string name="capsule_radio_american">Radio from the USA</string>
+    <string name="capsule_radio_music">Music radio</string>
+    <string name="capsule_radio_news">News &amp; politics</string>
+    <string name="capsule_radio_kids">For children</string>
+    <string name="capsule_radio_jazz">Jazz radio</string>
+    <string name="capsule_radio_rock">Rock radio</string>
+    <string name="capsule_radio_electronic">Electronic radio</string>
+    <string name="capsule_audius_this_week">Trending this week</string>
+    <string name="capsule_audius_new_releases">Freshly uploaded</string>
+    <string name="capsule_audius_underground">Hidden gems</string>
+    <string name="capsule_audius_genre_chart">Today’s genre</string>
+    <string name="capsule_audius_fresh">Best new releases</string>
+    <string name="capsule_audius_radar">Under the radar</string>
+    <string name="capsule_audius_month">Monthly charts</string>
+    <string name="capsule_audius_loved">Community favorites</string>
+    <string name="capsule_audius_not_downloadable">The creator has disabled downloads</string>
+    <string name="capsule_source_selector_subtitle">Pick what appears on Home</string>
 </resources>

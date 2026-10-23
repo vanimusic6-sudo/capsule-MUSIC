@@ -849,4 +849,22 @@
     <string name="capsule_discovery_download_completed">Сохранено в Загрузки/Capsule Music</string>
     <string name="capsule_discovery_download_failed">Не удалось начать загрузку</string>
     <string name="capsule_last_crash">Последний отчёт о сбое</string>
+    <string name="capsule_radio_russian">Русское радио</string>
+    <string name="capsule_radio_american">Радио США</string>
+    <string name="capsule_radio_music">Музыкальные станции</string>
+    <string name="capsule_radio_news">Новости и политика</string>
+    <string name="capsule_radio_kids">Для детей</string>
+    <string name="capsule_radio_jazz">Джаз</string>
+    <string name="capsule_radio_rock">Рок</string>
+    <string name="capsule_radio_electronic">Электронная музыка</string>
+    <string name="capsule_audius_this_week">Популярное за неделю</string>
+    <string name="capsule_audius_new_releases">Только загружено</string>
+    <string name="capsule_audius_underground">Скрытые таланты</string>
+    <string name="capsule_audius_genre_chart">Жанр дня</string>
+    <string name="capsule_audius_fresh">Лучшие новые релизы</string>
+    <string name="capsule_audius_radar">Незаслуженно забытые</string>
+    <string name="capsule_audius_month">Чарты месяца</string>
+    <string name="capsule_audius_loved">Любимцы сообщества</string>
+    <string name="capsule_audius_not_downloadable">Автор запретил скачивание</string>
+    <string name="capsule_source_selector_subtitle">Что показывать на главной</string>
 </resources>
