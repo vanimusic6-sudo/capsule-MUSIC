@@ -43,8 +43,8 @@ internal fun ExperimentalDiscoveryShelf(tasteArtists: List<String>, navControlle
 
     LaunchedEffect(tasteKey) {
         candidates = emptyList()
-        // Show Audius immediately. Archive and Mirlo are independent lanes:
-        // their timeouts cannot keep the entire shelf invisible.
+        // Show Audius promptly; Openverse is an independent async lane.
+        // Its latency cannot hide or block the Audius shelf.
         supervisorScope {
             val discovered = mutableListOf<ExperimentalCatalog.Track>()
             for (source in ExperimentalCatalog.Source.entries) {
@@ -124,7 +124,9 @@ internal fun ExperimentalDiscoveryShelf(tasteArtists: List<String>, navControlle
                                 style = MaterialTheme.typography.bodySmall,
                             )
                             Text(
-                                track.source.title + if (track.playable) "" else " ↗",
+                                track.source.title +
+                                    (track.catalogProvider?.let { " · $it" } ?: "") +
+                                    if (track.playable) "" else " ↗",
                                 color = MaterialTheme.colorScheme.primary,
                                 maxLines = 1,
                                 style = MaterialTheme.typography.labelSmall,

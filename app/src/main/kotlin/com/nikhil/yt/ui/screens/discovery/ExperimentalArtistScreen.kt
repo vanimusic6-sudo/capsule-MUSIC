@@ -30,8 +30,8 @@ import com.nikhil.yt.utils.rememberPreference
 import kotlinx.coroutines.CancellationException
 
 /**
- * An artist's own external catalog. For Archive a creator credit is a metadata
- * search, not an Archive user account. Audius uses the actual /users/{id}/tracks.
+ * External creators: Audius uses official /users/{id}/tracks.
+ * Openverse searches the original creator field, optionally scoped to provider.
  */
 @Composable
 fun ExperimentalArtistScreen(
@@ -98,16 +98,14 @@ fun ExperimentalArtistScreen(
                             fontWeight = FontWeight.SemiBold,
                         )
                         Text(
-                            (source?.title ?: "Capsule Discovery") +
-                                if (source == ExperimentalCatalog.Source.ARCHIVE) " · archive creator" else "",
+                            (source?.title ?: "Capsule Discovery"),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.labelMedium,
                         )
                     }
                 }
                 if (!site.isNullOrBlank()) TextButton(onClick = openPage) {
-                    Text(if (source == ExperimentalCatalog.Source.ARCHIVE)
-                        stringResource(R.string.capsule_discovery_author_archive) else stringResource(R.string.view_artist))
+                    Text(stringResource(R.string.capsule_discovery_creator_original))
                 }
                 Text(
                     "${tracks.size} · ${source?.title.orEmpty()}",
@@ -151,7 +149,8 @@ fun ExperimentalArtistScreen(
                     Column(Modifier.weight(1f)) {
                         Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.bodyLarge)
-                        Text(track.artist + " · " + track.source.title, maxLines = 1,
+                        Text(track.artist + " · " + track.source.title +
+                            (track.catalogProvider?.let { " · $it" } ?: ""), maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall)

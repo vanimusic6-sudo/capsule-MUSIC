@@ -60,10 +60,10 @@ import kotlinx.coroutines.launch
 
 private enum class SearchChip {
     ALL, SONGS, VIDEOS, ALBUMS, ARTISTS, COMMUNITY_PLAYLISTS, FEATURED_PLAYLISTS,
-    AUDIUS, ARCHIVE, MIRLO,
+    AUDIUS, OPENVERSE,
 }
 
-private enum class RareFilter { ALL, SHORT, LONG, OLD, ELECTRONIC, AMBIENT }
+private enum class RareFilter { ALL, SHORT, LONG, ELECTRONIC, AMBIENT }
 
 private fun filterRare(
     tracks: List<ExperimentalCatalog.Track>,
@@ -73,7 +73,6 @@ private fun filterRare(
         RareFilter.ALL -> true
         RareFilter.SHORT -> track.durationSeconds in 1..240
         RareFilter.LONG -> track.durationSeconds > 240
-        RareFilter.OLD -> (track.year?.take(4)?.toIntOrNull() ?: 3000) < 2000
         RareFilter.ELECTRONIC ->
             listOf("electronic", "techno", "house", "edm", "electro", "synth").any {
                 track.genre?.contains(it, ignoreCase = true) == true
@@ -116,6 +115,7 @@ private fun RareTrackRow(
             Text(
                 modifier = Modifier.clickable(onClick = onArtistClick),
                 text = track.artist + " · " + track.source.title +
+                    (track.catalogProvider?.let { " · $it" } ?: "") +
                     if (track.playable) "" else " · ↗",
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
@@ -248,7 +248,6 @@ fun OnlineSearchResult(
                         RareFilter.ALL to stringResource(R.string.filter_all),
                         RareFilter.SHORT to stringResource(R.string.capsule_discovery_short),
                         RareFilter.LONG to stringResource(R.string.capsule_discovery_long),
-                        RareFilter.OLD to stringResource(R.string.capsule_discovery_old),
                         RareFilter.ELECTRONIC to stringResource(R.string.capsule_discovery_electronic),
                         RareFilter.AMBIENT to "Ambient",
                     ).forEach { (value, label) ->
@@ -284,9 +283,7 @@ fun OnlineSearchResult(
                         item(key = "rare-empty") {
                             Column(Modifier.padding(20.dp)) {
                                 Text(
-                                    if (rareSource == ExperimentalCatalog.Source.MIRLO)
-                                        stringResource(R.string.capsule_discovery_partial_catalog)
-                                    else stringResource(R.string.no_results_found),
+                                    stringResource(R.string.no_results_found),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 TextButton(onClick = { rareSource?.let(viewModel::retryExperimentalSearch) }) {
@@ -409,8 +406,7 @@ fun OnlineSearchResult(
 
     val selectedChip = when {
         rareSource == ExperimentalCatalog.Source.AUDIUS -> SearchChip.AUDIUS
-        rareSource == ExperimentalCatalog.Source.ARCHIVE -> SearchChip.ARCHIVE
-        rareSource == ExperimentalCatalog.Source.MIRLO -> SearchChip.MIRLO
+        rareSource == ExperimentalCatalog.Source.OPENVERSE -> SearchChip.OPENVERSE
         filter == FILTER_SONG -> SearchChip.SONGS
         filter == FILTER_VIDEO -> SearchChip.VIDEOS
         filter == FILTER_ALBUM -> SearchChip.ALBUMS
@@ -439,8 +435,7 @@ fun OnlineSearchResult(
                 add(SearchChip.FEATURED_PLAYLISTS to stringResource(R.string.filter_featured_playlists))
                 if (experimentalEnabled) {
                     add(SearchChip.AUDIUS to "Audius")
-                    add(SearchChip.ARCHIVE to "Internet Archive")
-                    add(SearchChip.MIRLO to "Mirlo")
+                    add(SearchChip.OPENVERSE to "Openverse")
                 }
             },
             currentValue = selectedChip,
@@ -448,8 +443,7 @@ fun OnlineSearchResult(
                 rareFilter = RareFilter.ALL
                 rareSource = when(chip) {
                     SearchChip.AUDIUS -> ExperimentalCatalog.Source.AUDIUS
-                    SearchChip.ARCHIVE -> ExperimentalCatalog.Source.ARCHIVE
-                    SearchChip.MIRLO -> ExperimentalCatalog.Source.MIRLO
+                    SearchChip.OPENVERSE -> ExperimentalCatalog.Source.OPENVERSE
                     else -> null
                 }
                 viewModel.filter.value = when(chip) {
@@ -472,8 +466,7 @@ fun OnlineSearchResult(
                 SearchChip.COMMUNITY_PLAYLISTS to R.drawable.queue_music,
                 SearchChip.FEATURED_PLAYLISTS to R.drawable.playlist_play,
                 SearchChip.AUDIUS to R.drawable.music_note,
-                SearchChip.ARCHIVE to R.drawable.album,
-                SearchChip.MIRLO to R.drawable.person,
+                SearchChip.OPENVERSE to R.drawable.album,
             ),
         )
     }

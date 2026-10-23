@@ -959,16 +959,15 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="capsule_advanced_mode_warning_confirm">Got it</string>
     <string name="capsule_discovery_experimental">Experimental sources</string>
     <string name="capsule_discovery_toggle">Rare music sources</string>
-    <string name="capsule_discovery_toggle_desc">Enable Audius, Internet Archive and Mirlo in search and music discovery. Mirlo requires authorized streaming, so its tracks open on Mirlo for now. Disable to stop all experimental catalog requests.</string>
+    <string name="capsule_discovery_toggle_desc">Enable Audius and Openverse in search and discovery. Openverse includes Creative Commons recordings indexed from Jamendo without registering for a Jamendo Client ID. Turn off to stop experimental sources.</string>
     <string name="capsule_discovery_short">Under 4 min</string>
     <string name="capsule_discovery_long">Over 4 min</string>
     <string name="capsule_discovery_old">Before 2000</string>
     <string name="capsule_discovery_electronic">Electronic</string>
-    <string name="capsule_discovery_unavailable">This source is temporarily unavailable. Try again later.</string>
+    <string name="capsule_discovery_unavailable">The source could not be reached. Check connectivity and try again.</string>
     <string name="capsule_discovery_home_title">Beyond the familiar</string>
     <string name="capsule_discovery_open_source">Open original release</string>
     <string name="capsule_discovery_license">Music license</string>
     <string name="capsule_discovery_retry">Try again</string>
-    <string name="capsule_discovery_partial_catalog">No matches in Mirlo’s currently accessible federated catalog. Try an artist name or another search.</string>
-    <string name="capsule_discovery_author_archive">Browse credited creator on Internet Archive ↗</string>
+    <string name="capsule_discovery_creator_original">Open original creator page ↗</string>
 </resources>

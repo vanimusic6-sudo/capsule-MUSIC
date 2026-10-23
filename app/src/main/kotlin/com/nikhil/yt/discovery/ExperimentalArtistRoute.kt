@@ -5,7 +5,7 @@ import com.nikhil.yt.models.MediaMetadata
 
 /**
  * Internal artist pages for external sources, never passed to YouTube artist routes.
- * Query parameters are encoded because Archive creator names contain punctuation.
+ * Query parameters are encoded because Openverse creator names can contain punctuation.
  */
 object ExperimentalArtistRoute {
     fun forTrack(track: ExperimentalCatalog.Track): String = build(

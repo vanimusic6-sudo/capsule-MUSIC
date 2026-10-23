@@ -880,16 +880,15 @@
     <string name="capsule_advanced_mode_warning_confirm">Понятно</string>
     <string name="capsule_discovery_experimental">Экспериментальные источники</string>
     <string name="capsule_discovery_toggle">Редкая и независимая музыка</string>
-    <string name="capsule_discovery_toggle_desc">Включает Audius, Internet Archive и Mirlo в поиске и рекомендациях. Для воспроизведения Mirlo требуется разрешённый API-доступ: пока доступна ссылка на платформу. При выключении экспериментальные запросы прекращаются.</string>
+    <string name="capsule_discovery_toggle_desc">Включает Audius и Openverse в поиске и рекомендациях. Openverse находит музыку с открытыми лицензиями, в том числе из Jamendo, без отдельного Client ID. Выключение отключает экспериментальные источники.</string>
     <string name="capsule_discovery_short">До 4 минут</string>
     <string name="capsule_discovery_long">Более 4 минут</string>
     <string name="capsule_discovery_old">До 2000 года</string>
     <string name="capsule_discovery_electronic">Электроника</string>
-    <string name="capsule_discovery_unavailable">Источник временно недоступен. Повторите попытку позже.</string>
+    <string name="capsule_discovery_unavailable">Источник недоступен. Проверьте сеть и повторите попытку.</string>
     <string name="capsule_discovery_home_title">За пределами привычного</string>
     <string name="capsule_discovery_open_source">Открыть оригинальный релиз</string>
     <string name="capsule_discovery_license">Лицензия записи</string>
     <string name="capsule_discovery_retry">Повторить</string>
-    <string name="capsule_discovery_partial_catalog">В доступной части федеративного каталога Mirlo совпадений нет. Попробуйте имя исполнителя или другой запрос.</string>
-    <string name="capsule_discovery_author_archive">Записи автора в Internet Archive ↗</string>
+    <string name="capsule_discovery_creator_original">Открыть страницу автора на исходной площадке ↗</string>
 </resources>

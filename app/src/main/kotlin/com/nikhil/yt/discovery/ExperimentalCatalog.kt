@@ -7,7 +7,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import timber.log.Timber
 import org.json.JSONObject
@@ -21,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object ExperimentalCatalog {
     enum class Source(val title: String) {
-        AUDIUS("Audius"), ARCHIVE("Internet Archive"), MIRLO("Mirlo")
+        AUDIUS("Audius"), OPENVERSE("Openverse")
     }
 
     data class Track(
@@ -39,6 +38,8 @@ object ExperimentalCatalog {
         val artistId: String? = null,
         val artistPage: String? = null,
         val artworkLarge: String? = null,
+        /** Original collection indexed by Openverse (e.g. jamendo). */
+        val catalogProvider: String? = null,
     ) {
         val mediaId: String get() = EXPERIMENTAL_MEDIA_PREFIX + source.name.lowercase() + ":" + id
         val playable: Boolean get() = streamUrl?.startsWith("https://") == true
@@ -55,47 +56,48 @@ object ExperimentalCatalog {
         cached("search:${source.name}:${trimmed.lowercase()}") {
             when (source) {
                 Source.AUDIUS -> audius("/tracks/search?query=${enc(trimmed)}&limit=24")
-                Source.ARCHIVE -> archive(trimmed)
-                Source.MIRLO -> mirlo(trimmed)
+                Source.OPENVERSE -> openverse(query = trimmed)
             }
         }
     }
 
     /**
-     * Taste is a hint, not a mandatory match: underground charts remain useful
-     * even when the listener has no overlap with small independent catalogs.
-     * Requests are concurrent; a slow Archive response cannot block Audius.
+     * Audius remains an independent official catalog. Openverse searches the
+     * Creative Commons audio index, including tracks indexed from Jamendo:
+     * no direct Jamendo API credentials, HTML scraping or accounts.
      */
     suspend fun recommend(tasteArtists: List<String>): List<Track> = coroutineScope {
-        val seeds = tasteArtists.map(String::trim).filter(String::isNotBlank).take(2)
-        val audius = async(Dispatchers.IO) {
-            safely {
-                audius("/tracks/trending/underground?limit=24") +
-                    seeds.flatMap { audius("/tracks/search?query=${enc(it)}&limit=4") }
-            }
+        val lanes = Source.entries.map { source ->
+            async(Dispatchers.IO) { discoveryFrom(source, tasteArtists) }
         }
-        val archive = async(Dispatchers.IO) { safely { archive(null) } }
-        val mirlo = async(Dispatchers.IO) { safely { mirlo(null) } }
         ExperimentalRanking.select(
-            tracks = audius.await() + archive.await() + mirlo.await(),
+            tracks = lanes.flatMap { it.await() },
             dayKey = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay(),
         )
     }
 
-    /** Each lane is independent; home can render Audius before Archive/Mirlo finish. */
+    /** Each provider is independent. The home shelf paints each result as it arrives. */
     suspend fun discoveryFrom(source: Source, tasteArtists: List<String>): List<Track> =
         withContext(Dispatchers.IO) {
             cached("lane:${source.name}:" + tasteArtists.take(2).joinToString("|").lowercase()) {
                 safely {
                     when (source) {
-                        Source.AUDIUS -> {
-                            audius("/tracks/trending/underground?limit=25") +
-                                tasteArtists.take(2).filter { it.isNotBlank() }.flatMap {
-                                    audius("/tracks/search?query=${enc(it)}&limit=4")
-                                }
+                        Source.AUDIUS -> audius("/tracks/trending/underground?limit=25") +
+                            tasteArtists.take(2).filter(String::isNotBlank).flatMap {
+                                safely { audius("/tracks/search?query=${enc(it)}&limit=4") }
+                            }
+                        Source.OPENVERSE -> {
+                            // Rotate the *genre*, not the listening history: niche
+                            // artists need not share names with mainstream favorites.
+                            val themes = listOf(
+                                "ambient", "electronic", "indie", "jazz",
+                                "instrumental", "downtempo", "experimental", "lofi",
+                            )
+                            val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC)
+                                .toEpochDay()
+                            val theme = themes[Math.floorMod(day, themes.size.toLong()).toInt()]
+                            openverse(query = theme, sourceFilter = "jamendo")
                         }
-                        Source.ARCHIVE -> archive(null)
-                        Source.MIRLO -> mirlo(null)
                     }
                 }
             }
@@ -105,12 +107,15 @@ object ExperimentalCatalog {
         withContext(Dispatchers.IO) {
             cached("artist:${source.name}:${id.orEmpty()}:${artist.lowercase()}") {
                 when (source) {
-                    Source.AUDIUS -> if (!id.isNullOrBlank() && id.matches(Regex("[A-Za-z0-9_-]+"))) {
+                    Source.AUDIUS -> if (!id.isNullOrBlank() &&
+                        id.matches(Regex("[A-Za-z0-9_-]+"))) {
                         audius("/users/${enc(id)}/tracks?limit=40")
                     } else audius("/tracks/search?query=${enc(artist)}&limit=35")
                         .filter { it.artist.equals(artist, true) }
-                    Source.ARCHIVE -> archive(artist, creatorOnly = true)
-                    Source.MIRLO -> mirlo(artist)
+                    Source.OPENVERSE -> openverse(
+                        creator = artist,
+                        sourceFilter = id?.takeIf { it.matches(Regex("[a-z_]{2,30}")) },
+                    )
                 }
             }
         }
@@ -123,7 +128,7 @@ object ExperimentalCatalog {
         val now = System.currentTimeMillis()
         cache[key]?.takeIf { now - it.at < CACHE_MS }?.let { return it.tracks }
         val value = loader().distinctBy { it.mediaId }
-        cache[key] = CacheEntry(now, value)
+        if (value.isNotEmpty()) cache[key] = CacheEntry(now, value)
         return value
     }
 
@@ -168,156 +173,99 @@ object ExperimentalCatalog {
         }
     }
 
-    private fun archive(query: String?, creatorOnly: Boolean = false): List<Track> {
-        val escaped = query?.trim()?.replace(Regex("[^\\p{L}\\p{N} _-]"), " ")
-            ?.replace(Regex("\\s+"), " ")?.take(70)
-        val clause = if (escaped.isNullOrBlank()) {
-            "collection:netlabels"
-        } else if (creatorOnly) {
-            "creator:(\"$escaped\")"
-        } else {
-            "(title:(\"$escaped\") OR creator:(\"$escaped\"))"
-        }
-        val base = "mediatype:audio AND $clause"
-        // Search for CC-labelled records first, but still verify each item's metadata:
-        // some Archive search indexes do not expose the licenseurl field.
-        fun results(q: String): List<String> {
-            val url = "https://archive.org/advancedsearch.php?q=${enc(q)}" +
-                "&fl[]=identifier&rows=22&output=json&sort[]=downloads+desc"
-            val docs = requestJson(url).optJSONObject("response")?.optJSONArray("docs")
-                ?: return emptyList()
-            return (0 until docs.length()).mapNotNull {
-                docs.optJSONObject(it)?.optString("identifier")
-                    ?.takeIf { id -> id.matches(Regex("[A-Za-z0-9._-]+")) }
+    /** Official anonymous Openverse /v1/audio search (rate limited by provider).
+     *
+     * It aggregates original CC audio releases from Jamendo and other catalogs.
+     * We never talk to Jamendo directly and never claim to own the recording.
+     * A genuine license URL and a HTTPS original audio URL are required for
+     * playback; metadata-only records remain viewable on their original page.
+     */
+    private fun openverse(
+        query: String? = null,
+        creator: String? = null,
+        sourceFilter: String? = null,
+    ): List<Track> {
+        val args = mutableListOf(
+            "page_size=20",
+            "filter_dead=true",
+        )
+        if (!query.isNullOrBlank()) args.add("q=${enc(query.take(100))}")
+        else if (!creator.isNullOrBlank()) args.add("creator=${enc(creator.take(100))}")
+        else return emptyList()
+        if (!sourceFilter.isNullOrBlank()) args.add("source=${enc(sourceFilter)}")
+        val result = requestOpenverse("https://api.openverse.org/v1/audio/?"
+            + args.joinToString("&"))
+        val items = result.optJSONArray("results") ?: return emptyList()
+        return (0 until items.length()).mapNotNull { index ->
+            val obj = items.optJSONObject(index) ?: return@mapNotNull null
+            val id = obj.optString("id")
+            if (!id.matches(Regex("[0-9a-fA-F-]{36}"))) return@mapNotNull null
+            if (obj.optBoolean("mature", false)) return@mapNotNull null
+            if (obj.optString("category") == "sound_effect") return@mapNotNull null
+            val title = obj.optString("title").trim()
+            if (title.isBlank()) return@mapNotNull null
+            val artist = obj.optString("creator").ifBlank { "Unknown artist" }
+            val licenseUrl = obj.optString("license_url").takeIf {
+                it.startsWith("https://creativecommons.org/") ||
+                    it.startsWith("http://creativecommons.org/")
             }
-        }
-        val licensedIds: List<String> = try {
-            results("$base AND licenseurl:http*")
-        } catch (cancel: CancellationException) {
-            throw cancel
-        } catch (error: Exception) {
-            Timber.tag("CapsuleDiscovery").w(error, "Archive licensed search failed")
-            emptyList()
-        }
-        val candidates = if (licensedIds.isNotEmpty()) licensedIds else results(base)
-        // Limit remote metadata reads; a single broken item must not poison the page.
-        // Archive is large: each item commonly contains multiple derivative audio files.
-        return candidates.take(9).mapNotNull { id ->
-            try {
-                val root = requestJson("https://archive.org/metadata/${enc(id)}")
-                val meta = root.optJSONObject("metadata") ?: return@mapNotNull null
-                val license = meta.optString("licenseurl")
-                val licensedForPlayback =
-                    license.startsWith("https://creativecommons.org/") ||
-                    license.startsWith("http://creativecommons.org/")
-                val files = root.optJSONArray("files") ?: return@mapNotNull null
-                val file = (0 until files.length()).asSequence()
-                    .mapNotNull { files.optJSONObject(it) }
-                    .filter { it.optString("private") != "true" }
-                    .firstOrNull {
-                        val name = it.optString("name").lowercase()
-                        (name.endsWith(".mp3") || name.endsWith(".ogg") ||
-                            name.endsWith(".m4a") || name.endsWith(".flac")) &&
-                            !name.contains("sample") && !name.contains("preview")
-                    } ?: return@mapNotNull null
-                val fileName = file.optString("name")
-                if (fileName.isBlank()) return@mapNotNull null
-                val creator = meta.optString("creator").ifBlank { "Internet Archive" }
-                val title = file.optString("title").ifBlank {
-                    meta.optString("title").ifBlank { fileName.substringBeforeLast(".") }
-                }
-                val nameUrl = fileName.split("/").joinToString("/") { enc(it) }
-                val creatorSearch = "https://archive.org/search?query=" +
-                    enc("mediatype:audio AND creator:(\"$creator\")")
-                Track(
-                    source = Source.ARCHIVE,
-                    id = "$id:$fileName",
-                    title = title,
-                    artist = creator,
-                    artwork = "https://archive.org/services/img/${enc(id)}",
-                    // Items without a verified CC tag remain discoverable only:
-                    // send the user to Archive rather than assuming playback rights.
-                    streamUrl = if (licensedForPlayback)
-                        "https://archive.org/download/${enc(id)}/$nameUrl" else null,
-                    sourcePage = "https://archive.org/details/${enc(id)}",
-                    artistId = creator,
-                    artistPage = creatorSearch,
-                    license = license,
-                    year = meta.optString("year").ifBlank { meta.optString("date").take(4) },
-                    durationSeconds = file.optString("length").toDoubleOrNull()?.toInt() ?: 0,
-                )
-            } catch (cancel: CancellationException) { throw cancel }
-            catch (error: Exception) {
-                Timber.tag("CapsuleDiscovery").d(error, "Archive item unavailable")
-                null
+            val stream = obj.optString("url").takeIf { it.startsWith("https://") }
+                ?.takeIf { it.length < 2048 }
+            // A public index does not establish playback permission by itself.
+            // Respect original publisher restrictions and expose the license.
+            val mayStream = licenseUrl != null && obj.optString("license").isNotBlank()
+            val provider = obj.optString("source").lowercase()
+            val genres = obj.optJSONArray("genres")
+            val genre = (0 until (genres?.length() ?: 0))
+                .mapNotNull { genres?.optString(it)?.takeIf(String::isNotBlank) }
+                .joinToString(", ").ifBlank { null }
+            val tags = obj.optJSONArray("tags")
+            val tagGenre = (0 until (tags?.length() ?: 0))
+                .mapNotNull { tags?.optJSONObject(it)?.optString("name") }
+                .take(8).joinToString(", ")
+            val album = obj.optJSONObject("audio_set")
+            // Prefer small provider-hosted album art, avoiding an API request
+            // for *each* thumbnail under Openverse anonymous throttling.
+            val cover = album?.optString("url")?.takeIf {
+                it.startsWith("https://")
+            } ?: obj.optString("thumbnail").takeIf { it.startsWith("https://") }
+            val creatorPage = obj.optString("creator_url").takeIf {
+                it.startsWith("https://")
             }
-        }
+            val original = obj.optString("foreign_landing_url").takeIf {
+                it.startsWith("https://")
+            } ?: "https://api.openverse.org/v1/audio/${enc(id)}/"
+            val millis = obj.optLong("duration", 0L)
+            Track(
+                source = Source.OPENVERSE,
+                id = id,
+                title = title,
+                artist = artist,
+                artwork = cover,
+                artworkLarge = cover,
+                streamUrl = if (mayStream) stream else null,
+                sourcePage = original,
+                durationSeconds = (millis / 1000L).coerceIn(0, 86400).toInt(),
+                license = licenseUrl,
+                genre = genre ?: tagGenre.ifBlank { null },
+                artistId = provider.takeIf(String::isNotBlank),
+                artistPage = creatorPage,
+                catalogProvider = provider.takeIf(String::isNotBlank),
+            )
+        }.distinctBy { it.id }
     }
 
-    private fun mirlo(query: String?): List<Track> {
-        val matches = mutableListOf<Track>()
-        val fallback = mutableListOf<Track>()
-        var succeeded = false
-        val needle = query?.trim()?.lowercase().orEmpty()
-        // Canimus has documented offset pagination, not a server-side text query.
-        // Fetch small pages (large artist trees can exceed response limits), and
-        // inspect several pages instead of always searching only the first 18 artists.
-        for (page in 0 until (if (needle.isEmpty()) 4 else 6)) {
-            val root = try {
-                requestJson("https://mirlo.space/v1/sm/canimus.json?skip=${page * 3}&take=3",
-                    maxBytes = 4 * 1024 * 1024)
-            } catch (cancel: CancellationException) { throw cancel }
-            catch (error: Exception) {
-                Timber.tag("CapsuleDiscovery").w(error, "Mirlo page %d failed", page)
-                if (!succeeded) throw error
-                break
-            }
-            succeeded = true
-            val children = root.optJSONArray("children") ?: continue
-            if (children.length() == 0) break
-            fun collect(node: JSONObject, owner: String, ownerPage: String?, cover: String?, depth: Int) {
-                if (depth > 5) return
-                val type = node.optString("type").lowercase()
-                val name = node.optString("name")
-                val nodeUrl = node.optString("url")
-                val currentArtist = if (type == "artist") name else owner
-                val currentPage = if (type == "artist" && nodeUrl.startsWith("https://"))
-                    nodeUrl else ownerPage
-                val img = node.optJSONObject("images")?.optJSONObject("cover")
-                    ?.optString("src")?.takeIf { it.startsWith("https://") } ?: cover
-                if (type == "track" && nodeUrl.startsWith("https://") && name.isNotBlank()) {
-                    val track = Track(
-                        source = Source.MIRLO,
-                        id = nodeUrl,
-                        title = name,
-                        artist = currentArtist.ifBlank { "Mirlo" },
-                        artwork = img,
-                        streamUrl = null, // Authorized HLS tokens required by Mirlo.
-                        sourcePage = nodeUrl,
-                        durationSeconds = node.optDouble("duration", 0.0).toInt(),
-                        artistId = currentPage,
-                        artistPage = currentPage,
-                    )
-                    if (fallback.size < 32) fallback.add(track)
-                    if (needle.isEmpty() || listOf(name, currentArtist).any {
-                            it.contains(needle, ignoreCase = true)
-                        }) matches.add(track)
-                }
-                val nested = node.optJSONArray("children") ?: return
-                for (i in 0 until nested.length()) nested.optJSONObject(i)?.let {
-                    collect(it, currentArtist, currentPage, img, depth + 1)
-                }
-            }
-            for (i in 0 until children.length()) children.optJSONObject(i)?.let {
-                collect(it, "", null, null, 0)
-            }
-            if (matches.size >= 32) break
+    /** Anonymous Openverse access: proactively space calls to avoid HTTP 429. */
+    private val openverseLock = Any()
+    private var openverseLastRequest = 0L
+    private fun requestOpenverse(url: String): JSONObject {
+        synchronized(openverseLock) {
+            val now = android.os.SystemClock.elapsedRealtime()
+            val pause = 1200L - (now - openverseLastRequest)
+            if (pause in 1..1200L) Thread.sleep(pause)
+            openverseLastRequest = android.os.SystemClock.elapsedRealtime()
         }
-        // The federation offers paging, but not a server-side full-text index.
-        // Returning opt-in artists as discoveries is preferable to claiming
-        // the entire Mirlo catalog has no tracks matching a local substring.
-        return (if (matches.isNotEmpty()) matches else fallback)
-            .distinctBy { it.mediaId }.take(32)
+        return requestJson(url)
     }
 
     private fun enc(value: String): String = Uri.encode(value)

@@ -1,70 +1,46 @@
-# CAPSULE DISCOVERY — experimental catalogs (2026-10-22)
+# Capsule Discovery — Audius + Openverse experiment (2026-10-23)
 
-## Scope and kill switch
+## Scope
 
-This package replaces **SoundCloud**, not the stable YouTube Music player. The deleted
-SoundCloud catalog/extractor, download manager integration, profile/playlist screens, media
-factory, link parser and tests must not be restored.
+Discovery remains **OFF by default** in Settings → Content. It is isolated
+from the stable YouTube audio resolver, download manager and video player.
+Turning the toggle off hides its chips/shelf and rejects experimental playback.
+SoundCloud, Mirlo, and Internet Archive adapters are absent; do not revive them.
 
-`Settings → Content → Rare music sources` is **OFF by default**. When off:
-- no Audius, Internet Archive or Mirlo requests are initiated by search/home;
-- source tabs and discovery shelves are hidden;
-- the Audio service rejects experimental queues/media sources and stops an external track
-  if the setting is turned off during playback;
-- the existing YouTube network resolver, quarantine, prefetch and video routes stay unchanged.
+## Catalogs
 
-The first version is intentionally separate from the default "All" search and the
-regular recommendations. It should **not** contaminate familiar music discovery.
+- **Audius**: the official public Audius catalog and HTTPS stream URLs.
+  Respect `is_streamable` and access flags. Keep this source independent.
+- **Openverse**: official anonymous `GET https://api.openverse.org/v1/audio/`.
+  Indexes openly-licensed audio from multiple *original publishers*, **including
+  Jamendo**. There is deliberately **no separate Jamendo API connection, account,
+  client ID or scraper**. The recommendation lane scopes `source=jamendo` to
+  prioritize real independent songs over incidental sound effects.
+  Openverse can show more indexed sources on a user-driven text search.
 
-## Provider boundaries
+Openverse result mapping: `id`, `title`, `creator`, `source`,
+`creator_url`, `foreign_landing_url`, `url`, `thumbnail`, `audio_set.url`,
+`duration` (milliseconds), `license` and `license_url`.
+For user attribution the original creator/source and license link must remain
+accessible in the in-app menu. We accept HTTPS original audio URLs for playback
+only with explicit Creative Commons license metadata; index inclusion by itself
+is not a rights guarantee. Never download/redistribute assets for offline use
+from this experimental integration. Remote publishers can restrict streaming.
 
-| Provider | Discovery | Playback | Notes |
-|---|---|---|---|
-| Audius | Read-only official API | Official HTTPS `/tracks/{id}/stream` | Subject to provider access flags, rate limits, redirects |
-| Internet Archive | Advanced search + item metadata | HTTPS downloadable item audio | Only items exposing explicit Creative Commons licence URL are offered |
-| Mirlo | Opt-in Canimus federation catalog | External source page **only** | Mirlo requires developer API key + listener-authorized stream token. Never bypass permissions |
+## Operational expectations
 
-Each source gets an adapter and a distinct `capsule-open:<source>:<id>` identifier.
-URLs are never processed as YouTube video IDs and never enter InnerTube/audio CDN recovery.
-Current experiment disables offline download for these external tracks.
-Music metadata retains the source page for attribution. Not all works in the Archive
-are appropriately licensed; explicit rights may be incomplete even with tags.
-
-## Recommendation algorithm (v0)
-
-**Core principle:** serendipity with a minimum quality floor.
-
-1. Seed with at most two artists from the existing taste suggestions (or no seed on a
-   fresh install); request Audius underground and small related searches.
-2. Fetch a bounded sample of Archive netlabels and Mirlo opted-in artists.
-3. Drop empty title/artist, recordings longer than 20 minutes, duplicate track IDs
-   and duplicate normalized `artist:title`.
-4. Shuffle deterministically per UTC day so the carousel changes without random
-   recomposition flicker.
-5. Allocate initial provider quotas around 45% Audius, 40% Archive, 15% Mirlo,
-   maximum two tracks per artist.
-6. If a provider is unavailable, fill remaining slots from functioning sources.
-   Do not fail the existing home screen.
-
-The quota is a **discovery mix**, not an objective measure of song quality or a trained
-similarity model. There is no telemetry/remote user profiling in this v0.
-Source chips offer an exact-source search; experimental local filters include length,
-date and selected genres. If a provider does not expose corresponding metadata, the
-filter will not invent it.
-
-## Progressive evaluation before default inclusion
-
-- Verify real tracks in Russia and on mobile networks; captive/walled networks may
-  cause timeouts. Protect main feed scroll FPS and audio continuity.
-- Check Audius rate limiting and 302 redirect expiry; handle locked/premium tracks.
-- Improve Archive attribution, restrict query syntax and show per-item rights.
-- Request Mirlo key directly from Mirlo and implement authorized stream tokens,
-  or continue opening Mirlo pages externally.
-- Add playlist pages, pagination, error/refresh UX and cancellation tests.
-- Design opt-in feedback only once there are listeners: explicit "more like this",
-  "less like this", skip/finish signals with local retention and opt-out.
-- Explicitly test toggle during search, recommendation loading and playback, and
-  regression test YouTube audio/video/quarantine.
-
-This is a **draft experiment**, not a production API integration guarantee. A debug
-APK build and device smoke tests are mandatory before merging into the stable branch.
+- Respect anonymous API throttling, pagination and no-scraping rules. Use a
+  short rate gate on calls, 20 records per page and a 15-minute nonempty cache.
+- Recommend diverse candidates every UTC day (Audius ~55%, Openverse ~45%
+  when both are available); fill missing provider quotas from the other provider.
+- Audio remains with the original publisher, not proxied through YouTube.
+- Audius and Openverse fetch in separate lanes, so timeout of one source
+  never blocks the other. Player and search should display provider failure
+  without falsely saying the catalog is empty.
+- Artist pages on Openverse query the indexed `creator` field, optionally
+  scoped to a provider (e.g. Jamendo), and expose the original profile URL.
+- Restrict requests to the official Openverse and Audius JSON APIs; user
+  access to provider sites is through ordinary external HTTPS links.
+- Live network access from the build environment, playback rights for specific
+  titles, rate-limit behavior in different regions, and device playback still
+  require on-device smoke testing. Do **not** merge into stable untested.
