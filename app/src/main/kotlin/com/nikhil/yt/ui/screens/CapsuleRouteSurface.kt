@@ -2,6 +2,10 @@ package com.nikhil.yt.ui.screens
 
 import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.foundation.background
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.add
@@ -225,18 +229,30 @@ fun CapsulePinnedHeader(route: String) {
                     accountImageUrl = LocalCapsuleHeaderAccountImage.current,
                     onAccountClick = { chooserOpen = true },
                     sourceIcon = sourceIcon,
-                    sourceAccents = effective.map { it.accent },
+                    sourceAccents = HomeFeedSource.selectable.filter { it in effective }
+                        .map { it.accent },
+                    sourceIcons = HomeFeedSource.selectable.filter { it in effective }
+                        .map { it.icon },
                     sourceContentDescription = stringResource(R.string.capsule_home_source_pick),
                 )
                 DropdownMenu(
                     expanded = chooserOpen,
                     onDismissRequest = { chooserOpen = false },
+                    modifier = Modifier.clip(RoundedCornerShape(24.dp))
+                        .animateContentSize(spring(dampingRatio = 0.86f, stiffness = 480f)),
+                    containerColor = StandardChrome.panel,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 8.dp,
                 ) {
-                    Text(
-                        text = stringResource(R.string.capsule_home_source_pick),
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                    )
+                    androidx.compose.foundation.layout.Column(
+                        Modifier.padding(start = 18.dp, end = 12.dp, top = 14.dp, bottom = 7.dp),
+                    ) {
+                        Text(stringResource(R.string.capsule_home_source_pick),
+                            style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.capsule_source_selector_subtitle),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = StandardChrome.muted)
+                    }
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.capsule_home_all_sources)) },
                         leadingIcon = {

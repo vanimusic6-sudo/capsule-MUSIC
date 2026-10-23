@@ -35,6 +35,7 @@ class ExperimentalTrackQueue private constructor(
             start: ExperimentalCatalog.Track,
         ): ExperimentalTrackQueue? {
             val playable = tracks.filter { it.playable }.distinctBy { it.mediaId }
+            playable.forEach(ExperimentalCatalog::registerPlayable)
             val index = playable.indexOfFirst { it.mediaId == start.mediaId }
             if (index == -1) return null
             return ExperimentalTrackQueue(

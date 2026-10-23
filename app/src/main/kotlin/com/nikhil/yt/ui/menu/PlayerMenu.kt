@@ -117,6 +117,8 @@ import com.nikhil.yt.constants.EqualizerVirtualizerEnabledKey
 import com.nikhil.yt.constants.EqualizerVirtualizerStrengthKey
 import com.nikhil.yt.constants.ListItemHeight
 import com.nikhil.yt.discovery.ExperimentalArtistRoute
+import com.nikhil.yt.discovery.ExperimentalCatalog
+import com.nikhil.yt.discovery.ExperimentalDownload
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.playback.EqCapabilities
 import com.nikhil.yt.playback.EqProfile
@@ -163,6 +165,11 @@ fun PlayerMenu(
     val download by downloadUtil.getDownload(mediaMetadata.id)
         .collectAsState(initial = null)
     val isExternalCatalog = mediaMetadata.id.startsWith("capsule-open:")
+    val isAudius = mediaMetadata.id.startsWith("capsule-open:audius:")
+    val originalAudiusTrack = remember(mediaMetadata.id) {
+        ExperimentalCatalog.playingTrack(mediaMetadata.id)
+    }
+    val canDownloadAudius = isAudius && originalAudiusTrack?.downloadUrl != null
 
     val artists =
         remember(mediaMetadata.artists) {
@@ -459,7 +466,10 @@ fun PlayerMenu(
                                 val clip =
                                     android.content.ClipData.newPlainText(
                                         resources.getString(R.string.copy_link),
-                                        "https://music.youtube.com/watch?v=${mediaMetadata.id}",
+                                        (if (isExternalCatalog) mediaMetadata.sourceUrl
+                                            ?.takeIf { it.startsWith("https://") }
+                                            ?: "https://audius.co"
+                                        else "https://music.youtube.com/watch?v=${mediaMetadata.id}"),
                                     )
                                 clipboard.setPrimaryClip(clip)
                                 android.widget.Toast.makeText(context, R.string.link_copied, android.widget.Toast.LENGTH_SHORT).show()
@@ -559,8 +569,25 @@ fun PlayerMenu(
                 Spacer(modifier = Modifier.height(12.dp))
             }
         }
-        item(key = "download", contentType = "menu-section") {
-            when (download?.state) {
+        if (!isExternalCatalog || isAudius) item(key = "download", contentType = "menu-section") {
+            if (isAudius) {
+                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                    ListItem(
+                        headlineContent = {
+                            Text(stringResource(if (canDownloadAudius) R.string.action_download
+                                else R.string.capsule_audius_not_downloadable))
+                        },
+                        leadingContent = {
+                            Icon(painterResource(R.drawable.download), contentDescription = null)
+                        },
+                        modifier = Modifier.clickable(enabled = canDownloadAudius) {
+                            originalAudiusTrack?.let { ExperimentalDownload.enqueue(context, it) }
+                            onDismiss()
+                        },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                }
+            } else when (download?.state) {
                 Download.STATE_COMPLETED -> {
                     MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                         ListItem(
