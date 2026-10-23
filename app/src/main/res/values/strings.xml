@@ -975,6 +975,7 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="capsule_discovery_loading">Loading independent music catalogs…</string>
     <string name="capsule_home_source_pick">Home music sources</string>
     <string name="capsule_home_all_sources">All available sources</string>
+    <string name="capsule_home_reset_youtube">Reset to YouTube Music</string>
     <string name="capsule_home_catalog_trending">Trending now</string>
     <string name="capsule_home_catalog_new">Fresh releases</string>
     <string name="capsule_home_catalog_discover">Hidden gems</string>
