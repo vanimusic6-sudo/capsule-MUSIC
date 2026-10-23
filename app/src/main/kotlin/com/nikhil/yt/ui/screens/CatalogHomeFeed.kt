@@ -62,6 +62,7 @@ internal class CatalogHomeState {
     var failed by mutableStateOf<Set<HomeFeedSource>>(emptySet())
     var loading by mutableStateOf(false)
     var loadedKey by mutableStateOf("")
+    var finished by mutableStateOf(false)
     var revision by mutableIntStateOf(0)
     fun refresh() { revision++ }
 }
@@ -82,6 +83,7 @@ internal fun rememberCatalogHomeState(
             state.loadedKey = key
         }
         state.failed = emptySet()
+        state.finished = false
         state.loading = sources.isNotEmpty()
         if (sources.isEmpty()) return@LaunchedEffect
         try {
@@ -117,6 +119,7 @@ internal fun rememberCatalogHomeState(
             }
         } finally {
             state.loading = false
+            state.finished = true
         }
     }
     return state
