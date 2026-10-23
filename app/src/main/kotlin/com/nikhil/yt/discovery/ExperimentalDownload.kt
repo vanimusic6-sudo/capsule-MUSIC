@@ -2,6 +2,8 @@ package com.nikhil.yt.discovery
 
 import android.app.DownloadManager
 import android.content.ContentValues
+import android.content.ContentUris
+import kotlinx.coroutines.withContext
 import android.content.Context
 import android.net.Uri
 import android.os.Build
@@ -40,6 +42,57 @@ object ExperimentalDownload {
     private val jobs = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val permits = Semaphore(2)
     private val main = Handler(Looper.getMainLooper())
+    /**
+     * The native app library reads Media3's DownloadIndex, while independent
+     * creator-approved Audius files are saved through Android MediaStore.
+     * Expose the latter explicitly so the library's Downloaded filter can
+     * combine both without lying to YouTube's offline cache/index.
+     *
+     * Works after process death and across upgrades; only reads our own
+     * Downloads/Capsule Music folder, not the user's other downloads.
+     */
+    data class SavedAudio(val id: Long, val uri: Uri, val name: String, val bytes: Long) {
+        val title: String get() = name.substringBeforeLast('.').substringAfter(" - ", name)
+        val artist: String get() = name.substringBefore(" - ", "Audius")
+    }
+
+    suspend fun savedFiles(context: Context): List<SavedAudio> = withContext(Dispatchers.IO) {
+        if (Build.VERSION.SDK_INT < 29) return@withContext emptyList()
+        try {
+            val uri = MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            val projection = arrayOf(
+                MediaStore.MediaColumns._ID,
+                MediaStore.MediaColumns.DISPLAY_NAME,
+                MediaStore.MediaColumns.SIZE,
+            )
+            val where = "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ? AND " +
+                "${MediaStore.MediaColumns.IS_PENDING} = 0"
+            val folder = Environment.DIRECTORY_DOWNLOADS + "/Capsule Music/%"
+            val result = mutableListOf<SavedAudio>()
+            context.contentResolver.query(
+                uri, projection, where, arrayOf(folder),
+                "${MediaStore.MediaColumns.DATE_ADDED} DESC",
+            )?.use { cursor ->
+                val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
+                while (cursor.moveToNext() && result.size < 300) {
+                    val name = cursor.getString(nameColumn) ?: continue
+                    if (!listOf(".mp3", ".ogg", ".oga", ".opus", ".m4a", ".flac")
+                            .any { name.endsWith(it, ignoreCase = true) }) continue
+                    val id = cursor.getLong(idColumn)
+                    val bytes = cursor.getLong(sizeColumn)
+                    if (bytes <= 0L) continue
+                    result.add(SavedAudio(id, ContentUris.withAppendedId(uri, id), name, bytes))
+                }
+            }
+            result
+        } catch (e: Exception) {
+            Timber.tag("CapsuleDownload").w(e, "Cannot read saved music from MediaStore")
+            emptyList()
+        }
+    }
+
     enum class State { DOWNLOADING, COMPLETED, FAILED }
     private val _states = MutableStateFlow<Map<String, State>>(emptyMap())
     val states = _states.asStateFlow()
