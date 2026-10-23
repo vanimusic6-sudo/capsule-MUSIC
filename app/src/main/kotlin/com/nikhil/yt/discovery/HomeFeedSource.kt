@@ -11,7 +11,7 @@ enum class HomeFeedSource(val id: String, val label: String, val icon: Int, val 
     YOUTUBE("youtube", "YouTube Music", R.drawable.ic_capsule_youtube_home, Color(0xFFE62117), null),
     AUDIUS("audius", "Audius", R.drawable.ic_capsule_audius, Color(0xFF7B39E8), null),
     JAMENDO("jamendo", "Jamendo · Openverse", R.drawable.ic_capsule_jamendo_home, Color(0xFFE88823), "jamendo"),
-    WIKIMEDIA("wikimedia_audio", "Wikimedia Commons · Openverse", R.drawable.ic_capsule_wikimedia_home, Color(0xFF367CC3), "wikimedia_audio"),
+    WIKIMEDIA("wikimedia_audio", "Wikimedia Commons", R.drawable.ic_capsule_wikimedia_home, Color(0xFF367CC3), "wikimedia_audio"),
     FREESOUND("freesound", "Freesound · Openverse", R.drawable.ic_capsule_freesound_home, Color(0xFF54A445), "freesound"),
     ARCHIVE("archive", "Internet Archive · Netlabels", R.drawable.ic_capsule_archive_home, Color(0xFFB87346), null);
 
