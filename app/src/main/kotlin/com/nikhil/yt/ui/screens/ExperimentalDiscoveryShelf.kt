@@ -67,7 +67,7 @@ internal fun ExperimentalDiscoveryShelf(
                     } catch (cancel: CancellationException) {
                         throw cancel
                     } catch (error: Exception) {
-                        Timber.tag("CapsuleDiscovery").w(error, "%s recommendation failed", source.title)
+                        Timber.tag("CapsuleDiscovery").w(error, "%s recommendation failed", source.label)
                         failedSources = failedSources + source
                         emptyList()
                     }
@@ -110,7 +110,7 @@ internal fun ExperimentalDiscoveryShelf(
                 TextButton(
                     onClick = { retry++ },
                     modifier = Modifier.padding(horizontal = 12.dp),
-                ) { Text(failedSources.joinToString { it.title } + " · " +
+                ) { Text(failedSources.joinToString { it.label } + " · " +
                     stringResource(R.string.capsule_discovery_retry)) }
             }
             LazyRow(
@@ -161,7 +161,7 @@ internal fun ExperimentalDiscoveryShelf(
                                 style = MaterialTheme.typography.bodySmall,
                             )
                             Text(
-                                track.source.title +
+                                track.source.label +
                                     (track.catalogProvider?.let { " · $it" } ?: "") +
                                     if (track.playable) "" else " ↗",
                                 color = MaterialTheme.colorScheme.primary,
