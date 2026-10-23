@@ -47,9 +47,18 @@ object ExperimentalCatalog {
         val repostCount: Long = 0,
         /** Openverse indexes candidate files; a candidate URL is not a working stream. */
         val streamCandidates: List<String> = emptyList(),
+        /** Respect Audius's is_downloadable permission; other providers require CC metadata. */
+        val downloadable: Boolean = false,
     ) {
         val mediaId: String get() = EXPERIMENTAL_MEDIA_PREFIX + source.name.lowercase() + ":" + id
         val playable: Boolean get() = streamUrl?.startsWith("https://") == true
+        val downloadUrl: String? get() = when {
+            !playable -> null
+            source == Source.AUDIUS && downloadable ->
+                "https://api.audius.co/v1/tracks/" + id + "/download"
+            source != Source.AUDIUS && !license.isNullOrBlank() -> streamUrl
+            else -> null
+        }
     }
 
     /** Independent sections for an actual provider Home, not a single discovery carousel. */
@@ -303,9 +312,9 @@ object ExperimentalCatalog {
                 id = id,
                 title = item.optString("title").takeIf(String::isNotBlank) ?: return@mapNotNull null,
                 artist = ownerName,
-                // A 54dp search result must not download a 480px original cover.
-                artwork = image(photo, 150) ?: image(photo, 480),
-                artworkLarge = image(photo, 480) ?: image(photo, 150),
+                artwork = image(photo, 480) ?: image(photo, 150),
+                artworkLarge = image(photo, 480) ?: image(photo, 1000)
+                    ?: image(photo, 150),
                 streamUrl = "https://api.audius.co/v1/tracks/${enc(id)}/stream",
                 sourcePage = item.optString("permalink").takeIf { it.startsWith("https://") }
                     ?: "https://audius.co",
@@ -313,6 +322,8 @@ object ExperimentalCatalog {
                 playCount = item.optLong("play_count").coerceAtLeast(0),
                 favoriteCount = item.optLong("favorite_count").coerceAtLeast(0),
                 repostCount = item.optLong("repost_count").coerceAtLeast(0),
+                downloadable = item.optBoolean("is_downloadable", false) &&
+                    access?.optBoolean("download", true) != false,
                 genre = item.optString("genre").ifBlank { null },
                 artistId = owner?.optString("id")?.takeIf { it.isNotBlank() },
                 artistPage = handle.takeIf { it.isNotBlank() }
