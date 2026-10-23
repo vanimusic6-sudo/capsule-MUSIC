@@ -210,7 +210,7 @@ fun CapsulePinnedHeader(route: String) {
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Box(modifier = Modifier.weight(1f)) {
-            if (isHome) {
+            run {
                 val context = LocalContext.current
                 val (raw, setRaw) = rememberPreference(
                     HomeFeedSourcesKey, HomeFeedSource.DEFAULT,
@@ -349,12 +349,6 @@ fun CapsulePinnedHeader(route: String) {
                         },
                     )
                 }
-            } else {
-                StandardHeaderTitle(
-                    accountName = LocalCapsuleHeaderAccountName.current,
-                    accountImageUrl = LocalCapsuleHeaderAccountImage.current,
-                    onAccountClick = { navController?.navigate("settings/account") },
-                )
             }
         }
         IconButton(onClick = { navController?.navigate("settings") }) {
