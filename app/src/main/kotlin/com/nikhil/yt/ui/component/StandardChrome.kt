@@ -62,9 +62,9 @@ object StandardChrome {
 fun StandardHeaderTitle(
     accountName: String?,
     accountImageUrl: String?,
-    onAccountClick: () -> Unit,
     sourceIcon: Int? = null,
     sourceContentDescription: String? = null,
+    onAccountClick: () -> Unit,
 ) {
     val accountLabel = stringResource(R.string.account)
     // The preference snapshot is primed before Compose. A returning signed-in
