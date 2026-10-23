@@ -1,60 +1,60 @@
-# Capsule Discovery — selectable Home catalogs (2026-10-23)
+# Capsule Discovery — independent music catalogs (2026-10-23)
 
-## Home source switcher
+## Home selector and reset
 
-The Home greeting's circular profile control is a **source selector on Home
-only**; account access remains in the menu and through Settings, and other
-tabs retain the prior account control. Choices persist in DataStore under
-`capsuleHomeFeedSourcesV1`. The default selection includes YouTube and all
-current experimental providers. Experimental network traffic is still disabled
-until the user explicitly opts in via Settings → Content or selects one of the
-external sources in this picker.
+The Home header has an independent source picker. **The initial choice is only
+YouTube Music**. Selecting a provider saves it without overwriting global
+player/extractor settings. A separate **Reset to YouTube Music** item restores
+the default Home (it does not reset experimental search opt-in). The
+**All available sources** choice remains opt-in, not a first-install default.
 
-The source picker offers:
-- YouTube Music (existing Home recommendations, listening and releases).
-- Audius (official public API and the separate official streaming endpoint).
-- Jamendo **via Openverse**, no separate Jamendo Client ID.
-- Wikimedia Commons **via Openverse**.
-- Freesound **via Openverse**.
+Providers in the experimental branch:
 
-Each selector entry is a **source of the Home catalog**, not an audio-extractor
-fallback. Removing YouTube from the selection hides YouTube-powered Home
-sections, but never unplugs the actual playback engine, quarantines or queues.
-No changes to app-wide search source priorities.
+- **YouTube Music:** existing personal recommendations and playlists.
+- **Audius:** official anonymous API plus independent streaming (confirmed by user).
+- **Internet Archive / Netlabels:** official archive.org/advancedsearch.php and
+  archive.org/metadata/{identifier} catalog, with audio from official download
+  URLs. Require explicit Creative Commons/public-domain licensing per item.
+- **Wikimedia Commons:** native official MediaWiki imageinfo metadata and file
+  URLs instead of Openverse's stale audio index.
+- **Jamendo via Openverse:** index-only unless the HTTPS original stream
+  passes a bounded Range GET returning real audio content. A dedicated
+  official Jamendo API integration requires a developer client_id.
+- **Freesound via Openverse:** best-effort music-only subset; many public
+  results are effects or cannot be played directly without provider tokens.
 
-## Discovery curation
+## Why Openverse looked playable but wasn't
 
-The old "Long Forgotten" / "Давно забытое" shelf is removed. Opted-in sources create **full provider Home feeds**, not just a single carousel:
-Audius offers trending, newest, underground and taste-based rows; each
-Openverse upstream offers a general music row, themed discoveries and optional
-taste-based matches. Every section appears as soon as its response arrives;
-one slow source cannot block the others. A combined "Beyond the familiar" /
-"За пределами привычного" row still highlights playable tracks across the
-selected external catalogs. Audius and each selected Openverse upstream are fetched
-independently. Rankings prioritize valid streamable URLs, likely musical content,
-sensible music duration, genre metadata, artwork and the listener's artist
-hints. Deduplicate normalized artist/title, maximum two per artist, rotate tie
-breaks by UTC day, and cap per-upstream dominance when there are several
-upstreams. This is transparent heuristic quality scoring, **not** platform
-listener votes, human ratings, exclusivity or proven obscurity.
+The old code marked any HTTPS link from the Openverse index as playable, even
+when the upstream Jamendo/Wikimedia/Freesound CDN returned 403/404, HTML or
+invalid redirects. filter_dead=true checks index health, not the exact
+Media3 streaming request from a user's device. Now limited, cached Range GET
+checks are required for Jamendo/Freesound Openverse links. Broken entries
+remain original-site links in search but do not become dead Play cards at Home.
 
-An Openverse item that is licensed but lacks a safe direct HTTPS stream is
-visible as an original-release web link (↗), not falsely presented as playable.
-The Openverse index alone does not guarantee remote CDN playback.
+Commons now independently searches music-like audio with MediaWiki, verifies
+file MIME and license, and obtains direct HTTPS Wikimedia file URLs.
+Freesound's indexed catalog includes many sound effects and should not be
+presented as a reliable streaming music subscription service. A Jamendo
+client ID must be provisioned separately for a robust official API client;
+the public developer test ID is not appropriate for shipping.
 
-Failures show an empty/error state with Retry rather than removing the entire
-section. An unreachable Openverse API cannot hide functioning Audius tracks.
-Each upstream's response is cached for 15 minutes. API clients respect
-anonymous Openverse limits and do not scrape or register on behalf of users.
+## UX and isolation
 
-## Current limitations
+Catalog shelves use the existing HomeLoadingShimmer skeleton, stream in
+individually and preserve visible content during refresh. Failed catalog
+sections disappear without any persistent error text. If all selected
+external catalogs fail, YouTube Home is shown as a temporary in-memory
+fallback without overwriting the saved source choices.
 
-Openverse currently indexes the audio catalogs of Jamendo, Wikimedia Commons
-and Freesound; Internet Archive audio is **not an officially indexed source**.
-Openverse may be unavailable in some networks, and individual publisher media
-links may stop working. The app supplies upstream and Creative Commons metadata
-but cannot independently verify all uploader rights. Never silently play
-unlicensed content. Only optional sources are on this development branch and
-the stable YouTube audio/video behavior is unchanged. Device playback,
-regional availability and real recommendation taste quality still require
-live smoke tests before merging.
+No changes to the stable YouTube streaming engine, cipher/quarantine paths,
+video subsystem, or private accounts. Public catalog HTTP requests observe
+Capsule's network proxy setting.
+
+## Limitations
+
+The presence of an indexed file and a claimed CC license cannot prove that
+the uploaded media is appropriately licensed or will remain online. Actual
+device playback and region-specific access still require testing. No
+claim of 100 percent universal availability is made for Internet Archive,
+Wikimedia, Jamendo or Freesound.
