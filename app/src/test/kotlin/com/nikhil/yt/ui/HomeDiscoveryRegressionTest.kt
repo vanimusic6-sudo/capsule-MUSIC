@@ -32,7 +32,7 @@ class HomeDiscoveryRegressionTest {
         assertFalse(navigation.contains("routeComposable(\"home_collections\")"))
         assertFalse(home.contains("ScrollActionButton("))
         assertFalse(home.contains("Spacer(Modifier.height(218.dp))"))
-        assertTrue(home.contains("quickPicks?.takeIf { includeYouTube && it.isNotEmpty() }"))
+        assertTrue(home.contains("quickPicks?.takeIf { displayYouTube && it.isNotEmpty() }"))
         assertTrue(components.contains("animateTitle = false"))
         assertTrue(components.contains("itemWidth = 184.dp"))
     }
@@ -53,6 +53,11 @@ class HomeDiscoveryRegressionTest {
         assertTrue(header.contains("HomeFeedSource.entries.forEach"))
         assertTrue(header.contains("val active = source in effective"))
         assertTrue(header.contains("val next = effective.toMutableSet()"))
+        assertTrue(header.contains("capsule_home_reset_youtube"))
+        assertTrue(header.contains("setRaw(HomeFeedSource.DEFAULT)"))
+        assertTrue(home.contains("home:catalog-loading"))
+        assertTrue(home.contains("HomeLoadingShimmer()"))
+        assertFalse(home.contains("CatalogHomeError("))
         assertTrue(shelf.contains("discoveryFromHome(source, tasteArtists)"))
         assertFalse(shelf.contains("ExperimentalForgottenShelf"))
     }
