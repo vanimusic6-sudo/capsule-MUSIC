@@ -39,9 +39,10 @@ internal fun ArtistToolbar(
 ) {
     val fade = artworkFade.coerceIn(0f, 1f)
     val foreground = lerp(Color.White, StandardChrome.text, fade)
-    // Keep the toolbar surface on the same continuous scroll fraction as
-    // the portrait: the old >= 1 switch caused the last-frame dark flash.
-    val background = StandardChrome.background.copy(alpha = fade)
+    // The portrait already fades into StandardChrome.background beneath the
+    // pinned bar. A separate tint double-darkens intermediate frames; a
+    // threshold tint flashes at the last frame. Let the ONE shared canvas
+    // supply the colour throughout scrolling, even after the photo is gone.
     val buttonColors = IconButtonDefaults.iconButtonColors(
         containerColor = Color.Transparent,
         contentColor = foreground,
@@ -96,8 +97,8 @@ internal fun ArtistToolbar(
         },
         colors =
             TopAppBarDefaults.topAppBarColors(
-                containerColor = background,
-                scrolledContainerColor = background,
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent,
                 navigationIconContentColor = foreground,
                 actionIconContentColor = foreground,
                 titleContentColor = foreground,
