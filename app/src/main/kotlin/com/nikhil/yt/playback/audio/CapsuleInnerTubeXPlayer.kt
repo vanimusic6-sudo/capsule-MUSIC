@@ -39,6 +39,7 @@ import com.nikhil.yt.innertube.YouTubeFailureKind
 import com.nikhil.yt.innertube.models.response.PlayerResponse
 import com.nikhil.yt.playback.audio.potoken.PoTokenGenerator
 import io.ktor.client.HttpClient
+import com.metrolist.innertubex.sabr.SabrBootstrap
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -96,6 +97,7 @@ object CapsuleInnerTubeXPlayer {
         scheduler.effectivePriority(mediaId, fallback)
     private val prewarmScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val streamClientFailures = ConcurrentHashMap<String, FailedStreamClients>()
+    private val sabrRecoveryUntilMs = ConcurrentHashMap<String, Long>()
 
     @Volatile
     private var currentBundle: ExtractionBundle? = null
@@ -217,6 +219,7 @@ object CapsuleInnerTubeXPlayer {
          * Zero means the library named no size, and the app's own default is used instead.
          */
         val rangeChunkSizeBytes: Long,
+        val sabrBootstrap: SabrBootstrap? = null,
     )
 
     suspend fun prewarm(prewarmWebPoToken: Boolean = false) {
@@ -378,6 +381,51 @@ object CapsuleInnerTubeXPlayer {
         var botSignalAlreadySeen = CapsulePlaybackSafety.quarantinedProfileIds().isNotEmpty()
         var onlyPostBotProfile: String? = null
         val attempted = linkedSetOf<String>()
+        var sabrAttempted = false
+
+        suspend fun trySabr(): ExtractedStream? {
+            if (sabrAttempted || priorityProvider() != AudioResolvePriority.PLAYBACK ||
+                baseHints.isUploaded == true) return null
+            sabrAttempted = true
+            // Two maintained SABR-capable profiles, never unlimited identity rotation.
+            // The selected bootstrap is sent to Media3's dedicated SABR reader and
+            // never converted into a fake signed GET URL.
+            for (profile in listOf("VISIONOS_SABR", "WEB_REMIX_SABR")) {
+                val result = try {
+                    extractionBundle.extractor.extract(
+                        videoId = videoId,
+                        hints = baseHints.copy(
+                            playbackClientOverrideId = profile,
+                            sabrFirst = true,
+                        ).withStreamCapabilities(
+                            allowHls = false,
+                            allowSabr = true,
+                            allowBoundedRange = true,
+                        ),
+                        excludedClients = emptySet(),
+                        audioQuality = audioQuality,
+                        clientPlaybackNonce = generateClientPlaybackNonce(),
+                    )
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Timber.tag(TAG).w("SABR transport profile failed id=%s profile=%s kind=%s",
+                        videoId, profile, CapsulePlaybackSafety.classifyFailure(error))
+                    null
+                }
+                if (result?.sabrBootstrap != null) {
+                    sabrRecoveryUntilMs.remove(videoId)
+                    Timber.tag(TAG).i("Selected SABR audio id=%s profile=%s itag=%d",
+                        videoId, profile, result.sabrBootstrap.audioFormat.itag)
+                    return result
+                }
+            }
+            return null
+        }
+
+        if ((sabrRecoveryUntilMs[videoId] ?: 0L) > System.currentTimeMillis()) {
+            trySabr()?.let { return it }
+        }
 
         while (true) {
             val priorityBeforeAttempt = priorityProvider()
@@ -398,6 +446,7 @@ object CapsuleInnerTubeXPlayer {
                     ?.takeIf { it !in attempted && it in plan }
                     ?: plan.firstOrNull { it !in attempted }
                     ?: run {
+                        trySabr()?.let { return it }
                         lastFailure?.let { throw it }
                         throw IllegalStateException(
                             if (priorityBeforeAttempt == AudioResolvePriority.PLAYBACK) {
@@ -483,6 +532,7 @@ object CapsuleInnerTubeXPlayer {
                         CapsulePlaybackSafety.markBotDetectionFailure(
                             "confirmed across multiple AUDIO client profiles",
                         )
+                        trySabr()?.let { return it }
                         throw failure
                     }
 
@@ -605,20 +655,32 @@ object CapsuleInnerTubeXPlayer {
         Timber.tag(TAG).w("Per-song client rollover id=%s failedClient=%s", videoId, normalized)
     }
 
+    /** A refused GVS URL requests a different transport, not another copy of that URL. */
+    fun preferSabrAfterCdnRejection(videoId: String) {
+        sabrRecoveryUntilMs[videoId] = System.currentTimeMillis() + 120_000L
+    }
+
+    /** Independent, isolated SABR transport per Media3 open; honors current proxy. */
+    internal fun newSabrHttpClient(): HttpClient = createHttpClient(YouTube.proxy)
+
     fun clearTrackClientFailures(videoId: String) {
         streamClientFailures.remove(videoId)
+        sabrRecoveryUntilMs.remove(videoId)
     }
 
     fun clearStreamClientFailures() {
         streamClientFailures.clear()
+        sabrRecoveryUntilMs.clear()
     }
 
     fun clearPlaybackState() {
+        sabrRecoveryUntilMs.clear()
         streamClientFailures.clear()
         networkGeneration.incrementAndGet()
     }
 
     fun onNetworkChanged() {
+        sabrRecoveryUntilMs.clear()
         streamClientFailures.clear()
         networkGeneration.incrementAndGet()
     }
@@ -789,6 +851,7 @@ object CapsuleInnerTubeXPlayer {
         }
 
     private fun ExtractedStream.toPlaybackData(): PlaybackData {
+        val sabrUri = if (sabrBootstrap != null) "capsule-sabr://audio/$videoId" else audioUrl
         val fullMimeType =
             if (codecs.isNullOrBlank()) {
                 mimeType.orEmpty()
@@ -829,7 +892,7 @@ object CapsuleInnerTubeXPlayer {
             format =
                 PlayerResponse.StreamingData.Format(
                     itag = itag,
-                    url = audioUrl,
+                    url = sabrUri,
                     mimeType = fullMimeType,
                     bitrate = bitrate ?: 0,
                     contentLength = contentLengthBytes,
@@ -840,7 +903,7 @@ object CapsuleInnerTubeXPlayer {
                     loudnessDb = loudnessDb,
                     perceptualLoudnessDb = perceptualLoudnessDb,
                 ),
-            streamUrl = audioUrl,
+            streamUrl = sabrUri,
             streamExpiresInSeconds =
                 expiresAt
                     ?.let {
@@ -852,6 +915,7 @@ object CapsuleInnerTubeXPlayer {
             streamClient = clientName,
             streamHeaders = headers,
             rangeChunkSizeBytes = rangeChunkSizeBytes,
+            sabrBootstrap = sabrBootstrap,
         )
     }
 

@@ -207,6 +207,10 @@ import com.nikhil.yt.utils.StreamClientUtils
 import com.nikhil.yt.utils.SyncUtils
 import com.nikhil.yt.utils.GlobalLog
 import com.nikhil.yt.utils.isTransientClosedTlsHandshake
+import com.nikhil.yt.playback.audio.CapsuleSabrDataSource
+import com.nikhil.yt.playback.audio.CapsuleSabrRoutingDataSource
+import com.nikhil.yt.playback.audio.CapsuleSabrOpenContext
+import com.nikhil.yt.playback.audio.CapsuleInnerTubeXPlayer
 import com.nikhil.yt.playback.audio.AudioCacheDataSource
 import com.nikhil.yt.discovery.ExperimentalCatalog.EXPERIMENTAL_MEDIA_PREFIX
 import com.nikhil.yt.constants.ExperimentalSourcesEnabledKey
@@ -4747,7 +4751,12 @@ class MusicService :
 
         return DataSource.Factory {
             val contract = AudioStreamContract()
-            ResolvingDataSource(audioCacheFactory.createDataSource()) { dataSpec ->
+            ResolvingDataSource(
+                CapsuleSabrRoutingDataSource(
+                    direct = audioCacheFactory.createDataSource(),
+                    sabr = CapsuleSabrDataSource { CapsuleInnerTubeXPlayer.newSabrHttpClient() },
+                ),
+            ) { dataSpec ->
                 // VIDEO never enters the MUSIC loader. A persisted old
                 // synthetic item is normalized to its canonical AUDIO ID by
                 // createMediaSourceFactory before reaching this resolver.
@@ -4927,6 +4936,14 @@ class MusicService :
         source: AudioCdnOpenSource,
     ): androidx.media3.datasource.DataSpec {
         val mediaId = requireNotNull(dataSpec.key)
+        playback.sabrBootstrap?.let { bootstrap ->
+            // SABR's POST/UMP protocol must never be opened by the signed-GET
+            // cache upstream. Keep cache data identities and downloads unchanged.
+            return dataSpec.buildUpon()
+                .setUri(playback.streamUrl.toUri())
+                .setCustomData(CapsuleSabrOpenContext(bootstrap))
+                .build()
+        }
         val key = AudioCacheIdentity.key(mediaId, playback)
         contract.bind(key)
         AudioCacheIdentity.setLength(playerCache, key, playback.format.contentLength)
