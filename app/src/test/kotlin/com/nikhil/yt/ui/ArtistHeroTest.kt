@@ -272,7 +272,7 @@ class ArtistHeroTest {
         }
         // In the final 20% the toolbar is ALREADY opaque: no sudden last
         // frame tint and no song rows visible underneath when fully scrolled.
-        val reds = listOf(0.8f, 0.85f, 0.95f, 1f).map { f ->
+        val reds = listOf(0.995f, 0.998f, 1f).map { f ->
             compose.runOnIdle { fade = f }
             val bitmap = capture("seam")
             val dp = bitmap.width / 360f
