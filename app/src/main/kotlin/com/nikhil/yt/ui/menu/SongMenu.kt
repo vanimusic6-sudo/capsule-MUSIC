@@ -100,6 +100,7 @@ import com.nikhil.yt.utils.rememberPreference
 import com.nikhil.yt.viewmodels.CachePlaylistViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.time.LocalDateTime
 import kotlinx.coroutines.withContext
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
@@ -243,8 +244,15 @@ fun SongMenu(
         isVisible = showChoosePlaylistDialog,
         allowSyncing = !independentSong,
         onGetSong = { _ ->
-            // This dialog syncs YouTube playlists itself. Independent IDs are
-            // accepted only into Capsule-local playlists, never YouTube.
+            // A streamable independent song may not exist in our Room library
+            // until the user first saves it. Insert before creating a playlist
+            // foreign key; never send a Capsule ID to the YouTube sync API.
+            if (independentSong) {
+                database.withTransaction {
+                    if (getSongById(song.id) == null)
+                        insert(song.toMediaMetadata()) { it.copy(isLocal = true) }
+                }
+            }
             listOf(song.id)
         },
         onDismiss = {
@@ -323,12 +331,27 @@ fun SongMenu(
                 IconButton(
                     interactionSource = favoriteInteraction,
                     onClick = {
-                        val s = if (independentSong) song.song.localToggleLike()
-                            else song.song.toggleLike()
-                        database.query {
-                            update(s)
+                        if (independentSong) {
+                            coroutineScope.launch {
+                                database.withTransaction {
+                                    val existing = getSongById(song.id)
+                                    if (existing == null) {
+                                        insert(song.toMediaMetadata()) {
+                                            it.copy(
+                                                isLocal = true,
+                                                liked = true,
+                                                likedDate = LocalDateTime.now(),
+                                                inLibrary = LocalDateTime.now(),
+                                            )
+                                        }
+                                    } else update(existing.song.localToggleLike())
+                                }
+                            }
+                        } else {
+                            val updated = song.song.toggleLike()
+                            database.query { update(updated) }
+                            syncUtils.likeSong(updated)
                         }
-                        if (!independentSong) syncUtils.likeSong(s)
                     },
                 ) {
                     CapsuleFavoriteIcon(
@@ -541,7 +564,18 @@ fun SongMenu(
                     modifier =
                         Modifier.clickable {
                             onDismiss()
-                            database.query {
+                            if (independentSong) {
+                                coroutineScope.launch {
+                                    database.withTransaction {
+                                        val existing = getSongById(song.id)
+                                        if (existing == null) {
+                                            insert(song.toMediaMetadata()) {
+                                                it.copy(isLocal = true, inLibrary = LocalDateTime.now())
+                                            }
+                                        } else update(existing.song.toggleLibrary())
+                                    }
+                                }
+                            } else database.query {
                                 update(song.song.toggleLibrary())
                             }
                         },
