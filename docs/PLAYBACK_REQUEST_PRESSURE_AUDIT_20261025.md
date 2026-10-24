@@ -46,6 +46,24 @@ Likewise, VIDEO being isolated does not prove it is harmless to overall network 
 7. **Offline integrity.** Report downloaded only after complete bytes and durable cover storage. Cancellation/delete removes only owned partial data and never deletes playlist membership.
 8. **Privacy/security.** Avoid logging signed URLs, cookies, bearer tokens or identifiable filenames. Restrict MediaStore deletes to app-owned recordings; protect crash reports and backup rules.
 
+
+## Re-analysis of the supplied 24 October device capture (1,745 log lines)
+
+The original on-device file `capsule-logs-2026-10-24_21-34-29.txt`, covering approximately 21:20–21:34, materially narrows the hypotheses:
+
+- **59 InnerTubeX AUDIO extraction-profile attempts:** **46 DOWNLOAD (78%)**, **12 PLAYBACK**, and **1 PREFETCH**. Across these, 44 distinct media IDs appear. This is a *profile-attempt count, not an exact HTTP request count*: some extractor attempts perform several HTTP operations.
+- Several songs repeated download resolution: one had **five** DOWNLOAD profile attempts, another three. This establishes unnecessary or failed re-resolution pressure worth instrumenting, but does not by itself prove a server challenge was caused by those requests.
+- **No VIDEO request records** were present in this log. VIDEO remains an unverified possibility on other sessions, but it was *not observed causing* this captured failure.
+- **57 visible player-status lines:** **52 OK**, **3 LOGIN_REQUIRED**, **2 UNPLAYABLE**. No HTTP 429 was recorded.
+- At **21:32:05**, WEB_REMIX returned `player-item status=OK` and a signed stream. Its first Googlevideo CDN open failed with **HTTP 403 at 21:32:07** before reading any audio bytes. The client immediately retried **the identical signed URL and byte range**, receiving a second **HTTP 403 at 21:32:08**. Both failures occurred on new HTTP/1.1 connections.
+- The player then attempted alternative profiles: VISIONOS returned `LOGIN_REQUIRED` at **21:32:09**, TVHTML5_SIMPLY `UNPLAYABLE` at **21:32:10**. The app logged `AUDIO bot-check isolated` for both and exhausted its local fallback. The statuses alone do **not** prove anti-bot verification, because explicit reason text or an interceptor's wire verdict could change classification; that evidence is absent from these log lines.
+- The 403 record contained `authChallenge=false` in the CDN diagnostic; this is not a proof of permission, it only means that the CDN response itself did not expose a recognized challenge.
+- Other CDN opens timed out after around **15 seconds** with no server HTTP status. That is separately a network transport performance problem, not evidence of bot enforcement.
+
+**Interpretation:** In this actual captured session, automatic/queued download work dominates the recorded AUDIO profile attempts. That makes DOWNLOAD the first subsystem to profile and throttle when foreground startup is suffering, **rather than blaming VIDEO without evidence**. The immediate duplicate same-URL CDN 403 attempt is another concrete source of wasted requests. More importantly, we have *not* proved whether the 403 was due to account/token acceptance, route, socket conditions, URL binding or platform enforcement; no reliable client-switch workaround should be claimed.
+
+**Required next check:** per-origin wire request counters and precise failure-category logging around the same minute on the user's newest APK. The current changes reduce network work but **do not eliminate server bot checks**. Respect explicit server verification rather than repeatedly changing profiles.
+
 ## Critical instrumentation still missing
 
 A single 60-second redacted request census should record AUDIO player starts, prefetch starts, DOWNLOAD player starts, VIDEO metadata/extractor starts, metadata browse requests, artwork fetches, CDN opens, HTTP status classes, classified server verdicts, cache hits, superseded cancellations and successful first bytes. Give each request a local anonymous origin marker, not a stable user or video identifier. Record p50/p95 first-audio-byte, first-frame timing, buffer underruns, failed reads, startup radio/network-state and app CPU/wakelock counts.
