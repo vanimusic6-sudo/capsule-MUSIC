@@ -161,7 +161,7 @@ fun QuickPicksSection(
         val artworkRequest =
             remember(song.song.thumbnailUrl, requestWidthPx, requestHeightPx) {
                 ImageRequest.Builder(context)
-                    .data(song.song.thumbnailUrl)
+                    .data(com.nikhil.yt.ui.component.capsuleArtworkUrl(song.song.thumbnailUrl, 512))
                     .size(Size(requestWidthPx, requestHeightPx))
                     .crossfade(true)
                     .build()
