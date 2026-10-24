@@ -6,8 +6,6 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.material3.LocalTextStyle
@@ -23,7 +21,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -32,7 +29,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.nikhil.yt.R
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
-/** A reversible turn joins the plus into a check; one path, one clock, no overlapping stem. */
+/** One reversible geometric plus-to-check morph: no spinning or overlapping secondary stems. */
 @Composable
 internal fun CapsuleSubscribeIcon(
     subscribed: Boolean,
@@ -46,7 +43,7 @@ internal fun CapsuleSubscribeIcon(
 ) {
     val progress = remember { Animatable(if (subscribed) 1f else 0f) }
     LaunchedEffect(subscribed) {
-        progress.animateTo(if (subscribed) 1f else 0f, tween(320, easing = CapsuleStandardEasing))
+        progress.animateTo(if (subscribed) 1f else 0f, tween(270, easing = CapsuleStandardEasing))
     }
     Canvas(modifier.graphicsLayer {
         if (flattenAlpha) {
@@ -61,24 +58,19 @@ internal fun CapsuleSubscribeIcon(
         fun point(x: Float, y: Float) = center + Offset(x * unit * span, y * unit * span)
         val color = if (flattenAlpha) tint.copy(alpha = 1f) else tint
         val stroke = 2.15f * unit * strokeScale.coerceIn(0.65f, 1.2f)
-        // At p=0 these two diagonal strokes become a plus after the -45 degree turn.
-        // Their outer ends and common joint travel continuously to the check geometry.
-        val a = point(-4.8f - 1.2f * p, -4.8f + 4.3f * p)
-        val b = point(-1.5f * p, 5f * p)
-        val c = point(4.8f + 2.7f * p, -4.8f - 0.7f * p)
-        val d = point(4.8f * (1f - p), 4.8f * (1f - p))
-        val e = point(-4.8f * (1f - p), 4.8f * (1f - p))
-        rotate(-45f * (1f - p)) {
-            // Shortening both unused arms together keeps the plus centered throughout the turn.
-            val path = Path().apply {
-                moveTo(a.x, a.y); lineTo(b.x, b.y); lineTo(c.x, c.y)
-                if (p < 1f) {
-                    moveTo(b.x, b.y); lineTo(d.x + b.x - center.x, d.y + b.y - center.y)
-                    moveTo(b.x, b.y); lineTo(e.x + b.x - center.x, e.y + b.y - center.y)
-                }
-            }
-            drawPath(path, color, style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round))
+        // A plus at p=0; a connected check at p=1. The vertical arm folds
+        // into the joint as the horizontal one becomes the tick. All paths
+        // share one clock and stroke: no separate cross disappearing abruptly.
+        val left = point(-6f - 0.4f * p, -0.1f * p)
+        val joint = point(-0.7f * p, 4.9f * p)
+        val right = point(6f + 1.1f * p, -5f * p)
+        val top = point(-0.7f * p, -6f * (1f - p) + 4.9f * p)
+        val bottom = point(-0.7f * p, 6f * (1f - p) + 4.9f * p)
+        val path = Path().apply {
+            moveTo(left.x, left.y); lineTo(joint.x, joint.y); lineTo(right.x, right.y)
+            moveTo(top.x, top.y); lineTo(bottom.x, bottom.y)
         }
+        drawPath(path, color, style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
 }
 
@@ -92,9 +84,9 @@ internal fun CapsuleSubscribeLabel(
         targetState = subscribed,
         modifier = modifier,
         transitionSpec = {
-            ((fadeIn(tween(320, easing = CapsuleStandardEasing)) + slideInVertically(tween(320, easing = CapsuleStandardEasing)) { it / 5 })
-                togetherWith (fadeOut(tween(320, easing = CapsuleStandardEasing)) + slideOutVertically(tween(320, easing = CapsuleStandardEasing)) { -it / 5 }))
-                .using(SizeTransform(clip = true) { _, _ -> tween(320, easing = CapsuleStandardEasing) })
+            (fadeIn(tween(220, easing = CapsuleStandardEasing))
+                togetherWith fadeOut(tween(160, easing = CapsuleStandardEasing)))
+                .using(SizeTransform(clip = false) { _, _ -> tween(250, easing = CapsuleStandardEasing) })
         },
         label = "subscription-label",
     ) { selected ->
