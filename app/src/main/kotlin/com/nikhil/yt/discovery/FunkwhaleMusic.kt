@@ -33,7 +33,7 @@ internal object FunkwhaleMusic {
     private fun request(query: String?): List<ExperimentalCatalog.Track> {
         val address = buildString {
             append(POD)
-            append("/api/v1/tracks/?page_size=35&ordering=-creation_date")
+            append("/api/v2/tracks/?page_size=35&ordering=-creation_date")
             if (!query.isNullOrBlank()) append("&q=" + Uri.encode(query))
         }
         val proxy = YouTube.streamProxy
@@ -55,7 +55,8 @@ internal object FunkwhaleMusic {
         (0 until minOf(rows.length(), 40)).mapNotNull { i ->
             val row = rows.optJSONObject(i) ?: return@mapNotNull null
             if (!row.optBoolean("is_playable", true)) return@mapNotNull null
-            val id = row.optString("id").takeIf { safeId.matches(it) }
+            val id = (row.optString("id").takeIf { safeId.matches(it) }
+                ?: row.optString("guid").takeIf { safeId.matches(it) })
                 ?: return@mapNotNull null
             val album = row.optJSONObject("album")
             val artist = row.optJSONObject("artist") ?: album?.optJSONObject("artist")
@@ -65,14 +66,16 @@ internal object FunkwhaleMusic {
             // Public upload UUID, not a guessed track or library identifier.
             val uploads = row.optJSONArray("uploads")
             val upload = (0 until (uploads?.length() ?: 0)).mapNotNull { j ->
-                uploads?.optJSONObject(j)?.optString("uuid")?.takeIf(safeUpload::matches)
+                val item = uploads?.optJSONObject(j) ?: return@mapNotNull null
+                item.optString("uuid").takeIf(safeUpload::matches)
+                    ?: item.optString("guid").takeIf(safeUpload::matches)
             }.firstOrNull()
             val cover = album?.optJSONObject("cover") ?: row.optJSONObject("cover")
             val urls = cover?.optJSONObject("urls")
             val artwork = listOf("medium_square_crop", "large_square_crop", "original", "source")
                 .firstNotNullOfOrNull { key ->
                     urls?.optString(key)?.takeIf { it.startsWith("https://") }
-                }
+                } ?: cover?.optString("url")?.takeIf { it.startsWith("https://") }
             ExperimentalCatalog.Track(
                 source = ExperimentalCatalog.Source.FUNKWHALE,
                 id = "open-audio:$id",
@@ -80,7 +83,7 @@ internal object FunkwhaleMusic {
                 artist = name,
                 artwork = artwork,
                 artworkLarge = urls?.optString("original")?.takeIf { it.startsWith("https://") },
-                streamUrl = upload?.let { "$POD/api/v1/listen/$it/" },
+                streamUrl = upload?.let { "$POD/api/v2/listen/$it/" },
                 sourcePage = "$POD/library/tracks/$id",
                 durationSeconds = row.optInt("duration", 0),
                 artistId = artist?.optString("id")?.takeIf(safeId::matches),
