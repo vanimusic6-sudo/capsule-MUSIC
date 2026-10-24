@@ -99,6 +99,14 @@ object YouTubeVideoResolver {
 
     private val songResolves = CapsuleVideoSingleFlight<Result<ResolvedVideo>>()
 
+    // The MUSIC track id often differs from its matched official clip id.
+    // Remember successful mappings so toggling AUDIO->VIDEO does not repeat
+    // matching + a second extractor call just to rediscover a cached stream.
+    private val sourceClipIds = object : LinkedHashMap<String, String>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>): Boolean =
+            size > 64
+    }
+
     @Volatile
     private var initialized = false
 
@@ -145,6 +153,13 @@ object YouTubeVideoResolver {
             return Result.failure(IllegalArgumentException("Missing YouTube Music track id"))
         }
 
+        val lastClipId = if (originalVideo) canonicalId else
+            synchronized(sourceClipIds) { sourceClipIds[canonicalId] }
+        if (lastClipId != null) {
+            cache[cacheKey(lastClipId, quality, muxedOnly = false)]?.let {
+                return Result.success(it)
+            }
+        }
         val requestKey = "$canonicalId:${quality.name}:${if (originalVideo) "original" else "matched"}"
         return songResolves.run(requestKey) {
             val result =
@@ -184,6 +199,7 @@ object YouTubeVideoResolver {
                         Timber.tag(TAG).i("VIDEO timing extract clip=%s ms=%s backend=%s delivery=%s", videoId,
                             SystemClock.elapsedRealtime() - matchedAt, resolved.backend, resolved.delivery)
                         CapsuleVideoRequestGuard.noteSuccess()
+                        synchronized(sourceClipIds) { sourceClipIds[canonicalId] = resolved.videoId }
                         Result.success(resolved)
                     } ?: Result.failure(VideoBackendException(CapsuleVideoFailure.NETWORK, "VIDEO extraction timed out"))
                 } catch (cancelled: CancellationException) {
