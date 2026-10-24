@@ -43,7 +43,8 @@ class ExoDownloadService : DownloadService(
             if (request != null) {
                 val existing = downloadManager.currentDownloads.firstOrNull { it.request.id == request.id }
                     ?: downloadUtil.downloads.value[request.id]
-                if (existing?.state == Download.STATE_COMPLETED) {
+                if (existing?.state == Download.STATE_COMPLETED &&
+                    com.nikhil.yt.playback.audio.AudioCacheIdentity.isComplete(downloadUtil.downloadCache, request.id)) {
                     downloadUtil.repairArtwork(request.id)
                     intent.action = ACTION_INIT
                     return super.onStartCommand(intent, flags, startId)
@@ -51,12 +52,18 @@ class ExoDownloadService : DownloadService(
                 if (existing?.state == Download.STATE_FAILED) {
                     com.nikhil.yt.playback.audio.CapsuleAudioEngine.clearDownloadClientFailures(request.id)
                 }
-                // Promoting/deduplicating an active song must not stop and restart its transfer.
+                // Media3 addDownload merges an existing active request into STATE_QUEUED,
+                // cancelling its downloader even when its bytes/URI did not change. Ignore
+                // duplicate bulk submissions instead of restarting healthy transfers.
                 val running = existing?.stopReason == Download.STOP_REASON_NONE &&
                     existing.state in setOf(Download.STATE_DOWNLOADING, Download.STATE_QUEUED, Download.STATE_RESTARTING)
+                if (running) {
+                    intent.action = ACTION_INIT
+                    return super.onStartCommand(intent, flags, startId)
+                }
                 val merged = if (existing?.request?.isManualDownload() == true) request.withManualPriority() else request
                 intent.putExtra(KEY_DOWNLOAD_REQUEST, merged)
-                intent.putExtra(KEY_STOP_REASON, if (running) Download.STOP_REASON_NONE else DOWNLOAD_WAITING_FOR_SLOT)
+                intent.putExtra(KEY_STOP_REASON, DOWNLOAD_WAITING_FOR_SLOT)
             }
         }
         if (intent?.action == REMOVE_ALL_PENDING_DOWNLOADS) {

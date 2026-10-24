@@ -314,6 +314,11 @@ constructor(
                         download: Download,
                         finalException: Exception?,
                     ) {
+                        timber.log.Timber.tag("AudioDownload").i(
+                            "state id=%s state=%d stopReason=%d bytes=%d failureType=%s",
+                            download.request.id, download.state, download.stopReason, download.bytesDownloaded,
+                            finalException?.javaClass?.simpleName ?: "none",
+                        )
                         removedWhileLoading.remove(download.request.id)
                         if (download.state == Download.STATE_QUEUED &&
                             downloads.value[download.request.id]?.state == Download.STATE_FAILED) {
@@ -352,7 +357,12 @@ constructor(
         scope.launch {
             for (mediaId in artworkRepairs) {
                 try {
-                    if (downloads.value[mediaId]?.state == Download.STATE_COMPLETED) saveArtwork(mediaId)
+                    val network = connectivityManager.activeNetwork
+                    if (downloads.value[mediaId]?.state == Download.STATE_COMPLETED && network != null &&
+                        connectivityManager.getNetworkCapabilities(network)
+                            ?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true) {
+                        saveArtwork(mediaId)
+                    }
                 } finally { artworkRepairIds.remove(mediaId) }
             }
         }

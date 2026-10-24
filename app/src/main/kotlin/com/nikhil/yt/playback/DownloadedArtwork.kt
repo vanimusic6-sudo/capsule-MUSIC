@@ -103,6 +103,13 @@ internal class DownloadedArtworkInterceptor(private val context: Context) : Inte
         val local = if (url?.startsWith("https://") == true) withContext(Dispatchers.IO) {
             DownloadedArtwork.file(context, url).takeIf(DownloadedArtwork::valid)
         } else null
-        return chain.proceed(if (local == null) chain.request else chain.request.newBuilder().data(local).build())
+        if (local == null) return chain.proceed()
+        val result = chain.withRequest(chain.request.newBuilder().data(local).build()).proceed()
+        if (result is coil3.request.ErrorResult) {
+            // Bounds can survive damage to the compressed body. Fall back once, without looping.
+            withContext(Dispatchers.IO) { local.delete() }
+            return chain.proceed()
+        }
+        return result
     }
 }

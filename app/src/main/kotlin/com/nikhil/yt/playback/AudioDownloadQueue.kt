@@ -119,3 +119,7 @@ internal class AudioDownloadQueue(private val manager: DownloadManager) : Downlo
 
 internal val Download.visibleState: Int
     get() = if (stopReason == DOWNLOAD_WAITING_FOR_SLOT) Download.STATE_QUEUED else state
+
+/** Only a waiting collection member needs promotion; tapping an actual transfer pauses it. */
+internal val Download.canPrioritize: Boolean
+    get() = !request.isManualDownload() && stopReason == DOWNLOAD_WAITING_FOR_SLOT

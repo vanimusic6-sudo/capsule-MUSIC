@@ -7,7 +7,7 @@
 
 package com.nikhil.yt.ui.menu
 
-import com.nikhil.yt.playback.isManualDownload
+import com.nikhil.yt.playback.canPrioritize
 import com.nikhil.yt.playback.visibleState
 
 import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
@@ -734,14 +734,14 @@ fun SongMenu(
                         }
                         Download.STATE_QUEUED, Download.STATE_DOWNLOADING, Download.STATE_RESTARTING -> {
                             ListItem(
-                                headlineContent = { Text(text = stringResource(if (download?.request?.isManualDownload() == false) R.string.download_now else R.string.cancel_button)) },
+                                headlineContent = { Text(text = stringResource(if (download?.canPrioritize == true) R.string.download_now else R.string.cancel_button)) },
                                 leadingContent = {
                                     VeluneLoader(size = 24.dp)
                                 },
                                 modifier =
                                     Modifier.clickable {
                                         download?.let { entry ->
-                                if (!entry.request.isManualDownload()) {
+                                if (entry.canPrioritize) {
                                     com.nikhil.yt.playback.enqueuePriorityAudioDownload(context, ExoDownloadService::class.java, entry.request, false)
                                 } else {
                                     DownloadService.sendSetStopReason(context, ExoDownloadService::class.java,

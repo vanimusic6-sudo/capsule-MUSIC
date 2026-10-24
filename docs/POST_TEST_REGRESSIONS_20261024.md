@@ -15,6 +15,9 @@ Baseline: `f11295ea80412610e3ec1e5bca4cfc93cc0bcf91`, clean
   without deleting partial bytes. Two transfers remain the maximum. After three manual starts
   a background admission is protected from preemption until it finishes. Manual cancel pauses
   its own request; collection cancellation continues to preserve independently requested songs.
+- Media3's actual `addDownload` implementation resets an active merged request to QUEUED and
+  cancels its task. Duplicate collection submissions now leave healthy active requests intact.
+  A tap on an actual transfer pauses it; only a waiting background member offers promotion.
 - Adding a partially completed collection could set completed entries to the reserved waiting
   stop reason. The service now leaves completed entries intact and requests artwork repair.
   Explicit retries of failed jobs clear only their own download client failure history.
@@ -39,7 +42,9 @@ Baseline: `f11295ea80412610e3ec1e5bca4cfc93cc0bcf91`, clean
 ## Verification
 
 Local Gradle attempt could not download Gradle 9.5.0 (`Network is unreachable`); no local
-Android test execution is claimed. Git diff checks passed. CI runs compile/tests/lint/APKs.
+Android test execution is claimed. Git diff checks passed. The first CI compile caught the
+Coil 3.4 `Chain.withRequest(...).proceed()` API mismatch; it was corrected rather than bypassed.
+CI runs compile/tests/lint/APKs.
 Regression coverage includes real Media3 immediate manual admission, two-slot limit, independent
 cancellation, persisted priorities, offline local artwork after cache removal, shared ownership,
 invalid images, image completion ordering, paused next-period relevance, and shared menu gestures.
