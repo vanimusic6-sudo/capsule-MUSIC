@@ -411,7 +411,6 @@ fun OnlineSearchResult(
         rareSource == ExperimentalCatalog.Source.OPENVERSE -> SearchChip.OPENVERSE
         rareSource == ExperimentalCatalog.Source.ARCHIVE -> SearchChip.ARCHIVE
         rareSource == ExperimentalCatalog.Source.CCMIXTER -> SearchChip.CCMIXTER
-        rareSource == ExperimentalCatalog.Source.RADIO -> SearchChip.RADIO
         filter == FILTER_SONG -> SearchChip.SONGS
         filter == FILTER_VIDEO -> SearchChip.VIDEOS
         filter == FILTER_ALBUM -> SearchChip.ALBUMS
@@ -440,7 +439,6 @@ fun OnlineSearchResult(
                 add(SearchChip.FEATURED_PLAYLISTS to stringResource(R.string.filter_featured_playlists))
                 if (experimentalEnabled) {
                     add(SearchChip.AUDIUS to "Audius")
-                    add(SearchChip.RADIO to "Open Radio")
                 }
             },
             currentValue = selectedChip,
@@ -451,7 +449,6 @@ fun OnlineSearchResult(
                     SearchChip.OPENVERSE -> ExperimentalCatalog.Source.OPENVERSE
                     SearchChip.ARCHIVE -> ExperimentalCatalog.Source.ARCHIVE
                     SearchChip.CCMIXTER -> ExperimentalCatalog.Source.CCMIXTER
-                    SearchChip.RADIO -> ExperimentalCatalog.Source.RADIO
                     else -> null
                 }
                 viewModel.filter.value = when(chip) {

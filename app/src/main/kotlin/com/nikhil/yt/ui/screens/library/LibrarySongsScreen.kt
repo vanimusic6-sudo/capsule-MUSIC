@@ -40,6 +40,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -54,6 +55,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
+import kotlinx.coroutines.launch
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.ui.screens.LocalNavBackStackEntry
 import com.nikhil.yt.ui.utils.liveSavedStateHandle
@@ -78,6 +80,7 @@ import com.nikhil.yt.ui.component.HideOnScrollFAB
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.SongListItem
 import com.nikhil.yt.ui.component.OfflineSongListItem
+import com.nikhil.yt.ui.menu.OfflineDownloadMenu
 import com.nikhil.yt.ui.component.SortHeader
 import com.nikhil.yt.ui.menu.SelectionSongMenu
 import com.nikhil.yt.ui.menu.SongMenu
@@ -96,6 +99,7 @@ fun LibrarySongsScreen(
     val context = LocalContext.current
     val resources = LocalResources.current
     val menuState = LocalMenuState.current
+    val downloadActionScope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val isPlaying by playerConnection.isPlaying.collectAsState()
@@ -115,11 +119,12 @@ fun LibrarySongsScreen(
 
     var filter by rememberEnumPreference(SongFilterKey, SongFilter.LIKED)
     val externalStates by ExperimentalDownload.states.collectAsState()
+    val savedFilesRevision by ExperimentalDownload.savedFilesRevision.collectAsState()
     var externalSaved by remember { mutableStateOf<List<ExperimentalDownload.SavedAudio>>(emptyList()) }
     // Media3's DownloadIndex covers YouTube only. Audius is persisted in the
     // system MediaStore Downloads collection: join both *visibly*, but do not
     // write fake media entries into YouTube's cache/index.
-    LaunchedEffect(filter, externalStates) {
+    LaunchedEffect(filter, externalStates, savedFilesRevision) {
         if (filter == SongFilter.DOWNLOADED) {
             externalSaved = ExperimentalDownload.savedFiles(context)
         } else externalSaved = emptyList()
@@ -318,6 +323,26 @@ fun LibrarySongsScreen(
                         file = file,
                         isActive = mediaMetadata?.id == OfflineAudioQueue.PREFIX + file.id,
                         isPlaying = isPlaying,
+                        onMoreClick = {
+                            menuState.show {
+                                OfflineDownloadMenu(
+                                    file = file,
+                                    onDismiss = menuState::dismiss,
+                                    onRemove = {
+                                        menuState.dismiss()
+                                        downloadActionScope.launch {
+                                            if (ExperimentalDownload.deleteSaved(context, file)) {
+                                                externalSaved = externalSaved.filterNot { it.id == file.id }
+                                                if (mediaMetadata?.id == OfflineAudioQueue.PREFIX + file.id)
+                                                    playerConnection.player.stop()
+                                            } else android.widget.Toast.makeText(context,
+                                                R.string.capsule_download_remove_failed,
+                                                android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                )
+                            }
+                        },
                         modifier = Modifier.fillMaxWidth().combinedClickable(
                             onClick = {
                                 if (!selection) {
@@ -329,7 +354,22 @@ fun LibrarySongsScreen(
                                     }
                                 }
                             },
-                            onLongClick = { /* No YouTube-only actions for local files */ },
+                            onLongClick = {
+                                menuState.show {
+                                    OfflineDownloadMenu(file, menuState::dismiss) {
+                                        menuState.dismiss()
+                                        downloadActionScope.launch {
+                                            if (ExperimentalDownload.deleteSaved(context, file)) {
+                                                externalSaved = externalSaved.filterNot { it.id == file.id }
+                                                if (mediaMetadata?.id == OfflineAudioQueue.PREFIX + file.id)
+                                                    playerConnection.player.stop()
+                                            } else android.widget.Toast.makeText(context,
+                                                R.string.capsule_download_remove_failed,
+                                                android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
+                            },
                         ),
                     )
                 }

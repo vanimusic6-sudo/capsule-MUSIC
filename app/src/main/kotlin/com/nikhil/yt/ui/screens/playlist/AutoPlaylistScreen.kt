@@ -53,6 +53,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
@@ -80,6 +81,7 @@ import androidx.media3.exoplayer.offline.DownloadService
 import androidx.navigation.NavController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import com.nikhil.yt.LocalDownloadUtil
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.LocalPlayerConnection
@@ -103,6 +105,7 @@ import com.nikhil.yt.ui.component.IconButton
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.SongListItem
 import com.nikhil.yt.ui.component.OfflineSongListItem
+import com.nikhil.yt.ui.menu.OfflineDownloadMenu
 import com.nikhil.yt.constants.AppBarHeight
 import com.nikhil.yt.ui.component.SortHeader
 import com.nikhil.yt.ui.menu.SelectionSongMenu
@@ -123,6 +126,7 @@ fun AutoPlaylistScreen(
 ) {
     val context = LocalContext.current
     val menuState = LocalMenuState.current
+    val downloadActionScope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     val focusManager = LocalFocusManager.current
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -159,8 +163,9 @@ fun AutoPlaylistScreen(
     }
 
     val downloadStates by ExperimentalDownload.states.collectAsState()
+    val savedFilesRevision by ExperimentalDownload.savedFilesRevision.collectAsState()
     var externalSaved by remember { mutableStateOf<List<ExperimentalDownload.SavedAudio>>(emptyList()) }
-    LaunchedEffect(playlistType, downloadStates) {
+    LaunchedEffect(playlistType, downloadStates, savedFilesRevision) {
         externalSaved = if (playlistType == PlaylistType.DOWNLOAD)
             ExperimentalDownload.savedFiles(context) else emptyList()
     }
@@ -443,6 +448,29 @@ fun AutoPlaylistScreen(
                                 file = file,
                                 isActive = mediaMetadata?.id == OfflineAudioQueue.PREFIX + file.id,
                                 isPlaying = isPlaying,
+                                onMoreClick = {
+                                    menuState.show {
+                                        OfflineDownloadMenu(
+                                            file = file,
+                                            onDismiss = menuState::dismiss,
+                                            onRemove = {
+                                                menuState.dismiss()
+                                                downloadActionScope.launch {
+                                                    val removed = ExperimentalDownload.deleteSaved(context, file)
+                                                    if (removed) {
+                                                        externalSaved = externalSaved.filterNot { it.id == file.id }
+                                                        if (mediaMetadata?.id == OfflineAudioQueue.PREFIX + file.id)
+                                                            playerConnection.player.stop()
+                                                    } else {
+                                                        android.widget.Toast.makeText(context,
+                                                            R.string.capsule_download_remove_failed,
+                                                            android.widget.Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                            },
+                                        )
+                                    }
+                                },
                                 modifier = Modifier.fillMaxWidth().combinedClickable(
                                     onClick = {
                                         if (mediaMetadata?.id == OfflineAudioQueue.PREFIX + file.id) {
@@ -452,7 +480,22 @@ fun AutoPlaylistScreen(
                                                 ?.let(playerConnection::playQueue)
                                         }
                                     },
-                                    onLongClick = {},
+                                    onLongClick = {
+                                        menuState.show {
+                                            OfflineDownloadMenu(file, menuState::dismiss) {
+                                                menuState.dismiss()
+                                                downloadActionScope.launch {
+                                                    if (ExperimentalDownload.deleteSaved(context, file)) {
+                                                        externalSaved = externalSaved.filterNot { it.id == file.id }
+                                                        if (mediaMetadata?.id == OfflineAudioQueue.PREFIX + file.id)
+                                                            playerConnection.player.stop()
+                                                    } else android.widget.Toast.makeText(context,
+                                                        R.string.capsule_download_remove_failed,
+                                                        android.widget.Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        }
+                                    },
                                 ),
                             )
                         }

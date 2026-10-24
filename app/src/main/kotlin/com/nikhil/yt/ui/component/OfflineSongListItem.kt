@@ -6,12 +6,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.R
 import com.nikhil.yt.discovery.ExperimentalDownload
@@ -25,6 +27,7 @@ fun OfflineSongListItem(
     file: ExperimentalDownload.SavedAudio,
     isActive: Boolean,
     isPlaying: Boolean,
+    onMoreClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val visuals = LocalSongListVisuals.current
@@ -63,12 +66,12 @@ fun OfflineSongListItem(
             }
         },
         trailingContent = {
-            Icon(
-                painter = painterResource(R.drawable.offline),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier.padding(end = 12.dp).size(16.dp),
-            )
+            IconButton(onClick = onMoreClick) {
+                Icon(
+                    painter = painterResource(R.drawable.more_vert),
+                    contentDescription = stringResource(R.string.more),
+                )
+            }
         },
     )
 }

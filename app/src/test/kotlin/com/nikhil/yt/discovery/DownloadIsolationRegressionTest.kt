@@ -63,6 +63,10 @@ class DownloadIsolationRegressionTest {
         assertTrue(screen.contains("itemsIndexed("))
         assertTrue(rows.contains("ItemThumbnail("))
         assertTrue(rows.contains("LocalSongListVisuals.current"))
+        assertTrue(rows.contains("onMoreClick"))
+        assertTrue(source("discovery/ExperimentalDownload.kt").contains("suspend fun deleteSaved"))
+        assertTrue(source("ui/screens/playlist/AutoPlaylistScreen.kt").contains("OfflineDownloadMenu("))
+        assertTrue(source("ui/screens/library/LibrarySongsScreen.kt").contains("OfflineDownloadMenu("))
         assertTrue(screen.contains("capsule:offline:hero"))
         assertTrue(source("discovery/ExperimentalDownload.kt").contains("recoverEmbeddedMetadata"))
     }

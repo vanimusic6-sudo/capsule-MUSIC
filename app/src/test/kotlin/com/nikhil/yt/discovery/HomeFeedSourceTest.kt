@@ -15,7 +15,7 @@ class HomeFeedSourceTest {
     }
 
     @Test fun userCanChooseIndependentSources() {
-        val chosen = linkedSetOf(HomeFeedSource.AUDIUS, HomeFeedSource.RADIO)
+        val chosen = linkedSetOf(HomeFeedSource.AUDIUS)
         assertEquals(chosen, HomeFeedSource.parse(HomeFeedSource.encode(chosen)))
         assertFalse(HomeFeedSource.YOUTUBE in chosen)
     }
@@ -24,8 +24,7 @@ class HomeFeedSourceTest {
         val sources = HomeFeedSource.parse(HomeFeedSource.DEFAULT)
         assertTrue(HomeFeedSource.YOUTUBE in sources)
         assertEquals(setOf(HomeFeedSource.YOUTUBE), sources)
-        assertEquals(listOf(HomeFeedSource.YOUTUBE, HomeFeedSource.AUDIUS, HomeFeedSource.RADIO,
-                HomeFeedSource.JAMENDO, HomeFeedSource.FUNKWHALE),
+        assertEquals(listOf(HomeFeedSource.YOUTUBE, HomeFeedSource.AUDIUS),
             HomeFeedSource.selectable)
         assertEquals(HomeFeedSource.selectable.toSet(),
             HomeFeedSource.parse(HomeFeedSource.encode(HomeFeedSource.entries.toSet())))
@@ -33,7 +32,7 @@ class HomeFeedSourceTest {
 
     @Test fun deprecatedProviderChoicesCannotReappearAfterUpgrade() {
         assertEquals(setOf(HomeFeedSource.YOUTUBE), HomeFeedSource.parse("archive,freesound,wikimedia_audio"))
-        assertEquals(setOf(HomeFeedSource.AUDIUS, HomeFeedSource.JAMENDO),
+        assertEquals(setOf(HomeFeedSource.AUDIUS),
             HomeFeedSource.parse("audius,ccmixter,jamendo"))
     }
 

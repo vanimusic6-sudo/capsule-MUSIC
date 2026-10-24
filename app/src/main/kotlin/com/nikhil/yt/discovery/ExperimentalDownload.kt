@@ -163,10 +163,54 @@ object ExperimentalDownload {
     enum class State { DOWNLOADING, COMPLETED, FAILED }
     private val _states = MutableStateFlow<Map<String, State>>(emptyMap())
     val states = _states.asStateFlow()
+    private val _savedFilesRevision = MutableStateFlow(0L)
+    val savedFilesRevision = _savedFilesRevision.asStateFlow()
     private fun updateStatus(id: String, status: State) {
         _states.update { current ->
             val bounded = if (current.size > 200) emptyMap() else current
             bounded + (id to status)
+        }
+    }
+
+    /**
+     * Permanently remove only an app-owned Capsule Music recording.
+     * Never touch the YouTube Media3 DownloadIndex or its separate caches.
+     * A failed or unauthorized MediaStore operation leaves metadata untouched.
+     */
+    suspend fun deleteSaved(context: Context, file: SavedAudio): Boolean = withContext(Dispatchers.IO) {
+        if (Build.VERSION.SDK_INT < 29 ||
+            file.uri.scheme != "content" || file.uri.authority != "media") {
+            return@withContext false
+        }
+        try {
+            val resolver = context.contentResolver
+            val folder = resolver.query(
+                file.uri,
+                arrayOf(MediaStore.MediaColumns.RELATIVE_PATH),
+                null, null, null,
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            } ?: return@withContext false
+            val expected = Environment.DIRECTORY_DOWNLOADS + "/Capsule Music/"
+            if (!folder.replace('\\', '/').startsWith(expected, ignoreCase = true))
+                return@withContext false
+            if (resolver.delete(file.uri, null, null) != 1) return@withContext false
+            val prefs = context.getSharedPreferences(METADATA_STORE, Context.MODE_PRIVATE)
+            val oldMediaId = prefs.getString("mediaId:${file.id}", null)
+            prefs.edit().remove("title:${file.id}").remove("artist:${file.id}")
+                .remove("art:${file.id}").remove("scanned:${file.id}")
+                .remove("mediaId:${file.id}").apply()
+            // Only remove files from our app-private image folder; do not follow
+            // arbitrary URI paths from MediaStore metadata or user-supplied names.
+            val covers = File(context.filesDir, "external-artwork")
+            File(covers, "${file.id}.img").delete()
+            File(covers, "legacy-${file.id}.img").delete()
+            if (oldMediaId != null) _states.update { it - oldMediaId }
+            _savedFilesRevision.update { it + 1L }
+            true
+        } catch (error: Exception) {
+            Timber.tag("CapsuleDownload").w(error, "Cannot delete saved external recording")
+            false
         }
     }
 
@@ -251,10 +295,12 @@ object ExperimentalDownload {
                     app.getSharedPreferences(METADATA_STORE, Context.MODE_PRIVATE).edit()
                         .putString("title:$savedId", track.title)
                         .putString("artist:$savedId", track.artist)
+                        .putString("mediaId:$savedId", track.mediaId)
                         .putString("art:$savedId", image ?: (track.artworkLarge ?: track.artwork)
                             ?.takeIf { it.startsWith("https://") })
                         .apply()
                     updateStatus(track.mediaId, State.COMPLETED)
+                    _savedFilesRevision.update { it + 1L }
                     toast(app, R.string.capsule_discovery_download_completed)
                 } catch (e: Exception) {
                     updateStatus(track.mediaId, State.FAILED)
