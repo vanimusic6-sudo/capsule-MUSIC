@@ -77,6 +77,7 @@ import com.nikhil.yt.ui.component.ChipsRow
 import com.nikhil.yt.ui.component.HideOnScrollFAB
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.SongListItem
+import com.nikhil.yt.ui.component.OfflineSongListItem
 import com.nikhil.yt.ui.component.SortHeader
 import com.nikhil.yt.ui.menu.SelectionSongMenu
 import com.nikhil.yt.ui.menu.SongMenu
@@ -311,21 +312,21 @@ fun LibrarySongsScreen(
                         style = MaterialTheme.typography.titleSmall,
                     )
                 }
-                items(externalSaved, key = { "capsule:download:" + it.id }) { file ->
-                    ListItem(
-                        headlineContent = { Text(file.title, maxLines = 1) },
-                        supportingContent = { Text(file.artist + " · Audius") },
-                        leadingContent = {
-                            Icon(
-                                painter = painterResource(R.drawable.offline),
-                                contentDescription = null,
-                            )
-                        },
+                items(externalSaved, key = { "capsule:download:" + it.id },
+                    contentType = { CONTENT_TYPE_SONG }) { file ->
+                    OfflineSongListItem(
+                        file = file,
+                        isActive = mediaMetadata?.id == OfflineAudioQueue.PREFIX + file.id,
+                        isPlaying = isPlaying,
                         modifier = Modifier.fillMaxWidth().combinedClickable(
                             onClick = {
                                 if (!selection) {
-                                    OfflineAudioQueue.create(externalSaved, file)
-                                        ?.let(playerConnection::playQueue)
+                                    if (mediaMetadata?.id == OfflineAudioQueue.PREFIX + file.id) {
+                                        playerConnection.player.togglePlayPause()
+                                    } else {
+                                        OfflineAudioQueue.create(externalSaved, file)
+                                            ?.let(playerConnection::playQueue)
+                                    }
                                 }
                             },
                             onLongClick = { /* No YouTube-only actions for local files */ },
