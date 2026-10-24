@@ -46,6 +46,7 @@ jobs:
           --tests 'com.nikhil.yt.CrashReportTest'
           --tests 'com.nikhil.yt.utils.BuildMarkerLogTest'
           --tests 'com.nikhil.yt.ui.ArtistHeroTest'
+          --tests 'com.nikhil.yt.ui.component.ArtworkResolutionTest'
           --tests 'com.nikhil.yt.ui.CapsuleReleaseUiCorrectionsTest'
           --tests 'com.nikhil.yt.ui.ArtistScreenDesignTest'
           --tests 'com.nikhil.yt.ui.ArtistMotionTest'
