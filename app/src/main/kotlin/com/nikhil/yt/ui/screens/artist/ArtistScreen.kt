@@ -168,7 +168,11 @@ fun ArtistScreen(
     val systemBarsTopPadding = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
     val surfaceColor = StandardChrome.background
     val thumbnail = artistPage?.artist?.thumbnail ?: libraryArtist?.artist?.thumbnailUrl
-    val artistName = artistPage?.artist?.title ?: libraryArtist?.artist?.name
+    // Do not first show a provisional local nickname then reflow the header
+    // when the remote page arrives. Reveal only the resolved canonical title.
+    val artistName = if (artistPage == null && viewModel.isLoading &&
+        libraryArtist?.artist?.isLocal != true) null
+    else artistPage?.artist?.title ?: libraryArtist?.artist?.name
     val remoteLoading = artistPage == null && viewModel.isLoading && !showLocal
     val density = LocalDensity.current
 
