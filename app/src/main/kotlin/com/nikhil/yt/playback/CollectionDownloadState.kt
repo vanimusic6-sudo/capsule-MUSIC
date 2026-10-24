@@ -17,8 +17,8 @@ internal fun collectionDownloadState(songIds: Collection<String>, downloads: Map
 }
 
 /** Stop preserves partial bytes for resume. Media3 leaves completed entries complete, even in a completion race. */
-internal fun stopCollectionDownloads(manager: androidx.media3.exoplayer.offline.DownloadManager, songIds: Collection<String>) {
-    val independent = manager.currentDownloads.filter { it.request.isManualDownload() }.map { it.request.id }.toSet()
+internal fun stopCollectionDownloads(manager: androidx.media3.exoplayer.offline.DownloadManager, songIds: Collection<String>, preserveManual: Boolean = true) {
+    val independent = if (preserveManual) manager.currentDownloads.filter { it.request.isManualDownload() }.map { it.request.id }.toSet() else emptySet()
     songIds.distinct().filterNot { it in independent }.forEach { manager.setStopReason(it, COLLECTION_STOP_REASON_USER) }
 }
 

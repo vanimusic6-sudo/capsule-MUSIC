@@ -431,14 +431,7 @@ fun AlbumMenu(
                             VeluneLoader(size = 24.dp)
                         },
                         modifier = Modifier.clickable {
-                            songs.forEach { song ->
-                                DownloadService.sendRemoveDownload(
-                                    context,
-                                    ExoDownloadService::class.java,
-                                    song.id,
-                                    false,
-                                )
-                            }
+                            com.nikhil.yt.playback.stopCollectionDownloads(downloadUtil.downloadManager, songs.map { it.id })
                         }
                     )
                 }

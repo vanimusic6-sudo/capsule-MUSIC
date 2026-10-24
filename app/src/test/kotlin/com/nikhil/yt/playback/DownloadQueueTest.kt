@@ -82,7 +82,7 @@ class DownloadQueueTest {
         assertEquals(Download.STATE_QUEUED, entry(promoted, 1).visibleState)
     }
     @Test fun restoredWaitingJobsKeepTheirPriorityAndAFailedTransferDoesNotStopTheOtherSlot() {
-        val context = RuntimeEnvironment.getApplication<Application>()
+        val context = RuntimeEnvironment.getApplication()
         val provider = StandaloneDatabaseProvider(context)
         val index = DefaultDownloadIndex(provider)
         index.putDownload(entry(request(1).withManualPriority(), 1))

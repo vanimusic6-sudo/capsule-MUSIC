@@ -473,7 +473,7 @@ fun PlaylistMenu(
                                 VeluneLoader(size = 24.dp)
                             },
                             modifier = Modifier.clickable {
-                                showRemoveDownloadDialog = true
+                                com.nikhil.yt.playback.stopCollectionDownloads(downloadUtil.downloadManager, songs.map { it.id })
                             }
                         )
                     }

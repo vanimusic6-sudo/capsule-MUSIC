@@ -36,8 +36,17 @@ class OfflinePlaybackQueueTest {
             assertEquals(listOf("a", "c"), ids(player))
             assertEquals("c", player.currentMediaItem?.mediaId)
             assertEquals(original, queue.savedItems()); assertEquals(2, queue.savedIndex())
-            player.seekToPreviousMediaItem(); assertTrue(player.currentMediaItem?.mediaId in setOf("a", "c"))
+            repeat(8) {
+                player.seekToNextMediaItem(); assertTrue(player.currentMediaItem?.mediaId in setOf("a", "c"))
+            }
+            repeat(4) {
+                player.seekToPreviousMediaItem(); assertTrue(player.currentMediaItem?.mediaId in setOf("a", "c"))
+            }
+            player.seekTo(player.currentMediaItemIndex, 5_000L)
+            val playingId = player.currentMediaItem?.mediaId
             queue.connectivityChanged(true)
+            assertEquals(playingId, player.currentMediaItem?.mediaId)
+            assertEquals(5_000L, player.currentPosition)
             assertEquals(original.map { it.mediaId }, ids(player))
             assertEquals(Player.REPEAT_MODE_ALL, player.repeatMode); assertTrue(player.shuffleModeEnabled)
         } finally { scope.cancel(); player.release() }
@@ -57,6 +66,7 @@ class OfflinePlaybackQueueTest {
             assertEquals(original, queue.savedItems()); assertEquals(1, queue.savedIndex())
             queue.connectivityChanged(true)
             assertEquals(listOf("a", "b"), ids(player)); assertFalse(player.playWhenReady)
+            assertEquals("b", player.currentMediaItem?.mediaId)
         } finally { scope.cancel(); player.release() }
     }
     @Test fun queueEditsRetainHiddenMembersAndRepeatedSongOccurrences() {

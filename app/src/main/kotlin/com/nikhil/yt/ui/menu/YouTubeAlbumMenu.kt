@@ -414,14 +414,7 @@ fun YouTubeAlbumMenu(
                             VeluneLoader(size = 24.dp)
                         },
                         modifier = Modifier.clickable {
-                            album?.songs?.forEach { song ->
-                                DownloadService.sendRemoveDownload(
-                                    context,
-                                    ExoDownloadService::class.java,
-                                    song.id,
-                                    false,
-                                )
-                            }
+                            com.nikhil.yt.playback.stopCollectionDownloads(downloadUtil.downloadManager, album?.songs.orEmpty().map { it.id })
                         }
                     )
                 }

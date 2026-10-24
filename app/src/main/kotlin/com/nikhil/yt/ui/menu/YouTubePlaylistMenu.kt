@@ -621,7 +621,7 @@ fun YouTubePlaylistMenu(
                             VeluneLoader(size = 24.dp)
                         },
                         modifier = Modifier.clickable {
-                            showRemoveDownloadDialog = true
+                            com.nikhil.yt.playback.stopCollectionDownloads(downloadUtil.downloadManager, downloadSongs.map { it.id })
                         }
                     )
                 }

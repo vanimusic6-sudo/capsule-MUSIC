@@ -106,8 +106,11 @@ internal class OfflinePlaybackQueue(
         if (original != null && current != null) selectedOriginalIndex = originalIndex(currentIndex)
         applying = true
         try {
-            if (current != null && current !in desired) {
-                val next = original.orEmpty().drop(fallbackIndex.coerceAtLeast(0)).firstOrNull { it in desired }
+            if (current == null) {
+                projected = desired
+                player.setMediaItems(desired, fallbackIndex.coerceIn(0, (desired.size - 1).coerceAtLeast(0)), 0L)
+            } else if (current !in desired) {
+                val next = original.orEmpty().drop(selectedOriginalIndex.coerceAtLeast(0)).firstOrNull { it in desired }
                 val index = next?.let(desired::indexOf) ?: 0
                 val play = player.playWhenReady
                 projected = desired

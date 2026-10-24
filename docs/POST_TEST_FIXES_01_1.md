@@ -64,3 +64,8 @@ its delegation to the same Media3 API) and a portrait-edge pixel sample at the f
 (now derived from the actual artwork boundary). No test was disabled. Follow-up checks include
 restored download admission, failure/cancel isolation, partial catalog publication and full-size
 text clipping with following lazy rows.
+
+Second CI pass at `3be5d12`: main Android code compiled; unit-test compilation found a redundant
+Robolectric `getApplication<Application>()` type argument in the new restore/failure test. Corrected
+to the API's non-generic getter. Collection-menu cancellation was also brought onto the same
+stop/resume path as screen actions; explicit deletion of completed collections remains available.

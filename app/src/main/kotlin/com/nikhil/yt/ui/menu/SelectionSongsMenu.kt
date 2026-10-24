@@ -389,7 +389,7 @@ fun SelectionSongMenu(
                             VeluneLoader(size = 24.dp)
                         },
                         modifier = Modifier.clickable {
-                            showRemoveDownloadDialog = true
+                            com.nikhil.yt.playback.stopCollectionDownloads(downloadUtil.downloadManager, songSelection.map { it.id }, preserveManual = false)
                         }
                     )
                 }
@@ -740,7 +740,7 @@ fun SelectionMediaMetadataMenu(
                             VeluneLoader(size = 24.dp)
                         },
                         modifier = Modifier.clickable {
-                            showRemoveDownloadDialog = true
+                            com.nikhil.yt.playback.stopCollectionDownloads(downloadUtil.downloadManager, songSelection.map { it.id }, preserveManual = false)
                         }
                     )
                 }
