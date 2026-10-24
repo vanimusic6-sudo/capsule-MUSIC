@@ -101,7 +101,7 @@ private fun RareTrackRow(
         AsyncImage(
             model = track.artwork,
             contentDescription = null,
-            modifier = Modifier.size(54.dp).clip(RoundedCornerShape(10.dp)),
+            modifier = Modifier.size(60.dp).clip(RoundedCornerShape(11.dp)),
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -191,6 +191,12 @@ fun OnlineSearchResult(
                 }
             }
         }
+        androidx.compose.runtime.CompositionLocalProvider(
+            com.nikhil.yt.ui.component.LocalSongListVisuals provides
+                com.nikhil.yt.ui.component.SongListVisuals(
+                    rowHeight = 78.dp, thumbnailSize = 60.dp, thumbnailCornerRadius = 11.dp,
+                ),
+        ) {
         YouTubeListItem(
             item = item,
             isActive = when(item) {
@@ -222,6 +228,7 @@ fun OnlineSearchResult(
                 },
             ).animateItem(),
         )
+        }
     }
 
     LazyColumn(
