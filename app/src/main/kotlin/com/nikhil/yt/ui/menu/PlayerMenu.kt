@@ -74,6 +74,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -177,6 +178,15 @@ fun PlayerMenu(
     val canDownloadAudius = isAudius && originalAudiusTrack?.downloadUrl != null
     val externalDownloadStates by ExperimentalDownload.states.collectAsState()
     val externalDownloadStatus = externalDownloadStates[mediaMetadata.id]
+    // Independent recordings live in MediaStore, not in the Media3 download
+    // index. WorkManager's transient status is not enough after process death.
+    val savedFilesRevision by ExperimentalDownload.savedFilesRevision.collectAsState()
+    val savedAudiusFile by produceState<ExperimentalDownload.SavedAudio?>(
+        initialValue = null, mediaMetadata.id, savedFilesRevision,
+    ) {
+        value = if (isAudius) ExperimentalDownload.savedFiles(context)
+            .firstOrNull { it.sourceMediaId == mediaMetadata.id } else null
+    }
 
     val artists =
         remember(mediaMetadata.artists) {
@@ -639,31 +649,45 @@ fun PlayerMenu(
                     )
                 }
             } else if (isAudius) {
+                val saved = savedAudiusFile
+                val downloading = saved == null &&
+                    externalDownloadStatus == ExperimentalDownload.State.DOWNLOADING
                 MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                     ListItem(
                         headlineContent = {
                             Text(stringResource(when {
+                                saved != null -> R.string.remove_download
+                                downloading -> R.string.downloading
                                 !canDownloadAudius -> R.string.capsule_audius_not_downloadable
-                                externalDownloadStatus == ExperimentalDownload.State.COMPLETED ->
-                                    R.string.capsule_discovery_download_completed
-                                externalDownloadStatus == ExperimentalDownload.State.DOWNLOADING ->
-                                    R.string.downloading
                                 else -> R.string.action_download
-                            }))
+                            }), color = if (saved != null) MaterialTheme.colorScheme.error
+                                else MaterialTheme.colorScheme.onSurface)
                         },
                         leadingContent = {
-                            if (externalDownloadStatus == ExperimentalDownload.State.DOWNLOADING)
-                                VeluneLoader(size = 24.dp)
-                            else Icon(painterResource(
-                                if (externalDownloadStatus == ExperimentalDownload.State.COMPLETED)
-                                    R.drawable.offline else R.drawable.download),
-                                contentDescription = null)
+                            if (downloading) VeluneLoader(size = 24.dp)
+                            else Icon(
+                                painterResource(if (saved != null) R.drawable.offline else R.drawable.download),
+                                contentDescription = null,
+                                tint = if (saved != null) MaterialTheme.colorScheme.error
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         },
-                        modifier = Modifier.clickable(enabled = canDownloadAudius &&
-                            externalDownloadStatus != ExperimentalDownload.State.DOWNLOADING &&
-                            externalDownloadStatus != ExperimentalDownload.State.COMPLETED) {
-                            originalAudiusTrack?.let { ExperimentalDownload.enqueue(context, it) }
-                            onDismiss()
+                        modifier = Modifier.clickable(enabled = saved != null ||
+                            (canDownloadAudius && !downloading)) {
+                            if (saved != null) {
+                                coroutineScope.launch {
+                                    if (ExperimentalDownload.deleteSaved(context, saved)) {
+                                        com.nikhil.yt.discovery.OfflineAudioQueue
+                                            .removeDeletedFromPlayer(playerConnection.player, saved.id)
+                                        onDismiss()
+                                    } else {
+                                        Toast.makeText(context, R.string.capsule_download_remove_failed,
+                                            Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            } else if (originalAudiusTrack?.let { ExperimentalDownload.enqueue(context, it) } == true) {
+                                onDismiss()
+                            }
                         },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
