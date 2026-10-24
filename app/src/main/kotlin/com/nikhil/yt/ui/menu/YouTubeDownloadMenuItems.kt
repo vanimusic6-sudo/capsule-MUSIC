@@ -35,6 +35,10 @@ internal fun YouTubeDownloadMenuItems(
     mediaId: String,
     onStart: () -> Unit,
     onDismiss: () -> Unit,
+    // Player More must remain visible when an audio download starts.
+    keepOpenOnDownload: Boolean = false,
+    // The player menu has no destructive X for an active transfer.
+    showActiveStopAction: Boolean = true,
 ) {
     val context = LocalContext.current
     var confirmPartialDelete by remember(mediaId) { mutableStateOf(false) }
@@ -71,19 +75,27 @@ internal fun YouTubeDownloadMenuItems(
             Download.STATE_QUEUED, Download.STATE_DOWNLOADING, Download.STATE_RESTARTING -> {
                 val entry = download ?: return@Column
                 if (entry.canPrioritize) {
-                    Action(R.string.download_now, R.drawable.download) {
+                    Action(R.string.download_now, R.drawable.download,
+                        closeMenu = !keepOpenOnDownload) {
                         enqueuePriorityAudioDownload(
                             context, ExoDownloadService::class.java, entry.request, false)
                     }
-                } else {
+                } else if (showActiveStopAction) {
                     Action(R.string.capsule_stop_and_delete_download, R.drawable.close,
                         destructive = true, closeMenu = false) {
                         confirmPartialDelete = true
                     }
+                } else {
+                    ListItem(
+                        headlineContent = { Text(stringResource(R.string.downloading)) },
+                        leadingContent = { Icon(painterResource(R.drawable.download), null) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
                 }
             }
             else -> {
-                Action(R.string.action_download, R.drawable.download) {
+                Action(R.string.action_download, R.drawable.download,
+                    closeMenu = !keepOpenOnDownload) {
                     if (download == null) onStart()
                     else enqueuePriorityAudioDownload(
                         context, ExoDownloadService::class.java, download.request, false)
