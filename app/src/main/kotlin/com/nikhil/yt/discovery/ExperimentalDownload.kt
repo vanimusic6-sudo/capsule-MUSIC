@@ -132,7 +132,7 @@ object ExperimentalDownload {
             }
             result
         } catch (e: Exception) {
-            Timber.tag("CapsuleDownload").w(e, "Cannot read saved music from MediaStore")
+            Timber.tag("CapsuleDownload").w("Cannot read saved music type=%s", e.javaClass.simpleName)
             emptyList()
         }
     }
@@ -195,10 +195,13 @@ object ExperimentalDownload {
             val resolver = context.contentResolver
             val folder = resolver.query(
                 file.uri,
-                arrayOf(MediaStore.MediaColumns.RELATIVE_PATH),
+                arrayOf(MediaStore.MediaColumns.RELATIVE_PATH,
+                    MediaStore.MediaColumns.OWNER_PACKAGE_NAME),
                 null, null, null,
             )?.use { cursor ->
-                if (cursor.moveToFirst()) cursor.getString(0) else null
+                if (!cursor.moveToFirst() ||
+                    cursor.getString(1) != context.packageName) null
+                else cursor.getString(0)
             } ?: return@withContext false
             val expected = Environment.DIRECTORY_DOWNLOADS + "/Capsule Music"
             val relative = folder.replace('\\', '/').trimEnd('/')
@@ -223,7 +226,7 @@ object ExperimentalDownload {
             _savedFilesRevision.update { it + 1L }
             true
         } catch (error: Exception) {
-            Timber.tag("CapsuleDownload").w(error, "Cannot delete saved external recording")
+            Timber.tag("CapsuleDownload").w("Cannot delete saved recording type=%s", error.javaClass.simpleName)
             false
         }
     }
@@ -384,7 +387,7 @@ object ExperimentalDownload {
             } catch (e: Exception) {
                 updateStatus(track.mediaId, State.FAILED)
                 destination?.let { runCatching { app.contentResolver.delete(it, null, null) } }
-                Timber.tag("CapsuleDownload").w(e, "External source download failed")
+                Timber.tag("CapsuleDownload").w("External source download failed type=%s", e.javaClass.simpleName)
                 throw e
             }
         }
@@ -439,7 +442,7 @@ object ExperimentalDownload {
             Uri.fromFile(destination).toString()
         } catch (e: Exception) {
             destination.delete()
-            Timber.tag("CapsuleDownload").d(e, "Artwork unavailable for offline recording")
+            Timber.tag("CapsuleDownload").d("Artwork unavailable for offline recording type=%s", e.javaClass.simpleName)
             null
         } finally { connection?.disconnect() }
     }
