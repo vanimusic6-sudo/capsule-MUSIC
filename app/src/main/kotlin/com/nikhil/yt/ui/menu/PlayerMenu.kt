@@ -709,6 +709,7 @@ fun PlayerMenu(
                 MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                     YouTubeDownloadMenuItems(
                         download = download, mediaId = mediaMetadata.id, onDismiss = onDismiss,
+                        keepOpenOnDownload = true, showActiveStopAction = false,
                         onStart = {
                             database.transaction { insert(mediaMetadata) }
                             val request = DownloadRequest.Builder(mediaMetadata.id, mediaMetadata.id.toUri())
