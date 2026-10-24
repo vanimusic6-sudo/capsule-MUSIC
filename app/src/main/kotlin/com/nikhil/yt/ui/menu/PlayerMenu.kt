@@ -619,9 +619,11 @@ fun PlayerMenu(
                                     database.withTransaction {
                                         getSongById(mediaMetadata.id)?.song?.let { delete(it) }
                                     }
-                                    if (playerConnection.player.currentMediaItem?.mediaId == mediaMetadata.id) {
-                                        playerConnection.player.stop()
-                                        playerConnection.player.clearMediaItems()
+                                    mediaMetadata.id.removePrefix(
+                                        com.nikhil.yt.discovery.OfflineAudioQueue.PREFIX
+                                    ).toLongOrNull()?.let { id ->
+                                        com.nikhil.yt.discovery.OfflineAudioQueue
+                                            .removeDeletedFromPlayer(playerConnection.player, id)
                                     }
                                     onDismiss()
                                 } else {

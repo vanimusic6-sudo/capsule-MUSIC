@@ -1,6 +1,7 @@
 package com.nikhil.yt.discovery
 
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.common.MediaMetadata as ExoMetadata
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.playback.queues.Queue
@@ -22,6 +23,19 @@ class OfflineAudioQueue private constructor(
 
     companion object {
         const val PREFIX = ExperimentalCatalog.EXPERIMENTAL_MEDIA_PREFIX + "offline:"
+        /**
+         * A MediaStore deletion invalidates every queued reference to that URI.
+         * Remove only the deleted recording, preserving all remaining YouTube
+         * and external tracks in the user's play queue.
+         */
+        fun removeDeletedFromPlayer(player: Player, savedId: Long) {
+            val target = PREFIX + savedId
+            for (index in player.mediaItemCount - 1 downTo 0) {
+                if (player.getMediaItemAt(index).mediaId == target) {
+                    player.removeMediaItem(index)
+                }
+            }
+        }
         fun metadata(file: ExperimentalDownload.SavedAudio) = MediaMetadata(
                 id = PREFIX + file.id,
                 title = file.title,
