@@ -9,6 +9,7 @@
 package com.nikhil.yt.extensions
 
 import android.os.Bundle
+import android.os.Build
 import android.content.ContentUris
 import android.net.Uri
 import android.provider.MediaStore
@@ -36,7 +37,7 @@ fun Song.toMediaItem(): MediaItem {
     val offlineId = song.id.takeIf { it.startsWith(OfflineAudioQueue.PREFIX) }
         ?.removePrefix(OfflineAudioQueue.PREFIX)?.toLongOrNull()
     val playbackUri = when {
-        offlineId != null ->
+        offlineId != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
             ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, offlineId).toString()
         song.id.startsWith("capsule-open:audius:") ->
             "https://api.audius.co/v1/tracks/" +
@@ -90,7 +91,7 @@ fun MediaMetadata.toMediaItem(): MediaItem {
     val offlineId = id.takeIf { it.startsWith(OfflineAudioQueue.PREFIX) }
         ?.removePrefix(OfflineAudioQueue.PREFIX)?.toLongOrNull()
     val playbackUri = when {
-        offlineId != null ->
+        offlineId != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
             ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, offlineId).toString()
         id.startsWith("capsule-open:audius:") ->
             "https://api.audius.co/v1/tracks/" +
