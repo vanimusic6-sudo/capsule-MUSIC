@@ -180,6 +180,7 @@ jobs:
           gradle :app:testUniversalDebugUnitTest \
             --tests 'com.nikhil.yt.discovery.HomeFeedSourceTest' \
             --tests 'com.nikhil.yt.discovery.ExperimentalRankingTest' \
+            --tests 'com.nikhil.yt.discovery.DownloadIsolationRegressionTest' \
             --no-daemon --stacktrace
 
       - name: Locate APK and checksum
