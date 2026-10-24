@@ -258,7 +258,7 @@ class ArtistHeroTest {
         }
     }
 
-    @Test fun partiallyFadedArtworkIsNotDarkenedAgainAtTheToolbarBoundary() {
+    @Test fun toolbarCoversScrollingRowsBeforePortraitCompletelyVanishes() {
         var fade by mutableStateOf(0.5f)
         compose.setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
@@ -270,15 +270,17 @@ class ArtistHeroTest {
                 }
             }
         }
-        for (value in listOf(0.1f, 0.5f, 0.95f, 1f)) {
-            compose.runOnIdle { fade = value }
+        // In the final 20% the toolbar is ALREADY opaque: no sudden last
+        // frame tint and no song rows visible underneath when fully scrolled.
+        val reds = listOf(0.8f, 0.85f, 0.95f, 1f).map { f ->
+            compose.runOnIdle { fade = f }
             val bitmap = capture("seam")
             val dp = bitmap.width / 360f
-            val above = bitmap.getPixel((4 * dp).roundToInt(), (30 * dp).roundToInt())
-            val below = bitmap.getPixel((4 * dp).roundToInt(), (120 * dp).roundToInt())
-            assertTrue("Toolbar must share the artwork's fade at $value", kotlin.math.abs(
-                android.graphics.Color.red(above) - android.graphics.Color.red(below)) <= 3)
+            val toolbar = bitmap.getPixel((4 * dp).roundToInt(), (30 * dp).roundToInt())
+            android.graphics.Color.red(toolbar)
         }
+        assertTrue("Background must remain constant through final scroll frames: $reds",
+            reds.maxOrNull()!! - reds.minOrNull()!! <= 2)
     }
 
     private fun capture(tag: String): Bitmap {
