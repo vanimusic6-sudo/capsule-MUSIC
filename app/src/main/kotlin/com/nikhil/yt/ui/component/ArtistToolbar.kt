@@ -39,6 +39,9 @@ internal fun ArtistToolbar(
 ) {
     val fade = artworkFade.coerceIn(0f, 1f)
     val foreground = lerp(Color.White, StandardChrome.text, fade)
+    // Keep the toolbar surface on the same continuous scroll fraction as
+    // the portrait: the old >= 1 switch caused the last-frame dark flash.
+    val background = StandardChrome.background.copy(alpha = fade)
     val buttonColors = IconButtonDefaults.iconButtonColors(
         containerColor = Color.Transparent,
         contentColor = foreground,
@@ -93,8 +96,8 @@ internal fun ArtistToolbar(
         },
         colors =
             TopAppBarDefaults.topAppBarColors(
-                containerColor = if (fade >= 1f) StandardChrome.background else Color.Transparent,
-                scrolledContainerColor = if (fade >= 1f) StandardChrome.background else Color.Transparent,
+                containerColor = background,
+                scrolledContainerColor = background,
                 navigationIconContentColor = foreground,
                 actionIconContentColor = foreground,
                 titleContentColor = foreground,
