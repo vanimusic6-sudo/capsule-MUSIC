@@ -1,12 +1,17 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp" android:height="24dp"
-    android:viewportWidth="24" android:viewportHeight="24">
-    <!-- Three selected catalogs connected, rather than a generic app badge. -->
-    <path android:fillColor="#FFFFFFFF" android:pathData="M10.4,5.9 L12.5,5.9 L12.5,11 L17.1,13.5 L16.1,15.3 L11.6,12.9 L7.2,15.4 L6.1,13.6 L10.4,11 Z" />
-    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
-       android:pathData="M11.5,1.7 A4.3,4.3 0,1 0,11.5 10.3 A4.3,4.3 0,1 0,11.5 1.7 Z M11.5,4 A2,2 0,1 1,11.5 8 A2,2 0,1 1,11.5 4 Z" />
-    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
-       android:pathData="M5.6,12.8 A4.3,4.3 0,1 0,5.6 21.4 A4.3,4.3 0,1 0,5.6 12.8 Z M5.6,15.1 A2,2 0,1 1,5.6 19.1 A2,2 0,1 1,5.6 15.1 Z" />
-    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
-       android:pathData="M18.4,12.8 A4.3,4.3 0,1 0,18.4 21.4 A4.3,4.3 0,1 0,18.4 12.8 Z M18.4,15.1 A2,2 0,1 1,18.4 19.1 A2,2 0,1 1,18.4 15.1 Z" />
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Capsule's combined catalog mark: three separate soft capsules.
+         Readable at 20dp and no overlapping platform logos or tiny glyphs. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M7,3.5 L17,3.5 C18.66,3.5 20,4.84 20,6.5 C20,8.16 18.66,9.5 17,9.5 L7,9.5 C5.34,9.5 4,8.16 4,6.5 C4,4.84 5.34,3.5 7,3.5 Z"/>
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M5,10.5 L19,10.5 C20.66,10.5 22,11.84 22,13.5 C22,15.16 20.66,16.5 19,16.5 L5,16.5 C3.34,16.5 2,15.16 2,13.5 C2,11.84 3.34,10.5 5,10.5 Z"/>
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M7,17.5 L17,17.5 C18.66,17.5 20,18.84 20,20.5 C20,22.16 18.66,23.5 17,23.5 L7,23.5 C5.34,23.5 4,22.16 4,20.5 C4,18.84 5.34,17.5 7,17.5 Z"/>
 </vector>
