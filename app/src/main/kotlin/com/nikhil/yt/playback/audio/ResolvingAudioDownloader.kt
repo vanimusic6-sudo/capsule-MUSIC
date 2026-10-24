@@ -40,19 +40,21 @@ internal class ResolvingAudioDownloader(
     override fun download(progressListener: Downloader.ProgressListener?) {
         try {
             runBlocking(Dispatchers.IO + cancellation) {
-                com.nikhil.yt.playback.AudioDownloadSlots.withSlot {
-                    coroutineScope {
-                        var artwork: Job? = null
-                        try {
+                coroutineScope {
+                    var artwork: Job? = null
+                    try {
+                        com.nikhil.yt.playback.AudioDownloadSlots.withSlot {
                             downloadWithSlot({ length, bytes, percent ->
                                 progressListener?.onProgress(length, bytes, percent.coerceAtMost(99f))
                             }) {
                                 if (artwork == null) artwork = launch(Dispatchers.IO) { saveArtwork() }
                             }
-                            artwork?.join()
-                            completed(progressListener)
-                        } finally { artwork?.cancel() }
-                    }
+                        }
+                        // Audio's shared network slot is free. Still await artwork
+                        // before marking the Media3 download complete.
+                        artwork?.join()
+                        completed(progressListener)
+                    } finally { artwork?.cancel() }
                 }
             }
         } catch (cancelled: CancellationException) {
