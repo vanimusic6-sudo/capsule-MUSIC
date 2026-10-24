@@ -109,6 +109,8 @@ fun OfflineDownloadMenu(
             if (file.artwork != null) {
                 ItemThumbnail(
                     thumbnailUrl = file.artwork,
+                    isActive = false,
+                    isPlaying = false,
                     modifier = Modifier.size(56.dp),
                     shape = RoundedCornerShape(12.dp),
                 )
