@@ -15,15 +15,25 @@ internal enum class CapsuleVideoRoute(val wireName: String, val budgetMs: Long) 
 /** A healthy route gets first turn; failed routes remain bounded fallbacks. */
 internal class CapsuleVideoRouteHealth(private val clock: () -> Long = System::nanoTime) {
     private val retryAfter = mutableMapOf<CapsuleVideoRoute, Long>()
+    // Prefer the last *working* extractor within the process. Otherwise the
+    // first two failing 4-second routes are retried for EVERY clip, so a healthy
+    // third backend still starts 8+ seconds late.
+    private var lastWorking: CapsuleVideoRoute? = null
+
     @Synchronized fun order(failedBackend: String?): List<CapsuleVideoRoute> {
         val now = clock()
         return CapsuleVideoRoute.entries.sortedWith(compareBy<CapsuleVideoRoute>
             { it.wireName == failedBackend }
-            .thenBy { (retryAfter[it] ?: 0L) > now })
+            .thenBy { (retryAfter[it] ?: 0L) > now }
+            .thenBy { it != lastWorking })
     }
-    @Synchronized fun success(route: CapsuleVideoRoute) { retryAfter.remove(route) }
+    @Synchronized fun success(route: CapsuleVideoRoute) {
+        retryAfter.remove(route)
+        lastWorking = route
+    }
     @Synchronized fun failure(route: CapsuleVideoRoute) {
         retryAfter[route] = clock() + TimeUnit.SECONDS.toNanos(45)
+        if (lastWorking == route) lastWorking = null
     }
 }
 
