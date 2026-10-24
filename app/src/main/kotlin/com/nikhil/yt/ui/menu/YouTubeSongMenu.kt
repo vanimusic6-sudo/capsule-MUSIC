@@ -428,10 +428,14 @@ fun YouTubeSongMenu(
                         modifier = Modifier.clickable {
                             download?.let { entry ->
                                 if (entry.canPrioritize) {
-                                    com.nikhil.yt.playback.enqueuePriorityAudioDownload(context, ExoDownloadService::class.java, entry.request, false)
+                                    com.nikhil.yt.playback.enqueuePriorityAudioDownload(
+                                        context, ExoDownloadService::class.java, entry.request, false,
+                                    )
                                 } else {
-                                    DownloadService.sendSetStopReason(context, ExoDownloadService::class.java,
-                                        entry.request.id, com.nikhil.yt.playback.COLLECTION_STOP_REASON_USER, false)
+                                    DownloadService.sendSetStopReason(
+                                        context, ExoDownloadService::class.java, entry.request.id,
+                                        com.nikhil.yt.playback.COLLECTION_STOP_REASON_USER, false,
+                                    )
                                 }
                             }
                         }

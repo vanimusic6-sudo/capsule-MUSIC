@@ -19,7 +19,7 @@ jobs:
       matrix:
         include:
           - label: baseline
-            ref: 3164e7226cf762a3c52ed52186aed167851c25c3
+            ref: f11295ea80412610e3ec1e5bca4cfc93cc0bcf91
           - label: current
             ref: ${{ github.sha }}
     steps:

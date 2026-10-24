@@ -49,6 +49,10 @@ Android test execution is claimed. Git diff checks passed. The first CI compile 
 Coil 3.4 `Chain.withRequest(...).proceed()` API mismatch; it was corrected rather than bypassed.
 The second CI ran 675 tests: 674 passed and the new artwork class failed JUnit initialization
 because one coroutine test returned Boolean instead of Unit; the test signature was corrected.
+A subsequent 680-test run passed 679 checks; offline JPEG decoding failed in Robolectric's
+native ImageDecoder FileSource with `Only supported on Android`. The integration test now uses
+Coil's real BitmapFactory decoder, disables both caches and network access, and requires a DISK
+result. Production decoder selection is unchanged; device ImageDecoder remains a manual check.
 CI runs compile/tests/lint/APKs.
 Regression coverage includes real Media3 immediate manual admission, two-slot limit, independent
 cancellation, persisted priorities, offline local artwork after cache removal, shared ownership,

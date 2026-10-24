@@ -3,9 +3,11 @@ package com.nikhil.yt.playback
 import android.app.Application
 import android.graphics.Bitmap
 import coil3.ImageLoader
+import coil3.imageDecoderEnabled
 import coil3.asImage
 import coil3.decode.DataSource
 import coil3.intercept.Interceptor
+import coil3.request.CachePolicy
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import kotlinx.coroutines.runBlocking
@@ -38,7 +40,10 @@ class DownloadedArtworkTest {
             assertEquals(1, calls.get())
             assertTrue(DownloadedArtwork.valid(DownloadedArtwork.file(context, url)))
             val failures = mutableListOf<Throwable>()
-            val offline = ImageLoader.Builder(context).diskCache(null)
+            // Robolectric's native FileSource ImageDecoder reports "Only supported on Android".
+            // Exercise real JPEG bytes with Coil's Android BitmapFactory decoder, not a fake result.
+            val offline = ImageLoader.Builder(context).diskCache(null).memoryCache(null)
+                .imageDecoderEnabled(false)
                 .components {
                     add(DownloadedArtworkInterceptor(context))
                     add(Interceptor { chain ->
@@ -49,8 +54,10 @@ class DownloadedArtworkTest {
                 }.build()
             try {
                 val result = offline.execute(ImageRequest.Builder(context)
-                    .data("https://lh3.googleusercontent.com/offline-cover=w128-h128-p-l90-rj").build())
+                    .data("https://lh3.googleusercontent.com/offline-cover=w128-h128-p-l90-rj")
+                    .networkCachePolicy(CachePolicy.DISABLED).build())
                 assertTrue(failures.joinToString("\n") { it.stackTraceToString() }, result is SuccessResult)
+                assertEquals(DataSource.DISK, (result as SuccessResult).dataSource)
             } finally { offline.shutdown() }
             DownloadedArtwork.remove(context, "first")
             assertTrue("Shared cover belongs to the other saved song", DownloadedArtwork.file(context, url).isFile)
