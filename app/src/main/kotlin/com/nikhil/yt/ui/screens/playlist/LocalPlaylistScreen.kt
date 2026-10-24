@@ -473,7 +473,7 @@ fun LocalPlaylistScreen(
                                     enabled = songs.isNotEmpty(),
                                 )
                                 PlaylistAction(
-                                    icon = if (downloadState == Download.STATE_COMPLETED) R.drawable.offline else R.drawable.download, label = stringResource(when (downloadState) { Download.STATE_COMPLETED -> R.string.remove_download; Download.STATE_DOWNLOADING -> R.string.cancel_button; else -> R.string.download }),
+                                    icon = if (downloadState == Download.STATE_COMPLETED) R.drawable.offline else R.drawable.download, label = stringResource(when (downloadState) { Download.STATE_COMPLETED -> R.string.remove_download; Download.STATE_DOWNLOADING -> R.string.capsule_stop_and_delete_download; else -> R.string.download }),
                                     onClick = {
                                         when (downloadState) {
                                             Download.STATE_COMPLETED -> {
