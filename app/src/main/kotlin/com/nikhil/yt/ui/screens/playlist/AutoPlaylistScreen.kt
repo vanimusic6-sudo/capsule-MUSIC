@@ -439,7 +439,8 @@ fun AutoPlaylistScreen(
                         if (songs!!.isNotEmpty()) {
                             item(key = "capsule:offline:external-title") {
                                 Text(
-                                    text = "Audius",
+                                    text = externalSaved.map { it.sourceLabel }
+                                        .distinct().take(3).joinToString(" · "),
                                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
                                     style = MaterialTheme.typography.titleSmall,
                                 )

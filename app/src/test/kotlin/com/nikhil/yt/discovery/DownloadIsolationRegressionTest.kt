@@ -79,5 +79,8 @@ class DownloadIsolationRegressionTest {
         assertTrue(source("ui/screens/playlist/AutoPlaylistScreen.kt").contains("playerConnection.player.clearMediaItems()"))
         assertTrue(screen.contains("capsule:offline:hero"))
         assertTrue(source("discovery/ExperimentalDownload.kt").contains("recoverEmbeddedMetadata"))
+        assertTrue(source("discovery/ExperimentalDownload.kt").contains("sourceMediaId = metadata.getString"))
+        assertTrue(source("ui/component/OfflineSongListItem.kt").contains("file.sourceLabel"))
+        assertTrue(source("ui/menu/OfflineDownloadMenu.kt").contains("file.sourceLabel"))
     }
 }

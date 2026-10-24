@@ -121,7 +121,7 @@ fun OfflineDownloadMenu(
             Column(Modifier.weight(1f)) {
                 Text(file.title, style = MaterialTheme.typography.titleMedium,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(file.artist + " · Audius", style = MaterialTheme.typography.bodySmall,
+                Text(file.artist + " · " + file.sourceLabel, style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.secondary, maxLines = 1,
                     overflow = TextOverflow.Ellipsis)
             }

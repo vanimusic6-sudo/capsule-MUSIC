@@ -64,7 +64,17 @@ object ExperimentalDownload {
         val savedTitle: String? = null,
         val savedArtist: String? = null,
         val artwork: String? = null,
+        val sourceMediaId: String? = null,
     ) {
+        /** Display the real source without trying to reconstruct a missing API account. */
+        val sourceLabel: String get() = when {
+            sourceMediaId?.startsWith("capsule-open:openverse:") == true -> "Openverse"
+            sourceMediaId?.startsWith("capsule-open:archive:") == true -> "Internet Archive"
+            sourceMediaId?.startsWith("capsule-open:ccmixter:") == true -> "ccMixter"
+            sourceMediaId?.startsWith("capsule-open:funkwhale:") == true -> "Funkwhale"
+            else -> "Audius" // Legacy files did not persist provider identity.
+        }
+
         // Older releases saved only a filename; those recordings remain playable.
         val title: String get() = savedTitle?.takeIf(String::isNotBlank)
             ?: name.substringBeforeLast('.').substringAfter(" - ", name.substringBeforeLast('.'))
@@ -118,6 +128,7 @@ object ExperimentalDownload {
                         savedTitle = metadata.getString("title:$id", null),
                         savedArtist = metadata.getString("artist:$id", null),
                         artwork = metadata.getString("art:$id", null),
+                        sourceMediaId = metadata.getString("mediaId:$id", null),
                     ))
                 }
             }

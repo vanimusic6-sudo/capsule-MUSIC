@@ -34,7 +34,7 @@ fun OfflineSongListItem(
     val shape = RoundedCornerShape(visuals.thumbnailCornerRadius)
     ListItem(
         title = file.title,
-        subtitle = file.artist + " · Audius",
+        subtitle = file.artist + " · " + file.sourceLabel,
         modifier = modifier,
         isActive = isActive,
         itemHeight = visuals.rowHeight,
