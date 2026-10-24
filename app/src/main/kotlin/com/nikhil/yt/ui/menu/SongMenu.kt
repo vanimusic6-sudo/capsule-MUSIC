@@ -119,6 +119,8 @@ fun SongMenu(
     val playerConnection = LocalPlayerConnection.current ?: return
     val songState = database.song(originalSong.id).collectAsState(initial = originalSong)
     val song = songState.value ?: originalSong
+    val independentSong = song.id.startsWith("capsule-open:")
+    val offlineSong = song.id.startsWith("capsule-open:offline:")
     val download by LocalDownloadUtil.current.getDownload(originalSong.id)
         .collectAsState(initial = null)
     val coroutineScope = rememberCoroutineScope()
@@ -239,12 +241,10 @@ fun SongMenu(
 
     AddToPlaylistDialog(
         isVisible = showChoosePlaylistDialog,
-        onGetSong = { playlist ->
-            coroutineScope.launch(Dispatchers.IO) {
-                playlist.playlist.browseId?.let { browseId ->
-                    YouTube.addToPlaylist(browseId, song.id)
-                }
-            }
+        allowSyncing = !independentSong,
+        onGetSong = { _ ->
+            // This dialog syncs YouTube playlists itself. Independent IDs are
+            // accepted only into Capsule-local playlists, never YouTube.
             listOf(song.id)
         },
         onDismiss = {
@@ -323,11 +323,12 @@ fun SongMenu(
                 IconButton(
                     interactionSource = favoriteInteraction,
                     onClick = {
-                        val s = song.song.toggleLike()
+                        val s = if (independentSong) song.song.localToggleLike()
+                            else song.song.toggleLike()
                         database.query {
                             update(s)
                         }
-                        syncUtils.likeSong(s)
+                        if (!independentSong) syncUtils.likeSong(s)
                     },
                 ) {
                     CapsuleFavoriteIcon(
@@ -376,9 +377,11 @@ fun SongMenu(
                     )
                 },
                 text = startRadioText,
+                enabled = !independentSong,
                 onClick = {
                     onDismiss()
-                    playerConnection.playQueue(YouTubeQueue.radio(song.toMediaMetadata()))
+                    if (!independentSong)
+                        playerConnection.playQueue(YouTubeQueue.radio(song.toMediaMetadata()))
                 },
             ),
             NewAction(
@@ -439,7 +442,19 @@ fun SongMenu(
                         Intent().apply {
                             action = Intent.ACTION_SEND
                             type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, "https://music.youtube.com/watch?v=${song.id}")
+                            if (offlineSong) {
+                                type = "audio/*"
+                                putExtra(Intent.EXTRA_STREAM,
+                                    song.toMediaItem().localConfiguration?.uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            } else if (independentSong) {
+                                putExtra(Intent.EXTRA_TEXT,
+                                    com.nikhil.yt.discovery.ExperimentalCatalog
+                                        .playingTrack(song.id)?.sourcePage ?: "https://audius.co")
+                            } else {
+                                putExtra(Intent.EXTRA_TEXT,
+                                    "https://music.youtube.com/watch?v=${song.id}")
+                            }
                         }
                     context.startActivity(Intent.createChooser(intent, null))
                 },
@@ -587,7 +602,7 @@ fun SongMenu(
                                             delete(map)
                                         }
                                         val browseId = playlistBrowseId
-                                        if (browseId != null) {
+                                        if (browseId != null && !independentSong) {
                                             val setVideoId = map.setVideoId ?: database.getSetVideoId(map.songId)?.setVideoId
                                             if (setVideoId != null) {
                                                 YouTube.removeFromPlaylist(browseId, map.songId, setVideoId)
@@ -607,7 +622,7 @@ fun SongMenu(
                         )
                     }
 
-                    if (isFromCache) {
+                    if (isFromCache && !independentSong) {
                         ListItem(
                             headlineContent = {
                                 Text(
@@ -636,7 +651,7 @@ fun SongMenu(
                         )
                     }
 
-                    when (download?.state) {
+                    if (!independentSong) when (download?.state) {
                         Download.STATE_COMPLETED -> {
                             ListItem(
                                 headlineContent = {
