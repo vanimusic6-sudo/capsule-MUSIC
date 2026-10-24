@@ -67,7 +67,12 @@ internal class AudioDownloadQueue(private val manager: DownloadManager) : Downlo
         schedule()
     }
     override fun onDownloadChanged(downloadManager: DownloadManager, download: Download, finalException: Exception?) {
-        if (download.stopReason != DOWNLOAD_WAITING_FOR_SLOT) admitted.remove(download.request.id)
+        // A completed/stopped legacy entry can retain the old waiting reason.
+        // It is NEVER an admitted transfer occupying one of the two slots.
+        if (download.stopReason != DOWNLOAD_WAITING_FOR_SLOT ||
+            download.state == Download.STATE_COMPLETED || download.state == Download.STATE_FAILED) {
+            admitted.remove(download.request.id)
+        }
         if (download.state == Download.STATE_STOPPED || download.state == Download.STATE_FAILED ||
             download.state == Download.STATE_COMPLETED) {
             pausing.remove(download.request.id)
@@ -98,7 +103,10 @@ internal class AudioDownloadQueue(private val manager: DownloadManager) : Downlo
             pausing.retainAll(entryIds)
             val active = entries.filter(::keepActiveDownload)
                 .map { it.request.id }.toSet() + admitted
-            val waiting = entries.filter { it.stopReason == DOWNLOAD_WAITING_FOR_SLOT && it.request.id !in admitted }.toMutableList()
+            val waiting = entries.filter {
+                it.stopReason == DOWNLOAD_WAITING_FOR_SLOT &&
+                    it.state == Download.STATE_STOPPED && it.request.id !in admitted
+            }.toMutableList()
             // One pause per admission wave. Media3 cancels the worker and preserves partial cache;
             // the shared transfer semaphore also prevents overlap while that cancellation drains.
             if (active.size >= AudioDownloadSlots.LIMIT && pausing.isEmpty() && order.allowPreemption &&
@@ -122,11 +130,13 @@ internal class AudioDownloadQueue(private val manager: DownloadManager) : Downlo
 }
 
 internal val Download.visibleState: Int
-    get() = if (stopReason == DOWNLOAD_WAITING_FOR_SLOT) Download.STATE_QUEUED else state
+    get() = if (state == Download.STATE_STOPPED && stopReason == DOWNLOAD_WAITING_FOR_SLOT)
+        Download.STATE_QUEUED else state
 
 /** Only a waiting collection member needs promotion; tapping an actual transfer pauses it. */
 internal val Download.canPrioritize: Boolean
-    get() = !request.isManualDownload() && stopReason == DOWNLOAD_WAITING_FOR_SLOT
+    get() = state == Download.STATE_STOPPED && !request.isManualDownload() &&
+        stopReason == DOWNLOAD_WAITING_FOR_SLOT
 
 internal fun keepActiveDownload(download: Download?): Boolean =
     download?.stopReason == Download.STOP_REASON_NONE && when (download.state) {

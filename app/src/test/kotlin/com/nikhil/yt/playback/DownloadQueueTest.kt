@@ -89,6 +89,24 @@ class DownloadQueueTest {
         }
     }
 
+    @Test fun completedLegacyEntryIsNeverWaitingAndStillHasADeleteAction() {
+        // Older versions occasionally left the reserved waiting reason on a
+        // completed file. This must not hide Delete or consume a queue slot.
+        val stale = Download(
+            request(19), Download.STATE_COMPLETED, 1, 1, 100,
+            DOWNLOAD_WAITING_FOR_SLOT, Download.FAILURE_REASON_NONE,
+        )
+        assertEquals(Download.STATE_COMPLETED, stale.visibleState)
+        assertFalse(stale.canPrioritize)
+        assertFalse(keepActiveDownload(stale))
+        val failed = Download(
+            request(20), Download.STATE_FAILED, 1, 1, 100, DOWNLOAD_WAITING_FOR_SLOT,
+            Download.FAILURE_REASON_UNKNOWN,
+        )
+        assertEquals(Download.STATE_FAILED, failed.visibleState)
+        assertFalse(failed.canPrioritize)
+    }
+
     @Test fun persistedPriorityIsIdempotentAndManualBurstsDoNotStarveCollections() {
         val background = entry(request(1), 1)
         val manual = (2..6).map { entry(request(it).withManualPriority(), it.toLong()) }

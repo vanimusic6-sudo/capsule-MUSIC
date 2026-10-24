@@ -5,9 +5,7 @@ import androidx.media3.exoplayer.offline.Download
 /** A collection is complete only when every member is complete; empty is never downloaded. */
 internal fun collectionDownloadState(songIds: Collection<String>, downloads: Map<String, Download>): Int {
     if (songIds.isEmpty()) return Download.STATE_STOPPED
-    val states = songIds.distinct().map { downloads[it]?.let { entry ->
-        if (entry.stopReason == DOWNLOAD_WAITING_FOR_SLOT) Download.STATE_QUEUED else entry.state
-    } }
+    val states = songIds.distinct().map { downloads[it]?.visibleState }
     return when {
         states.all { it == Download.STATE_COMPLETED } -> Download.STATE_COMPLETED
         states.any { it == Download.STATE_QUEUED || it == Download.STATE_DOWNLOADING || it == Download.STATE_RESTARTING } ->
