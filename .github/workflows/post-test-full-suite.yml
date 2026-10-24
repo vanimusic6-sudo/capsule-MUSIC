@@ -6,10 +6,21 @@ on:
     paths:
       - .github/workflows/post-test-full-suite.yml
       - app/src/test/kotlin/com/nikhil/yt/ui/PlayerTransitionArchitectureTest.kt
+      - app/src/test/kotlin/com/nikhil/yt/ui/CapsuleReleaseUiCorrectionsTest.kt
+      - app/src/main/kotlin/com/nikhil/yt/ui/component/ArtistToolbar.kt
+      - app/src/main/kotlin/com/nikhil/yt/ui/component/ArtistHero.kt
+      - app/src/main/kotlin/com/nikhil/yt/ui/component/Items.kt
+      - app/src/main/kotlin/com/nikhil/yt/ui/menu/YouTubeDownloadMenuItems.kt
+      - app/src/main/AndroidManifest.xml
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# Only the latest revision needs a paired baseline run.
+concurrency:
+  group: post-test-full-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   full-suite:
