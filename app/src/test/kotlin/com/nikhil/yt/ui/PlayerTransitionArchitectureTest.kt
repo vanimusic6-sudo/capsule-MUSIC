@@ -16,12 +16,16 @@ class PlayerTransitionArchitectureTest {
         listOf(File("src/main/kotlin/$path"), File("app/src/main/kotlin/$path"))
             .firstOrNull(File::isFile)?.readText() ?: error("Missing $path")
 
-    @Test fun playerMenuKeepsNativeSwipesButAvoidsPlatformPredictiveBackScaling() {
+    @Test fun allMenusKeepNativeSwipesButAvoidPlatformPredictiveBackScaling() {
         val menu = source("com/nikhil/yt/ui/component/BottomSheetMenu.kt")
         assertTrue(menu.contains("ModalBottomSheet("))
         assertTrue(menu.contains("skipPartiallyExpanded = false"))
         assertTrue(menu.contains("PredictiveBackHandler("))
-        assertTrue(menu.contains("shouldDismissOnBackPress = !physical"))
+        assertTrue(menu.contains("shouldDismissOnBackPress = false"))
+        assertTrue(menu.contains("PredictiveBackHandler(enabled = !state.dismissRequested)"))
+        assertTrue(menu.contains("CompositionLocalProvider(LocalCapsuleMenuPressGuard provides true)"))
+        assertTrue(menu.contains("state.completeAnimatedDismiss(generation)"))
+        assertTrue(menu.contains("observedGeneration != generation"))
         assertTrue(menu.contains("progress.collect { }"))
         assertFalse(menu.contains("\n    Dialog("))
         assertFalse(menu.contains("rememberDraggableState"))
