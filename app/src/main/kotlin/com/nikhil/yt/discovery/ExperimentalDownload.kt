@@ -11,6 +11,7 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.media.MediaMetadataRetriever
 import java.io.File
 import java.io.FileOutputStream
 import android.widget.Toast
@@ -85,6 +86,7 @@ object ExperimentalDownload {
             val folder = Environment.DIRECTORY_DOWNLOADS + "/Capsule Music/%"
             val result = mutableListOf<SavedAudio>()
             val metadata = context.getSharedPreferences(METADATA_STORE, Context.MODE_PRIVATE)
+            var remainingMigrations = 12
             context.contentResolver.query(
                 uri, projection, where, arrayOf(folder),
                 "${MediaStore.MediaColumns.DATE_ADDED} DESC",
@@ -99,6 +101,15 @@ object ExperimentalDownload {
                     val id = cursor.getLong(idColumn)
                     val bytes = cursor.getLong(sizeColumn)
                     if (bytes <= 0L) continue
+                    // Read embedded ID3/MP4 tags from legacy downloads without modifying audio.
+                    if (remainingMigrations > 0 &&
+                        !metadata.getBoolean("scanned:$id", false) &&
+                        (metadata.getString("title:$id", null) == null ||
+                            metadata.getString("art:$id", null) == null)
+                    ) {
+                        remainingMigrations--
+                        recoverEmbeddedMetadata(context, id, ContentUris.withAppendedId(uri, id))
+                    }
                     result.add(SavedAudio(
                         id = id,
                         uri = ContentUris.withAppendedId(uri, id),
@@ -115,6 +126,38 @@ object ExperimentalDownload {
             Timber.tag("CapsuleDownload").w(e, "Cannot read saved music from MediaStore")
             emptyList()
         }
+    }
+
+    private fun recoverEmbeddedMetadata(context: Context, id: Long, uri: Uri) {
+        val prefs = context.getSharedPreferences(METADATA_STORE, Context.MODE_PRIVATE)
+        val retriever = MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(context, uri)
+            val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
+                ?.takeIf(String::isNotBlank)
+            val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)
+                ?.takeIf(String::isNotBlank)
+            val image = retriever.embeddedPicture?.takeIf { it.size in 1..1_500_000 }
+                ?.let { bytes ->
+                    runCatching {
+                        val folder = File(context.filesDir, "external-artwork").apply { mkdirs() }
+                        val file = File(folder, "legacy-$id.img")
+                        FileOutputStream(file).use { it.write(bytes) }
+                        Uri.fromFile(file).toString()
+                    }.getOrNull()
+                }
+            prefs.edit().apply {
+                if (prefs.getString("title:$id", null) == null && title != null)
+                    putString("title:$id", title)
+                if (prefs.getString("artist:$id", null) == null && artist != null)
+                    putString("artist:$id", artist)
+                if (prefs.getString("art:$id", null) == null && image != null)
+                    putString("art:$id", image)
+                putBoolean("scanned:$id", true)
+            }.apply()
+        } catch (_: Exception) {
+            prefs.edit().putBoolean("scanned:$id", true).apply()
+        } finally { runCatching { retriever.release() } }
     }
 
     enum class State { DOWNLOADING, COMPLETED, FAILED }

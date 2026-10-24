@@ -63,5 +63,7 @@ class DownloadIsolationRegressionTest {
         assertTrue(screen.contains("itemsIndexed("))
         assertTrue(rows.contains("ItemThumbnail("))
         assertTrue(rows.contains("LocalSongListVisuals.current"))
+        assertTrue(screen.contains("capsule:offline:hero"))
+        assertTrue(source("discovery/ExperimentalDownload.kt").contains("recoverEmbeddedMetadata"))
     }
 }

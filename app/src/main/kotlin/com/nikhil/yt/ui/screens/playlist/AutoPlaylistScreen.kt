@@ -278,7 +278,7 @@ fun AutoPlaylistScreen(
     val headerItems by remember {
         derivedStateOf {
             val currentSongs = songs
-            if (currentSongs != null && currentSongs.isNotEmpty() && !isSearching) 2 else 0
+            if (currentSongs != null && (currentSongs.isNotEmpty() || externalSaved.isNotEmpty()) && !isSearching) 2 else 0
         }
     }
 
@@ -299,7 +299,7 @@ fun AutoPlaylistScreen(
                 // This screen draws its toolbar over its content. A playlist with
                 // no YouTube hero must reserve toolbar space (also in search mode),
                 // otherwise the back button lands directly over the first Audius row.
-                if (songs!!.isEmpty() || isSearching) {
+                if ((songs!!.isEmpty() && externalSaved.isEmpty()) || isSearching) {
                     item(key = "capsule:playlist:toolbar-spacer") {
                         Spacer(Modifier.height(AppBarHeight))
                     }
@@ -312,6 +312,34 @@ fun AutoPlaylistScreen(
                         )
                     }
                 } else {
+                    if (!isSearching && songs!!.isEmpty() && externalSaved.isNotEmpty()) {
+                        item(key = "capsule:offline:hero") {
+                            PlaylistHero(
+                                title = playlist,
+                                thumbnails = externalSaved.mapNotNull { it.artwork }.take(4),
+                                songCount = pluralStringResource(R.plurals.n_song, externalSaved.size, externalSaved.size),
+                                duration = null,
+                            ) {
+                                PlaylistAction(
+                                    icon = R.drawable.play, label = stringResource(R.string.play),
+                                    onClick = {
+                                        externalSaved.firstOrNull()?.let { file ->
+                                            OfflineAudioQueue.create(externalSaved, file)?.let(playerConnection::playQueue)
+                                        }
+                                    },
+                                )
+                                PlaylistAction(
+                                    icon = R.drawable.shuffle, label = stringResource(R.string.shuffle),
+                                    onClick = {
+                                        val shuffled = externalSaved.shuffled()
+                                        shuffled.firstOrNull()?.let { file ->
+                                            OfflineAudioQueue.create(shuffled, file)?.let(playerConnection::playQueue)
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                    }
                     if (!isSearching && songs!!.isNotEmpty()) {
                         // Hero Header Item
                         item(key = "header") {
@@ -532,7 +560,7 @@ fun AutoPlaylistScreen(
 
         // Same overlay behaviour as AlbumScreen: cover reaches the top and the toolbar
         // becomes solid only after its header scrolls away (or while searching/selecting).
-        val showPlaylistHero = songs?.isNotEmpty() == true &&
+        val showPlaylistHero = (songs?.isNotEmpty() == true || externalSaved.isNotEmpty()) &&
             lazyListState.firstVisibleItemIndex == 0 && !selection && !isSearching
         CenterAlignedTopAppBar(
             colors = TopAppBarDefaults.topAppBarColors(
