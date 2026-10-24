@@ -11,23 +11,31 @@ import android.net.ConnectivityManager
 import androidx.core.content.getSystemService
 import androidx.media3.common.C
 import androidx.media3.database.DatabaseProvider
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.Cache
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.offline.Download
-import androidx.media3.exoplayer.offline.DownloadRequest
-import androidx.media3.exoplayer.offline.DownloadService
 import androidx.media3.exoplayer.offline.DefaultDownloadIndex
 import androidx.media3.exoplayer.offline.DownloaderFactory
 import com.nikhil.yt.playback.audio.CapsuleAudioRequestInterceptor
 import com.nikhil.yt.playback.audio.AudioCacheIdentity
+import com.nikhil.yt.playback.audio.AudioChunkedDataSource
+import com.nikhil.yt.playback.audio.AudioDownloadUrlPolicy
+import com.nikhil.yt.playback.audio.AUDIO_CHUNK_BYTES
 import com.nikhil.yt.playback.audio.AudioPlaybackContext
 import com.nikhil.yt.playback.audio.AudioResolvePriority
 import com.nikhil.yt.playback.audio.ResolvingAudioDownloader
 import androidx.media3.exoplayer.offline.DownloadManager
 import androidx.media3.exoplayer.offline.DownloadNotificationHelper
+import com.nikhil.yt.constants.AudioClientOrder
+import com.nikhil.yt.constants.AudioClientOrderKey
+import com.nikhil.yt.utils.PreferenceStore
+import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
+import kotlinx.coroutines.withTimeoutOrNull
+import java.io.IOException
 import com.nikhil.yt.constants.AudioQuality
 import com.nikhil.yt.constants.AudioQualityKey
 import com.nikhil.yt.constants.AudioStreamPolicy
@@ -35,6 +43,7 @@ import com.nikhil.yt.constants.AudioStreamPolicyKey
 import com.nikhil.yt.db.MusicDatabase
 import com.nikhil.yt.db.entities.FormatEntity
 import com.nikhil.yt.db.entities.SongEntity
+import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.di.DownloadCache
 import com.nikhil.yt.di.PlayerCache
 import com.nikhil.yt.innertube.YouTube
@@ -46,7 +55,6 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -57,7 +65,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.OkHttpClient
-import timber.log.Timber
 import java.time.LocalDateTime
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
@@ -82,6 +89,10 @@ constructor(
     )
     private fun playbackContext() = AudioPlaybackContext(
         audioQuality, audioStreamPolicy.normalizedForPlayback(), connectivityManager.isActiveNetworkMetered,
+        clientOrder = AudioClientOrder.resolve(
+            PreferenceStore.get(AudioClientOrderKey), audioStreamPolicy,
+            legacyPreferenceExplicit = PreferenceStore.get(AudioStreamPolicyKey) != null,
+        ),
     )
 
     // Download pressure protection. This reacts to transport failures without
@@ -94,50 +105,53 @@ constructor(
     private val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient
             .Builder()
-            .proxy(YouTube.streamProxy)
             .retryOnConnectionFailure(false)
             .addInterceptor(CapsuleAudioRequestInterceptor(guardStreams = true))
             .followRedirects(true)
-            .followSslRedirects(true)
+            .followSslRedirects(false)
+            .addNetworkInterceptor { chain ->
+                AudioDownloadUrlPolicy.requireYouTubeMedia(chain.request().url.toString())
+                chain.proceed(chain.request())
+            }
             .addInterceptor { chain ->
                 chain.proceed(StreamClientUtils.withFallbackHeaders(chain.request()))
             }.build()
     }
 
     val downloads = MutableStateFlow<Map<String, Download>>(emptyMap())
+    @Volatile private var initialIndexLoaded = false
+    private val removedWhileLoading = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private suspend fun awaitDownloadResolveWindow() {
-        downloadResolveMutex.withLock {
-            while (true) {
-                val nowMs = System.currentTimeMillis()
-                val waitMs =
-                    maxOf(
+        val ready = withTimeoutOrNull(DOWNLOAD_GATE_TIMEOUT_MS) {
+            downloadResolveMutex.withLock {
+                var waitMs: Long
+                do {
+                    val nowMs = System.currentTimeMillis()
+                    waitMs = maxOf(
                         CapsulePlaybackSafety.remainingBlockMs(nowMs),
                         (cooldownUntilMs - nowMs).coerceAtLeast(0L),
                     )
-
-                if (waitMs <= 0L) {
-                    return@withLock
-                }
-
-                // Re-check periodically so a network change / explicit breaker reset
-                // can resume the queue without waiting for the old full deadline.
-                delay(minOf(waitMs, DOWNLOAD_WAIT_SLICE_MS))
+                    if (waitMs > 0L) delay(minOf(waitMs, DOWNLOAD_WAIT_SLICE_MS))
+                } while (waitMs > 0L)
+                true
             }
         }
+        if (ready != true) throw IOException("Download cooldown has not elapsed; retry later")
     }
 
     private suspend fun resolveDownloadPlayback(
         mediaId: String,
     ): CapsuleAudioEngine.PlaybackData {
-        while (true) {
+        repeat(MAX_DOWNLOAD_RESOLVE_ATTEMPTS) {
             awaitDownloadResolveWindow()
             val selection = playbackContext()
             val result =
-                CapsuleAudioEngine.playerResponseForPlayback(
+                CapsuleAudioEngine.resolvePlayback(
                     videoId = mediaId,
                     audioQuality = selection.quality,
                     connectivityManager = connectivityManager,
                     streamPolicy = selection.policy,
+                    clientOrder = selection.clientOrder,
                     priority = AudioResolvePriority.DOWNLOAD,
                 )
 
@@ -146,6 +160,7 @@ constructor(
             }
 
             result.getOrNull()?.let { playbackData ->
+                AudioDownloadUrlPolicy.requireYouTubeMedia(playbackData.streamUrl)
                 storeDownloadMetadata(mediaId, playbackData)
                 return playbackData
             }
@@ -159,11 +174,12 @@ constructor(
             // the shared gate and retries only after the breaker becomes safe.
             if (CapsulePlaybackSafety.remainingBlockMs() > 0L) {
                 registerThrottleSignal(failure)
-                continue
+                return@repeat
             }
 
             throw failure
         }
+        throw IOException("Download resolve retry budget exhausted")
     }
 
     private val downloaderFactory = DownloaderFactory { request ->
@@ -171,16 +187,41 @@ constructor(
                 mediaId = request.id,
                 cache = downloadCache,
                 resolve = { resolveDownloadPlayback(request.id) },
+                recover = { playback, failure ->
+                    val status = generateSequence(failure as Throwable?) { it.cause }
+                        .take(12).filterIsInstance<InvalidResponseCodeException>()
+                        .firstOrNull()?.responseCode
+                    if (status == 403 || status == 410) {
+                        CapsuleAudioEngine.markStreamClientFailed(request.id, playback.streamClient, status)
+                        true
+                    } else {
+                        if (status == 429) CapsuleAudioEngine.markRateLimitedFailure()
+                        false
+                    }
+                },
                 dataSource = { playback ->
                     CacheDataSource.Factory().setCache(downloadCache)
                         .setUpstreamDataSourceFactory(
                             ResolvingDataSource.Factory(
                                 CacheDataSource.Factory().setCache(playerCache)
                                     .setCacheWriteDataSinkFactory(null)
-                                    .setUpstreamDataSourceFactory(OkHttpDataSource.Factory(mediaOkHttpClient))
+                                    .setUpstreamDataSourceFactory(DataSource.Factory {
+                                        AudioChunkedDataSource(
+                                            OkHttpDataSource.Factory(
+                                                mediaOkHttpClient.newBuilder().proxy(YouTube.streamProxy).build(),
+                                            ).createDataSource(),
+                                            chunkBytes = playback.rangeChunkSizeBytes.takeIf { it > 0L }
+                                                ?: AUDIO_CHUNK_BYTES,
+                                        )
+                                    })
                                     .setFlags(FLAG_IGNORE_CACHE_ON_ERROR),
                             ) { spec ->
-                                spec.buildUpon()
+                                spec.buildUpon().apply {
+                                    val length = playback.format.contentLength
+                                    if (spec.length == C.LENGTH_UNSET.toLong() && length != null && length > spec.position) {
+                                        setLength(length - spec.position)
+                                    }
+                                }
                                     .setKey(AudioCacheIdentity.key(request.id, playback))
                                     .setHttpRequestHeaders(spec.httpRequestHeaders + playback.streamHeaders)
                                     .build()
@@ -214,7 +255,8 @@ constructor(
                 ),
             )
 
-            val existing = getSongByIdBlocking(mediaId)?.song
+            val existingRow = getSongByIdBlocking(mediaId)
+            val existing = existingRow?.song
 
             val updatedSong =
                 if (existing != null) {
@@ -234,6 +276,14 @@ constructor(
                 }
 
             upsert(updatedSong)
+            if (existingRow?.artists.isNullOrEmpty()) {
+                playbackData.videoDetails?.author?.takeIf { it.isNotBlank() }?.let { author ->
+                    mergeSongArtistCredits(mediaId, listOf(MediaMetadata.Artist(
+                        id = playbackData.videoDetails.channelId,
+                        name = author,
+                    )))
+                }
+            }
         }
 
     }
@@ -252,11 +302,24 @@ constructor(
             maxParallelDownloads = currentMaxParallelDownloads
             addListener(
                 object : DownloadManager.Listener {
+                    override fun onDownloadRemoved(downloadManager: DownloadManager, download: Download) {
+                        if (!initialIndexLoaded) removedWhileLoading.add(download.request.id)
+                        downloads.update { it - download.request.id }
+                        database.query {
+                            getSongByIdBlocking(download.request.id)?.song?.let { song ->
+                                if (downloads.value[download.request.id]?.state != Download.STATE_COMPLETED) {
+                                    update(song.copy(dateDownload = null))
+                                }
+                            }
+                        }
+                    }
+
                     override fun onDownloadChanged(
                         downloadManager: DownloadManager,
                         download: Download,
                         finalException: Exception?,
                     ) {
+                        removedWhileLoading.remove(download.request.id)
                         if (download.state == Download.STATE_FAILED) {
                             CapsuleAudioEngine.invalidateCachedStreamUrls(download.request.id)
                             if (
@@ -270,7 +333,7 @@ constructor(
                             clearThrottleSignal()
                             database.query {
                                 getSongByIdBlocking(download.request.id)?.song?.let { song ->
-                                    if (song.dateDownload == null) update(song.copy(dateDownload = LocalDateTime.now()))
+                                    update(song.copy(dateDownload = LocalDateTime.now()))
                                 }
                             }
                         }
@@ -295,7 +358,9 @@ constructor(
                         result[it.download.request.id] = it.download
                     }
                 }
-                downloads.update { result + it }
+                downloads.update { (result + it) - removedWhileLoading }
+                initialIndexLoaded = true
+                removedWhileLoading.clear()
             } catch (error: CancellationException) {
                 throw error
             }
@@ -386,6 +451,8 @@ constructor(
         private const val MIN_PARALLEL_DOWNLOADS = 1
         private const val SHORT_COOLDOWN_MS = 2_500L
         private const val LONG_COOLDOWN_MS = 8_000L
+        private const val DOWNLOAD_GATE_TIMEOUT_MS = 30_000L
+        private const val MAX_DOWNLOAD_RESOLVE_ATTEMPTS = 2
         private const val DOWNLOAD_WAIT_SLICE_MS = 2_000L
     }
 }

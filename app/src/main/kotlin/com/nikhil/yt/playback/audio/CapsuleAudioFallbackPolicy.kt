@@ -8,7 +8,7 @@ import java.util.Locale
  * Small, bounded client plan layered on top of InnerTubeX.
  *
  * User order controls foreground priority, while Capsule still owns the safety envelope:
- * background work never rotates identities, quarantined families are skipped, authenticated
+ * speculative prefetch never rotates identities, quarantined profiles are skipped, authenticated
  * profiles are filtered when unavailable, and bot recovery may cross client families once.
  */
 internal object CapsuleAudioFallbackPolicy {
@@ -20,7 +20,7 @@ internal object CapsuleAudioFallbackPolicy {
     const val TVHTML5_SIMPLY = AudioClientOrder.TVHTML5_SIMPLY
 
     private val supportedProfiles = AudioClientOrder.supportedProfiles.toSet()
-    private const val MAX_FOREGROUND_ATTEMPTS = 3
+    const val MAX_RESOLVE_ATTEMPTS = 3
     private const val NORMAL_FALLBACK_DELAY_MS = 350L
     private const val BOT_FALLBACK_DELAY_MS = 1_000L
 
@@ -40,9 +40,9 @@ internal object CapsuleAudioFallbackPolicy {
                 .filter { it in supportedProfiles }
                 .distinct()
 
-        // PREFETCH/DOWNLOAD never walk down the user list after a failure. They use only
-        // position #1. If that profile cannot safely run right now, background work is skipped.
-        if (priority != AudioResolvePriority.PLAYBACK) {
+        // Speculative prefetch never rotates identities. An explicit download may
+        // use the bounded compatible plan after a client-local failure, like playback.
+        if (priority == AudioResolvePriority.PREFETCH) {
             val first = configured.firstOrNull() ?: primary
             return listOf(first)
                 .filter { it.isNotBlank() }
@@ -79,9 +79,9 @@ internal object CapsuleAudioFallbackPolicy {
                 .filter { it !in excluded }
                 .filter { profileEligible(it, authenticated, isUploaded) }
 
-        if (eligible.size <= MAX_FOREGROUND_ATTEMPTS) return eligible
+        if (eligible.size <= MAX_RESOLVE_ATTEMPTS) return eligible
 
-        val firstWindow = eligible.take(MAX_FOREGROUND_ATTEMPTS)
+        val firstWindow = eligible.take(MAX_RESOLVE_ATTEMPTS)
         if (!authenticated || WEB_CREATOR !in eligible || WEB_CREATOR in firstWindow) {
             return firstWindow
         }
@@ -89,7 +89,7 @@ internal object CapsuleAudioFallbackPolicy {
         // Keep the request budget at three identities, but do not accidentally remove the
         // only maintained authenticated music profile. This preserves restricted/uploaded
         // playback without restoring the old six-client waterfall.
-        return eligible.take(MAX_FOREGROUND_ATTEMPTS - 1) + WEB_CREATOR
+        return eligible.take(MAX_RESOLVE_ATTEMPTS - 1) + WEB_CREATOR
     }
 
     /**

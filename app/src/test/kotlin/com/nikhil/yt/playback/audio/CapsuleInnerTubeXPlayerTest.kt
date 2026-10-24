@@ -7,6 +7,20 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class CapsuleInnerTubeXPlayerTest {
+    @Test fun exactVisionProfileSurvivesExtractionWithoutChangingWireHeaders() {
+        val headers = mapOf("User-Agent" to "Vision 0.1 user agent")
+        val extracted = com.metrolist.innertubex.extraction.ExtractedStream(
+            videoId = "song", audioUrl = "https://edge.googlevideo.com/audio", headers = headers,
+            loudnessDb = null, expiresAt = null, contentLengthBytes = 100L, itag = 140,
+            mimeType = "audio/mp4", codecs = "mp4a.40.2", bitrate = 128000, sampleRate = 44100,
+            clientName = "VISIONOS", profileId = "VISIONOS_0_1__nopo", requireBoundedRange = false,
+            rangeChunkSizeBytes = 1_048_576L,
+        )
+        val playback = CapsuleInnerTubeXPlayer.run { extracted.toPlaybackData() }
+        assertEquals("VISIONOS_0_1", playback.streamClient)
+        assertEquals(headers, playback.streamHeaders)
+    }
+
     @Test
     fun failedWatchPageFallsBackToAnonymousEmbeddedConfig() =
         runBlocking {

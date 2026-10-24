@@ -787,11 +787,7 @@ class MusicService :
             // Only the effective order for new resolutions changes. Keep persisted
             // preferences and already-playing signed URLs untouched while the app
             // prewarms Web BotGuard/extractor in the background.
-            val effectiveClientOrder =
-                AudioWebStartupClientPolicy.effectiveOrder(
-                    configuredOrder = selection.clientOrder,
-                    webReady = CapsuleAudioEngine.isStartupWebReady(),
-                )
+            val effectiveClientOrder = selection.clientOrder
             val startedAt = System.currentTimeMillis()
             Timber.tag(CAPSULE_RESOLVE_TAG).i(
                 "resolve start id=%s",

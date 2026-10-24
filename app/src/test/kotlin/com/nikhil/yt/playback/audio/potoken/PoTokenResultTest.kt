@@ -4,6 +4,12 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class PoTokenResultTest {
+    @Test fun diagnosticStringNeverIncludesTokens() {
+        val rendered = PoTokenResult("secret-player", "secret-stream").toString()
+        org.junit.Assert.assertFalse(rendered.contains("secret-player"))
+        org.junit.Assert.assertFalse(rendered.contains("secret-stream"))
+    }
+
     @Test
     fun botGuardFactoryMapsInnerTubeXBindingScopes() {
         val result =

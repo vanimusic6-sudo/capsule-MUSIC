@@ -1,6 +1,7 @@
 package com.nikhil.yt.playback.audio
 
 import com.metrolist.innertubex.extraction.ContentHints
+import com.metrolist.innertubex.extraction.strategy.PlaybackClientCatalog
 import com.metrolist.innertubex.extraction.strategy.ClientFallbackStrategy
 import com.metrolist.innertubex.extraction.strategy.ClientSelectionRequest
 import com.metrolist.innertubex.extraction.strategy.ClientSelectionResult
@@ -31,6 +32,17 @@ import com.metrolist.innertubex.models.YouTubeClient
  */
 internal object CapsuleAudioClientStrategy : ClientFallbackStrategy {
     private val delegate = ContentAwareFallbackStrategy()
+
+    fun profileId(extractedProfileId: String): String =
+        PlaybackClientCatalog.manifestIdFromProfileId(extractedProfileId)
+            ?: extractedProfileId.substringBefore('@')
+
+    /** A wire name such as VISIONOS would also exclude the distinct 0.1 profile. */
+    fun exclusions(profileIds: Set<String>): Set<String> = profileIds.flatMap { id ->
+        PlaybackClientCatalog.findManifest(id)?.let { manifest ->
+            listOf("${manifest.id}__po", "${manifest.id}__nopo")
+        } ?: listOf(id)
+    }.toSet()
 
     override fun resolveClients(hints: ContentHints): List<YouTubeClient> =
         selectClients(ClientSelectionRequest(hints = hints, authenticated = false))

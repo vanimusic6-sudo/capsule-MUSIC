@@ -4,6 +4,8 @@ data class PoTokenResult(
     val playerRequestPoToken: String,
     val streamingDataPoToken: String,
 ) {
+    override fun toString(): String = "PoTokenResult(playerRequestPoToken=<redacted>, streamingDataPoToken=<redacted>)"
+
     companion object {
         /**
          * BotGuard's two tokens have intentionally non-obvious scopes in InnerTubeX:

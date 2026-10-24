@@ -19,10 +19,10 @@ import com.nikhil.yt.R
 import com.nikhil.yt.innertube.YouTube
 import java.net.HttpURLConnection
 import java.net.URL
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -42,7 +42,6 @@ import timber.log.Timber
  */
 object ExperimentalDownload {
     private const val MAX_BYTES = 240L * 1024 * 1024
-    private val jobs = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val permits = Semaphore(2)
     private val main = Handler(Looper.getMainLooper())
     /**
@@ -106,7 +105,7 @@ object ExperimentalDownload {
                 val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
                 val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
                 val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
-                while (cursor.moveToNext() && result.size < 300) {
+                while (cursor.moveToNext()) {
                     val name = cursor.getString(nameColumn) ?: continue
                     if (!listOf(".mp3", ".ogg", ".oga", ".opus", ".m4a", ".flac")
                             .any { name.endsWith(it, ignoreCase = true) }) continue
@@ -220,7 +219,10 @@ object ExperimentalDownload {
             val covers = File(context.filesDir, "external-artwork")
             File(covers, "${file.id}.img").delete()
             File(covers, "legacy-${file.id}.img").delete()
-            if (oldMediaId != null) _states.update { it - oldMediaId }
+            if (oldMediaId != null) {
+                prefs.edit().remove("completed:$oldMediaId").remove("completed-owner:$oldMediaId").apply()
+                _states.update { it - oldMediaId }
+            }
             _savedFilesRevision.update { it + 1L }
             true
         } catch (error: Exception) {
@@ -260,73 +262,140 @@ object ExperimentalDownload {
 
         if (Build.VERSION.SDK_INT < 29) return legacyEnqueue(app, uri, displayName, mime)
         if (_states.value[track.mediaId] == State.DOWNLOADING) return false
+        val workInput = try { IndependentAudioDownloadWorker.input(track, displayName, mime) }
+            catch (_: IllegalStateException) { return false }
         updateStatus(track.mediaId, State.DOWNLOADING)
-        jobs.launch {
-            permits.withPermit {
-                var destination: Uri? = null
-                try {
-                    val provider = app.contentResolver
-                    val values = ContentValues().apply {
-                        put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
-                        put(MediaStore.MediaColumns.MIME_TYPE, mime)
-                        put(MediaStore.MediaColumns.RELATIVE_PATH,
-                            Environment.DIRECTORY_DOWNLOADS + "/Capsule Music")
-                        put(MediaStore.MediaColumns.IS_PENDING, 1)
-                    }
-                    val safeUri = provider.insert(
-                        MediaStore.Downloads.EXTERNAL_CONTENT_URI, values,
-                    ) ?: throw IllegalStateException("No available Downloads destination")
-                    destination = safeUri
-                    val conn = openDownload(address)
-                    try {
-                        val size = conn.contentLengthLong
-                        if (size > MAX_BYTES) throw IllegalStateException("Recording exceeds size limit")
-                        val output = provider.openOutputStream(safeUri, "w")
-                            ?: throw IllegalStateException("Cannot open downloaded file")
-                        output.use { out ->
-                            conn.inputStream.use { input ->
-                                val buffer = ByteArray(32 * 1024)
-                                var total = 0L
-                                while (true) {
-                                    val count = input.read(buffer)
-                                    if (count < 0) break
-                                    total += count
-                                    if (total > MAX_BYTES) throw IllegalStateException(
-                                        "Recording exceeds size limit")
-                                    out.write(buffer, 0, count)
-                                }
-                                if (total == 0L) throw IllegalStateException("Empty recording")
-                            }
-                        }
-                    } finally { conn.disconnect() }
-                    val published = provider.update(safeUri, ContentValues().apply {
-                        put(MediaStore.MediaColumns.IS_PENDING, 0)
-                    }, null, null)
-                    if (published < 1) throw IllegalStateException("Cannot publish downloaded recording")
-                    // Persist real track credits. Cover images are saved privately for offline use;
-                    // a failed image request must never invalidate a successful music download.
-                    val savedId = ContentUris.parseId(safeUri)
-                    val image = saveArtwork(app, savedId, track)
-                    app.getSharedPreferences(METADATA_STORE, Context.MODE_PRIVATE).edit()
-                        .putString("title:$savedId", track.title)
-                        .putString("artist:$savedId", track.artist)
-                        .putString("mediaId:$savedId", track.mediaId)
-                        .putString("art:$savedId", image ?: (track.artworkLarge ?: track.artwork)
-                            ?.takeIf { it.startsWith("https://") })
-                        .apply()
-                    updateStatus(track.mediaId, State.COMPLETED)
-                    _savedFilesRevision.update { it + 1L }
-                    toast(app, R.string.capsule_discovery_download_completed)
-                } catch (e: Exception) {
-                    updateStatus(track.mediaId, State.FAILED)
-                    destination?.let { runCatching { app.contentResolver.delete(it, null, null) } }
-                    Timber.tag("CapsuleDownload").w(e, "External source download failed")
-                    toast(app, R.string.capsule_discovery_download_failed)
-                }
-            }
-        }
+        androidx.work.WorkManager.getInstance(app).enqueueUniqueWork(
+            "capsule-independent:${track.mediaId}", androidx.work.ExistingWorkPolicy.KEEP,
+            androidx.work.OneTimeWorkRequestBuilder<IndependentAudioDownloadWorker>()
+                .setInputData(workInput)
+                .setConstraints(androidx.work.Constraints.Builder()
+                    .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED).build())
+                .setBackoffCriteria(androidx.work.BackoffPolicy.EXPONENTIAL, 30, java.util.concurrent.TimeUnit.SECONDS)
+                .build(),
+        )
         toast(app, R.string.capsule_discovery_download_started)
         return true
+    }
+
+    /** Durable worker entry point. Pending rows are never visible in Downloaded. */
+    @androidx.annotation.RequiresApi(29)
+    internal suspend fun downloadApproved(
+        app: Context, track: ExperimentalCatalog.Track, displayName: String, mime: String, workId: String,
+    ): Unit = withContext(Dispatchers.IO) {
+        val address = track.downloadUrl ?: throw java.io.IOException("Publisher did not permit this download")
+        updateStatus(track.mediaId, State.DOWNLOADING)
+        permits.withPermit {
+            var destination: Uri? = null
+            try {
+                val provider = app.contentResolver
+                val pending = app.getSharedPreferences(METADATA_STORE, Context.MODE_PRIVATE)
+                val pendingKey = "pending:${track.mediaId}"
+                val pendingOwner = "pending-owner:${track.mediaId}"
+                val completedOwner = "completed-owner:${track.mediaId}"
+                val previous = ownedWorkReference(pending, track.mediaId, workId)
+                if (previous != null && previous.scheme == "content" && previous.authority == "media") {
+                    val previousState = provider.query(previous,
+                        arrayOf(MediaStore.MediaColumns.IS_PENDING, MediaStore.MediaColumns.SIZE,
+                            MediaStore.MediaColumns.RELATIVE_PATH, MediaStore.MediaColumns.OWNER_PACKAGE_NAME),
+                        null, null, null)?.use { cursor ->
+                        if (!cursor.moveToFirst()) null else {
+                            val folder = cursor.getString(2).orEmpty().trimEnd('/')
+                            val owned = folder == Environment.DIRECTORY_DOWNLOADS + "/Capsule Music" &&
+                                cursor.getString(3) == app.packageName
+                            owned to (cursor.getInt(0) == 0 && cursor.getLong(1) > 0L)
+                        }
+                    }
+                    if (previousState?.first == true) {
+                        if (previousState.second) {
+                            pending.edit().putString("completed:${track.mediaId}", previous.toString())
+                                .putString(completedOwner, workId).remove(pendingKey).remove(pendingOwner).commit()
+                            updateStatus(track.mediaId, State.COMPLETED)
+                            _savedFilesRevision.update { it + 1L }
+                            return@withPermit
+                        }
+                        provider.delete(previous, null, null)
+                    }
+                    // Restored URI IDs may refer to another file on a new device.
+                    pending.edit().remove("completed:${track.mediaId}").remove(pendingKey).commit()
+                }
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, mime)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH,
+                        Environment.DIRECTORY_DOWNLOADS + "/Capsule Music")
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+                val safeUri = provider.insert(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI, values,
+                ) ?: throw IllegalStateException("No available Downloads destination")
+                destination = safeUri
+                if (!pending.edit().putString(pendingKey, safeUri.toString())
+                    .putString(pendingOwner, workId).commit()) {
+                    throw java.io.IOException("Cannot persist download destination")
+                }
+                val conn = openDownload(address)
+                try {
+                    val size = conn.contentLengthLong
+                    if (size > MAX_BYTES) throw IllegalStateException("Recording exceeds size limit")
+                    val output = provider.openOutputStream(safeUri, "w")
+                        ?: throw IllegalStateException("Cannot open downloaded file")
+                    output.use { out ->
+                        conn.inputStream.use { input ->
+                            val coroutine = currentCoroutineContext()
+                            VerifiedAudioCopy.copy(input, out, size, MAX_BYTES) { coroutine.ensureActive() }
+                        }
+                    }
+                } finally { conn.disconnect() }
+                currentCoroutineContext().ensureActive()
+                // Persist real track credits. Cover images are saved privately for offline use;
+                // a failed image request must never invalidate a successful music download.
+                val savedId = ContentUris.parseId(safeUri)
+                val image = saveArtwork(app, savedId, track)
+                val creditsSaved = app.getSharedPreferences(METADATA_STORE, Context.MODE_PRIVATE).edit()
+                    .putString("title:$savedId", track.title)
+                    .putString("artist:$savedId", track.artist)
+                    .putString("mediaId:$savedId", track.mediaId)
+                    .putString("art:$savedId", image ?: (track.artworkLarge ?: track.artwork)
+                        ?.takeIf { it.startsWith("https://") })
+                    .commit()
+                if (!creditsSaved) throw java.io.IOException("Cannot persist recording metadata")
+                currentCoroutineContext().ensureActive()
+                val published = provider.update(safeUri, ContentValues().apply {
+                    put(MediaStore.MediaColumns.IS_PENDING, 0)
+                }, null, null)
+                if (published < 1) throw IllegalStateException("Cannot publish downloaded recording")
+                pending.edit().putString("completed:${track.mediaId}", safeUri.toString())
+                    .putString(completedOwner, workId).remove(pendingKey).remove(pendingOwner).commit()
+                updateStatus(track.mediaId, State.COMPLETED)
+                _savedFilesRevision.update { it + 1L }
+                toast(app, R.string.capsule_discovery_download_completed)
+            } catch (cancelled: CancellationException) {
+                updateStatus(track.mediaId, State.FAILED)
+                destination?.let { runCatching { app.contentResolver.delete(it, null, null) } }
+                throw cancelled
+            } catch (e: Exception) {
+                updateStatus(track.mediaId, State.FAILED)
+                destination?.let { runCatching { app.contentResolver.delete(it, null, null) } }
+                Timber.tag("CapsuleDownload").w(e, "External source download failed")
+                throw e
+            }
+        }
+    }
+
+    internal fun ownedWorkReference(
+        preferences: android.content.SharedPreferences, mediaId: String, workId: String,
+    ): Uri? {
+        val completed = preferences.getString("completed:$mediaId", null)
+            ?.takeIf { preferences.getString("completed-owner:$mediaId", null) == workId }
+        val pending = preferences.getString("pending:$mediaId", null)
+            ?.takeIf { preferences.getString("pending-owner:$mediaId", null) == workId }
+        return (completed ?: pending)?.let(Uri::parse)
+    }
+
+    internal fun workerFailed(context: Context, mediaId: String) {
+        updateStatus(mediaId, State.FAILED)
+        toast(context, R.string.capsule_discovery_download_failed)
     }
 
     private fun saveArtwork(context: Context, id: Long, track: ExperimentalCatalog.Track): String? {
@@ -369,26 +438,38 @@ object ExperimentalDownload {
     }
 
     private fun openDownload(url: String): HttpURLConnection {
-        val parsed = URL(url)
-        require(parsed.protocol == "https") { "Only HTTPS media downloads supported" }
-        val proxy = YouTube.streamProxy
-        val conn = (if (proxy == null) parsed.openConnection()
-            else parsed.openConnection(proxy)) as HttpURLConnection
-        conn.connectTimeout = 10_000
-        conn.readTimeout = 20_000
-        conn.setRequestProperty("User-Agent", "CapsuleMusic/1.0")
-        conn.setRequestProperty("Accept", "audio/*,application/octet-stream")
-        if (conn.responseCode !in 200..299) {
-            val code = conn.responseCode
-            conn.disconnect()
-            throw IllegalStateException("Remote recording HTTP $code")
+        var address = url
+        repeat(6) {
+            val parsed = com.nikhil.yt.playback.audio.AudioDownloadUrlPolicy.requireHttps(address).toURL()
+            val proxy = YouTube.streamProxy
+            val conn = (if (proxy == null) parsed.openConnection()
+                else parsed.openConnection(proxy)) as HttpURLConnection
+            conn.connectTimeout = 10_000
+            conn.readTimeout = 20_000
+            conn.instanceFollowRedirects = false
+            conn.setRequestProperty("User-Agent", "CapsuleMusic/1.0")
+            conn.setRequestProperty("Accept", "audio/*,application/octet-stream")
+            try {
+                val code = conn.responseCode
+                if (code in listOf(301, 302, 303, 307, 308)) {
+                    val location = conn.getHeaderField("Location")
+                        ?: throw java.io.IOException("Download redirect has no destination")
+                    address = URL(parsed, location).toString()
+                    conn.disconnect()
+                    return@repeat
+                }
+                if (code != HttpURLConnection.HTTP_OK) throw java.io.IOException("Remote recording HTTP $code")
+                val contentType = conn.contentType.orEmpty().lowercase()
+                if (contentType.contains("text/html") || contentType.contains("json")) {
+                    throw java.io.IOException("Publisher returned a web page instead of audio")
+                }
+                return conn
+            } catch (failure: Exception) {
+                conn.disconnect()
+                throw failure
+            }
         }
-        val contentType = conn.contentType.orEmpty().lowercase()
-        if (contentType.contains("text/html") || contentType.contains("json")) {
-            conn.disconnect()
-            throw IllegalStateException("Publisher returned a web page instead of audio")
-        }
-        return conn
+        throw java.io.IOException("Too many download redirects")
     }
 
     private fun legacyEnqueue(context: Context, uri: Uri, name: String, mime: String): Boolean =

@@ -251,6 +251,10 @@
             android:name=".ui.screens.settings.PoTokenExtractionActivity"
             android:exported="false"
             android:theme="@style/Theme.VeluneApp" />
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
     </application>
 
 </manifest>

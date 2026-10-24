@@ -44,6 +44,24 @@ internal object AudioCacheIdentity {
         setLength(cache, mediaId, length)
     }
 
+    fun requireCompleteDownload(cache: Cache, mediaId: String, expectedLength: Long?) {
+        val actualLength = ContentMetadata.getContentLength(cache.getContentMetadata(mediaId))
+        if (actualLength <= 0L ||
+            (expectedLength != null && expectedLength > 0L && actualLength != expectedLength) ||
+            !cache.isCached(mediaId, 0, actualLength)
+        ) {
+            // Do not let the next Media3 retry mistake a server-shortened length
+            // for a complete file and take the offline fast path.
+            if (expectedLength != null && expectedLength > 0L) {
+                if (actualLength > expectedLength) cache.removeResource(mediaId)
+                setLength(cache, mediaId, expectedLength)
+            } else if (actualLength <= 0L) {
+                cache.removeResource(mediaId)
+            }
+            throw IOException("Audio download is incomplete or has an unexpected length")
+        }
+    }
+
     fun remove(cache: Cache, mediaId: String) = keys(cache, mediaId).forEach(cache::removeResource)
 }
 

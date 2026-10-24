@@ -203,6 +203,19 @@ class CapsuleAudioFallbackPolicyTest {
         )
     }
 
+    @Test fun explicitDownloadsHaveBoundedFallbacksButPrefetchDoesNot() {
+        val custom = listOf("WEB_REMIX", "VISIONOS_0_1", "VISIONOS", "WEB_EMBEDDED_PLAYER")
+        val plan = CapsuleAudioFallbackPolicy.profilePlan(
+            "WEB_REMIX", AudioResolvePriority.DOWNLOAD, false, false, setOf("WEB_REMIX"), custom,
+        )
+        assertEquals(custom.drop(1), plan)
+        assertTrue(plan.size <= CapsuleAudioFallbackPolicy.MAX_RESOLVE_ATTEMPTS)
+        val speculative = CapsuleAudioFallbackPolicy.profilePlan(
+            "WEB_REMIX", AudioResolvePriority.PREFETCH, false, false, setOf("WEB_REMIX"), custom,
+        )
+        assertTrue(speculative.isEmpty())
+    }
+
     @Test
     fun botFallbackFollowsUserOrderButCrossesFamily() {
         val plan =

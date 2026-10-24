@@ -7,6 +7,7 @@ import com.nikhil.yt.innertube.models.response.PlayerResponse
 import java.lang.reflect.Proxy
 import org.junit.Assert.*
 import org.junit.Test
+import kotlinx.coroutines.async
 
 class AudioCacheIdentityTest {
     private fun playback(itag: Int = 140) = CapsuleAudioEngine.PlaybackData(
@@ -82,6 +83,115 @@ class AudioCacheIdentityTest {
         AudioCacheIdentity.prepareDownload(fixture.cache, "track", "another-format", 200)
         assertEquals(100L, fixture.bytes["track"])
         assertTrue(AudioCacheIdentity.isComplete(fixture.cache, "track"))
+    }
+
+    private fun fakeDownload(action: (androidx.media3.exoplayer.offline.Downloader.ProgressListener?) -> Unit) =
+        object : androidx.media3.exoplayer.offline.Downloader {
+            override fun download(listener: androidx.media3.exoplayer.offline.Downloader.ProgressListener?) = action(listener)
+            override fun cancel() = Unit
+            override fun remove() = Unit
+        }
+
+    @Test fun truncatedEofCannotPublishSuccessOnThisOrTheNextRetry() {
+        val fixture = CacheFixture()
+        var completions = 0
+        val downloader = ResolvingAudioDownloader("track", fixture.cache, { playback() }, { error("unused") },
+            createDownloader = {
+                fakeDownload { listener ->
+                    fixture.bytes["track"] = 50
+                    AudioCacheIdentity.setLength(fixture.cache, "track", 50)
+                    listener?.onProgress(50, 50, 100f)
+                }
+            })
+        repeat(2) {
+            assertThrows(java.io.IOException::class.java) {
+                downloader.download { _, _, percent -> if (percent == 100f) completions++ }
+            }
+        }
+        assertEquals(0, completions)
+        assertFalse(AudioCacheIdentity.isComplete(fixture.cache, "track"))
+    }
+
+    @Test fun transientFailureReusesResolvedUrlAndPartialBytes() {
+        val fixture = CacheFixture()
+        var resolves = 0
+        var transfers = 0
+        val downloader = ResolvingAudioDownloader("track", fixture.cache, { resolves++; playback() }, { error("unused") },
+            createDownloader = {
+                fakeDownload {
+                    transfers++
+                    if (transfers == 1) {
+                        fixture.bytes["track"] = 50
+                        throw java.io.IOException("socket reset")
+                    }
+                    assertEquals(50L, fixture.bytes["track"])
+                    fixture.bytes["track"] = 100
+                }
+            })
+        assertThrows(java.io.IOException::class.java) { downloader.download(null) }
+        downloader.download(null)
+        assertEquals(1, resolves)
+        assertTrue(AudioCacheIdentity.isComplete(fixture.cache, "track"))
+    }
+
+    @Test fun compatibleClientFallbackResumesBytesAndIsBounded() {
+        val fixture = CacheFixture()
+        var resolves = 0
+        var transfers = 0
+        val downloader = ResolvingAudioDownloader("track", fixture.cache, { resolves++; playback() }, { error("unused") },
+            recover = { _, _ -> true },
+            createDownloader = {
+                fakeDownload {
+                    transfers++
+                    if (transfers == 1) fixture.bytes["track"] = 50
+                    else assertEquals(50L, fixture.bytes["track"])
+                    throw java.io.IOException("client rejected")
+                }
+            })
+        repeat(2) { assertThrows(java.io.IOException::class.java) { downloader.download(null) } }
+        // Three resolutions in the entire downloader lifetime, even across Media3 retries.
+        assertEquals(3, resolves)
+    }
+
+    @Test fun changedEncodingDiscardsPartialBytesBeforeClientFallbackWrites() {
+        val fixture = CacheFixture()
+        var resolves = 0
+        val downloader = ResolvingAudioDownloader("track", fixture.cache, { playback(if (++resolves == 1) 140 else 251) },
+            { error("unused") }, recover = { _, _ -> true }, createDownloader = { data ->
+                fakeDownload {
+                    if (data.format.itag == 140) {
+                        fixture.bytes["track"] = 50
+                        throw java.io.IOException("client rejected")
+                    }
+                    assertNull(fixture.bytes["track"])
+                    fixture.bytes["track"] = 100
+                }
+            })
+        downloader.download(null)
+        assertEquals(2, resolves)
+        assertTrue(AudioCacheIdentity.isComplete(fixture.cache, "track"))
+    }
+
+    @Test fun cancelledDownloadDoesNotResolveOrReportCompletion() {
+        val fixture = CacheFixture()
+        val downloader = ResolvingAudioDownloader("track", fixture.cache, { error("cancelled") }, { error("cancelled") })
+        downloader.cancel()
+        assertThrows(InterruptedException::class.java) { downloader.download(null) }
+    }
+
+    @Test fun cancellationDuringResolveInterruptsTheOwningCoroutine() = kotlinx.coroutines.runBlocking {
+        val fixture = CacheFixture()
+        val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val downloader = ResolvingAudioDownloader("track", fixture.cache, {
+            entered.complete(Unit)
+            kotlinx.coroutines.awaitCancellation()
+        }, { error("cancelled") })
+        val result = async(kotlinx.coroutines.Dispatchers.Default) {
+            runCatching { downloader.download(null) }
+        }
+        kotlinx.coroutines.withTimeout(5000) { entered.await() }
+        downloader.cancel()
+        assertTrue(kotlinx.coroutines.withTimeout(5000) { result.await() }.exceptionOrNull() is InterruptedException)
     }
 
     private class CacheFixture {

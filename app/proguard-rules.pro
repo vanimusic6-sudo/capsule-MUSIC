@@ -166,3 +166,8 @@
 -keep class androidx.media3.** { *; }
 -keep interface androidx.media3.** { *; }
 -dontwarn androidx.media3.**
+
+# WorkManager persists this worker's class name across process death and app upgrades.
+-keep class com.nikhil.yt.discovery.IndependentAudioDownloadWorker {
+    public <init>(android.content.Context, androidx.work.WorkerParameters);
+}

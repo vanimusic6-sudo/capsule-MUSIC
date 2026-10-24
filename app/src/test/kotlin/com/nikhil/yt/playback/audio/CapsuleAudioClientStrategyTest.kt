@@ -10,6 +10,24 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CapsuleAudioClientStrategyTest {
+    @Test fun visionFailuresRemainLocalToTheExactManifestInBothDirections() {
+        for ((failed, wanted) in listOf("VISIONOS" to "VISIONOS_0_1", "VISIONOS_0_1" to "VISIONOS")) {
+            val exclusions = CapsuleAudioClientStrategy.exclusions(setOf(failed))
+            val request = requestWithoutOverride().copy(
+                hints = ContentHints(playbackClientOverrideId = wanted), excludedClients = exclusions,
+            )
+            assertEquals(listOf(wanted), CapsuleAudioClientStrategy.selectClients(request).candidates.map { it.manifest?.id })
+            assertTrue(CapsuleAudioClientStrategy.selectClients(request.copy(
+                hints = ContentHints(playbackClientOverrideId = failed),
+            )).candidates.isEmpty())
+        }
+    }
+
+    @Test fun tokenModeSuffixDoesNotBecomePartOfTheSavedClientIdentity() {
+        assertEquals("VISIONOS_0_1", CapsuleAudioClientStrategy.profileId("VISIONOS_0_1__nopo"))
+        assertEquals("WEB_REMIX", CapsuleAudioClientStrategy.profileId("WEB_REMIX__po"))
+    }
+
     @Test
     fun selectablePoliciesReachTheirActualLibraryClient() {
         val expected = mapOf(

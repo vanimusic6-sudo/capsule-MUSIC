@@ -47,6 +47,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import com.nikhil.yt.playback.AudioWebStartupClientPolicy
+import com.nikhil.yt.constants.AudioClientOrder
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -103,14 +107,33 @@ object CapsuleInnerTubeXPlayer {
     private val networkGeneration = AtomicLong()
 
     // A process-local startup gate only: never rewrite the user's saved client priority.
-    // The app starts with VISIONOS while the independent WEB_REMIX preparation runs.
+    // A cold token-dependent priority temporarily yields to configured Vision profiles.
     @Volatile private var startupWebReady = false
     @Volatile private var warmedWebSession: Any? = null
-    @Volatile private var warmedWebAuth: PlaybackAuthState? = null
     private val webStartupWarmupMutex = Mutex()
 
-    fun isStartupWebReady(): Boolean =
-        startupWebReady && warmedWebAuth == YouTube.authState
+    private val warmupJobLock = Any()
+    private var startupWarmupJob: Job? = null
+
+    fun isStartupWebReady(): Boolean {
+        val auth = YouTube.authState
+        if (!auth.poTokenPlayer.isNullOrBlank() && !auth.poTokenGvs.isNullOrBlank()) return true
+        return startupWebReady && warmedWebSession == sessionSnapshot() &&
+            poTokenGenerator.isReady(auth.visitorData.orEmpty())
+    }
+
+    fun cancelStartupWarmup() = synchronized(warmupJobLock) {
+        startupWarmupJob?.cancel()
+        startupWarmupJob = null
+        startupWebReady = false
+        warmedWebSession = null
+    }
+
+    private fun requestStartupWarmup() = synchronized(warmupJobLock) {
+        if (startupWarmupJob?.isActive != true) {
+            startupWarmupJob = prewarmScope.launch { prewarmWebRemixForStartup() }
+        }
+    }
 
     /**
      * Warm the actual InnerTubeX extractor and the reusable, visitor-bound BotGuard session
@@ -120,7 +143,7 @@ object CapsuleInnerTubeXPlayer {
      */
     suspend fun prewarmWebRemixForStartup(): Boolean = webStartupWarmupMutex.withLock {
         val snapshot = sessionSnapshot()
-        if (warmedWebSession == snapshot) return@withLock true
+        if (isStartupWebReady()) return@withLock true
         val auth = snapshot.auth
         val configuredTokens = !auth.poTokenPlayer.isNullOrBlank() && !auth.poTokenGvs.isNullOrBlank()
         val visitorData = auth.visitorData?.trim()?.takeIf { it.isNotBlank() && it != "null" }
@@ -129,31 +152,34 @@ object CapsuleInnerTubeXPlayer {
             return@withLock false
         }
 
+        if (!configuredTokens && !poTokenGenerator.mayPrepare(visitorData.orEmpty())) return@withLock false
+
         // SharedPrewarm owns the extractor task after start(), outside resolveMutex.
         val extractorPreparation = resolveMutex.withLock { bundle().prewarm.start() }
         val tokenReady = configuredTokens || (
             visitorData != null && poTokenGenerator.prewarm(visitorData)
         )
+        // Cipher/config preloading is best-effort, not a prerequisite for using
+        // an already minted token. Publish readiness before waiting for it.
+        val ready = tokenReady && snapshot == sessionSnapshot()
+        if (ready) {
+            warmedWebSession = snapshot
+            startupWebReady = true
+            Timber.tag(TAG).i("Web token ready; restoring configured AUDIO client order")
+        }
         val extractorReady = try {
             extractorPreparation.await().isSuccess
         } catch (cancelled: CancellationException) {
             currentCoroutineContext().ensureActive()
             false
         }
-
-        val ready = tokenReady && extractorReady && snapshot == sessionSnapshot()
-        if (ready) {
-            warmedWebSession = snapshot
-            warmedWebAuth = snapshot.auth
-            startupWebReady = true
-            Timber.tag(TAG).i("Web startup prewarm ready; restoring configured AUDIO client order")
-        } else {
+        if (!ready || !extractorReady) {
             Timber.tag(TAG).w(
-                "Web startup prewarm incomplete tokenReady=%s extractorReady=%s sameSession=%s",
+                "Web startup preparation tokenReady=%s extractorReady=%s sameSession=%s",
                 tokenReady, extractorReady, snapshot == sessionSnapshot(),
             )
         }
-        ready
+        ready && snapshot == sessionSnapshot()
     }
 
     private val poTokenGenerator: PoTokenGenerator by lazy {
@@ -286,7 +312,13 @@ object CapsuleInnerTubeXPlayer {
         priority: AudioResolvePriority = AudioResolvePriority.PLAYBACK,
     ): Result<PlaybackData> =
         try {
-            val primaryProfileId = clientOrder.firstOrNull() ?: streamPolicy.playbackClientOverrideId
+            val configuredOrder = clientOrder.ifEmpty { AudioClientOrder.legacyOrder(streamPolicy) }
+            val webReady = isStartupWebReady()
+            if (!webReady && AudioWebStartupClientPolicy.requiresToken(configuredOrder.first())) {
+                requestStartupWarmup()
+            }
+            val effectiveOrder = AudioWebStartupClientPolicy.effectiveOrder(configuredOrder, webReady)
+            val primaryProfileId = effectiveOrder.first()
             val baseHints =
                 ContentHints(
                     isUploaded = playlistId == "MLPT" || playlistId?.contains("MLPT") == true,
@@ -330,7 +362,7 @@ object CapsuleInnerTubeXPlayer {
                                 baseHints = baseHints,
                                 audioQuality = resolvedQuality,
                                 primaryProfileId = primaryProfileId,
-                                preferredProfiles = clientOrder,
+                                preferredProfiles = effectiveOrder,
                                 priorityProvider = effectivePriority,
                             )
                         }
@@ -370,7 +402,7 @@ object CapsuleInnerTubeXPlayer {
 
     /**
      * Metrolist-style client resilience with a Capsule-sized request budget.
-     * Background work never rotates clients. Foreground playback uses a short vetted chain;
+     * Speculative prefetch never rotates clients. Playback/downloads use a short vetted chain;
      * after a bot-check exactly one different family may be tried before escalation.
      * A shared prefetch can be promoted by Media3 while it is already resolving;
      * that promotion must also upgrade this client plan, not only the scheduler queue.
@@ -390,6 +422,11 @@ object CapsuleInnerTubeXPlayer {
         val attempted = linkedSetOf<String>()
 
         while (true) {
+            // Recomputing a plan after quarantining a failed profile must not slide
+            // its three-entry window through every client in the catalogue.
+            if (attempted.size >= CapsuleAudioFallbackPolicy.MAX_RESOLVE_ATTEMPTS) {
+                throw lastFailure ?: IllegalStateException("AUDIO client attempt budget exhausted")
+            }
             val priorityBeforeAttempt = priorityProvider()
             val excludedBeforeAttempt =
                 CapsulePlaybackSafety.quarantinedProfileIds() + failedStreamClients(videoId)
@@ -512,7 +549,7 @@ object CapsuleInnerTubeXPlayer {
                 }
 
                 /*
-                 * Genuine background work still never rotates client identities.
+                 * Speculative prefetch still never rotates client identities.
                  * If the Media3 loader promoted this exact shared job while the
                  * first request was running, however, it is now foreground and
                  * may use the normal bounded fallback plan without waiting for a
@@ -521,7 +558,7 @@ object CapsuleInnerTubeXPlayer {
                 if (
                     onlyPostBotProfile != null ||
                     !canFallback ||
-                    priorityAfterFailure != AudioResolvePriority.PLAYBACK
+                    priorityAfterFailure == AudioResolvePriority.PREFETCH
                 ) {
                     throw failure
                 }
@@ -555,7 +592,7 @@ object CapsuleInnerTubeXPlayer {
                     extractionBundle.extractor.extract(
                         videoId = videoId,
                         hints = hints,
-                        excludedClients = excludedClients,
+                        excludedClients = CapsuleAudioClientStrategy.exclusions(excludedClients),
                         audioQuality = audioQuality,
                         clientPlaybackNonce = generateClientPlaybackNonce(),
                     ),
@@ -572,7 +609,7 @@ object CapsuleInnerTubeXPlayer {
              * one bounded rollover.
              */
             val sabrClient =
-                extracted.clientName
+                CapsuleAudioClientStrategy.profileId(extracted.profileId)
                     .substringBefore('@')
                     .trim()
                     .takeIf { it.isNotBlank() }
@@ -624,11 +661,13 @@ object CapsuleInnerTubeXPlayer {
     }
 
     fun clearPlaybackState() {
+        cancelStartupWarmup()
         streamClientFailures.clear()
         networkGeneration.incrementAndGet()
     }
 
     fun onNetworkChanged() {
+        cancelStartupWarmup()
         streamClientFailures.clear()
         networkGeneration.incrementAndGet()
     }
@@ -798,7 +837,7 @@ object CapsuleInnerTubeXPlayer {
                 }
         }
 
-    private fun ExtractedStream.toPlaybackData(): PlaybackData {
+    internal fun ExtractedStream.toPlaybackData(): PlaybackData {
         val fullMimeType =
             if (codecs.isNullOrBlank()) {
                 mimeType.orEmpty()
@@ -859,7 +898,7 @@ object CapsuleInnerTubeXPlayer {
                     }
                     ?.coerceAtLeast(1)
                     ?: DEFAULT_STREAM_TTL_SECONDS,
-            streamClient = clientName,
+            streamClient = CapsuleAudioClientStrategy.profileId(profileId),
             streamHeaders = headers,
             rangeChunkSizeBytes = rangeChunkSizeBytes,
         )

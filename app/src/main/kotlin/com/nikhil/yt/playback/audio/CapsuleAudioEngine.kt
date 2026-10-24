@@ -52,6 +52,8 @@ object CapsuleAudioEngine {
 
     fun isStartupWebReady(): Boolean = CapsuleInnerTubeXPlayer.isStartupWebReady()
 
+    fun cancelStartupWarmup() = CapsuleInnerTubeXPlayer.cancelStartupWarmup()
+
     fun playbackBlockedExceptionOrNull(): PlaybackException? = CapsulePlaybackSafety.blockedExceptionOrNull()
 
     fun markRateLimitedFailure() = CapsulePlaybackSafety.markHttpStatusFailure(429)

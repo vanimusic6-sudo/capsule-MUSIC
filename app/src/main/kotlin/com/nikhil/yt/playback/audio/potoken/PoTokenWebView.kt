@@ -23,6 +23,10 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.Headers.Companion.toHeaders
+import okhttp3.Callback
+import okhttp3.Call
+import okhttp3.Response
+import java.io.IOException
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody.Companion.toRequestBody
 import timber.log.Timber
@@ -43,19 +47,19 @@ import kotlin.coroutines.resumeWithException
 internal class PoTokenWebView private constructor(
     context: Context,
     private val initContinuation: Continuation<PoTokenWebView>,
-) {
+) : PoTokenMinter {
     private val webView = WebView(context)
     private val scope = MainScope()
+    private val httpClient = createHttpClient()
     private val initCompleted = AtomicBoolean(false)
     private val requestCounter = AtomicLong()
     private val pending =
         Collections.synchronizedMap(mutableMapOf<String, Continuation<String>>())
 
-    @Volatile
-    private var closed = false
+    private val closed = AtomicBoolean(false)
 
     @Volatile
-    var isDead: Boolean = false
+    override var isDead: Boolean = false
         private set
 
     private lateinit var expiresAt: Instant
@@ -75,17 +79,14 @@ internal class PoTokenWebView private constructor(
             object : WebChromeClient() {
                 override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
                     val message = consoleMessage.message()
-                    when (consoleMessage.messageLevel()) {
-                        ConsoleMessage.MessageLevel.ERROR -> Timber.tag(TAG).e("JS: %s", message)
-                        ConsoleMessage.MessageLevel.WARNING -> Timber.tag(TAG).w("JS: %s", message)
-                        else -> Timber.tag(TAG).d("JS: %s", message)
-                    }
+                    // Untrusted JS output may contain tokens; record only its severity.
+                    Timber.tag(TAG).d("BotGuard console level=%s", consoleMessage.messageLevel())
                     if (message.contains("Uncaught", ignoreCase = true)) {
                         val error =
                             if (initCompleted.get()) {
-                                PoTokenException(message)
+                                PoTokenException("BotGuard JavaScript failed")
                             } else {
-                                BadWebViewException(message)
+                                BadWebViewException("BotGuard JavaScript initialization failed")
                             }
                         isDead = true
                         if (initCompleted.get()) {
@@ -195,7 +196,11 @@ internal class PoTokenWebView private constructor(
 
     @JavascriptInterface
     fun onJsInitializationError(error: String) {
-        failInitialization(buildExceptionForJsError(error))
+        failInitialization(
+            if (error.contains("SyntaxError", ignoreCase = true))
+                BadWebViewException("BotGuard JavaScript syntax is unsupported")
+            else PoTokenException("BotGuard JavaScript initialization failed"),
+        )
     }
 
     @JavascriptInterface
@@ -205,8 +210,8 @@ internal class PoTokenWebView private constructor(
         }
     }
 
-    suspend fun generatePoToken(identifier: String): String {
-        if (closed || isDead) throw PoTokenException("PoToken WebView is unavailable")
+    override suspend fun generatePoToken(identifier: String): String {
+        if (closed.get() || isDead) throw PoTokenException("PoToken WebView is unavailable")
         val requestKey = "$identifier#${requestCounter.incrementAndGet()}"
         return try {
             withTimeout(GENERATE_TIMEOUT_MS) {
@@ -251,10 +256,10 @@ internal class PoTokenWebView private constructor(
 
     @JavascriptInterface
     fun onTokenError(requestKey: String, error: String) {
-        pending.remove(requestKey)?.resumeWithException(PoTokenException(error))
+        pending.remove(requestKey)?.resumeWithException(PoTokenException("BotGuard token minting failed"))
     }
 
-    val isExpired: Boolean
+    override val isExpired: Boolean
         get() = !::expiresAt.isInitialized || Instant.now().isAfter(expiresAt)
 
     private fun botguardRequest(
@@ -279,8 +284,24 @@ internal class PoTokenWebView private constructor(
                     .build()
             val (status, responseBody) =
                 withContext(Dispatchers.IO) {
-                    createHttpClient().newCall(request).execute().use { response ->
-                        response.code to response.body?.string()
+                    val response = suspendCancellableCoroutine<Response> { continuation ->
+                        val call = httpClient.newCall(request)
+                        continuation.invokeOnCancellation { call.cancel() }
+                        call.enqueue(object : Callback {
+                            override fun onFailure(call: Call, e: IOException) {
+                                continuation.resumeWithException(e)
+                            }
+                            override fun onResponse(call: Call, response: Response) {
+                                continuation.resume(response) { _, abandoned, _ -> abandoned.close() }
+                            }
+                        })
+                    }
+                    response.use {
+                        val source = it.body?.source()
+                        if (source?.request(MAX_RPC_BYTES + 1L) == true) {
+                            throw PoTokenException("BotGuard response exceeds size limit")
+                        }
+                        it.code to source?.readUtf8()
                     }
                 }
             if (status != 200 || responseBody.isNullOrBlank()) {
@@ -304,10 +325,13 @@ internal class PoTokenWebView private constructor(
         }
     }
 
-    fun close() {
-        if (closed) return
-        closed = true
+    override fun close() {
+        if (!closed.compareAndSet(false, true)) return
         scope.cancel()
+        httpClient.dispatcher.cancelAll()
+        httpClient.dispatcher.executorService.shutdown()
+        httpClient.connectionPool.evictAll()
+        drainPending(PoTokenException("PoToken session closed"))
         if (Looper.myLooper() == Looper.getMainLooper()) {
             destroyWebView()
         } else {
@@ -334,6 +358,7 @@ internal class PoTokenWebView private constructor(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
                 "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
         private const val JS_INTERFACE = "CapsulePoTokenBridge"
+        private const val MAX_RPC_BYTES = 4L * 1024L * 1024L
         private const val INIT_TIMEOUT_MS = 45_000L
         private const val GENERATE_TIMEOUT_MS = 15_000L
 
@@ -369,6 +394,9 @@ internal class PoTokenWebView private constructor(
 
         private fun createHttpClient(): OkHttpClient =
             OkHttpClient.Builder()
+                .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+                .callTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
                 .proxy(YouTube.proxy)
                 .build()
 
