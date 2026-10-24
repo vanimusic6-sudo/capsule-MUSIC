@@ -704,85 +704,18 @@ fun SongMenu(
                         )
                     }
 
-                    if (!independentSong) when (download?.visibleState) {
-                        Download.STATE_COMPLETED -> {
-                            ListItem(
-                                headlineContent = {
-                                    Text(
-                                        text = stringResource(R.string.remove_download),
-                                        color = MaterialTheme.colorScheme.error,
-                                    )
-                                },
-                                leadingContent = {
-                                    Icon(
-                                        painter = painterResource(R.drawable.offline),
-                                        tint = MaterialTheme.colorScheme.error,
-                                        contentDescription = null,
-                                    )
-                                },
-                                modifier =
-                                    Modifier.clickable {
-                                        DownloadService.sendRemoveDownload(
-                                            context,
-                                            ExoDownloadService::class.java,
-                                            song.id,
-                                            false,
-                                        )
-                                    },
-                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                            )
-                        }
-                        Download.STATE_QUEUED, Download.STATE_DOWNLOADING, Download.STATE_RESTARTING -> {
-                            ListItem(
-                                headlineContent = { Text(text = stringResource(if (download?.canPrioritize == true) R.string.download_now else R.string.cancel_button)) },
-                                leadingContent = {
-                                    VeluneLoader(size = 24.dp)
-                                },
-                                modifier =
-                                    Modifier.clickable {
-                                        download?.let { entry ->
-                                            if (entry.canPrioritize) {
-                                                com.nikhil.yt.playback.enqueuePriorityAudioDownload(
-                                                    context, ExoDownloadService::class.java, entry.request, false,
-                                                )
-                                            } else {
-                                                DownloadService.sendSetStopReason(
-                                                    context, ExoDownloadService::class.java, entry.request.id,
-                                                    com.nikhil.yt.playback.COLLECTION_STOP_REASON_USER, false,
-                                                )
-                                            }
-                                        }
-                                    },
-                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                            )
-                        }
-                        else -> {
-                            ListItem(
-                                headlineContent = { Text(text = stringResource(R.string.action_download)) },
-                                leadingContent = {
-                                    Icon(
-                                        painter = painterResource(R.drawable.download),
-                                        contentDescription = null,
-                                    )
-                                },
-                                modifier =
-                                    Modifier.clickable {
-                                        val downloadRequest =
-                                            DownloadRequest
-                                                .Builder(song.id, song.id.toUri())
-                                                .setCustomCacheKey(song.id)
-                                                .setData(song.song.title.toByteArray())
-                                                .build()
-                                        com.nikhil.yt.playback.enqueuePriorityAudioDownload(
-                                            context,
-                                            ExoDownloadService::class.java,
-                                            downloadRequest,
-                                            false,
-                                        )
-                                    },
-                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                            )
-                        }
+                    if (!independentSong) {
+                        YouTubeDownloadMenuItems(
+                            download = download, mediaId = song.id, onDismiss = onDismiss,
+                            onStart = {
+                                val request = DownloadRequest.Builder(song.id, song.id.toUri())
+                                    .setCustomCacheKey(song.id)
+                                    .setData(song.song.title.toByteArray()).build()
+                                com.nikhil.yt.playback.enqueuePriorityAudioDownload(
+                                    context, ExoDownloadService::class.java, request, false,
+                                )
+                            },
+                        )
                     }
                 }
             }
