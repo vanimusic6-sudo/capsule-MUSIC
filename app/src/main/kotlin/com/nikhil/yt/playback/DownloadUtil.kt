@@ -394,9 +394,15 @@ constructor(
                 initialIndexLoaded = true
                 removedWhileLoading.clear()
                 val network = connectivityManager.activeNetwork
+                // A fresh launch must not sweep thousands of saved covers on mobile data.
+                // Every new download already persists its artwork; this small batch
+                // only repairs old library entries opportunistically on Wi-Fi.
                 if (network != null && connectivityManager.getNetworkCapabilities(network)
-                        ?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true) {
-                    result.values.filter { it.state == Download.STATE_COMPLETED }.forEach { repairArtwork(it.request.id) }
+                        ?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true &&
+                    connectivityManager.getNetworkCapabilities(network)
+                        ?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == true) {
+                    result.values.asSequence().filter { it.state == Download.STATE_COMPLETED }
+                        .take(6).forEach { repairArtwork(it.request.id) }
                 }
             } catch (error: CancellationException) {
                 throw error
