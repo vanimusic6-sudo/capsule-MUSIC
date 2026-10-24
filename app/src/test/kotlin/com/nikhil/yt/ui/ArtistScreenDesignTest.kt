@@ -19,7 +19,8 @@ class ArtistScreenDesignTest {
         val values = (0..100).map { com.nikhil.yt.ui.component.artistToolbarSurfaceAlpha(it / 100f) }
         org.junit.Assert.assertEquals(0f, values.first(), 0.0001f)
         org.junit.Assert.assertEquals(1f, values.last(), 0.0001f)
-        org.junit.Assert.assertEquals(1f, values[80], 0.0001f)
+        org.junit.Assert.assertEquals(0f, values[80], 0.0001f)
+        org.junit.Assert.assertEquals(1f, values[100], 0.0001f)
         org.junit.Assert.assertTrue(values.zipWithNext().all { (a, b) -> b >= a && b-a <= 0.04f })
     }
 
