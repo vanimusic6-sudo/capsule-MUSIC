@@ -52,6 +52,7 @@ enum class CapsuleNewPipeQuality(val maxHeight: Int) {
 
 object CapsuleNewPipeExtractor {
     private val routeHealth = CapsuleVideoRouteHealth()
+    @Volatile private var lastWorkingBackend: String? = null
     private const val CACHE_SAFETY_MS = 45_000L
     private const val DEFAULT_URL_TTL_MS = 3_600_000L
     private val initialized = AtomicBoolean(false)
@@ -177,8 +178,12 @@ object CapsuleNewPipeExtractor {
         muxedOnly: Boolean = false, failedBackend: String? = null,
         onAttempt: (String, Long, Boolean) -> Unit = { _, _, _ -> },
         onRouteFailure: (String, Throwable) -> Unit = { _, _ -> },
-    ): CapsuleNewPipeResolved = resolveVideoRoutes(failedBackend, health = routeHealth,
-        onAttempt = { route, elapsed, success -> onAttempt(route.wireName, elapsed, success) },
+    ): CapsuleNewPipeResolved = resolveVideoRoutes(
+        failedBackend, health = routeHealth, preferredBackend = lastWorkingBackend,
+        onAttempt = { route, elapsed, success ->
+            if (success) lastWorkingBackend = route.wireName
+            onAttempt(route.wireName, elapsed, success)
+        },
         onFailure = { route, failure -> onRouteFailure(route.wireName, failure) }) { route ->
         when (route) {
             CapsuleVideoRoute.ANDROID_VR -> CapsuleDirectVideoExtractor.resolveVr(videoId, quality, muxedOnly)
