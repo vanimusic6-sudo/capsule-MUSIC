@@ -15,11 +15,17 @@ internal enum class CapsuleVideoRoute(val wireName: String, val budgetMs: Long) 
 /** A healthy route gets first turn; failed routes remain bounded fallbacks. */
 internal class CapsuleVideoRouteHealth(private val clock: () -> Long = System::nanoTime) {
     private val retryAfter = mutableMapOf<CapsuleVideoRoute, Long>()
-    @Synchronized fun order(failedBackend: String?): List<CapsuleVideoRoute> {
+    @Synchronized fun order(
+        failedBackend: String?,
+        preferredBackend: String? = null,
+    ): List<CapsuleVideoRoute> {
         val now = clock()
         return CapsuleVideoRoute.entries.sortedWith(compareBy<CapsuleVideoRoute>
             { it.wireName == failedBackend }
-            .thenBy { (retryAfter[it] ?: 0L) > now })
+            .thenBy { (retryAfter[it] ?: 0L) > now }
+            // Last known working backend can start immediately on the next
+            // video; a currently failed/cold route must not be promoted.
+            .thenBy { preferredBackend != null && it.wireName != preferredBackend })
     }
     @Synchronized fun success(route: CapsuleVideoRoute) { retryAfter.remove(route) }
     @Synchronized fun failure(route: CapsuleVideoRoute) {
@@ -35,6 +41,7 @@ internal class CapsuleVideoRoutesException(
 internal fun resolveVideoRoutes(
     failedBackend: String? = null,
     health: CapsuleVideoRouteHealth? = null,
+    preferredBackend: String? = null,
     onAttempt: (CapsuleVideoRoute, Long, Boolean) -> Unit = { _, _, _ -> },
     onFailure: (CapsuleVideoRoute, Throwable) -> Unit = { _, _ -> },
     resolve: (CapsuleVideoRoute) -> CapsuleNewPipeResolved?,
@@ -43,7 +50,10 @@ internal fun resolveVideoRoutes(
     // A URL can resolve successfully yet fail at the CDN/decoder. Remember
     // this feedback across the next clips, not just this one recovery call.
     CapsuleVideoRoute.entries.firstOrNull { it.wireName == failedBackend }?.let { health?.failure(it) }
-    val routes = health?.order(failedBackend) ?: CapsuleVideoRoute.entries.sortedBy { it.wireName == failedBackend }
+    val routes = health?.order(failedBackend, preferredBackend)
+        ?: CapsuleVideoRoute.entries.sortedWith(compareBy<CapsuleVideoRoute>
+            { it.wireName == failedBackend }
+            .thenBy { preferredBackend != null && it.wireName != preferredBackend })
     for (route in routes) {
         VideoExtractionRequests.checkActive()
         val started = System.nanoTime()
