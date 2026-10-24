@@ -72,6 +72,7 @@ internal object ExperimentalRanking {
             ExperimentalCatalog.Source.ARCHIVE to (maximum * 0.22).toInt().coerceAtLeast(1),
             ExperimentalCatalog.Source.CCMIXTER to (maximum * 0.22).toInt().coerceAtLeast(1),
             ExperimentalCatalog.Source.RADIO to (maximum * 0.12).toInt().coerceAtLeast(1),
+            ExperimentalCatalog.Source.FUNKWHALE to (maximum * 0.22).toInt().coerceAtLeast(1),
         )
         val counts = mutableMapOf<ExperimentalCatalog.Source, Int>()
         val artists = mutableMapOf<String, Int>()

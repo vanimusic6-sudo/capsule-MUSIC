@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object ExperimentalCatalog {
     enum class Source(val title: String) {
-        AUDIUS("Audius"), OPENVERSE("Openverse"), ARCHIVE("Internet Archive"), CCMIXTER("ccMixter"), RADIO("Open Radio")
+        AUDIUS("Audius"), OPENVERSE("Openverse"), ARCHIVE("Internet Archive"), CCMIXTER("ccMixter"), RADIO("Open Radio"), FUNKWHALE("Funkwhale")
     }
 
     data class Track(
@@ -95,6 +95,7 @@ object ExperimentalCatalog {
                 Source.ARCHIVE -> InternetArchiveMusic.artist(trimmed)
                 Source.CCMIXTER -> CCMixterMusic.search(trimmed)
                 Source.RADIO -> RadioBrowserMusic.search(trimmed)
+                Source.FUNKWHALE -> FunkwhaleMusic.search(trimmed)
             }
         }
     }
@@ -122,6 +123,7 @@ object ExperimentalCatalog {
             Source.ARCHIVE -> discoveryFromHome(HomeFeedSource.ARCHIVE, tasteArtists)
             Source.CCMIXTER -> discoveryFromHome(HomeFeedSource.CCMIXTER, tasteArtists)
             Source.RADIO -> emptyList()
+            Source.FUNKWHALE -> discoveryFromHome(HomeFeedSource.FUNKWHALE, tasteArtists)
         }
 
     /**
@@ -147,6 +149,7 @@ object ExperimentalCatalog {
                 HomeFeedSource.ARCHIVE -> InternetArchiveMusic.browse(HomeLaneKind.DISCOVER)
                 HomeFeedSource.CCMIXTER -> CCMixterMusic.browse(HomeLaneKind.DISCOVER)
                 HomeFeedSource.RADIO -> RadioBrowserMusic.browse(HomeLaneKind.TRENDING)
+                HomeFeedSource.FUNKWHALE -> FunkwhaleMusic.browse(HomeLaneKind.DISCOVER)
                 else -> {
                     val themes = when (source) {
                         HomeFeedSource.JAMENDO -> listOf(
@@ -204,6 +207,25 @@ object ExperimentalCatalog {
                     val filtered = tracks.filter { seen.add(it.mediaId) }.take(14)
                     if (filtered.isNotEmpty()) {
                         val lane = HomeLane(source, HomeLaneKind.DISCOVER, filtered, category.titleRes)
+                        lanes.add(lane)
+                        onLane(lane)
+                    }
+                }
+                return@withContext lanes
+            }
+            if (source == HomeFeedSource.FUNKWHALE) {
+                val seen = mutableSetOf<String>()
+                val lanes = mutableListOf<HomeLane>()
+                for (kind in listOf(HomeLaneKind.NEW, HomeLaneKind.DISCOVER, HomeLaneKind.FOR_YOU)) {
+                    val matches = safely {
+                        cached("funkwhale:" + kind.name + ":" +
+                            java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay() +
+                            ":" + tasteArtists.take(1).joinToString("|")) {
+                            FunkwhaleMusic.browse(kind, tasteArtists.firstOrNull())
+                        }
+                    }.filter { it.playable && seen.add(it.mediaId) }.take(14)
+                    if (matches.isNotEmpty()) {
+                        val lane = HomeLane(source, kind, matches)
                         lanes.add(lane)
                         onLane(lane)
                     }
@@ -378,6 +400,7 @@ object ExperimentalCatalog {
                     Source.ARCHIVE -> InternetArchiveMusic.artist(artist)
                     Source.CCMIXTER -> CCMixterMusic.byArtist(id ?: artist)
                     Source.RADIO -> emptyList()
+                    Source.FUNKWHALE -> FunkwhaleMusic.artist(id, artist)
                 }
             }
         }

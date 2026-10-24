@@ -24,7 +24,8 @@ class HomeFeedSourceTest {
         val sources = HomeFeedSource.parse(HomeFeedSource.DEFAULT)
         assertTrue(HomeFeedSource.YOUTUBE in sources)
         assertEquals(setOf(HomeFeedSource.YOUTUBE), sources)
-        assertEquals(listOf(HomeFeedSource.YOUTUBE, HomeFeedSource.AUDIUS, HomeFeedSource.RADIO),
+        assertEquals(listOf(HomeFeedSource.YOUTUBE, HomeFeedSource.AUDIUS, HomeFeedSource.RADIO,
+                HomeFeedSource.JAMENDO, HomeFeedSource.FUNKWHALE),
             HomeFeedSource.selectable)
         assertEquals(HomeFeedSource.selectable.toSet(),
             HomeFeedSource.parse(HomeFeedSource.encode(HomeFeedSource.entries.toSet())))
@@ -32,7 +33,8 @@ class HomeFeedSourceTest {
 
     @Test fun deprecatedProviderChoicesCannotReappearAfterUpgrade() {
         assertEquals(setOf(HomeFeedSource.YOUTUBE), HomeFeedSource.parse("archive,freesound,wikimedia_audio"))
-        assertEquals(setOf(HomeFeedSource.AUDIUS), HomeFeedSource.parse("audius,ccmixter,jamendo"))
+        assertEquals(setOf(HomeFeedSource.AUDIUS, HomeFeedSource.JAMENDO),
+            HomeFeedSource.parse("audius,ccmixter,jamendo"))
     }
 
     @Test fun unrecognizedOrEmptyPreferenceKeepsHomeAccessible() {

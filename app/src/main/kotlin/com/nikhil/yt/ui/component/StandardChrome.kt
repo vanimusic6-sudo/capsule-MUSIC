@@ -8,6 +8,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -99,29 +100,40 @@ fun StandardHeaderTitle(
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier.size(40.dp).clip(CircleShape)
+            modifier = Modifier.size(width = 62.dp, height = 40.dp)
+                .clip(RoundedCornerShape(19.dp))
                 .clickable(interactionSource = sourceInteraction, indication = null,
                     role = Role.Button, onClick = onAccountClick)
                 .graphicsLayer { scaleX = sourceScale; scaleY = sourceScale }
                 .semantics { contentDescription = sourceContentDescription ?: accountLabel },
         ) {
             Box(
-                Modifier.size(30.dp).clip(CircleShape)
+                Modifier.size(width = 58.dp, height = 34.dp)
+                    .clip(RoundedCornerShape(17.dp))
                     .background(sourceAccents.firstOrNull() ?: Color(0xFFBC3606))
                     .then(if (sourceAccents.size > 1)
-                        Modifier.background(Brush.sweepGradient(sourceAccents + sourceAccents.first()))
+                        Modifier.background(Brush.horizontalGradient(sourceAccents))
                         else Modifier),
                 contentAlignment = Alignment.Center,
             ) {
                 if (sourceIcon != null) {
                     // An original combined-catalog glyph is much clearer than
                     // intersecting three tiny badges at 30dp.
-                    Icon(
-                        painter = painterResource(sourceIcon),
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(if (sourceIcons.size > 1) 20.dp else 22.dp),
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Icon(
+                            painter = painterResource(sourceIcon),
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(if (sourceIcons.size > 1) 20.dp else 21.dp),
+                        )
+                        Icon(
+                            painter = painterResource(R.drawable.drop_down),
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.9f),
+                            modifier = Modifier.size(17.dp),
+                        )
+                    }
                 } else if (guestIcon != null) {
                     Icon(
                         painter = painterResource(guestIcon),

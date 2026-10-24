@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.Spacer
@@ -238,8 +239,8 @@ fun CapsulePinnedHeader(route: String) {
                 DropdownMenu(
                     expanded = chooserOpen,
                     onDismissRequest = { chooserOpen = false },
-                    modifier = Modifier.clip(RoundedCornerShape(24.dp))
-                        .animateContentSize(spring(dampingRatio = 0.86f, stiffness = 480f)),
+                    modifier = Modifier.width(284.dp).clip(RoundedCornerShape(32.dp))
+                        .animateContentSize(spring(dampingRatio = 0.9f, stiffness = 460f)),
                     containerColor = StandardChrome.panel,
                     tonalElevation = 0.dp,
                     shadowElevation = 8.dp,
@@ -296,7 +297,7 @@ fun CapsulePinnedHeader(route: String) {
                             leadingIcon = {
                                 Box(
                                     modifier = Modifier.size(30.dp).background(
-                                        source.accent, androidx.compose.foundation.shape.CircleShape,
+                                        source.accent, RoundedCornerShape(12.dp),
                                     ),
                                     contentAlignment = Alignment.Center,
                                 ) {
