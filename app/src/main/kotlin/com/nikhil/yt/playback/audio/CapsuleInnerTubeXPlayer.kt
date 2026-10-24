@@ -100,6 +100,10 @@ object CapsuleInnerTubeXPlayer {
         scheduler.effectivePriority(mediaId, fallback)
     private val prewarmScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val streamClientFailures = ConcurrentHashMap<String, FailedStreamClients>()
+    private val downloadStreamClientFailures = ConcurrentHashMap<String, FailedStreamClients>()
+    private val downloadBotGate = DownloadBotCheckGate()
+
+    fun downloadCooldownRemainingMs(): Long = downloadBotGate.remainingMs()
 
     @Volatile
     private var currentBundle: ExtractionBundle? = null
@@ -135,51 +139,24 @@ object CapsuleInnerTubeXPlayer {
         }
     }
 
-    /**
-     * Warm the actual InnerTubeX extractor and the reusable, visitor-bound BotGuard session
-     * independently of the selected playback profile. No /player calls, stream URLs or
-     * additional client fallbacks are issued here. A foreground VISIONOS resolve only
-     * contends for the short bundle lookup, never for the WebView/remote prewarm itself.
-     */
+    /** Warm only the reusable minter. Never acquire the stream resolver or fetch a dummy video. */
     suspend fun prewarmWebRemixForStartup(): Boolean = webStartupWarmupMutex.withLock {
         val snapshot = sessionSnapshot()
         if (isStartupWebReady()) return@withLock true
         val auth = snapshot.auth
         val configuredTokens = !auth.poTokenPlayer.isNullOrBlank() && !auth.poTokenGvs.isNullOrBlank()
         val visitorData = auth.visitorData?.trim()?.takeIf { it.isNotBlank() && it != "null" }
-        if (!configuredTokens && visitorData == null) {
-            Timber.tag(TAG).d("Web startup prewarm postponed: visitor data is not available")
+        if (!configuredTokens && (visitorData == null || !poTokenGenerator.mayPrepare(visitorData))) {
             return@withLock false
         }
-
-        if (!configuredTokens && !poTokenGenerator.mayPrepare(visitorData.orEmpty())) return@withLock false
-
-        // SharedPrewarm owns the extractor task after start(), outside resolveMutex.
-        val extractorPreparation = resolveMutex.withLock { bundle().prewarm.start() }
-        val tokenReady = configuredTokens || (
-            visitorData != null && poTokenGenerator.prewarm(visitorData)
-        )
-        // Cipher/config preloading is best-effort, not a prerequisite for using
-        // an already minted token. Publish readiness before waiting for it.
+        val tokenReady = configuredTokens || poTokenGenerator.prewarm(requireNotNull(visitorData))
         val ready = tokenReady && snapshot == sessionSnapshot()
         if (ready) {
             warmedWebSession = snapshot
             startupWebReady = true
             Timber.tag(TAG).i("Web token ready; restoring configured AUDIO client order")
         }
-        val extractorReady = try {
-            extractorPreparation.await().isSuccess
-        } catch (cancelled: CancellationException) {
-            currentCoroutineContext().ensureActive()
-            false
-        }
-        if (!ready || !extractorReady) {
-            Timber.tag(TAG).w(
-                "Web startup preparation tokenReady=%s extractorReady=%s sameSession=%s",
-                tokenReady, extractorReady, snapshot == sessionSnapshot(),
-            )
-        }
-        ready && snapshot == sessionSnapshot()
+        ready
     }
 
     private val poTokenGenerator: PoTokenGenerator by lazy {
@@ -312,13 +289,10 @@ object CapsuleInnerTubeXPlayer {
         priority: AudioResolvePriority = AudioResolvePriority.PLAYBACK,
     ): Result<PlaybackData> =
         try {
-            val configuredOrder = clientOrder.ifEmpty { AudioClientOrder.legacyOrder(streamPolicy) }
-            val webReady = isStartupWebReady()
-            if (!webReady && AudioWebStartupClientPolicy.requiresToken(configuredOrder.first())) {
-                requestStartupWarmup()
-            }
-            val effectiveOrder = AudioWebStartupClientPolicy.effectiveOrder(configuredOrder, webReady)
-            val primaryProfileId = effectiveOrder.first()
+            val download = priority == AudioResolvePriority.DOWNLOAD
+            if (download) downloadBotGate.check()
+            val configuredOrder = if (download) AudioDownloadClientPolicy.order
+                else clientOrder.ifEmpty { AudioClientOrder.legacyOrder(streamPolicy) }
             val baseHints =
                 ContentHints(
                     isUploaded = playlistId == "MLPT" || playlistId?.contains("MLPT") == true,
@@ -343,12 +317,18 @@ object CapsuleInnerTubeXPlayer {
                 )
 
             val resolvedQuality = audioQuality.toInnerTubeX(connectivityManager)
-            val effectivePriority = { scheduler.effectivePriority(videoId, priority) }
+            val effectivePriority = { if (download) AudioResolvePriority.DOWNLOAD else scheduler.effectivePriority(videoId, priority) }
             val stream =
                 scheduler.run(videoId, priority) {
                     resolveMutex.withLock {
                         withTimeout(ENGINE_RESOLVE_TIMEOUT_MS) {
                             CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
+                            if (download) downloadBotGate.check()
+                            // Decide after scheduling, using current readiness. A cold minter
+                            // starts in an independent job and is never awaited by Vision.
+                            val effectiveOrder = if (download) configuredOrder else
+                                AudioWebStartupClientPolicy.prepareOrder(configuredOrder, isStartupWebReady(), ::requestStartupWarmup)
+                            val primaryProfileId = effectiveOrder.first()
                             val extractionBundle = bundle()
                             Timber.tag(TAG).i(
                                 "Resolving audio id=%s priority=%s primaryProfile=%s",
@@ -364,6 +344,7 @@ object CapsuleInnerTubeXPlayer {
                                 primaryProfileId = primaryProfileId,
                                 preferredProfiles = effectiveOrder,
                                 priorityProvider = effectivePriority,
+                                download = download,
                             )
                         }
                     }
@@ -415,6 +396,7 @@ object CapsuleInnerTubeXPlayer {
         primaryProfileId: String,
         preferredProfiles: List<String>,
         priorityProvider: () -> AudioResolvePriority,
+        download: Boolean = false,
     ): ExtractedStream {
         var lastFailure: Exception? = null
         var botSignalAlreadySeen = CapsulePlaybackSafety.quarantinedProfileIds().isNotEmpty()
@@ -429,7 +411,7 @@ object CapsuleInnerTubeXPlayer {
             }
             val priorityBeforeAttempt = priorityProvider()
             val excludedBeforeAttempt =
-                CapsulePlaybackSafety.quarantinedProfileIds() + failedStreamClients(videoId)
+                CapsulePlaybackSafety.quarantinedProfileIds() + failedStreamClients(videoId, download = download)
             val plan =
                 CapsuleAudioFallbackPolicy.profilePlan(
                     primaryProfileId = primaryProfileId,
@@ -473,6 +455,7 @@ object CapsuleInnerTubeXPlayer {
                         videoId = videoId,
                         hints = baseHints.copy(playbackClientOverrideId = profileId),
                         audioQuality = audioQuality,
+                        download = download,
                     )
                 if (profileId != primaryProfileId) {
                     Timber.tag(TAG).i(
@@ -515,6 +498,12 @@ object CapsuleInnerTubeXPlayer {
                             preferredProfiles = preferredProfiles,
                         )
 
+                    if (download) {
+                        markStreamClientFailed(videoId, profileId, download = true)
+                        downloadBotGate.onChallenge()
+                        Timber.tag(TAG).w("Download challenge; queue cooling down, no identity rollover")
+                        throw DownloadBotCheckException(failure)
+                    }
                     CapsulePlaybackSafety.markProfileBotCheck(profileId)
                     markStreamClientFailed(videoId, profileId)
                     Timber.tag(TAG).w(
@@ -545,7 +534,7 @@ object CapsuleInnerTubeXPlayer {
 
                 val canFallback = CapsuleAudioFallbackPolicy.canFallbackAfter(kind)
                 if (canFallback) {
-                    markStreamClientFailed(videoId, profileId)
+                    markStreamClientFailed(videoId, profileId, download = download)
                 }
 
                 /*
@@ -582,14 +571,15 @@ object CapsuleInnerTubeXPlayer {
         videoId: String,
         hints: ContentHints,
         audioQuality: InnerTubeXAudioQuality,
+        download: Boolean = false,
     ): ExtractedStream {
         var sabrRollovers = 0
-        var excludedClients = failedStreamClients(videoId)
+        var excludedClients = failedStreamClients(videoId, download = download)
 
         while (true) {
             val extracted =
                 requireNotNull(
-                    extractionBundle.extractor.extract(
+                    (if (download) extractionBundle.downloadExtractor else extractionBundle.extractor).extract(
                         videoId = videoId,
                         hints = hints,
                         excludedClients = CapsuleAudioClientStrategy.exclusions(excludedClients),
@@ -624,8 +614,8 @@ object CapsuleInnerTubeXPlayer {
                 )
             }
 
-            markStreamClientFailed(videoId, sabrClient)
-            excludedClients = failedStreamClients(videoId)
+            markStreamClientFailed(videoId, sabrClient, download = download)
+            excludedClients = failedStreamClients(videoId, download = download)
             sabrRollovers += 1
             Timber.tag(TAG).w(
                 "Rejected SABR-only stream id=%s client=%s rollover=%d/%d",
@@ -641,16 +631,20 @@ object CapsuleInnerTubeXPlayer {
         videoId: String,
         clientName: String?,
         nowMs: Long = System.currentTimeMillis(),
+        download: Boolean = false,
     ) {
         val normalized = clientName?.substringBefore('@')?.trim()?.takeIf { it.isNotBlank() } ?: return
-        streamClientFailures.compute(videoId) { _, failures ->
+        val failuresByMedia = if (download) downloadStreamClientFailures else streamClientFailures
+        failuresByMedia.compute(videoId) { _, failures ->
             FailedStreamClients(
                 clientNames = failures?.clientNames.orEmpty() + normalized,
                 failedAtMs = nowMs,
             )
         }
-        Timber.tag(TAG).w("Per-song client rollover id=%s failedClient=%s", videoId, normalized)
+        Timber.tag(TAG).w("Per-song client rollover id=%s failedClient=%s download=%s", videoId, normalized, download)
     }
+
+    fun clearDownloadClientFailures(videoId: String) { downloadStreamClientFailures.remove(videoId) }
 
     fun clearTrackClientFailures(videoId: String) {
         streamClientFailures.remove(videoId)
@@ -658,27 +652,32 @@ object CapsuleInnerTubeXPlayer {
 
     fun clearStreamClientFailures() {
         streamClientFailures.clear()
+        downloadStreamClientFailures.clear()
     }
 
     fun clearPlaybackState() {
         cancelStartupWarmup()
         streamClientFailures.clear()
+        downloadStreamClientFailures.clear()
         networkGeneration.incrementAndGet()
     }
 
     fun onNetworkChanged() {
         cancelStartupWarmup()
         streamClientFailures.clear()
+        downloadStreamClientFailures.clear()
         networkGeneration.incrementAndGet()
     }
 
-    private fun failedStreamClients(
+    internal fun failedStreamClients(
         videoId: String,
         nowMs: Long = System.currentTimeMillis(),
+        download: Boolean = false,
     ): Set<String> {
-        val failures = streamClientFailures[videoId] ?: return emptySet()
+        val failuresByMedia = if (download) downloadStreamClientFailures else streamClientFailures
+        val failures = failuresByMedia[videoId] ?: return emptySet()
         if ((nowMs - failures.failedAtMs) !in 0 until STREAM_CLIENT_FAILURE_TTL_MS) {
-            streamClientFailures.remove(videoId, failures)
+            failuresByMedia.remove(videoId, failures)
             return emptySet()
         }
         return failures.clientNames
@@ -712,13 +711,12 @@ object CapsuleInnerTubeXPlayer {
                 }
             val remoteStore = RemotePlayerConfigStore(httpClient, configRepository, logger)
             val cipherService = YouTubeCipherService(httpClient, remoteStore, logger)
+            val configParser = DiagnosticYtConfigParser(
+                YtConfigParserImpl(httpClient, innerTube, remoteStore, logger).withEmbeddedConfigFallback(),
+            )
             val extractor =
                 InnerTubeExtractor(
-                    configParser =
-                        DiagnosticYtConfigParser(
-                            YtConfigParserImpl(httpClient, innerTube, remoteStore, logger)
-                                .withEmbeddedConfigFallback(),
-                        ),
+                    configParser = configParser,
                     cipherService = cipherService,
                     innerTube = innerTube,
                     fallbackStrategy = CapsuleAudioClientStrategy,
@@ -732,6 +730,12 @@ object CapsuleInnerTubeXPlayer {
                 innerTube = innerTube,
                 cipherService = cipherService,
                 extractor = extractor,
+                // A separate extractor/config cache with no token provider. It cannot
+                // mint, consume, invalidate or warm the foreground WEB token session.
+                downloadExtractor = InnerTubeExtractor(
+                    configParser = configParser, cipherService = cipherService, innerTube = innerTube,
+                    fallbackStrategy = CapsuleAudioClientStrategy, logger = logger,
+                ),
             ).also { currentBundle = it }
         }
     }
@@ -915,6 +919,7 @@ object CapsuleInnerTubeXPlayer {
         val innerTube: InnerTube,
         val cipherService: YouTubeCipherService,
         val extractor: InnerTubeExtractor,
+        val downloadExtractor: InnerTubeExtractor,
     ) {
         val prewarm = SharedPrewarm(prewarmScope) {
             val startedAt = System.nanoTime()

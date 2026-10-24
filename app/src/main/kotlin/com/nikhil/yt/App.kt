@@ -118,8 +118,8 @@ class App : Application(), SingletonImageLoader.Factory {
 
                 // Warm WEB_REMIX even when the selected AUDIO client is VISIONOS.
                 // The visitor observer below obtains missing visitorData and publishes it
-                // through DataStore; this collector then starts the one shared BotGuard/
-                // extractor prewarm for the new authenticated/anonymous session.
+                // through DataStore; this collector then starts only the shared BotGuard
+                // minter warmup; stream extraction never waits for it for the new authenticated/anonymous session.
                 if (!state.visitorData.isNullOrBlank() ||
                     (!state.poTokenPlayer.isNullOrBlank() && !state.poTokenGvs.isNullOrBlank())
                 ) {

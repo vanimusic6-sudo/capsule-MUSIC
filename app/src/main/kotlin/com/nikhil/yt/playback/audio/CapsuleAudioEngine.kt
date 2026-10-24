@@ -63,6 +63,25 @@ object CapsuleAudioEngine {
     suspend fun refreshAfterStreamRejection(): Boolean =
         CapsuleInnerTubeXPlayer.refreshAfterStreamRejection()
 
+    /** Dedicated download policy/extractor; foreground preferences and tokens are not consumed. */
+    suspend fun resolveDownload(
+        videoId: String,
+        audioQuality: AudioQuality,
+        connectivityManager: ConnectivityManager,
+    ): Result<PlaybackData> = resolveStream(
+        videoId = videoId, audioQuality = audioQuality, connectivityManager = connectivityManager,
+        clientOrder = AudioDownloadClientPolicy.order, priority = AudioResolvePriority.DOWNLOAD,
+    )
+
+    fun downloadCooldownRemainingMs(): Long = CapsuleInnerTubeXPlayer.downloadCooldownRemainingMs()
+
+    fun clearDownloadClientFailures(videoId: String) = CapsuleInnerTubeXPlayer.clearDownloadClientFailures(videoId)
+
+    fun markDownloadStreamClientFailed(videoId: String, clientKey: String?, httpStatusCode: Int?) {
+        CapsulePlaybackSafety.markHttpStatusFailure(httpStatusCode)
+        CapsuleInnerTubeXPlayer.markStreamClientFailed(videoId, clientKey, download = true)
+    }
+
     /**
      * Resolve normal AUDIO through the single maintained InnerTubeX extraction stack.
      *
@@ -71,6 +90,18 @@ object CapsuleAudioEngine {
      * in [playerResponseForPlayback] until older callers have been migrated.
      */
     suspend fun resolvePlayback(
+        videoId: String,
+        playlistId: String? = null,
+        audioQuality: AudioQuality,
+        connectivityManager: ConnectivityManager,
+        streamPolicy: AudioStreamPolicy = AudioStreamPolicy.VISIONOS,
+        clientOrder: List<String> = emptyList(),
+        priority: AudioResolvePriority = AudioResolvePriority.PLAYBACK,
+    ): Result<PlaybackData> = resolveStream(
+        videoId, playlistId, audioQuality, connectivityManager, streamPolicy, clientOrder, priority,
+    )
+
+    private suspend fun resolveStream(
         videoId: String,
         playlistId: String? = null,
         audioQuality: AudioQuality,
@@ -92,11 +123,8 @@ object CapsuleAudioEngine {
                 priority = priority,
             )
             .map { resolved ->
-                resolved.streamClient
-                    .substringBefore('@')
-                    .trim()
-                    .takeIf { it.isNotBlank() }
-                    ?.let { lastResolvedClientByVideoId[videoId] = it }
+                resolved.streamClient.takeIf { priority != AudioResolvePriority.DOWNLOAD && it.isNotBlank() }
+                    ?.let { client -> lastResolvedClientByVideoId[videoId] = client.substringBefore('@').trim() }
 
                 PlaybackData(
                     audioConfig = resolved.audioConfig,

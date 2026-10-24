@@ -26,20 +26,16 @@ import com.nikhil.yt.playback.audio.AudioChunkedDataSource
 import com.nikhil.yt.playback.audio.AudioDownloadUrlPolicy
 import com.nikhil.yt.playback.audio.AUDIO_CHUNK_BYTES
 import com.nikhil.yt.playback.audio.AudioPlaybackContext
-import com.nikhil.yt.playback.audio.AudioResolvePriority
 import com.nikhil.yt.playback.audio.ResolvingAudioDownloader
 import androidx.media3.exoplayer.offline.DownloadManager
 import androidx.media3.exoplayer.offline.DownloadNotificationHelper
-import com.nikhil.yt.constants.AudioClientOrder
-import com.nikhil.yt.constants.AudioClientOrderKey
-import com.nikhil.yt.utils.PreferenceStore
+import com.nikhil.yt.playback.audio.AudioDownloadClientPolicy
 import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
 import com.nikhil.yt.constants.AudioQuality
 import com.nikhil.yt.constants.AudioQualityKey
 import com.nikhil.yt.constants.AudioStreamPolicy
-import com.nikhil.yt.constants.AudioStreamPolicyKey
 import com.nikhil.yt.db.MusicDatabase
 import com.nikhil.yt.db.entities.FormatEntity
 import com.nikhil.yt.db.entities.SongEntity
@@ -82,17 +78,9 @@ constructor(
 ) {
     private val connectivityManager = context.getSystemService<ConnectivityManager>()!!
     private val audioQuality by enumPreference(context, AudioQualityKey, AudioQuality.AUTO)
-    private val audioStreamPolicy by enumPreference(
-        context,
-        AudioStreamPolicyKey,
-        AudioStreamPolicy.VISIONOS,
-    )
     private fun playbackContext() = AudioPlaybackContext(
-        audioQuality, audioStreamPolicy.normalizedForPlayback(), connectivityManager.isActiveNetworkMetered,
-        clientOrder = AudioClientOrder.resolve(
-            PreferenceStore.get(AudioClientOrderKey), audioStreamPolicy,
-            legacyPreferenceExplicit = PreferenceStore.get(AudioStreamPolicyKey) != null,
-        ),
+        audioQuality, AudioStreamPolicy.VISIONOS, connectivityManager.isActiveNetworkMetered,
+        clientOrder = AudioDownloadClientPolicy.order,
     )
 
     // Download pressure protection. This reacts to transport failures without
@@ -129,6 +117,7 @@ constructor(
                     val nowMs = System.currentTimeMillis()
                     waitMs = maxOf(
                         CapsulePlaybackSafety.remainingBlockMs(nowMs),
+                        CapsuleAudioEngine.downloadCooldownRemainingMs(),
                         (cooldownUntilMs - nowMs).coerceAtLeast(0L),
                     )
                     if (waitMs > 0L) delay(minOf(waitMs, DOWNLOAD_WAIT_SLICE_MS))
@@ -146,13 +135,10 @@ constructor(
             awaitDownloadResolveWindow()
             val selection = playbackContext()
             val result =
-                CapsuleAudioEngine.resolvePlayback(
+                CapsuleAudioEngine.resolveDownload(
                     videoId = mediaId,
                     audioQuality = selection.quality,
                     connectivityManager = connectivityManager,
-                    streamPolicy = selection.policy,
-                    clientOrder = selection.clientOrder,
-                    priority = AudioResolvePriority.DOWNLOAD,
                 )
 
             if (selection != playbackContext()) {
@@ -172,7 +158,7 @@ constructor(
             // A global 429/bot-check breaker is a queue pause, not a reason to
             // permanently fail the user's download. The next iteration waits at
             // the shared gate and retries only after the breaker becomes safe.
-            if (CapsulePlaybackSafety.remainingBlockMs() > 0L) {
+            if (CapsulePlaybackSafety.remainingBlockMs() > 0L || CapsuleAudioEngine.downloadCooldownRemainingMs() > 0L) {
                 registerThrottleSignal(failure)
                 return@repeat
             }
@@ -192,7 +178,7 @@ constructor(
                         .take(12).filterIsInstance<InvalidResponseCodeException>()
                         .firstOrNull()?.responseCode
                     if (status == 403 || status == 410) {
-                        CapsuleAudioEngine.markStreamClientFailed(request.id, playback.streamClient, status)
+                        CapsuleAudioEngine.markDownloadStreamClientFailed(request.id, playback.streamClient, status)
                         true
                     } else {
                         if (status == 429) CapsuleAudioEngine.markRateLimitedFailure()
@@ -303,6 +289,7 @@ constructor(
             addListener(
                 object : DownloadManager.Listener {
                     override fun onDownloadRemoved(downloadManager: DownloadManager, download: Download) {
+                        CapsuleAudioEngine.clearDownloadClientFailures(download.request.id)
                         if (!initialIndexLoaded) removedWhileLoading.add(download.request.id)
                         downloads.update { it - download.request.id }
                         database.query {
@@ -320,8 +307,11 @@ constructor(
                         finalException: Exception?,
                     ) {
                         removedWhileLoading.remove(download.request.id)
+                        if (download.state == Download.STATE_QUEUED &&
+                            downloads.value[download.request.id]?.state == Download.STATE_FAILED) {
+                            CapsuleAudioEngine.clearDownloadClientFailures(download.request.id)
+                        }
                         if (download.state == Download.STATE_FAILED) {
-                            CapsuleAudioEngine.invalidateCachedStreamUrls(download.request.id)
                             if (
                                 finalException != null &&
                                 CapsuleAudioEngine.isRateLimitedException(finalException)
