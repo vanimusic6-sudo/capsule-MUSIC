@@ -223,7 +223,8 @@ object ExperimentalCatalog {
                             ":" + tasteArtists.take(1).joinToString("|")) {
                             FunkwhaleMusic.browse(kind, tasteArtists.firstOrNull())
                         }
-                    }.filter { it.playable && seen.add(it.mediaId) }.take(14)
+                    }.filter { seen.add(it.mediaId) }
+                        .sortedByDescending { it.playable }.take(14)
                     if (matches.isNotEmpty()) {
                         val lane = HomeLane(source, kind, matches)
                         lanes.add(lane)

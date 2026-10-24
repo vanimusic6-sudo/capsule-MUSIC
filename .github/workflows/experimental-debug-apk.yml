@@ -206,6 +206,7 @@ jobs:
         run: |
           gradle :app:testUniversalDebugUnitTest \
             --tests 'com.nikhil.yt.discovery.HomeFeedSourceTest' \
+            --tests 'com.nikhil.yt.discovery.FunkwhaleParserTest' \
             --tests 'com.nikhil.yt.discovery.ExperimentalRankingTest' \
             --tests 'com.nikhil.yt.discovery.DownloadIsolationRegressionTest' \
             --tests 'com.nikhil.yt.playback.AuthWallDetectorTest' \
