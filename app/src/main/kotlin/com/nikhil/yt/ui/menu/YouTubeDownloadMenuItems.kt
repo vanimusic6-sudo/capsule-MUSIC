@@ -8,6 +8,10 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -16,7 +20,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadService
 import com.nikhil.yt.R
-import com.nikhil.yt.playback.COLLECTION_STOP_REASON_USER
 import com.nikhil.yt.playback.ExoDownloadService
 import com.nikhil.yt.playback.canPrioritize
 import com.nikhil.yt.playback.enqueuePriorityAudioDownload
@@ -34,9 +37,10 @@ internal fun YouTubeDownloadMenuItems(
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
+    var confirmPartialDelete by remember(mediaId) { mutableStateOf(false) }
 
     @Composable
-    fun Action(label: Int, icon: Int, destructive: Boolean = false, click: () -> Unit) {
+    fun Action(label: Int, icon: Int, destructive: Boolean = false, closeMenu: Boolean = true, click: () -> Unit) {
         ListItem(
             headlineContent = {
                 Text(stringResource(label),
@@ -50,7 +54,7 @@ internal fun YouTubeDownloadMenuItems(
             },
             modifier = Modifier.clickable {
                 click()
-                onDismiss()
+                if (closeMenu) onDismiss()
             },
             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         )
@@ -72,11 +76,9 @@ internal fun YouTubeDownloadMenuItems(
                             context, ExoDownloadService::class.java, entry.request, false)
                     }
                 } else {
-                    Action(R.string.cancel_button, R.drawable.close) {
-                        // Pausing does not destroy downloaded ranges.
-                        DownloadService.sendSetStopReason(
-                            context, ExoDownloadService::class.java,
-                            mediaId, COLLECTION_STOP_REASON_USER, false)
+                    Action(R.string.capsule_stop_and_delete_download, R.drawable.close,
+                        destructive = true, closeMenu = false) {
+                        confirmPartialDelete = true
                     }
                 }
             }
@@ -94,5 +96,16 @@ internal fun YouTubeDownloadMenuItems(
                 }
             }
         }
+    }
+    if (confirmPartialDelete) {
+        DownloadRemovalDialog(
+            onDismiss = { confirmPartialDelete = false },
+            onConfirm = {
+                confirmPartialDelete = false
+                DownloadService.sendRemoveDownload(
+                    context, ExoDownloadService::class.java, mediaId, false)
+                onDismiss()
+            },
+        )
     }
 }

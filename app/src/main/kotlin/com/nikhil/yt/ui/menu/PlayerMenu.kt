@@ -181,6 +181,17 @@ fun PlayerMenu(
     // Independent recordings live in MediaStore, not in the Media3 download
     // index. WorkManager's transient status is not enough after process death.
     val savedFilesRevision by ExperimentalDownload.savedFilesRevision.collectAsState()
+    var confirmAudiusCancellation by remember(mediaMetadata.id) { mutableStateOf(false) }
+    if (confirmAudiusCancellation) {
+        DownloadRemovalDialog(
+            onDismiss = { confirmAudiusCancellation = false },
+            onConfirm = {
+                confirmAudiusCancellation = false
+                ExperimentalDownload.cancelInProgress(context, mediaMetadata.id)
+                onDismiss()
+            },
+        )
+    }
     val savedAudiusFile by produceState<ExperimentalDownload.SavedAudio?>(
         initialValue = null, mediaMetadata.id, savedFilesRevision,
     ) {
@@ -657,7 +668,7 @@ fun PlayerMenu(
                         headlineContent = {
                             Text(stringResource(when {
                                 saved != null -> R.string.remove_download
-                                downloading -> R.string.downloading
+                                downloading -> R.string.capsule_stop_and_delete_download
                                 !canDownloadAudius -> R.string.capsule_audius_not_downloadable
                                 else -> R.string.action_download
                             }), color = if (saved != null) MaterialTheme.colorScheme.error
@@ -673,8 +684,10 @@ fun PlayerMenu(
                             )
                         },
                         modifier = Modifier.clickable(enabled = saved != null ||
-                            (canDownloadAudius && !downloading)) {
-                            if (saved != null) {
+                            downloading || canDownloadAudius) {
+                            if (downloading) {
+                                confirmAudiusCancellation = true
+                            } else if (saved != null) {
                                 coroutineScope.launch {
                                     if (ExperimentalDownload.deleteSaved(context, saved)) {
                                         com.nikhil.yt.discovery.OfflineAudioQueue

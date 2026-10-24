@@ -274,4 +274,6 @@
     <string name="restore_step_restoring_file">Восстановление %1$s</string>
     <string name="restore_step_restarting">Перезапуск приложения</string>
     <string name="capsule_artist_subscribed">Вы подписаны</string>
+    <string name="capsule_stop_and_delete_download">Остановить и удалить</string>
+    <string name="capsule_stop_and_delete_download_message">Остановить загрузку и удалить уже скачанное аудио? Это действие нельзя отменить.</string>
 </resources>

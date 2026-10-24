@@ -272,10 +272,9 @@ fun LocalPlaylistScreen(
             onDismiss = { showRemoveDownloadDialog = false },
             content = {
                 Text(
-                    text = stringResource(
-                        R.string.remove_download_playlist_confirm,
-                        playlist?.playlist!!.name
-                    ),
+                    text = if (downloadState == Download.STATE_DOWNLOADING)
+                        stringResource(R.string.capsule_stop_and_delete_download_message)
+                    else stringResource(R.string.remove_download_playlist_confirm, playlist?.playlist!!.name),
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.padding(horizontal = 18.dp),
                 )
@@ -290,11 +289,7 @@ fun LocalPlaylistScreen(
                 TextButton(
                     onClick = {
                         showRemoveDownloadDialog = false
-                        if (!editable) {
-                            database.transaction {
-                                playlist?.id?.let { clearPlaylist(it) }
-                            }
-                        }
+                        // Removal concerns audio files only, never playlist membership.
                         songs.forEach { song ->
                             DownloadService.sendRemoveDownload(
                                 context,
@@ -485,7 +480,7 @@ fun LocalPlaylistScreen(
                                                 showRemoveDownloadDialog = true
                                             }
                                             Download.STATE_DOWNLOADING -> {
-                                                com.nikhil.yt.playback.stopCollectionDownloads(downloadUtil.downloadManager, songs.map { it.song.id })
+                                                showRemoveDownloadDialog = true
                                             }
                                             else -> {
                                                 songs.forEach { song ->

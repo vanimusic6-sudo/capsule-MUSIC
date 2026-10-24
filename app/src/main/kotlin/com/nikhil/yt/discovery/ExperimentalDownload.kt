@@ -228,6 +228,14 @@ object ExperimentalDownload {
         }
     }
 
+    fun cancelInProgress(context: Context, mediaId: String) {
+        if (_states.value[mediaId] != State.DOWNLOADING) return
+        // Worker owns pending MediaStore bytes and removes them on cancellation.
+        androidx.work.WorkManager.getInstance(context.applicationContext)
+            .cancelUniqueWork("capsule-independent:$mediaId")
+        updateStatus(mediaId, State.FAILED)
+    }
+
     fun enqueue(context: Context, track: ExperimentalCatalog.Track): Boolean {
         val address = track.downloadUrl ?: return false
         val uri = Uri.parse(address)

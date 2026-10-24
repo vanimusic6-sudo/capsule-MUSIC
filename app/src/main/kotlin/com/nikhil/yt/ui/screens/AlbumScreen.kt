@@ -152,6 +152,19 @@ fun AlbumScreen(
 
     val downloadUtil = LocalDownloadUtil.current
     val downloadState = rememberCollectionDownloadState(albumWithSongs?.songs.orEmpty().map { it.id })
+    var confirmActiveDownloadRemoval by remember { mutableStateOf(false) }
+    if (confirmActiveDownloadRemoval) {
+        com.nikhil.yt.ui.menu.DownloadRemovalDialog(
+            onDismiss = { confirmActiveDownloadRemoval = false },
+            onConfirm = {
+                confirmActiveDownloadRemoval = false
+                albumWithSongs?.songs.orEmpty().forEach { song ->
+                    DownloadService.sendRemoveDownload(
+                        context, ExoDownloadService::class.java, song.id, false)
+                }
+            },
+        )
+    }
 
 
     // State for LazyColumn to track scroll
@@ -277,7 +290,7 @@ fun AlbumScreen(
                                                     }
                                                 }
                                                 Download.STATE_DOWNLOADING -> {
-                                                    com.nikhil.yt.playback.stopCollectionDownloads(downloadUtil.downloadManager, albumWithSongs.songs.map { it.id })
+                                                    confirmActiveDownloadRemoval = true
                                                 }
                                                 else -> {
                                                     albumWithSongs.songs.forEach { song ->
