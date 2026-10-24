@@ -72,7 +72,9 @@ fun AddToPlaylistDialog(
     val isLoggedIn = remember(innerTubeCookie) { "SAPISID" in parseCookieString(innerTubeCookie) }
     val playlists = remember(allPlaylists, allowSyncing) {
         playlistsForAddToPlaylist(allPlaylists)
-            .filter { allowSyncing || it.playlist.isEditable }
+            .filter {
+                allowSyncing || (it.playlist.isEditable && it.playlist.browseId == null)
+            }
             .asReversed()
     }
     var showCreatePlaylistDialog by rememberSaveable { mutableStateOf(false) }
