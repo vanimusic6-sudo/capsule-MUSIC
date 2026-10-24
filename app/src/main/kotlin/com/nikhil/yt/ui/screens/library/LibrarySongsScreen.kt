@@ -339,8 +339,10 @@ fun LibrarySongsScreen(
                                                                 ?.let { delete(it) }
                                                         }
                                                         externalSaved = externalSaved.filterNot { it.id == file.id }
-                                                if (mediaMetadata?.id == OfflineAudioQueue.PREFIX + file.id)
+                                                if (mediaMetadata?.id == OfflineAudioQueue.PREFIX + file.id) {
                                                     playerConnection.player.stop()
+                                                    playerConnection.player.clearMediaItems()
+                                                }
                                             } else android.widget.Toast.makeText(context,
                                                 R.string.capsule_download_remove_failed,
                                                 android.widget.Toast.LENGTH_SHORT).show()
@@ -371,8 +373,10 @@ fun LibrarySongsScreen(
                                                                 ?.let { delete(it) }
                                                         }
                                                         externalSaved = externalSaved.filterNot { it.id == file.id }
-                                                if (mediaMetadata?.id == OfflineAudioQueue.PREFIX + file.id)
+                                                if (mediaMetadata?.id == OfflineAudioQueue.PREFIX + file.id) {
                                                     playerConnection.player.stop()
+                                                    playerConnection.player.clearMediaItems()
+                                                }
                                             } else android.widget.Toast.makeText(context,
                                                 R.string.capsule_download_remove_failed,
                                                 android.widget.Toast.LENGTH_SHORT).show()
