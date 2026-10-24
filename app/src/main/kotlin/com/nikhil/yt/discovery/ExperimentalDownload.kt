@@ -11,6 +11,8 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import java.io.File
+import java.io.FileOutputStream
 import android.widget.Toast
 import com.nikhil.yt.R
 import com.nikhil.yt.innertube.YouTube
@@ -51,9 +53,22 @@ object ExperimentalDownload {
      * Works after process death and across upgrades; only reads our own
      * Downloads/Capsule Music folder, not the user's other downloads.
      */
-    data class SavedAudio(val id: Long, val uri: Uri, val name: String, val bytes: Long) {
-        val title: String get() = name.substringBeforeLast('.').substringAfter(" - ", name)
-        val artist: String get() = name.substringBefore(" - ", "Audius")
+    private const val METADATA_STORE = "capsule_independent_downloads_v1"
+
+    data class SavedAudio(
+        val id: Long,
+        val uri: Uri,
+        val name: String,
+        val bytes: Long,
+        val savedTitle: String? = null,
+        val savedArtist: String? = null,
+        val artwork: String? = null,
+    ) {
+        // Older releases saved only a filename; those recordings remain playable.
+        val title: String get() = savedTitle?.takeIf(String::isNotBlank)
+            ?: name.substringBeforeLast('.').substringAfter(" - ", name.substringBeforeLast('.'))
+        val artist: String get() = savedArtist?.takeIf(String::isNotBlank)
+            ?: name.substringBefore(" - ", "Audius")
     }
 
     suspend fun savedFiles(context: Context): List<SavedAudio> = withContext(Dispatchers.IO) {
@@ -69,6 +84,7 @@ object ExperimentalDownload {
                 "${MediaStore.MediaColumns.IS_PENDING} = 0"
             val folder = Environment.DIRECTORY_DOWNLOADS + "/Capsule Music/%"
             val result = mutableListOf<SavedAudio>()
+            val metadata = context.getSharedPreferences(METADATA_STORE, Context.MODE_PRIVATE)
             context.contentResolver.query(
                 uri, projection, where, arrayOf(folder),
                 "${MediaStore.MediaColumns.DATE_ADDED} DESC",
@@ -83,7 +99,15 @@ object ExperimentalDownload {
                     val id = cursor.getLong(idColumn)
                     val bytes = cursor.getLong(sizeColumn)
                     if (bytes <= 0L) continue
-                    result.add(SavedAudio(id, ContentUris.withAppendedId(uri, id), name, bytes))
+                    result.add(SavedAudio(
+                        id = id,
+                        uri = ContentUris.withAppendedId(uri, id),
+                        name = name,
+                        bytes = bytes,
+                        savedTitle = metadata.getString("title:$id", null),
+                        savedArtist = metadata.getString("artist:$id", null),
+                        artwork = metadata.getString("art:$id", null),
+                    ))
                 }
             }
             result
@@ -173,9 +197,20 @@ object ExperimentalDownload {
                             }
                         }
                     } finally { conn.disconnect() }
-                    provider.update(safeUri, ContentValues().apply {
+                    val published = provider.update(safeUri, ContentValues().apply {
                         put(MediaStore.MediaColumns.IS_PENDING, 0)
                     }, null, null)
+                    if (published < 1) throw IllegalStateException("Cannot publish downloaded recording")
+                    // Persist real track credits. Cover images are saved privately for offline use;
+                    // a failed image request must never invalidate a successful music download.
+                    val savedId = ContentUris.parseId(safeUri)
+                    val image = saveArtwork(app, savedId, track)
+                    app.getSharedPreferences(METADATA_STORE, Context.MODE_PRIVATE).edit()
+                        .putString("title:$savedId", track.title)
+                        .putString("artist:$savedId", track.artist)
+                        .putString("art:$savedId", image ?: (track.artworkLarge ?: track.artwork)
+                            ?.takeIf { it.startsWith("https://") })
+                        .apply()
                     updateStatus(track.mediaId, State.COMPLETED)
                     toast(app, R.string.capsule_discovery_download_completed)
                 } catch (e: Exception) {
@@ -188,6 +223,45 @@ object ExperimentalDownload {
         }
         toast(app, R.string.capsule_discovery_download_started)
         return true
+    }
+
+    private fun saveArtwork(context: Context, id: Long, track: ExperimentalCatalog.Track): String? {
+        val url = (track.artworkLarge ?: track.artwork)
+            ?.takeIf { it.startsWith("https://") } ?: return null
+        val destination = File(File(context.filesDir, "external-artwork").apply { mkdirs() }, "$id.img")
+        var connection: HttpURLConnection? = null
+        return try {
+            val address = URL(url)
+            val proxy = YouTube.streamProxy
+            connection = (if (proxy == null) address.openConnection() else address.openConnection(proxy))
+                as HttpURLConnection
+            connection.connectTimeout = 4_000
+            connection.readTimeout = 4_000
+            connection.setRequestProperty("Accept", "image/*")
+            if (connection.responseCode !in 200..299 ||
+                !connection.contentType.orEmpty().lowercase().startsWith("image/") ||
+                connection.contentLengthLong > 1_500_000L
+            ) return null
+            connection.inputStream.use { input ->
+                FileOutputStream(destination).use { out ->
+                    val buffer = ByteArray(16 * 1024)
+                    var total = 0L
+                    while (true) {
+                        val n = input.read(buffer)
+                        if (n < 0) break
+                        total += n
+                        if (total > 1_500_000L) throw IllegalStateException("Artwork too large")
+                        out.write(buffer, 0, n)
+                    }
+                    if (total == 0L) throw IllegalStateException("Empty artwork")
+                }
+            }
+            Uri.fromFile(destination).toString()
+        } catch (e: Exception) {
+            destination.delete()
+            Timber.tag("CapsuleDownload").d(e, "Artwork unavailable for offline recording")
+            null
+        } finally { connection?.disconnect() }
     }
 
     private fun openDownload(url: String): HttpURLConnection {
