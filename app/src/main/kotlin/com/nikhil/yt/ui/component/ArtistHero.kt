@@ -143,7 +143,7 @@ internal fun ArtistHero(
         title = {},
         actions = {
             val stackActions = LocalDensity.current.fontScale > 1.3f
-            val subscribeLabel = stringResource(if (displayedSubscribed) R.string.subscribed else R.string.subscribe)
+            val subscribeLabel = stringResource(if (displayedSubscribed) R.string.capsule_artist_subscribed else R.string.subscribe)
             if (stackActions) {
                 CapsuleArtistAction(
                     icon = R.drawable.add,
@@ -206,16 +206,16 @@ private fun CapsuleArtistAction(
     selected: Boolean = false,
     subscribeState: Boolean? = null,
 ) {
-    val containerColor by androidx.compose.animation.animateColorAsState(
-        (if (selected) StandardChrome.selected else StandardChrome.panel).copy(alpha = 0.94f),
-        androidx.compose.animation.core.tween(300), label = "subscription-surface",
-    )
+    // For subscribing, change only the text: no icon morph, label crossfade,
+    // size animation or surface tween. Keep the existing Capsule button layout.
+    val containerColor = (if (selected && subscribeState == null)
+        StandardChrome.selected else StandardChrome.panel).copy(alpha = 0.94f)
     Button(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier.heightIn(min = 48.dp),
         shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, StandardChrome.muted.copy(alpha = if (selected) 0.30f else 0.16f)),
+        border = BorderStroke(1.dp, StandardChrome.muted.copy(alpha = if (selected && subscribeState == null) 0.30f else 0.16f)),
         colors = ButtonDefaults.buttonColors(
             containerColor = containerColor,
             contentColor = StandardChrome.text,
@@ -224,21 +224,12 @@ private fun CapsuleArtistAction(
         ),
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
     ) {
-        if (subscribeState != null) {
-            CapsuleSubscribeIcon(
-                subscribed = subscribeState,
-                tint = LocalContentColor.current,
-                modifier = Modifier.size(19.dp),
-            )
-        } else {
+        if (subscribeState == null) {
             Icon(painterResource(icon), null, Modifier.size(19.dp))
+            Spacer(Modifier.width(8.dp))
         }
-        Spacer(Modifier.width(8.dp))
-        if (subscribeState != null) {
-            CapsuleSubscribeLabel(subscribeState, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-        } else {
-            Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold,
-                maxLines = 2, overflow = TextOverflow.Ellipsis)
-        }
+        Text(label, style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold, maxLines = 2,
+            overflow = TextOverflow.Ellipsis)
     }
 }

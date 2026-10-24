@@ -273,4 +273,5 @@
     <string name="restore_step_restoring_settings">Восстановление настроек</string>
     <string name="restore_step_restoring_file">Восстановление %1$s</string>
     <string name="restore_step_restarting">Перезапуск приложения</string>
+    <string name="capsule_artist_subscribed">Вы подписаны</string>
 </resources>

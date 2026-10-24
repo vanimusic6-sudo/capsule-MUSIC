@@ -14,4 +14,13 @@ class ArtistScreenDesignTest {
         org.junit.Assert.assertEquals(1f, com.nikhil.yt.ui.screens.artist.artistArtworkFade(1, 0, 1000, 200), 0f)
     }
 
+    @Test fun pinnedToolbarBecomesOpaqueBeforeArtworkCompletelyDisappears() {
+        // This is deliberately offset from the portrait fade, not a late boolean step.
+        val values = (0..100).map { com.nikhil.yt.ui.component.artistToolbarSurfaceAlpha(it / 100f) }
+        org.junit.Assert.assertEquals(0f, values.first(), 0.0001f)
+        org.junit.Assert.assertEquals(1f, values.last(), 0.0001f)
+        org.junit.Assert.assertEquals(1f, values[80], 0.0001f)
+        org.junit.Assert.assertTrue(values.zipWithNext().all { (a, b) -> b >= a && b-a <= 0.04f })
+    }
+
 }

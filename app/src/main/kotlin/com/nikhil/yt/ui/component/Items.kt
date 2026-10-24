@@ -241,10 +241,11 @@ fun GridItem(
 
         title()
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // Metadata reserves two lines; the explicit E belongs to the FIRST
+        // line, not the vertical centre of the reserved two-line subtitle.
+        Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
             badges()
-
-            subtitle()
+            Box(Modifier.weight(1f)) { subtitle() }
         }
     }
 }

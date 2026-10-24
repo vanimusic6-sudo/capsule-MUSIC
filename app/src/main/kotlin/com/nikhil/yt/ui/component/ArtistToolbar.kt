@@ -23,6 +23,12 @@ import com.nikhil.yt.R
 
 internal val ArtistToolbarCompactHeight = 64.dp
 
+/** Continuous cover-to-solid transition: fully opaque at 80% of artwork fade. */
+internal fun artistToolbarSurfaceAlpha(artworkFade: Float): Float {
+    val t = ((artworkFade.coerceIn(0f, 1f) - 0.12f) / 0.68f).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
+}
+
 /** Bare artwork controls at the reference height; their 48 dp touch targets are retained. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,10 +45,10 @@ internal fun ArtistToolbar(
 ) {
     val fade = artworkFade.coerceIn(0f, 1f)
     val foreground = lerp(Color.White, StandardChrome.text, fade)
-    // The portrait already fades into StandardChrome.background beneath the
-    // pinned bar. A separate tint double-darkens intermediate frames; a
-    // threshold tint flashes at the last frame. Let the ONE shared canvas
-    // supply the colour throughout scrolling, even after the photo is gone.
+    // Fade the background in WHILE the fading portrait still fills the toolbar
+    // area, reaching full opacity BEFORE scrolling track rows move underneath.
+    // No boolean 'fully scrolled' switch and no frame-clock animation.
+    val toolbarSurface = StandardChrome.background.copy(alpha = artistToolbarSurfaceAlpha(fade))
     val buttonColors = IconButtonDefaults.iconButtonColors(
         containerColor = Color.Transparent,
         contentColor = foreground,
@@ -97,8 +103,8 @@ internal fun ArtistToolbar(
         },
         colors =
             TopAppBarDefaults.topAppBarColors(
-                containerColor = Color.Transparent,
-                scrolledContainerColor = Color.Transparent,
+                containerColor = toolbarSurface,
+                scrolledContainerColor = toolbarSurface,
                 navigationIconContentColor = foreground,
                 actionIconContentColor = foreground,
                 titleContentColor = foreground,

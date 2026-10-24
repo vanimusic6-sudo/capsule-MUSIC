@@ -9,7 +9,6 @@
 package com.nikhil.yt.ui.player
 
 import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
-import com.nikhil.yt.ui.component.CapsuleSubscribeIcon
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import com.nikhil.yt.ui.component.CapsuleFavoriteColors
 import android.os.SystemClock
@@ -94,7 +93,6 @@ import com.nikhil.yt.constants.MiniPlayerBackgroundStyleKey
 import com.nikhil.yt.constants.ReleaseAppearanceDefaults
 import com.nikhil.yt.constants.SwipeSensitivityKey
 import com.nikhil.yt.constants.SwipeThumbnailKey
-import com.nikhil.yt.db.entities.ArtistEntity
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.models.artistCreditLine
 import com.nikhil.yt.together.TogetherRole
@@ -643,25 +641,6 @@ fun CapsuleMiniPlayer(
                     Modifier.width(8.dp),
                 )
 
-                mediaMetadata
-                    ?.artists
-                    ?.firstOrNull()
-                    ?.id
-                    ?.let { artistId ->
-                        CapsuleSubscribeButton(
-                            artistId =
-                                artistId,
-                            metadata =
-                                mediaMetadata!!,
-                            standardStyle = standardStyle,
-                            interactionEnabled = foregroundInteractive,
-                        )
-
-                        Spacer(
-                            Modifier.width(4.dp),
-                        )
-                    }
-
                 CapsuleFavoriteButton(
                     liked =
                         currentSong
@@ -1041,107 +1020,6 @@ private fun CapsuleMiniSongInfo(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun CapsuleSubscribeButton(
-    artistId: String,
-    metadata: MediaMetadata,
-    standardStyle: Boolean = false,
-    interactionEnabled: Boolean = true,
-) {
-    val database =
-        LocalDatabase.current
-
-    val libraryArtist by
-        database
-            .artist(artistId)
-            .collectAsState(
-                initial = null,
-            )
-
-    val isSubscribed =
-        libraryArtist
-            ?.artist
-            ?.bookmarkedAt !=
-            null
-
-    val subscribeLabel =
-        stringResource(if (isSubscribed) R.string.subscribed else R.string.subscribe)
-    // Plus and check share the adjacent heart's neutral contour tint.
-    val subscribeTint = LocalContentColor.current.copy(alpha = 0.72f)
-
-    Box(
-        contentAlignment =
-            Alignment.Center,
-        modifier =
-            Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .border(
-                    width = if (standardStyle) 0.dp else 1.dp,
-                    color = if (standardStyle) Color.Transparent else
-                        if (isSubscribed) {
-                            CapsuleMiniPrimary
-                                .copy(
-                                    alpha =
-                                        0.5f,
-                                )
-                        } else {
-                            CapsuleMiniOutline
-                                .copy(
-                                    alpha =
-                                        0.3f,
-                                )
-                        },
-                    shape =
-                        CircleShape,
-                )
-                .background(
-                    color = if (standardStyle) Color.Transparent else
-                        if (isSubscribed) {
-                            CapsuleMiniPrimary
-                                .copy(
-                                    alpha =
-                                        0.1f,
-                                )
-                        } else {
-                            Color.Transparent
-                        },
-                    shape =
-                        CircleShape,
-                )
-                .semantics { contentDescription = subscribeLabel }
-                .clickable(enabled = interactionEnabled) {
-                    val artistInfo =
-                        metadata.artists.firstOrNull { it.id == artistId }
-                            ?: metadata.artists.firstOrNull()
-                            ?: return@clickable
-                    val artist =
-                        libraryArtist?.artist
-                            ?: ArtistEntity(
-                                id = artistId,
-                                name = artistInfo.name,
-                                channelId = null,
-                                thumbnailUrl = artistInfo.thumbnailUrl,
-                            )
-                    database.toggleArtistSubscribed(
-                        artist = artist,
-                    )
-                },
-    ) {
-        CapsuleSubscribeIcon(
-            subscribed = isSubscribed,
-            tint = subscribeTint,
-            modifier = Modifier.size(if (standardStyle) 26.dp else 20.dp),
-            glyphScale = 1.45f,
-            // Keep the plus and check optically balanced with the adjacent heart.
-            plusSpanScale = 0.70f,
-            crossSpanScale = 0.99f,
-            strokeScale = 0.78f,
-            flattenAlpha = true,
-        )
     }
 }
 
