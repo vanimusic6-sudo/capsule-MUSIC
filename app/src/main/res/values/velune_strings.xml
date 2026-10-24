@@ -287,7 +287,7 @@
     <string name="restore_step_restoring_settings">Restoring settings</string>
     <string name="restore_step_restoring_file">Restoring %1$s</string>
     <string name="restore_step_restarting">Restarting app</string>
-    <string name="capsule_artist_subscribed">You're subscribed</string>
+    <string name="capsule_artist_subscribed">You\'re subscribed</string>
     <string name="capsule_stop_and_delete_download">Stop and delete</string>
     <string name="capsule_stop_and_delete_download_message">Stop the download and delete the audio already saved? This cannot be undone.</string>
 </resources>
