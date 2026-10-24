@@ -54,7 +54,9 @@ if (localPropertiesFile.exists()) {
 
 android {
     namespace = "com.nikhil.yt"
-    compileSdk = 37
+    compileSdk {
+        version = release(37) { minorApiLevel = 1 }
+    }
 
     defaultConfig {
         applicationId = "com.nikhil.yt"
@@ -223,6 +225,7 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling-preview:${libs.versions.compose.get()}")
     debugImplementation(libs.compose.ui.tooling)
     implementation(libs.compose.animation)
+    implementation(libs.compose.animation.core)
     implementation(libs.compose.reorderable)
 
     implementation(libs.viewmodel)
@@ -282,8 +285,8 @@ dependencies {
 
     implementation(libs.timber)
     testImplementation(libs.junit)
-    testImplementation("androidx.compose.ui:ui-test-junit4:${libs.versions.compose.get()}")
-    debugImplementation("androidx.compose.ui:ui-test-manifest:${libs.versions.compose.get()}")
+    testImplementation("androidx.compose.ui:ui-test-junit4:${libs.versions.composeUi.get()}")
+    debugImplementation("androidx.compose.ui:ui-test-manifest:${libs.versions.composeUi.get()}")
     testImplementation("org.robolectric:robolectric:4.16")
     testImplementation(libs.coroutines.test)
     testImplementation(libs.ktor.client.mock)

@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -44,7 +43,7 @@ class BackRepeatGuardTest {
 
     private fun showSettingsStack(withGuard: Boolean) {
         compose.setContent {
-            MaterialTheme {
+            NavigationTestTheme {
                 controller = rememberNavController()
                 Scaffold { padding ->
                     Box(Modifier.fillMaxSize()) {

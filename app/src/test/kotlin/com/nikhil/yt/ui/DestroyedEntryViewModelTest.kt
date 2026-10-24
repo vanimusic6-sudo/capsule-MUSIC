@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -59,7 +58,7 @@ class DestroyedEntryViewModelTest {
 
     private fun showTabs() {
         compose.setContent {
-            MaterialTheme {
+            NavigationTestTheme {
                 controller = rememberNavController()
                 tabs = rememberMainTabNavigator(controller)
                 NavHost(

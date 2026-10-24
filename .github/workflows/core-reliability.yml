@@ -27,12 +27,20 @@ jobs:
           gradle-version: '9.5.0'
       - name: Prepare locale metadata
         run: echo 'unqualifiedResLocale=en-US' > app/src/main/res/resources.properties
+      - name: Install compile SDK
+        run: sdkmanager 'platforms;android-37.1'
       - name: Core, download, cache and cancellation regressions
         run: >-
           gradle :app:testUniversalDebugUnitTest
           --tests 'com.nikhil.yt.playback.*'
           --tests 'com.nikhil.yt.discovery.*'
           --tests 'com.nikhil.yt.constants.AudioClientOrderTest'
+          --tests 'com.nikhil.yt.ui.SeekableTransitionNaNTest'
+          --tests 'com.nikhil.yt.CrashReportTest'
+          --tests 'com.nikhil.yt.ui.MainTabNavigatorTest'
+          --tests 'com.nikhil.yt.ui.BackRepeatGuardTest'
+          --tests 'com.nikhil.yt.ui.LocalNavBackStackEntryTest'
+          --tests 'com.nikhil.yt.ui.DestroyedEntryViewModelTest'
           --stacktrace --no-daemon --max-workers=2
       - name: Extractor regression tests
         run: gradle :innertube:test --stacktrace --no-daemon --max-workers=2

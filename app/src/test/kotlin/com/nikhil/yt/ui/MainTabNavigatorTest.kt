@@ -63,7 +63,7 @@ class MainTabNavigatorTest {
 
     private fun showNavigation(start: String = "home") {
         compose.setContent {
-            MaterialTheme {
+            NavigationTestTheme {
                 controller = rememberNavController()
                 tabs = rememberMainTabNavigator(controller)
                 val entry by controller.currentBackStackEntryAsState()
@@ -137,7 +137,7 @@ class MainTabNavigatorTest {
 
     @Test fun aBurstOfTapsSettlesOnTheLastRequestedTabWithoutStackingEntries() {
         showNavigation()
-        selectBurst("history", "library", "stats", "home", "library")
+        selectBurst("search", "library", "search", "home", "library")
         assertSettled("library")
         // popUpTo(start) + launchSingleTop keeps the stack flat no matter how fast the burst was.
         assertEquals(listOf("home", "library"), backStackRoutes())
@@ -147,11 +147,11 @@ class MainTabNavigatorTest {
 
     @Test fun reselectingTheCurrentTabReportsAReselectionInsteadOfNavigating() {
         showNavigation()
-        select("history")
-        assertSettled("history")
-        select("history")
-        assertSettled("history")
-        assertEquals(listOf("home", "history"), visited)
+        select("search")
+        assertSettled("search")
+        select("search")
+        assertSettled("search")
+        assertEquals(listOf("home", "search"), visited)
         assertEquals(1, reselected)
     }
 
@@ -165,7 +165,7 @@ class MainTabNavigatorTest {
 
     @Test fun backDuringABurstOfTabSwitchesStillSettles() {
         showNavigation()
-        selectBurst("history", "library")
+        selectBurst("search", "library")
         back()
         assertSettled("home")
         assertFalse(controller.currentBackStack.value.any { it.destination.route == "library" })
@@ -173,24 +173,24 @@ class MainTabNavigatorTest {
 
     @Test fun backAfterOpeningANestedScreenReturnsToASettledTab() {
         showNavigation()
-        select("history")
+        select("search")
         compose.runOnIdle { controller.navigate("details") }
         compose.waitForIdle()
         compose.onNodeWithTag("details").assertIsDisplayed()
         back()
-        assertSettled("history")
+        assertSettled("search")
     }
 
     @Test fun tabStateSurvivesRoundTripsWhenLibraryIsTheStartDestination() {
         showNavigation(start = "library")
-        select("history")
-        assertSettled("history")
-        compose.onNodeWithText("history:0").performClick()
+        select("search")
+        assertSettled("search")
+        compose.onNodeWithText("search:0").performClick()
         select("home")
         assertSettled("home")
-        select("history")
-        assertSettled("history")
-        compose.onNodeWithText("history:1").assertIsDisplayed()
+        select("search")
+        assertSettled("search")
+        compose.onNodeWithText("search:1").assertIsDisplayed()
         back()
         assertSettled("library")
     }

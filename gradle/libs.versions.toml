@@ -3,6 +3,11 @@ androidGradlePlugin = "9.3.1"
 annotation = "1.9.1"
 kotlin = "2.4.10"
 compose = "1.12.1"
+# Official SeekableTransitionState NaN fix (b/555294641). AndroidX aligns UI transitively.
+# Foundation and Material keep their existing versions; no app motion specs change.
+composeAnimation = "1.13.0-beta02"
+composeRuntime = "1.13.0-beta02"
+composeUi = "1.13.0-beta02"
 lifecycle = "2.10.0"
 material3 = "1.5.0-alpha23"
 media3 = "1.9.2"
@@ -52,12 +57,13 @@ hilt-navigation = { module = "androidx.hilt:hilt-navigation-compose", version.re
 datastore = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
 work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "workManager" }
 
-compose-runtime = { module = "androidx.compose.runtime:runtime", version.ref = "compose" }
+compose-runtime = { module = "androidx.compose.runtime:runtime", version.ref = "composeRuntime" }
 compose-foundation = { module = "androidx.compose.foundation:foundation", version.ref = "compose" }
-compose-ui = { module = "androidx.compose.ui:ui", version.ref = "compose" }
-compose-ui-util = { module = "androidx.compose.ui:ui-util", version.ref = "compose" }
-compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling", version.ref = "compose" }
-compose-animation = { module = "androidx.compose.animation:animation-graphics", version.ref = "compose" }
+compose-ui = { module = "androidx.compose.ui:ui", version.ref = "composeUi" }
+compose-ui-util = { module = "androidx.compose.ui:ui-util", version.ref = "composeUi" }
+compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling", version.ref = "composeUi" }
+compose-animation = { module = "androidx.compose.animation:animation-graphics", version.ref = "composeAnimation" }
+compose-animation-core = { module = "androidx.compose.animation:animation-core", version.ref = "composeAnimation" }
 compose-reorderable = { module = "sh.calvin.reorderable:reorderable", version.ref = "composeReorderable" }
 
 squigglyslider = { module = "me.saket.squigglyslider:squigglyslider", version.ref = "squigglyslider" }

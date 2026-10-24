@@ -82,6 +82,9 @@ jobs:
         with:
           gradle-version: "9.5.0"
 
+      - name: Install compile SDK
+        run: sdkmanager 'platforms;android-37.1'
+
       - name: Restore release keystore
         shell: bash
         run: |

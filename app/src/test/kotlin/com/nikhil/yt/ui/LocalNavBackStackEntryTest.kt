@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.Lifecycle
@@ -40,7 +39,7 @@ class LocalNavBackStackEntryTest {
 
     private fun showGraph() {
         compose.setContent {
-            MaterialTheme {
+            NavigationTestTheme {
                 controller = rememberNavController()
                 NavHost(controller, startDestination = "first", modifier = Modifier.fillMaxSize()) {
                     listOf("first", "second", "third").forEach { route ->

@@ -354,7 +354,7 @@ private fun KeyValueRow(
     }
 }
 
-private fun buildCrashReport(
+internal fun buildCrashReport(
     context: android.content.Context,
     timestampText: String,
     stack: String,
@@ -372,12 +372,13 @@ private fun buildCrashReport(
     }.getOrDefault("")
 
     val header = buildString {
-        appendLine("Velune crash report")
+        appendLine("Capsule crash report")
         if (timestampText.isNotBlank()) appendLine("Time: $timestampText")
         if (versionName.isNotBlank() || versionCode.isNotBlank()) {
             appendLine("App: $versionName ($versionCode)")
         }
         appendLine("Package: $packageName")
+        appendLine("Build: ${BuildConfig.GIT_COMMIT} ${BuildConfig.BUILD_TYPE} ${BuildConfig.ARCHITECTURE}")
     }
 
     val deviceBlock = buildString {
