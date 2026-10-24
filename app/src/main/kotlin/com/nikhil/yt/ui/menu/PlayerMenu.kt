@@ -166,6 +166,7 @@ fun PlayerMenu(
         .collectAsState(initial = null)
     val isExternalCatalog = mediaMetadata.id.startsWith("capsule-open:")
     val isAudius = mediaMetadata.id.startsWith("capsule-open:audius:")
+    val isOfflineAudio = mediaMetadata.id.startsWith("capsule-open:offline:")
     val isRadio = mediaMetadata.id.startsWith("capsule-open:radio:")
     val originalAudiusTrack = remember(mediaMetadata.id) {
         ExperimentalCatalog.playingTrack(mediaMetadata.id)
@@ -593,8 +594,46 @@ fun PlayerMenu(
                 Spacer(modifier = Modifier.height(12.dp))
             }
         }
-        if (!isExternalCatalog || isAudius) item(key = "download", contentType = "menu-section") {
-            if (isAudius) {
+        if (!isExternalCatalog || isAudius || isOfflineAudio) item(key = "download", contentType = "menu-section") {
+            if (isOfflineAudio) {
+                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                    ListItem(
+                        headlineContent = {
+                            Text(stringResource(R.string.remove_download),
+                                color = MaterialTheme.colorScheme.error)
+                        },
+                        leadingContent = {
+                            Icon(painterResource(R.drawable.offline), contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error)
+                        },
+                        modifier = Modifier.clickable {
+                            coroutineScope.launch {
+                                val match = ExperimentalDownload.savedFiles(context)
+                                    .firstOrNull {
+                                        mediaMetadata.id ==
+                                            com.nikhil.yt.discovery.OfflineAudioQueue.PREFIX + it.id
+                                    }
+                                val removed = match != null &&
+                                    ExperimentalDownload.deleteSaved(context, match)
+                                if (removed) {
+                                    database.withTransaction {
+                                        getSongById(mediaMetadata.id)?.song?.let { delete(it) }
+                                    }
+                                    if (playerConnection.player.currentMediaItem?.mediaId == mediaMetadata.id) {
+                                        playerConnection.player.stop()
+                                        playerConnection.player.clearMediaItems()
+                                    }
+                                    onDismiss()
+                                } else {
+                                    Toast.makeText(context, R.string.capsule_download_remove_failed,
+                                        Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                }
+            } else if (isAudius) {
                 MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                     ListItem(
                         headlineContent = {
