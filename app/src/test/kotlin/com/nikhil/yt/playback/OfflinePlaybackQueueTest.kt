@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -68,6 +69,26 @@ class OfflinePlaybackQueueTest {
             assertEquals(listOf("a", "b"), ids(player)); assertFalse(player.playWhenReady)
             assertEquals("b", player.currentMediaItem?.mediaId)
         } finally { scope.cancel(); player.release() }
+    }
+    @Test fun reconnectionDuringLocalChecksCompletesTheChosenQueueOnce() = runBlocking {
+        val player = ExoPlayer.Builder(RuntimeEnvironment.getApplication()).setMediaSourceFactory(
+            androidx.media3.exoplayer.source.DefaultMediaSourceFactory(RuntimeEnvironment.getApplication())
+                .setDataSourceFactory(androidx.media3.datasource.DataSource.Factory {
+                    androidx.media3.datasource.ByteArrayDataSource(byteArrayOf(0))
+                })).build()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+        val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val resume = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val queue = OfflinePlaybackQueue(player, scope) {
+            entered.complete(Unit); runBlocking { resume.await() }; emptyList()
+        }
+        val items = listOf(item("a"), item("b"))
+        try {
+            val selecting = launch { queue.replaceOffline(items, 1, 500L, false) }
+            entered.await(); queue.connectivityChanged(true); resume.complete(Unit); selecting.join()
+            assertEquals(listOf("a", "b"), ids(player)); assertEquals("b", player.currentMediaItem?.mediaId)
+            assertFalse(player.playWhenReady); assertEquals(500L, player.currentPosition)
+        } finally { resume.complete(Unit); scope.cancel(); player.release() }
     }
     @Test fun queueEditsRetainHiddenMembersAndRepeatedSongOccurrences() {
         assertEquals(listOf("a", "x", "y", "c"), reconcileOfflineQueue(

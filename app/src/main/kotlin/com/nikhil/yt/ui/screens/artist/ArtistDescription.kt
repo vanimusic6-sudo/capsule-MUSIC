@@ -16,6 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -47,8 +48,10 @@ internal fun ArtistDescription(artistId: String, description: String, modifier: 
     val style = MaterialTheme.typography.bodyMedium
     Column(modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val text = measurer.measure(AnnotatedString(description), style = style,
-                constraints = Constraints(maxWidth = constraints.maxWidth))
+            val width = constraints.maxWidth
+            val text = remember(measurer, description, style, width) {
+                measurer.measure(AnnotatedString(description), style = style, constraints = Constraints(maxWidth = width))
+            }
             val fullHeight = with(density) { text.size.height.toDp() }
             val collapsedHeight = with(density) {
                 text.getLineBottom((text.lineCount - 1).coerceIn(0, 1)).toDp()

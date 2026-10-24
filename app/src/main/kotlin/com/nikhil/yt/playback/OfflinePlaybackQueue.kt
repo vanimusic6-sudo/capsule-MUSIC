@@ -19,6 +19,7 @@ internal class OfflinePlaybackQueue(
     private var projected = emptyList<MediaItem>()
     private var online = true
     private var applying = false
+    private var selecting = false
     private var revision = 0L
     private var checkJob: Job? = null
     private var currentCheckJob: Job? = null
@@ -36,11 +37,13 @@ internal class OfflinePlaybackQueue(
             ?: selectedOriginalIndex
     }
     fun clear() {
-        revision++; checkJob?.cancel(); currentCheckJob?.cancel(); original = null; projected = emptyList(); selectedOriginalIndex = 0
+        revision++; checkJob?.cancel(); currentCheckJob?.cancel(); selecting = false; original = null; projected = emptyList(); selectedOriginalIndex = 0
     }
     fun connectivityChanged(connected: Boolean) {
         if (connected == online) return
         online = connected
+        // The pending explicit selection owns its eventual start index/play state.
+        if (selecting) return
         if (connected) {
             revision++; checkJob?.cancel()
             original?.let { apply(it, selectedOriginalIndex) }
@@ -53,24 +56,29 @@ internal class OfflinePlaybackQueue(
     }
     /** New queue selection must not prepare even a preload item before local eligibility is known. */
     suspend fun replaceOffline(items: List<MediaItem>, index: Int, position: Long, play: Boolean) {
-        clear(); online = false; original = items; selectedOriginalIndex = index.coerceAtLeast(0)
+        clear(); online = false; selecting = true; original = items; selectedOriginalIndex = index.coerceAtLeast(0)
         val expected = ++revision
-        val eligible = withContext(Dispatchers.IO) { available(items) }
-        if (expected != revision || online) return
-        applying = true
         try {
-            projected = eligible
-            val eligibleSet = eligible.toSet()
-            val retained = items.indices.filter { items[it] in eligibleSet }
-            val selected = retained.firstOrNull { it >= index } ?: retained.firstOrNull()
-            val start = selected?.let(retained::indexOf) ?: 0
-            player.setMediaItems(eligible, start, if (selected == index) position else 0L)
-            if (eligible.isNotEmpty()) { player.prepare(); player.playWhenReady = play }
-            else player.playWhenReady = false
-        } finally { applying = false }
+            val eligible = withContext(Dispatchers.IO) { available(items) }
+            if (expected != revision) return
+            // Connectivity can recover during disk checks. Complete the same user selection once.
+            val desired = if (online) items else eligible
+            applying = true
+            try {
+                projected = desired
+                val eligibleSet = desired.toSet()
+                val retained = items.indices.filter { items[it] in eligibleSet }
+                val selected = retained.firstOrNull { it >= index } ?: retained.firstOrNull()
+                val start = selected?.let(retained::indexOf) ?: 0
+                player.setMediaItems(desired, start, if (selected == index) position else 0L)
+                if (desired.isNotEmpty()) { player.prepare(); player.playWhenReady = play }
+                else player.playWhenReady = false
+                if (online) original = null
+            } finally { applying = false }
+        } finally { if (expected == revision) selecting = false }
     }
     override fun onTimelineChanged(timeline: Timeline, reason: Int) {
-        if (online || applying || reason != Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) return
+        if (online || applying || selecting || reason != Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) return
         val current = items()
         if (current == projected) return
         // Reconcile explicit queue edits using occurrence matching, retaining hidden members.
@@ -79,7 +87,7 @@ internal class OfflinePlaybackQueue(
         refresh()
     }
     fun checkCurrent() {
-        if (online || original == null) return
+        if (online || selecting || original == null) return
         currentCheckJob?.cancel()
         val item = player.currentMediaItem ?: return
         val expected = revision
@@ -89,7 +97,7 @@ internal class OfflinePlaybackQueue(
         }
     }
     fun refresh() {
-        if (online || original == null) return
+        if (online || selecting || original == null) return
         checkJob?.cancel()
         selectedOriginalIndex = originalIndex(player.currentMediaItemIndex).coerceAtLeast(0)
         val expected = ++revision

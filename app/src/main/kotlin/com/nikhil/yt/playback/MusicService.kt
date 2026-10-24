@@ -2726,7 +2726,8 @@ class MusicService :
         autoAddedMediaIds.clear()
         offlinePlaybackQueue.clear()
         val selectingOffline = !connectivityObserver.isCurrentlyConnected()
-        if (!selectingOffline) queue.preloadItem?.let { preloadItem ->
+        val canPreload = !selectingOffline && !(dataStore.get(HideExplicitKey, false) && queue.preloadItem?.explicit == true)
+        if (canPreload) queue.preloadItem?.let { preloadItem ->
             if (preloadItem.id.startsWith(EXPERIMENTAL_MEDIA_PREFIX)) {
                 // No resolved HTTPS URL exists until the asynchronous queue has loaded.
                 // Never hand a "capsule-open:" placeholder URI to MediaSourceFactory.
@@ -2777,7 +2778,8 @@ class MusicService :
                 return@launch
             }
             val preload = queue.preloadItem
-            if (preload != null && !selectingOffline) {
+            if (preload != null && canPreload &&
+                initialStatus.items.getOrNull(initialStatus.mediaItemIndex)?.mediaId == preload.id) {
                 if (preload.id.startsWith(EXPERIMENTAL_MEDIA_PREFIX)) {
                     // A complete HTTPS queue is available immediately. No YouTube metadata
                     // resolving and no late third-party look-ahead mutation.

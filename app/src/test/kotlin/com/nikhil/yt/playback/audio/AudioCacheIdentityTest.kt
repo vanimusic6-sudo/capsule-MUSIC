@@ -194,6 +194,15 @@ class AudioCacheIdentityTest {
         assertTrue(kotlinx.coroutines.withTimeout(5000) { result.await() }.exceptionOrNull() is InterruptedException)
     }
 
+    @Test fun legacyFilesUseTheirKnownRoomLengthAndStillRequireRealBytes() {
+        val fixture = CacheFixture()
+        fixture.bytes["track"] = 100
+        assertFalse(AudioCacheIdentity.isComplete(fixture.cache, "track"))
+        assertTrue(AudioCacheIdentity.isComplete(fixture.cache, "track", legacyLength = 100))
+        fixture.files.getValue("track").delete()
+        assertFalse(AudioCacheIdentity.isComplete(fixture.cache, "track", legacyLength = 100))
+    }
+
     @Test fun completeIndexCannotHideAMissingOrTruncatedFile() {
         val fixture = CacheFixture()
         fixture.bytes["track"] = 100
@@ -202,6 +211,9 @@ class AudioCacheIdentityTest {
         val file = fixture.files.getValue("track")
         java.io.RandomAccessFile(file, "rw").use { it.setLength(20) }
         assertFalse(AudioCacheIdentity.isComplete(fixture.cache, "track"))
+        assertThrows(java.io.IOException::class.java) {
+            AudioCacheIdentity.requireCompleteDownload(fixture.cache, "track", 100)
+        }
         file.delete()
         assertFalse(AudioCacheIdentity.isComplete(fixture.cache, "track"))
     }

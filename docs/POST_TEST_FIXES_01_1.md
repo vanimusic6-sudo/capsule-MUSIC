@@ -34,7 +34,8 @@ Local baseline Gradle invocation failed before running tests: the distribution h
   state during refresh. Keys now identify the section/entity, independent of its current contents.
   The mixed discovery shelf was also reranked after each partial catalog arrival. It now publishes
   one completed provider batch; the ranking algorithm and its final recommendations are unchanged.
-  Common grid metadata reserves both subtitle lines. The swipe wrapper owns the caller's lazy
+  Common song/album/playlist grid metadata reserves both subtitle lines; shelf viewports use
+  typography-scaled height so large-font metadata is not clipped by the former fixed dp cap. The swipe wrapper owns the caller's lazy
   placement modifier instead of hiding it inside a child; intentional item animations remain.
   Deferred queue chunks are children of the queue load job and also check queue identity, so an
   old selection cannot append its songs to a newer queue after its delay. Explicit-content filtering
@@ -49,7 +50,7 @@ Local baseline Gradle invocation failed before running tests: the distribution h
 
 ## Verification scope
 
-CI results will be recorded after execution. Added real Media3 queue and offline timeline tests,
+Final run IDs, test totals and artifact verification are supplied in the task completion report. Added real Media3 queue and offline timeline tests,
 priority/fairness/metadata tests, shared permit cancellation tests, cache file disappearance tests,
 and Compose metadata geometry coverage. Existing playback, extractor, artist and crash tests remain
 in the focused workflow, together with Android lint, runtime verification and Universal Debug APK.
@@ -69,3 +70,25 @@ Second CI pass at `3be5d12`: main Android code compiled; unit-test compilation f
 Robolectric `getApplication<Application>()` type argument in the new restore/failure test. Corrected
 to the API's non-generic getter. Collection-menu cancellation was also brought onto the same
 stop/resume path as screen actions; explicit deletion of completed collections remains available.
+
+Third CI pass at `63e5e98`: focused tests and InnerTube tests passed; lint/build were still running
+when the final race/file-validation follow-up was prepared. The follow-up also tests reconnecting
+during disk eligibility checks and legacy cache entries whose length comes from Room. Final file
+completion now uses the same real-span validation as offline eligibility.
+
+## Legacy platform boundary
+
+The pre-existing independent-source fallback on Android 8–9 (SDK 26–28) still delegates to the OS
+DownloadManager. It cannot share an in-process permit held by Media3/WorkManager; claiming the
+new global two-transfer cap for that legacy path would be incorrect. Safely replacing its public
+Downloads persistence, permissions and process-death behavior requires a separate legacy migration
+and device validation. That fallback was retained rather than silently disabling approved-source
+saving or changing the destination of users' files. Media3 has a two-transfer cap on every supported
+SDK; the shared Media3/approved-source-worker cap applies on Android 10 and newer.
+
+Final follow-up scope: reconnect-during-disk-check completion is owned by the original user selection,
+with no duplicate prepare or lost start index. Complete-file validation is synchronized with cache
+span snapshots and is also required before a download may report success. Description text layout
+is remembered across height-animation frames. Preload is accepted only when it matches the selected
+retained queue item, including explicit-content filtering. Remaining pre-29 system-downloader
+limitations above are deliberately disclosed, not treated as tested or fixed.

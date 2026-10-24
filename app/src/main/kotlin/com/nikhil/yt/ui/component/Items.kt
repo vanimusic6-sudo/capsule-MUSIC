@@ -575,13 +575,7 @@ fun AlbumGridItem(
         )
     },
     subtitle = {
-        Text(
-            text = album.artists.joinToString { it.name },
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.secondary,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
+        GridSubtitle(album.artists.joinToString { it.name })
     },
     badges = badges,
     thumbnailContent = {
@@ -827,13 +821,7 @@ fun PlaylistGridItem(
                 )
             }
         }
-        Text(
-            text = subtitle,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.secondary,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
+        GridSubtitle(subtitle)
     },
     badges = badges,
     thumbnailContent = {
@@ -1761,4 +1749,14 @@ private fun PlaylistDownloadBadge(playlistId: String) {
 internal fun GridSubtitle(text: String) {
     Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.secondary,
         minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis)
+}
+
+/** Match reserved title/metadata lines to system font scale instead of clipping at a fixed dp height. */
+@Composable
+internal fun gridShelfHeight(minMetadataHeight: Dp = 0.dp): Dp {
+    val typography = MaterialTheme.typography
+    val metadataHeight = with(LocalDensity.current) {
+        typography.bodyLarge.lineHeight.toDp() + typography.bodyMedium.lineHeight.toDp() * 2
+    } + 30.dp // GridItem's vertical padding and artwork/text gap.
+    return GridThumbnailHeight + maxOf(metadataHeight, minMetadataHeight)
 }

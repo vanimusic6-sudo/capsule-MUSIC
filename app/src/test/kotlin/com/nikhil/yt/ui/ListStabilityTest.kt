@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import com.nikhil.yt.ui.component.gridShelfHeight
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
@@ -59,17 +61,21 @@ class ListStabilityTest {
                 val density = LocalDensity.current
                 CompositionLocalProvider(LocalDensity provides Density(density.density, 1.5f)) {
                     Column(Modifier.width(320.dp)) {
-                        GridItem(title = { Text("Track", maxLines = 1) },
+                        Box(Modifier.height(gridShelfHeight()).testTag("shelf")) {
+                        GridItem(title = { Text("Track", style = MaterialTheme.typography.bodyLarge, maxLines = 1) },
                             subtitle = { GridSubtitle(subtitle) },
                             badges = { if (downloading) VeluneLoader(size = 18.dp) },
                             thumbnailContent = { Box(Modifier.fillMaxSize()) },
                             modifier = Modifier.testTag("card"))
+                        }
                         Box(Modifier.width(100.dp).testTag("following"))
                     }
                 }
             }
         }
         val card = compose.onNodeWithTag("card").fetchSemanticsNode().boundsInRoot
+        val shelf = compose.onNodeWithTag("shelf").fetchSemanticsNode().boundsInRoot
+        assertTrue("Large-font metadata must fit inside the shelf", card.bottom <= shelf.bottom + 1f)
         val below = compose.onNodeWithTag("following").fetchSemanticsNode().boundsInRoot.top
         compose.runOnIdle { subtitle = "A much longer artist credit that wraps over two metadata lines"; downloading = true }
         assertEquals(card.height, compose.onNodeWithTag("card").fetchSemanticsNode().boundsInRoot.height, 1f)

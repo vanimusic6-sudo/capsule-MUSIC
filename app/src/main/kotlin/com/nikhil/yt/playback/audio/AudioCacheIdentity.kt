@@ -22,12 +22,13 @@ internal object AudioCacheIdentity {
     fun completeKey(cache: Cache, mediaId: String, legacyLength: Long? = null): String? =
         keys(cache, mediaId).firstOrNull { key -> isComplete(cache, key, legacyLength.takeIf { key == mediaId }) }
 
-    fun isComplete(cache: Cache, key: String, legacyLength: Long? = null): Boolean {
+    fun isComplete(cache: Cache, key: String, legacyLength: Long? = null): Boolean = synchronized(cache) {
         val length = ContentMetadata.getContentLength(cache.getContentMetadata(key))
-            .takeIf { it > 0 } ?: legacyLength?.takeIf { it > 0 } ?: return false
-        if (!cache.isCached(key, 0, length)) return false
-        // The index can outlive a file removed externally or truncated by storage failure.
-        return cache.getCachedSpans(key).filter { it.position < length }.all { span ->
+            .takeIf { it > 0 } ?: legacyLength?.takeIf { it > 0 } ?: return@synchronized false
+        if (!cache.isCached(key, 0, length)) return@synchronized false
+        // Keep span snapshots and file checks together: SimpleCache may rename a span when touched.
+        // Its index can also outlive a file removed externally or truncated by storage failure.
+        cache.getCachedSpans(key).filter { it.position < length }.all { span ->
             span.file?.let { it.isFile && it.length() >= span.length } == true
         }
     }
@@ -52,7 +53,7 @@ internal object AudioCacheIdentity {
         val actualLength = ContentMetadata.getContentLength(cache.getContentMetadata(mediaId))
         if (actualLength <= 0L ||
             (expectedLength != null && expectedLength > 0L && actualLength != expectedLength) ||
-            !cache.isCached(mediaId, 0, actualLength)
+            !isComplete(cache, mediaId)
         ) {
             // Do not let the next Media3 retry mistake a server-shortened length
             // for a complete file and take the offline fast path.

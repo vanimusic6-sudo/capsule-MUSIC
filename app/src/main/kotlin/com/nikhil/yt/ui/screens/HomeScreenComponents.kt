@@ -98,6 +98,7 @@ import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.playback.PlayerConnection
 import com.nikhil.yt.playback.queues.YouTubeQueue
+import com.nikhil.yt.ui.component.gridShelfHeight
 import com.nikhil.yt.ui.component.AlbumGridItem
 import com.nikhil.yt.ui.component.ArtistGridItem
 import com.nikhil.yt.ui.component.MenuState
@@ -541,7 +542,7 @@ fun AccountPlaylistsSection(
     
     LazyRow(
         contentPadding = PaddingValues(horizontal = 4.dp),
-        modifier = modifier.fillMaxWidth().height(GridThumbnailHeight + 104.dp),
+        modifier = modifier.fillMaxWidth().height(gridShelfHeight(104.dp)),
     ) {
         items(
             items = distinctPlaylists,
@@ -584,7 +585,7 @@ fun HomePageSectionContent(
         contentPadding = PaddingValues(horizontal = 4.dp),
         // Fix the viewport height: 1- vs 2-line subtitles must not remeasure the
         // entire LazyRow and move every section below it during horizontal swipes.
-        modifier = modifier.fillMaxWidth().height(GridThumbnailHeight + 88.dp),
+        modifier = modifier.fillMaxWidth().height(gridShelfHeight()),
     ) {
         items(
             items = section.items,
@@ -1157,7 +1158,7 @@ fun CommunityPlaylistsSection(
             userScrollEnabled = userScrollEnabled,
             contentPadding = PaddingValues(horizontal = 4.dp),
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth().height(GridThumbnailHeight + 104.dp),
+            modifier = Modifier.fillMaxWidth().height(gridShelfHeight(104.dp)),
         ) {
             items(
                 items = section.items,
