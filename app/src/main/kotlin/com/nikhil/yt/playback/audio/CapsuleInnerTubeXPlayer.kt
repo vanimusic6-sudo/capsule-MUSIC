@@ -418,7 +418,7 @@ object CapsuleInnerTubeXPlayer {
                     sabrRecoveryUntilMs.remove(videoId)
                     Timber.tag(TAG).i("Selected SABR audio id=%s profile=%s itag=%d",
                         videoId, profile, bootstrap.audioFormat.itag)
-                    return result
+                    return requireNotNull(result)
                 }
             }
             return null
