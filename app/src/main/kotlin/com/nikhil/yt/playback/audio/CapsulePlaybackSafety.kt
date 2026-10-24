@@ -32,6 +32,9 @@ internal object CapsulePlaybackSafety {
     private var breakerReason: String? = null
 
     private val wireBotGeneration = AtomicLong(0L)
+    private val optionalQuiet = OptionalYouTubeTrafficQuiet()
+    /** Optional metadata, prefetch and downloads must yield to explicit server challenges. */
+    fun optionalTrafficQuietRemainingMs(): Long = optionalQuiet.remainingMs()
 
     @Synchronized
     fun remainingBlockMs(nowMs: Long = System.currentTimeMillis()): Long {
@@ -74,6 +77,7 @@ internal object CapsulePlaybackSafety {
     /** Record a machine-readable /player bot challenge without globally stopping AUDIO. */
     fun noteWireBotCheck() {
         wireBotGeneration.incrementAndGet()
+        optionalQuiet.observeBotChallenge()
     }
 
     fun wireBotSignalGeneration(): Long = wireBotGeneration.get()
@@ -124,6 +128,7 @@ internal object CapsulePlaybackSafety {
      * client-family ban here across unrelated tracks.
      */
     fun markProfileBotCheck(profileId: String) {
+        optionalQuiet.observeBotChallenge()
         Timber.tag(TAG).w(
             "AUDIO bot-check kept local to current media resolve profile=%s",
             profileId,
@@ -142,6 +147,7 @@ internal object CapsulePlaybackSafety {
      * Do not manufacture an app-wide cooldown: only an actual HTTP 429 may do that.
      */
     fun markBotDetectionFailure(reason: String? = null) {
+        optionalQuiet.observeBotChallenge()
         Timber.tag(TAG).w(
             "AUDIO bot-check exhausted local fallback; global breaker remains closed%s",
             reason?.let { ": ${it.take(160)}" }.orEmpty(),
@@ -158,9 +164,11 @@ internal object CapsulePlaybackSafety {
     fun clear() {
         breakerUntilMs = 0L
         breakerReason = null
+        optionalQuiet.clear()
     }
 
     private fun markRateLimited(reason: String) {
+        optionalQuiet.observeRateLimit()
         trip(reason)
     }
 

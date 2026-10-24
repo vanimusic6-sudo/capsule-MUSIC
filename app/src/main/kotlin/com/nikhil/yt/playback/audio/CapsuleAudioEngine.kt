@@ -211,7 +211,7 @@ object CapsuleAudioEngine {
     fun onNetworkChanged() {
         lastResolvedClientByVideoId.clear()
         CapsuleInnerTubeXPlayer.onNetworkChanged()
-        CapsulePlaybackSafety.clear()
+        // Network changes invalidate signed URLs, not the server's explicit rate-limit.
     }
 
     /**
