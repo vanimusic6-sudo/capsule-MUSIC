@@ -27,6 +27,7 @@ import com.nikhil.yt.ui.component.CapsuleSubscribeIcon
 import com.nikhil.yt.ui.component.CapsuleSubscribeLabel
 import com.nikhil.yt.ui.component.ItemThumbnail
 import com.nikhil.yt.ui.component.VeluneLoader
+import com.nikhil.yt.ui.screens.artist.artistItemPlacement
 import com.nikhil.yt.ui.screens.artist.ArtistDescription
 import org.junit.Assert.*
 import org.junit.Rule
@@ -86,6 +87,40 @@ class ArtistMotionTest {
         compose.mainClock.advanceTimeBy(500)
         compose.mainClock.autoAdvance = true
         assertEquals(expanded, compose.onNodeWithTag("description").fetchSemanticsNode().boundsInRoot.height, 1f)
+    }
+
+    @Test fun collapsingKeepsFullTextGeometryWhileTheClipAndFollowingRowsMoveTogether() {
+        val biography = "Biography line.\n".repeat(7)
+        compose.setContent {
+            var moving by androidx.compose.runtime.remember { mutableStateOf(false) }
+            MaterialTheme {
+                androidx.compose.foundation.lazy.LazyColumn(Modifier.width(320.dp)) {
+                    item(key = "description") {
+                        ArtistDescription("artist", biography, Modifier.testTag("description"), { moving = it })
+                    }
+                    items(4, key = { "row-$it" }) { index ->
+                        Box(Modifier.then(artistItemPlacement(moving)).size(300.dp, 32.dp).testTag("row-$index"))
+                    }
+                }
+            }
+        }
+        compose.onNodeWithText(compose.activity.getString(R.string.show_more)).performClick()
+        val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        compose.onNodeWithText(biography).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        val fullTextHeight = layouts.single().size.height
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithText(compose.activity.getString(R.string.show_less)).performClick()
+        compose.mainClock.advanceTimeByFrame(); compose.waitForIdle()
+        repeat(3) {
+            compose.mainClock.advanceTimeBy(64); compose.waitForIdle()
+            val description = compose.onNodeWithTag("description").fetchSemanticsNode().boundsInRoot
+            val following = compose.onNodeWithTag("row-0").fetchSemanticsNode().boundsInRoot
+            assertTrue("Rows must follow the measured clip without overlap", following.top >= description.bottom - 1f)
+            layouts.clear()
+            compose.onNodeWithText(biography).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+            assertEquals("Collapse must clip full-size text", fullTextHeight, layouts.single().size.height)
+        }
+        compose.mainClock.autoAdvance = true
     }
 
     @Test fun unavailableThumbnailExposesAReasonToAccessibilityAndCometDoesNotChangeItsSize() {

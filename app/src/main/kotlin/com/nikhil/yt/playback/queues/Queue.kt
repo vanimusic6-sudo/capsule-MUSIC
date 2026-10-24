@@ -27,14 +27,14 @@ interface Queue {
         val mediaItemIndex: Int,
         val position: Long = 0L,
     ) {
-        fun filterExplicit(enabled: Boolean = true) =
-            if (enabled) {
-                copy(
-                    items = items.filterExplicit(),
-                )
-            } else {
-                this
-            }
+        fun filterExplicit(enabled: Boolean = true): Status {
+            if (!enabled) return this
+            val retained = items.indices.filter { items[it].metadata?.explicit != true }
+            val selected = retained.firstOrNull { it >= mediaItemIndex } ?: retained.lastOrNull()
+            return copy(items = retained.map(items::get),
+                mediaItemIndex = selected?.let(retained::indexOf) ?: 0,
+                position = if (selected == mediaItemIndex) position else 0L)
+        }
     }
 }
 

@@ -27,13 +27,18 @@ Local baseline Gradle invocation failed before running tests: the distribution h
   it is fully opaque. Portrait/hero ratios recover part of the pre-polish height (1.25/1.48 rather
   than 1.10/1.30; original was 1.36/1.69). No palette changes. Description animation measures the
   full text and moves one clipping boundary; maxLines does not change early during collapse.
+  While that boundary moves, following track rows use measured placement directly instead of a
+  second placement animation chasing every intermediate height. Actual row insert/reorder animation remains.
 - Some artist sections had positional identity, local album keys included their list index, and
   Home section keys included the first song ID. These keys could migrate/reset nested scroll
   state during refresh. Keys now identify the section/entity, independent of its current contents.
+  The mixed discovery shelf was also reranked after each partial catalog arrival. It now publishes
+  one completed provider batch; the ranking algorithm and its final recommendations are unchanged.
   Common grid metadata reserves both subtitle lines. The swipe wrapper owns the caller's lazy
   placement modifier instead of hiding it inside a child; intentional item animations remain.
   Deferred queue chunks are children of the queue load job and also check queue identity, so an
-  old selection cannot append its songs to a newer queue after its delay.
+  old selection cannot append its songs to a newer queue after its delay. Explicit-content filtering
+  now remaps the selected index and preserves seek position only when the same track survives.
 - Logs contain real TLS open timeouts, CDN redirects and 403s followed by bot checks on fallback
   profiles. One refused CDN URL previously immediately retired its issuing client. Recovery now
   obtains one fresh signed URL through the same policy before bounded client failover, within
@@ -52,3 +57,10 @@ in the focused workflow, together with Android lint, runtime verification and Un
 Device-only work remains: perceived scroll/animation smoothness, 60/90/120 Hz, gestures with large
 fonts, VPN A/B reproduction, background/process-death testing with actual storage, CPU/RAM/energy
 and tap-to-first-sound benchmarks. Source fixes and headless tests are not measurements of these.
+
+First CI pass at `68e7572`: 652 focused tests executed, 650 passed. The two failures were an old
+source guard expecting a direct `sendAddDownload` call (now it verifies the priority wrapper AND
+its delegation to the same Media3 API) and a portrait-edge pixel sample at the former 1.10 ratio
+(now derived from the actual artwork boundary). No test was disabled. Follow-up checks include
+restored download admission, failure/cancel isolation, partial catalog publication and full-size
+text clipping with following lazy rows.

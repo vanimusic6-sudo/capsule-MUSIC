@@ -33,6 +33,24 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35], application = Application::class, qualifiers = "w360dp-h800dp-xhdpi")
 class ListStabilityTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @Test fun partialCatalogArrivalsDoNotReshuffleAPublishedDiscoveryShelf() {
+        val state = com.nikhil.yt.ui.screens.CatalogHomeState()
+        fun track(i: Int) = com.nikhil.yt.discovery.ExperimentalCatalog.Track(
+            source = com.nikhil.yt.discovery.ExperimentalCatalog.Source.AUDIUS, id = "$i", title = "Track $i",
+            artist = "Artist $i", artwork = null, streamUrl = "https://example.org/$i.mp3", sourcePage = "",
+            durationSeconds = 180)
+        fun lane(tracks: List<com.nikhil.yt.discovery.ExperimentalCatalog.Track>) =
+            com.nikhil.yt.discovery.ExperimentalCatalog.HomeLane(com.nikhil.yt.discovery.HomeFeedSource.AUDIUS,
+                com.nikhil.yt.discovery.ExperimentalCatalog.HomeLaneKind.TRENDING, tracks)
+        state.lanes = listOf(lane((1..10).map(::track)))
+        state.publishDiscovery(emptyList(), 42)
+        val published = state.discoverySnapshot
+        state.lanes = listOf(lane((1..50).map(::track)))
+        assertSame(published, state.discoverySnapshot)
+        state.publishDiscovery(emptyList(), 42)
+        assertEquals(com.nikhil.yt.discovery.ExperimentalRanking.select((1..50).map(::track), dayKey = 42),
+            state.discoverySnapshot)
+    }
     @Test fun metadataAndDownloadChangesDoNotMoveTheNextShelfEvenAtLargeFont() {
         var subtitle by mutableStateOf("Artist")
         var downloading by mutableStateOf(false)

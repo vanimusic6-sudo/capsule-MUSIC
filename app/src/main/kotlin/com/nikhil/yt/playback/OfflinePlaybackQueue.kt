@@ -13,7 +13,7 @@ import kotlinx.coroutines.withContext
 internal class OfflinePlaybackQueue(
     private val player: Player,
     private val scope: CoroutineScope,
-    private val available: (MediaItem) -> Boolean,
+    private val available: (List<MediaItem>) -> List<MediaItem>,
 ) : Player.Listener {
     private var original: List<MediaItem>? = null
     private var projected = emptyList<MediaItem>()
@@ -21,6 +21,7 @@ internal class OfflinePlaybackQueue(
     private var applying = false
     private var revision = 0L
     private var checkJob: Job? = null
+    private var currentCheckJob: Job? = null
     private var selectedOriginalIndex = 0
 
     init { player.addListener(this) }
@@ -35,7 +36,7 @@ internal class OfflinePlaybackQueue(
             ?: selectedOriginalIndex
     }
     fun clear() {
-        revision++; checkJob?.cancel(); original = null; projected = emptyList(); selectedOriginalIndex = 0
+        revision++; checkJob?.cancel(); currentCheckJob?.cancel(); original = null; projected = emptyList(); selectedOriginalIndex = 0
     }
     fun connectivityChanged(connected: Boolean) {
         if (connected == online) return
@@ -54,15 +55,16 @@ internal class OfflinePlaybackQueue(
     suspend fun replaceOffline(items: List<MediaItem>, index: Int, position: Long, play: Boolean) {
         clear(); online = false; original = items; selectedOriginalIndex = index.coerceAtLeast(0)
         val expected = ++revision
-        val eligible = withContext(Dispatchers.IO) { items.filter(available) }
+        val eligible = withContext(Dispatchers.IO) { available(items) }
         if (expected != revision || online) return
         applying = true
         try {
             projected = eligible
-            val selected = items.getOrNull(index)
-            val start = eligible.indexOf(selected).takeIf { it >= 0 }
-                ?: items.drop(index.coerceAtLeast(0)).firstOrNull { it in eligible }?.let(eligible::indexOf) ?: 0
-            player.setMediaItems(eligible, start, if (eligible.getOrNull(start) == selected) position else 0L)
+            val eligibleSet = eligible.toSet()
+            val retained = items.indices.filter { items[it] in eligibleSet }
+            val selected = retained.firstOrNull { it >= index } ?: retained.firstOrNull()
+            val start = selected?.let(retained::indexOf) ?: 0
+            player.setMediaItems(eligible, start, if (selected == index) position else 0L)
             if (eligible.isNotEmpty()) { player.prepare(); player.playWhenReady = play }
             else player.playWhenReady = false
         } finally { applying = false }
@@ -76,6 +78,16 @@ internal class OfflinePlaybackQueue(
         projected = current
         refresh()
     }
+    fun checkCurrent() {
+        if (online || original == null) return
+        currentCheckJob?.cancel()
+        val item = player.currentMediaItem ?: return
+        val expected = revision
+        currentCheckJob = scope.launch {
+            val valid = withContext(Dispatchers.IO) { available(listOf(item)).isNotEmpty() }
+            if (!valid && !online && revision == expected && player.currentMediaItem == item) refresh()
+        }
+    }
     fun refresh() {
         if (online || original == null) return
         checkJob?.cancel()
@@ -83,7 +95,7 @@ internal class OfflinePlaybackQueue(
         val expected = ++revision
         val snapshot = original.orEmpty()
         checkJob = scope.launch {
-            val eligible = withContext(Dispatchers.IO) { snapshot.filter(available) }
+            val eligible = withContext(Dispatchers.IO) { available(snapshot) }
             if (expected == revision && !online) apply(eligible, selectedOriginalIndex)
         }
     }

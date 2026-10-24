@@ -1726,19 +1726,13 @@ private object Icon {
 
     @Composable
     fun Download(state: Int?) {
-        when (state) {
-            STATE_COMPLETED -> Icon(
-                painter = painterResource(R.drawable.offline),
-                contentDescription = null,
-                modifier = Modifier
-                    .size(18.dp)
-                    .padding(end = 2.dp)
-            )
-            STATE_QUEUED, STATE_DOWNLOADING -> VeluneLoader(
-                size = 18.dp,
-                modifier = Modifier.padding(end = 4.dp)
-            )
-            else -> { /* no icon */ }
+        if (state in setOf(STATE_COMPLETED, STATE_QUEUED, STATE_DOWNLOADING, Download.STATE_RESTARTING)) {
+            Box(Modifier.width(22.dp).height(18.dp), contentAlignment = Alignment.CenterStart) {
+                if (state == STATE_COMPLETED) Icon(
+                    painter = painterResource(R.drawable.offline), contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                ) else VeluneLoader(size = 18.dp)
+            }
         }
     }
 

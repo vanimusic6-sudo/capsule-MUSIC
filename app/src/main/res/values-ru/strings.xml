@@ -931,4 +931,5 @@
     <string name="error_track_unavailable_description">Источник не может предоставить этот трек. Возможно, он удалён, стал приватным или ограничен в вашем регионе.</string>
     <string name="prefer_aac_audio">Предпочитать AAC/M4A</string>
     <string name="prefer_aac_audio_description">Предпочитать AAC/M4A для новых потоков и загрузок, если Opus воспроизводится некорректно. Если выключено, формат выбирается автоматически.</string>
+    <string name="no_offline_audio_in_queue">В этой очереди нет доступных локальных аудиофайлов</string>
 </resources>

@@ -31,6 +31,11 @@ class YouTubeQueue(
             continuation = continuation,
         )
 
+    internal fun takeOfflineStatus(): Queue.Status {
+        restoredStatus?.let { restoredStatus = null; return it }
+        return Queue.Status(preloadItem?.title, listOfNotNull(preloadItem?.toMediaItem()), 0)
+    }
+
     override suspend fun getInitialStatus(): Queue.Status {
         /*
          * A restored process already has the exact timeline in PersistQueue.

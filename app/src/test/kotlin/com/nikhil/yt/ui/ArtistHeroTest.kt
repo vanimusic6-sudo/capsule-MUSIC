@@ -188,11 +188,11 @@ class ArtistHeroTest {
         val head = image.getPixel((image.width * 0.48f).roundToInt(), (image.width * 0.30f).roundToInt())
         assertTrue("The subject must be enlarged and framed at the reference height",
             android.graphics.Color.red(head) > 200 && android.graphics.Color.green(head) > 100)
-        val bottom = image.getPixel((image.width * 0.04f).roundToInt(), (image.width * 1.09f).roundToInt())
+        val bottom = image.getPixel((image.width * 0.04f).roundToInt(), (image.width * (com.nikhil.yt.ui.component.ArtistHeroArtworkHeightFactor - 0.01f)).roundToInt())
         assertTrue("The photograph must fade into the page without a hard lower edge",
             android.graphics.Color.red(bottom) < 20)
-        val aboveJoin = image.getPixel((image.width * 0.04f).roundToInt(), (image.width * 1.095f).roundToInt())
-        val belowJoin = image.getPixel((image.width * 0.04f).roundToInt(), (image.width * 1.105f).roundToInt())
+        val aboveJoin = image.getPixel((image.width * 0.04f).roundToInt(), (image.width * (com.nikhil.yt.ui.component.ArtistHeroArtworkHeightFactor - 0.005f)).roundToInt())
+        val belowJoin = image.getPixel((image.width * 0.04f).roundToInt(), (image.width * (com.nikhil.yt.ui.component.ArtistHeroArtworkHeightFactor + 0.005f)).roundToInt())
         assertTrue("The photo edge must not create a visible seam",
             kotlin.math.abs(android.graphics.Color.red(aboveJoin) - android.graphics.Color.red(belowJoin)) <= 3)
     }
@@ -255,6 +255,29 @@ class ArtistHeroTest {
         controls.forEach {
             assertEquals(bounds.top + safeTop + 32f * dp,
                 it.fetchSemanticsNode().boundsInRoot.center.y, 1f)
+        }
+    }
+
+    @Test fun partiallyFadedArtworkIsNotDarkenedAgainAtTheToolbarBoundary() {
+        var fade by mutableStateOf(0.5f)
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                Box(Modifier.width(360.dp).background(Color(0xFF121212)).testTag("seam")) {
+                    ArtistHeroLayout(background = Color(0xFF121212),
+                        artwork = { Box(Modifier.fillMaxSize().background(Color(0xFF824634))) },
+                        title = {}, actions = {}, artworkAlpha = { 1f - fade })
+                    ArtistToolbar("Artist", true, false, {}, {}, {}, {}, artworkFade = fade)
+                }
+            }
+        }
+        for (value in listOf(0.1f, 0.5f, 0.95f, 1f)) {
+            compose.runOnIdle { fade = value }
+            val bitmap = capture("seam")
+            val dp = bitmap.width / 360f
+            val above = bitmap.getPixel((4 * dp).roundToInt(), (30 * dp).roundToInt())
+            val below = bitmap.getPixel((4 * dp).roundToInt(), (120 * dp).roundToInt())
+            assertTrue("Toolbar must share the artwork's fade at $value", kotlin.math.abs(
+                android.graphics.Color.red(above) - android.graphics.Color.red(below)) <= 3)
         }
     }
 

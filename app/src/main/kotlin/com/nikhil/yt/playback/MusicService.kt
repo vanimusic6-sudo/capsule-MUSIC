@@ -1862,16 +1862,26 @@ class MusicService :
                     setOffloadEnabled(dataStore.get(AudioOffload, false))
                 }
 
-        offlinePlaybackQueue = OfflinePlaybackQueue(player, scope) { item ->
-            val uri = item.localConfiguration?.uri
-            when (uri?.scheme) {
-                "content", "file" -> runCatching {
-                    contentResolver.openAssetFileDescriptor(uri, "r")?.use { descriptor ->
-                        descriptor.length != 0L
-                    } == true
-                }.getOrDefault(false)
-                else -> AudioCacheIdentity.completeKey(downloadCache, item.mediaId) != null ||
-                    AudioCacheIdentity.completeKey(playerCache, item.mediaId) != null
+        offlinePlaybackQueue = OfflinePlaybackQueue(player, scope) { items ->
+            // Read each cache's key set once, instead of scanning every key for every queue entry.
+            val requested = items.map { it.mediaId }.toSet()
+            val cached = listOf(downloadCache, playerCache).flatMap { cache ->
+                cache.keys.filter { AudioCacheIdentity.mediaId(it) in requested }
+                    .filter { key ->
+                        val length = if (key == AudioCacheIdentity.mediaId(key) &&
+                            androidx.media3.datasource.cache.ContentMetadata.getContentLength(cache.getContentMetadata(key)) <= 0L
+                        ) runBlocking { database.format(key).first()?.contentLength } else null
+                        AudioCacheIdentity.isComplete(cache, key, length)
+                    }.map(AudioCacheIdentity::mediaId)
+            }.toSet()
+            items.filter { item ->
+                val uri = item.localConfiguration?.uri
+                when (uri?.scheme) {
+                    "content", "file" -> runCatching {
+                        contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length != 0L } == true
+                    }.getOrDefault(false)
+                    else -> item.mediaId in cached
+                }
             }
         }
 
@@ -2732,13 +2742,23 @@ class MusicService :
         queueLoadJob = scope.launch(SilentHandler) {
             val initialStatus =
                 withContext(Dispatchers.IO) {
-                    queue.getInitialStatus().filterExplicit(dataStore.get(HideExplicitKey, false))
+                    val status = if (!connectivityObserver.isCurrentlyConnected()) when (queue) {
+                        is YouTubeQueue -> queue.takeOfflineStatus()
+                        is com.nikhil.yt.playback.queues.YouTubeAlbumRadio -> queue.takeOfflineStatus()
+                        else -> queue.getInitialStatus()
+                    } else queue.getInitialStatus()
+                    status.filterExplicit(dataStore.get(HideExplicitKey, false))
                 }
             if (currentQueue !== queue) return@launch
             if (initialStatus.title != null) {
                 queueTitle = initialStatus.title
             }
             if (initialStatus.items.isEmpty()) {
+                if (!connectivityObserver.isCurrentlyConnected()) {
+                    offlinePlaybackQueue.replaceOffline(emptyList(), 0, 0L, false)
+                    Toast.makeText(this@MusicService, R.string.no_offline_audio_in_queue, Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
                 val failedPreload = queue.preloadItem
                 if (
                     failedPreload?.id?.startsWith(EXPERIMENTAL_MEDIA_PREFIX) == true &&
@@ -2752,6 +2772,8 @@ class MusicService :
             if (!connectivityObserver.isCurrentlyConnected()) {
                 offlinePlaybackQueue.replaceOffline(initialStatus.items, initialStatus.mediaItemIndex,
                     initialStatus.position, playWhenReady)
+                if (player.mediaItemCount == 0) Toast.makeText(this@MusicService,
+                    R.string.no_offline_audio_in_queue, Toast.LENGTH_SHORT).show()
                 return@launch
             }
             val preload = queue.preloadItem
@@ -3712,7 +3734,7 @@ class MusicService :
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         super.onMediaItemTransition(mediaItem, reason)
         publishSystemArtwork(mediaItem)
-        if (::offlinePlaybackQueue.isInitialized) offlinePlaybackQueue.refresh()
+        if (::offlinePlaybackQueue.isInitialized) offlinePlaybackQueue.checkCurrent()
 
         if (mediaItem?.mediaId?.startsWith(EXPERIMENTAL_MEDIA_PREFIX) == true) {
             // External catalogs are strictly isolated from YouTube resolver and recovery.

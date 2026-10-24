@@ -45,6 +45,9 @@ class YouTubeAlbumRadio(
                 params = "wAEB",
             )
 
+    internal fun takeOfflineStatus(): Queue.Status = restoredStatus?.also { restoredStatus = null }
+        ?: Queue.Status(null, emptyList(), 0)
+
     override suspend fun getInitialStatus(): Queue.Status =
         withContext(IO) {
             restoredStatus?.let { status ->

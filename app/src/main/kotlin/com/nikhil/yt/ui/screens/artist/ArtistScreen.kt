@@ -162,6 +162,7 @@ fun ArtistScreen(
     val libraryAlbums by viewModel.libraryAlbums.collectAsState()
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
     val lazyListState = rememberLazyListState()
+    var descriptionMoving by remember(viewModel.artistId) { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     var showLocal by rememberSaveable(viewModel.artistId) { mutableStateOf(false) }
     val systemBarsTopPadding = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
@@ -302,7 +303,7 @@ fun ArtistScreen(
                 val description = artistPage?.description
                 if (!showLocal && !description.isNullOrBlank()) {
                     item(key = "description") {
-                        ArtistDescription(viewModel.artistId, description)
+                        ArtistDescription(viewModel.artistId, description, onGeometryAnimationChanged = { descriptionMoving = it })
                     }
                 }
                 latestRelease?.let { release ->
@@ -478,8 +479,12 @@ fun ArtistScreen(
                     }
                 } else {
                     // YouTube/Remote content sections
-                    artistPage?.sections?.distinctBy { "${it.moreEndpoint?.browseId}:${it.moreEndpoint?.params}:${it.title}" }?.fastForEach { section ->
-                        val sectionKey = "artist-section:${section.moreEndpoint?.browseId}:${section.moreEndpoint?.params}:${section.title}"
+                    artistPage?.sections?.forEachIndexed { sectionIndex, section ->
+                        val identity = "${section.moreEndpoint?.browseId}:${section.moreEndpoint?.params}:${section.title}"
+                        val occurrence = artistPage?.sections.orEmpty().take(sectionIndex).count {
+                            "${it.moreEndpoint?.browseId}:${it.moreEndpoint?.params}:${it.title}" == identity
+                        }
+                        val sectionKey = "artist-section:$identity:$occurrence"
                         if (section.items.isNotEmpty()) {
                             item(key = "$sectionKey:title") {
                                 NavigationTitle(
@@ -549,7 +554,7 @@ fun ArtistScreen(
                                                 }
                                             },
                                         )
-                                        .animateItem(),
+                                        .then(artistItemPlacement(descriptionMoving)),
                                 )
                             }
                         } else {

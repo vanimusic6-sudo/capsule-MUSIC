@@ -68,6 +68,14 @@ internal class CatalogHomeState {
     var loadedKey by mutableStateOf("")
     var finished by mutableStateOf(false)
     var revision by mutableIntStateOf(0)
+    var discoverySnapshot by mutableStateOf<List<ExperimentalCatalog.Track>>(emptyList())
+        private set
+    fun publishDiscovery(tasteArtists: List<String>, dayKey: Long) {
+        // Ranking stays unchanged. Only a completed provider batch may replace visible discovery.
+        discoverySnapshot = com.nikhil.yt.discovery.ExperimentalRanking.select(
+            lanes.flatMap { it.tracks }.filter { it.source != ExperimentalCatalog.Source.RADIO }
+                .distinctBy { it.mediaId }, dayKey = dayKey, tasteArtists = tasteArtists)
+    }
     fun refresh() { revision++ }
 }
 
@@ -128,6 +136,7 @@ internal fun rememberCatalogHomeState(
                     }
             }
         } finally {
+            state.publishDiscovery(tasteArtists, java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay())
             state.loading = false
             state.finished = true
         }

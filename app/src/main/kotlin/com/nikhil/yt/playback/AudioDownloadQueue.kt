@@ -53,6 +53,7 @@ internal class AudioDownloadQueue(private val manager: DownloadManager) : Downlo
     private val order = AudioDownloadOrder()
     private val admitted = mutableSetOf<String>()
     private var scheduled = false
+    private var closed = false
 
     init { manager.addListener(this) }
     override fun onInitialized(downloadManager: DownloadManager) {
@@ -70,8 +71,11 @@ internal class AudioDownloadQueue(private val manager: DownloadManager) : Downlo
         admitted.remove(download.request.id)
         schedule()
     }
+    fun close() {
+        closed = true; handler.removeCallbacksAndMessages(null); manager.removeListener(this); admitted.clear()
+    }
     private fun schedule() {
-        if (scheduled) return
+        if (closed || scheduled) return
         scheduled = true
         handler.post {
             scheduled = false

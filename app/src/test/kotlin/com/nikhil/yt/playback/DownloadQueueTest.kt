@@ -43,7 +43,7 @@ class DownloadQueueTest {
                 override fun remove() {}
             }
         })
-        AudioDownloadQueue(manager)
+        val queue = AudioDownloadQueue(manager)
         try {
             manager.maxParallelDownloads = DownloadUtil.MAX_PARALLEL_DOWNLOADS
             manager.setRequirements(Requirements(0)); manager.resumeDownloads()
@@ -65,7 +65,7 @@ class DownloadQueueTest {
             await { index.getDownload("track-101")?.state == Download.STATE_COMPLETED }
             assertEquals(2, maximum.get())
         } finally {
-            gates.values.forEach { it.countDown() }; manager.release(); provider.close()
+            gates.values.forEach { it.countDown() }; queue.close(); manager.release(); provider.close()
         }
     }
     @Test fun persistedPriorityIsIdempotentAndManualBurstsDoNotStarveCollections() {
@@ -80,6 +80,39 @@ class DownloadQueueTest {
         assertEquals("title-10", promoted.downloadTitle()); assertTrue(promoted.isManualDownload())
         assertFalse(request(11).isManualDownload())
         assertEquals(Download.STATE_QUEUED, entry(promoted, 1).visibleState)
+    }
+    @Test fun restoredWaitingJobsKeepTheirPriorityAndAFailedTransferDoesNotStopTheOtherSlot() {
+        val context = RuntimeEnvironment.getApplication<Application>()
+        val provider = StandaloneDatabaseProvider(context)
+        val index = DefaultDownloadIndex(provider)
+        index.putDownload(entry(request(1).withManualPriority(), 1))
+        index.putDownload(entry(request(2), 2))
+        index.putDownload(entry(request(3), 3))
+        val started = Collections.synchronizedList(mutableListOf<String>())
+        val gates = (1..3).associate { "track-$it" to CountDownLatch(1) }
+        val manager = DownloadManager(context, index, DownloaderFactory { request -> object : Downloader {
+            override fun download(listener: Downloader.ProgressListener?) {
+                started.add(request.id)
+                if (request.id == "track-1") throw java.io.IOException("Server failure")
+                gates.getValue(request.id).await()
+            }
+            override fun cancel() { gates.getValue(request.id).countDown() }
+            override fun remove() {}
+        } })
+        val queue = AudioDownloadQueue(manager)
+        try {
+            manager.maxParallelDownloads = 2; manager.minRetryCount = 0
+            manager.setRequirements(Requirements(0)); manager.resumeDownloads()
+            await { index.getDownload("track-1")?.state == Download.STATE_FAILED && started.size == 3 }
+            assertEquals(Download.STATE_DOWNLOADING, index.getDownload("track-2")?.state)
+            assertEquals(Download.STATE_DOWNLOADING, index.getDownload("track-3")?.state)
+            assertTrue(index.getDownload("track-1")!!.request.isManualDownload())
+            manager.removeDownload("track-2")
+            await { index.getDownload("track-2") == null }
+            assertEquals(Download.STATE_DOWNLOADING, index.getDownload("track-3")?.state)
+        } finally {
+            gates.values.forEach { it.countDown() }; queue.close(); manager.release(); provider.close()
+        }
     }
     private fun entry(request: DownloadRequest, time: Long) = Download(request, Download.STATE_STOPPED,
         time, time, -1, DOWNLOAD_WAITING_FOR_SLOT, Download.FAILURE_REASON_NONE)

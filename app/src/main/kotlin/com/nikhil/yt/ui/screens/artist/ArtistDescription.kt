@@ -14,6 +14,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,7 +37,10 @@ import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 /** One reversible clip boundary. Text keeps its full geometry until collapse has completed. */
 @Composable
-internal fun ArtistDescription(artistId: String, description: String, modifier: Modifier = Modifier) {
+internal fun ArtistDescription(artistId: String, description: String, modifier: Modifier = Modifier,
+    onGeometryAnimationChanged: (Boolean) -> Unit = {}) {
+    val onGeometryChanged by rememberUpdatedState(onGeometryAnimationChanged)
+    DisposableEffect(Unit) { onDispose { onGeometryChanged(false) } }
     var expanded by rememberSaveable(artistId) { mutableStateOf(false) }
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
@@ -51,8 +57,10 @@ internal fun ArtistDescription(artistId: String, description: String, modifier: 
             val height by transition.animateDp(
                 transitionSpec = { tween(320, easing = CapsuleStandardEasing) }, label = "clip-height",
             ) { if (it) fullHeight else collapsedHeight }
+            val moving = transition.isRunning || transition.currentState != transition.targetState
+            LaunchedEffect(moving) { onGeometryChanged(moving) }
             // Do not reflow to maxLines=2 while the full text is still being clipped away.
-            val showFullText = transition.currentState || transition.targetState
+            val showFullText = transition.isRunning || transition.currentState || transition.targetState
             Box(Modifier.fillMaxWidth().height(height).clipToBounds()) {
                 Text(description, modifier = Modifier.wrapContentHeight(Alignment.Top, unbounded = true),
                     style = style, color = StandardChrome.muted,
@@ -64,3 +72,9 @@ internal fun ArtistDescription(artistId: String, description: String, modifier: 
         }
     }
 }
+
+/** Text height owns this movement; placement animation still handles actual row insertions/reorders. */
+internal fun androidx.compose.foundation.lazy.LazyItemScope.artistItemPlacement(geometryAnimating: Boolean): Modifier =
+    Modifier.animateItem(placementSpec = if (geometryAnimating) null else androidx.compose.animation.core.spring(
+        stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow,
+        visibilityThreshold = androidx.compose.ui.unit.IntOffset(1, 1)))

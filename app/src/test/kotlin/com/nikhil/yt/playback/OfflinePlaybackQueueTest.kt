@@ -28,7 +28,7 @@ class OfflinePlaybackQueueTest {
                     androidx.media3.datasource.ByteArrayDataSource(byteArrayOf(0))
                 })).build()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-        val queue = OfflinePlaybackQueue(player, scope) { it.mediaId in setOf("a", "c") }
+        val queue = OfflinePlaybackQueue(player, scope) { items -> items.filter { it.mediaId in setOf("a", "c") } }
         val original = listOf("a", "failed", "c", "never-downloaded", "missing-file").map(::item)
         try {
             player.repeatMode = Player.REPEAT_MODE_ALL; player.shuffleModeEnabled = true
@@ -49,7 +49,7 @@ class OfflinePlaybackQueueTest {
                     androidx.media3.datasource.ByteArrayDataSource(byteArrayOf(0))
                 })).build()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-        val queue = OfflinePlaybackQueue(player, scope) { false }
+        val queue = OfflinePlaybackQueue(player, scope) { emptyList() }
         val original = listOf(item("a"), item("b"))
         try {
             queue.replaceOffline(original, 1, 0L, true)
