@@ -377,9 +377,9 @@ fun SongMenu(
                     )
                 },
                 text = startRadioText,
-                enabled = !independentSong || song.id.startsWith("capsule-open:audius:"),
+                enabled = !independentSong || song.id.startsWith("capsule-open:audius:") || offlineSong,
                 onClick = {
-                    if (song.id.startsWith("capsule-open:audius:")) {
+                    if (song.id.startsWith("capsule-open:audius:") || offlineSong) {
                         coroutineScope.launch {
                             val suggestions = com.nikhil.yt.discovery.ExperimentalCatalog
                                 .recommend(song.artists.map { it.name })

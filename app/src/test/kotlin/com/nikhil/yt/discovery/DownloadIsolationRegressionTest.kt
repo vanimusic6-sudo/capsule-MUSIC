@@ -67,6 +67,8 @@ class DownloadIsolationRegressionTest {
         assertTrue(source("ui/menu/OfflineDownloadMenu.kt").contains("OfflineAudioQueue.mediaItem(file)"))
         assertTrue(source("extensions/MediaItemExt.kt").contains("ContentUris.withAppendedId"))
         assertTrue(source("ui/menu/OfflineDownloadMenu.kt").contains("allowSyncing = false"))
+        assertTrue(source("ui/menu/PlayerMenu.kt").contains("isAudius || isOfflineAudio"))
+        assertTrue(source("ui/menu/SongMenu.kt").contains("|| offlineSong"))
         assertTrue(source("extensions/MediaItemExt.kt").contains("capsule-open:audius:"))
         assertTrue(source("playback/MusicService.kt").contains("!mediaId.startsWith(EXPERIMENTAL_MEDIA_PREFIX)"))
         assertTrue(source("ui/menu/PlayerMenu.kt").contains("allowSyncing = !isExternalCatalog"))

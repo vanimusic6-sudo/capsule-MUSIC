@@ -433,9 +433,9 @@ fun PlayerMenu(
                                 )
                             },
                             text = stringResource(R.string.start_radio),
-                            enabled = !isExternalCatalog || isAudius,
+                            enabled = !isExternalCatalog || isAudius || isOfflineAudio,
                             onClick = {
-                                if (isAudius) {
+                                if (isAudius || isOfflineAudio) {
                                     coroutineScope.launch {
                                         val taste = mediaMetadata.artists.map { it.name }
                                         val picks = ExperimentalCatalog.recommend(taste)
