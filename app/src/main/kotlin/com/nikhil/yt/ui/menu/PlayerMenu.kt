@@ -525,11 +525,11 @@ fun PlayerMenu(
         item(key = "actions-gap", contentType = "spacer") {
             Spacer(modifier = Modifier.height(12.dp))
         }
-        if ((!isRadio && splitArtists.isNotEmpty()) || mediaMetadata.album != null) {
+        if ((!isRadio && !isOfflineAudio && splitArtists.isNotEmpty()) || mediaMetadata.album != null) {
             item(key = "artists-album", contentType = "menu-section") {
                 MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                     Column {
-                        if (!isRadio && splitArtists.isNotEmpty()) {
+                        if (!isRadio && !isOfflineAudio && splitArtists.isNotEmpty()) {
                             ListItem(
                                 headlineContent = { Text(text = stringResource(R.string.view_artist)) },
                                 supportingContent = {
@@ -562,7 +562,7 @@ fun PlayerMenu(
                             )
                         }
 
-                        if (splitArtists.isNotEmpty() && mediaMetadata.album != null) {
+                        if (!isOfflineAudio && splitArtists.isNotEmpty() && mediaMetadata.album != null) {
                             HorizontalDivider(
                                 modifier = Modifier.padding(start = 56.dp),
                                 color = MaterialTheme.colorScheme.outlineVariant,

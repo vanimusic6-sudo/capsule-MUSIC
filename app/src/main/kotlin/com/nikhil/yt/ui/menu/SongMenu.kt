@@ -752,7 +752,7 @@ fun SongMenu(
         item {
             MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                 Column {
-                    ListItem(
+                    if (!offlineSong) ListItem(
                         headlineContent = { Text(text = stringResource(R.string.view_artist)) },
                         supportingContent = {
                             Text(
