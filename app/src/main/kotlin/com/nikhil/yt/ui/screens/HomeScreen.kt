@@ -145,7 +145,7 @@ fun HomeScreen(
 
     LaunchedEffect(scrollToTop?.value) {
         if (scrollToTop?.value == true) {
-            lazylistState.animateScrollToItem(0)
+            lazylistState.scrollToItem(0)
             backStackEntry?.liveSavedStateHandle()?.set("scrollToTop", false)
         }
     }
