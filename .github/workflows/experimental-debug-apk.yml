@@ -210,6 +210,8 @@ jobs:
             --tests 'com.nikhil.yt.discovery.ExperimentalRankingTest' \
             --tests 'com.nikhil.yt.discovery.DownloadIsolationRegressionTest' \
             --tests 'com.nikhil.yt.playback.AuthWallDetectorTest' \
+            --tests 'com.nikhil.yt.playback.audio.CapsuleAudioFallbackPolicyTest' \
+            --tests 'com.nikhil.yt.playback.audio.YouTubeTokenScopingRegressionTest' \
             --no-daemon --stacktrace
 
       - name: Locate APK and checksum
