@@ -315,7 +315,7 @@ fun AlbumScreen(
                                             Download.STATE_DOWNLOADING -> VeluneLoader(size = 24.dp)
                                             else -> Icon(
                                                 painter = painterResource(if (downloadState == Download.STATE_COMPLETED) R.drawable.offline else R.drawable.download),
-                                                contentDescription = stringResource(if (downloadState == Download.STATE_COMPLETED) R.string.remove_download else R.string.download),
+                                                contentDescription = stringResource(when (downloadState) { Download.STATE_COMPLETED -> R.string.remove_download; Download.STATE_DOWNLOADING -> R.string.capsule_stop_and_delete_download; else -> R.string.download }),
                                                 tint = StandardChrome.muted,
                                                 modifier = Modifier.size(26.dp),
                                             )
