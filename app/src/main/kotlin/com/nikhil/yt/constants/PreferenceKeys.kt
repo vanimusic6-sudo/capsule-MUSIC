@@ -94,6 +94,7 @@ enum class AudioQuality {
     HIGH,
     HIGHEST,
     LOW,
+    // Legacy saved value/internal MP4 compatibility override; never exposed as a quality tier.
     AAC,
 }
 
@@ -113,6 +114,7 @@ val PermanentShuffleKey = booleanPreferencesKey("permanentShuffle")
 val SkipSilenceKey = booleanPreferencesKey("skipSilence")
 val AudioNormalizationKey = booleanPreferencesKey("audioNormalization")
 val AudioOffload = booleanPreferencesKey("audioOffload")
+val PreferAacAudioKey = booleanPreferencesKey("preferAacAudio")
 val AudioCrossfadeDurationKey = intPreferencesKey("audioCrossfadeDuration")
 val AutoLoadMoreKey = booleanPreferencesKey("autoLoadMore")
 val AutoDownloadOnLikeKey = booleanPreferencesKey("autoDownloadOnLike")

@@ -43,11 +43,19 @@ Branch: `release/01-core-reliability`; initial working tree clean.
   response reads, redirect restrictions, original audio-track selection, player deciphering
   and cancellation. Capsule retains explicit client manifests and its request budgets; it does
   not rewrite token rules or turn on unsupported SABR/HLS transports.
-- AAC/M4A is an explicit quality choice using the library's strict MP4 audio selector. It does
-  not relabel Opus as AAC or transcode files; a source without suitable AAC uses the bounded
-  existing fallback/error path. Existing preferences and downloaded formats remain intact.
-  Approved external `.aac` downloads use `audio/aac` and are recognized when reading saved files.
-  Media3 already supports MP4/AAC and raw ADTS AAC decoding through platform codecs.
+- AAC/M4A participates automatically in normal quality selection. A follow-up removes the
+  briefly exposed AAC-only quality choice: the UI keeps Auto/High/Low. High can choose AAC when
+  it is better; every tier accepts AAC when it is the only suitable audio format.
+- A separate **Prefer AAC/M4A** compatibility switch sits immediately after hardware offload
+  in the same advanced settings section. It is independent of offload support and defaults off
+  (automatic selection stays active). When enabled, the existing MP4 audio selector is used for
+  new stream resolutions/downloads. It never relabels or transcodes existing offline files.
+  A source must supply suitable AAC for this compatibility path.
+- Legacy saved `audioQuality=AAC` remains readable and preserves the previous opt-in. Changing
+  quality atomically saves that opt-in under its own key; explicitly disabling it restores normal
+  selection. Playback URL cache policy observes the effective format choice. Download selection
+  reads the same atomic settings snapshot but retains its separate clients/token-free extractor.
+  Approved external `.aac` downloads continue using `audio/aac`.
 - HTTPS address validation additionally rejects nonstandard ports and retains host/userinfo/
   fragment checks, including validation of every offline redirect. No DRM or source restrictions
   are bypassed. Account-restricted recordings can still be rejected by token-free downloads.
@@ -129,3 +137,12 @@ The prior full app suite has 13 known unrelated UI failures documented in
 - https://github.com/TeamNewPipe/NewPipeExtractor/releases/tag/v0.26.5
 - https://github.com/sigma67/ytmusicapi/blob/main/ytmusicapi/parsers/playlists.py
 - https://developer.android.com/media/media3/exoplayer/supported-formats
+
+## AAC preference follow-up
+
+Base: `e6ec26dfa8cfd181852acde22fbd80bdc1419c17`. Adds regression tests for automatic
+AAC-only fallback, High choosing AAC versus Opus by quality, offload independence, legacy
+preference migration, explicit opt-out and atomic quality changes. The verification totals
+above describe the preceding package; the follow-up is verified by the core and release CI
+workflows on its own commit. The new workspace has Java 17 and no Android SDK, so no local
+Android build result is claimed for this follow-up. No physical device is connected.

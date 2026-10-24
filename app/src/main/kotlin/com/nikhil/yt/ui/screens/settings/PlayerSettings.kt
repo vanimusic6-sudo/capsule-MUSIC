@@ -50,6 +50,12 @@ import com.nikhil.yt.constants.ReleasePlaybackDefaults
 import com.nikhil.yt.constants.SettingsAdvancedModeKey
 import com.nikhil.yt.constants.AudioCrossfadeDurationKey
 import com.nikhil.yt.constants.AudioNormalizationKey
+import com.nikhil.yt.constants.PreferAacAudioKey
+import com.nikhil.yt.playback.audio.prefersAacAudio
+import androidx.compose.runtime.collectAsState
+import androidx.datastore.preferences.core.emptyPreferences
+import com.nikhil.yt.playback.audio.selectAudioQuality
+import com.nikhil.yt.utils.dataStore
 import com.nikhil.yt.constants.AudioOffload
 import com.nikhil.yt.constants.AudioQuality
 import com.nikhil.yt.constants.AudioQualityKey
@@ -159,16 +165,15 @@ fun PlayerSettings(
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
     val (advancedSettings, _) = rememberPreference(SettingsAdvancedModeKey, false)
-    val (audioQuality, onAudioQualityChange) =
+    val (audioQuality, _) =
         rememberEnumPreference(
             AudioQualityKey,
             defaultValue = ReleasePlaybackDefaults.audioQuality,
         )
-    // HIGHEST used to be exposed as “maximum”, but the playback backend maps
-    // it to exactly the same InnerTubeX tier as HIGH. Keep the enum only as a
-    // migration tombstone so existing installs do not break.
+    // Retain legacy values on disk, while exposing only quality tiers here.
+    // AAC is now controlled by the separate compatibility preference.
     val effectiveAudioQuality =
-        if (audioQuality == AudioQuality.HIGHEST) AudioQuality.HIGH else audioQuality
+        if (audioQuality in listOf(AudioQuality.HIGHEST, AudioQuality.AAC)) AudioQuality.HIGH else audioQuality
 
     /*
      * This is intentionally a new setting key.
@@ -271,6 +276,13 @@ fun PlayerSettings(
     var showAudioClientPriorityDialog by remember { mutableStateOf(false) }
     val database = LocalDatabase.current
     val context = LocalContext.current
+    val formatPreferences by context.dataStore.data.collectAsState(
+        initial = PreferenceStore.snapshot() ?: emptyPreferences(),
+    )
+    val preferAacAudio = formatPreferences.prefersAacAudio()
+    val onPreferAacAudioChange: (Boolean) -> Unit = { preferred ->
+        PreferenceStore.launchEdit(context.dataStore) { this[PreferAacAudioKey] = preferred }
+    }
     val resources = LocalResources.current
     val playerConnection = LocalPlayerConnection.current
 
@@ -337,15 +349,16 @@ fun PlayerSettings(
                     AudioQuality.AUTO,
                     AudioQuality.HIGH,
                     AudioQuality.LOW,
-                    AudioQuality.AAC,
                 ),
-            onValueSelected = onAudioQualityChange,
+            onValueSelected = { quality ->
+                PreferenceStore.launchEdit(context.dataStore) { selectAudioQuality(quality) }
+            },
             valueText = {
                 when (it) {
                     AudioQuality.HIGHEST,
                     AudioQuality.HIGH,
                     -> stringResource(R.string.audio_quality_high)
-                    AudioQuality.AAC -> "AAC (M4A)"
+                    AudioQuality.AAC -> stringResource(R.string.audio_quality_high)
                     AudioQuality.AUTO ->
                         stringResource(R.string.audio_quality_auto)
                     AudioQuality.LOW ->
@@ -519,6 +532,16 @@ fun PlayerSettings(
                 }
             },
         )
+        }
+
+        if (advancedSettings) {
+            SwitchPreference(
+                title = { Text(stringResource(R.string.prefer_aac_audio)) },
+                description = stringResource(R.string.prefer_aac_audio_description),
+                icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+                checked = preferAacAudio,
+                onCheckedChange = onPreferAacAudioChange,
+            )
         }
 
         SwitchPreference(

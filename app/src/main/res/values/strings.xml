@@ -1008,4 +1008,6 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="capsule_unlike_local">Remove like</string>
     <string name="error_track_unavailable_title">Track unavailable</string>
     <string name="error_track_unavailable_description">The source cannot provide this track. It may have been removed, made private or restricted in your region.</string>
+    <string name="prefer_aac_audio">Prefer AAC/M4A</string>
+    <string name="prefer_aac_audio_description">Prefer AAC/M4A for new streams and downloads if Opus playback is unreliable. When off, the audio format is chosen automatically.</string>
 </resources>

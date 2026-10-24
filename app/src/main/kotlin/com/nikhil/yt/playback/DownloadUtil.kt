@@ -33,8 +33,6 @@ import com.nikhil.yt.playback.audio.AudioDownloadClientPolicy
 import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
-import com.nikhil.yt.constants.AudioQuality
-import com.nikhil.yt.constants.AudioQualityKey
 import com.nikhil.yt.constants.AudioStreamPolicy
 import com.nikhil.yt.db.MusicDatabase
 import com.nikhil.yt.db.entities.FormatEntity
@@ -46,7 +44,9 @@ import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.playback.audio.CapsuleAudioEngine
 import com.nikhil.yt.playback.audio.CapsulePlaybackSafety
 import com.nikhil.yt.utils.StreamClientUtils
-import com.nikhil.yt.utils.enumPreference
+import com.nikhil.yt.utils.dataStore
+import com.nikhil.yt.playback.audio.effectiveAudioQuality
+import kotlinx.coroutines.flow.first
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
@@ -77,9 +77,8 @@ constructor(
     @PlayerCache val playerCache: Cache,
 ) {
     private val connectivityManager = context.getSystemService<ConnectivityManager>()!!
-    private val audioQuality by enumPreference(context, AudioQualityKey, AudioQuality.AUTO)
-    private fun playbackContext() = AudioPlaybackContext(
-        audioQuality, AudioStreamPolicy.VISIONOS, connectivityManager.isActiveNetworkMetered,
+    private suspend fun playbackContext() = AudioPlaybackContext(
+        context.dataStore.data.first().effectiveAudioQuality(), AudioStreamPolicy.VISIONOS, connectivityManager.isActiveNetworkMetered,
         clientOrder = AudioDownloadClientPolicy.order,
     )
 

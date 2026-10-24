@@ -9,7 +9,7 @@ import org.junit.Test
 @org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
 @org.robolectric.annotation.Config(sdk = [28], application = android.app.Application::class, manifest = org.robolectric.annotation.Config.NONE)
 class CapsuleInnerTubeXPlayerTest {
-    @Test fun aacChoiceUsesStrictMp4SelectionAndKeepsItAcrossPlaybackNormalization() {
+    @Test fun aacCompatibilityOverrideUsesTheMp4Selector() {
         val network = org.robolectric.RuntimeEnvironment.getApplication().getSystemService(android.net.ConnectivityManager::class.java)
         val mapped = CapsuleInnerTubeXPlayer.run { com.nikhil.yt.constants.AudioQuality.AAC.toInnerTubeX(network) }
         assertEquals(com.metrolist.innertubex.extraction.AudioQuality.MP4, mapped)

@@ -95,7 +95,6 @@ import com.nikhil.yt.constants.ReleasePlaybackDefaults
 import com.nikhil.yt.constants.AudioCrossfadeDurationKey
 import com.nikhil.yt.constants.AudioNormalizationKey
 import com.nikhil.yt.constants.AudioOffload
-import com.nikhil.yt.constants.AudioQualityKey
 import com.nikhil.yt.constants.AudioQuality
 import com.nikhil.yt.constants.AudioStreamPolicy
 import com.nikhil.yt.constants.AudioStreamPolicyKey
@@ -230,6 +229,9 @@ import com.nikhil.yt.playback.audio.CapsuleAudioRequestInterceptor
 import com.nikhil.yt.playback.audio.AudioCacheIdentity
 import com.nikhil.yt.playback.audio.AudioFormatChangedException
 import com.nikhil.yt.playback.audio.AudioStreamContract
+import com.nikhil.yt.playback.audio.effectiveAudioQuality
+import com.nikhil.yt.utils.PreferenceStore
+import androidx.datastore.preferences.core.emptyPreferences
 import com.nikhil.yt.playback.audio.AudioPlaybackContext
 import com.nikhil.yt.playback.audio.AudioResolveCoordinator
 import com.nikhil.yt.playback.audio.AudioResolvePriority
@@ -1799,10 +1801,7 @@ class MusicService :
 
     override fun onCreate() {
         super.onCreate()
-        audioQuality =
-            dataStore[AudioQualityKey]
-                .toEnum(ReleasePlaybackDefaults.audioQuality)
-                .normalizedPlaybackQuality()
+        audioQuality = (PreferenceStore.snapshot() ?: emptyPreferences()).effectiveAudioQuality()
         audioStreamPolicy = dataStore[AudioStreamPolicyKey].toEnum(AudioStreamPolicy.VISIONOS).normalizedForPlayback()
         connectivityManager = requireNotNull(getSystemService()) { "ConnectivityManager is unavailable" }
         ensureScopesActive()
@@ -1930,10 +1929,7 @@ class MusicService :
                     prefs[AudioStreamPolicyKey]
                         .toEnum(AudioStreamPolicy.VISIONOS)
                         .normalizedForPlayback()
-                val quality =
-                    prefs[AudioQualityKey]
-                        .toEnum(ReleasePlaybackDefaults.audioQuality)
-                        .normalizedPlaybackQuality()
+                val quality = prefs.effectiveAudioQuality()
                 val clientOrder =
                     AudioClientOrder.resolve(
                         raw = prefs[AudioClientOrderKey],
