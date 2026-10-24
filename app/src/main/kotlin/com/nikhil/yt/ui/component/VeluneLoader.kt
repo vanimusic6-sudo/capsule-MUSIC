@@ -34,15 +34,15 @@ fun VeluneLoader(modifier: Modifier = Modifier, size: Dp = 40.dp, color: Color? 
     )
     Canvas(modifier.size(size).semantics { progressBarRangeInfo = ProgressBarRangeInfo.Indeterminate }) {
         val unit = minOf(this.size.width, this.size.height)
-        val rx = unit * 0.36f
-        val ry = unit * 0.21f
+        val rx = unit * 0.41f
+        val ry = unit * 0.29f
         fun point(degrees: Float): Offset {
             val radians = degrees * Math.PI / 180.0
             return center + Offset(rx * cos(radians).toFloat(), ry * sin(radians).toFloat())
         }
         rotate(-24f, center) {
             drawOval(accent.copy(alpha = accent.alpha * 0.12f), center - Offset(rx, ry), Size(rx * 2, ry * 2),
-                style = Stroke(unit * 0.025f))
+                style = Stroke((unit * 0.035f).coerceAtLeast(1.dp.toPx())))
             val head = phase.value
             // Adjacent short segments follow the ellipse; no long chords cut through the orbit.
             for (segment in 0 until 36) {
@@ -50,11 +50,11 @@ fun VeluneLoader(modifier: Modifier = Modifier, size: Dp = 40.dp, color: Color? 
                 val angle = head - 100f + segment * (100f / 36f)
                 drawLine(accent.copy(alpha = accent.alpha * strength * strength * 0.85f),
                     point(angle), point(angle + 100f / 36f),
-                    unit * (0.012f + 0.045f * strength), StrokeCap.Round)
+                    (unit * (0.018f + 0.055f * strength)).coerceAtLeast(0.75.dp.toPx()), StrokeCap.Round)
             }
             val tip = point(head)
             drawCircle(accent.copy(alpha = accent.alpha * 0.12f), unit * 0.10f, tip)
-            drawCircle(accent, unit * 0.044f, tip)
+            drawCircle(accent, (unit * 0.052f).coerceAtLeast(1.dp.toPx()), tip)
         }
         drawCircle(accent.copy(alpha = accent.alpha * 0.22f), unit * 0.12f)
         drawCircle(accent, unit * 0.058f)

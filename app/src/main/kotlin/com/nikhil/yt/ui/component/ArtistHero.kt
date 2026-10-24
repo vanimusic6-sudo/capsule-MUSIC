@@ -45,7 +45,7 @@ import androidx.compose.ui.layout.ContentScale
 import com.nikhil.yt.R
 
 internal val ArtistHeroMaxWidth = 450.dp
-internal const val ArtistHeroArtworkHeightFactor = 1.10f
+internal const val ArtistHeroArtworkHeightFactor = 1.25f
 
 internal fun artistHeroArtworkHeight(availableWidth: Dp): Dp =
     availableWidth.coerceAtMost(ArtistHeroMaxWidth) * ArtistHeroArtworkHeightFactor
@@ -65,7 +65,7 @@ internal fun ArtistHeroLayout(
         // Shorter portrait keeps both action rows above the player/navigation on phones.
         // Artwork itself reaches the physical top edge; only overlay content respects safe insets.
         val referenceWidth = maxWidth.coerceAtMost(ArtistHeroMaxWidth)
-        val heroHeight = referenceWidth * 1.30f + 16.dp
+        val heroHeight = referenceWidth * 1.48f + 16.dp
         Box(Modifier.fillMaxWidth().height(artistHeroArtworkHeight(maxWidth))) {
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = artworkAlpha().coerceIn(0f, 1f) }) { artwork() }
             // No dark veil across the forehead of the artist image. The toolbar remains

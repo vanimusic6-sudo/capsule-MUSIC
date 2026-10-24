@@ -17,12 +17,15 @@ class AudioCdnRecoveryPlanTest {
     }
 
     @Test
-    fun noByteCdnOpenTimeoutGoesDirectlyToNextClientWithoutRepeatingFifteenSecondWait() {
+    fun noByteCdnOpenTimeoutRequestsFreshUrlBeforeRetiringHealthyClient() {
         val plan = AudioCdnRecoveryPlan()
         assertEquals(
-            AudioCdnRecoveryAction.TRY_NEXT_CLIENT,
+            AudioCdnRecoveryAction.RESOLVE_FRESH_URL,
             plan.onFailure("song", signedUrlRejected = false, unresponsiveOpen = true),
         )
+        assertFalse(plan.nextClientAlreadyTried("song"))
+        assertEquals(AudioCdnRecoveryAction.TRY_NEXT_CLIENT,
+            plan.onFailure("song", signedUrlRejected = false, unresponsiveOpen = true))
         assertTrue(plan.nextClientAlreadyTried("song"))
         assertEquals(
             AudioCdnRecoveryAction.SKIP_TRACK,
@@ -44,8 +47,9 @@ class AudioCdnRecoveryPlanTest {
     }
 
     @Test
-    fun rejectedSignedUrlAlreadyRetriedInChunkLayerSoNextClientComesFirst() {
+    fun rejectedSignedUrlRefreshesSamePolicyOnceThenChangesClient() {
         val plan = AudioCdnRecoveryPlan()
+        assertEquals(AudioCdnRecoveryAction.RESOLVE_FRESH_URL, plan.onFailure("track", true))
         assertEquals(AudioCdnRecoveryAction.TRY_NEXT_CLIENT, plan.onFailure("track", true))
         assertEquals(AudioCdnRecoveryAction.SKIP_TRACK, plan.onFailure("track", true))
     }

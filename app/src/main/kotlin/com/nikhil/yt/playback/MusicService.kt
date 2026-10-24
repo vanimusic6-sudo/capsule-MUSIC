@@ -1507,6 +1507,8 @@ class MusicService :
             }.build()
     }
 
+    @Inject lateinit var downloadUtil: DownloadUtil
+    private lateinit var offlinePlaybackQueue: OfflinePlaybackQueue
     private var currentQueue: Queue = EmptyQueue
     private var queueLoadJob: Job? = null
     var queueTitle: String? = null
@@ -1860,6 +1862,19 @@ class MusicService :
                     setOffloadEnabled(dataStore.get(AudioOffload, false))
                 }
 
+        offlinePlaybackQueue = OfflinePlaybackQueue(player, scope) { item ->
+            val uri = item.localConfiguration?.uri
+            when (uri?.scheme) {
+                "content", "file" -> runCatching {
+                    contentResolver.openAssetFileDescriptor(uri, "r")?.use { descriptor ->
+                        descriptor.length != 0L
+                    } == true
+                }.getOrDefault(false)
+                else -> AudioCacheIdentity.completeKey(downloadCache, item.mediaId) != null ||
+                    AudioCacheIdentity.completeKey(playerCache, item.mediaId) != null
+            }
+        }
+
         screenInteractive =
             (getSystemService(Context.POWER_SERVICE) as? PowerManager)
                 ?.isInteractive
@@ -1970,8 +1985,15 @@ class MusicService :
             }
 
         scope.launch {
+            downloadUtil.downloads.map { entries -> entries.mapValues { it.value.state } }.distinctUntilChanged().collect {
+                offlinePlaybackQueue.refresh()
+            }
+        }
+
+        scope.launch {
             connectivityObserver.networkStatus.collect { isConnected ->
                 isNetworkConnected.value = isConnected
+                offlinePlaybackQueue.connectivityChanged(isConnected)
                 playbackRecoveryCoordinator.onConnectivityChanged(isConnected)
                 // BUFFERING may begin before the connectivity observer emits its first value.
                 // Arm or cancel the stall check when the actual route status arrives.
@@ -2692,7 +2714,9 @@ class MusicService :
         clearAutomix()
         automixRuntime.seedMediaId = null
         autoAddedMediaIds.clear()
-        queue.preloadItem?.let { preloadItem ->
+        offlinePlaybackQueue.clear()
+        val selectingOffline = !connectivityObserver.isCurrentlyConnected()
+        if (!selectingOffline) queue.preloadItem?.let { preloadItem ->
             if (preloadItem.id.startsWith(EXPERIMENTAL_MEDIA_PREFIX)) {
                 // No resolved HTTPS URL exists until the asynchronous queue has loaded.
                 // Never hand a "capsule-open:" placeholder URI to MediaSourceFactory.
@@ -2725,8 +2749,13 @@ class MusicService :
                 }
                 return@launch
             }
+            if (!connectivityObserver.isCurrentlyConnected()) {
+                offlinePlaybackQueue.replaceOffline(initialStatus.items, initialStatus.mediaItemIndex,
+                    initialStatus.position, playWhenReady)
+                return@launch
+            }
             val preload = queue.preloadItem
-            if (preload != null) {
+            if (preload != null && !selectingOffline) {
                 if (preload.id.startsWith(EXPERIMENTAL_MEDIA_PREFIX)) {
                     // A complete HTTPS queue is available immediately. No YouTube metadata
                     // resolving and no late third-party look-ahead mutation.
@@ -2763,10 +2792,10 @@ class MusicService :
                 }
 
                 if (items.size > initialChunk.size) {
-                    scope.launch(SilentHandler) {
+                    launch(SilentHandler) {
                         try {
                             delay(2000)
-                            if (!isActive) return@launch
+                            if (!isActive || currentQueue !== queue) return@launch
 
                             if (windowStart > 0) {
                                 val startChunk = items.subList(0, windowStart)
@@ -2965,6 +2994,7 @@ class MusicService :
     fun stopAndClearPlayback() {
         suppressAutoPlayback = true
         clearAutomix()
+        offlinePlaybackQueue.clear()
         currentQueue = EmptyQueue
         queueLoadJob?.cancel()
         queueLoadJob = null
@@ -3682,6 +3712,7 @@ class MusicService :
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         super.onMediaItemTransition(mediaItem, reason)
         publishSystemArtwork(mediaItem)
+        if (::offlinePlaybackQueue.isInitialized) offlinePlaybackQueue.refresh()
 
         if (mediaItem?.mediaId?.startsWith(EXPERIMENTAL_MEDIA_PREFIX) == true) {
             // External catalogs are strictly isolated from YouTube resolver and recovery.
@@ -3877,6 +3908,7 @@ class MusicService :
         reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT &&
         player.mediaItemCount - player.currentMediaItemIndex <= 5 &&
         currentQueue.hasNextPage() &&
+        isNetworkConnected.value &&
         player.repeatMode == REPEAT_MODE_OFF
     ) {
         scope.launch(SilentHandler) {
@@ -3896,6 +3928,7 @@ class MusicService :
         reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT &&
         player.repeatMode == REPEAT_MODE_OFF &&
         player.mediaItemCount - player.currentMediaItemIndex <= 3 &&
+        isNetworkConnected.value &&
         !currentQueue.hasNextPage()
     ) {
         scope.launch(SilentHandler) {
@@ -4479,8 +4512,8 @@ class MusicService :
             if (signedUrlRejected || cdnTransportFailure) {
                 // The request layer already performed one retry of the SAME
                 // URL on 403/410. Ordinary transport failures get one reconnect;
-                // a no-byte CDN open timeout has already used a full 15-second
-                // network budget and moves directly to the next client.
+                // a no-byte CDN timeout must not reopen the same URL. Resolve
+                // a fresh URL once before retiring its otherwise healthy client.
                 val unresponsiveOpen = error.isUnresponsiveCdnOpenFor(currentMediaId)
                 val recoveryAction = playbackRecoveryCoordinator.onCdnFailure(
                     currentMediaId,
@@ -4524,6 +4557,16 @@ class MusicService :
                         retryDelayMs = minOf(250L, retryDelay),
                         forceRecreateSources = true,
                     )
+                    return
+                }
+
+                if (recoveryAction == AudioCdnRecoveryAction.RESOLVE_FRESH_URL) {
+                    audioResolveCoordinator.cancelMedia(currentMediaId) { playbackUrlCache.remove(currentMediaId) }
+                    Timber.tag("PlaybackRecovery").i("cdn-recovery id=%s action=fresh-url delayMs=%d",
+                        currentMediaId, minOf(250L, retryDelay))
+                    scheduleStreamRefreshRetry(mediaId = currentMediaId, refreshCipherConfig = false,
+                        retryReason = "cdn fresh URL", retryDelayMs = minOf(250L, retryDelay),
+                        forceRecreateSources = true)
                     return
                 }
 
@@ -4763,6 +4806,10 @@ class MusicService :
                     return@ResolvingDataSource dataSpec.buildUpon().setKey(completeKey)
                         .setCustomData(if (downloadedKey != null) AudioCacheSource.DOWNLOAD else AudioCacheSource.PLAYER)
                         .build()
+                }
+
+                if (!connectivityObserver.isCurrentlyConnected()) {
+                    throw java.io.IOException("Audio is not available locally while offline")
                 }
 
                 playbackUrlCache
@@ -5904,12 +5951,12 @@ class MusicService :
     }
 
     private fun capturePersistentPlaybackSnapshot(): PersistentPlaybackSnapshot? {
-        if (currentQueue == EmptyQueue || player.mediaItemCount <= 0) return null
+        if (currentQueue == EmptyQueue) return null
 
-        val mediaItemsSnapshot = persistableList(player.mediaItems.mapNotNull { it.metadata })
+        val mediaItemsSnapshot = persistableList(offlinePlaybackQueue.savedItems().mapNotNull { it.metadata })
         if (mediaItemsSnapshot.isEmpty()) return null
 
-        val currentMediaItemIndex = player.currentMediaItemIndex
+        val currentMediaItemIndex = offlinePlaybackQueue.savedIndex()
         val currentPosition = player.currentPosition
         val automixSnapshot = persistableList(automixItems.value.mapNotNull { it.metadata })
         val automixAutoAddedSnapshot =
@@ -5941,14 +5988,14 @@ class MusicService :
     }
 
     private fun capturePersistentPlayerState(): PersistPlayerState? {
-        if (player.mediaItemCount <= 0) return null
+        if (offlinePlaybackQueue.savedItems().isEmpty()) return null
         return PersistPlayerState(
             playWhenReady = player.playWhenReady,
             repeatMode = player.repeatMode,
             shuffleModeEnabled = player.shuffleModeEnabled,
             volume = playerVolume.value,
             currentPosition = player.currentPosition,
-            currentMediaItemIndex = player.currentMediaItemIndex,
+            currentMediaItemIndex = offlinePlaybackQueue.savedIndex(),
             playbackState = player.playbackState,
         )
     }

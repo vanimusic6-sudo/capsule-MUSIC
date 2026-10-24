@@ -7,6 +7,8 @@
 
 package com.nikhil.yt.ui.menu
 
+import com.nikhil.yt.playback.visibleState
+
 import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import com.nikhil.yt.ui.component.StandardChrome
@@ -391,7 +393,7 @@ fun YouTubeSongMenu(
             )
         }
         item {
-            when (download?.state) {
+            when (download?.visibleState) {
                 Download.STATE_COMPLETED -> {
                     ListItem(
                         headlineContent = { 
@@ -450,7 +452,7 @@ fun YouTubeSongMenu(
                                 .setCustomCacheKey(song.id)
                                 .setData(song.title.toByteArray())
                                 .build()
-                            DownloadService.sendAddDownload(
+                            com.nikhil.yt.playback.enqueuePriorityAudioDownload(
                                 context,
                                 ExoDownloadService::class.java,
                                 downloadRequest,

@@ -384,7 +384,7 @@ fun HomeScreen(
             homePage?.sections?.takeIf { displayYouTube }
                 // If the provider repeats the release shelf, keep its first position.
                 ?.distinctBy { if (isYouTubeReleaseShelf(it)) "home:yt:releases" else
-                    "home:yt:${it.endpoint?.browseId}:${it.title}:${it.items.firstOrNull()?.id}" }
+                    "home:yt:${it.endpoint?.browseId}:${it.endpoint?.params}:${it.title}" }
                 ?.forEach { providerSection ->
                 // Fresh YouTube Music album results replace stale albums in situ:
                 // no duplicate New Releases shelf and no unnecessary feed reflow.
@@ -392,7 +392,7 @@ fun HomeScreen(
                     providerSection.copy(items = newReleaseAlbums)
                 } else providerSection
                 val sectionKey =
-                    "home:yt:${providerSection.endpoint?.browseId.orEmpty()}:${providerSection.title}:${providerSection.items.firstOrNull()?.id.orEmpty()}"
+                    "home:yt:${providerSection.endpoint?.browseId.orEmpty()}:${providerSection.endpoint?.params}:${providerSection.title}"
                 val isPlaylistCarousel =
                     section.items.isNotEmpty() &&
                         section.items.all { it is com.nikhil.yt.innertube.models.PlaylistItem }

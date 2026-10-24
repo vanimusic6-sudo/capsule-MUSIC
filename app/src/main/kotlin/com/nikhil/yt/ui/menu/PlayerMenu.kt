@@ -8,6 +8,8 @@
 
 package com.nikhil.yt.ui.menu
 
+import com.nikhil.yt.playback.visibleState
+
 import com.nikhil.yt.ui.player.CapsuleSleepTimerDialog
 import com.nikhil.yt.together.TogetherRole
 import com.nikhil.yt.together.TogetherSessionState
@@ -665,7 +667,7 @@ fun PlayerMenu(
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
                 }
-            } else when (download?.state) {
+            } else when (download?.visibleState) {
                 Download.STATE_COMPLETED -> {
                     MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                         ListItem(
@@ -736,7 +738,7 @@ fun PlayerMenu(
                                         .setCustomCacheKey(mediaMetadata.id)
                                         .setData(mediaMetadata.title.toByteArray())
                                         .build()
-                                DownloadService.sendAddDownload(
+                                com.nikhil.yt.playback.enqueuePriorityAudioDownload(
                                     context,
                                     ExoDownloadService::class.java,
                                     downloadRequest,

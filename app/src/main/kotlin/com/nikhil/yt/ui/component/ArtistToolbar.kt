@@ -93,8 +93,8 @@ internal fun ArtistToolbar(
         },
         colors =
             TopAppBarDefaults.topAppBarColors(
-                containerColor = StandardChrome.background.copy(alpha = fade),
-                scrolledContainerColor = StandardChrome.background.copy(alpha = fade),
+                containerColor = if (fade >= 1f) StandardChrome.background else Color.Transparent,
+                scrolledContainerColor = if (fade >= 1f) StandardChrome.background else Color.Transparent,
                 navigationIconContentColor = foreground,
                 actionIconContentColor = foreground,
                 titleContentColor = foreground,

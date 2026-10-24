@@ -194,13 +194,37 @@ class AudioCacheIdentityTest {
         assertTrue(kotlinx.coroutines.withTimeout(5000) { result.await() }.exceptionOrNull() is InterruptedException)
     }
 
+    @Test fun completeIndexCannotHideAMissingOrTruncatedFile() {
+        val fixture = CacheFixture()
+        fixture.bytes["track"] = 100
+        AudioCacheIdentity.setLength(fixture.cache, "track", 100)
+        assertTrue(AudioCacheIdentity.isComplete(fixture.cache, "track"))
+        val file = fixture.files.getValue("track")
+        java.io.RandomAccessFile(file, "rw").use { it.setLength(20) }
+        assertFalse(AudioCacheIdentity.isComplete(fixture.cache, "track"))
+        file.delete()
+        assertFalse(AudioCacheIdentity.isComplete(fixture.cache, "track"))
+    }
+
     private class CacheFixture {
         val bytes = mutableMapOf<String, Long>()
         private val metadata = mutableMapOf<String, DefaultContentMetadata>()
+        val files = mutableMapOf<String, java.io.File>()
         val cache = Proxy.newProxyInstance(Cache::class.java.classLoader, arrayOf(Cache::class.java)) { _, method, args ->
             val key = args?.firstOrNull() as? String
             when (method.name) {
                 "getKeys" -> bytes.keys.toSet()
+                "getCachedSpans" -> java.util.TreeSet<androidx.media3.datasource.cache.CacheSpan>().apply {
+                    val length = bytes[key] ?: 0L
+                    if (length > 0L) {
+                        val file = files.getOrPut(key!!) {
+                            java.io.File.createTempFile("capsule-cache", ".bin").apply {
+                                deleteOnExit(); java.io.RandomAccessFile(this, "rw").use { it.setLength(length) }
+                            }
+                        }
+                        add(androidx.media3.datasource.cache.CacheSpan(key, 0, length, 0, file))
+                    }
+                }
                 "getContentMetadata" -> metadata[key] ?: DefaultContentMetadata()
                 "applyContentMetadataMutations" -> {
                     metadata[key!!] = (metadata[key] ?: DefaultContentMetadata())

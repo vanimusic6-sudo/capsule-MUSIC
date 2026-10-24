@@ -26,8 +26,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import timber.log.Timber
 
 /**
@@ -42,7 +40,6 @@ import timber.log.Timber
  */
 object ExperimentalDownload {
     private const val MAX_BYTES = 240L * 1024 * 1024
-    private val permits = Semaphore(1)
     private val main = Handler(Looper.getMainLooper())
     /**
      * The native app library reads Media3's DownloadIndex, while independent
@@ -286,7 +283,7 @@ object ExperimentalDownload {
         app: Context, track: ExperimentalCatalog.Track, displayName: String, mime: String, workId: String,
     ): Unit = withContext(Dispatchers.IO) {
         val address = track.downloadUrl ?: throw java.io.IOException("Publisher did not permit this download")
-        permits.withPermit {
+        com.nikhil.yt.playback.AudioDownloadSlots.withSlot {
             updateStatus(track.mediaId, State.DOWNLOADING)
             var destination: Uri? = null
             try {
@@ -314,7 +311,7 @@ object ExperimentalDownload {
                                 .putString(completedOwner, workId).remove(pendingKey).remove(pendingOwner).commit()
                             updateStatus(track.mediaId, State.COMPLETED)
                             _savedFilesRevision.update { it + 1L }
-                            return@withPermit
+                            return@withSlot
                         }
                         provider.delete(previous, null, null)
                     }

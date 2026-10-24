@@ -48,6 +48,7 @@ jobs:
           --tests 'com.nikhil.yt.ui.ArtistHeroTest'
           --tests 'com.nikhil.yt.ui.ArtistScreenDesignTest'
           --tests 'com.nikhil.yt.ui.ArtistMotionTest'
+          --tests 'com.nikhil.yt.ui.ListStabilityTest'
           --tests 'com.nikhil.yt.db.ArtistSubscriptionTest'
           --tests 'com.nikhil.yt.db.ArtistSubscriptionStateTest'
           --tests 'com.nikhil.yt.ui.MainTabNavigatorTest'

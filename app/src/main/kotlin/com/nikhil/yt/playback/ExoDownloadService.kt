@@ -38,6 +38,19 @@ class ExoDownloadService : DownloadService(
     lateinit var downloadUtil: DownloadUtil
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_ADD_DOWNLOAD) {
+            @Suppress("DEPRECATION")
+            val request = intent.getParcelableExtra<androidx.media3.exoplayer.offline.DownloadRequest>(KEY_DOWNLOAD_REQUEST)
+            if (request != null) {
+                val existing = downloadManager.currentDownloads.firstOrNull { it.request.id == request.id }
+                // Promoting/deduplicating an active song must not stop and restart its transfer.
+                val running = existing?.stopReason == Download.STOP_REASON_NONE &&
+                    existing.state in setOf(Download.STATE_DOWNLOADING, Download.STATE_QUEUED, Download.STATE_RESTARTING)
+                val merged = if (existing?.request?.isManualDownload() == true) request.withManualPriority() else request
+                intent.putExtra(KEY_DOWNLOAD_REQUEST, merged)
+                intent.putExtra(KEY_STOP_REASON, if (running) Download.STOP_REASON_NONE else DOWNLOAD_WAITING_FOR_SLOT)
+            }
+        }
         if (intent?.action == REMOVE_ALL_PENDING_DOWNLOADS) {
             downloadManager.currentDownloads.forEach { download ->
                 downloadManager.removeDownload(download.request.id)
@@ -60,7 +73,7 @@ class ExoDownloadService : DownloadService(
                 this,
                 R.drawable.download,
                 null,
-                if (downloads.size == 1) Util.fromUtf8Bytes(downloads[0].request.data)
+                if (downloads.size == 1) downloads[0].request.downloadTitle()
                 else resources.getQuantityString(R.plurals.n_song, downloads.size, downloads.size),
                 downloads,
                 notMetRequirements
@@ -99,7 +112,7 @@ class ExoDownloadService : DownloadService(
                     context,
                     R.drawable.error,
                     null,
-                    Util.fromUtf8Bytes(download.request.data)
+                    download.request.downloadTitle()
                 )
                 NotificationUtil.setNotification(context, nextNotificationId++, notification)
             }

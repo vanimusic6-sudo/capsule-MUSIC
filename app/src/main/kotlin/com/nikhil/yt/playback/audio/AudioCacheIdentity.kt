@@ -25,7 +25,11 @@ internal object AudioCacheIdentity {
     fun isComplete(cache: Cache, key: String, legacyLength: Long? = null): Boolean {
         val length = ContentMetadata.getContentLength(cache.getContentMetadata(key))
             .takeIf { it > 0 } ?: legacyLength?.takeIf { it > 0 } ?: return false
-        return cache.isCached(key, 0, length)
+        if (!cache.isCached(key, 0, length)) return false
+        // The index can outlive a file removed externally or truncated by storage failure.
+        return cache.getCachedSpans(key).filter { it.position < length }.all { span ->
+            span.file?.let { it.isFile && it.length() >= span.length } == true
+        }
     }
 
     fun setLength(cache: Cache, key: String, length: Long?) {

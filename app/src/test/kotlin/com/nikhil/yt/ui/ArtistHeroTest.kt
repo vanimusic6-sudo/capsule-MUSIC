@@ -75,13 +75,13 @@ class ArtistHeroTest {
         // The current Capsule hero lets artwork reach the physical top edge and uses the matte
         // overlay itself to soften the status/navigation area. Text/actions keep their reference
         // anchors so the magnetic lower composition remains unchanged.
-        assertEquals(hero.width * 1.30f + 16f * dp, hero.height, 2f)
+        assertEquals(hero.width * 1.48f + 16f * dp, hero.height, 2f)
         assertEquals(hero.top, portrait.top, 2f)
-        assertEquals(hero.width * 1.10f, portrait.height, 2f)
+        assertEquals(hero.width * 1.25f, portrait.height, 2f)
         assertEquals(hero.width, portrait.width, 1f)
-        assertEquals(hero.top + 300f * dp, title.top, 2f)
+        assertEquals(hero.top + 364.8f * dp, title.top, 2f)
         assertEquals(hero.left + 14f * dp, title.left, 1f)
-        assertEquals(hero.top + 360f * dp, actions.top, 2f)
+        assertEquals(hero.top + 424.8f * dp, actions.top, 2f)
         assertEquals(hero.left + 22f * dp, actions.left, 1f)
         assertTrue(title.bottom < actions.top)
     }

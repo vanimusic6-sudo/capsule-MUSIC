@@ -7,6 +7,8 @@
 
 package com.nikhil.yt.ui.component
 
+import com.nikhil.yt.playback.visibleState
+
 import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.VeluneLoader
 import android.widget.Toast
@@ -310,7 +312,7 @@ fun SongListItem(
                 else -> {
                     val download by LocalDownloadUtil.current.getDownload(song.id)
                         .collectAsState(initial = null)
-                    Icon.Download(download?.state)
+                    Icon.Download(download?.visibleState)
                 }
             }
         }
@@ -348,7 +350,7 @@ fun SongListItem(
                 )
             },
             trailingContent = trailingContent,
-            modifier = modifier,
+            modifier = if (isSwipeable && swipeEnabled) Modifier else modifier,
             isActive = isActive && showActiveBackground,
             itemHeight = visuals.rowHeight,
         )
@@ -357,7 +359,7 @@ fun SongListItem(
     if (isSwipeable && swipeEnabled) {
         SwipeToSongBox(
             mediaItem = song.toMediaItem(),
-            modifier = Modifier.fillMaxWidth()
+            modifier = modifier.fillMaxWidth()
         ) {
             content()
         }
@@ -382,7 +384,7 @@ fun SongGridItem(
         }
         if (showDownloadIcon) {
             val download by LocalDownloadUtil.current.getDownload(song.id).collectAsState(initial = null)
-            Icon.Download(download?.state)
+            Icon.Download(download?.visibleState)
         }
     },
     isActive: Boolean = false,
@@ -400,16 +402,7 @@ fun SongGridItem(
         )
     },
     subtitle = {
-        Text(
-            text = joinByBullet(
-                song.artists.joinToString { it.name },
-                makeTimeString(song.song.duration * 1000L)
-            ),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.secondary,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
+        GridSubtitle(joinByBullet(song.artists.joinToString { it.name }, makeTimeString(song.song.duration * 1000L)))
     },
     badges = badges,
     thumbnailContent = {
@@ -765,14 +758,17 @@ fun OverlayPlaylistListItem(
                             pluralStringResource(R.plurals.n_song, playlist.songCount, playlist.songCount)
                         }
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) { badges() }
-                    Text(
-                        text = subtitle,
-                        color = MaterialTheme.colorScheme.secondary,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        badges()
+                        Text(
+                            text = subtitle,
+                            color = MaterialTheme.colorScheme.secondary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
 
                 Row(modifier = Modifier.padding(start = 8.dp), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.End) {
@@ -926,7 +922,7 @@ private fun DefaultYouTubeItemBadges(item: YTItem) {
                 LocalDownloadUtil.current
                     .getDownload(item.id)
                     .collectAsState(initial = null)
-            Icon.Download(download?.state)
+            Icon.Download(download?.visibleState)
         }
 
         is AlbumItem -> {
@@ -1036,7 +1032,7 @@ fun YouTubeListItem(
                 )
             },
             trailingContent = trailingContent,
-            modifier = modifier,
+            modifier = if (item is SongItem && isSwipeable && swipeEnabled) Modifier else modifier,
             isActive = isActive,
             itemHeight = visuals.rowHeight,
         )
@@ -1045,7 +1041,7 @@ fun YouTubeListItem(
     if (item is SongItem && isSwipeable && swipeEnabled) {
         SwipeToSongBox(
             mediaItem = item.toMediaItem(),
-            modifier = Modifier.fillMaxWidth()
+            modifier = modifier.fillMaxWidth()
         ) {
             content()
         }
@@ -1087,13 +1083,7 @@ fun YouTubeGridItem(
             is PlaylistItem -> joinByBullet(item.author?.name, item.songCountText)
         }
         if (subtitle != null) {
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.secondary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            GridSubtitle(subtitle)
         }
     },
     badges = badges,
@@ -1614,7 +1604,7 @@ fun SwipeToSongBox(
     val ctx = LocalContext.current
     val player = LocalPlayerConnection.current
     val scope = rememberCoroutineScope()
-    val offset = remember { mutableStateOf(0f) }
+    val offset = remember(mediaItem.mediaId) { mutableStateOf(0f) }
     val threshold = 300f
 
     val dragState = rememberDraggableState { delta ->
@@ -1745,8 +1735,8 @@ private object Icon {
                     .padding(end = 2.dp)
             )
             STATE_QUEUED, STATE_DOWNLOADING -> VeluneLoader(
-                size = 16.dp,
-                modifier = Modifier.padding(end = 2.dp)
+                size = 18.dp,
+                modifier = Modifier.padding(end = 4.dp)
             )
             else -> { /* no icon */ }
         }
@@ -1770,4 +1760,11 @@ private fun PlaylistDownloadBadge(playlistId: String) {
     val songFlow = remember(database, playlistId) { database.playlistSongIds(playlistId) }
     val songs by songFlow.collectAsState(initial = emptyList())
     Icon.Download(rememberCollectionDownloadState(songs))
+}
+
+/** LazyRow measures visible children: reserve both metadata lines to prevent viewport jumps. */
+@Composable
+internal fun GridSubtitle(text: String) {
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.secondary,
+        minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis)
 }

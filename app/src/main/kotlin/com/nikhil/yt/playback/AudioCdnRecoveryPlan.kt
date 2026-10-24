@@ -7,17 +7,18 @@ package com.nikhil.yt.playback
  * HTTP 403/410 already gets one same-link retry in AudioChunkedDataSource.
  * A transient transport failure gets one same-link reconnect here, EXCEPT an
  * open that exhausted its network timeout before receiving any bytes. Retrying
- * that precise route can cost another full timeout, so it goes directly to
- * the next client's freshly signed URL. No client carousel after that.
+ * that precise route can cost another full timeout, so it requests a fresh URL once through the same policy before
+ * retiring a client. A CDN route failure alone does not prove that client is broken. No client carousel after that.
  */
 internal enum class AudioCdnRecoveryAction {
     RETRY_SAME_URL,
+    RESOLVE_FRESH_URL,
     TRY_NEXT_CLIENT,
     SKIP_TRACK,
 }
 
 internal class AudioCdnRecoveryPlan {
-    private enum class Stage { INITIAL, SAME_URL_RETRIED, NEXT_CLIENT_TRIED }
+    private enum class Stage { INITIAL, SAME_URL_RETRIED, FRESH_URL_TRIED, NEXT_CLIENT_TRIED }
     private val stages = LinkedHashMap<String, Stage>()
 
     fun onFailure(
@@ -32,13 +33,14 @@ internal class AudioCdnRecoveryPlan {
             // repeating that precise route immediately adds another long
             // silence without any evidence that the link itself changed.
             Stage.INITIAL ->
-                if (signedUrlRejected || unresponsiveOpen) AudioCdnRecoveryAction.TRY_NEXT_CLIENT
+                if (signedUrlRejected || unresponsiveOpen) AudioCdnRecoveryAction.RESOLVE_FRESH_URL
                 else AudioCdnRecoveryAction.RETRY_SAME_URL
-            Stage.SAME_URL_RETRIED -> AudioCdnRecoveryAction.TRY_NEXT_CLIENT
+            Stage.SAME_URL_RETRIED, Stage.FRESH_URL_TRIED -> AudioCdnRecoveryAction.TRY_NEXT_CLIENT
             Stage.NEXT_CLIENT_TRIED -> AudioCdnRecoveryAction.SKIP_TRACK
         }
         stages[mediaId] = when (action) {
             AudioCdnRecoveryAction.RETRY_SAME_URL -> Stage.SAME_URL_RETRIED
+            AudioCdnRecoveryAction.RESOLVE_FRESH_URL -> Stage.FRESH_URL_TRIED
             AudioCdnRecoveryAction.TRY_NEXT_CLIENT,
             AudioCdnRecoveryAction.SKIP_TRACK -> Stage.NEXT_CLIENT_TRIED
         }

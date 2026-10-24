@@ -35,6 +35,16 @@ internal class ResolvingAudioDownloader(
 
     override fun download(progressListener: Downloader.ProgressListener?) {
         try {
+            runBlocking(Dispatchers.IO + cancellation) {
+                com.nikhil.yt.playback.AudioDownloadSlots.withSlot { downloadWithSlot(progressListener) }
+            }
+        } catch (cancelled: CancellationException) {
+            throw InterruptedException("Audio download cancelled while waiting for a slot").apply { initCause(cancelled) }
+        }
+    }
+
+    private fun downloadWithSlot(progressListener: Downloader.ProgressListener?) {
+        try {
             checkActive()
             if (AudioCacheIdentity.isComplete(cache, mediaId)) {
                 completed(progressListener)

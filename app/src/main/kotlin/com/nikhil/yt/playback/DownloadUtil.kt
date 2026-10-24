@@ -336,6 +336,8 @@ constructor(
             )
         }
 
+    private val downloadQueue = AudioDownloadQueue(downloadManager)
+
     init {
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -412,7 +414,7 @@ constructor(
     }
 
     companion object {
-        internal const val MAX_PARALLEL_DOWNLOADS = 1
+        internal const val MAX_PARALLEL_DOWNLOADS = AudioDownloadSlots.LIMIT
         private const val SHORT_COOLDOWN_MS = 2_500L
         private const val LONG_COOLDOWN_MS = 8_000L
         private const val DOWNLOAD_GATE_TIMEOUT_MS = 30_000L

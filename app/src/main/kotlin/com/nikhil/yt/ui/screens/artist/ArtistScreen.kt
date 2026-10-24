@@ -338,8 +338,8 @@ fun ArtistScreen(
                         }
 
                         itemsIndexed(
-                            items = filteredLibrarySongs.take(5),
-                            key = { index, item -> "local_song_${item.id}_$index" }
+                            items = filteredLibrarySongs.distinctBy { it.id }.take(5),
+                            key = { _, item -> "local_song_${item.id}" }
                         ) { index, song ->
                             SongListItem(
                                 song = song,
@@ -446,8 +446,8 @@ fun ArtistScreen(
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 items(
-                                    items = filteredLibraryAlbums,
-                                    key = { album -> "local_album_${album.id}_${filteredLibraryAlbums.indexOf(album)}" }
+                                    items = filteredLibraryAlbums.distinctBy { it.id },
+                                    key = { album -> "local_album_${album.id}" }
                                 ) { album ->
                                     AlbumGridItem(
                                         album = album,
@@ -478,9 +478,10 @@ fun ArtistScreen(
                     }
                 } else {
                     // YouTube/Remote content sections
-                    artistPage?.sections?.fastForEach { section ->
+                    artistPage?.sections?.distinctBy { "${it.moreEndpoint?.browseId}:${it.moreEndpoint?.params}:${it.title}" }?.fastForEach { section ->
+                        val sectionKey = "artist-section:${section.moreEndpoint?.browseId}:${section.moreEndpoint?.params}:${section.title}"
                         if (section.items.isNotEmpty()) {
-                            item {
+                            item(key = "$sectionKey:title") {
                                 NavigationTitle(
                                     title = section.title,
                                     onClick = section.moreEndpoint?.let {
@@ -498,7 +499,7 @@ fun ArtistScreen(
                             // Song items with album info - display as list
                             items(
                                 items = section.items.distinctBy { it.id },
-                                key = { "youtube_song_${it.id}" },
+                                key = { "$sectionKey:song:${it.id}" },
                             ) { song ->
                                 YouTubeListItem(
                                     item = song as SongItem,
@@ -553,7 +554,7 @@ fun ArtistScreen(
                             }
                         } else {
                             // Grid items (albums, playlists, etc.)
-                            item {
+                            item(key = "$sectionKey:content") {
                                 LazyRow(
                                     contentPadding = PaddingValues(horizontal = 12.dp),
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
