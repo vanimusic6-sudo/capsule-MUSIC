@@ -77,10 +77,13 @@ internal class AudioDownloadQueue(private val manager: DownloadManager) : Downlo
     }
     override fun onDownloadRemoved(downloadManager: DownloadManager, download: Download) {
         admitted.remove(download.request.id)
+        pausing.remove(download.request.id)
+        protectedBackground.remove(download.request.id)
         schedule()
     }
     fun close() {
-        closed = true; handler.removeCallbacksAndMessages(null); manager.removeListener(this); admitted.clear()
+        closed = true; handler.removeCallbacksAndMessages(null); manager.removeListener(this)
+        admitted.clear(); pausing.clear(); protectedBackground.clear()
     }
     private fun schedule() {
         if (closed || scheduled) return
@@ -89,10 +92,11 @@ internal class AudioDownloadQueue(private val manager: DownloadManager) : Downlo
             scheduled = false
             if (!manager.isInitialized) return@post
             val entries = manager.currentDownloads
-            admitted.retainAll(entries.map { it.request.id }.toSet())
-            protectedBackground.retainAll(entries.map { it.request.id }.toSet())
-            val active = entries.filter { it.stopReason == Download.STOP_REASON_NONE &&
-                it.state in setOf(Download.STATE_QUEUED, Download.STATE_DOWNLOADING, Download.STATE_RESTARTING) }
+            val entryIds = entries.map { it.request.id }.toSet()
+            admitted.retainAll(entryIds)
+            protectedBackground.retainAll(entryIds)
+            pausing.retainAll(entryIds)
+            val active = entries.filter(::keepActiveDownload)
                 .map { it.request.id }.toSet() + admitted
             val waiting = entries.filter { it.stopReason == DOWNLOAD_WAITING_FOR_SLOT && it.request.id !in admitted }.toMutableList()
             // One pause per admission wave. Media3 cancels the worker and preserves partial cache;
@@ -125,6 +129,7 @@ internal val Download.canPrioritize: Boolean
     get() = !request.isManualDownload() && stopReason == DOWNLOAD_WAITING_FOR_SLOT
 
 internal fun keepActiveDownload(download: Download?): Boolean =
-    download?.stopReason == Download.STOP_REASON_NONE && download.state in setOf(
-        Download.STATE_DOWNLOADING, Download.STATE_QUEUED, Download.STATE_RESTARTING,
-    )
+    download?.stopReason == Download.STOP_REASON_NONE && when (download.state) {
+        Download.STATE_DOWNLOADING, Download.STATE_QUEUED, Download.STATE_RESTARTING -> true
+        else -> false
+    }

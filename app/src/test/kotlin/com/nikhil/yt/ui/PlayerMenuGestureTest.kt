@@ -16,6 +16,8 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
@@ -82,6 +84,18 @@ class PlayerMenuGestureTest {
         compose.waitForIdle()
         val expandedTop = compose.onNodeWithTag("header").fetchSemanticsNode().boundsInRoot.top
         assertTrue("An upward swipe must fully expand the menu", expandedTop < initialTop)
+    }
+
+    @Test fun aReplacementMenuIsVisibleAfterAnInterruptedExit() {
+        openMenu(MenuPresentation.STANDARD)
+        compose.mainClock.autoAdvance = false
+        compose.runOnUiThread { menu.dismiss() }
+        compose.mainClock.advanceTimeBy(80)
+        compose.runOnUiThread { menu.show { Text("Replacement menu") } }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        compose.onNodeWithText("Replacement menu").assertIsDisplayed()
+        compose.runOnIdle { assertTrue(menu.isVisible); assertFalse(menu.dismissRequested) }
     }
 
     @Test fun ordinaryMenusUseTheSameNativeScrollAndDismissAsThePlayer() {

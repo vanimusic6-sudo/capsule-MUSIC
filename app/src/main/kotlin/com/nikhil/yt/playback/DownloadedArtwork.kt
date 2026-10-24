@@ -31,7 +31,7 @@ internal object DownloadedArtwork {
         return hash(canonical)
     }
     private fun hash(value: String) = MessageDigest.getInstance("SHA-256")
-        .digest(value.toByteArray()).joinToString("") { "%02x".format(it) }
+        .digest(value.toByteArray()).joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
     private fun directory(context: Context) = File(context.filesDir, "download-artwork")
     internal fun file(context: Context, url: String) = File(directory(context), "${key(url)}.jpg")
     private fun owner(context: Context, mediaId: String) = File(directory(context), "${hash(mediaId)}.ref")

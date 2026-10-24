@@ -37,12 +37,20 @@ class DownloadedArtworkTest {
             assertTrue(DownloadedArtwork.save(context, "second", url, loader))
             assertEquals(1, calls.get())
             assertTrue(DownloadedArtwork.valid(DownloadedArtwork.file(context, url)))
+            val failures = mutableListOf<Throwable>()
             val offline = ImageLoader.Builder(context).diskCache(null)
-                .components { add(DownloadedArtworkInterceptor(context)) }.build()
+                .components {
+                    add(DownloadedArtworkInterceptor(context))
+                    add(Interceptor { chain ->
+                        chain.proceed().also { result ->
+                            if (result is coil3.request.ErrorResult) failures += result.throwable
+                        }
+                    })
+                }.build()
             try {
                 val result = offline.execute(ImageRequest.Builder(context)
                     .data("https://lh3.googleusercontent.com/offline-cover=w128-h128-p-l90-rj").build())
-                assertTrue(result is SuccessResult)
+                assertTrue(failures.joinToString("\n") { it.stackTraceToString() }, result is SuccessResult)
             } finally { offline.shutdown() }
             DownloadedArtwork.remove(context, "first")
             assertTrue("Shared cover belongs to the other saved song", DownloadedArtwork.file(context, url).isFile)

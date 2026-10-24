@@ -94,6 +94,8 @@ class MenuState(
 ) {
     var isVisible by mutableStateOf(isVisible)
     var content by mutableStateOf(content)
+    internal var generation by mutableStateOf(0L)
+        private set
     var presentation by mutableStateOf(MenuPresentation.STANDARD)
         private set
     internal var dismissRequested by mutableStateOf(false)
@@ -106,6 +108,7 @@ class MenuState(
         presentation: MenuPresentation = MenuPresentation.STANDARD,
         content: @Composable ColumnScope.() -> Unit,
     ) {
+        generation += 1L
         dialogContent = null
         this.presentation = presentation
         dismissRequested = false
@@ -122,8 +125,8 @@ class MenuState(
         }
     }
 
-    internal fun completeAnimatedDismiss() {
-        if (dismissRequested) {
+    internal fun completeAnimatedDismiss(expectedGeneration: Long = generation) {
+        if (dismissRequested && expectedGeneration == generation) {
             dismissRequested = false
             isVisible = false
         }
@@ -183,13 +186,26 @@ fun BottomSheetMenu(
                 ),
             )
         }
-        LaunchedEffect(state.dismissRequested) {
+        var observedGeneration by remember { mutableStateOf(state.generation) }
+        LaunchedEffect(state.generation, state.dismissRequested) {
+            val generation = state.generation
+            val reopened = observedGeneration != generation
+            observedGeneration = generation
+            if (!state.dismissRequested && reopened) {
+                // An interrupted exit must not leave the replacement menu shrunken or hidden.
+                coroutineScope {
+                    launch { dismissPull.animateTo(0f, spring(dampingRatio = 1f, stiffness = 295f)) }
+                    if (sheetState.targetValue == androidx.compose.material3.SheetValue.Hidden) {
+                        launch { sheetState.show() }
+                    }
+                }
+            }
             if (state.dismissRequested) {
                 // User swipe-down already finished Material's own hide. Do
                 // not run a SECOND full exit on an invisible sheet: that was
                 // leaving an empty modal window intercepting input.
                 if (!sheetState.isVisible) {
-                    state.completeAnimatedDismiss()
+                    state.completeAnimatedDismiss(generation)
                     return@LaunchedEffect
                 }
                 // Do not destroy the surface before Material completes its
@@ -210,7 +226,7 @@ fun BottomSheetMenu(
                     }
                     launch { sheetState.hide() }
                 }
-                state.completeAnimatedDismiss()
+                state.completeAnimatedDismiss(generation)
             }
         }
         ModalBottomSheet(

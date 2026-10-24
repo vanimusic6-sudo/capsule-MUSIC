@@ -38,7 +38,8 @@ Baseline: `f11295ea80412610e3ec1e5bca4cfc93cc0bcf91`, clean
 - Subscription glyph uses one reversible turn and connected path instead of a bending horizontal
   stroke with a separately fading vertical stem. Label and size timings match. Menu surfaces use
   the player's committed-close/Back/press lifecycle and native nested scrolling; palette and
-  existing appearance variants are preserved. Settings no longer impose a separate velocity cap
+  existing appearance variants are preserved. Reopening during close uses a generation guard and
+  restores the native sheet, so an old close cannot hide the replacement. Settings no longer impose a separate velocity cap
   on the native scrolling used in the player queue.
 
 ## Verification
@@ -57,3 +58,6 @@ The supplied log also contains actual CDN read timeouts, connection resets and 4
 Their association with VPN routing is plausible but unproven; no controlled VPN/device comparison
 was available. No claim is made that these backend/network failures disappear after this patch.
 Physical-device smoothness, battery, CPU and first-sound timing still need manual verification.
+
+The full app-suite workflow compares this follow-up against the exact `f11295e` tested build.
+Known baseline failures are kept visible; focused CI and APK builds have separate conclusions.
