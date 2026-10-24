@@ -1250,9 +1250,9 @@ fun ItemThumbnail(
 
         if (albumIndex == null) {
             if (shouldLoadImage) {
-                val request = remember(thumbnailUrl, widthPx, heightPx) {
+                val request = remember(thumbnailUrl, widthPx, heightPx, thumbnailRatio) {
                     ImageRequest.Builder(context)
-                        .data(thumbnailUrl)
+                        .data(capsuleArtworkUrl(thumbnailUrl, if (thumbnailRatio == 1f) 512 else 480))
                         .allowHardware(true)
                         .apply {
                             if (widthPx != null && heightPx != null) {
