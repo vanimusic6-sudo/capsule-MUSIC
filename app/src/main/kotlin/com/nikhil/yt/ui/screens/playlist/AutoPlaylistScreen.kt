@@ -17,6 +17,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -100,6 +102,8 @@ import com.nikhil.yt.ui.component.EmptyPlaceholder
 import com.nikhil.yt.ui.component.IconButton
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.SongListItem
+import com.nikhil.yt.ui.component.OfflineSongListItem
+import com.nikhil.yt.constants.AppBarHeight
 import com.nikhil.yt.ui.component.SortHeader
 import com.nikhil.yt.ui.menu.SelectionSongMenu
 import com.nikhil.yt.ui.menu.SongMenu
@@ -292,6 +296,14 @@ fun AutoPlaylistScreen(
                 .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom).asPaddingValues(),
         ) {
             if (songs != null) {
+                // This screen draws its toolbar over its content. A playlist with
+                // no YouTube hero must reserve toolbar space (also in search mode),
+                // otherwise the back button lands directly over the first Audius row.
+                if (songs!!.isEmpty() || isSearching) {
+                    item(key = "capsule:playlist:toolbar-spacer") {
+                        Spacer(Modifier.height(AppBarHeight))
+                    }
+                }
                 if (songs!!.isEmpty() && externalSaved.isEmpty()) {
                     item {
                         EmptyPlaceholder(
@@ -384,24 +396,33 @@ fun AutoPlaylistScreen(
                     }
 
                     if (playlistType == PlaylistType.DOWNLOAD && externalSaved.isNotEmpty()) {
-                        item(key = "capsule:offline:external-title") {
-                            Text(
-                                text = "Audius · " + stringResource(R.string.filter_downloaded),
-                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
-                                style = MaterialTheme.typography.titleMedium,
-                            )
+                        val externalVisible = externalSaved.filter { file ->
+                            !isSearching || query.text.isBlank() ||
+                                file.title.contains(query.text, ignoreCase = true) ||
+                                file.artist.contains(query.text, ignoreCase = true)
                         }
-                        items(externalSaved, key = { "capsule:offline:" + it.id }) { file ->
-                            ListItem(
-                                headlineContent = { Text(file.title, maxLines = 1) },
-                                supportingContent = { Text(file.artist + " · Audius") },
-                                leadingContent = {
-                                    Icon(painterResource(R.drawable.offline), contentDescription = null)
-                                },
+                        if (songs!!.isNotEmpty()) {
+                            item(key = "capsule:offline:external-title") {
+                                Text(
+                                    text = "Audius",
+                                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                                    style = MaterialTheme.typography.titleSmall,
+                                )
+                            }
+                        }
+                        items(externalVisible, key = { "capsule:offline:" + it.id }) { file ->
+                            OfflineSongListItem(
+                                file = file,
+                                isActive = mediaMetadata?.id == OfflineAudioQueue.PREFIX + file.id,
+                                isPlaying = isPlaying,
                                 modifier = Modifier.fillMaxWidth().combinedClickable(
                                     onClick = {
-                                        OfflineAudioQueue.create(externalSaved, file)
-                                            ?.let(playerConnection::playQueue)
+                                        if (mediaMetadata?.id == OfflineAudioQueue.PREFIX + file.id) {
+                                            playerConnection.player.togglePlayPause()
+                                        } else {
+                                            OfflineAudioQueue.create(externalSaved, file)
+                                                ?.let(playerConnection::playQueue)
+                                        }
                                     },
                                     onLongClick = {},
                                 ),
@@ -511,7 +532,8 @@ fun AutoPlaylistScreen(
 
         // Same overlay behaviour as AlbumScreen: cover reaches the top and the toolbar
         // becomes solid only after its header scrolls away (or while searching/selecting).
-        val showPlaylistHero = lazyListState.firstVisibleItemIndex == 0 && !selection && !isSearching
+        val showPlaylistHero = songs?.isNotEmpty() == true &&
+            lazyListState.firstVisibleItemIndex == 0 && !selection && !isSearching
         CenterAlignedTopAppBar(
             colors = TopAppBarDefaults.topAppBarColors(
                 containerColor = if (showPlaylistHero) Color.Transparent else surfaceColor,
