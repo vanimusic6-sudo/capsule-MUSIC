@@ -1,0 +1,56 @@
+name: Post-test full regression comparison
+
+on:
+  push:
+    branches: [release/01-core-reliability]
+    paths: [.github/workflows/post-test-full-suite.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-suite:
+    name: Full app suite (${{ matrix.label }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: baseline
+            ref: 3164e7226cf762a3c52ed52186aed167851c25c3
+          - label: current
+            ref: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ matrix.ref }}
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.5.0'
+      - name: Prepare locale metadata
+        run: echo 'unqualifiedResLocale=en-US' > app/src/main/res/resources.properties
+      - name: Install compile SDK
+        shell: bash
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [[ -x "$SDKMANAGER" ]]; then
+            "$SDKMANAGER" 'platforms;android-37.1'
+          fi
+      - name: Run every app unit test
+        run: gradle :app:testUniversalDebugUnitTest --stacktrace --no-daemon --max-workers=2
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: post-test-full-${{ matrix.label }}
+          path: |
+            app/build/test-results/
+            app/build/reports/tests/
+            app/build/reports/ui-previews/
+          retention-days: 14
+          if-no-files-found: warn

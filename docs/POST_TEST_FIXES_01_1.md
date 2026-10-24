@@ -92,3 +92,8 @@ span snapshots and is also required before a download may report success. Descri
 is remembered across height-animation frames. Preload is accepted only when it matches the selected
 retained queue item, including explicit-content filtering. Remaining pre-29 system-downloader
 limitations above are deliberately disclosed, not treated as tested or fixed.
+
+A separate full-suite comparison runs every app unit test on both the original `3164e72` and
+current commit with the same CI setup. Its failures are not ignored or converted to success;
+focused core verification and APK builds remain separate. The workflow runs automatically only
+when its own file changes, avoiding a permanent duplicate workload on normal source commits.
