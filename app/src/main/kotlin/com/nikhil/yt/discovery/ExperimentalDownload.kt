@@ -42,7 +42,7 @@ import timber.log.Timber
  */
 object ExperimentalDownload {
     private const val MAX_BYTES = 240L * 1024 * 1024
-    private val permits = Semaphore(2)
+    private val permits = Semaphore(1)
     private val main = Handler(Looper.getMainLooper())
     /**
      * The native app library reads Media3's DownloadIndex, while independent
@@ -107,7 +107,7 @@ object ExperimentalDownload {
                 val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
                 while (cursor.moveToNext()) {
                     val name = cursor.getString(nameColumn) ?: continue
-                    if (!listOf(".mp3", ".ogg", ".oga", ".opus", ".m4a", ".flac")
+                    if (!listOf(".mp3", ".ogg", ".oga", ".opus", ".m4a", ".aac", ".flac")
                             .any { name.endsWith(it, ignoreCase = true) }) continue
                     val id = cursor.getLong(idColumn)
                     val bytes = cursor.getLong(sizeColumn)
@@ -243,6 +243,7 @@ object ExperimentalDownload {
                 "ogg", "oga" -> "ogg"
                 "opus" -> "opus"
                 "m4a" -> "m4a"
+                "aac" -> "aac"
                 "flac" -> "flac"
                 "wav" -> "wav"
                 else -> "mp3"
@@ -255,6 +256,7 @@ object ExperimentalDownload {
             "flac" -> "audio/flac"
             "ogg", "opus" -> "audio/ogg"
             "m4a" -> "audio/mp4"
+            "aac" -> "audio/aac"
             "wav" -> "audio/wav"
             else -> "audio/mpeg"
         }
@@ -284,8 +286,8 @@ object ExperimentalDownload {
         app: Context, track: ExperimentalCatalog.Track, displayName: String, mime: String, workId: String,
     ): Unit = withContext(Dispatchers.IO) {
         val address = track.downloadUrl ?: throw java.io.IOException("Publisher did not permit this download")
-        updateStatus(track.mediaId, State.DOWNLOADING)
         permits.withPermit {
+            updateStatus(track.mediaId, State.DOWNLOADING)
             var destination: Uri? = null
             try {
                 val provider = app.contentResolver

@@ -10,7 +10,7 @@ class AudioDownloadUrlPolicyTest {
     }
     @Test fun rejectsUntrustedHostsAndCredentialOrSchemeConfusion() {
         listOf("http://rr1.googlevideo.com/media", "file:///tmp/media", "https://googlevideo.com.evil.example/media",
-            "https://googlevideo.com@evil.example/media", "https://user:password@rr1.googlevideo.com/media", "https://127.0.0.1/media")
+            "https://googlevideo.com@evil.example/media", "https://user:password@rr1.googlevideo.com/media", "https://127.0.0.1/media", "https://rr1.googlevideo.com:8443/media", "https://rr1.googlevideo.com/media#fragment")
             .forEach { address -> assertThrows(IOException::class.java) { AudioDownloadUrlPolicy.requireYouTubeMedia(address) } }
     }
     @Test fun externalDownloadsKeepPublisherHostsButRequireHttpsAtEveryRedirect() {

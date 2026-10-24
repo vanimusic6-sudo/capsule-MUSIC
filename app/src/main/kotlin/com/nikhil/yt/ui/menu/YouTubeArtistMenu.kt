@@ -50,6 +50,8 @@ import androidx.compose.ui.unit.dp
 import com.nikhil.yt.innertube.models.ArtistItem
 import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalPlayerConnection
+import com.nikhil.yt.ui.component.CapsuleSubscribeIcon
+import com.nikhil.yt.ui.component.CapsuleSubscribeLabel
 import com.nikhil.yt.R
 import com.nikhil.yt.db.entities.ArtistEntity
 import com.nikhil.yt.playback.queues.YouTubeQueue
@@ -166,29 +168,19 @@ fun YouTubeArtistMenu(
         item {
             ListItem(
                 headlineContent = {
-                    Text(text = if (libraryArtist?.artist?.bookmarkedAt != null) stringResource(R.string.subscribed) else stringResource(R.string.subscribe))
+                    CapsuleSubscribeLabel(libraryArtist?.artist?.bookmarkedAt != null)
                 },
                 leadingContent = {
-                    Icon(
-                        painter = painterResource(
-                            if (libraryArtist?.artist?.bookmarkedAt != null) {
-                                R.drawable.subscribed
-                            } else {
-                                R.drawable.subscribe
-                            }
-                        ),
-                        contentDescription = null,
-                    )
+                    CapsuleSubscribeIcon(libraryArtist?.artist?.bookmarkedAt != null, LocalContentColor.current, Modifier.size(24.dp))
                 },
                 modifier = Modifier.clickable {
-                    database.setArtistSubscribed(
+                    database.toggleArtistSubscribed(
                         libraryArtist?.artist ?: ArtistEntity(
                             id = artist.id,
                             name = artist.title,
                             channelId = artist.channelId,
                             thumbnailUrl = artist.thumbnail,
                         ),
-                        subscribed = libraryArtist?.artist?.bookmarkedAt == null,
                     )
                 }
             )

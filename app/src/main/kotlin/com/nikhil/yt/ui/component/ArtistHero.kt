@@ -26,34 +26,26 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import com.nikhil.yt.R
 
 internal val ArtistHeroMaxWidth = 450.dp
-internal const val ArtistHeroArtworkHeightFactor = 1.36f
+internal const val ArtistHeroArtworkHeightFactor = 1.10f
 
 internal fun artistHeroArtworkHeight(availableWidth: Dp): Dp =
     availableWidth.coerceAtMost(ArtistHeroMaxWidth) * ArtistHeroArtworkHeightFactor
@@ -67,14 +59,15 @@ internal fun ArtistHeroLayout(
     actions: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     topSafePadding: Dp = 0.dp,
+    artworkAlpha: () -> Float = { 1f },
 ) {
     BoxWithConstraints(modifier.fillMaxWidth().background(background)) {
-        // Keep the reference's bottom-aligned actions, lowered by 16 dp.
+        // Shorter portrait keeps both action rows above the player/navigation on phones.
         // Artwork itself reaches the physical top edge; only overlay content respects safe insets.
         val referenceWidth = maxWidth.coerceAtMost(ArtistHeroMaxWidth)
-        val heroHeight = referenceWidth * 1.69f + 16.dp
+        val heroHeight = referenceWidth * 1.30f + 16.dp
         Box(Modifier.fillMaxWidth().height(artistHeroArtworkHeight(maxWidth))) {
-            Box(Modifier.fillMaxSize()) { artwork() }
+            Box(Modifier.fillMaxSize().graphicsLayer { alpha = artworkAlpha().coerceIn(0f, 1f) }) { artwork() }
             // No dark veil across the forehead of the artist image. The toolbar remains
             // inset for touch safety; only the photo itself reaches the physical top edge.
             ArtworkSurfaceFade(background, Modifier.matchParentSize(), portrait = true, topScrim = false)
@@ -107,24 +100,18 @@ internal fun ArtistHero(
     modifier: Modifier = Modifier,
     loading: Boolean = false,
     topSafePadding: Dp = 0.dp,
+    artworkAlpha: () -> Float = { 1f },
 ) {
     val loadingLabel = stringResource(R.string.loading)
 
-    // A follow/unfollow tap is a local user intent. Keep that intent visually authoritative for
-    // the lifetime of this hero instead of letting a delayed database/server snapshot undo the
-    // button a frame later. The database + durable subscription outbox still reconcile in the
-    // background, so this only removes the misleading subscribe -> unsubscribe flicker.
-    var localSubscribedIntent by remember { mutableStateOf<Boolean?>(null) }
-    val displayedSubscribed = localSubscribedIntent ?: subscribed
-    val onSubscribeClick = {
-        localSubscribedIntent = !displayedSubscribed
-        onSubscribe()
-    }
+    val displayedSubscribed = subscribed
+    val onSubscribeClick = onSubscribe
 
     ArtistHeroLayout(
         modifier = if (loading) modifier.clearAndSetSemantics { contentDescription = loadingLabel } else modifier,
         background = background,
         topSafePadding = topSafePadding,
+        artworkAlpha = artworkAlpha,
         artwork = {
             /*
              * No figure stands in for a portrait that has not arrived yet.
@@ -219,6 +206,10 @@ private fun CapsuleArtistAction(
     selected: Boolean = false,
     subscribeState: Boolean? = null,
 ) {
+    val containerColor by androidx.compose.animation.animateColorAsState(
+        (if (selected) StandardChrome.selected else StandardChrome.panel).copy(alpha = 0.94f),
+        androidx.compose.animation.core.tween(300), label = "subscription-surface",
+    )
     Button(
         onClick = onClick,
         enabled = enabled,
@@ -226,7 +217,7 @@ private fun CapsuleArtistAction(
         shape = RoundedCornerShape(16.dp),
         border = BorderStroke(1.dp, StandardChrome.muted.copy(alpha = if (selected) 0.30f else 0.16f)),
         colors = ButtonDefaults.buttonColors(
-            containerColor = (if (selected) StandardChrome.selected else StandardChrome.panel).copy(alpha = 0.94f),
+            containerColor = containerColor,
             contentColor = StandardChrome.text,
             disabledContainerColor = StandardChrome.panel.copy(alpha = 0.74f),
             disabledContentColor = StandardChrome.muted,
@@ -243,12 +234,11 @@ private fun CapsuleArtistAction(
             Icon(painterResource(icon), null, Modifier.size(19.dp))
         }
         Spacer(Modifier.width(8.dp))
-        Text(
-            label,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
+        if (subscribeState != null) {
+            CapsuleSubscribeLabel(subscribeState, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+        } else {
+            Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
     }
 }

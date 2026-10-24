@@ -28,7 +28,7 @@ private const val REDIRECTED =
 private class RecordingChain(
     private val request: Request,
     replies: List<(Request) -> Response>,
-) : Interceptor.Chain {
+) : Interceptor.Chain by unexpectedChainOperations() {
     private val remaining = ArrayDeque(replies)
     val sent = mutableListOf<Request>()
 

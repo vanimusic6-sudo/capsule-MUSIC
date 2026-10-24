@@ -68,6 +68,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
@@ -333,6 +337,7 @@ fun SongListItem(
             badges = badges,
             thumbnailContent = {
                 ItemThumbnail(
+                    unavailableReason = trackUnavailableReason(song.id),
                     thumbnailUrl = song.song.thumbnailUrl,
                     albumIndex = albumIndex,
                     isSelected = isSelected,
@@ -409,6 +414,7 @@ fun SongGridItem(
     badges = badges,
     thumbnailContent = {
         ItemThumbnail(
+            unavailableReason = trackUnavailableReason(song.id),
             thumbnailUrl = song.song.thumbnailUrl,
             isActive = isActive,
             isPlaying = isPlaying,
@@ -494,31 +500,17 @@ fun AlbumListItem(
     showLikedIcon: Boolean = true,
     badges: @Composable RowScope.() -> Unit = {
         val database = LocalDatabase.current
-        val downloadUtil = LocalDownloadUtil.current
         var songs by remember {
             mutableStateOf(emptyList<Song>())
         }
 
-        LaunchedEffect(Unit) {
+        LaunchedEffect(album.id) {
             database.albumSongs(album.id).collect {
                 songs = it
             }
         }
 
-        var downloadState by remember {
-            mutableStateOf(Download.STATE_STOPPED)
-        }
-
-        LaunchedEffect(songs) {
-            if (songs.isEmpty()) return@LaunchedEffect
-            downloadUtil.downloads.collect { downloads ->
-                downloadState = when {
-                    songs.all { downloads[it.id]?.state == STATE_COMPLETED } -> STATE_COMPLETED
-                    songs.all { downloads[it.id]?.state in listOf(STATE_QUEUED, STATE_DOWNLOADING, STATE_COMPLETED) } -> STATE_DOWNLOADING
-                    else -> Download.STATE_STOPPED
-                }
-            }
-        }
+        val downloadState = rememberCollectionDownloadState(songs.map { it.id })
 
         if (showLikedIcon && album.album.bookmarkedAt != null) {
             Icon.Favorite()
@@ -559,25 +551,13 @@ fun AlbumGridItem(
     coroutineScope: CoroutineScope,
     badges: @Composable RowScope.() -> Unit = {
         val database = LocalDatabase.current
-        val downloadUtil = LocalDownloadUtil.current
         var songs by remember { mutableStateOf(emptyList<Song>()) }
 
-        LaunchedEffect(Unit) {
+        LaunchedEffect(album.id) {
             database.albumSongs(album.id).collect { songs = it }
         }
 
-        var downloadState by remember { mutableStateOf(Download.STATE_STOPPED) }
-
-        LaunchedEffect(songs) {
-            if (songs.isEmpty()) return@LaunchedEffect
-            downloadUtil.downloads.collect { downloads ->
-                downloadState = when {
-                    songs.all { downloads[it.id]?.state == STATE_COMPLETED } -> STATE_COMPLETED
-                    songs.all { downloads[it.id]?.state in listOf(STATE_QUEUED, STATE_DOWNLOADING, STATE_COMPLETED) } -> STATE_DOWNLOADING
-                    else -> Download.STATE_STOPPED
-                }
-            }
-        }
+        val downloadState = rememberCollectionDownloadState(songs.map { it.id })
 
         if (album.album.bookmarkedAt != null) {
             Icon.Favorite()
@@ -642,7 +622,7 @@ fun PlaylistListItem(
     playlist: Playlist,
     modifier: Modifier = Modifier,
     autoPlaylist: Boolean = false,
-    badges: @Composable RowScope.() -> Unit = {},
+    badges: @Composable RowScope.() -> Unit = { if (!autoPlaylist) PlaylistDownloadBadge(playlist.id) },
     trailingContent: @Composable RowScope.() -> Unit = {}
 ) = ListItem(
     title = playlist.playlist.name,
@@ -694,7 +674,7 @@ fun OverlayPlaylistListItem(
     playlist: Playlist,
     modifier: Modifier = Modifier,
     autoPlaylist: Boolean = false,
-    badges: @Composable RowScope.() -> Unit = {},
+    badges: @Composable RowScope.() -> Unit = { if (!autoPlaylist) PlaylistDownloadBadge(playlist.id) },
     trailingContent: @Composable RowScope.() -> Unit = {},
     onClick: (() -> Unit)? = null,
 ) {
@@ -785,6 +765,7 @@ fun OverlayPlaylistListItem(
                             pluralStringResource(R.plurals.n_song, playlist.songCount, playlist.songCount)
                         }
                     }
+                    Row(verticalAlignment = Alignment.CenterVertically) { badges() }
                     Text(
                         text = subtitle,
                         color = MaterialTheme.colorScheme.secondary,
@@ -819,7 +800,7 @@ fun PlaylistGridItem(
     playlist: Playlist,
     modifier: Modifier = Modifier,
     autoPlaylist: Boolean = false,
-    badges: @Composable RowScope.() -> Unit = {},
+    badges: @Composable RowScope.() -> Unit = { if (!autoPlaylist) PlaylistDownloadBadge(playlist.id) },
     fillMaxWidth: Boolean = false,
 ) = GridItem(
     title = {
@@ -908,6 +889,7 @@ fun MediaMetadataListItem(
         ),
         thumbnailContent = {
             ItemThumbnail(
+                unavailableReason = trackUnavailableReason(mediaMetadata.id, mediaMetadata.unavailable),
                 thumbnailUrl = mediaMetadata.thumbnailUrl,
                 albumIndex = null,
                 isSelected = isSelected,
@@ -1038,6 +1020,7 @@ fun YouTubeListItem(
             },
             thumbnailContent = {
                 ItemThumbnail(
+                    unavailableReason = if (item is SongItem) trackUnavailableReason(item.id, item.unavailable) else null,
                     thumbnailUrl = item.thumbnail,
                     albumIndex = albumIndex,
                     isSelected = isSelected,
@@ -1120,6 +1103,7 @@ fun YouTubeGridItem(
         val shape = if (item is ArtistItem) CircleShape else RoundedCornerShape(GridThumbnailCornerRadius)
 
         ItemThumbnail(
+            unavailableReason = if (item is SongItem) trackUnavailableReason(item.id, item.unavailable) else null,
             thumbnailUrl = item.thumbnail,
             isActive = isActive,
             isPlaying = isPlaying,
@@ -1263,7 +1247,8 @@ fun ItemThumbnail(
     albumIndex: Int? = null,
     isSelected: Boolean = false,
     shouldLoadImage: Boolean = true,
-    thumbnailRatio: Float = 1f
+    thumbnailRatio: Float = 1f,
+    unavailableReason: String? = null,
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -1274,6 +1259,7 @@ fun ItemThumbnail(
             .fillMaxSize()
             .aspectRatio(thumbnailRatio)
             .clip(shape)
+            .semantics { if (unavailableReason != null) contentDescription = unavailableReason }
     ) {
         val (cropThumbnailToSquare, _) =
             rememberPreference(CropThumbnailToSquareKey, ReleaseAppearanceDefaults.cropThumbnail)
@@ -1299,6 +1285,7 @@ fun ItemThumbnail(
                 AsyncImage(
                     model = request,
                     contentDescription = null,
+                    colorFilter = if (unavailableReason != null) ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }) else null,
                     contentScale = if (shouldApplySquareCrop) ContentScale.Crop else ContentScale.Fit,
                     modifier = Modifier
                         .fillMaxSize()
@@ -1342,8 +1329,14 @@ fun ItemThumbnail(
             }
         }
 
+        if (unavailableReason != null) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
+                Icon(painterResource(R.drawable.error), null, tint = Color.White, modifier = Modifier.size(24.dp))
+            }
+        }
+
         PlayingIndicatorBox(
-            isActive = isActive,
+            isActive = isActive && unavailableReason == null,
             playWhenReady = isPlaying,
             color = if (albumIndex != null) MaterialTheme.colorScheme.onBackground else Color.White,
             modifier = Modifier
@@ -1769,4 +1762,12 @@ private object Icon {
                 .padding(end = 2.dp)
         )
     }
+}
+
+@Composable
+private fun PlaylistDownloadBadge(playlistId: String) {
+    val database = LocalDatabase.current
+    val songFlow = remember(database, playlistId) { database.playlistSongIds(playlistId) }
+    val songs by songFlow.collectAsState(initial = emptyList())
+    Icon.Download(rememberCollectionDownloadState(songs))
 }

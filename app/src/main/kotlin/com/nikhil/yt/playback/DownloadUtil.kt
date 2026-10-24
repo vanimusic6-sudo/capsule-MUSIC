@@ -85,7 +85,6 @@ constructor(
 
     // Download pressure protection. This reacts to transport failures without
     // cycling YouTube client identities or bypassing an explicit challenge.
-    @Volatile private var currentMaxParallelDownloads = DEFAULT_MAX_PARALLEL_DOWNLOADS
     @Volatile private var cooldownUntilMs = 0L
     private val consecutiveThrottleSignals = AtomicInteger(0)
     private val downloadResolveMutex = Mutex()
@@ -285,7 +284,7 @@ constructor(
             downloadIndex,
             downloaderFactory,
         ).apply {
-            maxParallelDownloads = currentMaxParallelDownloads
+            maxParallelDownloads = MAX_PARALLEL_DOWNLOADS
             addListener(
                 object : DownloadManager.Listener {
                     override fun onDownloadRemoved(downloadManager: DownloadManager, download: Download) {
@@ -370,13 +369,6 @@ constructor(
                 consecutiveThrottleSignals.updateAndGet { strikes -> maxOf(1, strikes) }
             }
 
-        val reducedParallelDownloads =
-            when {
-                nextStrikeCount >= 4 -> MIN_PARALLEL_DOWNLOADS
-                nextStrikeCount >= 2 -> DEFAULT_MAX_PARALLEL_DOWNLOADS - 1
-                else -> currentMaxParallelDownloads
-            }.coerceIn(MIN_PARALLEL_DOWNLOADS, DEFAULT_MAX_PARALLEL_DOWNLOADS)
-
         val cooldownMs =
             when {
                 nextStrikeCount >= 4 -> LONG_COOLDOWN_MS
@@ -384,29 +376,13 @@ constructor(
                 else -> 0L
             }
 
-        if (reducedParallelDownloads != currentMaxParallelDownloads) {
-            currentMaxParallelDownloads = reducedParallelDownloads
-            downloadManager.maxParallelDownloads = reducedParallelDownloads
-        }
-
         if (cooldownMs > 0) {
             cooldownUntilMs = maxOf(cooldownUntilMs, System.currentTimeMillis() + cooldownMs)
         }
     }
 
     private fun clearThrottleSignal() {
-        val remainingStrikes =
-            consecutiveThrottleSignals.updateAndGet { strikes ->
-                if (strikes > 0) strikes - 1 else 0
-            }
-
-        if (
-            remainingStrikes == 0 &&
-            currentMaxParallelDownloads != DEFAULT_MAX_PARALLEL_DOWNLOADS
-        ) {
-            currentMaxParallelDownloads = DEFAULT_MAX_PARALLEL_DOWNLOADS
-            downloadManager.maxParallelDownloads = DEFAULT_MAX_PARALLEL_DOWNLOADS
-        }
+        consecutiveThrottleSignals.updateAndGet { strikes -> (strikes - 1).coerceAtLeast(0) }
     }
 
     private fun isProbablyThrottleSignal(exception: Throwable): Boolean {
@@ -437,8 +413,7 @@ constructor(
     }
 
     companion object {
-        private const val DEFAULT_MAX_PARALLEL_DOWNLOADS = 3
-        private const val MIN_PARALLEL_DOWNLOADS = 1
+        internal const val MAX_PARALLEL_DOWNLOADS = 1
         private const val SHORT_COOLDOWN_MS = 2_500L
         private const val LONG_COOLDOWN_MS = 8_000L
         private const val DOWNLOAD_GATE_TIMEOUT_MS = 30_000L

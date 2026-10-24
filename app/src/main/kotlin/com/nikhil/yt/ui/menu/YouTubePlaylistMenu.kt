@@ -69,6 +69,7 @@ import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalDownloadUtil
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.LocalSyncUtils
+import com.nikhil.yt.ui.component.rememberCollectionDownloadState
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.ListThumbnailSize
 import com.nikhil.yt.constants.ThumbnailCornerRadius
@@ -206,25 +207,13 @@ fun YouTubePlaylistMenu(
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
 
-    var downloadState by remember {
-        mutableStateOf(Download.STATE_STOPPED)
-    }
-    LaunchedEffect(songs) {
-        if (songs.isEmpty()) return@LaunchedEffect
-        downloadUtil.downloads.collect { downloads ->
-            downloadState =
-                if (songs.all { downloads[it.id]?.state == Download.STATE_COMPLETED })
-                    Download.STATE_COMPLETED
-                else if (songs.all {
-                        downloads[it.id]?.state == Download.STATE_QUEUED
-                                || downloads[it.id]?.state == Download.STATE_DOWNLOADING
-                                || downloads[it.id]?.state == Download.STATE_COMPLETED
-                    })
-                    Download.STATE_DOWNLOADING
-                else
-                    Download.STATE_STOPPED
+    var downloadSongs by remember(playlist.id) { mutableStateOf(songs) }
+    LaunchedEffect(playlist.id, songs) {
+        downloadSongs = songs.ifEmpty {
+            withContext(Dispatchers.IO) { YouTube.playlist(playlist.id).completed().getOrNull()?.songs.orEmpty() }
         }
     }
+    val downloadState = rememberCollectionDownloadState(downloadSongs.map { it.id })
     var showRemoveDownloadDialog by remember {
         mutableStateOf(false)
     }
@@ -250,7 +239,7 @@ fun YouTubePlaylistMenu(
                 TextButton(
                     onClick = {
                         showRemoveDownloadDialog = false
-                        songs.forEach { song ->
+                        downloadSongs.forEach { song ->
                             DownloadService.sendRemoveDownload(
                                 context,
                                 ExoDownloadService::class.java,
@@ -645,19 +634,9 @@ fun YouTubePlaylistMenu(
                                 contentDescription = null,
                             )
                         },
-                        modifier = Modifier.clickable {
+                        modifier = Modifier.clickable(enabled = downloadSongs.isNotEmpty()) {
                             coroutineScope.launch {
-                                songs
-                                    .ifEmpty {
-                                        withContext(Dispatchers.IO) {
-                                            YouTube
-                                                .playlist(playlist.id)
-                                                .completed()
-                                                .getOrNull()
-                                                ?.songs
-                                                .orEmpty()
-                                        }
-                                    }.forEach { song ->
+                                downloadSongs.forEach { song ->
                                         val downloadRequest = DownloadRequest.Builder(song.id, song.id.toUri())
                                             .setCustomCacheKey(song.id)
                                             .setData(song.title.toByteArray())

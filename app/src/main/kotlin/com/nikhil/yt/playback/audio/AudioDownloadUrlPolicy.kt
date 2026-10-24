@@ -8,7 +8,7 @@ internal object AudioDownloadUrlPolicy {
     fun requireHttps(address: String): URI {
         val uri = try { URI(address) } catch (_: Exception) { throw IOException("Invalid media address") }
         if (!uri.scheme.equals("https", ignoreCase = true) || uri.host.isNullOrBlank() ||
-            uri.rawUserInfo != null || uri.rawFragment != null
+            uri.rawUserInfo != null || uri.rawFragment != null || uri.port !in listOf(-1, 443)
         ) throw IOException("Media address must be HTTPS without credentials or fragments")
         return uri
     }

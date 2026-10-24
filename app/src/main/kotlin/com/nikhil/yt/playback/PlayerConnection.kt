@@ -118,6 +118,13 @@ class PlayerConnection(
     }
 
     fun playQueue(queue: Queue) {
+        val target = (queue as? com.nikhil.yt.playback.queues.ListQueue)?.let { it.items.getOrNull(it.startIndex)?.metadata }
+            ?: queue.preloadItem
+        if (target?.unavailable == true && !service.hasOfflineTrack(target.id)) {
+            android.widget.Toast.makeText(service, com.nikhil.yt.R.string.error_track_unavailable_description,
+                android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
         service.playQueue(queue)
     }
 

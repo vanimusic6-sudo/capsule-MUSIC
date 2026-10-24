@@ -21,7 +21,7 @@ internal object InternetArchiveMusic {
     private const val MAX_SEARCH_ITEMS = 32
     private const val MAX_METADATA_LOOKUPS = 9
     private val ident = Regex("[A-Za-z0-9_][A-Za-z0-9_.-]{1,90}")
-    private val audioFile = Regex("(?i)\\.(mp3|ogg|oga|opus|m4a|flac)$")
+    private val audioFile = Regex("(?i)\\.(mp3|ogg|oga|opus|aac|m4a|flac)$")
     private val excluded = Regex("(?i)(\\bpreview\\b|\\binterview\\b|\\bpodcast\\b|\\bsample pack\\b)")
     private val itemCache = ConcurrentHashMap<String, List<ExperimentalCatalog.Track>>()
 

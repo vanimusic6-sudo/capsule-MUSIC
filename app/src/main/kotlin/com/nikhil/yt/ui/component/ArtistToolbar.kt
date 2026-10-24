@@ -13,6 +13,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -34,8 +35,10 @@ internal fun ArtistToolbar(
     onCopyLink: () -> Unit,
     onShare: () -> Unit,
     modifier: Modifier = Modifier,
+    artworkFade: Float = if (overArtwork) 0f else 1f,
 ) {
-    val foreground = if (overArtwork) Color.White else StandardChrome.text
+    val fade = artworkFade.coerceIn(0f, 1f)
+    val foreground = lerp(Color.White, StandardChrome.text, fade)
     val buttonColors = IconButtonDefaults.iconButtonColors(
         containerColor = Color.Transparent,
         contentColor = foreground,
@@ -90,8 +93,8 @@ internal fun ArtistToolbar(
         },
         colors =
             TopAppBarDefaults.topAppBarColors(
-                containerColor = if (overArtwork) Color.Transparent else StandardChrome.background,
-                scrolledContainerColor = if (overArtwork) Color.Transparent else StandardChrome.background,
+                containerColor = StandardChrome.background.copy(alpha = fade),
+                scrolledContainerColor = StandardChrome.background.copy(alpha = fade),
                 navigationIconContentColor = foreground,
                 actionIconContentColor = foreground,
                 titleContentColor = foreground,

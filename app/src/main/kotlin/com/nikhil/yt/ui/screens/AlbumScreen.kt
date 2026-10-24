@@ -77,6 +77,7 @@ import androidx.navigation.NavController
 import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalDownloadUtil
 import com.nikhil.yt.LocalPlayerConnection
+import com.nikhil.yt.ui.component.rememberCollectionDownloadState
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.AppBarHeight
 import com.nikhil.yt.constants.HideExplicitKey
@@ -150,27 +151,8 @@ fun AlbumScreen(
     }
 
     val downloadUtil = LocalDownloadUtil.current
-    var downloadState by remember { mutableStateOf(Download.STATE_STOPPED) }
+    val downloadState = rememberCollectionDownloadState(albumWithSongs?.songs.orEmpty().map { it.id })
 
-    LaunchedEffect(albumWithSongs) {
-        val songs = albumWithSongs?.songs?.map { it.id }
-        if (songs.isNullOrEmpty()) return@LaunchedEffect
-        downloadUtil.downloads.collect { downloads ->
-            downloadState =
-                if (songs.all { downloads[it]?.state == Download.STATE_COMPLETED }) {
-                    Download.STATE_COMPLETED
-                } else if (songs.all {
-                        downloads[it]?.state == Download.STATE_QUEUED ||
-                                downloads[it]?.state == Download.STATE_DOWNLOADING ||
-                                downloads[it]?.state == Download.STATE_COMPLETED
-                    }
-                ) {
-                    Download.STATE_DOWNLOADING
-                } else {
-                    Download.STATE_STOPPED
-                }
-        }
-    }
 
     // State for LazyColumn to track scroll
     val lazyListState = rememberLazyListState()
@@ -295,14 +277,7 @@ fun AlbumScreen(
                                                     }
                                                 }
                                                 Download.STATE_DOWNLOADING -> {
-                                                    albumWithSongs.songs.forEach { song ->
-                                                        DownloadService.sendRemoveDownload(
-                                                            context,
-                                                            ExoDownloadService::class.java,
-                                                            song.id,
-                                                            false,
-                                                        )
-                                                    }
+                                                    com.nikhil.yt.playback.stopCollectionDownloads(downloadUtil.downloadManager, albumWithSongs.songs.map { it.id })
                                                 }
                                                 else -> {
                                                     albumWithSongs.songs.forEach { song ->

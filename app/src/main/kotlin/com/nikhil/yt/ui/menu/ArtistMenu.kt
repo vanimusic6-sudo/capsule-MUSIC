@@ -47,6 +47,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalPlayerConnection
+import com.nikhil.yt.ui.component.CapsuleSubscribeIcon
+import com.nikhil.yt.ui.component.CapsuleSubscribeLabel
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.ArtistSongSortType
 import com.nikhil.yt.db.entities.Artist
@@ -200,16 +202,13 @@ fun ArtistMenu(
         item {
             ListItem(
                 headlineContent = {
-                    Text(text = if (artist.artist.bookmarkedAt != null) stringResource(R.string.subscribed) else stringResource(R.string.subscribe))
+                    CapsuleSubscribeLabel(artist.artist.bookmarkedAt != null)
                 },
                 leadingContent = {
-                    Icon(
-                        painter = painterResource(if (artist.artist.bookmarkedAt != null) R.drawable.subscribed else R.drawable.subscribe),
-                        contentDescription = null,
-                    )
+                    CapsuleSubscribeIcon(artist.artist.bookmarkedAt != null, LocalContentColor.current, Modifier.size(24.dp))
                 },
                 modifier = Modifier.clickable {
-                    database.setArtistSubscribed(artist.artist, artist.artist.bookmarkedAt == null)
+                    database.toggleArtistSubscribed(artist.artist)
                 }
             )
         }

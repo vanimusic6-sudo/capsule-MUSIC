@@ -43,6 +43,8 @@ data class SongItem(
     val setVideoId: String? = null,
     /** Explicit origin on the YouTube Music Videos search surface. */
     val selectedFromVideoResults: Boolean = false,
+    /** Explicit source availability, not inferred from a missing watch endpoint. */
+    val unavailable: Boolean = false,
 ) : YTItem() {
     /** Only explicitly typed videos/podcasts or selected Videos entries opt in. */
     val isOriginalVideo: Boolean

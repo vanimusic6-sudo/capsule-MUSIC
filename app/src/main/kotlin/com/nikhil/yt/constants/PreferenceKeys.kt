@@ -94,6 +94,7 @@ enum class AudioQuality {
     HIGH,
     HIGHEST,
     LOW,
+    AAC,
 }
 
 val PlayerStreamClientKey = stringPreferencesKey("playerStreamClient")

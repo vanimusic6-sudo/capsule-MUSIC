@@ -309,6 +309,10 @@ interface DatabaseDao {
     @Query("SELECT song.* FROM song JOIN song_album_map ON song.id = song_album_map.songId WHERE song_album_map.albumId = :albumId")
     fun albumSongs(albumId: String): Flow<List<Song>>
 
+    /** Membership-only observation for collection badges; do not load every song and artist relation. */
+    @Query("SELECT songId FROM playlist_song_map WHERE playlistId = :playlistId ORDER BY position")
+    fun playlistSongIds(playlistId: String): Flow<List<String>>
+
     @Transaction
     @Query("SELECT * FROM playlist_song_map WHERE playlistId = :playlistId ORDER BY position")
     fun playlistSongs(playlistId: String): Flow<List<PlaylistSong>>
@@ -1508,6 +1512,15 @@ interface DatabaseDao {
         WHERE id = :id AND bookmarkedAt = :expectedBookmark AND isLocal = 0
     """)
     fun clearArtistBookmarkIfUnchanged(id: String, expectedBookmark: LocalDateTime): Int
+
+    /** Toggle against the committed row, so rapid taps never reuse a stale UI snapshot. */
+    @Transaction
+    fun toggleArtistBookmarked(artist: ArtistEntity): ArtistEntity? {
+        insert(artist)
+        val updated = getArtistById(artist.id)?.localToggleLike() ?: return null
+        updateArtistBookmark(updated.id, updated.bookmarkedAt)
+        return updated
+    }
 
     /** Apply the visible button's intent against the current row, including an insert race. */
     @Transaction

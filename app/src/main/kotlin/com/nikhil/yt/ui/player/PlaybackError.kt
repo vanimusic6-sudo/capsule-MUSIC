@@ -78,11 +78,13 @@ fun PlaybackError(
         PlaybackFailureKind.ACCESS_RESTRICTED -> stringResource(R.string.error_access_restricted_title)
         PlaybackFailureKind.NETWORK -> stringResource(R.string.error_network_problem_title)
         PlaybackFailureKind.BOT_CHECK -> restrictedTitle
+        PlaybackFailureKind.UNAVAILABLE -> stringResource(R.string.error_track_unavailable_title)
         PlaybackFailureKind.GENERIC -> fallbackUnknown
     }
     val reason =
         when {
             isYouTubeBotCheck -> restrictedDescription
+            failureKind == PlaybackFailureKind.UNAVAILABLE -> stringResource(R.string.error_track_unavailable_description)
             failureKind == PlaybackFailureKind.AUTH_REQUIRED -> stringResource(R.string.error_auth_required_description)
             failureKind == PlaybackFailureKind.AGE_RESTRICTED -> stringResource(R.string.error_age_restricted_description)
             failureKind == PlaybackFailureKind.ACCESS_RESTRICTED -> stringResource(R.string.error_access_restricted_description)

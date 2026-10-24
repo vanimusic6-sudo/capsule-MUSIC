@@ -74,7 +74,7 @@ import kotlin.time.Clock
  *
  * Important policy:
  * - visionOS is the default; explicit WEB choices use their own profiles;
- * - EJS is best-effort: library Faraday/parser fallbacks remain available after QuickJS failures;
+ * - deciphering and bounded player-config recovery belong to the pinned library;
  * - only one extraction runs at a time, so swipe bursts cannot create a bank
  *   of simultaneous player requests;
  * - parser/source failures are remembered per song for five minutes, so a bad
@@ -351,6 +351,7 @@ object CapsuleInnerTubeXPlayer {
                 }
 
             CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
+            if (!download) com.nikhil.yt.playback.TrackAvailability.clear(videoId)
             Result.success(stream.toPlaybackData())
         } catch (timeout: TimeoutCancellationException) {
             currentCoroutineContext().ensureActive()
@@ -369,6 +370,10 @@ object CapsuleInnerTubeXPlayer {
         } catch (error: CancellationException) {
             throw error
         } catch (error: StreamResolveException) {
+            if (priority != AudioResolvePriority.DOWNLOAD) {
+                com.nikhil.yt.playback.TrackAvailability.record(videoId,
+                    com.nikhil.yt.playback.PlaybackFailureClassifier.classify(error, !YouTube.authState.cookie.isNullOrBlank()))
+            }
             val cause = error.cause
             Result.failure(
                 CapsulePlaybackSafety.blockedExceptionOrNull() ?: if (error.reason == StreamResolveException.Reason.NETWORK && cause != null) {
@@ -656,6 +661,7 @@ object CapsuleInnerTubeXPlayer {
     }
 
     fun clearPlaybackState() {
+        com.nikhil.yt.playback.TrackAvailability.clearAll()
         cancelStartupWarmup()
         streamClientFailures.clear()
         downloadStreamClientFailures.clear()
@@ -663,6 +669,7 @@ object CapsuleInnerTubeXPlayer {
     }
 
     fun onNetworkChanged() {
+        com.nikhil.yt.playback.TrackAvailability.clearAll()
         cancelStartupWarmup()
         streamClientFailures.clear()
         downloadStreamClientFailures.clear()
@@ -825,7 +832,7 @@ object CapsuleInnerTubeXPlayer {
                 }
         }
 
-    private fun AudioQuality.toInnerTubeX(
+    internal fun AudioQuality.toInnerTubeX(
         connectivityManager: ConnectivityManager,
     ): InnerTubeXAudioQuality =
         when (this) {
@@ -833,6 +840,7 @@ object CapsuleInnerTubeXPlayer {
             AudioQuality.HIGH,
             -> InnerTubeXAudioQuality.HIGH
             AudioQuality.LOW -> InnerTubeXAudioQuality.LOW
+            AudioQuality.AAC -> InnerTubeXAudioQuality.MP4
             AudioQuality.AUTO ->
                 if (connectivityManager.isActiveNetworkMetered) {
                     InnerTubeXAudioQuality.LOW

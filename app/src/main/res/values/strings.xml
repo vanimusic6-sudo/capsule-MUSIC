@@ -1006,4 +1006,6 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="capsule_source_selector_subtitle">Pick what appears on Home</string>
     <string name="capsule_like_local">Like</string>
     <string name="capsule_unlike_local">Remove like</string>
+    <string name="error_track_unavailable_title">Track unavailable</string>
+    <string name="error_track_unavailable_description">The source cannot provide this track. It may have been removed, made private or restricted in your region.</string>
 </resources>

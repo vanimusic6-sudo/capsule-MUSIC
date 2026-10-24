@@ -8,7 +8,7 @@ import com.nikhil.yt.utils.httpFailureStatus
 import com.nikhil.yt.utils.networkFailureKind
 
 internal enum class PlaybackFailureKind {
-    AUTH_REQUIRED, AGE_RESTRICTED, ACCESS_RESTRICTED, NETWORK, BOT_CHECK, GENERIC,
+    AUTH_REQUIRED, AGE_RESTRICTED, ACCESS_RESTRICTED, NETWORK, BOT_CHECK, UNAVAILABLE, GENERIC,
 }
 
 /** Classify the original extraction/transport causes even inside Media3's generic 2000. */
@@ -45,6 +45,7 @@ internal object PlaybackFailureClassifier {
             (ageRestricted || loginRequired) && !authenticated -> PlaybackFailureKind.AUTH_REQUIRED
             ageRestricted -> PlaybackFailureKind.AGE_RESTRICTED
             loginRequired -> PlaybackFailureKind.ACCESS_RESTRICTED
+            extractionFailures.any { it.reason == StreamResolveException.Reason.UNAVAILABLE } -> PlaybackFailureKind.UNAVAILABLE
             else -> PlaybackFailureKind.GENERIC
         }
     }

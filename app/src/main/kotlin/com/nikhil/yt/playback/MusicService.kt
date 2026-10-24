@@ -2611,6 +2611,9 @@ class MusicService :
 
 
 
+    internal fun hasOfflineTrack(id: String): Boolean =
+        AudioCacheIdentity.isComplete(downloadCache, id)
+
     fun playQueue(
         queue: Queue,
         playWhenReady: Boolean = true,

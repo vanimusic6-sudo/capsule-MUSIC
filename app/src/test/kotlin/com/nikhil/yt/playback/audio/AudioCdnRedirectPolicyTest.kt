@@ -23,7 +23,7 @@ private const val OTHER_GROUP = "https://rr5---sn-aj4g55-5o.googlevideo.com/vide
 private class ScriptedChain(
     private val request: Request,
     replies: List<(Request) -> Response>,
-) : Interceptor.Chain {
+) : Interceptor.Chain by unexpectedChainOperations() {
     private val remaining = ArrayDeque(replies)
     val asked = mutableListOf<String>()
     val timeoutsByHop = mutableListOf<Pair<Int?, Int?>>()

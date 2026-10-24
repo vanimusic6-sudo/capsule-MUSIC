@@ -75,13 +75,13 @@ class ArtistHeroTest {
         // The current Capsule hero lets artwork reach the physical top edge and uses the matte
         // overlay itself to soften the status/navigation area. Text/actions keep their reference
         // anchors so the magnetic lower composition remains unchanged.
-        assertEquals(hero.width * 1.69f + 16f * dp, hero.height, 2f)
+        assertEquals(hero.width * 1.30f + 16f * dp, hero.height, 2f)
         assertEquals(hero.top, portrait.top, 2f)
-        assertEquals(hero.width * 1.36f, portrait.height, 2f)
+        assertEquals(hero.width * 1.10f, portrait.height, 2f)
         assertEquals(hero.width, portrait.width, 1f)
-        assertEquals(hero.top + 440.4f * dp, title.top, 2f)
+        assertEquals(hero.top + 300f * dp, title.top, 2f)
         assertEquals(hero.left + 14f * dp, title.left, 1f)
-        assertEquals(hero.top + 500.4f * dp, actions.top, 2f)
+        assertEquals(hero.top + 360f * dp, actions.top, 2f)
         assertEquals(hero.left + 22f * dp, actions.left, 1f)
         assertTrue(title.bottom < actions.top)
     }
@@ -183,16 +183,16 @@ class ArtistHeroTest {
         savePreview("artist-full-portrait")
         val image = capture("hero")
         compose.onNodeWithTag("artist-artwork-placeholder").assertDoesNotExist()
-        val side = image.getPixel((image.width * 0.04f).roundToInt(), (image.width * 0.82f).roundToInt())
+        val side = image.getPixel((image.width * 0.04f).roundToInt(), (image.width * 0.66f).roundToInt())
         assertTrue("Wide photos must continue below the former empty band", android.graphics.Color.red(side) > 100)
         val head = image.getPixel((image.width * 0.48f).roundToInt(), (image.width * 0.30f).roundToInt())
         assertTrue("The subject must be enlarged and framed at the reference height",
             android.graphics.Color.red(head) > 200 && android.graphics.Color.green(head) > 100)
-        val bottom = image.getPixel((image.width * 0.04f).roundToInt(), (image.width * 1.35f).roundToInt())
+        val bottom = image.getPixel((image.width * 0.04f).roundToInt(), (image.width * 1.09f).roundToInt())
         assertTrue("The photograph must fade into the page without a hard lower edge",
             android.graphics.Color.red(bottom) < 20)
-        val aboveJoin = image.getPixel((image.width * 0.04f).roundToInt(), (image.width * 1.355f).roundToInt())
-        val belowJoin = image.getPixel((image.width * 0.04f).roundToInt(), (image.width * 1.365f).roundToInt())
+        val aboveJoin = image.getPixel((image.width * 0.04f).roundToInt(), (image.width * 1.095f).roundToInt())
+        val belowJoin = image.getPixel((image.width * 0.04f).roundToInt(), (image.width * 1.105f).roundToInt())
         assertTrue("The photo edge must not create a visible seam",
             kotlin.math.abs(android.graphics.Color.red(aboveJoin) - android.graphics.Color.red(belowJoin)) <= 3)
     }

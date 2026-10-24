@@ -34,7 +34,12 @@ data class MusicResponsiveListItemRenderer(
     val playlistItemData: PlaylistItemData?,
     val overlay: Overlay?,
     val navigationEndpoint: NavigationEndpoint?,
+    val isPlayable: Boolean? = null,
+    @JsonNames("musicItemRendererDisplayPolicy")
+    val displayPolicy: String? = null,
 ) {
+    val unavailable: Boolean
+        get() = isPlayable == false || displayPolicy == "MUSIC_ITEM_RENDERER_DISPLAY_POLICY_GREY_OUT"
     val isSong: Boolean
         get() = navigationEndpoint == null || navigationEndpoint.watchEndpoint != null || navigationEndpoint.watchPlaylistEndpoint != null
     val isPlaylist: Boolean

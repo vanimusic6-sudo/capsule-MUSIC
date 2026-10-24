@@ -22,7 +22,7 @@ import org.robolectric.annotation.Config
  * the planting is what makes that impossible.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
+@Config(sdk = [35], application = android.app.Application::class)
 class BuildMarkerLogTest {
     @After fun tearDown() {
         DebugLoggingController.setEnabled(false)

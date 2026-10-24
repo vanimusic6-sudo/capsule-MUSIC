@@ -43,6 +43,14 @@ class ArtistSubscriptionTest {
 
     @After fun tearDown() = database.close()
 
+    @Test fun rapidTogglesReadCommittedStateInsteadOfReusingAStaleButtonSnapshot() {
+        val stale = artist
+        assertNotNull(dao.toggleArtistBookmarked(stale)?.bookmarkedAt)
+        assertNull(dao.toggleArtistBookmarked(stale)?.bookmarkedAt)
+        assertNotNull(dao.toggleArtistBookmarked(stale)?.bookmarkedAt)
+        assertNotNull(dao.getArtistById(stale.id)?.bookmarkedAt)
+    }
+
     @Test fun delayedProfileResponseCannotUndoTheFirstSubscription() {
         dao.insert(artist)
         val requestSnapshot = requireNotNull(dao.getArtistById(artist.id))

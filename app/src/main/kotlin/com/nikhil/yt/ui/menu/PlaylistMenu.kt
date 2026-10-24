@@ -51,6 +51,7 @@ import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalDownloadUtil
 import com.nikhil.yt.LocalPlayerConnection
+import com.nikhil.yt.ui.component.rememberCollectionDownloadState
 import com.nikhil.yt.R
 import com.nikhil.yt.db.entities.Playlist
 import com.nikhil.yt.db.entities.PlaylistSong
@@ -89,7 +90,7 @@ fun PlaylistMenu(
         mutableStateOf(emptyList<Song>())
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(playlist.id, autoPlaylist, songList) {
         if (autoPlaylist == false) {
             database.playlistSongs(playlist.id).collect {
                 songs = it.map(PlaylistSong::song)
@@ -101,30 +102,9 @@ fun PlaylistMenu(
         }
     }
 
-    var downloadState by remember {
-        mutableIntStateOf(Download.STATE_STOPPED)
-    }
+    val downloadState = rememberCollectionDownloadState(songs.map { it.id })
 
     val editable: Boolean = playlist.playlist.isEditable == true
-
-    LaunchedEffect(songs) {
-        if (songs.isEmpty()) return@LaunchedEffect
-        downloadUtil.downloads.collect { downloads ->
-            downloadState =
-                if (songs.all { downloads[it.id]?.state == Download.STATE_COMPLETED }) {
-                    Download.STATE_COMPLETED
-                } else if (songs.all {
-                        downloads[it.id]?.state == Download.STATE_QUEUED ||
-                                downloads[it.id]?.state == Download.STATE_DOWNLOADING ||
-                                downloads[it.id]?.state == Download.STATE_COMPLETED
-                    }
-                ) {
-                    Download.STATE_DOWNLOADING
-                } else {
-                    Download.STATE_STOPPED
-                }
-        }
-    }
 
     var showEditDialog by remember {
         mutableStateOf(false)

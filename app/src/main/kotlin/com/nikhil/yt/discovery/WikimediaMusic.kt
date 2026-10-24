@@ -15,7 +15,7 @@ import timber.log.Timber
  * Creative Commons metadata. No third-party preview URLs or API tokens.
  */
 internal object WikimediaMusic {
-    private val audioExt = Regex("(?i)\\.(mp3|ogg|oga|opus|flac|m4a)$")
+    private val audioExt = Regex("(?i)\\.(mp3|ogg|oga|opus|flac|aac|m4a)$")
     private val noise = listOf("pronunciation", "audio pronunciation", "spoken word",
         "speech recording", "test audio", "test tone", "dictation", "sound effect",
         "letter of the alphabet", "phonetic")

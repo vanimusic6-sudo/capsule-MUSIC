@@ -927,4 +927,6 @@
     <string name="capsule_source_selector_subtitle">Что показывать на главной</string>
     <string name="capsule_like_local">Нравится</string>
     <string name="capsule_unlike_local">Убрать отметку «Нравится»</string>
+    <string name="error_track_unavailable_title">Трек недоступен</string>
+    <string name="error_track_unavailable_description">Источник не может предоставить этот трек. Возможно, он удалён, стал приватным или ограничен в вашем регионе.</string>
 </resources>

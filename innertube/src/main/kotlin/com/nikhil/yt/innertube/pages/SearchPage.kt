@@ -75,6 +75,7 @@ object SearchPage {
                         } != null,
                     endpoint = videoEndpoint,
                     selectedFromVideoResults = selectedFromVideoResults,
+                    unavailable = renderer.unavailable,
                 )
             }
             renderer.isArtist -> {

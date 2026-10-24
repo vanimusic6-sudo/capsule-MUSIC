@@ -95,6 +95,7 @@ import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalDownloadUtil
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.LocalPlayerConnection
+import com.nikhil.yt.ui.component.rememberCollectionDownloadState
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.PlaylistEditLockKey
 import com.nikhil.yt.constants.PlaylistSongSortDescendingKey
@@ -225,7 +226,7 @@ fun LocalPlaylistScreen(
     }
 
     val downloadUtil = LocalDownloadUtil.current
-    var downloadState by remember { mutableStateOf(Download.STATE_STOPPED) }
+    val downloadState = rememberCollectionDownloadState(songs.map { it.song.id })
 
     val editable: Boolean = playlist?.playlist?.isEditable == true
 
@@ -234,22 +235,7 @@ fun LocalPlaylistScreen(
             clear()
             addAll(songs)
         }
-        if (songs.isEmpty()) return@LaunchedEffect
-        downloadUtil.downloads.collect { downloads ->
-            downloadState =
-                if (songs.all { downloads[it.song.id]?.state == Download.STATE_COMPLETED }) {
-                    Download.STATE_COMPLETED
-                } else if (songs.all {
-                        downloads[it.song.id]?.state == Download.STATE_QUEUED ||
-                                downloads[it.song.id]?.state == Download.STATE_DOWNLOADING ||
-                                downloads[it.song.id]?.state == Download.STATE_COMPLETED
-                    }
-                ) {
-                    Download.STATE_DOWNLOADING
-                } else {
-                    Download.STATE_STOPPED
-                }
-        }
+
     }
 
     var showEditDialog by remember { mutableStateOf(false) }
@@ -499,14 +485,7 @@ fun LocalPlaylistScreen(
                                                 showRemoveDownloadDialog = true
                                             }
                                             Download.STATE_DOWNLOADING -> {
-                                                songs.forEach { song ->
-                                                    DownloadService.sendRemoveDownload(
-                                                        context,
-                                                        ExoDownloadService::class.java,
-                                                        song.song.id,
-                                                        false,
-                                                    )
-                                                }
+                                                com.nikhil.yt.playback.stopCollectionDownloads(downloadUtil.downloadManager, songs.map { it.song.id })
                                             }
                                             else -> {
                                                 songs.forEach { song ->

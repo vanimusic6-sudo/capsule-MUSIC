@@ -95,6 +95,10 @@ class MusicDatabase(
         }
     }
 
+    fun toggleArtistSubscribed(artist: ArtistEntity) {
+        transaction { toggleArtistBookmarked(artist)?.syncSubscription() }
+    }
+
     fun setArtistSubscribed(artist: ArtistEntity, subscribed: Boolean) {
         transaction {
             setArtistBookmarked(artist, subscribed)?.syncSubscription()

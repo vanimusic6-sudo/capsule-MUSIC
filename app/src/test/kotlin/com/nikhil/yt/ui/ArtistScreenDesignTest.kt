@@ -1,40 +1,17 @@
 package com.nikhil.yt.ui
 
-import com.nikhil.yt.ui.screens.artist.artistToolbarOverArtwork
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ArtistScreenDesignTest {
-    @Test
-    fun `artist name appears as soon as portrait clears the toolbar`() {
-        val artworkHeightPx = 980
-        val toolbarBottomPx = 240
-        val collapseAtPx = artworkHeightPx - toolbarBottomPx
-
-        assertTrue(
-            artistToolbarOverArtwork(
-                firstVisibleItemIndex = 0,
-                firstVisibleItemScrollOffsetPx = collapseAtPx - 1,
-                artworkHeightPx = artworkHeightPx,
-                toolbarBottomPx = toolbarBottomPx,
-            ),
-        )
-        assertFalse(
-            artistToolbarOverArtwork(
-                firstVisibleItemIndex = 0,
-                firstVisibleItemScrollOffsetPx = collapseAtPx,
-                artworkHeightPx = artworkHeightPx,
-                toolbarBottomPx = toolbarBottomPx,
-            ),
-        )
-        assertFalse(
-            artistToolbarOverArtwork(
-                firstVisibleItemIndex = 1,
-                firstVisibleItemScrollOffsetPx = 0,
-                artworkHeightPx = artworkHeightPx,
-                toolbarBottomPx = toolbarBottomPx,
-            ),
-        )
+    @Test fun artworkFadeIsContinuousClampedAndReversible() {
+        val values = (0..20).map { com.nikhil.yt.ui.screens.artist.artistArtworkFade(0, it * 40, 1000, 200) }
+        org.junit.Assert.assertEquals(0f, values.first(), 0f)
+        org.junit.Assert.assertEquals(1f, values.last(), 0f)
+        org.junit.Assert.assertEquals(0.5f, values[10], 0.001f)
+        assertTrue(values.zipWithNext().all { (a, b) -> b >= a && b - a < 0.1f })
+        org.junit.Assert.assertEquals(0f, com.nikhil.yt.ui.screens.artist.artistArtworkFade(0, -20, 1000, 200), 0f)
+        org.junit.Assert.assertEquals(1f, com.nikhil.yt.ui.screens.artist.artistArtworkFade(1, 0, 1000, 200), 0f)
     }
+
 }

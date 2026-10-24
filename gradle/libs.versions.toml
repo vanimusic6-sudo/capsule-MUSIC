@@ -1,7 +1,7 @@
 [versions]
 androidGradlePlugin = "9.3.1"
 annotation = "1.9.1"
-kotlin = "2.4.10"
+kotlin = "2.4.21"
 compose = "1.12.1"
 # Official SeekableTransitionState NaN fix (b/555294641). AndroidX aligns UI transitively.
 # Foundation and Material keep their existing versions; no app motion specs change.
@@ -13,7 +13,7 @@ material3 = "1.5.0-alpha23"
 media3 = "1.9.2"
 room = "2.8.4"
 hilt = "2.60.1"
-ktor = "3.5.2"
+ktor = "3.6.0"
 ksp = "2.3.11"
 jsoup = "1.22.1"
 re2j = "1.8"
@@ -40,7 +40,7 @@ kuromojiIpadic = "0.9.0"
 extractor = "2d2d9ed"
 rhino = "1.9.1"
 multiplatformMarkdown = "0.39.2"
-innertubex = "v0.5.2"
+innertubex = "v0.11.2"
 
 [libraries]
 annotation = { module = "androidx.annotation:annotation", version.ref = "annotation" }

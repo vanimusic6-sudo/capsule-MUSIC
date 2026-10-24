@@ -337,6 +337,7 @@ fun PlayerSettings(
                     AudioQuality.AUTO,
                     AudioQuality.HIGH,
                     AudioQuality.LOW,
+                    AudioQuality.AAC,
                 ),
             onValueSelected = onAudioQualityChange,
             valueText = {
@@ -344,6 +345,7 @@ fun PlayerSettings(
                     AudioQuality.HIGHEST,
                     AudioQuality.HIGH,
                     -> stringResource(R.string.audio_quality_high)
+                    AudioQuality.AAC -> "AAC (M4A)"
                     AudioQuality.AUTO ->
                         stringResource(R.string.audio_quality_auto)
                     AudioQuality.LOW ->

@@ -134,15 +134,11 @@ private val ArtistTrackArtworkSize = 56.dp
 private val ArtistTrackArtworkCornerRadius = 10.dp
 private val ArtistLatestReleaseArtworkSize = 112.dp
 
-internal fun artistToolbarOverArtwork(
-    firstVisibleItemIndex: Int,
-    firstVisibleItemScrollOffsetPx: Int,
-    artworkHeightPx: Int,
-    toolbarBottomPx: Int,
-): Boolean {
-    if (firstVisibleItemIndex != 0) return false
-    val collapseAtPx = (artworkHeightPx - toolbarBottomPx).coerceAtLeast(0)
-    return firstVisibleItemScrollOffsetPx < collapseAtPx
+internal fun artistArtworkFade(firstVisibleItemIndex: Int, offsetPx: Int, artworkHeightPx: Int, toolbarBottomPx: Int): Float {
+    if (firstVisibleItemIndex > 0) return 1f
+    val distance = (artworkHeightPx - toolbarBottomPx).coerceAtLeast(1)
+    val fraction = (offsetPx.toFloat() / distance).coerceIn(0f, 1f)
+    return fraction * fraction * (3f - 2f * fraction)
 }
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
@@ -207,36 +203,15 @@ fun ArtistScreen(
             }
         }
 
-    /*
-     * Collapse the artwork toolbar when the portrait itself has left it, not when the entire
-     * hero item (title + actions included) finally leaves the LazyColumn. That makes the compact
-     * artist name appear immediately after the avatar passes behind the top bar.
-     */
-    val transparentAppBar by remember(lazyListState, density, systemBarsTopPadding) {
+    val artworkFade by remember(lazyListState, density, systemBarsTopPadding) {
         derivedStateOf {
-            if (lazyListState.firstVisibleItemIndex != 0) {
-                false
-            } else {
-                val viewportWidthPx = lazyListState.layoutInfo.viewportSize.width
-                if (viewportWidthPx <= 0) {
-                    true
-                } else {
-                    val artworkHeightPx =
-                        with(density) {
-                            artistHeroArtworkHeight(viewportWidthPx.toDp()).roundToPx()
-                        }
-                    val toolbarBottomPx =
-                        with(density) {
-                            (systemBarsTopPadding + ArtistToolbarCompactHeight).roundToPx()
-                        }
-                    artistToolbarOverArtwork(
-                        firstVisibleItemIndex = lazyListState.firstVisibleItemIndex,
-                        firstVisibleItemScrollOffsetPx = lazyListState.firstVisibleItemScrollOffset,
-                        artworkHeightPx = artworkHeightPx,
-                        toolbarBottomPx = toolbarBottomPx,
-                    )
-                }
-            }
+            val width = lazyListState.layoutInfo.viewportSize.width
+            if (width <= 0) 0f else artistArtworkFade(
+                lazyListState.firstVisibleItemIndex,
+                lazyListState.firstVisibleItemScrollOffset,
+                with(density) { artistHeroArtworkHeight(width.toDp()).roundToPx() },
+                with(density) { (systemBarsTopPadding + ArtistToolbarCompactHeight).roundToPx() },
+            )
         }
     }
 
@@ -277,6 +252,7 @@ fun ArtistScreen(
                     canRadio = artistPage?.artist?.radioEndpoint != null,
                     loading = remoteLoading && libraryArtist == null,
                     topSafePadding = systemBarsTopPadding,
+                    artworkAlpha = { 1f - artworkFade },
                     onSubscribe = {
                         val artist = libraryArtist?.artist ?: artistPage?.artist?.let { remote ->
                             ArtistEntity(
@@ -287,7 +263,7 @@ fun ArtistScreen(
                             )
                         }
                         artist?.let {
-                            database.setArtistSubscribed(it, libraryArtist?.artist?.bookmarkedAt == null)
+                            database.toggleArtistSubscribed(it)
                         }
                     },
                     onShuffle = {
@@ -326,19 +302,7 @@ fun ArtistScreen(
                 val description = artistPage?.description
                 if (!showLocal && !description.isNullOrBlank()) {
                     item(key = "description") {
-                        var expanded by rememberSaveable(viewModel.artistId) { mutableStateOf(false) }
-                        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
-                            Text(
-                                text = description,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = StandardChrome.muted,
-                                maxLines = if (expanded) Int.MAX_VALUE else 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            androidx.compose.material3.TextButton(onClick = { expanded = !expanded }) {
-                                Text(stringResource(if (expanded) R.string.show_less else R.string.show_more), color = StandardChrome.text)
-                            }
-                        }
+                        ArtistDescription(viewModel.artistId, description)
                     }
                 }
                 latestRelease?.let { release ->
@@ -686,7 +650,7 @@ fun ArtistScreen(
 
         // FAB for switching between local/remote view
         HideOnScrollFAB(
-            visible = !transparentAppBar && librarySongs.isNotEmpty() && libraryArtist?.artist?.isLocal != true,
+            visible = artworkFade >= 1f && librarySongs.isNotEmpty() && libraryArtist?.artist?.isLocal != true,
             lazyListState = lazyListState,
             icon = if (showLocal) R.drawable.language else R.drawable.library_music,
             onClick = {
@@ -706,7 +670,8 @@ fun ArtistScreen(
 
     ArtistToolbar(
         name = artistName.orEmpty(),
-        overArtwork = transparentAppBar,
+        overArtwork = artworkFade < 1f,
+        artworkFade = artworkFade,
         canShare = artistPage != null,
         onBack = navController::navigateUp,
         onBackLongClick = navController::backToMain,
