@@ -413,10 +413,11 @@ object CapsuleInnerTubeXPlayer {
                         videoId, profile, CapsulePlaybackSafety.classifyFailure(error))
                     null
                 }
-                if (result?.sabrBootstrap != null) {
+                val bootstrap = result?.sabrBootstrap
+                if (bootstrap != null) {
                     sabrRecoveryUntilMs.remove(videoId)
                     Timber.tag(TAG).i("Selected SABR audio id=%s profile=%s itag=%d",
-                        videoId, profile, result.sabrBootstrap.audioFormat.itag)
+                        videoId, profile, bootstrap.audioFormat.itag)
                     return result
                 }
             }
