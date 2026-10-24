@@ -145,8 +145,10 @@ fun HomeScreen(
 
     LaunchedEffect(scrollToTop?.value) {
         if (scrollToTop?.value == true) {
-            lazylistState.scrollToItem(0)
+            // Consume navigation request before any suspend point. An old
+            // reselect must not hijack an in-progress finger fling.
             backStackEntry?.liveSavedStateHandle()?.set("scrollToTop", false)
+            if (!lazylistState.isScrollInProgress) lazylistState.scrollToItem(0)
         }
     }
 
