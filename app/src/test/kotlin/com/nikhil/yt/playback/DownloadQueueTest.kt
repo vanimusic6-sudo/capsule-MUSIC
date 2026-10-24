@@ -25,7 +25,7 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28], application = Application::class, manifest = Config.NONE)
 class DownloadQueueTest {
-    @Test fun twoTransfersContinueWhileManualTrackOvertakesTheLargeCollectionAndCancellationIsIndependent() {
+    @Test fun manualTrackImmediatelyPausesOneBackgroundTransferWithoutRemovingItOrExceedingTwoSlots() {
         val provider = StandaloneDatabaseProvider(RuntimeEnvironment.getApplication())
         val started = Collections.synchronizedList(mutableListOf<String>())
         val gates = (1..102).associate { "track-$it" to CountDownLatch(1) }
@@ -53,12 +53,15 @@ class DownloadQueueTest {
             assertEquals(setOf("track-1", "track-2"), started.toSet())
             manager.addDownload(request(101).withManualPriority(), DOWNLOAD_WAITING_FOR_SLOT)
             await { manager.currentDownloads.any { it.request.id == "track-101" } }
-            gates.getValue("track-1").countDown()
             await { started.size == 3 }
             assertEquals("track-101", started[2])
-            assertFalse("Second file must continue", gates.getValue("track-2").count == 0L)
+            assertFalse("Other background transfer must continue", gates.getValue("track-1").count == 0L)
+            assertEquals("Paused download remains resumable in the index", DOWNLOAD_WAITING_FOR_SLOT,
+                index.getDownload("track-2")?.stopReason)
+            gates.getValue("track-1").countDown()
+            await { index.getDownload("track-1")?.state == Download.STATE_COMPLETED }
             stopCollectionDownloads(manager, (1..101).map { "track-$it" })
-            await { index.getDownload("track-2")?.state == Download.STATE_STOPPED }
+            await { manager.currentDownloads.none { !it.request.isManualDownload() && it.stopReason == 0 } }
             assertEquals(Download.STATE_COMPLETED, index.getDownload("track-1")?.state)
             assertEquals(Download.STATE_DOWNLOADING, index.getDownload("track-101")?.state)
             gates.getValue("track-101").countDown()

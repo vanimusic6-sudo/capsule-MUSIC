@@ -76,6 +76,9 @@ constructor(
     @DownloadCache val downloadCache: Cache,
     @PlayerCache val playerCache: Cache,
 ) {
+    private val scope = CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+    private val artworkRepairs = kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+    private val artworkRepairIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val connectivityManager = context.getSystemService<ConnectivityManager>()!!
     private suspend fun playbackContext() = AudioPlaybackContext(
         context.dataStore.data.first().effectiveAudioQuality(), AudioStreamPolicy.VISIONOS, connectivityManager.isActiveNetworkMetered,
@@ -91,7 +94,9 @@ constructor(
     private val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient
             .Builder()
-            .retryOnConnectionFailure(false)
+            .retryOnConnectionFailure(true)
+            .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
             .addInterceptor(CapsuleAudioRequestInterceptor(guardStreams = true))
             .followRedirects(true)
             .followSslRedirects(false)
@@ -167,16 +172,20 @@ constructor(
     }
 
     private val downloaderFactory = DownloaderFactory { request ->
+            var refreshedClient: String? = null
             ResolvingAudioDownloader(
                 mediaId = request.id,
                 cache = downloadCache,
+                saveArtwork = { saveArtwork(request.id) },
                 resolve = { resolveDownloadPlayback(request.id) },
                 recover = { playback, failure ->
                     val status = generateSequence(failure as Throwable?) { it.cause }
                         .take(12).filterIsInstance<InvalidResponseCodeException>()
                         .firstOrNull()?.responseCode
                     if (status == 403 || status == 410) {
-                        CapsuleAudioEngine.markDownloadStreamClientFailed(request.id, playback.streamClient, status)
+                        if (refreshedClient == playback.streamClient) {
+                            CapsuleAudioEngine.markDownloadStreamClientFailed(request.id, playback.streamClient, status)
+                        } else refreshedClient = playback.streamClient
                         true
                     } else {
                         if (status == 429) CapsuleAudioEngine.markRateLimitedFailure()
@@ -287,6 +296,7 @@ constructor(
             addListener(
                 object : DownloadManager.Listener {
                     override fun onDownloadRemoved(downloadManager: DownloadManager, download: Download) {
+                        scope.launch { DownloadedArtwork.remove(context, download.request.id) }
                         CapsuleAudioEngine.clearDownloadClientFailures(download.request.id)
                         if (!initialIndexLoaded) removedWhileLoading.add(download.request.id)
                         downloads.update { it - download.request.id }
@@ -339,7 +349,14 @@ constructor(
     private val downloadQueue = AudioDownloadQueue(downloadManager)
 
     init {
-        CoroutineScope(Dispatchers.IO).launch {
+        scope.launch {
+            for (mediaId in artworkRepairs) {
+                try {
+                    if (downloads.value[mediaId]?.state == Download.STATE_COMPLETED) saveArtwork(mediaId)
+                } finally { artworkRepairIds.remove(mediaId) }
+            }
+        }
+        scope.launch {
             try {
                 val result = mutableMapOf<String, Download>()
                 val cursor = downloadIndex.getDownloads()
@@ -351,10 +368,31 @@ constructor(
                 downloads.update { (result + it) - removedWhileLoading }
                 initialIndexLoaded = true
                 removedWhileLoading.clear()
+                val network = connectivityManager.activeNetwork
+                if (network != null && connectivityManager.getNetworkCapabilities(network)
+                        ?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true) {
+                    result.values.filter { it.state == Download.STATE_COMPLETED }.forEach { repairArtwork(it.request.id) }
+                }
             } catch (error: CancellationException) {
                 throw error
             }
         }
+    }
+
+    private suspend fun saveArtwork(mediaId: String) {
+        try {
+            val url = database.getSongByIdBlocking(mediaId)?.song?.thumbnailUrl
+            if (url != null && !DownloadedArtwork.save(context, mediaId, url)) {
+                timber.log.Timber.tag("DownloadArtwork").w("Cover unavailable; audio retained id=%s", mediaId)
+            }
+        } catch (cancelled: CancellationException) { throw cancelled
+        } catch (error: Exception) {
+            timber.log.Timber.tag("DownloadArtwork").w("Cover metadata unavailable type=%s", error.javaClass.simpleName)
+        }
+    }
+
+    fun repairArtwork(mediaId: String) {
+        if (artworkRepairIds.add(mediaId) && artworkRepairs.trySend(mediaId).isFailure) artworkRepairIds.remove(mediaId)
     }
 
     fun getDownload(songId: String): Flow<Download?> =

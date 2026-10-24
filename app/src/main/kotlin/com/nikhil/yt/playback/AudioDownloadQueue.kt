@@ -37,6 +37,7 @@ internal fun enqueuePriorityAudioDownload(context: Context, service: Class<out D
 /** Three manual starts at most before one waiting collection member gets a turn. */
 internal class AudioDownloadOrder {
     private var manualStarts = 0
+    val allowPreemption: Boolean get() = manualStarts < 3
     fun next(waiting: List<Download>): Download? {
         val ordered = waiting.sortedBy { it.startTimeMs }
         val manual = ordered.firstOrNull { it.request.isManualDownload() }
@@ -47,11 +48,13 @@ internal class AudioDownloadOrder {
     }
 }
 
-/** Main-looper admission, on top of the ONE existing Media3 manager. Active jobs are never preempted. */
+/** Main-looper admission, on top of the ONE existing Media3 manager. Manual requests can pause one collection transfer without deleting its cache. */
 internal class AudioDownloadQueue(private val manager: DownloadManager) : DownloadManager.Listener {
     private val handler = Handler(Looper.getMainLooper())
     private val order = AudioDownloadOrder()
     private val admitted = mutableSetOf<String>()
+    private val pausing = mutableSetOf<String>()
+    private val protectedBackground = mutableSetOf<String>()
     private var scheduled = false
     private var closed = false
 
@@ -65,6 +68,11 @@ internal class AudioDownloadQueue(private val manager: DownloadManager) : Downlo
     }
     override fun onDownloadChanged(downloadManager: DownloadManager, download: Download, finalException: Exception?) {
         if (download.stopReason != DOWNLOAD_WAITING_FOR_SLOT) admitted.remove(download.request.id)
+        if (download.state == Download.STATE_STOPPED || download.state == Download.STATE_FAILED ||
+            download.state == Download.STATE_COMPLETED) {
+            pausing.remove(download.request.id)
+            protectedBackground.remove(download.request.id)
+        }
         schedule()
     }
     override fun onDownloadRemoved(downloadManager: DownloadManager, download: Download) {
@@ -82,12 +90,25 @@ internal class AudioDownloadQueue(private val manager: DownloadManager) : Downlo
             if (!manager.isInitialized) return@post
             val entries = manager.currentDownloads
             admitted.retainAll(entries.map { it.request.id }.toSet())
+            protectedBackground.retainAll(entries.map { it.request.id }.toSet())
             val active = entries.filter { it.stopReason == Download.STOP_REASON_NONE &&
                 it.state in setOf(Download.STATE_QUEUED, Download.STATE_DOWNLOADING, Download.STATE_RESTARTING) }
                 .map { it.request.id }.toSet() + admitted
             val waiting = entries.filter { it.stopReason == DOWNLOAD_WAITING_FOR_SLOT && it.request.id !in admitted }.toMutableList()
+            // One pause per admission wave. Media3 cancels the worker and preserves partial cache;
+            // the shared transfer semaphore also prevents overlap while that cancellation drains.
+            if (active.size >= AudioDownloadSlots.LIMIT && pausing.isEmpty() && order.allowPreemption &&
+                waiting.any { it.request.isManualDownload() }) {
+                entries.lastOrNull { it.request.id in active && !it.request.isManualDownload() &&
+                    it.request.id !in protectedBackground && it.request.id !in admitted }?.let {
+                    pausing.add(it.request.id)
+                    manager.setStopReason(it.request.id, DOWNLOAD_WAITING_FOR_SLOT)
+                }
+            }
             repeat((AudioDownloadSlots.LIMIT - active.size).coerceAtLeast(0)) {
+                val protectBackground = !order.allowPreemption
                 val next = order.next(waiting) ?: return@repeat
+                if (protectBackground && !next.request.isManualDownload()) protectedBackground.add(next.request.id)
                 waiting.remove(next)
                 admitted.add(next.request.id) // Reserve before asynchronous Media3 state callbacks.
                 manager.setStopReason(next.request.id, Download.STOP_REASON_NONE)

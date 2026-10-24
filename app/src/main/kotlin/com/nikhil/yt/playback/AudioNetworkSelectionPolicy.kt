@@ -14,3 +14,8 @@ internal fun canResolveUpcomingAudioWhile(
     currentIsPlaying &&
         currentPositionMs >= minimumPlayedMs &&
         !currentIsVideo
+
+/** Actual Media3 period loading is not speculative prefetch. Still reject abandoned queue items. */
+internal fun isAudioLoaderSelectionRelevant(
+    mediaId: String, currentId: String?, upcomingIds: List<String>, currentIsVideo: Boolean,
+): Boolean = mediaId == currentId || (!currentIsVideo && mediaId in upcomingIds)

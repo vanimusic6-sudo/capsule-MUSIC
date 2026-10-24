@@ -932,4 +932,5 @@
     <string name="prefer_aac_audio">Предпочитать AAC/M4A</string>
     <string name="prefer_aac_audio_description">Предпочитать AAC/M4A для новых потоков и загрузок, если Opus воспроизводится некорректно. Если выключено, формат выбирается автоматически.</string>
     <string name="no_offline_audio_in_queue">В этой очереди нет доступных локальных аудиофайлов</string>
+    <string name="download_now">Скачать сейчас</string>
 </resources>

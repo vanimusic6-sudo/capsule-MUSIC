@@ -504,7 +504,8 @@ object CapsuleInnerTubeXPlayer {
                         )
 
                     if (download) {
-                        markStreamClientFailed(videoId, profileId, download = true)
+                        // A challenge is not evidence that this client's format is broken.
+                        // Keep its identity after cooldown instead of rotating every minute.
                         downloadBotGate.onChallenge()
                         Timber.tag(TAG).w("Download challenge; queue cooling down, no identity rollover")
                         throw DownloadBotCheckException(failure)

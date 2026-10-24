@@ -52,7 +52,7 @@ import kotlinx.coroutines.flow.collect
 /** Preserve the original Material3 sheet's appearance and THREE swipe anchors. */
 enum class MenuPresentation { STANDARD, CAPSULE_PLAYER }
 
-/** Only action tiles in the Capsule player/lyrics menu need long-press isolation. */
+/** All menu action tiles use the same press isolation as the player. */
 val LocalCapsuleMenuPressGuard = compositionLocalOf { false }
 
 /**
@@ -115,7 +115,7 @@ class MenuState(
 
     @OptIn(ExperimentalMaterial3Api::class)
     fun dismiss() {
-        if (presentation == MenuPresentation.CAPSULE_PLAYER && isVisible) {
+        if (isVisible) {
             dismissRequested = true
         } else {
             isVisible = false
@@ -157,7 +157,8 @@ fun BottomSheetMenu(
         // drag, partialExpand/expand/hide and the LazyColumn nested scroll.
         // Our previous bespoke Dialog accidentally deleted and broke them.
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
-        val physical = state.presentation == MenuPresentation.CAPSULE_PLAYER
+        val playerAppearance = state.presentation == MenuPresentation.CAPSULE_PLAYER
+        val physical = true
         val gel = remember { Animatable(0f) }
         val dismissPull = remember { Animatable(0f) }
         val density = LocalDensity.current
@@ -224,7 +225,7 @@ fun BottomSheetMenu(
             containerColor = background,
             // Same 16dp softness as the VIDEO window; the previous 28dp
             // sheet curvature looked ragged during vertical travel.
-            shape = if (physical) {
+            shape = if (playerAppearance) {
                 RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
             } else MaterialTheme.shapes.extraLarge,
             contentColor = MaterialTheme.colorScheme.onSurface,
@@ -232,7 +233,7 @@ fun BottomSheetMenu(
             // full-screen scrim. Its alpha follows the anchored offset in
             // the draw phase; no fast scroll recomposes the menu to fill it.
             dragHandle = {
-                if (physical) {
+                if (playerAppearance) {
                     Box(
                         modifier = Modifier.fillMaxWidth().height(28.dp),
                         contentAlignment = Alignment.Center,

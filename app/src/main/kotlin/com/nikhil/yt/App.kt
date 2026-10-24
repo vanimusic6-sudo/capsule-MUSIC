@@ -327,6 +327,7 @@ class App : Application(), SingletonImageLoader.Factory {
         }
 
         return ImageLoader.Builder(this)
+            .components { add(com.nikhil.yt.playback.DownloadedArtworkInterceptor(this@App)) }
             .crossfade(true)
             .allowHardware(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
             .diskCache(diskCache)

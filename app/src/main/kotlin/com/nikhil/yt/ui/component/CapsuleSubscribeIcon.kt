@@ -21,6 +21,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -28,7 +32,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.nikhil.yt.R
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
-/** One reversible glyph: the horizontal plus arms bend into a check as the vertical arm retracts. */
+/** A reversible quarter-turn joins the plus into a check; one path, one clock, no overlapping stem. */
 @Composable
 internal fun CapsuleSubscribeIcon(
     subscribed: Boolean,
@@ -57,15 +61,23 @@ internal fun CapsuleSubscribeIcon(
         fun point(x: Float, y: Float) = center + Offset(x * unit * span, y * unit * span)
         val color = if (flattenAlpha) tint.copy(alpha = 1f) else tint
         val stroke = 2.15f * unit * strokeScale.coerceIn(0.65f, 1.2f)
-        val a = point(-6.8f + 0.8f * p, -0.5f * p)
+        // At p=0 these two diagonal strokes become a plus after the -45 degree turn.
+        // Their outer ends and common joint travel continuously to the check geometry.
+        val a = point(-4.8f - 1.2f * p, -4.8f + 4.3f * p)
         val b = point(-1.5f * p, 5f * p)
-        val c = point(6.8f + 0.7f * p, -5.5f * p)
-        drawLine(color, a, b, stroke, StrokeCap.Round)
-        drawLine(color, b, c, stroke, StrokeCap.Round)
-        val remaining = (1f - p * 1.8f).coerceAtLeast(0f)
-        if (remaining > 0f) {
-            drawLine(color.copy(alpha = color.alpha * remaining), point(0f, -6.8f * remaining),
-                point(0f, 6.8f * remaining), stroke, StrokeCap.Round)
+        val c = point(4.8f + 2.7f * p, -4.8f - 0.7f * p)
+        val d = point(4.8f * (1f - p), 4.8f * (1f - p))
+        val e = point(-4.8f * (1f - p), 4.8f * (1f - p))
+        rotate(-45f * (1f - p)) {
+            // Shortening both unused arms together keeps the plus centered throughout the turn.
+            val path = Path().apply {
+                moveTo(a.x, a.y); lineTo(b.x, b.y); lineTo(c.x, c.y)
+            }
+            drawPath(path, color, style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            if (p < 1f) {
+                drawLine(color, b, d + Offset(b.x - center.x, b.y - center.y), stroke, StrokeCap.Round)
+                drawLine(color, b, e + Offset(b.x - center.x, b.y - center.y), stroke, StrokeCap.Round)
+            }
         }
     }
 }
@@ -80,9 +92,9 @@ internal fun CapsuleSubscribeLabel(
         targetState = subscribed,
         modifier = modifier,
         transitionSpec = {
-            ((fadeIn(tween(200)) + slideInVertically(tween(320, easing = CapsuleStandardEasing)) { it / 5 })
-                togetherWith (fadeOut(tween(140)) + slideOutVertically(tween(320, easing = CapsuleStandardEasing)) { -it / 5 }))
-                .using(SizeTransform(clip = false) { _, _ -> tween(320, easing = CapsuleStandardEasing) })
+            ((fadeIn(tween(320, easing = CapsuleStandardEasing)) + slideInVertically(tween(320, easing = CapsuleStandardEasing)) { it / 5 })
+                togetherWith (fadeOut(tween(320, easing = CapsuleStandardEasing)) + slideOutVertically(tween(320, easing = CapsuleStandardEasing)) { -it / 5 }))
+                .using(SizeTransform(clip = true) { _, _ -> tween(320, easing = CapsuleStandardEasing) })
         },
         label = "subscription-label",
     ) { selected ->

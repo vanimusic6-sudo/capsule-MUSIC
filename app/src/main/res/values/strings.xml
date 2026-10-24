@@ -1011,4 +1011,5 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="prefer_aac_audio">Prefer AAC/M4A</string>
     <string name="prefer_aac_audio_description">Prefer AAC/M4A for new streams and downloads if Opus playback is unreliable. When off, the audio format is chosen automatically.</string>
     <string name="no_offline_audio_in_queue">No complete local audio is available in this queue</string>
+    <string name="download_now">Download now</string>
 </resources>

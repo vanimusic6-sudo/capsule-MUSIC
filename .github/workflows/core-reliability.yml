@@ -49,6 +49,9 @@ jobs:
           --tests 'com.nikhil.yt.ui.ArtistScreenDesignTest'
           --tests 'com.nikhil.yt.ui.ArtistMotionTest'
           --tests 'com.nikhil.yt.ui.ListStabilityTest'
+          --tests 'com.nikhil.yt.ui.CapsuleMenuMotionTest'
+          --tests 'com.nikhil.yt.ui.PlayerMenuGestureTest'
+          --tests 'com.nikhil.yt.ui.CapsuleSubscribeMotionTest'
           --tests 'com.nikhil.yt.db.ArtistSubscriptionTest'
           --tests 'com.nikhil.yt.db.ArtistSubscriptionStateTest'
           --tests 'com.nikhil.yt.ui.MainTabNavigatorTest'
@@ -71,6 +74,7 @@ jobs:
             app/build/test-results/
             app/build/reports/lint-results-universalDebug.*
             innertube/build/test-results/
+            app/build/reports/ui-previews/
           retention-days: 14
           if-no-files-found: warn
       - uses: actions/upload-artifact@v4

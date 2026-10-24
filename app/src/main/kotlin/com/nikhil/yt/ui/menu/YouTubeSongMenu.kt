@@ -7,6 +7,7 @@
 
 package com.nikhil.yt.ui.menu
 
+import com.nikhil.yt.playback.isManualDownload
 import com.nikhil.yt.playback.visibleState
 
 import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
@@ -418,19 +419,21 @@ fun YouTubeSongMenu(
                         }
                     )
                 }
-                Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> {
+                Download.STATE_QUEUED, Download.STATE_DOWNLOADING, Download.STATE_RESTARTING -> {
                     ListItem(
-                        headlineContent = { Text(text = stringResource(R.string.downloading)) },
+                        headlineContent = { Text(text = stringResource(if (download?.request?.isManualDownload() == false) R.string.download_now else R.string.cancel_button)) },
                         leadingContent = {
                             VeluneLoader(size = 24.dp)
                         },
                         modifier = Modifier.clickable {
-                            DownloadService.sendRemoveDownload(
-                                context,
-                                ExoDownloadService::class.java,
-                                song.id,
-                                false,
-                            )
+                            download?.let { entry ->
+                                if (!entry.request.isManualDownload()) {
+                                    com.nikhil.yt.playback.enqueuePriorityAudioDownload(context, ExoDownloadService::class.java, entry.request, false)
+                                } else {
+                                    DownloadService.sendSetStopReason(context, ExoDownloadService::class.java,
+                                        entry.request.id, com.nikhil.yt.playback.COLLECTION_STOP_REASON_USER, false)
+                                }
+                            }
                         }
                     )
                 }

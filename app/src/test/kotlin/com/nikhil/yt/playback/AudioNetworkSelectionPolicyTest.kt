@@ -5,6 +5,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AudioNetworkSelectionPolicyTest {
+    @Test fun actualLoaderCanPrepareNextWhilePausedOrBeforeThreeSecondsWithoutCancellationRetries() {
+        assertFalse(canResolveUpcomingAudioWhile(false, 0L, false))
+        assertTrue(isAudioLoaderSelectionRelevant("next", "current", listOf("next"), false))
+        assertTrue(isAudioLoaderSelectionRelevant("current", "current", listOf("next"), false))
+        assertFalse(isAudioLoaderSelectionRelevant("abandoned", "current", listOf("next"), false))
+        assertFalse(isAudioLoaderSelectionRelevant("next", "video", listOf("next"), true))
+    }
+
     @Test fun swipingPastAnUnwarmedTrackNeverStartsLookaheadWhileTheNewTrackBuffers() {
         assertFalse(canResolveUpcomingAudioWhile(
             currentIsPlaying = false, currentPositionMs = 0L, currentIsVideo = false,

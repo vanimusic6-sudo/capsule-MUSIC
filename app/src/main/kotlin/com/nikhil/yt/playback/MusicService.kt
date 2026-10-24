@@ -630,7 +630,7 @@ class MusicService :
             runBlocking {
                 suspend fun isRelevant(): Boolean =
                     withContext(Dispatchers.Main.immediate) {
-                        isAudioNetworkSelectionRelevant(mediaId)
+                        isAudioLoaderSelectionRelevant(mediaId)
                     }
 
                 audioResolveStability.awaitNetworkOpenStable(::isRelevant)
@@ -765,6 +765,7 @@ class MusicService :
 
     private fun audioResolveJob(
         mediaId: String,
+        loaderDemand: Boolean = false,
     ) =
         audioResolveCoordinator.resolve(mediaId) { policyGeneration ->
             audioResolveStability.awaitStable(
@@ -779,7 +780,7 @@ class MusicService :
                 },
             ) {
                 withContext(Dispatchers.Main.immediate) {
-                    isAudioNetworkSelectionRelevant(mediaId)
+                    if (loaderDemand) isAudioLoaderSelectionRelevant(mediaId) else isAudioNetworkSelectionRelevant(mediaId)
                 }
             }
             val selection = playbackContext()
@@ -812,7 +813,7 @@ class MusicService :
                     // may still finish successfully. Do not publish its URL just because its
                     // id is again the queue's next item during rapid backwards scrubbing.
                     val relevantAfterResponse = withContext(Dispatchers.Main.immediate) {
-                        isAudioNetworkSelectionRelevant(mediaId)
+                        if (loaderDemand) isAudioLoaderSelectionRelevant(mediaId) else isAudioNetworkSelectionRelevant(mediaId)
                     }
                     if (!relevantAfterResponse) {
                         throw kotlinx.coroutines.CancellationException(
@@ -874,6 +875,13 @@ class MusicService :
         mediaId == player.currentMediaItem?.mediaId ||
             isUpcomingAudioNetworkEligible(mediaId)
 
+    // Media3 prepares the next period before currentMediaItem changes, including while paused.
+    // Treating that real demand like optional prefetch caused 1–5 ms cancellation/retry loops.
+    private fun isAudioLoaderSelectionRelevant(mediaId: String): Boolean =
+        isAudioLoaderSelectionRelevant(
+            mediaId, player.currentMediaItem?.mediaId, upcomingAudioIds(), isCurrentCapsuleVideoItem(),
+        )
+
     private fun prefetchUpcomingAudio() {
         // External discovery tracks use their own HTTPS MediaSource; never YouTube prefetch.
         if (player.currentMediaItem?.mediaId?.startsWith(EXPERIMENTAL_MEDIA_PREFIX) == true) {
@@ -895,11 +903,9 @@ class MusicService :
                     ?.trim()
                     ?.takeIf { it.isNotBlank() }
                     ?.let(::add)
-                // Do not keep a discarded resolve merely because it turned into the
-                // next-in-queue item while the new foreground track is still BUFFERING.
-                // The normal just-in-time prefetch below schedules it again if the user
-                // actually listens long enough to make it relevant.
-                upcoming.filter(::isUpcomingAudioNetworkEligible).forEach { add(it) }
+                // Keep Media3's actual next-period demand alive while current playback
+                // buffers or pauses. Optional prefetch still has its separate eligibility gate.
+                upcoming.forEach { add(it) }
             }
 
         /*
@@ -4871,15 +4877,14 @@ class MusicService :
                             Result.success(awaitForegroundAudioResolve(
                                 isRelevant = {
                                     withContext(Dispatchers.Main.immediate) {
-                                        // The loader must use the SAME relevance rule as
-                                        // the resolver and CDN open gate. A just-skipped item
-                                        // becoming 'upcoming' must not retain foreground demand.
-                                        isAudioNetworkSelectionRelevant(mediaId)
+                                        // Actual period demand and CDN opens share timeline relevance;
+                                        // they must not inherit the speculative prefetch eligibility gate.
+                                        isAudioLoaderSelectionRelevant(mediaId)
                                     }
                                 },
                                 resolve = {
                                     CapsuleAudioEngine.prioritizePlayback(mediaId)
-                                    audioResolveJob(mediaId).await()
+                                    audioResolveJob(mediaId, loaderDemand = true).await()
                                 },
                             ))
                         }

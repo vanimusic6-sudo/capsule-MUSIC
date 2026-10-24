@@ -42,6 +42,15 @@ class ExoDownloadService : DownloadService(
             val request = intent.getParcelableExtra<androidx.media3.exoplayer.offline.DownloadRequest>(KEY_DOWNLOAD_REQUEST)
             if (request != null) {
                 val existing = downloadManager.currentDownloads.firstOrNull { it.request.id == request.id }
+                    ?: downloadUtil.downloads.value[request.id]
+                if (existing?.state == Download.STATE_COMPLETED) {
+                    downloadUtil.repairArtwork(request.id)
+                    intent.action = ACTION_INIT
+                    return super.onStartCommand(intent, flags, startId)
+                }
+                if (existing?.state == Download.STATE_FAILED) {
+                    com.nikhil.yt.playback.audio.CapsuleAudioEngine.clearDownloadClientFailures(request.id)
+                }
                 // Promoting/deduplicating an active song must not stop and restart its transfer.
                 val running = existing?.stopReason == Download.STOP_REASON_NONE &&
                     existing.state in setOf(Download.STATE_DOWNLOADING, Download.STATE_QUEUED, Download.STATE_RESTARTING)

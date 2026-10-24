@@ -51,6 +51,20 @@ class AudioCacheIdentityTest {
         assertEquals(100L, fixture.bytes["track"])
     }
 
+    @Test fun successfulAudioWaitsForCoverPersistenceBeforeReportingCompletion() {
+        val fixture = CacheFixture()
+        fixture.bytes["track"] = 100
+        AudioCacheIdentity.setLength(fixture.cache, "track", 100)
+        var saved = false
+        val downloader = ResolvingAudioDownloader("track", fixture.cache, { error("Already cached") },
+            { error("Already cached") }, saveArtwork = { kotlinx.coroutines.delay(20); saved = true })
+        var complete = false
+        downloader.download { _, _, percent ->
+            if (percent == 100f) { assertTrue(saved); complete = true }
+        }
+        assertTrue(complete)
+    }
+
     @Test fun cacheListingAndRemovalHandleEveryFormatOfOneSong() {
         val fixture = CacheFixture()
         val key = AudioCacheIdentity.key("track", playback())

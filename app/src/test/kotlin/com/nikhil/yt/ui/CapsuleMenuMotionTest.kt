@@ -35,10 +35,13 @@ class CapsuleMenuMotionTest {
         assertTrue("stale close completion cannot dismiss a reopened menu", state.isVisible)
     }
 
-    @Test fun unrelatedMenusKeepOriginalImmediateClose() {
+    @Test fun allMenusUseThePlayersCommittedCloseLifecycle() {
         val state = MenuState()
         state.show {}
         state.dismiss()
+        assertTrue(state.isVisible)
+        assertTrue(state.dismissRequested)
+        state.completeAnimatedDismiss()
         assertFalse(state.isVisible)
     }
 

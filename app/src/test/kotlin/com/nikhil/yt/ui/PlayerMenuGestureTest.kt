@@ -44,9 +44,9 @@ class PlayerMenuGestureTest {
     private lateinit var menu: MenuState
     private lateinit var list: LazyListState
 
-    private fun openMenu() {
+    private fun openMenu(presentation: MenuPresentation = MenuPresentation.CAPSULE_PLAYER) {
         menu = MenuState()
-        menu.show(presentation = MenuPresentation.CAPSULE_PLAYER) {
+        menu.show(presentation = presentation) {
             // The fixed header and volume area above the menu's lazy list.
             Box(Modifier.fillMaxWidth().height(80.dp).testTag("header")) { Text("Now playing") }
             NewActionButton(
@@ -82,6 +82,19 @@ class PlayerMenuGestureTest {
         compose.waitForIdle()
         val expandedTop = compose.onNodeWithTag("header").fetchSemanticsNode().boundsInRoot.top
         assertTrue("An upward swipe must fully expand the menu", expandedTop < initialTop)
+    }
+
+    @Test fun ordinaryMenusUseTheSameNativeScrollAndDismissAsThePlayer() {
+        openMenu(MenuPresentation.STANDARD)
+        expandWithSwipe()
+        compose.onNodeWithTag("items").performTouchInput { swipeUp(durationMillis = 120) }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertTrue(list.firstVisibleItemIndex > 0)
+            menu.dismiss()
+        }
+        compose.waitForIdle()
+        compose.runOnIdle { assertFalse(menu.isVisible) }
     }
 
     @Test fun quickSwipeScrollsWithoutHoldingTheFinger() {

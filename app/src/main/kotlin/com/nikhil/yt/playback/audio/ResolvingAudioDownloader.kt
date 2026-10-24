@@ -11,6 +11,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 import java.io.IOException
 
 /** Resolve the format before resuming bytes; report success only for a complete cache entry. */
@@ -19,6 +22,7 @@ internal class ResolvingAudioDownloader(
     private val cache: Cache,
     private val resolve: suspend () -> CapsuleAudioEngine.PlaybackData,
     private val dataSource: (CapsuleAudioEngine.PlaybackData) -> CacheDataSource.Factory,
+    private val saveArtwork: suspend () -> Unit = {},
     private val recover: (CapsuleAudioEngine.PlaybackData, IOException) -> Boolean = { _, _ -> false },
     private val createDownloader: (CapsuleAudioEngine.PlaybackData) -> Downloader = { playback ->
         ProgressiveDownloader(
@@ -36,17 +40,31 @@ internal class ResolvingAudioDownloader(
     override fun download(progressListener: Downloader.ProgressListener?) {
         try {
             runBlocking(Dispatchers.IO + cancellation) {
-                com.nikhil.yt.playback.AudioDownloadSlots.withSlot { downloadWithSlot(progressListener) }
+                com.nikhil.yt.playback.AudioDownloadSlots.withSlot {
+                    coroutineScope {
+                        var artwork: Job? = null
+                        try {
+                            downloadWithSlot({ length, bytes, percent ->
+                                progressListener?.onProgress(length, bytes, percent.coerceAtMost(99f))
+                            }) {
+                                if (artwork == null) artwork = launch(Dispatchers.IO) { saveArtwork() }
+                            }
+                            artwork?.join()
+                            completed(progressListener)
+                        } finally { artwork?.cancel() }
+                    }
+                }
             }
         } catch (cancelled: CancellationException) {
             throw InterruptedException("Audio download cancelled while waiting for a slot").apply { initCause(cancelled) }
         }
     }
 
-    private fun downloadWithSlot(progressListener: Downloader.ProgressListener?) {
+    private fun downloadWithSlot(progressListener: Downloader.ProgressListener?, startArtwork: () -> Unit) {
         try {
             checkActive()
             if (AudioCacheIdentity.isComplete(cache, mediaId)) {
+                startArtwork()
                 completed(progressListener)
                 return
             }
@@ -58,6 +76,7 @@ internal class ResolvingAudioDownloader(
                         expiresAtNs = System.nanoTime() +
                             (it.streamExpiresInSeconds.toLong() - 15L).coerceAtLeast(0L) * 1_000_000_000L
                     }
+                startArtwork()
                 checkActive()
                 AudioCacheIdentity.prepareDownload(
                     cache, mediaId, AudioCacheIdentity.key(mediaId, playback), playback.format.contentLength,
