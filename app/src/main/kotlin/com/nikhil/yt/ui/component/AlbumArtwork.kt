@@ -34,7 +34,7 @@ fun AlbumArtwork(
     val sizeResolver = rememberConstraintsSizeResolver()
     val request = remember(thumbnailUrl, context, sizeResolver) {
         ImageRequest.Builder(context)
-            .data(thumbnailUrl)
+            .data(capsuleArtworkUrl(thumbnailUrl, 960))
             .size(sizeResolver)
             .build()
     }
