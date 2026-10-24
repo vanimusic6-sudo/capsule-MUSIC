@@ -173,17 +173,11 @@ object CapsuleInnerTubeXPlayer {
                 visitorData: String,
                 cookie: String?,
             ): PoTokenResult? {
-                val configuredPlayer = auth.poTokenPlayer?.trim().orEmpty()
-                val configuredGvs = auth.poTokenGvs?.trim().orEmpty()
-
-                if (configuredPlayer.isNotBlank() && configuredGvs.isNotBlank()) {
-                    return PoTokenResult(
-                        playerRequestToken = configuredPlayer,
-                        streamingDataToken = configuredGvs,
-                        visitorData = visitorData,
-                    )
-                }
-
+                // Modern YouTube GVS tokens are video-ID bound. Never replay a
+                // saved static GVS token across tracks: /player can return OK
+                // while Googlevideo refuses the first byte with HTTP 403.
+                // The visitor-bound WebView session is still reusable, but its
+                // attestation result must be minted for this videoId.
                 return poTokenGenerator
                     .getWebClientPoToken(
                         videoId = videoId,
@@ -234,16 +228,12 @@ object CapsuleInnerTubeXPlayer {
             if (CapsulePlaybackSafety.blockedExceptionOrNull() != null) return
             val extractionBundle = bundle()
             val auth = extractionBundle.key.auth
-            val hasConfiguredPoTokens =
-                auth.poTokenPlayer?.trim().orEmpty().isNotBlank() &&
-                    auth.poTokenGvs?.trim().orEmpty().isNotBlank()
-            val visitorData =
+             val visitorData =
                 auth.visitorData
                     ?.trim()
                     ?.takeIf {
                         prewarmWebPoToken &&
-                            !hasConfiguredPoTokens &&
-                            it.isNotBlank() &&
+                             it.isNotBlank() &&
                             it != "null"
                     }
             extractionBundle.prewarm.start() to visitorData
