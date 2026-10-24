@@ -8,7 +8,7 @@ import org.json.JSONObject
 import org.jsoup.Jsoup
 
 /**
- * Public Spotify / SoundCloud track metadata, never external audio stream extraction.
+ * Public Spotify track metadata, never external audio stream extraction.
  * Title and artist support conservative YouTube Music matching, with manual search
  * when there is no unique match. No account cookies or API tokens are sent.
  *
@@ -33,7 +33,6 @@ internal object ExternalTrackMetadata {
 
         val endpoint = when (external.provider) {
             IncomingTrackLink.Provider.SPOTIFY -> "https://open.spotify.com/oembed?url="
-            IncomingTrackLink.Provider.SOUNDCLOUD -> "https://soundcloud.com/oembed?format=json&url="
         }
         val response = getText(endpoint + URLEncoder.encode(canonical.url, "UTF-8"))
         val json = response?.let { runCatching { JSONObject(it) }.getOrNull() }
@@ -45,7 +44,7 @@ internal object ExternalTrackMetadata {
             val artist = normalizeMetadata(rawAuthor)
                 .takeIf { it.length in 2..100 && !it.equals(external.provider.name, ignoreCase = true) }
             val title = normalizeMetadata(rawTitle)
-                .replace(Regex("""\s*[|]\s*(?:Spotify|SoundCloud)\s*$""", RegexOption.IGNORE_CASE), "")
+                .replace(Regex("""\s*[|]\s*Spotify\s*$""", RegexOption.IGNORE_CASE), "")
                 .let { title ->
                     if (artist != null && title.endsWith(" by $artist", ignoreCase = true)) {
                         title.dropLast(artist.length + 4).trim()
@@ -67,7 +66,7 @@ internal object ExternalTrackMetadata {
             page.selectFirst("meta[property=og:title]")?.attr("content")
                 ?: page.selectFirst("meta[name=twitter:title]")?.attr("content")
                 ?: ""
-        ).replace(Regex("""\s*[|]\s*(?:Spotify|SoundCloud)\s*$""", RegexOption.IGNORE_CASE), "")
+        ).replace(Regex("""\s*[|]\s*Spotify\s*$""", RegexOption.IGNORE_CASE), "")
         return title.takeIf { it.length in 2..180 }?.let { TrackInfo(it, null) }
     }
 
@@ -95,7 +94,7 @@ internal object ExternalTrackMetadata {
 
     private fun isShortLink(raw: String): Boolean =
         when (runCatching { URI(raw).host?.lowercase() }.getOrNull()) {
-            "spotify.link", "on.soundcloud.com", "snd.sc" -> true
+            "spotify.link" -> true
             else -> false
         }
 

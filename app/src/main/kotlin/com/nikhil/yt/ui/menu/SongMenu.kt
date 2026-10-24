@@ -100,6 +100,7 @@ import com.nikhil.yt.utils.rememberPreference
 import com.nikhil.yt.viewmodels.CachePlaylistViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.time.LocalDateTime
 import kotlinx.coroutines.withContext
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
@@ -119,6 +120,8 @@ fun SongMenu(
     val playerConnection = LocalPlayerConnection.current ?: return
     val songState = database.song(originalSong.id).collectAsState(initial = originalSong)
     val song = songState.value ?: originalSong
+    val independentSong = song.id.startsWith("capsule-open:")
+    val offlineSong = song.id.startsWith("capsule-open:offline:")
     val download by LocalDownloadUtil.current.getDownload(originalSong.id)
         .collectAsState(initial = null)
     val coroutineScope = rememberCoroutineScope()
@@ -239,10 +242,15 @@ fun SongMenu(
 
     AddToPlaylistDialog(
         isVisible = showChoosePlaylistDialog,
-        onGetSong = { playlist ->
-            coroutineScope.launch(Dispatchers.IO) {
-                playlist.playlist.browseId?.let { browseId ->
-                    YouTube.addToPlaylist(browseId, song.id)
+        allowSyncing = !independentSong,
+        onGetSong = { _ ->
+            // A streamable independent song may not exist in our Room library
+            // until the user first saves it. Insert before creating a playlist
+            // foreign key; never send a Capsule ID to the YouTube sync API.
+            if (independentSong) {
+                database.withTransaction {
+                    if (getSongById(song.id) == null)
+                        insert(song.toMediaMetadata()) { it.copy(isLocal = true) }
                 }
             }
             listOf(song.id)
@@ -323,11 +331,27 @@ fun SongMenu(
                 IconButton(
                     interactionSource = favoriteInteraction,
                     onClick = {
-                        val s = song.song.toggleLike()
-                        database.query {
-                            update(s)
+                        if (independentSong) {
+                            coroutineScope.launch {
+                                database.withTransaction {
+                                    val existing = getSongById(song.id)
+                                    if (existing == null) {
+                                        insert(song.toMediaMetadata()) {
+                                            it.copy(
+                                                isLocal = true,
+                                                liked = true,
+                                                likedDate = LocalDateTime.now(),
+                                                inLibrary = LocalDateTime.now(),
+                                            )
+                                        }
+                                    } else update(existing.song.localToggleLike())
+                                }
+                            }
+                        } else {
+                            val updated = song.song.toggleLike()
+                            database.query { update(updated) }
+                            syncUtils.likeSong(updated)
                         }
-                        syncUtils.likeSong(s)
                     },
                 ) {
                     CapsuleFavoriteIcon(
@@ -376,9 +400,27 @@ fun SongMenu(
                     )
                 },
                 text = startRadioText,
+                enabled = !independentSong || song.id.startsWith("capsule-open:audius:") || offlineSong,
                 onClick = {
-                    onDismiss()
-                    playerConnection.playQueue(YouTubeQueue.radio(song.toMediaMetadata()))
+                    if (song.id.startsWith("capsule-open:audius:") || offlineSong) {
+                        coroutineScope.launch {
+                            val suggestions = com.nikhil.yt.discovery.ExperimentalCatalog
+                                .recommend(song.artists.map { it.name })
+                                .filter { it.playable && it.mediaId != song.id }
+                                .take(40)
+                            suggestions.firstOrNull()?.let { first ->
+                                com.nikhil.yt.discovery.ExperimentalTrackQueue
+                                    .create("Audius", suggestions, first)
+                                    ?.let(playerConnection::playQueue)
+                            } ?: android.widget.Toast.makeText(context,
+                                R.string.no_results_found,
+                                android.widget.Toast.LENGTH_SHORT).show()
+                            onDismiss()
+                        }
+                    } else if (!independentSong) {
+                        playerConnection.playQueue(YouTubeQueue.radio(song.toMediaMetadata()))
+                        onDismiss()
+                    }
                 },
             ),
             NewAction(
@@ -439,7 +481,19 @@ fun SongMenu(
                         Intent().apply {
                             action = Intent.ACTION_SEND
                             type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, "https://music.youtube.com/watch?v=${song.id}")
+                            if (offlineSong) {
+                                type = "audio/*"
+                                putExtra(Intent.EXTRA_STREAM,
+                                    song.toMediaItem().localConfiguration?.uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            } else if (independentSong) {
+                                putExtra(Intent.EXTRA_TEXT,
+                                    com.nikhil.yt.discovery.ExperimentalCatalog
+                                        .playingTrack(song.id)?.sourcePage ?: "https://audius.co")
+                            } else {
+                                putExtra(Intent.EXTRA_TEXT,
+                                    "https://music.youtube.com/watch?v=${song.id}")
+                            }
                         }
                     context.startActivity(Intent.createChooser(intent, null))
                 },
@@ -510,7 +564,18 @@ fun SongMenu(
                     modifier =
                         Modifier.clickable {
                             onDismiss()
-                            database.query {
+                            if (independentSong) {
+                                coroutineScope.launch {
+                                    database.withTransaction {
+                                        val existing = getSongById(song.id)
+                                        if (existing == null) {
+                                            insert(song.toMediaMetadata()) {
+                                                it.copy(isLocal = true, inLibrary = LocalDateTime.now())
+                                            }
+                                        } else update(existing.song.toggleLibrary())
+                                    }
+                                }
+                            } else database.query {
                                 update(song.song.toggleLibrary())
                             }
                         },
@@ -587,7 +652,7 @@ fun SongMenu(
                                             delete(map)
                                         }
                                         val browseId = playlistBrowseId
-                                        if (browseId != null) {
+                                        if (browseId != null && !independentSong) {
                                             val setVideoId = map.setVideoId ?: database.getSetVideoId(map.songId)?.setVideoId
                                             if (setVideoId != null) {
                                                 YouTube.removeFromPlaylist(browseId, map.songId, setVideoId)
@@ -607,7 +672,7 @@ fun SongMenu(
                         )
                     }
 
-                    if (isFromCache) {
+                    if (isFromCache && !independentSong) {
                         ListItem(
                             headlineContent = {
                                 Text(
@@ -636,7 +701,7 @@ fun SongMenu(
                         )
                     }
 
-                    when (download?.state) {
+                    if (!independentSong) when (download?.state) {
                         Download.STATE_COMPLETED -> {
                             ListItem(
                                 headlineContent = {
@@ -721,7 +786,7 @@ fun SongMenu(
         item {
             MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                 Column {
-                    ListItem(
+                    if (!offlineSong) ListItem(
                         headlineContent = { Text(text = stringResource(R.string.view_artist)) },
                         supportingContent = {
                             Text(
@@ -739,8 +804,15 @@ fun SongMenu(
                         modifier =
                             Modifier.clickable {
                                 if (splitArtists.size == 1 && splitArtists[0].originalArtist != null) {
-                                    navController.navigate("artist/${splitArtists[0].originalArtist!!.id}")
-                                    onDismiss()
+                                    val artistRoute = if (independentSong)
+                                        com.nikhil.yt.discovery.ExperimentalArtistRoute
+                                            .forMetadata(song.toMediaMetadata())
+                                        else null
+                                    if (!independentSong || artistRoute != null) {
+                                        navController.navigate(
+                                            artistRoute ?: "artist/${splitArtists[0].originalArtist!!.id}")
+                                        onDismiss()
+                                    }
                                 } else {
                                     showSelectArtistDialog = true
                                 }
@@ -781,7 +853,7 @@ fun SongMenu(
         item {
             MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                 Column {
-                    ListItem(
+                    if (!independentSong) ListItem(
                         headlineContent = { Text(text = stringResource(R.string.refetch)) },
                         leadingContent = {
                             Icon(
@@ -807,7 +879,7 @@ fun SongMenu(
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
 
-                    HorizontalDivider(
+                    if (!independentSong) HorizontalDivider(
                         modifier = Modifier.padding(start = 56.dp),
                         color = MaterialTheme.colorScheme.outlineVariant,
                     )

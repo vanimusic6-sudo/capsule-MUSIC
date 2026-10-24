@@ -2,6 +2,10 @@ package com.nikhil.yt.ui.screens
 
 import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.foundation.background
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.add
@@ -14,17 +18,25 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.Icon
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Text
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -40,6 +52,12 @@ import com.nikhil.yt.constants.AppBarHeight
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.ui.component.StandardHeaderTitle
 import com.nikhil.yt.ui.component.StandardChrome
+import com.nikhil.yt.constants.HomeFeedSourcesKey
+import com.nikhil.yt.constants.ExperimentalSourcesEnabledKey
+import com.nikhil.yt.discovery.HomeFeedSource
+import com.nikhil.yt.utils.rememberPreference
+import com.nikhil.yt.utils.PreferenceStore
+import com.nikhil.yt.utils.dataStore
 
 /**
  * Registers a destination that owns an opaque full-screen canvas.
@@ -193,11 +211,146 @@ fun CapsulePinnedHeader(route: String) {
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Box(modifier = Modifier.weight(1f)) {
-            StandardHeaderTitle(
-                accountName = LocalCapsuleHeaderAccountName.current,
-                accountImageUrl = LocalCapsuleHeaderAccountImage.current,
-                onAccountClick = { navController?.navigate("settings/account") },
-            )
+            run {
+                val context = LocalContext.current
+                val (raw, setRaw) = rememberPreference(
+                    HomeFeedSourcesKey, HomeFeedSource.DEFAULT,
+                )
+                val (experimental, setExperimental) = rememberPreference(
+                    ExperimentalSourcesEnabledKey, false,
+                )
+                var chooserOpen by remember { mutableStateOf(false) }
+                val selected = HomeFeedSource.parse(raw)
+                val effective = if (experimental) selected
+                    else setOf(HomeFeedSource.YOUTUBE)
+                val sourceIcon = if (effective.size == 1) effective.first().icon
+                    else R.drawable.ic_capsule_home_sources
+                StandardHeaderTitle(
+                    accountName = LocalCapsuleHeaderAccountName.current,
+                    accountImageUrl = LocalCapsuleHeaderAccountImage.current,
+                    onAccountClick = { chooserOpen = true },
+                    sourceIcon = sourceIcon,
+                    sourceAccents = HomeFeedSource.selectable.filter { it in effective }
+                        .map { it.accent },
+                    sourceIcons = HomeFeedSource.selectable.filter { it in effective }
+                        .map { it.icon },
+                    sourceContentDescription = stringResource(R.string.capsule_home_source_pick),
+                )
+                DropdownMenu(
+                    expanded = chooserOpen,
+                    onDismissRequest = { chooserOpen = false },
+                    modifier = Modifier.width(284.dp).clip(RoundedCornerShape(32.dp))
+                        .animateContentSize(spring(dampingRatio = 0.9f, stiffness = 460f)),
+                    containerColor = StandardChrome.panel,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 8.dp,
+                ) {
+                    androidx.compose.foundation.layout.Column(
+                        Modifier.padding(start = 18.dp, end = 12.dp, top = 14.dp, bottom = 7.dp),
+                    ) {
+                        Text(stringResource(R.string.capsule_home_source_pick),
+                            style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.capsule_source_selector_subtitle),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = StandardChrome.muted)
+                    }
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.capsule_home_all_sources)) },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_capsule_home_sources),
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = {
+                            // Select all providers atomically: separate asynchronous
+                            // writes raced the experimental gate on first opt-in.
+                            PreferenceStore.launchEdit(context.dataStore) {
+                                this[HomeFeedSourcesKey] =
+                                    HomeFeedSource.encode(HomeFeedSource.selectable.toSet())
+                                this[ExperimentalSourcesEnabledKey] = true
+                            }
+                            chooserOpen = false
+                        },
+                    )
+                    // Reset only Home's selected providers. Leave the user's
+                    // optional catalog/search preference unchanged.
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.capsule_home_reset_youtube)) },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(R.drawable.restore),
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = {
+                            setRaw(HomeFeedSource.DEFAULT)
+                            chooserOpen = false
+                        },
+                    )
+                    HomeFeedSource.selectable.forEach { source ->
+                        // Show what actually feeds Home. Experimental catalogs are
+                        // inactive until opted in, regardless of stored defaults.
+                        val active = source in effective
+                        DropdownMenuItem(
+                            text = { Text(source.label) },
+                            leadingIcon = {
+                                Box(
+                                    modifier = Modifier.size(30.dp).background(
+                                        source.accent, RoundedCornerShape(12.dp),
+                                    ),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        painter = painterResource(source.icon),
+                                        contentDescription = null,
+                                        tint = androidx.compose.ui.graphics.Color.White,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
+                            },
+                            trailingIcon = {
+                                if (active) Icon(
+                                    painter = painterResource(R.drawable.done),
+                                    contentDescription = null,
+                                )
+                            },
+                            onClick = {
+                                val next = effective.toMutableSet()
+                                // A first-time Audius/Openverse choice enables ONLY
+                                // that source alongside YouTube; do not silently start
+                                // every default-selected remote catalog.
+                                if (source != HomeFeedSource.YOUTUBE && !experimental) {
+                                    next.add(source)
+                                } else {
+                                    if (active && next.size > 1) next.remove(source)
+                                    else next.add(source)
+                                }
+                                PreferenceStore.launchEdit(context.dataStore) {
+                                    this[HomeFeedSourcesKey] = HomeFeedSource.encode(next)
+                                    if (source != HomeFeedSource.YOUTUBE) {
+                                        this[ExperimentalSourcesEnabledKey] = true
+                                    }
+                                }
+                                chooserOpen = false
+                            },
+                        )
+                    }
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.account)) },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(R.drawable.person),
+                                contentDescription = null,
+                            )
+                        },
+                        onClick = {
+                            chooserOpen = false
+                            navController?.navigate("settings/account")
+                        },
+                    )
+                }
+            }
         }
         IconButton(onClick = { navController?.navigate("settings") }) {
             Icon(

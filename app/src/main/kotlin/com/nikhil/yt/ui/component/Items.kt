@@ -299,9 +299,16 @@ fun SongListItem(
             Icon.Library()
         }
         if (showDownloadIcon) {
-            val download by LocalDownloadUtil.current.getDownload(song.id)
-                .collectAsState(initial = null)
-            Icon.Download(download?.state)
+            when {
+                song.id.startsWith("capsule-open:offline:") ->
+                    Icon.Download(Download.STATE_COMPLETED)
+                song.id.startsWith("capsule-open:") -> Unit
+                else -> {
+                    val download by LocalDownloadUtil.current.getDownload(song.id)
+                        .collectAsState(initial = null)
+                    Icon.Download(download?.state)
+                }
+            }
         }
     },
     isSelected: Boolean = false,

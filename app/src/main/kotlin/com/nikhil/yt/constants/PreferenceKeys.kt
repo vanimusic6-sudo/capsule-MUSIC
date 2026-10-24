@@ -52,8 +52,10 @@ val SettingsAdvancedModeKey = booleanPreferencesKey("settingsAdvancedModeV1")
 /** Set only when the first developer-mode warning is acknowledged. */
 val SettingsAdvancedWarningSeenKey = booleanPreferencesKey("settingsAdvancedWarningSeenV1")
 val HideExplicitKey = booleanPreferencesKey("hideExplicit")
-/** Experimental SoundCloud source (keeps the old preference name on existing installs). */
-val SoundCloudWebPreviewEnabledKey = booleanPreferencesKey("soundcloudWebPreviewEnabled")
+/** Global opt-in kill switch: when false no experimental provider is queried or shown. */
+val ExperimentalSourcesEnabledKey = booleanPreferencesKey("experimentalSourcesEnabledV1")
+/** Independent of the experimental opt-in: a user controls what feeds their Home. */
+val HomeFeedSourcesKey = stringPreferencesKey("capsuleHomeFeedSourcesV1")
 val ProxyEnabledKey = booleanPreferencesKey("proxyEnabled")
 val ProxyUrlKey = stringPreferencesKey("proxyUrl")
 val ProxyTypeKey = stringPreferencesKey("proxyType")

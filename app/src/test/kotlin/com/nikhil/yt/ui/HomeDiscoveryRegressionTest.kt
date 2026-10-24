@@ -32,9 +32,55 @@ class HomeDiscoveryRegressionTest {
         assertFalse(navigation.contains("routeComposable(\"home_collections\")"))
         assertFalse(home.contains("ScrollActionButton("))
         assertFalse(home.contains("Spacer(Modifier.height(218.dp))"))
-        assertTrue(home.contains("quickPicks?.takeIf { it.isNotEmpty() }"))
+        assertTrue(home.contains("quickPicks?.takeIf { displayYouTube && it.isNotEmpty() }"))
         assertTrue(components.contains("animateTitle = false"))
         assertTrue(components.contains("itemWidth = 184.dp"))
+    }
+
+    @Test
+    fun sourcePickerOnlyAffectsHomeAndOldForgottenShelfIsGone() {
+        val home = source("ui/screens/HomeScreen.kt")
+        val header = source("ui/screens/CapsuleRouteSurface.kt")
+        val shelf = source("ui/screens/ExperimentalDiscoveryShelf.kt")
+        assertTrue(home.contains("HomeFeedSource.parse(homeSourceSetting)"))
+        assertTrue(home.contains("rareSources.isNotEmpty()"))
+        assertTrue(home.contains("catalogHome.lanes.forEach"))
+        assertTrue(home.contains("CatalogHomeRow("))
+        assertFalse(home.contains("ExperimentalDiscoveryShelf("))
+        assertTrue(home.contains("includeYouTube"))
+        assertFalse(home.contains("ExperimentalForgottenShelf("))
+        assertTrue(header.contains("if (isHome)"))
+        assertTrue(header.contains("HomeFeedSource.selectable.forEach"))
+        assertTrue(header.contains("val active = source in effective"))
+        assertTrue(header.contains("val next = effective.toMutableSet()"))
+        assertTrue(header.contains("capsule_home_reset_youtube"))
+        assertTrue(header.contains("setRaw(HomeFeedSource.DEFAULT)"))
+        assertTrue(home.contains("home:catalog-loading"))
+        assertTrue(home.contains("HomeLoadingShimmer()"))
+        assertTrue(home.contains("CatalogHomeError("))
+        assertTrue(shelf.contains("discoveryFromHome(source, tasteArtists)"))
+        assertFalse(shelf.contains("ExperimentalForgottenShelf"))
+    }
+
+    @Test
+    fun externalCatalogsDoNotHideHomeAfterMissingRemoteStreams() {
+        val home = source("ui/screens/HomeScreen.kt")
+        val catalog = source("discovery/ExperimentalCatalog.kt")
+        val archive = source("discovery/InternetArchiveMusic.kt")
+        val commons = source("discovery/WikimediaMusic.kt")
+        val selector = source("ui/screens/CapsuleRouteSurface.kt")
+        assertTrue(home.contains("HomeLoadingShimmer()"))
+        assertTrue(home.contains("CatalogHomeError("))
+        assertTrue(home.contains("catalogHome.finished && catalogHome.lanes.isEmpty()"))
+        assertTrue(catalog.contains("HomeFeedSource.FREESOUND -> openverse"))
+        assertTrue(catalog.contains("WikimediaMusic.artist(artist)"))
+        assertTrue(catalog.contains("sortedByDescending { it.playable }"))
+        assertTrue(archive.contains("MAX_METADATA_LOOKUPS"))
+        assertTrue(archive.contains("streamUrl = null"))
+        assertTrue(commons.contains("iiurlwidth=320"))
+        assertTrue(commons.contains("fun artist(name: String)"))
+        assertTrue(selector.contains("HomeFeedSource.selectable.toSet()"))
+        assertTrue(catalog.contains("RadioBrowserMusic.browse("))
     }
 
     @Test

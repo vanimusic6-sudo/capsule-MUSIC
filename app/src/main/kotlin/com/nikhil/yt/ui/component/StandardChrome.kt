@@ -2,7 +2,13 @@ package com.nikhil.yt.ui.component
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -62,6 +69,10 @@ object StandardChrome {
 fun StandardHeaderTitle(
     accountName: String?,
     accountImageUrl: String?,
+    sourceIcon: Int? = null,
+    sourceContentDescription: String? = null,
+    sourceAccents: List<Color> = emptyList(),
+    sourceIcons: List<Int> = emptyList(),
     onAccountClick: () -> Unit,
 ) {
     val accountLabel = stringResource(R.string.account)
@@ -79,15 +90,51 @@ fun StandardHeaderTitle(
     val dayPeriod = rememberHomeDayPeriod()
     val guestIcon = homeGuestIcon(signedIn = signedIn, period = dayPeriod)
     val title = stringResource(dayPeriod.greetingId)
+    val sourceInteraction = remember { MutableInteractionSource() }
+    val sourcePressed by sourceInteraction.collectIsPressedAsState()
+    val sourceScale by animateFloatAsState(
+        targetValue = if (sourcePressed) 0.88f else 1f,
+        animationSpec = spring(dampingRatio = 0.74f, stiffness = 640f),
+        label = "homeSourcePress",
+    )
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier.size(40.dp).clip(CircleShape)
-                .clickable(role = Role.Button, onClick = onAccountClick)
-                .semantics { contentDescription = accountLabel },
+            modifier = Modifier.size(width = 62.dp, height = 40.dp)
+                .clip(RoundedCornerShape(19.dp))
+                .clickable(interactionSource = sourceInteraction, indication = null,
+                    role = Role.Button, onClick = onAccountClick)
+                .graphicsLayer { scaleX = sourceScale; scaleY = sourceScale }
+                .semantics { contentDescription = sourceContentDescription ?: accountLabel },
         ) {
-            Box(Modifier.size(30.dp).clip(CircleShape).background(Color(0xFFBC3606)), contentAlignment = Alignment.Center) {
-                if (guestIcon != null) {
+            Box(
+                Modifier.size(width = 58.dp, height = 34.dp)
+                    .clip(RoundedCornerShape(17.dp))
+                    .background(sourceAccents.firstOrNull() ?: Color(0xFFBC3606))
+                    .then(if (sourceAccents.size > 1)
+                        Modifier.background(Brush.horizontalGradient(sourceAccents))
+                        else Modifier),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (sourceIcon != null) {
+                    // An original combined-catalog glyph is much clearer than
+                    // intersecting three tiny badges at 30dp.
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Icon(
+                            painter = painterResource(sourceIcon),
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(if (sourceIcons.size > 1) 20.dp else 21.dp),
+                        )
+                        Icon(
+                            painter = painterResource(R.drawable.drop_down),
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.9f),
+                            modifier = Modifier.size(17.dp),
+                        )
+                    }
+                } else if (guestIcon != null) {
                     Icon(
                         painter = painterResource(guestIcon),
                         contentDescription = null,

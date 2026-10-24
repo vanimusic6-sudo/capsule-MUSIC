@@ -70,7 +70,13 @@ fun AddToPlaylistDialog(
     var allPlaylists by remember { mutableStateOf(emptyList<Playlist>()) }
     val (innerTubeCookie) = rememberPreference(InnerTubeCookieKey, "")
     val isLoggedIn = remember(innerTubeCookie) { "SAPISID" in parseCookieString(innerTubeCookie) }
-    val playlists = remember(allPlaylists) { playlistsForAddToPlaylist(allPlaylists).asReversed() }
+    val playlists = remember(allPlaylists, allowSyncing) {
+        playlistsForAddToPlaylist(allPlaylists)
+            .filter {
+                allowSyncing || (it.playlist.isEditable && it.playlist.browseId == null)
+            }
+            .asReversed()
+    }
     var showCreatePlaylistDialog by rememberSaveable { mutableStateOf(false) }
     var showDuplicateDialog by remember { mutableStateOf(false) }
     var playlistsWithDuplicates by remember { mutableStateOf<List<Playlist>>(emptyList()) }
@@ -86,7 +92,7 @@ fun AddToPlaylistDialog(
         if (requestedSongIds.isEmpty()) return 0
 
         val browseId = playlist.playlist.browseId
-        if (isLoggedIn && browseId != null) {
+        if (allowSyncing && isLoggedIn && browseId != null) {
             val acceptedSongIds = mutableListOf<String>()
             requestedSongIds.forEach { songId ->
                 var wasAdded = false

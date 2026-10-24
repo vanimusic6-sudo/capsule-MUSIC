@@ -116,9 +116,10 @@ import com.nikhil.yt.constants.EqualizerSelectedProfileIdKey
 import com.nikhil.yt.constants.EqualizerVirtualizerEnabledKey
 import com.nikhil.yt.constants.EqualizerVirtualizerStrengthKey
 import com.nikhil.yt.constants.ListItemHeight
+import com.nikhil.yt.discovery.ExperimentalArtistRoute
+import com.nikhil.yt.discovery.ExperimentalCatalog
+import com.nikhil.yt.discovery.ExperimentalDownload
 import com.nikhil.yt.models.MediaMetadata
-import com.nikhil.yt.soundcloud.SOUNDCLOUD_MEDIA_ID_PREFIX
-import com.nikhil.yt.soundcloud.SoundCloudCatalog
 import com.nikhil.yt.playback.EqCapabilities
 import com.nikhil.yt.playback.EqProfile
 import com.nikhil.yt.playback.EqProfilesPayload
@@ -163,7 +164,16 @@ fun PlayerMenu(
     val downloadUtil = LocalDownloadUtil.current
     val download by downloadUtil.getDownload(mediaMetadata.id)
         .collectAsState(initial = null)
-    val isSoundCloud = mediaMetadata.id.startsWith(SOUNDCLOUD_MEDIA_ID_PREFIX)
+    val isExternalCatalog = mediaMetadata.id.startsWith("capsule-open:")
+    val isAudius = mediaMetadata.id.startsWith("capsule-open:audius:")
+    val isOfflineAudio = mediaMetadata.id.startsWith("capsule-open:offline:")
+    val isRadio = mediaMetadata.id.startsWith("capsule-open:radio:")
+    val originalAudiusTrack = remember(mediaMetadata.id) {
+        ExperimentalCatalog.playingTrack(mediaMetadata.id)
+    }
+    val canDownloadAudius = isAudius && originalAudiusTrack?.downloadUrl != null
+    val externalDownloadStates by ExperimentalDownload.states.collectAsState()
+    val externalDownloadStatus = externalDownloadStates[mediaMetadata.id]
 
     val artists =
         remember(mediaMetadata.artists) {
@@ -205,13 +215,16 @@ fun PlayerMenu(
 
     AddToPlaylistDialog(
         isVisible = showChoosePlaylistDialog,
-        onGetSong = { playlist ->
-            database.transaction {
-                insert(mediaMetadata)
+        allowSyncing = !isExternalCatalog,
+        onGetSong = { _ ->
+            database.withTransaction {
+                insert(mediaMetadata) {
+                    if (mediaMetadata.id.startsWith("capsule-open:offline:"))
+                        it.copy(isLocal = true) else it
+                }
             }
-            coroutineScope.launch(Dispatchers.IO) {
-                playlist.playlist.browseId?.let { YouTube.addToPlaylist(it, mediaMetadata.id) }
-            }
+            // The dialog itself syncs YouTube playlists where allowed.
+            // Audius entries may only enter Capsule's local playlists.
             listOf(mediaMetadata.id)
         },
         onDismiss = {
@@ -239,7 +252,9 @@ fun PlayerMenu(
                     thumbnailUrl = splitArtist.originalArtist?.thumbnailUrl,
                     onClick = {
                         val id = splitArtist.originalArtist?.id ?: return@ArtistSelectionItem
-                        navController.navigate("artist/$id")
+                        navController.navigate(
+                            ExperimentalArtistRoute.forMetadata(mediaMetadata) ?: "artist/$id"
+                        )
                         showSelectArtistDialog = false
                         playerBottomSheetState.collapseSoft()
                         onDismiss()
@@ -418,10 +433,28 @@ fun PlayerMenu(
                                 )
                             },
                             text = stringResource(R.string.start_radio),
+                            enabled = !isExternalCatalog || isAudius || isOfflineAudio,
                             onClick = {
-                                Toast.makeText(context, resources.getString(R.string.starting_radio), Toast.LENGTH_SHORT).show()
-                                playerConnection.startRadioSeamlessly()
-                                onDismiss()
+                                if (isAudius || isOfflineAudio) {
+                                    coroutineScope.launch {
+                                        val taste = mediaMetadata.artists.map { it.name }
+                                        val picks = ExperimentalCatalog.recommend(taste)
+                                            .filter { it.playable && it.mediaId != mediaMetadata.id }
+                                            .take(40)
+                                        picks.firstOrNull()?.let { first ->
+                                            com.nikhil.yt.discovery.ExperimentalTrackQueue
+                                                .create("Audius", picks, first)
+                                                ?.let(playerConnection::playQueue)
+                                        } ?: Toast.makeText(context, R.string.no_results_found,
+                                            Toast.LENGTH_SHORT).show()
+                                        onDismiss()
+                                    }
+                                } else if (!isExternalCatalog) {
+                                    Toast.makeText(context, resources.getString(R.string.starting_radio),
+                                        Toast.LENGTH_SHORT).show()
+                                    playerConnection.startRadioSeamlessly()
+                                    onDismiss()
+                                }
                             }
                         ),
                         NewAction(
@@ -458,7 +491,10 @@ fun PlayerMenu(
                                 val clip =
                                     android.content.ClipData.newPlainText(
                                         resources.getString(R.string.copy_link),
-                                        "https://music.youtube.com/watch?v=${mediaMetadata.id}",
+                                        (if (isExternalCatalog) mediaMetadata.sourceUrl
+                                            ?.takeIf { it.startsWith("https://") }
+                                            ?: "https://audius.co"
+                                        else "https://music.youtube.com/watch?v=${mediaMetadata.id}"),
                                     )
                                 clipboard.setPrimaryClip(clip)
                                 android.widget.Toast.makeText(context, R.string.link_copied, android.widget.Toast.LENGTH_SHORT).show()
@@ -489,11 +525,11 @@ fun PlayerMenu(
         item(key = "actions-gap", contentType = "spacer") {
             Spacer(modifier = Modifier.height(12.dp))
         }
-        if (splitArtists.isNotEmpty() || mediaMetadata.album != null) {
+        if ((!isRadio && !isOfflineAudio && splitArtists.isNotEmpty()) || mediaMetadata.album != null) {
             item(key = "artists-album", contentType = "menu-section") {
                 MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                     Column {
-                        if (splitArtists.isNotEmpty()) {
+                        if (!isRadio && !isOfflineAudio && splitArtists.isNotEmpty()) {
                             ListItem(
                                 headlineContent = { Text(text = stringResource(R.string.view_artist)) },
                                 supportingContent = {
@@ -514,7 +550,10 @@ fun PlayerMenu(
                                         if (splitArtists.size == 1 && splitArtists[0].originalArtist != null) {
                                             onDismiss()
                                             playerBottomSheetState.snapTo(playerBottomSheetState.collapsedBound)
-                                            navController.navigate("artist/${splitArtists[0].originalArtist!!.id}")
+                                            navController.navigate(
+                                                ExperimentalArtistRoute.forMetadata(mediaMetadata)
+                                                    ?: "artist/${splitArtists[0].originalArtist!!.id}"
+                                            )
                                         } else {
                                             showSelectArtistDialog = true
                                         }
@@ -523,7 +562,7 @@ fun PlayerMenu(
                             )
                         }
 
-                        if (splitArtists.isNotEmpty() && mediaMetadata.album != null) {
+                        if (!isOfflineAudio && splitArtists.isNotEmpty() && mediaMetadata.album != null) {
                             HorizontalDivider(
                                 modifier = Modifier.padding(start = 56.dp),
                                 color = MaterialTheme.colorScheme.outlineVariant,
@@ -555,8 +594,78 @@ fun PlayerMenu(
                 Spacer(modifier = Modifier.height(12.dp))
             }
         }
-        item(key = "download", contentType = "menu-section") {
-            when (download?.state) {
+        if (!isExternalCatalog || isAudius || isOfflineAudio) item(key = "download", contentType = "menu-section") {
+            if (isOfflineAudio) {
+                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                    ListItem(
+                        headlineContent = {
+                            Text(stringResource(R.string.remove_download),
+                                color = MaterialTheme.colorScheme.error)
+                        },
+                        leadingContent = {
+                            Icon(painterResource(R.drawable.offline), contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error)
+                        },
+                        modifier = Modifier.clickable {
+                            coroutineScope.launch {
+                                val match = ExperimentalDownload.savedFiles(context)
+                                    .firstOrNull {
+                                        mediaMetadata.id ==
+                                            com.nikhil.yt.discovery.OfflineAudioQueue.PREFIX + it.id
+                                    }
+                                val removed = match != null &&
+                                    ExperimentalDownload.deleteSaved(context, match)
+                                if (removed) {
+                                    database.withTransaction {
+                                        getSongById(mediaMetadata.id)?.song?.let { delete(it) }
+                                    }
+                                    mediaMetadata.id.removePrefix(
+                                        com.nikhil.yt.discovery.OfflineAudioQueue.PREFIX
+                                    ).toLongOrNull()?.let { id ->
+                                        com.nikhil.yt.discovery.OfflineAudioQueue
+                                            .removeDeletedFromPlayer(playerConnection.player, id)
+                                    }
+                                    onDismiss()
+                                } else {
+                                    Toast.makeText(context, R.string.capsule_download_remove_failed,
+                                        Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                }
+            } else if (isAudius) {
+                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                    ListItem(
+                        headlineContent = {
+                            Text(stringResource(when {
+                                !canDownloadAudius -> R.string.capsule_audius_not_downloadable
+                                externalDownloadStatus == ExperimentalDownload.State.COMPLETED ->
+                                    R.string.capsule_discovery_download_completed
+                                externalDownloadStatus == ExperimentalDownload.State.DOWNLOADING ->
+                                    R.string.downloading
+                                else -> R.string.action_download
+                            }))
+                        },
+                        leadingContent = {
+                            if (externalDownloadStatus == ExperimentalDownload.State.DOWNLOADING)
+                                VeluneLoader(size = 24.dp)
+                            else Icon(painterResource(
+                                if (externalDownloadStatus == ExperimentalDownload.State.COMPLETED)
+                                    R.drawable.offline else R.drawable.download),
+                                contentDescription = null)
+                        },
+                        modifier = Modifier.clickable(enabled = canDownloadAudius &&
+                            externalDownloadStatus != ExperimentalDownload.State.DOWNLOADING &&
+                            externalDownloadStatus != ExperimentalDownload.State.COMPLETED) {
+                            originalAudiusTrack?.let { ExperimentalDownload.enqueue(context, it) }
+                            onDismiss()
+                        },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                }
+            } else when (download?.state) {
                 Download.STATE_COMPLETED -> {
                     MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                         ListItem(
@@ -615,28 +724,9 @@ fun PlayerMenu(
                             )
                         },
                         modifier = Modifier.clickable(
-                            enabled = !isSoundCloud || !mediaMetadata.sourceUrl.isNullOrBlank(),
+                            enabled = !isExternalCatalog,
                         ) {
-                            if (isSoundCloud) {
-                                val permalink = mediaMetadata.sourceUrl
-                                    ?.takeIf { it.startsWith("https://") }
-                                    ?: return@clickable
-
-                                downloadUtil.enqueueSoundCloud(
-                                    SoundCloudCatalog.Track(
-                                        title = mediaMetadata.title,
-                                        artist = mediaMetadata.artists.firstOrNull()?.name
-                                            ?: "SoundCloud",
-                                        uploaderUrl = mediaMetadata.artists.firstOrNull()?.id,
-                                        artworkUrl = mediaMetadata.thumbnailUrl,
-                                        permalink = permalink,
-                                        durationSeconds = mediaMetadata.duration
-                                            .coerceAtLeast(0)
-                                            .toLong(),
-                                        downloadable = null,
-                                    ),
-                                )
-                            } else {
+                            if (!isExternalCatalog) {
                                 database.transaction {
                                     insert(mediaMetadata)
                                 }

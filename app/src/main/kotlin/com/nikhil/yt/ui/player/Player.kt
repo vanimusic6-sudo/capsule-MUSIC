@@ -68,6 +68,7 @@ import com.nikhil.yt.constants.MiniPlayerBackgroundStyle
 import com.nikhil.yt.constants.MiniPlayerBackgroundStyleKey
 import com.nikhil.yt.constants.PlayerBackgroundStyle
 import com.nikhil.yt.constants.PlayerBackgroundStyleKey
+import com.nikhil.yt.discovery.ExperimentalArtistRoute
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.models.mergeArtistCredits
 import com.nikhil.yt.models.toMediaMetadata
@@ -697,15 +698,7 @@ private fun CapsulePlayerLyricsHost(
                     onArtistSelected = { artist ->
                         artist.id?.let { artistId ->
                             onHideLyrics()
-                            if (mediaMetadata.id.startsWith("soundcloud:") &&
-                                artistId.startsWith("https://soundcloud.com/")
-                            ) {
-                                navController.navigate(
-                                    "soundcloud/profile?url=" + Uri.encode(artistId)
-                                )
-                            } else {
-                                navController.navigate("artist/$artistId")
-                            }
+                            navController.navigate(ExperimentalArtistRoute.forMetadata(mediaMetadata) ?: "artist/$artistId")
                             playerState.collapseSoft()
                         }
                     },
@@ -746,15 +739,7 @@ private fun CapsulePlayerLyricsHost(
                 onArtistSelected = { artist ->
                     artist.id?.let { artistId ->
                         onHideLyrics()
-                        if (mediaMetadata.id.startsWith("soundcloud:") &&
-                            artistId.startsWith("https://soundcloud.com/")
-                        ) {
-                            navController.navigate(
-                                "soundcloud/profile?url=" + Uri.encode(artistId)
-                            )
-                        } else {
-                            navController.navigate("artist/$artistId")
-                        }
+                        navController.navigate(ExperimentalArtistRoute.forMetadata(mediaMetadata) ?: "artist/$artistId")
                         playerState.collapseSoft()
                     }
                 },

@@ -9,6 +9,11 @@
 package com.nikhil.yt.extensions
 
 import android.os.Bundle
+import android.os.Build
+import android.content.ContentUris
+import android.net.Uri
+import android.provider.MediaStore
+import com.nikhil.yt.discovery.OfflineAudioQueue
 import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata.MEDIA_TYPE_MUSIC
@@ -29,10 +34,20 @@ val MediaItem.metadata: MediaMetadata?
 
 fun Song.toMediaItem(): MediaItem {
     val metadata = toMediaMetadata()
+    val offlineId = song.id.takeIf { it.startsWith(OfflineAudioQueue.PREFIX) }
+        ?.removePrefix(OfflineAudioQueue.PREFIX)?.toLongOrNull()
+    val playbackUri = when {
+        offlineId != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
+            ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, offlineId).toString()
+        song.id.startsWith("capsule-open:audius:") ->
+            "https://api.audius.co/v1/tracks/" +
+                Uri.encode(song.id.removePrefix("capsule-open:audius:")) + "/stream"
+        else -> song.id
+    }
     return MediaItem
         .Builder()
         .setMediaId(song.id)
-        .setUri(song.id)
+        .setUri(playbackUri)
         .setCustomCacheKey(song.id)
         .setTag(metadata)
         .setMediaMetadata(
@@ -73,10 +88,20 @@ fun SongItem.toMediaItem(): MediaItem {
 
 fun MediaMetadata.toMediaItem(): MediaItem {
     val metadata = copy(artists = artists.sanitizedArtistCredits())
+    val offlineId = id.takeIf { it.startsWith(OfflineAudioQueue.PREFIX) }
+        ?.removePrefix(OfflineAudioQueue.PREFIX)?.toLongOrNull()
+    val playbackUri = when {
+        offlineId != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
+            ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, offlineId).toString()
+        id.startsWith("capsule-open:audius:") ->
+            "https://api.audius.co/v1/tracks/" +
+                Uri.encode(id.removePrefix("capsule-open:audius:")) + "/stream"
+        else -> id
+    }
     return MediaItem
         .Builder()
         .setMediaId(id)
-        .setUri(id)
+        .setUri(playbackUri)
         .setCustomCacheKey(id)
         .setTag(metadata)
         .setMediaMetadata(

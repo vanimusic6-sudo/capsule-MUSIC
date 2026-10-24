@@ -1,0 +1,233 @@
+name: Experimental Debug APK (fast)
+
+on:
+  push:
+    branches:
+      - experimental/discovery-open-catalogs-20261022
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: capsule-experimental-debug-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    name: Build experimental universal debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle 9.5
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.5.0"
+
+      - name: Prepare locale metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/res
+          echo 'unqualifiedResLocale=en-US' > app/src/main/res/resources.properties
+
+      - name: Probe official Openverse audio API (diagnostic only)
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import json
+          import urllib.request
+          import urllib.error
+          for label, query in [
+              ("Jamendo", "q=ambient&source=jamendo&page_size=3&category=music"),
+              ("Wikimedia", "q=folk&source=wikimedia_audio&page_size=3"),
+          ]:
+              url = "https://api.openverse.org/v1/audio/?" + query
+              try:
+                  req = urllib.request.Request(
+                      url, headers={
+                          "Accept": "application/json",
+                          "User-Agent": "CapsuleMusic/experimental-discovery",
+                      })
+                  with urllib.request.urlopen(req, timeout=12) as response:
+                      data = json.load(response)
+                      items = data.get("results", [])
+                      print(label, "HTTP", response.status, "found", data.get("result_count"),
+                            "returned", len(items), "example",
+                            [(x.get("source"), x.get("category"), bool(x.get("license_url")))
+                             for x in items[:2]])
+              except Exception as e:
+                  print(label, "FAILED", type(e).__name__, str(e)[:200])
+          PY
+
+      - name: Probe real source URLs and independent archives (diagnostic only)
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import json
+          import urllib.request
+          import urllib.parse
+          def data(url, timeout=10):
+              req = urllib.request.Request(url, headers={
+                  "User-Agent": "CapsuleMusic/1.0 (+https://github.com/vanimusic6-sudo/capsule-MUSIC)",
+                  "Accept": "application/json"})
+              with urllib.request.urlopen(req, timeout=timeout) as rsp:
+                  return json.load(rsp)
+          def range_test(url):
+              if not url or not url.startswith("https://"):
+                  return "no HTTPS candidate"
+              req = urllib.request.Request(url, headers={"Range":"bytes=0-31",
+                  "User-Agent":"CapsuleMusic/1.0"})
+              try:
+                  with urllib.request.urlopen(req, timeout=9) as rsp:
+                      first = rsp.read(16)
+                      return f"status={rsp.status},type={rsp.headers.get('Content-Type')},bytes={len(first)}"
+              except Exception as ex:
+                  return f"{type(ex).__name__}: {str(ex)[:80]}"
+          try:
+              x=data("https://api.openverse.org/v1/audio/?q=ambient&source=jamendo&page_size=3&category=music")
+              for item in x.get("results", [])[:2]:
+                  print("Jamendo indexed", item.get("category"), "stream probe:",
+                        range_test(item.get("url")))
+          except Exception as ex:
+              print("Jamendo metadata", type(ex).__name__, str(ex)[:120])
+          try:
+              q=urllib.parse.quote("collection:netlabels AND mediatype:audio")
+              x=data("https://archive.org/advancedsearch.php?q="+q+
+                  "&fl%5B%5D=identifier&rows=2&output=json")
+              ids=[d.get("identifier") for d in x.get("response",{}).get("docs",[])]
+              print("Archive search IDs:", len(ids))
+              for name in ids[:2]:
+                  item=data("https://archive.org/metadata/"+name)
+                  audio=next((f for f in item.get("files", [])
+                    if f.get("name","").lower().endswith((".mp3",".ogg",".oga",".opus",".flac",".m4a"))
+                    and 120000 <= int(f.get("size","0")) <= 40000000), None)
+                  license=item.get("metadata",{}).get("licenseurl")
+                  print("Archive metadata:", bool(license),bool(audio), "files",len(item.get("files",[])))
+                  if audio:
+                      link="https://archive.org/download/"+name+"/"+urllib.parse.quote(audio["name"],safe="/")
+                      print("Archive byte range:",range_test(link))
+          except Exception as ex:
+              print("Archive probe",type(ex).__name__,str(ex)[:120])
+          try:
+              for query in ["music loop", "ambient music"]:
+                  args=urllib.parse.urlencode({
+                      "q":query, "source":"freesound", "page_size":8})
+                  items=data("https://api.openverse.org/v1/audio/?"+args).get("results",[])
+                  print("Freesound index", query, "count",len(items),
+                        "categories",[x.get("category") for x in items[:4]],
+                        "https candidates",sum(bool(x.get("url","").startswith("https://")) for x in items))
+          except Exception as ex:
+              print("Freesound metadata probe",type(ex).__name__,str(ex)[:120])
+          try:
+              q='collection:netlabels AND mediatype:audio AND (format:"VBR MP3" OR format:"MP3" OR format:"Ogg Vorbis" OR format:"FLAC")'
+              x=data("https://archive.org/advancedsearch.php?q="+urllib.parse.quote(q)+
+                  "&fl%5B%5D=identifier&rows=8&output=json")
+              items=x.get("response",{}).get("docs",[])
+              print("Archive format-filtered results:",len(items))
+              for row in items[:2]:
+                  info=data("https://archive.org/metadata/"+row["identifier"])
+                  files=info.get("files",[])
+                  print("Archive matching item:",row["identifier"],
+                        "files",len(files),"audio",
+                        sum(str(y.get("name","")).lower().endswith((".mp3",".ogg",".flac",".m4a")) for y in files),
+                        "license",bool(info.get("metadata",{}).get("licenseurl")))
+          except Exception as ex:
+              print("Archive format probe",type(ex).__name__,str(ex)[:120])
+          try:
+              url="https://ccmixter.org/api/query?f=json&dataview=info&limit=3&tags=remix"
+              data_cc=data(url,timeout=12)
+              entries=data_cc if isinstance(data_cc,list) else (
+                  data_cc.get("results") or data_cc.get("items") or data_cc.get("uploads") or [])
+              print("ccMixter public query count:", len(entries))
+              for row in entries[:2]:
+                  files=row.get("files",row.get("upload_files",[]))
+                  print("ccMixter fields:",sorted(row.keys())[:32],
+                        "files:",len(files),"first file keys:",
+                        sorted(files[0].keys()) if files else [],
+                        "license:",row.get("upload_license_url") or row.get("license_url"))
+                  if files:
+                      example=files[0].get("filedownload_url") or files[0].get("download_url")
+                      print("ccMixter candidate audio:",range_test(example))
+          except Exception as ex:
+              print("ccMixter API probe:",type(ex).__name__,str(ex)[:120])
+          try:
+              query=urllib.parse.quote("music filetype:audio")
+              x=data("https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrlimit=5&gsrsearch="+query+"&prop=imageinfo&iiprop=url%7Cmime%7Csize%7Cextmetadata&format=json")
+              files=[i.get("imageinfo",[{}])[0] for i in x.get("query",{}).get("pages",{}).values() if i.get("imageinfo")]
+              print("Commons native API file count:",len(files),
+                    "audio MIME count:",sum(1 for i in files if i.get("mime","").startswith("audio/")))
+          except Exception as ex:
+              print("Commons probe",type(ex).__name__,str(ex)[:120])
+          PY
+
+      - name: Probe Funkwhale v2 public listing and Jamendo Openverse index
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import json, urllib.request
+          urls = {
+              'Funkwhale v2': 'https://open.audio/api/v2/tracks/?page_size=2&ordering=-creation_date',
+              'Jamendo via Openverse': 'https://api.openverse.org/v1/audio/?q=ambient&source=jamendo&page_size=2',
+          }
+          for label, url in urls.items():
+              try:
+                  request = urllib.request.Request(url, headers={
+                      "Accept":"application/json",
+                      "User-Agent":"CapsuleMusic/1.0 (+https://github.com/vanimusic6-sudo/capsule-MUSIC)",
+                  })
+                  with urllib.request.urlopen(request, timeout=12) as response:
+                      payload = json.load(response)
+                      rows = payload.get("results", [])
+                      print(label, "status", response.status, "rows", len(rows))
+                      if rows:
+                          sample=rows[0]
+                          print(" keys", sorted(sample.keys()))
+                          print(" uploads", str(sample.get("uploads", []))[:450])
+              except Exception as error:
+                  print(label, type(error).__name__, str(error)[:180])
+          PY
+
+      - name: Assemble universal debug APK
+        run: |
+          gradle :app:verifyAndroidJsonRuntime :app:assembleUniversalDebug \
+            --no-daemon --stacktrace
+
+      - name: Test independent discovery rankings
+        run: |
+          gradle :app:testUniversalDebugUnitTest \
+            --tests 'com.nikhil.yt.discovery.HomeFeedSourceTest' \
+            --tests 'com.nikhil.yt.discovery.FunkwhaleParserTest' \
+            --tests 'com.nikhil.yt.discovery.ExperimentalRankingTest' \
+            --tests 'com.nikhil.yt.discovery.DownloadIsolationRegressionTest' \
+            --tests 'com.nikhil.yt.playback.AuthWallDetectorTest' \
+            --tests 'com.nikhil.yt.playback.audio.CapsuleAudioFallbackPolicyTest' \
+            --no-daemon --stacktrace
+
+      - name: Locate APK and checksum
+        id: apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/universal/debug -type f -name '*.apk' | head -n 1)"
+          test -n "$APK"
+          test -s "$APK"
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+          sha256sum "$APK"
+
+      - name: Upload experimental debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Capsule-MUSIC-Experimental-Universal-Debug
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+          retention-days: 30

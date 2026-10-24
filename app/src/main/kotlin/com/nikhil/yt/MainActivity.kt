@@ -272,7 +272,7 @@ class MainActivity : ComponentActivity() {
     private var pendingIntent: Intent? = null
     private var lastHandledIncomingIntent: Intent? = null
     private var pendingDeepLinkSong: PendingDeepLinkSong? = null
-    // Shared SoundCloud/Spotify links must open the full results screen regardless of current route.
+    // Shared Spotify links must open the full results screen regardless of current route.
     private var pendingSharedSearchQuery by mutableStateOf<String?>(null)
     private var pendingTogetherJoinLink: String? = null
 
@@ -1860,7 +1860,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * YouTube links play by video ID. Spotify/SoundCloud links open full visible
+     * YouTube links play by video ID. Spotify links open full visible
      * search results from public metadata; their IDs are not YouTube video IDs.
      */
     private fun openIncomingTrackLink(raw: String, navController: NavHostController): Boolean {

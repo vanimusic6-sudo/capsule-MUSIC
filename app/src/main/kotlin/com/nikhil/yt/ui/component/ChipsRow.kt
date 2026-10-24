@@ -20,6 +20,9 @@ import androidx.compose.animation.shrinkOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -69,6 +72,8 @@ fun <E> ChipsRow(
     modifier: Modifier = Modifier,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainer,
     icons: Map<E, Int> = emptyMap(),
+    persistentIconValues: Set<E> = emptySet(),
+    iconAccentColors: Map<E, Color> = emptyMap(),
 ) {
     Row(
         modifier =
@@ -101,8 +106,21 @@ fun <E> ChipsRow(
                      * width change into the movement it always was. A chip that carries its own
                      * icon has no width change to make, so it is left alone.
                      */
-                    if (iconRes != null && !isSelected) {
-                        Icon(
+                    if (iconRes != null && (!isSelected || value in persistentIconValues)) {
+                        val accent = iconAccentColors[value]
+                        if (accent != null) {
+                            Box(
+                                modifier = Modifier.size(22.dp).background(accent, CircleShape),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    painter = painterResource(iconRes),
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                        } else Icon(
                             painter = painterResource(iconRes),
                             contentDescription = null,
                             modifier = Modifier.size(FilterChipDefaults.IconSize),

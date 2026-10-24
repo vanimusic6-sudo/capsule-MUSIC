@@ -1,0 +1,8 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <!-- White planet/orbit with a music pulse, filled for small chips. -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M12,2.2 C6.6,2.2 2.2,6.6 2.2,12 C2.2,17.4 6.6,21.8 12,21.8 C17.4,21.8 21.8,17.4 21.8,12 C21.8,10.5 21.5,9.3 20.8,8.1 L18.7,9.4 C19.1,10.2 19.3,11.1 19.3,12 C19.3,16.1 16.1,19.3 12,19.3 C7.9,19.3 4.7,16.1 4.7,12 C4.7,7.9 7.9,4.7 12,4.7 C13.5,4.7 14.9,5.1 16.1,6 L17.5,3.9 C15.9,2.8 14,2.2 12,2.2 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M6.6,10.9 L9,10.9 L9,13.1 L6.6,13.1 Z M10.7,7.8 L13.3,7.8 L13.3,16.2 L10.7,16.2 Z M15,9.2 L17.4,9.2 L17.4,14.8 L15,14.8 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M18.4,2.5 L21.5,2.5 L21.5,5.6 L18.4,5.6 Z"/>
+</vector>

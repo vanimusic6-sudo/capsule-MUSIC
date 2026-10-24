@@ -17,6 +17,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -30,11 +32,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -49,6 +53,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
@@ -76,8 +81,10 @@ import androidx.media3.exoplayer.offline.DownloadService
 import androidx.navigation.NavController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import com.nikhil.yt.LocalDownloadUtil
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
+import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.HideExplicitKey
@@ -90,12 +97,17 @@ import com.nikhil.yt.extensions.toMediaItem
 import com.nikhil.yt.extensions.togglePlayPause
 import com.nikhil.yt.playback.ExoDownloadService
 import com.nikhil.yt.playback.queues.ListQueue
+import com.nikhil.yt.discovery.ExperimentalDownload
+import com.nikhil.yt.discovery.OfflineAudioQueue
 import com.nikhil.yt.ui.component.DefaultDialog
 import com.nikhil.yt.ui.component.DraggableScrollbar
 import com.nikhil.yt.ui.component.EmptyPlaceholder
 import com.nikhil.yt.ui.component.IconButton
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.SongListItem
+import com.nikhil.yt.ui.component.OfflineSongListItem
+import com.nikhil.yt.ui.menu.OfflineDownloadMenu
+import com.nikhil.yt.constants.AppBarHeight
 import com.nikhil.yt.ui.component.SortHeader
 import com.nikhil.yt.ui.menu.SelectionSongMenu
 import com.nikhil.yt.ui.menu.SongMenu
@@ -115,6 +127,8 @@ fun AutoPlaylistScreen(
 ) {
     val context = LocalContext.current
     val menuState = LocalMenuState.current
+    val database = LocalDatabase.current
+    val downloadActionScope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     val focusManager = LocalFocusManager.current
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -148,6 +162,14 @@ fun AutoPlaylistScreen(
         "liked" -> PlaylistType.LIKE
         "downloaded" -> PlaylistType.DOWNLOAD
         else -> PlaylistType.OTHER
+    }
+
+    val downloadStates by ExperimentalDownload.states.collectAsState()
+    val savedFilesRevision by ExperimentalDownload.savedFilesRevision.collectAsState()
+    var externalSaved by remember { mutableStateOf<List<ExperimentalDownload.SavedAudio>>(emptyList()) }
+    LaunchedEffect(playlistType, downloadStates, savedFilesRevision) {
+        externalSaved = if (playlistType == PlaylistType.DOWNLOAD)
+            ExperimentalDownload.savedFiles(context) else emptyList()
     }
 
     val wrappedSongs = remember(songs) {
@@ -263,7 +285,7 @@ fun AutoPlaylistScreen(
     val headerItems by remember {
         derivedStateOf {
             val currentSongs = songs
-            if (currentSongs != null && currentSongs.isNotEmpty() && !isSearching) 2 else 0
+            if (currentSongs != null && (currentSongs.isNotEmpty() || externalSaved.isNotEmpty()) && !isSearching) 2 else 0
         }
     }
 
@@ -281,7 +303,15 @@ fun AutoPlaylistScreen(
                 .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom).asPaddingValues(),
         ) {
             if (songs != null) {
-                if (songs!!.isEmpty()) {
+                // This screen draws its toolbar over its content. A playlist with
+                // no YouTube hero must reserve toolbar space (also in search mode),
+                // otherwise the back button lands directly over the first Audius row.
+                if ((songs!!.isEmpty() && externalSaved.isEmpty()) || isSearching) {
+                    item(key = "capsule:playlist:toolbar-spacer") {
+                        Spacer(Modifier.height(AppBarHeight))
+                    }
+                }
+                if (songs!!.isEmpty() && externalSaved.isEmpty()) {
                     item {
                         EmptyPlaceholder(
                             icon = R.drawable.music_note,
@@ -289,7 +319,35 @@ fun AutoPlaylistScreen(
                         )
                     }
                 } else {
-                    if (!isSearching) {
+                    if (!isSearching && songs!!.isEmpty() && externalSaved.isNotEmpty()) {
+                        item(key = "capsule:offline:hero") {
+                            PlaylistHero(
+                                title = playlist,
+                                thumbnails = externalSaved.mapNotNull { it.artwork }.take(4),
+                                songCount = pluralStringResource(R.plurals.n_song, externalSaved.size, externalSaved.size),
+                                duration = null,
+                            ) {
+                                PlaylistAction(
+                                    icon = R.drawable.play, label = stringResource(R.string.play),
+                                    onClick = {
+                                        externalSaved.firstOrNull()?.let { file ->
+                                            OfflineAudioQueue.create(externalSaved, file)?.let(playerConnection::playQueue)
+                                        }
+                                    },
+                                )
+                                PlaylistAction(
+                                    icon = R.drawable.shuffle, label = stringResource(R.string.shuffle),
+                                    onClick = {
+                                        val shuffled = externalSaved.shuffled()
+                                        shuffled.firstOrNull()?.let { file ->
+                                            OfflineAudioQueue.create(shuffled, file)?.let(playerConnection::playQueue)
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    if (!isSearching && songs!!.isNotEmpty()) {
                         // Hero Header Item
                         item(key = "header") {
                             PlaylistHero(
@@ -372,8 +430,88 @@ fun AutoPlaylistScreen(
                         }
                     }
 
+                    if (playlistType == PlaylistType.DOWNLOAD && externalSaved.isNotEmpty()) {
+                        val externalVisible = externalSaved.filter { file ->
+                            !isSearching || query.text.isBlank() ||
+                                file.title.contains(query.text, ignoreCase = true) ||
+                                file.artist.contains(query.text, ignoreCase = true)
+                        }
+                        if (songs!!.isNotEmpty()) {
+                            item(key = "capsule:offline:external-title") {
+                                Text(
+                                    text = externalSaved.map { it.sourceLabel }
+                                        .distinct().take(3).joinToString(" · "),
+                                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                                    style = MaterialTheme.typography.titleSmall,
+                                )
+                            }
+                        }
+                        items(externalVisible, key = { "capsule:offline:" + it.id }) { file ->
+                            OfflineSongListItem(
+                                file = file,
+                                isActive = mediaMetadata?.id == OfflineAudioQueue.PREFIX + file.id,
+                                isPlaying = isPlaying,
+                                onMoreClick = {
+                                    menuState.show {
+                                        OfflineDownloadMenu(
+                                            file = file,
+                                            onDismiss = menuState::dismiss,
+                                            onRemove = {
+                                                menuState.dismiss()
+                                                downloadActionScope.launch {
+                                                    val removed = ExperimentalDownload.deleteSaved(context, file)
+                                                    if (removed) {
+                                                        database.withTransaction {
+                                                            getSongById(OfflineAudioQueue.PREFIX + file.id)?.song
+                                                                ?.let { delete(it) }
+                                                        }
+                                                        externalSaved = externalSaved.filterNot { it.id == file.id }
+                                                        OfflineAudioQueue.removeDeletedFromPlayer(playerConnection.player, file.id)
+                                                    } else {
+                                                        android.widget.Toast.makeText(context,
+                                                            R.string.capsule_download_remove_failed,
+                                                            android.widget.Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                            },
+                                        )
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().combinedClickable(
+                                    onClick = {
+                                        if (mediaMetadata?.id == OfflineAudioQueue.PREFIX + file.id) {
+                                            playerConnection.player.togglePlayPause()
+                                        } else {
+                                            OfflineAudioQueue.create(externalSaved, file)
+                                                ?.let(playerConnection::playQueue)
+                                        }
+                                    },
+                                    onLongClick = {
+                                        menuState.show {
+                                            OfflineDownloadMenu(file, menuState::dismiss) {
+                                                menuState.dismiss()
+                                                downloadActionScope.launch {
+                                                    if (ExperimentalDownload.deleteSaved(context, file)) {
+                                                        database.withTransaction {
+                                                            getSongById(OfflineAudioQueue.PREFIX + file.id)?.song
+                                                                ?.let { delete(it) }
+                                                        }
+                                                        externalSaved = externalSaved.filterNot { it.id == file.id }
+                                                        OfflineAudioQueue.removeDeletedFromPlayer(playerConnection.player, file.id)
+                                                    } else android.widget.Toast.makeText(context,
+                                                        R.string.capsule_download_remove_failed,
+                                                        android.widget.Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        }
+                                    },
+                                ),
+                            )
+                        }
+                    }
+
                     // Sort Header
-                    item(key = "sortHeader") {
+                    if (songs!!.isNotEmpty()) item(key = "sortHeader") {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(start = 16.dp),
@@ -474,7 +612,8 @@ fun AutoPlaylistScreen(
 
         // Same overlay behaviour as AlbumScreen: cover reaches the top and the toolbar
         // becomes solid only after its header scrolls away (or while searching/selecting).
-        val showPlaylistHero = lazyListState.firstVisibleItemIndex == 0 && !selection && !isSearching
+        val showPlaylistHero = (songs?.isNotEmpty() == true || externalSaved.isNotEmpty()) &&
+            lazyListState.firstVisibleItemIndex == 0 && !selection && !isSearching
         CenterAlignedTopAppBar(
             colors = TopAppBarDefaults.topAppBarColors(
                 containerColor = if (showPlaylistHero) Color.Transparent else surfaceColor,

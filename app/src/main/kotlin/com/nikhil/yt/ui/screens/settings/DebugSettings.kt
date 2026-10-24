@@ -188,6 +188,23 @@ fun DebugSettings(
                 title = stringResource(R.string.experimental_features)
             )
 
+            // Recover an unshared crash report after restarting the app.
+            // The crash handler writes it privately before process death.
+            val crashContext = LocalContext.current
+            val lastCrash = remember { java.io.File(crashContext.filesDir, "capsule-last-crash.txt") }
+            if (lastCrash.isFile) {
+                FilledTonalButton(
+                    onClick = {
+                        crashContext.startActivity(
+                            Intent(crashContext, com.nikhil.yt.DebugActivity::class.java),
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                ) {
+                    Text(stringResource(R.string.capsule_last_crash))
+                }
+            }
+
             SwitchPreference(
                 title = { Text(stringResource(R.string.enable_debug_logging)) },
                 description = stringResource(R.string.enable_debug_logging_desc),

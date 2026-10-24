@@ -1,0 +1,8 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <!-- A small real receiver: crisp enough for the 12dp combined selector. -->
+    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
+        android:pathData="M4,8.5 L20,8.5 Q22,8.5 22,10.5 L22,19 Q22,21 20,21 L4,21 Q2,21 2,19 L2,10.5 Q2,8.5 4,8.5 Z M7.8,13.4 A2.5,2.5 0,1 0,7.8 18.4 A2.5,2.5 0,1 0,7.8 13.4 Z M12,12 L19.3,12 L19.3,13.7 L12,13.7 Z M12,16 L19.3,16 L19.3,17.7 L12,17.7 Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M5.2,6.8 L17.3,2.4 L18,4.5 L8.4,8.6 L5.2,8.6 Z" />
+</vector>

@@ -1,0 +1,9 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <!-- Filled archive gate, a distinctive open-library mark. -->
+    <path android:fillColor="#FFFFFFFF" android:pathData="M12,2.4 L15.5,7.8 L12,10.2 L8.5,7.8 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M3,10.1 Q12,7.6 21,10.1 L21,12 L3,12 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M4.5,13 L7.6,13 L7.6,18.1 L4.5,18.1 Z M10.5,13 L13.5,13 L13.5,18.1 L10.5,18.1 Z M16.5,13 L19.5,13 L19.5,18.1 L16.5,18.1 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M3.3,19 L20.7,19 L20.7,21.5 L3.3,21.5 Z"/>
+</vector>

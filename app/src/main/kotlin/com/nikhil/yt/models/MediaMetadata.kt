@@ -32,10 +32,10 @@ data class MediaMetadata(
     /**
      * Canonical source page for non-YouTube providers.
      *
-     * SoundCloud needs this because mediaId is an internal stable hash, not a
-     * playable or resolvable URL. Keeping the permalink in persisted metadata
-     * lets the player menu download the real track and lets persistent queues
-     * re-resolve fresh signed CDN URLs after process death.
+     * External catalog entries may use internal hashes rather than a
+     * playable URL. Keeping the source page in metadata
+     * lets the player expose source attribution without guessing IDs, while the queue
+     * can safely avoid reusing short-lived third-party URLs.
      */
     val sourceUrl: String? = null,
     /** Explicit playback origin; normal library songs remain AUDIO. */

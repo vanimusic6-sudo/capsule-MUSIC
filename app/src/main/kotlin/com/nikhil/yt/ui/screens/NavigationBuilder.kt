@@ -50,6 +50,7 @@ import com.nikhil.yt.ui.screens.artist.ArtistAlbumsScreen
 import com.nikhil.yt.ui.screens.artist.ArtistItemsScreen
 import com.nikhil.yt.ui.screens.artist.ArtistScreen
 import com.nikhil.yt.ui.screens.artist.ArtistSongsScreen
+import com.nikhil.yt.ui.screens.discovery.ExperimentalArtistScreen
 import com.nikhil.yt.ui.screens.library.LibraryScreen
 import com.nikhil.yt.ui.screens.playlist.AutoPlaylistScreen
 import com.nikhil.yt.ui.screens.playlist.LocalPlaylistScreen
@@ -57,8 +58,6 @@ import com.nikhil.yt.ui.screens.playlist.OnlinePlaylistScreen
 import com.nikhil.yt.ui.screens.playlist.TopPlaylistScreen
 import com.nikhil.yt.ui.screens.playlist.CachePlaylistScreen
 import com.nikhil.yt.ui.screens.search.OnlineSearchResult
-import com.nikhil.yt.ui.screens.soundcloud.SoundCloudPlaylistScreen
-import com.nikhil.yt.ui.screens.soundcloud.SoundCloudProfileScreen
 import com.nikhil.yt.ui.screens.settings.AboutScreen
 import com.nikhil.yt.ui.screens.settings.AppearanceSettings
 import com.nikhil.yt.ui.screens.settings.BackupAndRestore
@@ -143,17 +142,23 @@ fun NavGraphBuilder.navigationBuilder(
         OnlineSearchResult(navController)
     }
     routeComposable(
-        route = "soundcloud/profile?url={url}",
-        arguments = listOf(navArgument("url") { type = NavType.StringType; defaultValue = "" }),
+        route = "discovery/artist?source={source}&name={name}&id={id}&url={url}",
+        arguments = listOf(
+            navArgument("source") { type = NavType.StringType; defaultValue = "" },
+            navArgument("name") { type = NavType.StringType; defaultValue = "" },
+            navArgument("id") { type = NavType.StringType; defaultValue = "" },
+            navArgument("url") { type = NavType.StringType; defaultValue = "" },
+        ),
     ) { entry ->
-        SoundCloudProfileScreen(entry.arguments?.getString("url").orEmpty(), navController)
+        ExperimentalArtistScreen(
+            navController = navController,
+            sourceName = entry.arguments?.getString("source").orEmpty(),
+            artist = entry.arguments?.getString("name").orEmpty(),
+            artistId = entry.arguments?.getString("id"),
+            originalPage = entry.arguments?.getString("url"),
+        )
     }
-    routeComposable(
-        route = "soundcloud/playlist?url={url}",
-        arguments = listOf(navArgument("url") { type = NavType.StringType; defaultValue = "" }),
-    ) { entry ->
-        SoundCloudPlaylistScreen(entry.arguments?.getString("url").orEmpty(), navController)
-    }
+
     routeComposable(
         route = "album/{albumId}",
         arguments =

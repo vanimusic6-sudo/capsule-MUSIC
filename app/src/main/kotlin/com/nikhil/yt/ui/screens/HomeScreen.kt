@@ -63,6 +63,12 @@ import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.NavigationTitle
 import com.nikhil.yt.ui.utils.SnapLayoutInfoProvider
 import com.nikhil.yt.viewmodels.HomeViewModel
+import com.nikhil.yt.constants.ExperimentalSourcesEnabledKey
+import com.nikhil.yt.constants.HomeFeedSourcesKey
+import com.nikhil.yt.discovery.HomeFeedSource
+import com.nikhil.yt.discovery.ExperimentalCatalog
+import com.nikhil.yt.discovery.ExperimentalRanking
+import com.nikhil.yt.utils.rememberPreference
 
 
 /** Recognize the release shelf returned by the same YouTube Music Home feed. */
@@ -96,6 +102,34 @@ fun HomeScreen(
     val newReleaseAlbums by viewModel.newReleaseAlbums.collectAsState()
     val providerHasReleaseShelf = homePage?.sections?.any(::isYouTubeReleaseShelf) == true
     val forYouSuggestions by viewModel.forYouSuggestions.collectAsState()
+    val (experimentalSourcesEnabled, _) = rememberPreference(ExperimentalSourcesEnabledKey, false)
+    val (homeSourceSetting, _) = rememberPreference(HomeFeedSourcesKey, HomeFeedSource.DEFAULT)
+    val homeSources = remember(homeSourceSetting) { HomeFeedSource.parse(homeSourceSetting) }
+    // A disabled experimental catalog never strands Home without content.
+    val includeYouTube = !experimentalSourcesEnabled || HomeFeedSource.YOUTUBE in homeSources
+    val rareSources = if (experimentalSourcesEnabled) homeSources - HomeFeedSource.YOUTUBE
+        else emptySet()
+    val tastes = remember(forYouSuggestions) {
+        forYouSuggestions.orEmpty().mapNotNull { it.artists.firstOrNull()?.name }
+            .distinct().take(2)
+    }
+    val catalogHome = rememberCatalogHomeState(rareSources, tastes)
+    // Do not silently substitute YouTube when the user deliberately chose an
+    // external-only Home. Show a retry state for an unavailable source instead.
+    val displayYouTube = includeYouTube
+    // Live radio is not an on-demand track. Keep stations inside their
+    // curated radio shelves, never in a shuffled music-discovery carousel.
+    val catalogTracks = catalogHome.lanes.flatMap { it.tracks }
+        .filter { it.source != ExperimentalCatalog.Source.RADIO }
+        .distinctBy { it.mediaId }
+    // LazyListScope is not composable: calculate the mixed shelf BEFORE its DSL.
+    val beyond = remember(catalogTracks, tastes) {
+        ExperimentalRanking.select(
+            catalogTracks,
+            dayKey = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay(),
+            tasteArtists = tastes,
+        )
+    }
     val listenerPlaylists by viewModel.communityPlaylists.collectAsState()
 
 
@@ -128,7 +162,8 @@ fun HomeScreen(
     }
 
     // Paginate on the edge transition, never on every scroll pixel.
-    LaunchedEffect(lazylistState, homePage?.continuation) {
+    LaunchedEffect(lazylistState, homePage?.continuation, displayYouTube) {
+        if (!displayYouTube) return@LaunchedEffect
         snapshotFlow {
             val info = lazylistState.layoutInfo
             info.totalItemsCount > 0 &&
@@ -150,8 +185,11 @@ fun HomeScreen(
                 .fillMaxSize()
                 .pullToRefresh(
                     state = pullRefreshState,
-                    isRefreshing = isRefreshing,
-                    onRefresh = viewModel::refresh
+                    isRefreshing = if (includeYouTube) isRefreshing else catalogHome.loading,
+                    onRefresh = {
+                        if (includeYouTube) viewModel.refresh()
+                        if (rareSources.isNotEmpty()) catalogHome.refresh()
+                    }
                 )
         ) {
             val horizontalLazyGridItemWidthFactor = if (maxWidth * 0.475f >= 320.dp) 0.475f else 0.9f
@@ -175,7 +213,7 @@ fun HomeScreen(
                 overscrollEffect = null,
             ) {
 
-                    quickPicks?.takeIf { it.isNotEmpty() }?.let { picks ->
+                    quickPicks?.takeIf { displayYouTube && it.isNotEmpty() }?.let { picks ->
                 item(key = "home:quick-hero") {
                     QuickPicksSection(
                         quickPicks = picks,
@@ -191,7 +229,7 @@ fun HomeScreen(
             }
 
 
-            keepListening?.takeIf { it.isNotEmpty() }?.let { songs ->
+            keepListening?.takeIf { displayYouTube && it.isNotEmpty() }?.let { songs ->
                 item(key = "home:keep-listening") {
                     Column {
                         NavigationTitle(title = stringResource(R.string.keep_listening))
@@ -209,7 +247,7 @@ fun HomeScreen(
                 }
             }
 
-            forYouSuggestions?.takeIf { it.isNotEmpty() }?.let { suggestions ->
+            forYouSuggestions?.takeIf { displayYouTube && it.isNotEmpty() }?.let { suggestions ->
                 item(key = "home:taste") {
                     TasteRecommendationsSection(
                         suggestions = suggestions,
@@ -226,12 +264,50 @@ fun HomeScreen(
             }
 
 
+            // External sources are true Home providers. Render multiple
+            // independent catalog rows rather than one optional music shelf.
+            if (rareSources.isNotEmpty()) {
+                if (beyond.isNotEmpty()) item(key = "home:catalog-beyond") {
+                    CatalogHomeRow(
+                        title = stringResource(R.string.capsule_discovery_home_title),
+                        source = null,
+                        tracks = beyond,
+                        userScrollEnabled = horizontalShelvesEnabled.value,
+                        playerConnection = playerConnection,
+                        navController = navController,
+                    )
+                }
+                catalogHome.lanes.forEach { lane ->
+                    item(key = "home:catalog:" + lane.source.id + ":" + lane.kind.name + ":" + (lane.titleRes ?: 0)) {
+                        CatalogHomeRow(
+                            title = lane.source.label + " · " + (lane.titleRes?.let { stringResource(it) } ?: catalogLaneTitle(lane.kind)),
+                            source = lane.source,
+                            tracks = lane.tracks,
+                            userScrollEnabled = horizontalShelvesEnabled.value,
+                            playerConnection = playerConnection,
+                            navController = navController,
+                        )
+                    }
+                }
+                if (catalogHome.loading && catalogHome.lanes.isEmpty()) {
+                    item(key = "home:catalog-loading") { HomeLoadingShimmer() }
+                }
+                if (catalogHome.finished && catalogHome.lanes.isEmpty() &&
+                    rareSources.isNotEmpty()) {
+                    item(key = "home:catalog-unavailable") {
+                        CatalogHomeError(onRetry = catalogHome::refresh)
+                    }
+                }
+                // Partial provider errors do not interrupt healthy shelves.
+
+            }
+
             // This is the current YouTube Music release catalog, not a static
             // local playlist or a rebranded recommendation shelf.
             // Only add a release section when YouTube's Home feed has none.
             // Otherwise refresh the existing section in place to avoid a
             // duplicated carousel and a mid-scroll insert/remove jump.
-            newReleaseAlbums.takeIf { it.isNotEmpty() && !providerHasReleaseShelf }?.let { albums ->
+            newReleaseAlbums.takeIf { displayYouTube && it.isNotEmpty() && !providerHasReleaseShelf }?.let { albums ->
                 item(key = "home:youtube-new-release-albums") {
                     val releases = remember(albums) {
                         HomePage.Section(
@@ -262,7 +338,7 @@ fun HomeScreen(
                 }
             }
 
-            forgottenFavorites?.takeIf { it.isNotEmpty() }?.let { favorites ->
+            forgottenFavorites?.takeIf { displayYouTube && it.isNotEmpty() }?.let { favorites ->
                 item(key = "home:forgotten") {
                     Column {
                         NavigationTitle(title = stringResource(R.string.forgotten_favorites))
@@ -284,7 +360,7 @@ fun HomeScreen(
             }
 
             // Discover genuine user-created YouTube Music playlists in the feed.
-            listenerPlaylists.takeIf { it.isNotEmpty() }?.let { playlists ->
+            listenerPlaylists.takeIf { displayYouTube && it.isNotEmpty() }?.let { playlists ->
                 item(key = "home:listener-community-playlists") {
                     CommunityPlaylistsSection(
                         section = remember(playlists) {
@@ -305,7 +381,7 @@ fun HomeScreen(
                 }
             }
 
-            homePage?.sections
+            homePage?.sections?.takeIf { displayYouTube }
                 // If the provider repeats the release shelf, keep its first position.
                 ?.distinctBy { if (isYouTubeReleaseShelf(it)) "home:yt:releases" else
                     "home:yt:${it.endpoint?.browseId}:${it.title}:${it.items.firstOrNull()?.id}" }
@@ -356,7 +432,7 @@ fun HomeScreen(
                 }
             }
 
-            if (homeFeedError && homePage?.sections.isNullOrEmpty() && !isLoading) {
+            if (includeYouTube && homeFeedError && homePage?.sections.isNullOrEmpty() && !isLoading) {
                 item(key = "home:feed-error") {
                     Column(
                         modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -374,7 +450,7 @@ fun HomeScreen(
             }
 
             if (
-                isLoading || isLoadingMore
+                displayYouTube && (isLoading || isLoadingMore)
             ) {
                 item(key = "home:loading") {
                     HomeLoadingShimmer()
@@ -384,7 +460,7 @@ fun HomeScreen(
 
                 // "Подборки" means situations (road, sleep, party etc).
                 // Music shelves stay on the Home page.
-                item(key = "home:collections-button") {
+                if (displayYouTube) item(key = "home:collections-button") {
                     // A Capsule card, not the oversized Material pill. Padding
                     // below the card lifts it clear of the mini-player, while
                     // the existing player-aware list inset remains untouched.
