@@ -258,11 +258,6 @@ constructor(
                         finalException: Exception?,
                     ) {
                         if (download.state == Download.STATE_FAILED) {
-                            // A failed request is not automatically a YouTube rate limit.
-                            Timber.tag("CapsuleDownload").w(
-                                finalException,
-                                "YouTube offline download failed; preserving retry action",
-                            )
                             CapsuleAudioEngine.invalidateCachedStreamUrls(download.request.id)
                             if (
                                 finalException != null &&
@@ -313,15 +308,12 @@ constructor(
             .distinctUntilChanged()
 
     private fun registerThrottleSignal(exception: Throwable?) {
-        // Generic network errors, expired CDN URLs and 403 responses aren't
-        // evidence that YouTube has globally throttled our download queue.
-        // Counting them as repeated limits silently stalled otherwise healthy
-        // tracks and could not recover without a completed download.
-        if (exception == null || !isProbablyThrottleSignal(exception)) {
-            clearThrottleSignal()
-            return
-        }
-        val nextStrikeCount = consecutiveThrottleSignals.incrementAndGet()
+        val nextStrikeCount =
+            if (exception == null || isProbablyThrottleSignal(exception)) {
+                consecutiveThrottleSignals.incrementAndGet()
+            } else {
+                consecutiveThrottleSignals.updateAndGet { strikes -> maxOf(1, strikes) }
+            }
 
         val reducedParallelDownloads =
             when {
@@ -353,12 +345,12 @@ constructor(
                 if (strikes > 0) strikes - 1 else 0
             }
 
-        if (remainingStrikes == 0) {
-            cooldownUntilMs = 0L
-            if (currentMaxParallelDownloads != DEFAULT_MAX_PARALLEL_DOWNLOADS) {
-                currentMaxParallelDownloads = DEFAULT_MAX_PARALLEL_DOWNLOADS
-                downloadManager.maxParallelDownloads = DEFAULT_MAX_PARALLEL_DOWNLOADS
-            }
+        if (
+            remainingStrikes == 0 &&
+            currentMaxParallelDownloads != DEFAULT_MAX_PARALLEL_DOWNLOADS
+        ) {
+            currentMaxParallelDownloads = DEFAULT_MAX_PARALLEL_DOWNLOADS
+            downloadManager.maxParallelDownloads = DEFAULT_MAX_PARALLEL_DOWNLOADS
         }
     }
 
@@ -372,9 +364,21 @@ constructor(
                 }
             }.lowercase()
 
-        return CapsuleAudioEngine.isRateLimitedException(exception) ||
-            listOf("429", "rate limit", "rate-limit", "too many requests", "quota exceeded")
-                .any(message::contains)
+        return listOf(
+            "429",
+            "403",
+            "quota",
+            "rate",
+            "too many",
+            "temporarily unavailable",
+            "timed out",
+            "timeout",
+            "unavailable",
+            "reset by peer",
+            "no playable clients",
+            "no playable audio stream",
+            "client response unavailable",
+        ).any(message::contains)
     }
 
     companion object {

@@ -55,19 +55,6 @@ class AuthWallDetectorTest {
     }
 
     @Test
-    fun `two different CDN-rejected tracks indicate a route failure`() {
-        val detector = AuthWallDetector()
-        assertFalse(detector.recordCdnForbidden("song-a"))
-        assertFalse(detector.recordCdnForbidden("song-a"))
-        assertTrue(detector.recordCdnForbidden("song-b"))
-        detector.recordPlayable()
-        assertFalse(detector.isRouteWide())
-        detector.recordCdnForbidden("song-a")
-        detector.forget()
-        assertFalse(detector.isRouteWide())
-    }
-
-    @Test
     fun `a new route starts clean`() {
         val detector = AuthWallDetector()
         detector.recordAuthRequired("03vjkV3I0WU")

@@ -207,10 +207,6 @@ import com.nikhil.yt.utils.StreamClientUtils
 import com.nikhil.yt.utils.SyncUtils
 import com.nikhil.yt.utils.GlobalLog
 import com.nikhil.yt.utils.isTransientClosedTlsHandshake
-import com.nikhil.yt.playback.audio.CapsuleSabrDataSource
-import com.nikhil.yt.playback.audio.CapsuleSabrRoutingDataSource
-import com.nikhil.yt.playback.audio.CapsuleSabrOpenContext
-import com.nikhil.yt.playback.audio.CapsuleInnerTubeXPlayer
 import com.nikhil.yt.playback.audio.AudioCacheDataSource
 import com.nikhil.yt.discovery.ExperimentalCatalog.EXPERIMENTAL_MEDIA_PREFIX
 import com.nikhil.yt.constants.ExperimentalSourcesEnabledKey
@@ -4002,9 +3998,7 @@ class MusicService :
 
     // Anything that reaches the point of playing proves this route is served, whatever it turned
     // away before.
-    if (playbackState == Player.STATE_READY &&
-        player.currentMediaItem?.mediaId?.startsWith(EXPERIMENTAL_MEDIA_PREFIX) != true
-    ) authWallDetector.recordPlayable()
+    if (playbackState == Player.STATE_READY) authWallDetector.recordPlayable()
 
     if (playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) {
         crossfadeAudio?.stop(resetMainFade = true)
@@ -4483,13 +4477,6 @@ class MusicService :
 
         if (shouldAttemptStreamRefresh && currentMediaId != null) {
             val signedUrlRejected = httpStatusCode in setOf(403, 410)
-            if (httpStatusCode == 403) {
-                val routeWide = authWallDetector.recordCdnForbidden(currentMediaId)
-                Timber.tag("PlaybackRecovery").w(
-                    "YouTube GVS HTTP 403 id=%s routeWide=%s; separate from explicit /player bot-check",
-                    currentMediaId, routeWide,
-                )
-            }
             val cdnTransportFailure = requiresFreshCdnUrl
             // Only actual signed-URL rejections and typed CDN transport failures
             // use the compact two-client failover. HTTP 429/bot/offline have
@@ -4758,12 +4745,7 @@ class MusicService :
 
         return DataSource.Factory {
             val contract = AudioStreamContract()
-            ResolvingDataSource(
-                CapsuleSabrRoutingDataSource(
-                    direct = audioCacheFactory.createDataSource(),
-                    sabr = CapsuleSabrDataSource { CapsuleInnerTubeXPlayer.newSabrHttpClient() },
-                ),
-            ) { dataSpec ->
+            ResolvingDataSource(audioCacheFactory.createDataSource()) { dataSpec ->
                 // VIDEO never enters the MUSIC loader. A persisted old
                 // synthetic item is normalized to its canonical AUDIO ID by
                 // createMediaSourceFactory before reaching this resolver.
@@ -4943,14 +4925,6 @@ class MusicService :
         source: AudioCdnOpenSource,
     ): androidx.media3.datasource.DataSpec {
         val mediaId = requireNotNull(dataSpec.key)
-        playback.sabrBootstrap?.let { bootstrap ->
-            // SABR's POST/UMP protocol must never be opened by the signed-GET
-            // cache upstream. Keep cache data identities and downloads unchanged.
-            return dataSpec.buildUpon()
-                .setUri(playback.streamUrl.toUri())
-                .setCustomData(CapsuleSabrOpenContext(bootstrap))
-                .build()
-        }
         val key = AudioCacheIdentity.key(mediaId, playback)
         contract.bind(key)
         AudioCacheIdentity.setLength(playerCache, key, playback.format.contentLength)

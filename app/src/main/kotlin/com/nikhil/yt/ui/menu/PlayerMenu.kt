@@ -716,13 +716,7 @@ fun PlayerMenu(
                 else -> {
                     MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                         ListItem(
-                        headlineContent = {
-                            Text(
-                                text = if (download?.state == Download.STATE_FAILED)
-                                    stringResource(R.string.retry) + " · " + stringResource(R.string.action_download)
-                                else stringResource(R.string.action_download)
-                            )
-                        },
+                        headlineContent = { Text(text = stringResource(R.string.action_download)) },
                         leadingContent = {
                             Icon(
                                 painter = painterResource(R.drawable.download),

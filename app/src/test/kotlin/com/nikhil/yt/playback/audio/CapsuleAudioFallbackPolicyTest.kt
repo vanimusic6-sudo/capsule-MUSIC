@@ -198,28 +198,9 @@ class CapsuleAudioFallbackPolicyTest {
             )
 
         assertEquals(
-            listOf("WEB_EMBEDDED_PLAYER", "TVHTML5_SIMPLY", "VISIONOS_0_1"),
+            listOf("TVHTML5_SIMPLY", "VISIONOS_0_1", "WEB_EMBEDDED_PLAYER"),
             plan,
         )
-    }
-
-    @Test
-    fun healthyCustomClientPriorityRemainsUnmodifiedButRejectedWebPrefersEmbedded() {
-        val custom = listOf("WEB_REMIX", "VISIONOS", "TVHTML5_SIMPLY", "WEB_EMBEDDED_PLAYER")
-        val healthy = CapsuleAudioFallbackPolicy.profilePlan(
-            primaryProfileId = "WEB_REMIX",
-            priority = AudioResolvePriority.PLAYBACK,
-            authenticated = false, isUploaded = false,
-            excludedProfiles = emptySet(), preferredProfiles = custom,
-        )
-        assertEquals(custom.take(3), healthy)
-        val recovery = CapsuleAudioFallbackPolicy.profilePlan(
-            primaryProfileId = "WEB_REMIX",
-            priority = AudioResolvePriority.PLAYBACK,
-            authenticated = false, isUploaded = false,
-            excludedProfiles = setOf("WEB_REMIX"), preferredProfiles = custom,
-        )
-        assertEquals(listOf("WEB_EMBEDDED_PLAYER", "VISIONOS", "TVHTML5_SIMPLY"), recovery)
     }
 
     @Test
@@ -311,8 +292,8 @@ class CapsuleAudioFallbackPolicyTest {
 
         assertEquals(
             listOf(
-                CapsuleAudioFallbackPolicy.WEB_EMBEDDED,
                 CapsuleAudioFallbackPolicy.VISIONOS_0_1,
+                CapsuleAudioFallbackPolicy.WEB_EMBEDDED,
                 CapsuleAudioFallbackPolicy.TVHTML5_SIMPLY,
             ),
             plan,

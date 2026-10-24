@@ -42,17 +42,6 @@ class DownloadIsolationRegressionTest {
         assertTrue(service.contains("return externalStreamingSource.createMediaSource(mediaItem)"))
     }
 
-    @Test fun nativeQueueDoesNotThrottleAllSongsOnGenericErrors() {
-        val util = source("playback/DownloadUtil.kt")
-        val classifier = util.substringAfter("private fun isProbablyThrottleSignal(")
-            .substringBefore("companion object")
-        assertFalse(classifier.contains("\"403\""))
-        assertFalse(classifier.contains("\"timeout\""))
-        assertFalse(classifier.contains("\"unavailable\""))
-        assertTrue(classifier.contains("isRateLimitedException(exception)"))
-        assertTrue(util.contains("if (exception == null || !isProbablyThrottleSignal(exception))"))
-    }
-
     @Test fun downloadedScreensKeepCompactArtAndUnobscuredToolbar() {
         val screen = source("ui/screens/playlist/AutoPlaylistScreen.kt")
         val library = source("ui/screens/library/LibrarySongsScreen.kt")

@@ -35,7 +35,7 @@ kuromojiIpadic = "0.9.0"
 extractor = "2d2d9ed"
 rhino = "1.9.1"
 multiplatformMarkdown = "0.39.2"
-innertubex = "v0.11.2"
+innertubex = "v0.5.2"
 
 [libraries]
 annotation = { module = "androidx.annotation:annotation", version.ref = "annotation" }

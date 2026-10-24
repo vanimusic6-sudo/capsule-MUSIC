@@ -70,19 +70,9 @@ internal object CapsuleAudioFallbackPolicy {
             }
 
         val ordered = preferAuthenticatedWebFallback(baseOrder, authenticated)
-        // Once a concrete WEB_REMIX GVS URL was rejected for this song,
-        // prioritize the official anonymous embedded family over trying
-        // visionOS and TV in succession. WEB_EMBEDDED only works for content
-        // whose publisher permits embedding; a rejection still counts against
-        // the same three-profile budget. A healthy user's saved order stays put.
-        val recoveryOrder =
-            if (!authenticated && !isUploaded && WEB_REMIX in excluded &&
-                WEB_EMBEDDED in ordered) {
-                listOf(WEB_EMBEDDED) + ordered.filterNot { it == WEB_EMBEDDED }
-            } else ordered
 
         val eligible =
-            recoveryOrder
+            ordered
                 .filter { it.isNotBlank() }
                 .distinct()
                 .filter { it in supportedProfiles }
