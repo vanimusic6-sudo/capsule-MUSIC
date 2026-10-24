@@ -3483,7 +3483,10 @@ class MusicService :
                 ?.takeIf { it.id.trim() == mediaId }
                 ?: return null
 
-        database.insert(sourceMetadata)
+        database.insert(sourceMetadata) {
+            if (mediaId.startsWith("capsule-open:offline:")) it.copy(isLocal = true)
+            else it
+        }
         current = database.getSongById(mediaId)
         return current
     }
@@ -3555,7 +3558,10 @@ class MusicService :
                 // also calls YouTube directly, so using a pure local copy above
                 // prevents duplicate like requests while SyncUtils keeps auth and
                 // sync-policy checks in one place.
-                syncUtils.likeSong(updatedSong)
+                // A local/independent track must never reach YouTube's
+                // mutation API. The Capsule library owns its local like state.
+                if (!mediaId.startsWith(EXPERIMENTAL_MEDIA_PREFIX))
+                    syncUtils.likeSong(updatedSong)
 
                 Timber.tag("MusicService").i(
                     "Toggle like applied id=%s liked=%s source=%s",
@@ -3564,7 +3570,8 @@ class MusicService :
                     source,
                 )
 
-                if (dataStore.get(AutoDownloadOnLikeKey, false) && updatedSong.liked) {
+                if (!mediaId.startsWith(EXPERIMENTAL_MEDIA_PREFIX) &&
+                    dataStore.get(AutoDownloadOnLikeKey, false) && updatedSong.liked) {
                     val downloadRequest =
                         androidx.media3.exoplayer.offline.DownloadRequest
                             .Builder(updatedSong.id, updatedSong.id.toUri())

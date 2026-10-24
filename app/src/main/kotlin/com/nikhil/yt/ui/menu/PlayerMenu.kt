@@ -214,13 +214,16 @@ fun PlayerMenu(
 
     AddToPlaylistDialog(
         isVisible = showChoosePlaylistDialog,
-        onGetSong = { playlist ->
-            database.transaction {
-                insert(mediaMetadata)
+        allowSyncing = !isExternalCatalog,
+        onGetSong = { _ ->
+            database.withTransaction {
+                insert(mediaMetadata) {
+                    if (mediaMetadata.id.startsWith("capsule-open:offline:"))
+                        it.copy(isLocal = true) else it
+                }
             }
-            coroutineScope.launch(Dispatchers.IO) {
-                playlist.playlist.browseId?.let { YouTube.addToPlaylist(it, mediaMetadata.id) }
-            }
+            // The dialog itself syncs YouTube playlists where allowed.
+            // Audius entries may only enter Capsule's local playlists.
             listOf(mediaMetadata.id)
         },
         onDismiss = {
@@ -430,8 +433,24 @@ fun PlayerMenu(
                             },
                             text = stringResource(R.string.start_radio),
                             onClick = {
-                                Toast.makeText(context, resources.getString(R.string.starting_radio), Toast.LENGTH_SHORT).show()
-                                playerConnection.startRadioSeamlessly()
+                                if (isAudius) {
+                                    coroutineScope.launch {
+                                        val taste = mediaMetadata.artists.map { it.name }
+                                        val picks = ExperimentalCatalog.recommend(taste)
+                                            .filter { it.playable && it.mediaId != mediaMetadata.id }
+                                            .take(40)
+                                        picks.firstOrNull()?.let { first ->
+                                            com.nikhil.yt.discovery.ExperimentalTrackQueue
+                                                .create("Audius", picks, first)
+                                                ?.let(playerConnection::playQueue)
+                                        } ?: Toast.makeText(context, R.string.no_results_found,
+                                            Toast.LENGTH_SHORT).show()
+                                    }
+                                } else if (!isExternalCatalog) {
+                                    Toast.makeText(context, resources.getString(R.string.starting_radio),
+                                        Toast.LENGTH_SHORT).show()
+                                    playerConnection.startRadioSeamlessly()
+                                }
                                 onDismiss()
                             }
                         ),
