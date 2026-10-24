@@ -40,12 +40,16 @@ internal object DownloadedArtwork {
         if (url.isNullOrBlank() || !url.startsWith("https://")) return@withContext false
         try {
             withTimeoutOrNull(8_000) {
+                val target = file(context, url)
+                // Network image loading happens OUTSIDE the global disk-write mutex.
+                // Otherwise a slow cover for song A serializes song B's completion.
+                val loaded = if (!valid(target)) {
+                    imageLoader.execute(ImageRequest.Builder(context)
+                        .data(url).size(768, 768).allowHardware(false).build()) as? SuccessResult
+                } else null
                 writes.withLock {
-                    val target = file(context, url)
                     if (!valid(target)) {
-                        val result = imageLoader.execute(ImageRequest.Builder(context)
-                            .data(url).size(768, 768).allowHardware(false).build()) as? SuccessResult
-                            ?: return@withLock false
+                        val result = loaded ?: return@withLock false
                         target.parentFile!!.mkdirs()
                         val temporary = File(target.parentFile, "${target.name}.part")
                         try {
