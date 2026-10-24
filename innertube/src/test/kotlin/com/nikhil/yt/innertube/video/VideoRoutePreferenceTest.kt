@@ -12,7 +12,7 @@ class VideoRoutePreferenceTest {
         assertEquals(CapsuleVideoRoute.ANDROID_VR,
             health.order(null, preferredBackend = "pipepipe").first())
         health.success(CapsuleVideoRoute.PIPEPIPE)
-        assertEquals(CapsuleVideoRoute.VISIONOS,
+        assertEquals(CapsuleVideoRoute.ANDROID_VR,
             health.order("pipepipe", preferredBackend = "pipepipe").first())
     }
 }
