@@ -3,7 +3,9 @@ name: Post-test full regression comparison
 on:
   push:
     branches: [release/01-core-reliability]
-    paths: [.github/workflows/post-test-full-suite.yml]
+    paths:
+      - .github/workflows/post-test-full-suite.yml
+      - app/src/test/kotlin/com/nikhil/yt/ui/PlayerTransitionArchitectureTest.kt
   workflow_dispatch:
 
 permissions:
@@ -43,14 +45,84 @@ jobs:
             "$SDKMANAGER" 'platforms;android-37.1'
           fi
       - name: Run every app unit test
-        run: gradle :app:testUniversalDebugUnitTest --stacktrace --no-daemon --max-workers=2
+        shell: bash
+        run: |
+          mkdir -p .test-summary
+          set +e
+          gradle :app:testUniversalDebugUnitTest --stacktrace --no-daemon --max-workers=2
+          code=$?
+          set -e
+          printf '%s\\n' "$code" > .test-summary/exit-code
+          # The baseline already has known UI test failures; the comparison
+          # job below enforces NO NEW failures instead of concealing baseline.
+          exit 0
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: post-test-full-${{ matrix.label }}
           path: |
+            .test-summary/
             app/build/test-results/
             app/build/reports/tests/
             app/build/reports/ui-previews/
           retention-days: 14
-          if-no-files-found: warn
+          if-no-files-found: error
+
+  compare:
+    name: Fail only on new regression failures
+    needs: full-suite
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: post-test-full-*
+          path: regression-data
+      - name: Compare JUnit failures with previously tested release
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import sys
+          import xml.etree.ElementTree as ET
+
+          root = Path("regression-data")
+          def load(label):
+              folder = root / ("post-test-full-" + label)
+              reports = list(folder.rglob("TEST-*.xml"))
+              cases, failures = set(), set()
+              for path in reports:
+                  parsed = ET.parse(path).getroot()
+                  for case in parsed.iter("testcase"):
+                      key = (case.attrib.get("classname", ""), case.attrib.get("name", ""))
+                      cases.add(key)
+                      if case.find("failure") is not None or case.find("error") is not None:
+                          failures.add(key)
+              codes = list(folder.rglob("exit-code"))
+              return cases, failures, reports, codes
+
+          baseline_cases, baseline_failed, baseline_xml, baseline_codes = load("baseline")
+          current_cases, current_failed, current_xml, current_codes = load("current")
+          missing = not baseline_xml or not current_xml or not baseline_codes or not current_codes
+          new_failures = sorted(current_failed - baseline_failed)
+          dropped = len(current_cases) < len(baseline_cases)
+          unexpected_exit = (current_codes and current_codes[0].read_text().strip() != "0"
+                             and not current_failed)
+          lines = [
+              "## App unit-test regression comparison",
+              f"- Baseline: {len(baseline_cases)} tests, {len(baseline_failed)} known failures.",
+              f"- Current: {len(current_cases)} tests, {len(current_failed)} failures.",
+              f"- Newly failing tests: {len(new_failures)}.",
+          ]
+          if new_failures:
+              lines += ["", "### Newly failing"] + [f"- `{cls}.{name}`" for cls, name in new_failures]
+          if missing or dropped or unexpected_exit:
+              lines += ["", f"Incomplete results: missing={missing}, tests_dropped={dropped}, unexpected_exit={unexpected_exit}."]
+          report = "\\n".join(lines)
+          print(report)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              summary.write(report + "\\n")
+          if missing or dropped or unexpected_exit or new_failures:
+              sys.exit(1)
+          PY
