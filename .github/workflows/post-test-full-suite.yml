@@ -52,7 +52,7 @@ jobs:
           gradle :app:testUniversalDebugUnitTest --stacktrace --no-daemon --max-workers=2
           code=$?
           set -e
-          printf '%s\\n' "$code" > .test-summary/exit-code
+          printf '%s\n' "$code" > .test-summary/exit-code
           # The baseline already has known UI test failures; the comparison
           # job below enforces NO NEW failures instead of concealing baseline.
           exit 0
@@ -119,10 +119,10 @@ jobs:
               lines += ["", "### Newly failing"] + [f"- `{cls}.{name}`" for cls, name in new_failures]
           if missing or dropped or unexpected_exit:
               lines += ["", f"Incomplete results: missing={missing}, tests_dropped={dropped}, unexpected_exit={unexpected_exit}."]
-          report = "\\n".join(lines)
+          report = "\n".join(lines)
           print(report)
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
-              summary.write(report + "\\n")
+              summary.write(report + "\n")
           if missing or dropped or unexpected_exit or new_failures:
               sys.exit(1)
           PY
