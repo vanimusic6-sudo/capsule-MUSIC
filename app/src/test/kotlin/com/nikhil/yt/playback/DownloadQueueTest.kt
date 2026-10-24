@@ -71,6 +71,24 @@ class DownloadQueueTest {
             gates.values.forEach { it.countDown() }; queue.close(); manager.release(); provider.close()
         }
     }
+    @Test fun buttonDistinguishesWaitingBackgroundFromActivePausedFailedAndCompleted() {
+        val pending = entry(request(1), 1)
+        assertTrue(pending.canPrioritize)
+        assertFalse(keepActiveDownload(pending))
+        assertFalse(entry(request(1).withManualPriority(), 1).canPrioritize)
+        for (state in listOf(Download.STATE_QUEUED, Download.STATE_DOWNLOADING, Download.STATE_RESTARTING)) {
+            val active = Download(request(1), state, 1, 1, -1, 0, Download.FAILURE_REASON_NONE)
+            assertTrue("Repeated Add must not restart an active downloader", keepActiveDownload(active))
+            assertFalse(active.canPrioritize)
+        }
+        for (state in listOf(Download.STATE_STOPPED, Download.STATE_COMPLETED, Download.STATE_FAILED)) {
+            val inactive = Download(request(1), state, 1, 1, -1,
+                if (state == Download.STATE_STOPPED) COLLECTION_STOP_REASON_USER else 0,
+                if (state == Download.STATE_FAILED) Download.FAILURE_REASON_UNKNOWN else Download.FAILURE_REASON_NONE)
+            assertFalse(keepActiveDownload(inactive)); assertFalse(inactive.canPrioritize)
+        }
+    }
+
     @Test fun persistedPriorityIsIdempotentAndManualBurstsDoNotStarveCollections() {
         val background = entry(request(1), 1)
         val manual = (2..6).map { entry(request(it).withManualPriority(), it.toLong()) }

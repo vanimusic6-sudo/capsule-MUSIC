@@ -55,8 +55,7 @@ class ExoDownloadService : DownloadService(
                 // Media3 addDownload merges an existing active request into STATE_QUEUED,
                 // cancelling its downloader even when its bytes/URI did not change. Ignore
                 // duplicate bulk submissions instead of restarting healthy transfers.
-                val running = existing?.stopReason == Download.STOP_REASON_NONE &&
-                    existing.state in setOf(Download.STATE_DOWNLOADING, Download.STATE_QUEUED, Download.STATE_RESTARTING)
+                val running = keepActiveDownload(existing)
                 if (running) {
                     intent.action = ACTION_INIT
                     return super.onStartCommand(intent, flags, startId)

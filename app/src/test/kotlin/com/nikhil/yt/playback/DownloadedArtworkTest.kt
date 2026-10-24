@@ -51,7 +51,7 @@ class DownloadedArtworkTest {
         } finally { loader.shutdown() }
     }
 
-    @Test fun corruptAndPartialCoversAreNeverAcceptedAndFilenamesCannotEscapeStorage() = runBlocking {
+    @Test fun corruptAndPartialCoversAreNeverAcceptedAndFilenamesCannotEscapeStorage(): Unit = runBlocking {
         val context = RuntimeEnvironment.getApplication()
         val url = "https://example.com/../../cover.jpg?secret=private"
         val target = DownloadedArtwork.file(context, url)

@@ -12,7 +12,9 @@ Baseline: `f11295ea80412610e3ec1e5bca4cfc93cc0bcf91`, clean
   remain cancelled. URL, resolver and CDN gates agree. This does not remove server-side errors.
 - A single-song menu used to remove a queued playlist request on tap. A background member now
   offers **Download now**, promotes the same indexed job and can pause one background transfer
-  without deleting partial bytes. Two transfers remain the maximum. After three manual starts
+  without deleting partial bytes. Two transfers remain the maximum. A separate eight-entry,
+  60-second download URL cache avoids repeating extraction after short pauses; it rejects changed
+  quality/network contexts and removes refused URLs before refresh. It never consumes player URLs. After three manual starts
   a background admission is protected from preemption until it finishes. Manual cancel pauses
   its own request; collection cancellation continues to preserve independently requested songs.
 - Media3's actual `addDownload` implementation resets an active merged request to QUEUED and
@@ -44,6 +46,8 @@ Baseline: `f11295ea80412610e3ec1e5bca4cfc93cc0bcf91`, clean
 Local Gradle attempt could not download Gradle 9.5.0 (`Network is unreachable`); no local
 Android test execution is claimed. Git diff checks passed. The first CI compile caught the
 Coil 3.4 `Chain.withRequest(...).proceed()` API mismatch; it was corrected rather than bypassed.
+The second CI ran 675 tests: 674 passed and the new artwork class failed JUnit initialization
+because one coroutine test returned Boolean instead of Unit; the test signature was corrected.
 CI runs compile/tests/lint/APKs.
 Regression coverage includes real Media3 immediate manual admission, two-slot limit, independent
 cancellation, persisted priorities, offline local artwork after cache removal, shared ownership,

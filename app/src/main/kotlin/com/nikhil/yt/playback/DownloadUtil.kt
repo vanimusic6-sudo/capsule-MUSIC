@@ -90,6 +90,11 @@ constructor(
     @Volatile private var cooldownUntilMs = 0L
     private val consecutiveThrottleSignals = AtomicInteger(0)
     private val downloadResolveMutex = Mutex()
+    // Dedicated download-only entries. Never consume the player's URLs, clients or tokens.
+    // A short pause for a manual request should resume the same signed file without another /player.
+    private val resumeUrls = com.nikhil.yt.playback.audio.PlaybackDataCache(
+        capacity = 8, nowMs = android.os.SystemClock::elapsedRealtime,
+    )
 
     private val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient
@@ -137,6 +142,9 @@ constructor(
         repeat(MAX_DOWNLOAD_RESOLVE_ATTEMPTS) {
             awaitDownloadResolveWindow()
             val selection = playbackContext()
+            val resumeContext = selection to connectivityManager.activeNetwork
+            resumeUrls.getForPlayback(mediaId, maxPrefetchedAgeMs = 60_000L, context = resumeContext)
+                ?.let { return it }
             val result =
                 CapsuleAudioEngine.resolveDownload(
                     videoId = mediaId,
@@ -144,13 +152,16 @@ constructor(
                     connectivityManager = connectivityManager,
                 )
 
-            if (selection != playbackContext()) {
+            if (selection != playbackContext() || resumeContext.second != connectivityManager.activeNetwork) {
                 throw java.io.IOException("Playback context changed during download resolve")
             }
 
             result.getOrNull()?.let { playbackData ->
                 AudioDownloadUrlPolicy.requireYouTubeMedia(playbackData.streamUrl)
                 storeDownloadMetadata(mediaId, playbackData)
+                if (resumeContext.second == connectivityManager.activeNetwork) {
+                    resumeUrls.put(mediaId, playbackData, context = resumeContext)
+                }
                 return playbackData
             }
 
@@ -183,6 +194,7 @@ constructor(
                         .take(12).filterIsInstance<InvalidResponseCodeException>()
                         .firstOrNull()?.responseCode
                     if (status == 403 || status == 410) {
+                        resumeUrls.remove(request.id)
                         if (refreshedClient == playback.streamClient) {
                             CapsuleAudioEngine.markDownloadStreamClientFailed(request.id, playback.streamClient, status)
                         } else refreshedClient = playback.streamClient
@@ -296,6 +308,7 @@ constructor(
             addListener(
                 object : DownloadManager.Listener {
                     override fun onDownloadRemoved(downloadManager: DownloadManager, download: Download) {
+                        resumeUrls.remove(download.request.id)
                         scope.launch { DownloadedArtwork.remove(context, download.request.id) }
                         CapsuleAudioEngine.clearDownloadClientFailures(download.request.id)
                         if (!initialIndexLoaded) removedWhileLoading.add(download.request.id)
@@ -325,6 +338,7 @@ constructor(
                             CapsuleAudioEngine.clearDownloadClientFailures(download.request.id)
                         }
                         if (download.state == Download.STATE_FAILED) {
+                            resumeUrls.remove(download.request.id)
                             if (
                                 finalException != null &&
                                 CapsuleAudioEngine.isRateLimitedException(finalException)
@@ -333,6 +347,7 @@ constructor(
                             }
                             registerThrottleSignal(finalException)
                         } else if (download.state == Download.STATE_COMPLETED) {
+                            resumeUrls.remove(download.request.id)
                             clearThrottleSignal()
                             database.query {
                                 getSongByIdBlocking(download.request.id)?.song?.let { song ->

@@ -158,7 +158,6 @@ fun BottomSheetMenu(
         // Our previous bespoke Dialog accidentally deleted and broke them.
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
         val playerAppearance = state.presentation == MenuPresentation.CAPSULE_PLAYER
-        val physical = true
         val gel = remember { Animatable(0f) }
         val dismissPull = remember { Animatable(0f) }
         val density = LocalDensity.current
@@ -170,21 +169,19 @@ fun BottomSheetMenu(
                 1f to upperTint.copy(alpha = 0f),
             )
         }
-        LaunchedEffect(physical) {
-            if (physical) {
-                // Short, controlled impulse. This does NOT own any touch,
-                // sheet height or anchor: the stock Material3 spring still
-                // handles partial/full expansion and scroll coordination.
-                gel.snapTo(-0.011f)
-                gel.animateTo(
-                    0f,
-                    spring(
-                        dampingRatio = 0.91f,
-                        stiffness = 206f,
-                        visibilityThreshold = 0.0001f,
-                    ),
-                )
-            }
+        LaunchedEffect(Unit) {
+            // Short, controlled impulse. This does NOT own any touch,
+            // sheet height or anchor: the stock Material3 spring still
+            // handles partial/full expansion and scroll coordination.
+            gel.snapTo(-0.011f)
+            gel.animateTo(
+                0f,
+                spring(
+                    dampingRatio = 0.91f,
+                    stiffness = 206f,
+                    visibilityThreshold = 0.0001f,
+                ),
+            )
         }
         LaunchedEffect(state.dismissRequested) {
             if (state.dismissRequested) {
@@ -220,7 +217,7 @@ fun BottomSheetMenu(
             sheetState = sheetState,
             onDismissRequest = {
                 focusManager.clearFocus()
-                if (physical) state.dismiss() else state.isVisible = false
+                state.dismiss()
             },
             containerColor = background,
             // Same 16dp softness as the VIDEO window; the previous 28dp
@@ -279,33 +276,31 @@ fun BottomSheetMenu(
             // immediately on BACK-down/gesture-hold. Releasing then hands it
             // to the hide animation, producing the reported "shrinks then
             // jumps down" discontinuity. Opt out of ONLY that built-in
-            // transformation for player/Lyrics; native drag, partial/full
+            // transformation for every menu; native drag, partial/full
             // expand, scrim and Material's dismissal remain untouched.
             properties = ModalBottomSheetDefaults.properties(
-                shouldDismissOnBackPress = !physical,
+                shouldDismissOnBackPress = false,
             ),
             modifier = modifier.fillMaxHeight().graphicsLayer {
-                if (physical) {
-                    transformOrigin = TransformOrigin(0.5f, 1f)
-                    // Keep native sheet translation completely untouched.
-                    // A tiny launch recoil gives way to one committed-close
-                    // retreat: the bottom-anchored panel shrinks gently into
-                    // its downward exit without a separate snapping stage.
-                    val closeScale = capsuleMenuDismissScale(dismissPull.value)
-                    scaleX = capsuleMenuElasticX(gel.value) * closeScale
-                    scaleY = capsuleMenuElasticY(gel.value) * closeScale
-                    translationY = dismissPull.value * with(density) { 6.dp.toPx() }
-                }
+                transformOrigin = TransformOrigin(0.5f, 1f)
+                // Keep native sheet translation completely untouched.
+                // A tiny launch recoil gives way to one committed-close
+                // retreat: the bottom-anchored panel shrinks gently into
+                // its downward exit without a separate snapping stage.
+                val closeScale = capsuleMenuDismissScale(dismissPull.value)
+                scaleX = capsuleMenuElasticX(gel.value) * closeScale
+                scaleY = capsuleMenuElasticY(gel.value) * closeScale
+                translationY = dismissPull.value * with(density) { 6.dp.toPx() }
             },
         ) {
-            PredictiveBackHandler(enabled = physical && !state.dismissRequested) { progress ->
+            PredictiveBackHandler(enabled = !state.dismissRequested) { progress ->
                 // Ignore progress (including prolonged holds). At the first
                 // committed BACK event animate the native sheet from its
                 // exact current anchor. A cancelled gesture moves nothing.
                 progress.collect { }
                 state.dismiss()
             }
-            CompositionLocalProvider(LocalCapsuleMenuPressGuard provides physical) {
+            CompositionLocalProvider(LocalCapsuleMenuPressGuard provides true) {
                 Column(
                     modifier =
                         Modifier

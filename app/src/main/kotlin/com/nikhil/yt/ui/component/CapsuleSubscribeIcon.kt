@@ -32,7 +32,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.nikhil.yt.R
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
-/** A reversible quarter-turn joins the plus into a check; one path, one clock, no overlapping stem. */
+/** A reversible turn joins the plus into a check; one path, one clock, no overlapping stem. */
 @Composable
 internal fun CapsuleSubscribeIcon(
     subscribed: Boolean,
@@ -72,12 +72,12 @@ internal fun CapsuleSubscribeIcon(
             // Shortening both unused arms together keeps the plus centered throughout the turn.
             val path = Path().apply {
                 moveTo(a.x, a.y); lineTo(b.x, b.y); lineTo(c.x, c.y)
+                if (p < 1f) {
+                    moveTo(b.x, b.y); lineTo(d.x + b.x - center.x, d.y + b.y - center.y)
+                    moveTo(b.x, b.y); lineTo(e.x + b.x - center.x, e.y + b.y - center.y)
+                }
             }
             drawPath(path, color, style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round))
-            if (p < 1f) {
-                drawLine(color, b, d + Offset(b.x - center.x, b.y - center.y), stroke, StrokeCap.Round)
-                drawLine(color, b, e + Offset(b.x - center.x, b.y - center.y), stroke, StrokeCap.Round)
-            }
         }
     }
 }

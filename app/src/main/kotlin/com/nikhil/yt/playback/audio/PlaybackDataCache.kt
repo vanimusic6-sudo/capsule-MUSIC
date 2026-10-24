@@ -25,17 +25,20 @@ internal class PlaybackDataCache(
         mediaId: String,
         maxPrefetchedAgeMs: Long,
         minimumRemainingMs: Long = 5_000L,
+        context: Any? = currentContext(),
     ): CapsuleAudioEngine.PlaybackData? =
         getValidEntry(
             mediaId = mediaId,
             minimumRemainingMs = minimumRemainingMs,
             maxPrefetchedAgeMs = maxPrefetchedAgeMs,
+            context = context,
         )
 
     private fun getValidEntry(
         mediaId: String,
         minimumRemainingMs: Long,
         maxPrefetchedAgeMs: Long?,
+        context: Any? = currentContext(),
     ): CapsuleAudioEngine.PlaybackData? {
         val entry = entries[mediaId] ?: return null
         val now = nowMs()
@@ -48,7 +51,7 @@ internal class PlaybackDataCache(
                 maxPrefetchedAgeMs != null &&
                 now - entry.storedAtMs > maxPrefetchedAgeMs
         if (
-            entry.context != currentContext() ||
+            entry.context != context ||
             entry.expiresAtMs <= now + minimumRemainingMs ||
             staleUnopenedLink
         ) {

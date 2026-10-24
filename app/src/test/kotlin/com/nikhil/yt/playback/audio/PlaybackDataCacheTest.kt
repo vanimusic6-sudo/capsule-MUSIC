@@ -19,6 +19,28 @@ class PlaybackDataCacheTest {
         streamHeaders = mapOf("User-Agent" to "extractor-agent", "Origin" to "https://music.youtube.com"),
     )
 
+    @Test fun aDownloadResumeUsesItsOwnShortLivedUrlAndRejectsChangedNetworkOrQuality() {
+        var now = 0L
+        val downloads = PlaybackDataCache(capacity = 8, nowMs = { now })
+        val player = PlaybackDataCache(nowMs = { now })
+        val context = "high" to "wifi"
+        val file = playback().copy(streamExpiresInSeconds = 3600)
+        player.put("track", playback())
+        assertNull(downloads.getForPlayback("track", 60_000, context = context))
+        downloads.put("track", file, context = context)
+        now = 12_000
+        assertSame(file, downloads.getForPlayback("track", 60_000, context = context))
+        assertNull(downloads.getForPlayback("track", 60_000, context = ("high" to "mobile")))
+        downloads.put("track", file, context = context)
+        assertNull(downloads.getForPlayback("track", 60_000, context = ("aac" to "wifi")))
+        downloads.put("track", file, context = context)
+        now += 60_001
+        assertNull(downloads.getForPlayback("track", 60_000, context = context))
+        downloads.put("track", file, context = context)
+        downloads.remove("track") // Rejected CDN URL must not be returned on the fresh attempt.
+        assertNull(downloads.getForPlayback("track", 60_000, context = context))
+    }
+
     @Test fun aPrefetchedTrackRetainsNormalizationHeadersAndHistory() {
         val cache = PlaybackDataCache(nowMs = { 0L })
         val data = playback()

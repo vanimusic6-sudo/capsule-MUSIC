@@ -123,3 +123,8 @@ internal val Download.visibleState: Int
 /** Only a waiting collection member needs promotion; tapping an actual transfer pauses it. */
 internal val Download.canPrioritize: Boolean
     get() = !request.isManualDownload() && stopReason == DOWNLOAD_WAITING_FOR_SLOT
+
+internal fun keepActiveDownload(download: Download?): Boolean =
+    download?.stopReason == Download.STOP_REASON_NONE && download.state in setOf(
+        Download.STATE_DOWNLOADING, Download.STATE_QUEUED, Download.STATE_RESTARTING,
+    )

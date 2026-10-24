@@ -76,16 +76,23 @@ internal object DownloadedArtwork {
     }
 
     suspend fun remove(context: Context, mediaId: String) = withContext(Dispatchers.IO) {
-        writes.withLock {
-            val reference = owner(context, mediaId)
-            val key = reference.takeIf { it.isFile }?.readText()
-            reference.delete()
-            if (key != null && key.matches(Regex("[0-9a-f]{64}")) &&
-                directory(context).listFiles().orEmpty().none { it.extension == "ref" && it.readText() == key }) {
-                File(directory(context), "$key.jpg").delete()
+        try {
+            writes.withLock {
+                val reference = owner(context, mediaId)
+                val key = reference.takeIf { it.isFile }?.readText()
+                reference.delete()
+                if (key != null && key.matches(Regex("[0-9a-f]{64}")) &&
+                    directory(context).listFiles().orEmpty().none { it.extension == "ref" && it.readText() == key }) {
+                    File(directory(context), "$key.jpg").delete()
+                }
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: java.io.IOException) {
+            Timber.tag("DownloadArtwork").w("Cover cleanup failed type=%s", error.javaClass.simpleName)
         }
     }
+
 
     internal fun valid(file: File): Boolean {
         if (!file.isFile || file.length() == 0L) return false
