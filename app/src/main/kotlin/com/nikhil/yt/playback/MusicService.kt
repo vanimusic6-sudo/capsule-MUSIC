@@ -3991,7 +3991,9 @@ class MusicService :
 
     // Anything that reaches the point of playing proves this route is served, whatever it turned
     // away before.
-    if (playbackState == Player.STATE_READY) authWallDetector.recordPlayable()
+    if (playbackState == Player.STATE_READY &&
+        player.currentMediaItem?.mediaId?.startsWith(EXPERIMENTAL_MEDIA_PREFIX) != true
+    ) authWallDetector.recordPlayable()
 
     if (playbackState == Player.STATE_IDLE || playbackState == Player.STATE_ENDED) {
         crossfadeAudio?.stop(resetMainFade = true)
@@ -4470,6 +4472,13 @@ class MusicService :
 
         if (shouldAttemptStreamRefresh && currentMediaId != null) {
             val signedUrlRejected = httpStatusCode in setOf(403, 410)
+            if (httpStatusCode == 403) {
+                val routeWide = authWallDetector.recordCdnForbidden(currentMediaId)
+                Timber.tag("PlaybackRecovery").w(
+                    "YouTube GVS HTTP 403 id=%s routeWide=%s; separate from explicit /player bot-check",
+                    currentMediaId, routeWide,
+                )
+            }
             val cdnTransportFailure = requiresFreshCdnUrl
             // Only actual signed-URL rejections and typed CDN transport failures
             // use the compact two-client failover. HTTP 429/bot/offline have

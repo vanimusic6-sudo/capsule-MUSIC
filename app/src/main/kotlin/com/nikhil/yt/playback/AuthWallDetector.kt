@@ -20,6 +20,9 @@ internal const val AUTH_WALL_DISTINCT_TRACKS = 2
  */
 internal class AuthWallDetector {
     private val turnedAway = LinkedHashSet<String>()
+    // A CDN 403 is not itself a /player bot challenge. Track distinct songs,
+    // never count repeated requests for a single signed URL as a route outage.
+    private val cdnForbidden = LinkedHashSet<String>()
 
     /** Notes a song that came back needing an account, and says whether the route now looks at fault. */
     fun recordAuthRequired(mediaId: String?): Boolean {
@@ -27,15 +30,27 @@ internal class AuthWallDetector {
         return isRouteWide()
     }
 
-    /** Anything that plays proves the route is fine, whatever was refused before it. */
-    fun recordPlayable() {
-        turnedAway.clear()
+    /** Per-network, distinct-song CDN refusals. Do not confuse with an explicit bot check. */
+    fun recordCdnForbidden(mediaId: String?): Boolean {
+        if (mediaId != null && cdnForbidden.size < AUTH_WALL_DISTINCT_TRACKS) {
+            cdnForbidden += mediaId
+        }
+        return isRouteWide()
     }
 
-    fun isRouteWide(): Boolean = turnedAway.size >= AUTH_WALL_DISTINCT_TRACKS
+    /** Only successfully playing YouTube media prove this network route has recovered. */
+    fun recordPlayable() {
+        turnedAway.clear()
+        cdnForbidden.clear()
+    }
 
-    /** A new route earns a clean slate; the old one's verdict says nothing about it. */
+    fun isRouteWide(): Boolean =
+        turnedAway.size >= AUTH_WALL_DISTINCT_TRACKS ||
+            cdnForbidden.size >= AUTH_WALL_DISTINCT_TRACKS
+
+    /** Changing networks invalidates route-scoped diagnostics. */
     fun forget() {
         turnedAway.clear()
+        cdnForbidden.clear()
     }
 }

@@ -181,6 +181,7 @@ jobs:
             --tests 'com.nikhil.yt.discovery.HomeFeedSourceTest' \
             --tests 'com.nikhil.yt.discovery.ExperimentalRankingTest' \
             --tests 'com.nikhil.yt.discovery.DownloadIsolationRegressionTest' \
+            --tests 'com.nikhil.yt.playback.AuthWallDetectorTest' \
             --no-daemon --stacktrace
 
       - name: Locate APK and checksum
