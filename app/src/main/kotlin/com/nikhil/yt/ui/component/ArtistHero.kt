@@ -129,7 +129,7 @@ internal fun ArtistHero(
                 contentAlignment = Alignment.Center,
             ) {
                 AsyncImage(
-                    model = thumbnailUrl,
+                    model = capsuleArtworkUrl(thumbnailUrl, 960),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     alignment = BiasAlignment(horizontalBias = -0.1f, verticalBias = -1f),
