@@ -83,7 +83,14 @@ jobs:
           gradle-version: "9.5.0"
 
       - name: Install compile SDK
-        run: sdkmanager 'platforms;android-37.1'
+        shell: bash
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [[ -x "$SDKMANAGER" ]]; then
+            "$SDKMANAGER" 'platforms;android-37.1'
+          else
+            echo 'SDK CLI unavailable; Android Gradle Plugin will install compile SDK 37.1.'
+          fi
 
       - name: Restore release keystore
         shell: bash
