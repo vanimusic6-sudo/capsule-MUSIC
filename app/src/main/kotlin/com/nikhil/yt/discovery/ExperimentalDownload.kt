@@ -91,14 +91,16 @@ object ExperimentalDownload {
                 MediaStore.MediaColumns.DISPLAY_NAME,
                 MediaStore.MediaColumns.SIZE,
             )
-            val where = "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ? AND " +
+            val where = "(${MediaStore.MediaColumns.RELATIVE_PATH} = ? OR " +
+                "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?) AND " +
                 "${MediaStore.MediaColumns.IS_PENDING} = 0"
-            val folder = Environment.DIRECTORY_DOWNLOADS + "/Capsule Music/%"
+            val relativeFolder = Environment.DIRECTORY_DOWNLOADS + "/Capsule Music"
+            val folders = arrayOf(relativeFolder, "$relativeFolder/%")
             val result = mutableListOf<SavedAudio>()
             val metadata = context.getSharedPreferences(METADATA_STORE, Context.MODE_PRIVATE)
             var remainingMigrations = 12
             context.contentResolver.query(
-                uri, projection, where, arrayOf(folder),
+                uri, projection, where, folders,
                 "${MediaStore.MediaColumns.DATE_ADDED} DESC",
             )?.use { cursor ->
                 val idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
@@ -202,8 +204,10 @@ object ExperimentalDownload {
             )?.use { cursor ->
                 if (cursor.moveToFirst()) cursor.getString(0) else null
             } ?: return@withContext false
-            val expected = Environment.DIRECTORY_DOWNLOADS + "/Capsule Music/"
-            if (!folder.replace('\\', '/').startsWith(expected, ignoreCase = true))
+            val expected = Environment.DIRECTORY_DOWNLOADS + "/Capsule Music"
+            val relative = folder.replace('\\', '/').trimEnd('/')
+            if (!relative.equals(expected, ignoreCase = true) &&
+                !relative.startsWith("$expected/", ignoreCase = true))
                 return@withContext false
             if (resolver.delete(file.uri, null, null) != 1) return@withContext false
             val prefs = context.getSharedPreferences(METADATA_STORE, Context.MODE_PRIVATE)
