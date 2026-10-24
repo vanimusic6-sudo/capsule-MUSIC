@@ -47,12 +47,12 @@ jobs:
       - name: Run every app unit test
         shell: bash
         run: |
-          mkdir -p .test-summary
+          mkdir -p test-summary
           set +e
           gradle :app:testUniversalDebugUnitTest --stacktrace --no-daemon --max-workers=2
           code=$?
           set -e
-          printf '%s\n' "$code" > .test-summary/exit-code
+          printf '%s\n' "$code" > test-summary/exit-code
           # The baseline already has known UI test failures; the comparison
           # job below enforces NO NEW failures instead of concealing baseline.
           exit 0
@@ -61,7 +61,7 @@ jobs:
         with:
           name: post-test-full-${{ matrix.label }}
           path: |
-            .test-summary/
+            test-summary/
             app/build/test-results/
             app/build/reports/tests/
             app/build/reports/ui-previews/
