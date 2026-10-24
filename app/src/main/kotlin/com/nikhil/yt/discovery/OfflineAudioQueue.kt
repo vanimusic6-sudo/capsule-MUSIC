@@ -30,6 +30,7 @@ class OfflineAudioQueue private constructor(
                 id = PREFIX + file.id,
                 title = file.title,
                 duration = -1,
+                thumbnailUrl = file.artwork,
                 artists = listOf(MediaMetadata.Artist(id = null, name = file.artist)),
                 sourceUrl = file.uri.toString(),
             )
@@ -42,6 +43,7 @@ class OfflineAudioQueue private constructor(
                     .setMediaMetadata(ExoMetadata.Builder()
                         .setTitle(file.title)
                         .setArtist(file.artist)
+                        .setArtworkUri(file.artwork?.let(android.net.Uri::parse))
                         .setMediaType(ExoMetadata.MEDIA_TYPE_MUSIC)
                         .build())
                     .build()
