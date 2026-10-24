@@ -59,6 +59,7 @@ import kotlinx.coroutines.launch
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.ui.screens.LocalNavBackStackEntry
 import com.nikhil.yt.ui.utils.liveSavedStateHandle
+import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.CONTENT_TYPE_HEADER
@@ -99,6 +100,7 @@ fun LibrarySongsScreen(
     val context = LocalContext.current
     val resources = LocalResources.current
     val menuState = LocalMenuState.current
+    val database = LocalDatabase.current
     val downloadActionScope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -332,7 +334,11 @@ fun LibrarySongsScreen(
                                         menuState.dismiss()
                                         downloadActionScope.launch {
                                             if (ExperimentalDownload.deleteSaved(context, file)) {
-                                                externalSaved = externalSaved.filterNot { it.id == file.id }
+                                                database.withTransaction {
+                                                            getSongById(OfflineAudioQueue.PREFIX + file.id)?.song
+                                                                ?.let { delete(it) }
+                                                        }
+                                                        externalSaved = externalSaved.filterNot { it.id == file.id }
                                                 if (mediaMetadata?.id == OfflineAudioQueue.PREFIX + file.id)
                                                     playerConnection.player.stop()
                                             } else android.widget.Toast.makeText(context,
@@ -360,7 +366,11 @@ fun LibrarySongsScreen(
                                         menuState.dismiss()
                                         downloadActionScope.launch {
                                             if (ExperimentalDownload.deleteSaved(context, file)) {
-                                                externalSaved = externalSaved.filterNot { it.id == file.id }
+                                                database.withTransaction {
+                                                            getSongById(OfflineAudioQueue.PREFIX + file.id)?.song
+                                                                ?.let { delete(it) }
+                                                        }
+                                                        externalSaved = externalSaved.filterNot { it.id == file.id }
                                                 if (mediaMetadata?.id == OfflineAudioQueue.PREFIX + file.id)
                                                     playerConnection.player.stop()
                                             } else android.widget.Toast.makeText(context,

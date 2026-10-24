@@ -84,6 +84,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import com.nikhil.yt.LocalDownloadUtil
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
+import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.HideExplicitKey
@@ -126,6 +127,7 @@ fun AutoPlaylistScreen(
 ) {
     val context = LocalContext.current
     val menuState = LocalMenuState.current
+    val database = LocalDatabase.current
     val downloadActionScope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     val focusManager = LocalFocusManager.current
@@ -458,6 +460,10 @@ fun AutoPlaylistScreen(
                                                 downloadActionScope.launch {
                                                     val removed = ExperimentalDownload.deleteSaved(context, file)
                                                     if (removed) {
+                                                        database.withTransaction {
+                                                            getSongById(OfflineAudioQueue.PREFIX + file.id)?.song
+                                                                ?.let { delete(it) }
+                                                        }
                                                         externalSaved = externalSaved.filterNot { it.id == file.id }
                                                         if (mediaMetadata?.id == OfflineAudioQueue.PREFIX + file.id)
                                                             playerConnection.player.stop()
@@ -486,6 +492,10 @@ fun AutoPlaylistScreen(
                                                 menuState.dismiss()
                                                 downloadActionScope.launch {
                                                     if (ExperimentalDownload.deleteSaved(context, file)) {
+                                                        database.withTransaction {
+                                                            getSongById(OfflineAudioQueue.PREFIX + file.id)?.song
+                                                                ?.let { delete(it) }
+                                                        }
                                                         externalSaved = externalSaved.filterNot { it.id == file.id }
                                                         if (mediaMetadata?.id == OfflineAudioQueue.PREFIX + file.id)
                                                             playerConnection.player.stop()

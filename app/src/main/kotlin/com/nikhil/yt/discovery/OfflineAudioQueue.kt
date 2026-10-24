@@ -22,11 +22,7 @@ class OfflineAudioQueue private constructor(
 
     companion object {
         const val PREFIX = ExperimentalCatalog.EXPERIMENTAL_MEDIA_PREFIX + "offline:"
-        fun create(files: List<ExperimentalDownload.SavedAudio>,
-                   selected: ExperimentalDownload.SavedAudio): OfflineAudioQueue? {
-            val index = files.indexOfFirst { it.id == selected.id }
-            if (index < 0) return null
-            fun metadata(file: ExperimentalDownload.SavedAudio) = MediaMetadata(
+        fun metadata(file: ExperimentalDownload.SavedAudio) = MediaMetadata(
                 id = PREFIX + file.id,
                 title = file.title,
                 duration = -1,
@@ -34,9 +30,9 @@ class OfflineAudioQueue private constructor(
                 artists = listOf(MediaMetadata.Artist(id = null, name = file.artist)),
                 sourceUrl = file.uri.toString(),
             )
-            val media = files.map { file ->
-                val meta = metadata(file)
-                MediaItem.Builder()
+        fun mediaItem(file: ExperimentalDownload.SavedAudio): MediaItem {
+            val meta = metadata(file)
+            return MediaItem.Builder()
                     .setMediaId(meta.id)
                     .setUri(file.uri)
                     .setTag(meta)
@@ -47,7 +43,12 @@ class OfflineAudioQueue private constructor(
                         .setMediaType(ExoMetadata.MEDIA_TYPE_MUSIC)
                         .build())
                     .build()
-            }
+        }
+        fun create(files: List<ExperimentalDownload.SavedAudio>,
+                   selected: ExperimentalDownload.SavedAudio): OfflineAudioQueue? {
+            val index = files.indexOfFirst { it.id == selected.id }
+            if (index < 0) return null
+            val media = files.map(::mediaItem)
             return OfflineAudioQueue(media, index, metadata(selected))
         }
     }

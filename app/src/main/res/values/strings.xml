@@ -1004,4 +1004,6 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="capsule_audius_loved">Community favorites</string>
     <string name="capsule_audius_not_downloadable">The creator has disabled downloads</string>
     <string name="capsule_source_selector_subtitle">Pick what appears on Home</string>
+    <string name="capsule_like_local">Like</string>
+    <string name="capsule_unlike_local">Remove like</string>
 </resources>
