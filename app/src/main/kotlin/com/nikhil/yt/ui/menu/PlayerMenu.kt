@@ -432,6 +432,7 @@ fun PlayerMenu(
                                 )
                             },
                             text = stringResource(R.string.start_radio),
+                            enabled = !isExternalCatalog || isAudius,
                             onClick = {
                                 if (isAudius) {
                                     coroutineScope.launch {
@@ -445,13 +446,14 @@ fun PlayerMenu(
                                                 ?.let(playerConnection::playQueue)
                                         } ?: Toast.makeText(context, R.string.no_results_found,
                                             Toast.LENGTH_SHORT).show()
+                                        onDismiss()
                                     }
                                 } else if (!isExternalCatalog) {
                                     Toast.makeText(context, resources.getString(R.string.starting_radio),
                                         Toast.LENGTH_SHORT).show()
                                     playerConnection.startRadioSeamlessly()
+                                    onDismiss()
                                 }
-                                onDismiss()
                             }
                         ),
                         NewAction(
