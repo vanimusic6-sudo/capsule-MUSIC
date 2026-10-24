@@ -377,11 +377,27 @@ fun SongMenu(
                     )
                 },
                 text = startRadioText,
-                enabled = !independentSong,
+                enabled = !independentSong || song.id.startsWith("capsule-open:audius:"),
                 onClick = {
-                    onDismiss()
-                    if (!independentSong)
+                    if (song.id.startsWith("capsule-open:audius:")) {
+                        coroutineScope.launch {
+                            val suggestions = com.nikhil.yt.discovery.ExperimentalCatalog
+                                .recommend(song.artists.map { it.name })
+                                .filter { it.playable && it.mediaId != song.id }
+                                .take(40)
+                            suggestions.firstOrNull()?.let { first ->
+                                com.nikhil.yt.discovery.ExperimentalTrackQueue
+                                    .create("Audius", suggestions, first)
+                                    ?.let(playerConnection::playQueue)
+                            } ?: android.widget.Toast.makeText(context,
+                                R.string.no_results_found,
+                                android.widget.Toast.LENGTH_SHORT).show()
+                            onDismiss()
+                        }
+                    } else if (!independentSong) {
                         playerConnection.playQueue(YouTubeQueue.radio(song.toMediaMetadata()))
+                        onDismiss()
+                    }
                 },
             ),
             NewAction(
@@ -754,8 +770,15 @@ fun SongMenu(
                         modifier =
                             Modifier.clickable {
                                 if (splitArtists.size == 1 && splitArtists[0].originalArtist != null) {
-                                    navController.navigate("artist/${splitArtists[0].originalArtist!!.id}")
-                                    onDismiss()
+                                    val artistRoute = if (independentSong)
+                                        com.nikhil.yt.discovery.ExperimentalArtistRoute
+                                            .forMetadata(song.toMediaMetadata())
+                                        else null
+                                    if (!independentSong || artistRoute != null) {
+                                        navController.navigate(
+                                            artistRoute ?: "artist/${splitArtists[0].originalArtist!!.id}")
+                                        onDismiss()
+                                    }
                                 } else {
                                     showSelectArtistDialog = true
                                 }
@@ -796,7 +819,7 @@ fun SongMenu(
         item {
             MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                 Column {
-                    ListItem(
+                    if (!independentSong) ListItem(
                         headlineContent = { Text(text = stringResource(R.string.refetch)) },
                         leadingContent = {
                             Icon(
@@ -822,7 +845,7 @@ fun SongMenu(
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
 
-                    HorizontalDivider(
+                    if (!independentSong) HorizontalDivider(
                         modifier = Modifier.padding(start = 56.dp),
                         color = MaterialTheme.colorScheme.outlineVariant,
                     )
