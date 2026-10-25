@@ -1,5 +1,7 @@
 package com.nikhil.yt.ui.menu
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Icon
@@ -45,6 +47,13 @@ internal fun YouTubeDownloadMenuItems(
     val context = LocalContext.current
     var confirmPartialDelete by remember(mediaId) { mutableStateOf(false) }
     var waitingForIndex by remember(mediaId) { mutableStateOf(false) }
+    var removingFromIndex by remember(mediaId) { mutableStateOf(false) }
+    LaunchedEffect(removingFromIndex, download) {
+        if (removingFromIndex) {
+            if (download == null) removingFromIndex = false
+            else { delay(3_000); removingFromIndex = false }
+        }
+    }
     // Media3 changes download state asynchronously. Start the comet on tap,
     // not seconds later when DownloadManager finally publishes its state.
     LaunchedEffect(waitingForIndex, download?.visibleState) {
@@ -58,20 +67,27 @@ internal fun YouTubeDownloadMenuItems(
 
     @Composable
     fun Action(label: Int, icon: Int, destructive: Boolean = false,
-        busy: Boolean = false, closeMenu: Boolean = true, click: () -> Unit) {
+        busy: Boolean = false, closeMenu: Boolean = true, enabled: Boolean = true,
+        click: () -> Unit) {
         ListItem(
             headlineContent = {
-                Text(stringResource(label),
-                    color = if (destructive) MaterialTheme.colorScheme.error
-                        else MaterialTheme.colorScheme.onSurface)
+                Crossfade(targetState = label, animationSpec = tween(160),
+                    label = "download-menu-label") { displayed ->
+                    Text(stringResource(displayed),
+                        color = if (destructive) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurface)
+                }
             },
             leadingContent = {
-                if (busy) CapsuleDownloadComet()
-                else Icon(painterResource(icon), contentDescription = null,
-                    tint = if (destructive) MaterialTheme.colorScheme.error
-                        else MaterialTheme.colorScheme.onSurfaceVariant)
+                Crossfade(targetState = if (busy) -1 else icon,
+                    animationSpec = tween(160), label = "download-menu-icon") { displayed ->
+                    if (displayed == -1) CapsuleDownloadComet()
+                    else Icon(painterResource(displayed), contentDescription = null,
+                        tint = if (destructive) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             },
-            modifier = Modifier.clickable {
+            modifier = Modifier.clickable(enabled = enabled) {
                 click()
                 if (closeMenu) onDismiss()
             },
@@ -80,10 +96,14 @@ internal fun YouTubeDownloadMenuItems(
     }
 
     Column {
-        when (download?.visibleState) {
+        if (removingFromIndex) {
+            Action(R.string.remove_download, R.drawable.offline,
+                destructive = true, busy = true, enabled = false) {}
+        } else when (download?.visibleState) {
             Download.STATE_COMPLETED -> {
                 Action(R.string.remove_download, R.drawable.offline,
                     destructive = true, closeMenu = !keepOpenOnDownload) {
+                    removingFromIndex = true
                     DownloadService.sendRemoveDownload(
                         context, ExoDownloadService::class.java, mediaId, false)
                 }
@@ -122,6 +142,7 @@ internal fun YouTubeDownloadMenuItems(
                 if (download != null) {
                     Action(R.string.remove_download, R.drawable.offline,
                         destructive = true, closeMenu = !keepOpenOnDownload) {
+                        removingFromIndex = true
                         DownloadService.sendRemoveDownload(
                             context, ExoDownloadService::class.java, mediaId, false)
                     }
