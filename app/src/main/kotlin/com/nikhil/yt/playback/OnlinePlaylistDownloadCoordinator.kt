@@ -31,13 +31,15 @@ internal object OnlinePlaylistDownloadCoordinator {
 
     private class Session(val ids: List<String>) {
         var job: Job? = null
-        var pendingServiceWakeId: String? = null
     }
 
     // All calls happen on the UI/main thread. Coroutine admission also runs
     // on Main.immediate, and the loop yields between bounded batches.
     private val sessions = mutableMapOf<String, Session>()
     private val knownMembership = mutableMapOf<String, List<String>>()
+    // Keep this after the producing coroutine exits: Media3 can process the
+    // first service ADD intent later than the menu's cancel confirmation.
+    private val lastServiceWakeId = mutableMapOf<String, String>()
     private val _enqueuing = MutableStateFlow<Set<String>>(emptySet())
     val enqueuing = _enqueuing.asStateFlow()
 
@@ -79,7 +81,7 @@ internal object OnlinePlaylistDownloadCoordinator {
                         if (!serviceStarted) {
                             // Keep the first service wake ID for a matching
                             // REMOVE intent even if that ADD is still queued.
-                            session.pendingServiceWakeId = song.id
+                            lastServiceWakeId[playlistId] = song.id
                             DownloadService.sendAddDownload(
                                 appContext, ExoDownloadService::class.java,
                                 request, false,
@@ -113,7 +115,7 @@ internal object OnlinePlaylistDownloadCoordinator {
         val ids = (knownMembership.remove(playlistId).orEmpty() +
             session?.ids.orEmpty() + currentlyVisibleIds).distinct()
         removeCollectionDownloads(downloadManager, ids)
-        session?.pendingServiceWakeId?.let { first ->
+        lastServiceWakeId.remove(playlistId)?.let { first ->
             // Service intents execute in order. A REMOVE after an in-flight
             // first ADD prevents late reappearance after the user cancelled.
             DownloadService.sendRemoveDownload(
