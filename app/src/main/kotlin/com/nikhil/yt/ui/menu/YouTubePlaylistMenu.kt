@@ -603,7 +603,7 @@ fun YouTubePlaylistMenu(
                     // Exactly one active control, like saved playlists.
                     // Closing/reopening the More sheet never loses the producer.
                     ListItem(
-                        headlineContent = { Text(stringResource(R.string.cancel_button)) },
+                        headlineContent = { Text(stringResource(R.string.capsule_stop_and_delete_download)) },
                         leadingContent = { CapsuleDownloadComet() },
                         modifier = Modifier.clickable { showRemoveDownloadDialog = true },
                     )
