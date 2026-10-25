@@ -30,7 +30,10 @@ internal class CapsuleVideoRouteHealth(private val clock: () -> Long = System::n
         return CapsuleVideoRoute.entries.sortedWith(compareBy<CapsuleVideoRoute>
             { it.wireName == failedBackend }
             .thenBy { (retryAfter[it] ?: 0L) > now }
-            .thenBy { it != lastSuccessful })
+            .thenBy { it != lastSuccessful }
+            // Cold start: try the independent PipePipe parser first; once a
+            // route succeeds, the measured last winner takes priority.
+            .thenBy { it != CapsuleVideoRoute.PIPEPIPE })
     }
 
     /** Known bot-blocked clients stay quiet. An independent unblocked route
