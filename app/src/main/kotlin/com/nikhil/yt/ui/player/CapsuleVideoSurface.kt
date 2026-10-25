@@ -27,6 +27,8 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.viewinterop.AndroidView
+import kotlinx.coroutines.delay
+import timber.log.Timber
 import androidx.media3.common.Player
 import androidx.media3.ui.compose.modifiers.resizeWithContentScale
 import androidx.media3.ui.compose.state.rememberPresentationState
@@ -36,6 +38,10 @@ import com.nikhil.yt.playback.video.CapsuleVideoFrameRetention
 /** The decoder may redraw a frame while paused after a new surface. Keep the user's still above it. */
 @Composable
 internal fun CapsuleVideoSurface(service: MusicService, modifier: Modifier = Modifier, active: Boolean = true) {
+    // Cold first VIDEO request: the companion does not exist when the surface
+    // composable first enters composition. Subscribe BEFORE the early return,
+    // otherwise creation of the companion does not cause this view to recompose.
+    val state by service.videoPlaybackState.collectAsState()
     val player = service.videoRenderPlayer
     val retention = service.videoFrameRetention
     if (player == null || retention == null) {
@@ -43,7 +49,6 @@ internal fun CapsuleVideoSurface(service: MusicService, modifier: Modifier = Mod
         return
     }
     val still by retention.frame.collectAsState()
-    val state by service.videoPlaybackState.collectAsState()
     val presentation = rememberPresentationState(player, keepContentOnReset = state.presentingVideo)
     val frame = still?.takeIf { it.exiting ||
         (!player.playWhenReady && it.mediaId == player.currentMediaItem?.mediaId) }
@@ -79,10 +84,10 @@ private fun CapsuleVideoTextureOutput(service: MusicService, player: Player, ret
     val owner = remember(service, player) { Any() }
     var texture by remember { mutableStateOf<CapsuleFrameTextureView?>(null) }
     val host = LocalView.current
-    DisposableEffect(service, player, owner) {
-        service.attachVideoSurface(owner)
-        onDispose { service.detachVideoSurface(owner) }
-    }
+    // Surface ownership is registered only after the real TextureView has a
+    // SurfaceTexture. Previously this was called at composition time, before
+    // AndroidView existed, so a cold decoder could be marked rendering-ready
+    // without any actual output target.
     DisposableEffect(host, player) {
         val wasKeepingScreenOn = host.keepScreenOn
         val listener = object : Player.Listener {
@@ -130,8 +135,37 @@ private fun CapsuleVideoTextureOutput(service: MusicService, player: Player, ret
                 player.clearVideoTextureView(view)
             }
         }
-        // Start after Media3's presentation observer, matching PlayerSurface's attachment order.
-        LaunchedEffect(view, player) { player.setVideoTextureView(view) }
+        // Bind Media3 first, then publish the real surface lifetime to the
+        // VIDEO session. TextureView becomes available asynchronously on the
+        // very first opening; subsequent toggles often reuse an already warm
+        // TextureView. Never steal Media3's SurfaceTextureListener.
+        LaunchedEffect(view, player, service, owner) {
+            player.setVideoTextureView(view)
+            repeat(250) {
+                if (view.isAvailable && view.isAttachedToWindow &&
+                    view.width > 0 && view.height > 0
+                ) {
+                    service.attachVideoSurface(owner)
+                    Timber.tag("CapsuleVideo").i(
+                        "VIDEO surface-bound available=true width=%d height=%d",
+                        view.width, view.height,
+                    )
+                    return@LaunchedEffect
+                }
+                delay(32L)
+            }
+            Timber.tag("CapsuleVideo").w(
+                "VIDEO cold surface unavailable after 8s available=%s attached=%s width=%d height=%d",
+                view.isAvailable, view.isAttachedToWindow, view.width, view.height,
+            )
+        }
+        DisposableEffect(view, player, service, owner) {
+            onDispose {
+                service.detachVideoSurface(owner)
+                retention.retainPausedFrame()
+                player.clearVideoTextureView(view)
+            }
+        }
     }
     if (coverSurface && !firstFrameReady) {
         Box(Modifier.fillMaxSize().background(Color.Black))
