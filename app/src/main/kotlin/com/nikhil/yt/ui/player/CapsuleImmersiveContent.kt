@@ -6,6 +6,7 @@
 
 package com.nikhil.yt.ui.player
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -50,6 +51,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -615,6 +617,13 @@ internal fun CapsuleImmersiveContent(
         var coverImageReady by remember(mediaMetadata.id, artworkTone.displayUrl) {
             mutableStateOf(false)
         }
+        // Keep the successful preloader's REAL decoded painter available until
+        // the visible Coil node completes. Previously we discarded the only
+        // proven image, then waited up to six seconds on another painter while
+        // displaying a grey artwork slot.
+        var decodedCoverPainter by remember(mediaMetadata.id, artworkTone.displayUrl) {
+            mutableStateOf<Painter?>(null)
+        }
         // A transient Coil error previously left the invisible preload mounted
         // forever with no new request until the entire player was reconstructed.
         // One retry is permitted per track/URL; a fresh track resets this budget.
@@ -719,7 +728,9 @@ internal fun CapsuleImmersiveContent(
                 it.key == visualKey && it.imageUrl.isNotBlank()
             } ?: return@LaunchedEffect
             if (!visibleArtworkPending || visibleArtworkRebind > 0) return@LaunchedEffect
-            delay(6_000L)
+            // The bitmap is already decoded; a stalled second painter must
+            // not hold a blank slot for another six seconds.
+            delay(if (decodedCoverPainter != null) 1_000L else 3_000L)
             if (visibleArtworkPending && visibleArtworkRebind == 0) {
                 Timber.tag("CapsuleArtwork").w(
                     "immersive-artwork-stalled id=%s; rebind visible painter", mediaMetadata.id,
@@ -783,7 +794,10 @@ internal fun CapsuleImmersiveContent(
                     model = rememberImmersiveArtworkRequest(artworkTone.displayUrl),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    onSuccess = { coverImageReady = true },
+                    onSuccess = { success ->
+                        decodedCoverPainter = success.painter
+                        coverImageReady = true
+                    },
                     onError = {
                         coverImageReady = false
                         if (coverLoadRetry < 1) coverLoadRetry++
@@ -849,6 +863,25 @@ internal fun CapsuleImmersiveContent(
                         trackFadeAlpha = gradientAlpha.value,
                     )
                 }) {
+                    // The two requests use the same URL/size, but Coil can
+                    // cancel the visible one during a player/surface transition.
+                    // Show the *already decoded* image, never a neutral square,
+                    // while only that visible painter retries.
+                    if (visibleArtworkPending && frame.key == visualKey &&
+                        frame.imageUrl == artworkTone.displayUrl
+                    ) {
+                        decodedCoverPainter?.let { ready ->
+                            Image(
+                                painter = ready,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize().graphicsLayer(
+                                    scaleX = if (frame.landscape) 1.06f else 1f,
+                                    scaleY = if (frame.landscape) 1.06f else 1f,
+                                ),
+                            )
+                        }
+                    }
                     key(frame.key, frame.imageUrl, visibleArtworkRebind) {
                     AsyncImage(
                         model = rememberImmersiveArtworkRequest(frame.imageUrl),
