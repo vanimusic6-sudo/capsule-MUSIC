@@ -50,7 +50,6 @@ internal fun capsuleDashVideoInitialPosition(
     val duration = manifest.substringAfter("mediaPresentationDuration=", "")
         .substringAfter("PT", "").substringBefore("S", "")
         .toDoubleOrNull()?.times(1000.0)?.toLong() ?: return null
-        ?: return null
     if (duration !in 10_000L..43_200_000L) return null
     val position = audioPositionMs.coerceAtLeast(0L)
     // The clip may be shorter than MUSIC; do not accidentally start beyond EOF.
