@@ -47,11 +47,11 @@ internal class CapsuleVideoCompanion(
         // AUDIO downloads must not make HLS assume the VIDEO host is fast.
         .setBandwidthMeter(DefaultBandwidthMeter.Builder(context).build())
         .setMediaSourceFactory(factory)
-        .setTrackSelector(DefaultTrackSelector(context).apply {
-            setParameters(buildUponParameters().setForceHighestSupportedBitrate(true))
-        })
+        // Let VIDEO adapt to actual VIDEO CDN throughput instead of forcing
+        // the highest supported bitrate on slow first-byte connections.
+        .setTrackSelector(DefaultTrackSelector(context))
         .setLoadControl(DefaultLoadControl.Builder()
-            .setBufferDurationsMs(6_000, 12_000, 350, 1_500)
+            .setBufferDurationsMs(3_000, 10_000, 250, 1_200)
             .setPrioritizeTimeOverSizeThresholds(true).build())
         .setWakeMode(C.WAKE_MODE_LOCAL)
         .build()
