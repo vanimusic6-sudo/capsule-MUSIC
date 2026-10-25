@@ -858,6 +858,14 @@ object CapsuleInnerTubeXPlayer {
         }
 
     internal fun ExtractedStream.toPlaybackData(): PlaybackData {
+        // Codec parity evidence: InnerTubeX selection time is separate from
+        // CDN routing, Media3 container parsing, and the actual audio decoder.
+        // Do not log signed URLs or session tokens.
+        Timber.tag("CapsuleCodec").i(
+            "audio-selected id=%s itag=%s mime=%s codecs=%s bitrate=%s size=%s rate=%s client=%s",
+            videoId, itag, mimeType ?: "unknown", codecs ?: "unknown",
+            bitrate ?: -1, contentLengthBytes ?: -1, sampleRate ?: -1, profileId,
+        )
         val fullMimeType =
             if (codecs.isNullOrBlank()) {
                 mimeType.orEmpty()
