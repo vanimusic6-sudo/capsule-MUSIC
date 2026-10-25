@@ -41,7 +41,9 @@ internal fun CapsuleVideoSurface(service: MusicService, modifier: Modifier = Mod
     // Cold first VIDEO request: the companion does not exist when the surface
     // composable first enters composition. Subscribe BEFORE the early return,
     // otherwise creation of the companion does not cause this view to recompose.
-    val state by service.videoPlaybackState.collectAsState()
+    // Read State.value now, not a lazy delegated value after the null guard.
+    // Otherwise Compose does not observe it during the first cold composition.
+    val state = service.videoPlaybackState.collectAsState().value
     val player = service.videoRenderPlayer
     val retention = service.videoFrameRetention
     if (player == null || retention == null) {
