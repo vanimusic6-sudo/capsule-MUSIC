@@ -92,7 +92,7 @@ internal fun YouTubeDownloadMenuItems(
                 val entry = download ?: return@Column
                 if (entry.canPrioritize) {
                     Action(R.string.download_now, R.drawable.download,
-                        busy = waitingForIndex, closeMenu = !keepOpenOnDownload) {
+                        busy = true, closeMenu = !keepOpenOnDownload) {
                         waitingForIndex = true
                         enqueuePriorityAudioDownload(
                             context, ExoDownloadService::class.java, entry.request, false)
