@@ -44,9 +44,9 @@ internal object DownloadedArtwork {
             (bounds(file)?.let { minOf(it.first, it.second) < MIN_SHARP_EDGE_PX } == true)
     /** A 640px upgrade must not be shadowed by our own legacy 120px offline cache. */
     internal fun needsFullResolutionFetch(file: File, requestedUrl: String): Boolean {
-        val requestedSize = Regex("""=w(\\d+)-h(\\d+)""").find(requestedUrl)
+        val requestedSize = Regex("""=w(\d+)-h(\d+)""").find(requestedUrl)
             ?.groupValues?.drop(1)?.mapNotNull(String::toIntOrNull)?.minOrNull()
-            ?: Regex("""=s(\\d+)""").find(requestedUrl)?.groupValues?.get(1)?.toIntOrNull()
+            ?: Regex("""=s(\d+)""").find(requestedUrl)?.groupValues?.get(1)?.toIntOrNull()
             ?: return false
         return requestedSize >= MIN_SHARP_EDGE_PX &&
             capsuleArtworkUrl(requestedUrl, 960) != requestedUrl &&
