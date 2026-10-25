@@ -8,6 +8,7 @@
 package com.nikhil.yt.ui.component
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -164,7 +165,6 @@ fun BottomSheetMenu(
         val gel = remember { Animatable(0f) }
         val dismissPull = remember { Animatable(0f) }
         val density = LocalDensity.current
-        val viewportPx = with(density) { LocalConfiguration.current.screenHeightDp.dp.toPx() }
         val upperTint = MaterialTheme.colorScheme.surfaceContainerHighest
         val haze = remember(upperTint) {
             Brush.verticalGradient(
@@ -253,19 +253,9 @@ fun BottomSheetMenu(
                     ) {
                         Box(
                             Modifier.fillMaxWidth().height(28.dp)
-                                .graphicsLayer {
-                                    // Material initializes the anchored offset
-                                    // only AFTER its first measure. An alpha
-                                    // read during the initial graphics-layer
-                                    // placement otherwise crashes before the
-                                    // sheet can open on Android/Robolectric.
-                                    val offset = try {
-                                        sheetState.requireOffset()
-                                    } catch (_: IllegalStateException) {
-                                        viewportPx
-                                    }
-                                    alpha = capsuleMenuTopFill(offset, viewportPx)
-                                }
+                                // Stable tint at every sheet anchor. Do not
+                                // reveal a grey strip as the menu expands.
+                                // Also avoids sampling sheet offset every frame.
                                 .background(haze),
                         )
                         Box(
@@ -316,7 +306,12 @@ fun BottomSheetMenu(
                 progress.collect { }
                 state.dismiss()
             }
-            CompositionLocalProvider(LocalCapsuleMenuPressGuard provides true) {
+            // Disable the edge-stretch/bounce inside ALL More menus, while
+            // preserving native Material3 drag anchors and swipe dismissal.
+            CompositionLocalProvider(
+                LocalCapsuleMenuPressGuard provides true,
+                LocalOverscrollFactory provides null,
+            ) {
                 Column(
                     modifier =
                         Modifier
