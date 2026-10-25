@@ -162,6 +162,25 @@ class CapsuleVideoRequestGuardTest {
         assertEquals(1_800_000L, CapsuleVideoRequestGuard.remainingBackoffMs())
     }
 
+    @Test fun presentedVideoResetsEscalationWithoutOverridingAnActiveBotCooldown() {
+        var now = 100_000L
+        CapsuleVideoRequestGuard.resetForTests { now }
+        CapsuleVideoRequestGuard.noteBlockedAfterAllAttempts("bot_blocked")
+        assertEquals(1, CapsuleVideoRequestGuard.snapshot().escalationLevel)
+        CapsuleVideoRequestGuard.noteVideoRenderedSuccessfully()
+        assertEquals(1, CapsuleVideoRequestGuard.snapshot().escalationLevel)
+        assertTrue(CapsuleVideoRequestGuard.isBlocked())
+
+        now += 600_001L
+        CapsuleVideoRequestGuard.noteVideoRenderedSuccessfully()
+        assertEquals(0, CapsuleVideoRequestGuard.snapshot().escalationLevel)
+        assertEquals(0L, CapsuleVideoRequestGuard.remainingBackoffMs())
+        CapsuleVideoRequestGuard.noteBlockedAfterAllAttempts("bot_blocked")
+        // After a successful clip, a new, independently confirmed incident
+        // starts at 10 minutes again, not the previous 30m/2h escalation.
+        assertEquals(600_000L, CapsuleVideoRequestGuard.remainingBackoffMs())
+    }
+
     @Test fun developerResetPersistsAndOldReplyCannotRestoreTheTimeout() {
         val now = 100_000L
         CapsuleVideoRequestGuard.resetForTests { now }
