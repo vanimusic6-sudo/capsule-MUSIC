@@ -292,6 +292,23 @@ object CapsuleVideoRequestGuard {
         return true
     }
 
+    /**
+     * A successfully rendered VIDEO frame is stronger evidence than simply
+     * receiving an extractor URL. Forget stale escalation after proven playback,
+     * but NEVER lift a server restriction that is still active: an offline/cached
+     * frame is not permission to bypass a live bot or rate-limit cooldown.
+     */
+    @Synchronized fun noteVideoRenderedSuccessfully() {
+        val now = clock()
+        if (blockedUntilMs > now) return
+        if (escalationLevel == 0 && lastTripAtMs == 0L && blockedUntilMs == 0L) return
+        escalationLevel = 0
+        lastTripAtMs = 0L
+        blockedUntilMs = 0L
+        blockReason = null
+        publish()
+    }
+
     fun noteSuccess() = Unit
 
     @Synchronized
