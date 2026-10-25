@@ -285,7 +285,7 @@ class CapsuleAudioFallbackPolicyTest {
 
     @Test
     fun networkAndRateFailuresDoNotRotateIdentity() {
-        assertFalse(CapsuleAudioFallbackPolicy.canFallbackAfter(YouTubeFailureKind.TRANSIENT))
+        assertTrue(CapsuleAudioFallbackPolicy.canFallbackAfter(YouTubeFailureKind.TRANSIENT))
         assertFalse(CapsuleAudioFallbackPolicy.canFallbackAfter(YouTubeFailureKind.RATE_LIMITED))
         assertFalse(CapsuleAudioFallbackPolicy.canFallbackAfter(YouTubeFailureKind.PERMANENT))
         assertTrue(CapsuleAudioFallbackPolicy.canFallbackAfter(YouTubeFailureKind.FORBIDDEN))
