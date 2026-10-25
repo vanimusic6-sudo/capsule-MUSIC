@@ -651,21 +651,41 @@ fun YouTubePlaylistMenu(
                             coroutineScope.launch {
                                 // Resume stopped members instead of adding
                                 // them again, so partial cache bytes survive.
-                                collectionIds.forEach { id ->
+                                var serviceStarted = false
+                                val songById = downloadSongs.associateBy { it.id }
+                                collectionIds.forEachIndexed { index, id ->
                                     val existing = indexedDownloads[id]
                                     if (existing != null) {
-                                        downloadUtil.downloadManager.setStopReason(id, Download.STOP_REASON_NONE)
+                                        if (existing.state != Download.STATE_COMPLETED) {
+                                            downloadUtil.downloadManager.setStopReason(
+                                                id, Download.STOP_REASON_NONE,
+                                            )
+                                        }
                                     } else {
-                                        downloadSongs.firstOrNull { it.id == id }?.let { song ->
+                                        songById[id]?.let { song ->
                                             val request = DownloadRequest.Builder(song.id, song.id.toUri())
                                                 .setCustomCacheKey(song.id)
                                                 .setData(song.title.toByteArray())
                                                 .build()
-                                            DownloadService.sendAddDownload(
-                                                context, ExoDownloadService::class.java, request, false,
-                                            )
+                                            if (!serviceStarted) {
+                                                // Only ONE service wake-up for
+                                                // the entire online playlist.
+                                                DownloadService.sendAddDownload(
+                                                    context, ExoDownloadService::class.java,
+                                                    request, false,
+                                                )
+                                                serviceStarted = true
+                                            } else {
+                                                // The app/service share one Media3
+                                                // manager. Avoid an Android
+                                                // service intent for every song.
+                                                downloadUtil.downloadManager.addDownload(request)
+                                            }
                                         }
                                     }
+                                    // Keep the UI responsive when a remote
+                                    // playlist contains hundreds of tracks.
+                                    if (index % 32 == 31) kotlinx.coroutines.yield()
                                 }
                             }
                         }
