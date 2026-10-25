@@ -31,13 +31,14 @@ internal fun CapsuleDownloadComet() {
             initialValue = 0f,
             targetValue = 360f,
             animationSpec = infiniteRepeatable(
-                animation = tween(2_200, easing = LinearEasing),
+                // The same calm eight-second orbit as the player transport comet.
+                animation = tween(8_000, easing = LinearEasing),
                 repeatMode = RepeatMode.Restart,
             ),
             label = "download-orbit",
         )
     val color = MaterialTheme.colorScheme.primary
-    Canvas(Modifier.size(24.dp)) {
+    Canvas(Modifier.size(30.dp)) {
         val w = size.width
         val centerX = w / 2f
         val centerY = size.height / 2f
@@ -45,13 +46,13 @@ internal fun CapsuleDownloadComet() {
         val ry = size.height * .19f
         rotate(-25f) {
             drawOval(
-                color = color.copy(alpha = .63f),
+                color = color,
                 topLeft = Offset(centerX - rx, centerY - ry),
                 size = Size(rx * 2f, ry * 2f),
                 style = Stroke(width = w * .045f),
             )
             val angle = Math.toRadians(rotation.value.toDouble())
-            val tailAngle = Math.toRadians((rotation.value - 19f).toDouble())
+            val tailAngle = Math.toRadians((rotation.value - 15f).toDouble())
             val head = Offset(centerX + rx * cos(angle).toFloat(),
                 centerY + ry * sin(angle).toFloat())
             val tail = Offset(centerX + rx * cos(tailAngle).toFloat(),
