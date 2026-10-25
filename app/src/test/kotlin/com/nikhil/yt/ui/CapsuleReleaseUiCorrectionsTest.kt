@@ -25,7 +25,11 @@ class CapsuleReleaseUiCorrectionsTest {
         assertFalse(hero.contains("CapsuleSubscribeIcon("))
         assertFalse(hero.contains("CapsuleSubscribeLabel("))
         val toolbar = source("ui/component/ArtistToolbar.kt")
-        assertTrue(toolbar.contains("artistToolbarSurfaceAlpha(fade)"))
+        // The portrait and toolbar must now sample the same scroll state
+        // in the DRAW phase. The old compositional alpha could lag after a
+        // fast fling and its previous 90%-threshold made the gap visible.
+        assertTrue(toolbar.contains("artistToolbarSurfaceAlpha(artworkFadeProvider())"))
+        assertTrue(toolbar.contains("drawBehind"))
         assertFalse(toolbar.contains("fade >= 1f"))
     }
 
