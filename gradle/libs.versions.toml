@@ -117,8 +117,8 @@ timber = { module = "com.jakewharton.timber:timber", version.ref = "timber" }
 innertubex = { module = "com.github.MetrolistGroup.innertubex:innertubex", version.ref = "innertubex" }
 
 # Stable, reproducible VIDEO extraction. Never use master-SNAPSHOT in production.
-// Match NewPipe v0.29.0 production pin: v0.26.4 has its YouTube SABR workaround;
-// v0.26.5 only patches media.ccc.de livestreams, which Capsule does not consume.
+# Match NewPipe v0.29.0 production pin: v0.26.4 has its YouTube SABR workaround;
+# v0.26.5 only patches media.ccc.de livestreams, which Capsule does not consume.
 newpipe-extractor = { module = "com.github.TeamNewPipe:NewPipeExtractor", version = "v0.26.4" }
 
 kuromoji-ipadic = { module = "com.atilika.kuromoji:kuromoji-ipadic", version.ref = "kuromojiIpadic" }
