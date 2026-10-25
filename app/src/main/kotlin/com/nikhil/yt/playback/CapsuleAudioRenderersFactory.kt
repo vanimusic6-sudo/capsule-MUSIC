@@ -61,9 +61,13 @@ internal class CapsuleAudioRenderersFactory(
     context: Context,
 ) : DefaultRenderersFactory(context) {
     init {
-        setMediaCodecSelector(CapsuleOpusCodecSelector)
-        // If a supported in-process decoder cannot initialize, retry the
-        // original platform codec. Runtime failures remain separately logged.
+        // The Oct 25 codec A/B capture recorded 31 starvation events with
+        // c2.android.inproc.opus.decoder (despite >1 minute of AUDIO buffered),
+        // versus zero with AAC. Respect Android's native preference order for
+        // long-running MUSIC. The isolated VIDEO soundtrack may still use the
+        // in-process decoder for startup, keeping the two experiments separate.
+        setMediaCodecSelector(MediaCodecSelector.DEFAULT)
+        // Preserve init-time fallback without forcing a particular Opus codec.
         setEnableDecoderFallback(true)
     }
 
