@@ -15,6 +15,14 @@ class AudioCdnOpenContextTest {
     }
 
     @Test
+    fun foregroundStartsEarlierButRapidSkipRetainsFullSafetyWindow() {
+        assertEquals(90L, audioCdnInitialSettleDelayMs(1_000L, 1_000L, fastForeground = true))
+        assertEquals(40L, audioCdnInitialSettleDelayMs(1_050L, 1_000L, fastForeground = true))
+        assertEquals(0L, audioCdnInitialSettleDelayMs(1_120L, 1_000L, fastForeground = true))
+        assertEquals(250L, audioCdnInitialSettleDelayMs(1_000L, 1_000L, fastForeground = false))
+    }
+
+    @Test
     fun onlyHttp2CrossHostRouteCountsAsCoalesced() {
         assertTrue(audioCdnCrossHostCoalesced("rr2.googlevideo.com", "rr1.googlevideo.com", "h2"))
         assertFalse(audioCdnCrossHostCoalesced("rr2.googlevideo.com", "rr2.googlevideo.com", "h2"))
