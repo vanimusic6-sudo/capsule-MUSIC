@@ -621,7 +621,7 @@ internal fun CapsuleImmersiveContent(
         // the visible Coil node completes. Previously we discarded the only
         // proven image, then waited up to six seconds on another painter while
         // displaying a grey artwork slot.
-        var decodedCoverPainter by remember(mediaMetadata.id, artworkTone.displayUrl) {
+        var decodedCoverPainter by remember(mediaMetadata.id) {
             mutableStateOf<Painter?>(null)
         }
         // A transient Coil error previously left the invisible preload mounted
