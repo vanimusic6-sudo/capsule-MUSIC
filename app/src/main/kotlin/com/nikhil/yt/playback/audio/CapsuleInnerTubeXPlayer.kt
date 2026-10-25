@@ -404,6 +404,7 @@ object CapsuleInnerTubeXPlayer {
         download: Boolean = false,
     ): ExtractedStream {
         var lastFailure: Exception? = null
+        var transientFallbacks = 0
         var botSignalAlreadySeen = CapsulePlaybackSafety.quarantinedProfileIds().isNotEmpty()
         var onlyPostBotProfile: String? = null
         val attempted = linkedSetOf<String>()
@@ -538,6 +539,12 @@ object CapsuleInnerTubeXPlayer {
                     continue
                 }
 
+                // Avoid a three-client 24-second waterfall on a bad network:
+                // at most one alternate profile after an actual transient error.
+                if (kind == YouTubeFailureKind.TRANSIENT) {
+                    if (transientFallbacks >= 1) throw failure
+                    transientFallbacks++
+                }
                 val canFallback = CapsuleAudioFallbackPolicy.canFallbackAfter(kind)
                 if (canFallback) {
                     markStreamClientFailed(videoId, profileId, download = download)
