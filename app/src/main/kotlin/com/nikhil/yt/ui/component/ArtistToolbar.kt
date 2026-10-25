@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -29,8 +30,7 @@ internal val ArtistToolbarCompactHeight = 64.dp
  * The underlying surface is already exactly StandardChrome.background.
  */
 internal fun artistToolbarSurfaceAlpha(artworkFade: Float): Float {
-    val t = ((artworkFade.coerceIn(0f, 1f) - 0.90f) / 0.10f).coerceIn(0f, 1f)
-    return t * t * (3f - 2f * t)
+    return artworkFade.coerceIn(0f, 1f)
 }
 
 /** Bare artwork controls at the reference height; their 48 dp touch targets are retained. */
@@ -46,13 +46,15 @@ internal fun ArtistToolbar(
     onShare: () -> Unit,
     modifier: Modifier = Modifier,
     artworkFade: Float = if (overArtwork) 0f else 1f,
+    artworkFadeProvider: () -> Float = { artworkFade },
 ) {
     val fade = artworkFade.coerceIn(0f, 1f)
     val foreground = lerp(Color.White, StandardChrome.text, fade)
     // Fade the background in WHILE the fading portrait still fills the toolbar
     // area, reaching full opacity BEFORE scrolling track rows move underneath.
     // No boolean 'fully scrolled' switch and no frame-clock animation.
-    val toolbarSurface = StandardChrome.background.copy(alpha = artistToolbarSurfaceAlpha(fade))
+    // Draw-phase sampling follows the portrait's exact scroll snapshot.
+    // Rapid flings no longer wait for a Compose colour recomposition.
     val buttonColors = IconButtonDefaults.iconButtonColors(
         containerColor = Color.Transparent,
         contentColor = foreground,
@@ -62,7 +64,11 @@ internal fun ArtistToolbar(
         contentColor = foreground.copy(alpha = if (canShare) 1f else 0.38f),
     )
     TopAppBar(
-        modifier = modifier,
+        modifier = modifier.drawBehind {
+            drawRect(StandardChrome.background.copy(
+                alpha = artistToolbarSurfaceAlpha(artworkFadeProvider()),
+            ))
+        },
         // One shared, centred row keeps the name and icons aligned throughout scrolling.
         windowInsets = WindowInsets.safeDrawing.only(
             WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
@@ -107,8 +113,8 @@ internal fun ArtistToolbar(
         },
         colors =
             TopAppBarDefaults.topAppBarColors(
-                containerColor = toolbarSurface,
-                scrolledContainerColor = toolbarSurface,
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent,
                 navigationIconContentColor = foreground,
                 actionIconContentColor = foreground,
                 titleContentColor = foreground,
