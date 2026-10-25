@@ -82,6 +82,14 @@ class AudioChunkedDataSourceTest {
             .build()
 
     @Test
+    fun ordinaryThreeMegabyteSongStillUsesBoundedRangeReads() {
+        val mb = 1024L * 1024L
+        assertTrue(shouldChunkAudioRequest(3 * mb, mb))
+        assertTrue(shouldChunkAudioRequest(36 * mb, mb))
+        assertTrue(!shouldChunkAudioRequest(128 * 1024L, mb))
+    }
+
+    @Test
     fun slowNetworkReadsReduceOnlyUpcomingRangeWithoutReResolvingUrl() {
         val policy = AudioCdnChunkRatePolicy(1024L * 1024)
         repeat(3) {
