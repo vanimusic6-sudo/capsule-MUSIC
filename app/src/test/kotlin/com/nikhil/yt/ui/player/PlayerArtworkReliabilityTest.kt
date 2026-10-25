@@ -2,6 +2,8 @@ package com.nikhil.yt.ui.player
 
 import java.io.File
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -17,8 +19,17 @@ class PlayerArtworkReliabilityTest {
         val block = source("Player.kt")
             .substringAfter("val enrichedMetadata =").substringBefore("val onScreen = appIsOnScreen()")
         assertTrue(block.contains("currentSong?.takeIf { it.id == metadata.id }"))
-        assertTrue(block.contains("thumbnailUrl = metadata.thumbnailUrl ?: currentSongForTrack?.song?.thumbnailUrl"))
+        assertTrue(block.contains("thumbnailUrl = capsulePlayerArtworkUrl("))
+        assertTrue(block.contains("metadata.thumbnailUrl, currentSongForTrack?.song?.thumbnailUrl,"))
         assertFalse(block.contains("thumbnailUrl = metadata.thumbnailUrl ?: currentSong?.song?.thumbnailUrl"))
+    }
+
+    @Test fun loadedLocalArtworkBeatsBlankButNotValidMedia3Artwork() {
+        assertEquals("cached.jpg", capsulePlayerArtworkUrl("", "cached.jpg"))
+        assertEquals("cached.jpg", capsulePlayerArtworkUrl(null, "cached.jpg"))
+        assertEquals("playback.jpg", capsulePlayerArtworkUrl("playback.jpg", "cached.jpg"))
+        assertNull(capsulePlayerArtworkUrl("  ", "  "))
+        assertNull(capsulePlayerArtworkUrl(null, null))
     }
 
     @Test fun immersiveSamplerRetriesAfterSheetWasCollapsed() {
@@ -31,12 +42,19 @@ class PlayerArtworkReliabilityTest {
         assertTrue(immersive.contains("key(mediaMetadata.id, artworkTone.displayUrl, coverLoadRetry)"))
         assertTrue(immersive.contains("if (coverLoadRetry < 1) coverLoadRetry++"))
         assertTrue(immersive.contains("onSuccess = { coverImageReady = true }"))
+        assertTrue(immersive.contains("visibleArtworkRebind"))
+        assertTrue(immersive.contains("onError = { error ->"))
+        assertTrue(immersive.contains(".size(960, 960)"))
     }
 
     @Test fun lightAndCosmoKeepImageFallbackLocalToTheirOwnArtwork() {
         val full = source("CapsulePlayerContent.kt")
         assertTrue(full.contains("val originalArtworkUrl = mediaMetadata.thumbnailUrl"))
-        assertTrue(full.contains("model = if (useOriginalArtwork) originalArtworkUrl else highResArtworkUrl"))
+        assertTrue(full.contains("model = imageRequest"))
+        assertTrue(full.contains(".size(960, 960)"))
+        assertTrue(full.contains(".crossfade(false)"))
+        assertTrue(full.contains("artworkRebind"))
+        assertTrue(full.contains("delay(6_000L)"))
         assertTrue(full.contains("onError = {"))
         assertTrue(full.contains("artworkFailed = true"))
         assertTrue(full.contains("if (artworkFailed)"))
