@@ -237,6 +237,35 @@ class CapsuleVideoSessionTest {
         assertEquals(listOf("song"), f.frames)
         f.session.stop()
     }
+    @Test fun coldFirstVideoWithoutATextureSurfaceReturnsMusicInsteadOfSpinning() = runTest {
+        val f = Fixture(this)
+        // First composition can initially return before the isolated companion
+        // or Android TextureView exists. In that case no VIDEO sound handoff
+        // should happen, and UI must be allowed to recover.
+        f.session.start("song", indexedVideoItem(), 0.8f)
+        advanceTimeBy(8_501L); runCurrent()
+        assertEquals(1, f.failures.size)
+        assertTrue(f.failures.single() is IllegalStateException)
+        assertEquals(1f, f.music.volume)
+        assertTrue(f.frames.isEmpty())
+    }
+
+    @Test fun delayedColdTextureAttachmentCanRenderWithoutRestartingExtractor() = runTest {
+        val f = Fixture(this)
+        f.session.start("song", indexedVideoItem(), 0.8f)
+        advanceTimeBy(1_501L); runCurrent()
+        assertTrue(f.failures.isEmpty())
+        f.session.setSurfaceAttached(true)
+        f.music.position = 2_000L
+        f.clip.ready()
+        f.clip.frame()
+        advanceTimeBy(261L); runCurrent()
+        assertEquals(listOf("song"), f.frames)
+        assertEquals(1, f.clip.prepares)
+        assertTrue(f.failures.isEmpty())
+        f.session.stop()
+    }
+
     @Test fun stalledProgressiveSourceHandsOverToRecoveryBeforeTheLongGenericTimeout() = runTest {
         val f = Fixture(this); f.session.setSurfaceAttached(true)
         f.session.start("song", MediaItem.Builder().setMediaId("song").build(), 0.8f, startupBudgetMs = 8_000L)
