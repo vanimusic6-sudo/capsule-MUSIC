@@ -620,7 +620,9 @@ fun YouTubePlaylistMenu(
                 }
                 Download.STATE_QUEUED, Download.STATE_DOWNLOADING, Download.STATE_RESTARTING -> {
                     ListItem(
-                        headlineContent = { Text(text = stringResource(R.string.downloading)) },
+                        // "Cancel" pauses/resumes with cached bytes intact;
+                        // the following destructive row permanently deletes.
+                        headlineContent = { Text(text = stringResource(R.string.cancel_button)) },
                         leadingContent = { CapsuleDownloadComet() },
                         modifier = Modifier.clickable {
                             com.nikhil.yt.playback.stopCollectionDownloads(
