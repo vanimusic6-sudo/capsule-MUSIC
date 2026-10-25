@@ -65,7 +65,7 @@ class CapsuleVideoRoutesTest {
         assertEquals(listOf(CapsuleVideoRoute.NEWPIPE), calls)
         assertEquals("newpipe", next.backend)
     }
-    @Test fun fallbackSuccessDoesNotStickAfterTheFastEndpointRecovers() {
+    @Test fun lastWorkingRouteStaysPreferredEvenAfterEarlierFailuresExpire() {
         var now = 0L
         val health = CapsuleVideoRouteHealth { now }
         health.failure(CapsuleVideoRoute.ANDROID_VR)
@@ -74,7 +74,7 @@ class CapsuleVideoRoutesTest {
         now = 46_000_000_000L
         // Temporary 45s route failure does not discard a backend that worked.
         assertEquals(CapsuleVideoRoute.NEWPIPE, health.order(null).first())
-        assertEquals(CapsuleVideoRoute.VISIONOS, health.order("direct-android-vr").first())
+        assertEquals(CapsuleVideoRoute.NEWPIPE, health.order("direct-android-vr").first())
     }
     @Test fun missingFormatOnOneClipDoesNotCooldownTheFastRouteForOtherClips() {
         val health = CapsuleVideoRouteHealth()
