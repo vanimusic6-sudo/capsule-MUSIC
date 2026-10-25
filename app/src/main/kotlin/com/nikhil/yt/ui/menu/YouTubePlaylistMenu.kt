@@ -88,7 +88,9 @@ import com.nikhil.yt.ui.component.YouTubeListItem
 import com.nikhil.yt.utils.joinByBullet
 import com.nikhil.yt.utils.makeTimeString
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -220,6 +222,9 @@ fun YouTubePlaylistMenu(
     val indexedDownloads by downloadUtil.downloads.collectAsState()
     val collectionIds = downloadSongs.map { it.id }.distinct()
     val hasAnyCollectionDownload = collectionIds.any { indexedDownloads.containsKey(it) }
+    // A bulk enqueue is asynchronous; cancelling only Media3 entries is not
+    // enough if the producer is still adding the next batch behind our back.
+    val playlistEnqueueJob = remember(playlist.id) { mutableStateOf<Job?>(null) }
     var showRemoveDownloadDialog by remember {
         mutableStateOf(false)
     }
@@ -245,6 +250,10 @@ fun YouTubePlaylistMenu(
                 TextButton(
                     onClick = {
                         showRemoveDownloadDialog = false
+                        // Stop the producer FIRST: otherwise a queued batch can
+                        // recreate downloads after the user confirms deletion.
+                        playlistEnqueueJob.value?.cancel()
+                        playlistEnqueueJob.value = null
                         // Remove through the existing live Media3 manager;
                         // do not enqueue hundreds of service start intents for
                         // a playlist or leave STOPPED partial entries behind.
@@ -597,65 +606,51 @@ fun YouTubePlaylistMenu(
                 }
             )
         }
-        item {
+        item(key = "playlist-download-action", contentType = "menu-section") {
+            // The same single download action as a user's saved playlist:
+            // active = cancel (with confirmation), complete = remove,
+            // otherwise = start/resume. Never add a second destructive button
+            // next to Cancel while a public playlist is downloading.
             when (downloadState) {
                 Download.STATE_COMPLETED -> {
                     ListItem(
                         headlineContent = {
                             Text(
-                                text = stringResource(R.string.remove_download),
-                                color = MaterialTheme.colorScheme.error
+                                stringResource(R.string.remove_download),
+                                color = MaterialTheme.colorScheme.error,
                             )
                         },
                         leadingContent = {
-                            Icon(
-                                painter = painterResource(R.drawable.offline),
-                                contentDescription = null,
-                            )
+                            Icon(painterResource(R.drawable.offline), contentDescription = null)
                         },
-                        modifier = Modifier.clickable {
-                            showRemoveDownloadDialog = true
-                        }
+                        modifier = Modifier.clickable { showRemoveDownloadDialog = true },
                     )
                 }
                 Download.STATE_QUEUED, Download.STATE_DOWNLOADING, Download.STATE_RESTARTING -> {
                     ListItem(
-                        // "Cancel" pauses/resumes with cached bytes intact;
-                        // the following destructive row permanently deletes.
-                        headlineContent = { Text(text = stringResource(R.string.cancel_button)) },
+                        headlineContent = { Text(stringResource(R.string.cancel_button)) },
                         leadingContent = { CapsuleDownloadComet() },
-                        modifier = Modifier.clickable {
-                            com.nikhil.yt.playback.stopCollectionDownloads(
-                                downloadUtil.downloadManager, collectionIds,
-                            )
-                        }
-                    )
-                    // Stopping must not be the only way to cancel a large
-                    // online playlist: offer explicit confirmed deletion.
-                    ListItem(
-                        headlineContent = {
-                            Text(stringResource(R.string.capsule_stop_and_delete_download),
-                                color = MaterialTheme.colorScheme.error)
-                        },
-                        leadingContent = {
-                            Icon(painterResource(R.drawable.close), contentDescription = null)
-                        },
+                        // Identical to a user-playlist cancel: one action, then
+                        // confirm. Cancel the enqueue job and remove indexed
+                        // entries in the same transaction on confirmation.
                         modifier = Modifier.clickable { showRemoveDownloadDialog = true },
                     )
                 }
                 else -> {
                     ListItem(
-                        headlineContent = { Text(text = stringResource(R.string.action_download)) },
+                        headlineContent = { Text(stringResource(R.string.action_download)) },
                         leadingContent = {
                             Icon(painterResource(R.drawable.download), contentDescription = null)
                         },
                         modifier = Modifier.clickable(enabled = downloadSongs.isNotEmpty()) {
-                            coroutineScope.launch {
-                                // Resume stopped members instead of adding
-                                // them again, so partial cache bytes survive.
+                            playlistEnqueueJob.value?.cancel()
+                            playlistEnqueueJob.value = coroutineScope.launch {
+                                // Resume stopped members without throwing away
+                                // already cached ranges. Start the service ONCE.
                                 var serviceStarted = false
                                 val songById = downloadSongs.associateBy { it.id }
-                                collectionIds.forEachIndexed { index, id ->
+                                for ((index, id) in collectionIds.withIndex()) {
+                                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
                                     val existing = indexedDownloads[id]
                                     if (existing != null) {
                                         if (existing.state != Download.STATE_COMPLETED) {
@@ -670,33 +665,30 @@ fun YouTubePlaylistMenu(
                                                 .setData(song.title.toByteArray())
                                                 .build()
                                             if (!serviceStarted) {
-                                                // Only ONE service wake-up for
-                                                // the entire online playlist.
                                                 DownloadService.sendAddDownload(
                                                     context, ExoDownloadService::class.java,
                                                     request, false,
                                                 )
                                                 serviceStarted = true
                                             } else {
-                                                // The app/service share one Media3
-                                                // manager. Avoid an Android
-                                                // service intent for every song.
                                                 downloadUtil.downloadManager.addDownload(request)
                                             }
                                         }
                                     }
-                                    // Keep the UI responsive when a remote
-                                    // playlist contains hundreds of tracks.
                                     if (index % 32 == 31) kotlinx.coroutines.yield()
                                 }
                             }
-                        }
+                        },
                     )
+                    // Paused/failed partial collections retain a way to delete
+                    // their bytes. This is not a redundant active-state button.
                     if (hasAnyCollectionDownload) {
                         ListItem(
                             headlineContent = {
-                                Text(stringResource(R.string.remove_download),
-                                    color = MaterialTheme.colorScheme.error)
+                                Text(
+                                    stringResource(R.string.remove_download),
+                                    color = MaterialTheme.colorScheme.error,
+                                )
                             },
                             leadingContent = {
                                 Icon(painterResource(R.drawable.offline), contentDescription = null)
