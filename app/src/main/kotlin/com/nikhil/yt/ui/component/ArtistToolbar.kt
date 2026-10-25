@@ -48,6 +48,9 @@ internal fun ArtistToolbar(
     artworkFade: Float = if (overArtwork) 0f else 1f,
     artworkFadeProvider: () -> Float = { artworkFade },
 ) {
+    // Resolve Compose theme colour once inside composition, NOT from
+    // drawBehind (which must never invoke a @Composable theme getter).
+    val artistSurfaceColor = StandardChrome.background
     val fade = artworkFade.coerceIn(0f, 1f)
     val foreground = lerp(Color.White, StandardChrome.text, fade)
     // Fade the background in WHILE the fading portrait still fills the toolbar
@@ -65,7 +68,7 @@ internal fun ArtistToolbar(
     )
     TopAppBar(
         modifier = modifier.drawBehind {
-            drawRect(StandardChrome.background.copy(
+            drawRect(artistSurfaceColor.copy(
                 alpha = artistToolbarSurfaceAlpha(artworkFadeProvider()),
             ))
         },
