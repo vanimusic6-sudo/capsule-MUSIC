@@ -1076,6 +1076,9 @@ class MusicService :
                     state.preferredMode == CapsulePlaybackMode.VIDEO
                 ) {
                     videoPlaybackState.value = state.copy(firstFrameReady = true, phase = CapsuleVideoPhase.PLAYING)
+                    // Only a presented frame (not a mere extracted URL) means
+                    // that the previous VIDEO cooldown escalation can decay.
+                    CapsuleVideoRequestGuard.noteVideoRenderedSuccessfully()
                 }
             },
             onFailure = { failedId, failure -> recoverVideoSession(failedId, failure) },
