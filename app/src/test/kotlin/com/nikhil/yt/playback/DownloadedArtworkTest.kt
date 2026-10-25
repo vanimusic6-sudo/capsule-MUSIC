@@ -66,6 +66,51 @@ class DownloadedArtworkTest {
         } finally { loader.shutdown() }
     }
 
+    @Test fun upgradesLegacyTinyGoogleCoverToCompact640pxAndAvoidsRepeatedFetch() = runBlocking {
+        val context = RuntimeEnvironment.getApplication()
+        val url = "https://lh3.googleusercontent.com/artwork-upgrade-test=w120-h120-p-l90-rj"
+        val target = DownloadedArtwork.file(context, url)
+        target.parentFile!!.mkdirs()
+        val tiny = Bitmap.createBitmap(120, 120, Bitmap.Config.ARGB_8888)
+        target.outputStream().use { out -> tiny.compress(Bitmap.CompressFormat.JPEG, 85, out) }
+        tiny.recycle()
+        assertTrue(DownloadedArtwork.valid(target))
+        assertTrue(DownloadedArtwork.needsUpgrade(target, url))
+        val calls = AtomicInteger()
+        val seen = mutableListOf<String>()
+        val loader = ImageLoader.Builder(context).diskCache(null).components {
+            add(Interceptor { chain ->
+                calls.incrementAndGet()
+                seen += chain.request.data.toString()
+                SuccessResult(Bitmap.createBitmap(640, 640, Bitmap.Config.ARGB_8888).asImage(),
+                    chain.request, DataSource.NETWORK)
+            })
+        }.build()
+        try {
+            assertTrue(DownloadedArtwork.save(context, "upgrade-test", url, loader))
+            assertEquals(1, calls.get())
+            assertTrue("The actual CDN URL must be resized, not just Coil's decoder",
+                seen.single().contains("=w640-h640"))
+            assertFalse(DownloadedArtwork.needsUpgrade(target, url))
+            assertTrue(target.length() in 1L..320_000L)
+            assertEquals(640, android.graphics.BitmapFactory.Options().run {
+                inJustDecodeBounds = true
+                android.graphics.BitmapFactory.decodeFile(target.path, this)
+                outWidth
+            })
+            assertTrue(DownloadedArtwork.save(context, "upgrade-test", url, loader))
+            assertEquals(1, calls.get())
+            DownloadedArtwork.remove(context, "upgrade-test")
+        } finally { loader.shutdown(); target.delete() }
+    }
+
+    @Test fun onlyApprovedGoogleArtworkUrlsAreResized() {
+        val google = "https://lh3.googleusercontent.com/a=s120"
+        assertEquals("https://lh3.googleusercontent.com/a=s640", DownloadedArtwork.optimizedUrl(google))
+        val external = "https://example.com/picture?w=120&token=x"
+        assertEquals(external, DownloadedArtwork.optimizedUrl(external))
+    }
+
     @Test fun corruptAndPartialCoversAreNeverAcceptedAndFilenamesCannotEscapeStorage(): Unit = runBlocking {
         val context = RuntimeEnvironment.getApplication()
         val url = "https://example.com/../../cover.jpg?secret=private"
