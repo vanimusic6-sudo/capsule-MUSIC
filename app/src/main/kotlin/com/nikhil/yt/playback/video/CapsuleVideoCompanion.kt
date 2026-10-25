@@ -570,7 +570,8 @@ internal class CapsuleVideoSession(
     }
 
     private fun needsWatchdog(): Boolean = id != null && audio.playWhenReady &&
-        ((rendering && !frameReported) ||
+        ((foreground && !surfaceAttached && !committed) ||
+            (rendering && !frameReported) ||
             ((rendering || committed) && video.playbackState == Player.STATE_BUFFERING))
 
     private fun ensureWatchdog() {
@@ -590,10 +591,22 @@ internal class CapsuleVideoSession(
                 if (!needsWatchdog()) break
                 evaluate()
                 // No first-frame timeout with a detached/minimized player.
-                if (rendering && audio.playWhenReady && !frameReported) startupMs += 500L
+                // On the first cold launch the TextureView may never attach.
+                // Do not interpret an absent local Surface as a slow YouTube
+                // server, and never leave the toggle spinning indefinitely.
+                if (foreground && audio.playWhenReady && !frameReported) startupMs += 500L
                 if (ready && frameReported) startupMs = 0L
                 if ((rendering || committed) && audio.playWhenReady && video.playbackState == Player.STATE_BUFFERING) stallMs += 500L else stallMs = 0L
+                if (foreground && !surfaceAttached && startupMs >= 8_000L) {
+                    fail(IllegalStateException("VIDEO output surface unavailable on first opening"))
+                    break
+                }
                 if (startupMs >= startupBudgetMs || stallMs >= 12_000L) {
+                    Timber.tag("CapsuleVideo").w(
+                        "VIDEO cold startup timeout surface=%s frame=%s selectedAudio=%s videoState=%s playing=%s musicMs=%s videoMs=%s",
+                        surfaceAttached, firstFrame, hasAudio, video.playbackState,
+                        video.isPlaying, audio.currentPosition, video.currentPosition,
+                    )
                     fail(java.net.SocketTimeoutException("VIDEO readiness/stall timeout (surface=$surfaceAttached frame=$firstFrame audio=$hasAudio)"))
                     break
                 }
