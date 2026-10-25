@@ -11,7 +11,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -62,10 +61,12 @@ internal object OnlinePlaylistDownloadCoordinator {
         session.job = scope.launch {
             try {
                 var serviceStarted = false
+                // One snapshot, not a linear scan of all downloaded tracks
+                // for every playlist member (which would be quadratic).
+                val indexed = downloadManager.currentDownloads.associateBy { it.request.id }
                 for ((index, song) in uniqueSongs.withIndex()) {
                     currentCoroutineContext().ensureActive()
-                    val existing = downloadManager.currentDownloads
-                        .firstOrNull { it.request.id == song.id }
+                    val existing = indexed[song.id]
                     if (existing != null) {
                         if (existing.state != Download.STATE_COMPLETED) {
                             downloadManager.setStopReason(song.id, Download.STOP_REASON_NONE)
