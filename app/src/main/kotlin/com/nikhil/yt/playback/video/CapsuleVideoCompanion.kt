@@ -35,6 +35,29 @@ internal const val CAPSULE_VIDEO_SOUND_GAP_MS = 180L
 internal const val CAPSULE_SOUND_RAMP_STEP_MS = 16L
 internal const val CAPSULE_SOUND_RAMP_STEPS = 5
 
+/**
+ * Only an indexed DASH clip carries a reliable duration before Media3 prepare.
+ * Start decoding around the advancing MUSIC clock instead of decoding at 0,
+ * discarding that frame and performing two network seeks. Unknown lengths,
+ * tiny clips and near-EOF switches retain the original safe start-at-zero path.
+ */
+internal fun capsuleDashVideoInitialPosition(
+    item: MediaItem, audioPositionMs: Long, audioPlaying: Boolean,
+): Long? {
+    val resolved = item.localConfiguration?.tag as? YouTubeVideoResolver.ResolvedVideo ?: return null
+    if (resolved.delivery != CapsuleVideoDelivery.DASH) return null
+    val manifest = resolved.dashManifest?.takeIf { it.length in 1..(64 * 1024) } ?: return null
+    val duration = Regex("mediaPresentationDuration=\\\"PT([0-9]+(?:\\\\.[0-9]+)?)S\\\"")
+        .find(manifest)?.groupValues?.getOrNull(1)?.toDoubleOrNull()?.times(1000.0)?.toLong()
+        ?: return null
+    if (duration !in 10_000L..43_200_000L) return null
+    val position = audioPositionMs.coerceAtLeast(0L)
+    // The clip may be shorter than MUSIC; do not accidentally start beyond EOF.
+    if (position >= duration - 3_000L) return null
+    val prediction = if (audioPlaying) 1_400L else 0L
+    return (position + prediction).coerceAtMost(duration - 3_000L)
+}
+
 internal class CapsuleVideoCompanion(
     context: Context, factory: MediaSource.Factory, audio: ExoPlayer,
     private val scope: CoroutineScope, onSoundOwned: (Boolean) -> Unit,
@@ -491,9 +514,22 @@ internal class CapsuleVideoSession(
                 }
             } else {
                 preparedItem = item
-                // Duration is unknown until Media3 parses the timeline. Start at
-                // frame 0, then align in READY using the real clip duration.
-                video.setMediaItem(item)
+                // Indexed DASH carries duration already: start decoder near the
+                // advancing MUSIC clock, not at byte/frame zero. Media3 gets the
+                // initial position before prepare, skipping a redundant network seek.
+                // Unindexed/short/near-EOF clips keep the proven old path.
+                val initialPosition = capsuleDashVideoInitialPosition(
+                    item, audio.currentPosition, audio.isPlaying,
+                )
+                if (initialPosition != null) {
+                    video.setMediaItem(item, initialPosition)
+                    Timber.tag("CapsuleVideo").i(
+                        "VIDEO start-near-audio session=%s positionMs=%s musicMs=%s",
+                        mediaId, initialPosition, audio.currentPosition,
+                    )
+                } else {
+                    video.setMediaItem(item)
+                }
             }
             video.playbackParameters = audio.playbackParameters
             updateRendering()
