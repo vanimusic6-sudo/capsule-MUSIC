@@ -47,18 +47,9 @@ internal const val AUDIO_CHUNK_BYTES = 1L * 1024 * 1024
 
 /** Initial CDN open plus ONE same-link retry before the service tries the next client. */
 internal const val CHUNK_OPEN_ATTEMPTS = 2
-internal const val AUDIO_SHORT_SINGLE_REQUEST_LIMIT = 4L * 1024 * 1024
-
-/** Avoid needless range seams for ordinary short tracks; keep long streams chunked. */
-internal fun shouldUseOneRequestForShortAudio(
-    length: Long,
-    position: Long,
-    preferredChunkBytes: Long,
-    firstChunkBytes: Long,
-): Boolean = position == 0L &&
-    length in 1..AUDIO_SHORT_SINGLE_REQUEST_LIMIT &&
-    preferredChunkBytes >= 512L * 1024 &&
-    firstChunkBytes == preferredChunkBytes
+// Always respect the extractor's bounded audio ranges. The temporary
+// whole-short-song optimization skipped the staged first read and turned a
+// 3–4MB ordinary file into one long CDN request, reintroducing pacing/seek risks.
 
 /** Response codes that mean "not this request" rather than "not this stream". */
 internal val REFUSAL_CODES = setOf(403, 410)
@@ -199,9 +190,7 @@ internal class AudioChunkedDataSource(
                 .takeIf { it > 0L && dataSpec.position == 0L }
                 ?.coerceAtMost(chunkBytes)
                 ?: chunkBytes
-        if (shouldUseOneRequestForShortAudio(
-                dataSpec.length, dataSpec.position, chunkBytes, firstBytes,
-            ) || !shouldChunkAudioRequest(dataSpec.length, firstBytes)) {
+        if (!shouldChunkAudioRequest(dataSpec.length, firstBytes)) {
             request = null
             opened = true
             return openWithRefusalRetry(dataSpec)
