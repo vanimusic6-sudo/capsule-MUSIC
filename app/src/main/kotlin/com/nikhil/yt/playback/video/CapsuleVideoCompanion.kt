@@ -93,9 +93,19 @@ internal class CapsuleVideoCompanion(
                 if (session.awaitingPresentation) Timber.tag("CapsuleVideo").i(
                     "VIDEO startup decoder=%s ms=%s", decoderName, initializationDurationMs)
             }
+            override fun onAudioDecoderInitialized(eventTime: AnalyticsListener.EventTime, decoderName: String,
+                initializedTimestampMs: Long, initializationDurationMs: Long) {
+                if (session.awaitingPresentation) Timber.tag("CapsuleCodec").i(
+                    "video-audio-decoder=%s initMs=%s", decoderName, initializationDurationMs)
+            }
             override fun onDownstreamFormatChanged(eventTime: AnalyticsListener.EventTime, mediaLoadData: MediaLoadData) {
                 if (mediaLoadData.trackType == C.TRACK_TYPE_VIDEO) mediaLoadData.trackFormat?.let {
                     Timber.tag("CapsuleVideo").i("VIDEO format width=%s height=%s fps=%s bitrate=%s", it.width, it.height, it.frameRate, it.bitrate)
+                }
+                if (mediaLoadData.trackType == C.TRACK_TYPE_AUDIO) mediaLoadData.trackFormat?.let {
+                    Timber.tag("CapsuleCodec").i(
+                        "video-audio-format id=%s mime=%s bitrate=%s rate=%s",
+                        it.id ?: "unknown", it.sampleMimeType ?: "unknown", it.bitrate, it.sampleRate)
                 }
             }
             override fun onDroppedVideoFrames(eventTime: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
