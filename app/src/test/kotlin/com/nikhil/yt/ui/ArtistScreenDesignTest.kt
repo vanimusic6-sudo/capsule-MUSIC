@@ -19,7 +19,12 @@ class ArtistScreenDesignTest {
         val values = (0..100).map { com.nikhil.yt.ui.component.artistToolbarSurfaceAlpha(it / 100f) }
         org.junit.Assert.assertEquals(0f, values.first(), 0.0001f)
         org.junit.Assert.assertEquals(1f, values.last(), 0.0001f)
-        org.junit.Assert.assertEquals(0f, values[80], 0.0001f)
+        org.junit.Assert.assertEquals(0.8f, values[80], 0.0001f)
+        // The toolbar and portrait must use the identical fade amount at
+        // every sampled scroll offset, not just near the very top.
+        org.junit.Assert.assertTrue(values.indices.all { index ->
+            kotlin.math.abs(values[index] - index / 100f) < 0.0001f
+        })
         org.junit.Assert.assertEquals(1f, values[100], 0.0001f)
         org.junit.Assert.assertTrue(values.zipWithNext().all { (a, b) -> b >= a && b-a <= 0.16f })
     }
