@@ -675,11 +675,17 @@ class MusicService :
                         ?.takeIf { it > 0L && nowElapsedMs >= it }
                         ?.let { nowElapsedMs - it }
                         ?: -1L
+                // Only an intentional foreground PLAY may take the fast open.
+                // Confirmed rapid-skip bursts retain the old cancellation window.
+                val fastOpen = withContext(Dispatchers.Main.immediate) {
+                    player.playWhenReady && !audioCdnSkipBurstPolicy.isBurst(mediaId)
+                }
                 val settleMs =
                     openContext?.let { context ->
                         audioCdnInitialSettleDelayMs(
                             nowElapsedMs = nowElapsedMs,
                             resolvedAtElapsedMs = context.resolvedAtElapsedMs,
+                            fastForeground = fastOpen,
                         )
                     } ?: 0L
 
