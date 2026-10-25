@@ -233,10 +233,11 @@ fun YouTubePlaylistMenu(
             onDismiss = { showRemoveDownloadDialog = false },
             content = {
                 Text(
-                    text = stringResource(
-                        R.string.remove_download_playlist_confirm,
-                        playlist.title
-                    ),
+                    text = if (downloadState == Download.STATE_DOWNLOADING ||
+                        downloadState == Download.STATE_QUEUED ||
+                        downloadState == Download.STATE_RESTARTING
+                    ) stringResource(R.string.capsule_stop_and_delete_download_message)
+                    else stringResource(R.string.remove_download_playlist_confirm, playlist.title),
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.padding(horizontal = 18.dp)
                 )
