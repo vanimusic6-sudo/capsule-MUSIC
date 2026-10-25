@@ -1916,7 +1916,7 @@ class MusicService :
                         ) {
                             Timber.tag("CapsuleCodec").i(
                                 "music-audio-decoder id=%s codec=%s initMs=%s",
-                                eventTime.mediaPeriodId?.periodUid ?: currentMediaItem?.mediaId ?: "unknown",
+                                currentMediaItem?.mediaId ?: "unknown",
                                 decoderName, initializationDurationMs,
                             )
                         }
