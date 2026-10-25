@@ -55,6 +55,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -74,6 +76,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.painterResource
@@ -88,6 +91,8 @@ import androidx.media3.common.Player
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.CapsuleLightLyricLineKey
 import com.nikhil.yt.constants.ReleaseAppearanceDefaults
@@ -120,6 +125,8 @@ import com.nikhil.yt.utils.makeTimeString
 import com.nikhil.yt.ui.menu.clampOffset
 import com.nikhil.yt.utils.rememberPreference
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.delay
+import timber.log.Timber
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
@@ -611,19 +618,70 @@ fun CapsulePlayerContent(
                         var artworkFailed by remember(mediaMetadata.id, originalArtworkUrl) {
                             mutableStateOf(false)
                         }
+                        var artworkLoading by remember(mediaMetadata.id, originalArtworkUrl) {
+                            mutableStateOf(false)
+                        }
+                        // The old painter could stay blank after a transient Coil
+                        // cancellation, despite the image already existing in
+                        // memory/disk. One bounded rebind restores the real bitmap
+                        // without restarting metadata, audio or a background timer.
+                        var artworkRebind by remember(mediaMetadata.id, originalArtworkUrl) {
+                            mutableIntStateOf(0)
+                        }
+                        val requestedArtworkUrl =
+                            if (useOriginalArtwork) originalArtworkUrl else highResArtworkUrl
+                        val imageContext = LocalContext.current
+                        val imageRequest = remember(imageContext, requestedArtworkUrl) {
+                            ImageRequest.Builder(imageContext)
+                                .data(requestedArtworkUrl)
+                                // Match the on-screen preload's cache identity:
+                                // don't perform a second full-resolution decode.
+                                .size(960, 960)
+                                // No partially faded gray placeholder can be
+                                // left behind under the GPU artwork mask.
+                                .crossfade(false)
+                                .build()
+                        }
+                        LaunchedEffect(mediaMetadata.id, requestedArtworkUrl, artworkRebind, artworkLoading) {
+                            if (!artworkLoading || artworkRebind > 0 || requestedArtworkUrl.isNullOrBlank()) {
+                                return@LaunchedEffect
+                            }
+                            // Cold image fetches can legitimately be slow.
+                            // Rescue at most once and only while this cover is visible.
+                            delay(6_000L)
+                            if (artworkLoading) {
+                                Timber.tag("CapsuleArtwork").w(
+                                    "player-artwork-stalled id=%s original=%s rebind=%s",
+                                    mediaMetadata.id, useOriginalArtwork, artworkRebind,
+                                )
+                                if (!useOriginalArtwork && originalArtworkUrl != highResArtworkUrl) {
+                                    useOriginalArtwork = true
+                                } else {
+                                    artworkRebind++
+                                }
+                            }
+                        }
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            key(mediaMetadata.id, requestedArtworkUrl, artworkRebind) {
                             AsyncImage(
-                                // Retry only when high-resolution CDN art actually failed.
-                                // Both URLs are already in the track's metadata.
-                                model = if (useOriginalArtwork) originalArtworkUrl else highResArtworkUrl,
+                                model = imageRequest,
                                 contentDescription = mediaMetadata.title,
-                                onSuccess = { artworkFailed = false },
-                                onError = {
+                                onLoading = { artworkLoading = true; artworkFailed = false },
+                                onSuccess = { artworkLoading = false; artworkFailed = false },
+                                onError = { error ->
+                                    artworkLoading = false
+                                    Timber.tag("CapsuleArtwork").w(
+                                        "player-artwork-error id=%s original=%s rebind=%s type=%s",
+                                        mediaMetadata.id, useOriginalArtwork, artworkRebind,
+                                        error.result.throwable::class.java.simpleName,
+                                    )
                                     if (!useOriginalArtwork &&
                                         !originalArtworkUrl.isNullOrBlank() &&
                                         originalArtworkUrl != highResArtworkUrl
                                     ) {
                                         useOriginalArtwork = true
+                                    } else if (artworkRebind == 0) {
+                                        artworkRebind++
                                     } else {
                                         artworkFailed = true
                                     }
@@ -648,6 +706,7 @@ fun CapsulePlayerContent(
                                     },
                                 modifier = Modifier.fillMaxSize(),
                             )
+                            }
                             if (artworkFailed) {
                                 Icon(
                                     painter = painterResource(R.drawable.album),
