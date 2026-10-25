@@ -201,7 +201,12 @@ fun BottomSheetPlayer(
 
             metadata.copy(
                 artists = enrichedArtists,
-                thumbnailUrl = metadata.thumbnailUrl ?: currentSongForTrack?.song?.thumbnailUrl,
+                // Media3 may temporarily publish an empty artwork URL on a
+                // freshly selected track. An empty string is NOT a valid
+                // image, and previously masked the already cached Room art
+                // until navigation/track switching forced a new composition.
+                thumbnailUrl = metadata.thumbnailUrl?.takeIf { it.isNotBlank() }
+                    ?: currentSongForTrack?.song?.thumbnailUrl?.takeIf { it.isNotBlank() },
                 album = album,
             )
         }
