@@ -649,7 +649,7 @@ fun PlayerMenu(
                                         com.nikhil.yt.discovery.OfflineAudioQueue
                                             .removeDeletedFromPlayer(playerConnection.player, id)
                                     }
-                                    onDismiss()
+                                    // Keep More open: the row updates from the saved-files state.
                                 } else {
                                     Toast.makeText(context, R.string.capsule_download_remove_failed,
                                         Toast.LENGTH_SHORT).show()
@@ -675,7 +675,7 @@ fun PlayerMenu(
                                 else MaterialTheme.colorScheme.onSurface)
                         },
                         leadingContent = {
-                            if (downloading) VeluneLoader(size = 24.dp)
+                            if (downloading) CapsuleDownloadComet()
                             else Icon(
                                 painterResource(if (saved != null) R.drawable.offline else R.drawable.download),
                                 contentDescription = null,
@@ -692,14 +692,14 @@ fun PlayerMenu(
                                     if (ExperimentalDownload.deleteSaved(context, saved)) {
                                         com.nikhil.yt.discovery.OfflineAudioQueue
                                             .removeDeletedFromPlayer(playerConnection.player, saved.id)
-                                        onDismiss()
+                                        // Do not abruptly collapse the More sheet on removal.
                                     } else {
                                         Toast.makeText(context, R.string.capsule_download_remove_failed,
                                             Toast.LENGTH_SHORT).show()
                                     }
                                 }
-                            } else if (originalAudiusTrack?.let { ExperimentalDownload.enqueue(context, it) } == true) {
-                                onDismiss()
+                            } else {
+                                originalAudiusTrack?.let { ExperimentalDownload.enqueue(context, it) }
                             }
                         },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
