@@ -104,6 +104,28 @@ class DownloadedArtworkTest {
         } finally { loader.shutdown(); target.delete() }
     }
 
+    @Test fun offlineStillShowsTinyLegacyCoverWhen640pxUpgradeCannotReachNetwork() = runBlocking {
+        val context = RuntimeEnvironment.getApplication()
+        val url = "https://lh3.googleusercontent.com/offline-upgrade-fallback=w120-h120-p-l90-rj"
+        val target = DownloadedArtwork.file(context, url)
+        target.parentFile!!.mkdirs()
+        val bitmap = Bitmap.createBitmap(120, 120, Bitmap.Config.ARGB_8888)
+        target.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 85, it) }
+        bitmap.recycle()
+        val offline = ImageLoader.Builder(context).diskCache(null).memoryCache(null)
+            .imageDecoderEnabled(false)
+            .components { add(DownloadedArtworkInterceptor(context)) }.build()
+        try {
+            val highRequest = DownloadedArtwork.optimizedUrl(url)
+            assertTrue(DownloadedArtwork.needsFullResolutionFetch(target, highRequest))
+            val result = offline.execute(ImageRequest.Builder(context)
+                .data(highRequest).networkCachePolicy(CachePolicy.DISABLED).build())
+            assertTrue("The old offline cover must win if the high-res network fetch fails",
+                result is SuccessResult)
+            assertEquals(DataSource.DISK, (result as SuccessResult).dataSource)
+        } finally { offline.shutdown(); target.delete() }
+    }
+
     @Test fun onlyApprovedGoogleArtworkUrlsAreResized() {
         val google = "https://lh3.googleusercontent.com/a=s120"
         assertEquals("https://lh3.googleusercontent.com/a=s640", DownloadedArtwork.optimizedUrl(google))
