@@ -143,6 +143,74 @@ class CapsuleVideoSessionTest {
         f.session.stop()
     }
 
+    @Test fun lateEntryUsesIndexedDashHeadThenSeeksOnceWhenMetadataIsReady() = runTest {
+        val f = Fixture(this)
+        f.music.position = 95_000L
+        f.session.setSurfaceAttached(true)
+        f.session.start("song", indexedVideoItem(), 0.8f)
+        assertEquals(1, f.clip.prepares)
+        assertTrue("defer middle seek until DASH indexes and tracks are ready", f.clip.seeks.isEmpty())
+        assertEquals(1f, f.music.volume)
+        f.clip.ready()
+        assertEquals(listOf(95_000L), f.clip.seeks)
+        f.music.position = 95_090L
+        f.clip.frame()
+        advanceTimeBy(261L); runCurrent()
+        assertEquals(listOf("song"), f.frames)
+        assertEquals(1, f.clip.seeks.size)
+        f.session.stop()
+    }
+
+    @Test fun stalledLateEntryGetsOneLocalPinnedStreamRetryWithoutNewExtractor() = runTest {
+        val f = Fixture(this)
+        f.music.position = 95_000L
+        f.session.setSurfaceAttached(true)
+        f.session.start("song", indexedVideoItem(), 0.8f)
+        advanceTimeBy(CAPSULE_LATE_VIDEO_RESCUE_MS + 501L); runCurrent()
+        assertEquals("a single same-URL local rescue", 2, f.clip.prepares)
+        assertEquals(2, f.clip.replacements)
+        assertEquals(95_000L, f.clip.position)
+        assertEquals(1f, f.music.volume)
+        assertTrue(f.failures.isEmpty())
+        f.clip.ready()
+        f.clip.frame()
+        advanceTimeBy(261L); runCurrent()
+        assertEquals(listOf("song"), f.frames)
+        assertEquals(2, f.clip.prepares)
+        f.session.stop()
+    }
+
+    @Test fun lateEntryRescueCannotKeepUiLoadingForever() = runTest {
+        val f = Fixture(this)
+        f.music.position = 95_000L
+        f.session.setSurfaceAttached(true)
+        f.session.start("song", indexedVideoItem(), 0.8f)
+        advanceTimeBy(15_000L); runCurrent()
+        assertEquals(2, f.clip.prepares)
+        assertEquals("one bounded retry, then notify failure", 1, f.failures.size)
+        assertEquals(1f, f.music.volume)
+        f.session.stop()
+    }
+
+    @Test fun missingSurfaceWhileForegroundFailsInsteadOfInfiniteLoading() = runTest {
+        val f = Fixture(this)
+        f.music.position = 95_000L
+        f.session.start("song", indexedVideoItem(), 0.8f)
+        advanceTimeBy(8_501L); runCurrent()
+        assertEquals(1, f.failures.size)
+        assertEquals(1, f.clip.prepares)
+        assertEquals(1f, f.music.volume)
+        f.session.stop()
+    }
+
+    @Test fun midstreamFallbackDoesNotStartInFinalSecondsOfShorterClip() {
+        val item = indexedVideoItem(seconds = 180)
+        assertNull(capsuleDashVideoInitialPosition(item, 95_000L, true))
+        assertEquals(95_000L, capsuleDashVideoLateEntryRescuePosition(item, 95_000L))
+        assertNull(capsuleDashVideoLateEntryRescuePosition(item, 179_000L))
+        assertNull(capsuleDashVideoLateEntryRescuePosition(item, 10_000L))
+    }
+
     @Test fun indexedDashPreseekFallsBackNearClipEndOrWithoutDuration() {
         val item = indexedVideoItem(seconds = 60)
         assertEquals(12_000L, capsuleDashVideoInitialPosition(item, 10_000L, true))
