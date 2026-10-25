@@ -9,6 +9,7 @@ import coil3.intercept.Interceptor
 import coil3.request.ImageRequest
 import coil3.request.ImageResult
 import coil3.request.CachePolicy
+import coil3.decode.DataSource
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.toBitmap
@@ -101,6 +102,7 @@ internal object DownloadedArtwork {
                         // A legacy file may have been cached under this exact URI.
                         // The remote-upgrade request must not retrieve that stale copy.
                         .memoryCachePolicy(if (valid(target)) CachePolicy.DISABLED else CachePolicy.ENABLED)
+                        .diskCachePolicy(if (valid(target)) CachePolicy.DISABLED else CachePolicy.ENABLED)
                         .allowHardware(false).build()) as? SuccessResult
                 } else null
                 writes.withLock {
@@ -125,7 +127,8 @@ internal object DownloadedArtwork {
                             }
                             // A small upstream source cannot be magically upscaled.
                             // Do not re-download the same unavailable resolution per song.
-                            if (minOf(bitmap.width, bitmap.height) < MIN_SHARP_EDGE_PX) {
+                            if (minOf(bitmap.width, bitmap.height) < MIN_SHARP_EDGE_PX &&
+                                result.dataSource != DataSource.DISK) {
                                 attempted(target).writeText("checked")
                             } else attempted(target).delete()
                         }
@@ -179,11 +182,16 @@ internal class DownloadedArtworkInterceptor(private val context: Context) : Inte
         val data = chain.request.data
         val url = if (data is String || data is android.net.Uri || data is coil3.Uri) data.toString() else null
         val local = if (url?.startsWith("https://") == true) withContext(Dispatchers.IO) {
-            DownloadedArtwork.file(context, url).takeIf { target ->
-                DownloadedArtwork.valid(target) && !DownloadedArtwork.needsFullResolutionFetch(target, url)
-            }
+            DownloadedArtwork.file(context, url).takeIf(DownloadedArtwork::valid)
         } else null
         if (local == null) return chain.proceed()
+
+        if (DownloadedArtwork.needsFullResolutionFetch(local, url!!)) {
+            // Online: promote a legacy small image to requested 640px.
+            // Offline: never hide the already downloaded thumbnail.
+            val upgraded = chain.proceed()
+            if (upgraded !is coil3.request.ErrorResult) return upgraded
+        }
         val result = chain.withRequest(chain.request.newBuilder().data(local).build()).proceed()
         if (result is coil3.request.ErrorResult) {
             // Bounds can survive damage to the compressed body. Fall back once, without looping.
