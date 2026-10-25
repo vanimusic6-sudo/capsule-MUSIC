@@ -27,8 +27,12 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35])
 class AudioChunkedDataSourceTest {
     /** Serves a known pattern and records the bounded requests it was asked for. */
-    private class FakeUpstream(private val content: ByteArray) : DataSource {
+    private class FakeUpstream(
+        private val content: ByteArray,
+        private val maxBytesPerRead: Int = 7,
+    ) : DataSource {
         val opens = mutableListOf<Pair<Long, Long>>()
+        var readCalls = 0
         private var position = 0
         private var left = 0
 
@@ -48,8 +52,10 @@ class AudioChunkedDataSourceTest {
 
         override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
             if (left == 0) return C.RESULT_END_OF_INPUT
-            // Deliberately short reads, the way a real socket delivers.
-            val count = minOf(length, left, 7)
+            readCalls++
+            // Most tests simulate short socket reads; the Opus test uses
+            // full upstream reads to measure the real coalescing benefit.
+            val count = minOf(length, left, maxBytesPerRead)
             content.copyInto(buffer, offset, position, position + count)
             position += count
             left -= count
@@ -87,6 +93,62 @@ class AudioChunkedDataSourceTest {
         assertTrue(shouldChunkAudioRequest(3 * mb, mb))
         assertTrue(shouldChunkAudioRequest(36 * mb, mb))
         assertTrue(!shouldChunkAudioRequest(128 * 1024L, mb))
+    }
+
+    @Test
+    fun opusWebmTinyExtractorReadsAreCoalescedWithoutChangingRangeBoundaries() {
+        val bytes = content(8192)
+        val upstream = FakeUpstream(bytes, maxBytesPerRead = 8192)
+        val source = AudioChunkedDataSource(
+            upstream, chunkBytes = 1024, initialChunkBytes = { 128L },
+        )
+        val opus = spec(bytes.size.toLong()).buildUpon()
+            .setKey("capsule:audio:abcdefghijk:251:8192").build()
+        source.open(opus)
+        val delivered = ByteArray(bytes.size)
+        for (i in delivered.indices) {
+            assertEquals(1, source.read(delivered, i, 1))
+        }
+        assertEquals(C.RESULT_END_OF_INPUT, source.read(ByteArray(1), 0, 1))
+        assertArrayEquals(bytes, delivered)
+        assertEquals(9, upstream.opens.size)
+        assertEquals(0L to 128L, upstream.opens.first())
+        assertTrue("8K of 1-byte WebM reads must not cause 8K socket reads",
+            upstream.readCalls < 20)
+        source.close()
+    }
+
+    @Test
+    fun onlyKnownOpusPlaybackKeysEnableReadaheadAndAacPreservesDirectReads() {
+        assertTrue(isOpusChunkKey("capsule:audio:abcdefghijk:251:12345"))
+        assertTrue(isOpusChunkKey("capsule:audio:abcdefghijk:249:12345"))
+        assertTrue(!isOpusChunkKey("capsule:audio:abcdefghijk:140:12345"))
+        assertTrue(!isOpusChunkKey("capsule:audio:abcdefghijk:invalid:12345"))
+        assertTrue(!isOpusChunkKey("some-external-audio"))
+        val upstream = FakeUpstream(content(1024), maxBytesPerRead = 1024)
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
+        source.open(spec(1024).buildUpon().setKey("capsule:audio:abcdefghijk:140:1024").build())
+        repeat(1024) { assertEquals(1, source.read(ByteArray(1), 0, 1)) }
+        assertEquals(1024, upstream.readCalls)
+        source.close()
+    }
+
+    @Test
+    fun opusReadAheadIsDiscardedAfterCloseAndFreshSeek() {
+        val bytes = content(4000)
+        val upstream = FakeUpstream(bytes, maxBytesPerRead = 8192)
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 1024)
+        val opus = spec(bytes.size.toLong()).buildUpon()
+            .setKey("capsule:audio:abcdefghijk:251:4000").build()
+        source.open(opus)
+        assertEquals(1, source.read(ByteArray(1), 0, 1))
+        // 1023 bytes may be staged internally, but no stale bytes can be
+        // returned on a new seek. CacheDataSource controls delivered bytes.
+        source.close()
+        source.open(opus.buildUpon().setPosition(2000L).setLength(2000L).build())
+        assertArrayEquals(bytes.copyOfRange(2000, 4000), drain(source))
+        assertEquals(2000L, upstream.opens.last { it.first == 2000L }.first)
+        source.close()
     }
 
     @Test
