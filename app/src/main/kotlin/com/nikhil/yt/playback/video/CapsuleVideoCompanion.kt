@@ -43,44 +43,26 @@ internal const val CAPSULE_SOUND_RAMP_STEPS = 5
  * discarding that frame and performing two network seeks. Unknown lengths,
  * tiny clips and near-EOF switches retain the original safe start-at-zero path.
  */
-internal const val CAPSULE_LATE_VIDEO_ENTRY_MS = 30_000L
-internal const val CAPSULE_LATE_VIDEO_RESCUE_MS = 6_000L
-
-private fun capsuleIndexedDashDuration(item: MediaItem): Long? {
+internal fun capsuleDashVideoInitialPosition(
+    item: MediaItem, audioPositionMs: Long, audioPlaying: Boolean,
+): Long? {
     val resolved = item.localConfiguration?.tag as? YouTubeVideoResolver.ResolvedVideo ?: return null
     if (resolved.delivery != CapsuleVideoDelivery.DASH) return null
     val manifest = resolved.dashManifest?.takeIf { it.length in 1..(64 * 1024) } ?: return null
     val duration = manifest.substringAfter("mediaPresentationDuration=", "")
         .substringAfter("PT", "").substringBefore("S", "")
         .toDoubleOrNull()?.times(1000.0)?.toLong() ?: return null
-    return duration.takeIf { it in 10_000L..43_200_000L }
-}
-
-internal fun capsuleDashVideoInitialPosition(
-    item: MediaItem, audioPositionMs: Long, audioPlaying: Boolean,
-): Long? {
-    val duration = capsuleIndexedDashDuration(item) ?: return null
+    if (duration !in 10_000L..43_200_000L) return null
     val position = audioPositionMs.coerceAtLeast(0L)
-    // Late-entry DASH must first index both representations at the head of
-    // the file. Initializing near the middle while indexes are still being
-    // loaded can leave the source BUFFERING indefinitely on some routes.
-    // Use the established prepare-at-zero, seek-on-READY path instead.
-    if (position >= CAPSULE_LATE_VIDEO_ENTRY_MS) return null
+    // The clip may be shorter than MUSIC; do not accidentally start beyond EOF.
     if (position >= duration - 3_000L) return null
-    // The measured 2s lead avoids duplicate seeks for normal early entries.
+    // On-device Oct 25 A/B: indexed DASH needed ~2.0-2.2 s to become READY.
+    // A 1.4 s head start left the decoder 582-779 ms behind the live music,
+    // forcing a second network seek and sometimes a third buffered correction.
+    // Predict the measured READY interval, not the earlier first-frame time.
+    // Still keep pause, unknown duration and near-EOF paths unchanged.
     val prediction = if (audioPlaying) 2_000L else 0L
     return (position + prediction).coerceAtMost(duration - 3_000L)
-}
-
-/** If late-entry seek stalls, reuse the SAME pinned DASH URLs, but prepare
- * directly at the current position after the index metadata has been observed.
- * This is a one-time local alternative, not a second YouTube extractor request.
- */
-internal fun capsuleDashVideoLateEntryRescuePosition(item: MediaItem, audioPositionMs: Long): Long? {
-    val duration = capsuleIndexedDashDuration(item) ?: return null
-    val position = audioPositionMs.coerceAtLeast(0L)
-    if (position < CAPSULE_LATE_VIDEO_ENTRY_MS || position >= duration - 3_000L) return null
-    return position.coerceAtMost(duration - 3_000L)
 }
 
 internal class CapsuleVideoCompanion(
@@ -227,8 +209,6 @@ internal class CapsuleVideoSession(
     private var deferredVideoSeekMs: Long? = null
     private var startedAtMs = 0L
     private var readyReported = false
-    private var lateEntryRescueItem: MediaItem? = null
-    private var lateEntryRescueAttempted = false
     // The source factory replaces the synthetic URI with the CDN URI in the
     // published timeline. Compare original requests, not the rewritten item.
     private var preparedItem: MediaItem? = null
@@ -544,12 +524,6 @@ internal class CapsuleVideoSession(
         readyReported = false
         val lease = generation
         volume = outputVolume.coerceIn(0f, 1f)
-        // Restart a late-entry DASH once locally if its seek stalls. A reused
-        // prepared clip must not restart an already established decoder.
-        lateEntryRescueItem = item.takeIf {
-            !reuse && capsuleDashVideoLateEntryRescuePosition(it, audio.currentPosition) != null
-        }
-        lateEntryRescueAttempted = false
         audio.addListener(audioListener)
         starting = true
         try {
@@ -596,45 +570,8 @@ internal class CapsuleVideoSession(
     }
 
     private fun needsWatchdog(): Boolean = id != null && audio.playWhenReady &&
-        ((foreground && !surfaceAttached && !committed) ||
-            (rendering && !frameReported) ||
+        ((rendering && !frameReported) ||
             ((rendering || committed) && video.playbackState == Player.STATE_BUFFERING))
-
-    private fun rescueLateEntry(): Boolean {
-        val current = id ?: return false
-        val item = lateEntryRescueItem ?: return false
-        if (lateEntryRescueAttempted || ownsSound || committed || !rendering) return false
-        val target = capsuleDashVideoLateEntryRescuePosition(item, audio.currentPosition)
-            ?: return false
-        lateEntryRescueAttempted = true
-        Timber.tag("CapsuleVideo").w(
-            "VIDEO late-entry rescue id=%s musicMs=%s videoMs=%s videoBufferMs=%s state=%s; pinned DASH direct-position retry",
-            current, audio.currentPosition, video.currentPosition,
-            video.bufferedPosition, video.playbackState,
-        )
-        firstFrame = false
-        preparedFrameAvailable = false
-        frameReported = false
-        aligned = false
-        catchupPending = false
-        seekStartedAtMs = null
-        id?.let(onFrameUnavailable)
-        readyReported = false
-        starting = true
-        try {
-            video.volume = 0f
-            video.setMediaItem(item, target)
-            video.playWhenReady = audio.playWhenReady && rendering
-            video.prepare()
-        } catch (failure: Exception) {
-            starting = false
-            fail(failure)
-            return true
-        }
-        starting = false
-        evaluate()
-        return true
-    }
 
     private fun ensureWatchdog() {
         if (!needsWatchdog()) {
@@ -653,32 +590,11 @@ internal class CapsuleVideoSession(
                 if (!needsWatchdog()) break
                 evaluate()
                 // No first-frame timeout with a detached/minimized player.
-                if (foreground && audio.playWhenReady && !frameReported) startupMs += 500L
+                if (rendering && audio.playWhenReady && !frameReported) startupMs += 500L
                 if (ready && frameReported) startupMs = 0L
                 if ((rendering || committed) && audio.playWhenReady && video.playbackState == Player.STATE_BUFFERING) stallMs += 500L else stallMs = 0L
-                if (startupMs >= CAPSULE_LATE_VIDEO_RESCUE_MS && rescueLateEntry()) {
-                    // Start a fresh bounded budget for the already-resolved
-                    // pinned stream. The watchdog/lease are unchanged.
-                    startupMs = 0L
-                    stallMs = 0L
-                }
-                // Do not strand VIDEO's UI spinner if a surface was never
-                // attached even though the app remains in the foreground.
-                val surfaceWaitTimedOut = foreground && !surfaceAttached &&
-                    startupMs >= 8_000L
-                // After a local pinned-stream retry, cap the extra attempt;
-                // two attempts must never extend the spinner indefinitely.
-                val activeStartupBudget = if (lateEntryRescueAttempted)
-                    minOf(startupBudgetMs, 8_000L) else startupBudgetMs
-                if (surfaceWaitTimedOut) {
-                    // No attached Surface is a UI lifecycle problem, NOT a
-                    // refused YouTube CDN stream. Avoid rotating extractors
-                    // or replaying HTTP requests while the view is absent.
-                    fail(IllegalStateException("VIDEO surface not attached while app is foreground"))
-                    break
-                }
-                if (startupMs >= activeStartupBudget || stallMs >= 12_000L) {
-                    fail(java.net.SocketTimeoutException("VIDEO readiness/stall timeout (surface=$surfaceAttached frame=$firstFrame audio=$hasAudio lateRescue=$lateEntryRescueAttempted)"))
+                if (startupMs >= startupBudgetMs || stallMs >= 12_000L) {
+                    fail(java.net.SocketTimeoutException("VIDEO readiness/stall timeout (surface=$surfaceAttached frame=$firstFrame audio=$hasAudio)"))
                     break
                 }
             }
@@ -736,8 +652,6 @@ internal class CapsuleVideoSession(
         val syncMusic = synchronizeMusic && committed && ownsSound && audio.currentMediaItem?.mediaId == id
         id = null
         deferredVideoSeekMs = null
-        lateEntryRescueItem = null
-        lateEntryRescueAttempted = false
         if (wasActive) audio.removeListener(audioListener)
         if (syncMusic) {
             val safePosition = capsuleClampDecoderSeek(returnPosition, audio.duration)
