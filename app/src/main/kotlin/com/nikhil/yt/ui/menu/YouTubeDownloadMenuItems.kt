@@ -8,10 +8,12 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -42,9 +44,18 @@ internal fun YouTubeDownloadMenuItems(
 ) {
     val context = LocalContext.current
     var confirmPartialDelete by remember(mediaId) { mutableStateOf(false) }
+    var waitingForIndex by remember(mediaId) { mutableStateOf(false) }
+    // Media3 changes download state asynchronously. Start the comet on tap,
+    // not seconds later when DownloadManager finally publishes its state.
+    LaunchedEffect(waitingForIndex, download?.visibleState) {
+        if (!waitingForIndex) return@LaunchedEffect
+        if (download != null) waitingForIndex = false
+        else { delay(6_000); waitingForIndex = false }
+    }
 
     @Composable
-    fun Action(label: Int, icon: Int, destructive: Boolean = false, closeMenu: Boolean = true, click: () -> Unit) {
+    fun Action(label: Int, icon: Int, destructive: Boolean = false,
+        busy: Boolean = false, closeMenu: Boolean = true, click: () -> Unit) {
         ListItem(
             headlineContent = {
                 Text(stringResource(label),
@@ -52,7 +63,8 @@ internal fun YouTubeDownloadMenuItems(
                         else MaterialTheme.colorScheme.onSurface)
             },
             leadingContent = {
-                Icon(painterResource(icon), contentDescription = null,
+                if (busy) CapsuleDownloadComet()
+                else Icon(painterResource(icon), contentDescription = null,
                     tint = if (destructive) MaterialTheme.colorScheme.error
                         else MaterialTheme.colorScheme.onSurfaceVariant)
             },
@@ -67,7 +79,8 @@ internal fun YouTubeDownloadMenuItems(
     Column {
         when (download?.visibleState) {
             Download.STATE_COMPLETED -> {
-                Action(R.string.remove_download, R.drawable.offline, destructive = true) {
+                Action(R.string.remove_download, R.drawable.offline,
+                    destructive = true, closeMenu = !keepOpenOnDownload) {
                     DownloadService.sendRemoveDownload(
                         context, ExoDownloadService::class.java, mediaId, false)
                 }
@@ -76,7 +89,8 @@ internal fun YouTubeDownloadMenuItems(
                 val entry = download ?: return@Column
                 if (entry.canPrioritize) {
                     Action(R.string.download_now, R.drawable.download,
-                        closeMenu = !keepOpenOnDownload) {
+                        busy = waitingForIndex, closeMenu = !keepOpenOnDownload) {
+                        waitingForIndex = true
                         enqueuePriorityAudioDownload(
                             context, ExoDownloadService::class.java, entry.request, false)
                     }
@@ -88,20 +102,23 @@ internal fun YouTubeDownloadMenuItems(
                 } else {
                     ListItem(
                         headlineContent = { Text(stringResource(R.string.downloading)) },
-                        leadingContent = { Icon(painterResource(R.drawable.download), null) },
+                        leadingContent = { CapsuleDownloadComet() },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
                 }
             }
             else -> {
-                Action(R.string.action_download, R.drawable.download,
+                Action(if (waitingForIndex) R.string.downloading else R.string.action_download,
+                    R.drawable.download, busy = waitingForIndex,
                     closeMenu = !keepOpenOnDownload) {
+                    waitingForIndex = true
                     if (download == null) onStart()
                     else enqueuePriorityAudioDownload(
                         context, ExoDownloadService::class.java, download.request, false)
                 }
                 if (download != null) {
-                    Action(R.string.remove_download, R.drawable.offline, destructive = true) {
+                    Action(R.string.remove_download, R.drawable.offline,
+                        destructive = true, closeMenu = !keepOpenOnDownload) {
                         DownloadService.sendRemoveDownload(
                             context, ExoDownloadService::class.java, mediaId, false)
                     }
