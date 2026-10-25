@@ -56,7 +56,12 @@ internal fun capsuleDashVideoInitialPosition(
     val position = audioPositionMs.coerceAtLeast(0L)
     // The clip may be shorter than MUSIC; do not accidentally start beyond EOF.
     if (position >= duration - 3_000L) return null
-    val prediction = if (audioPlaying) 1_400L else 0L
+    // On-device Oct 25 A/B: indexed DASH needed ~2.0-2.2 s to become READY.
+    // A 1.4 s head start left the decoder 582-779 ms behind the live music,
+    // forcing a second network seek and sometimes a third buffered correction.
+    // Predict the measured READY interval, not the earlier first-frame time.
+    // Still keep pause, unknown duration and near-EOF paths unchanged.
+    val prediction = if (audioPlaying) 2_000L else 0L
     return (position + prediction).coerceAtMost(duration - 3_000L)
 }
 
