@@ -116,11 +116,18 @@ internal object OnlinePlaylistDownloadCoordinator {
             session?.ids.orEmpty() + currentlyVisibleIds).distinct()
         removeCollectionDownloads(downloadManager, ids)
         lastServiceWakeId.remove(playlistId)?.let { first ->
-            // Service intents execute in order. A REMOVE after an in-flight
-            // first ADD prevents late reappearance after the user cancelled.
-            DownloadService.sendRemoveDownload(
-                context.applicationContext, ExoDownloadService::class.java, first, false,
-            )
+            // Never undo a priority single-track download that was started
+            // independently after this collection's first ADD.
+            val isManualNow = downloadManager.currentDownloads.any {
+                it.request.id == first && it.request.isManualDownload()
+            }
+            if (!isManualNow) {
+                // Service intents execute in order. A REMOVE after an in-flight
+                // first ADD prevents late reappearance after cancellation.
+                DownloadService.sendRemoveDownload(
+                    context.applicationContext, ExoDownloadService::class.java, first, false,
+                )
+            }
         }
     }
 }
