@@ -54,6 +54,13 @@ class CapsuleVideoRoutesTest {
         assertTrue(result.isFailure)
         assertEquals(1, calls)
     }
+    @Test fun coldVideoPrefersPipePipeButRemembersSuccessfulDirectRoute() {
+        val health = CapsuleVideoRouteHealth()
+        assertEquals(CapsuleVideoRoute.PIPEPIPE, health.order(null).first())
+        health.success(CapsuleVideoRoute.VISIONOS)
+        assertEquals(CapsuleVideoRoute.VISIONOS, health.order(null).first())
+    }
+
     @Test fun nextClipStartsWithSuccessfulRouteWithoutRepeatingDeadEndpoints() {
         val health = CapsuleVideoRouteHealth()
         resolveVideoRoutes(health = health) { route ->
@@ -78,22 +85,22 @@ class CapsuleVideoRoutesTest {
     }
     @Test fun missingFormatOnOneClipDoesNotCooldownTheFastRouteForOtherClips() {
         val health = CapsuleVideoRouteHealth()
-        val first = resolveVideoRoutes(health = health) { if (it == CapsuleVideoRoute.ANDROID_VR) null else stream }
-        assertEquals("direct-visionos", first.backend)
+        val first = resolveVideoRoutes(health = health) { if (it == CapsuleVideoRoute.PIPEPIPE) null else stream }
+        assertEquals("direct-android-vr", first.backend)
         val calls = mutableListOf<CapsuleVideoRoute>()
         val next = resolveVideoRoutes(health = health) { calls += it; stream }
-        assertEquals(listOf(CapsuleVideoRoute.VISIONOS), calls)
-        assertEquals("direct-visionos", next.backend)
+        assertEquals(listOf(CapsuleVideoRoute.ANDROID_VR), calls)
+        assertEquals("direct-android-vr", next.backend)
     }
 
     @Test fun cdnPlaybackFailurePreventsRepeatingTheBrokenRouteOnTheNextClip() {
         var now = 0L
         val health = CapsuleVideoRouteHealth { now }
         val recovered = resolveVideoRoutes("direct-android-vr", health) { stream }
-        assertEquals("direct-visionos", recovered.backend)
-        assertEquals(CapsuleVideoRoute.VISIONOS, health.order(null).first())
+        assertEquals("pipepipe", recovered.backend)
+        assertEquals(CapsuleVideoRoute.PIPEPIPE, health.order(null).first())
         now = 46_000_000_000L
-        assertEquals(CapsuleVideoRoute.VISIONOS, health.order(null).first())
+        assertEquals(CapsuleVideoRoute.PIPEPIPE, health.order(null).first())
     }
     @Test fun globalBotCooldownRequiresEveryRouteToConfirmTheBlock() {
         val failure = runCatching { resolveVideoRoutes { throw IOException("Confirm you are not a bot") } }.exceptionOrNull()!!
@@ -120,13 +127,14 @@ class CapsuleVideoRoutesTest {
         val health = CapsuleVideoRouteHealth()
         val result = resolveVideoRoutes(health = health) {
             when (it) {
+                CapsuleVideoRoute.PIPEPIPE,
                 CapsuleVideoRoute.ANDROID_VR -> throw CapsuleDirectVideoException(CapsuleNewPipeFailure.BOT_BLOCKED, "PLAYER_LOGIN_REQUIRED:BOT_CHECK")
                 CapsuleVideoRoute.VISIONOS -> throw CapsuleDirectVideoException(CapsuleNewPipeFailure.EXTRACTOR, "NO_COMPATIBLE_STREAM", penalizeRoute = false)
                 else -> stream
             }
         }
-        assertEquals("pipepipe", result.backend)
-        assertEquals(CapsuleVideoRoute.PIPEPIPE, health.candidates(null).first())
+        assertEquals("newpipe", result.backend)
+        assertEquals(CapsuleVideoRoute.NEWPIPE, health.candidates(null).first())
     }
 
     @Test fun recentBotBlockedRoutesAreSkippedWhenAnotherBackendJustWorked() {
@@ -134,21 +142,21 @@ class CapsuleVideoRoutesTest {
         val health = CapsuleVideoRouteHealth { now }
         val first = resolveVideoRoutes(health = health) { route ->
             when (route) {
-                CapsuleVideoRoute.ANDROID_VR, CapsuleVideoRoute.VISIONOS ->
+                CapsuleVideoRoute.PIPEPIPE, CapsuleVideoRoute.ANDROID_VR ->
                     throw CapsuleDirectVideoException(
                         CapsuleNewPipeFailure.BOT_BLOCKED, "PLAYER_LOGIN_REQUIRED:BOT_CHECK")
-                CapsuleVideoRoute.PIPEPIPE -> stream
-                else -> error("Should use healthy PipePipe before remaining routes")
+                CapsuleVideoRoute.VISIONOS -> stream
+                else -> error("Should use first healthy direct route")
             }
         }
-        assertEquals("pipepipe", first.backend)
+        assertEquals("direct-visionos", first.backend)
         val attempted = mutableListOf<CapsuleVideoRoute>()
         val next = resolveVideoRoutes(health = health) { route ->
             attempted += route
             stream
         }
-        assertEquals("pipepipe", next.backend)
-        assertEquals(listOf(CapsuleVideoRoute.PIPEPIPE), attempted)
+        assertEquals("direct-visionos", next.backend)
+        assertEquals(listOf(CapsuleVideoRoute.VISIONOS), attempted)
         now = java.util.concurrent.TimeUnit.MINUTES.toNanos(11)
         assertEquals(0, health.pausedBotCount())
     }
@@ -157,10 +165,10 @@ class CapsuleVideoRoutesTest {
         val health = CapsuleVideoRouteHealth()
         resolveVideoRoutes(health = health) { route ->
             when (route) {
-                CapsuleVideoRoute.ANDROID_VR, CapsuleVideoRoute.VISIONOS ->
+                CapsuleVideoRoute.PIPEPIPE, CapsuleVideoRoute.ANDROID_VR ->
                     throw CapsuleDirectVideoException(
                         CapsuleNewPipeFailure.BOT_BLOCKED, "PLAYER_LOGIN_REQUIRED:BOT_CHECK")
-                CapsuleVideoRoute.PIPEPIPE -> stream
+                CapsuleVideoRoute.VISIONOS -> stream
                 else -> error("should have succeeded")
             }
         }
@@ -172,7 +180,7 @@ class CapsuleVideoRoutesTest {
             }
         }.exceptionOrNull()!!
         assertEquals(CapsuleNewPipeFailure.BOT_BLOCKED, CapsuleNewPipeExtractor.classify(e))
-        assertEquals(listOf(CapsuleVideoRoute.PIPEPIPE, CapsuleVideoRoute.NEWPIPE,
+        assertEquals(listOf(CapsuleVideoRoute.VISIONOS, CapsuleVideoRoute.NEWPIPE,
             CapsuleVideoRoute.ANDROID_REEL), attempts)
     }
 
