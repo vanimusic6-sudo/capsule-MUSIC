@@ -14,19 +14,19 @@ class ArtistScreenDesignTest {
         org.junit.Assert.assertEquals(1f, com.nikhil.yt.ui.screens.artist.artistArtworkFade(1, 0, 1000, 200), 0f)
     }
 
-    @Test fun artistToolbarFadeHasNoHardThreshold() {
-        // The fade is continuous and finishes as the portrait disappears (not at 80%).
-        val values = (0..100).map { com.nikhil.yt.ui.component.artistToolbarSurfaceAlpha(it / 100f) }
-        org.junit.Assert.assertEquals(0f, values.first(), 0.0001f)
-        org.junit.Assert.assertEquals(1f, values.last(), 0.0001f)
-        org.junit.Assert.assertEquals(0.8f, values[80], 0.0001f)
-        // The toolbar and portrait must use the identical fade amount at
-        // every sampled scroll offset, not just near the very top.
-        org.junit.Assert.assertTrue(values.indices.all { index ->
-            kotlin.math.abs(values[index] - index / 100f) < 0.0001f
-        })
-        org.junit.Assert.assertEquals(1f, values[100], 0.0001f)
-        org.junit.Assert.assertTrue(values.zipWithNext().all { (a, b) -> b >= a && b-a <= 0.16f })
+    @Test fun artistToolbarFadeNeverDoubleTintsTheVisiblePortrait() {
+        // The hero already fades into the same background. Blending a second
+        // 50%-opaque toolbar over it produces a much darker strip (alpha
+        // compositing squares the remaining photo: (1 - 0.5)^2).
+        val alpha = com.nikhil.yt.ui.component::artistToolbarSurfaceAlpha
+        org.junit.Assert.assertEquals(0f, alpha(0f), 0f)
+        for (fraction in listOf(0.1f, 0.25f, 0.5f, 0.75f, 0.95f)) {
+            org.junit.Assert.assertEquals("No overlay while photograph is visible",
+                0f, alpha(fraction), 0f)
+        }
+        org.junit.Assert.assertEquals(1f, alpha(1f), 0f)
+        val samples = (0..1000).map { alpha(it / 1000f) }
+        assertTrue(samples.zipWithNext().all { (a, b) -> b >= a && b - a <= 0.051f })
+        assertTrue(samples.all { it in 0f..1f })
     }
-
 }
