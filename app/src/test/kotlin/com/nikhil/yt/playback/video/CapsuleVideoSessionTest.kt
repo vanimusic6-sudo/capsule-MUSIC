@@ -106,7 +106,7 @@ class CapsuleVideoSessionTest {
                 videoFormat = YouTubeVideoResolver.StreamFormat(248, 1280, 720, "720p"),
                 expiresAtMs = Long.MAX_VALUE,
                 delivery = com.nikhil.yt.innertube.video.CapsuleVideoDelivery.DASH,
-                dashManifest = "<MPD mediaPresentationDuration=\\"PT${seconds}.0S\\"/>",
+                dashManifest = """<MPD mediaPresentationDuration="PT${seconds}.0S"/>""",
             ),
         ).build()
 
