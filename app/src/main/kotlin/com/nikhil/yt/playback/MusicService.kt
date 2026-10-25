@@ -1909,6 +1909,41 @@ class MusicService :
                     sleepTimer = SleepTimer(scope, this, this@MusicService::pauseFromSleepTimer)
                     addListener(sleepTimer)
                     addAnalyticsListener(PlaybackStatsListener(false, this@MusicService))
+                    addAnalyticsListener(object : AnalyticsListener {
+                        override fun onAudioDecoderInitialized(
+                            eventTime: AnalyticsListener.EventTime, decoderName: String,
+                            initializedTimestampMs: Long, initializationDurationMs: Long,
+                        ) {
+                            Timber.tag("CapsuleCodec").i(
+                                "music-audio-decoder id=%s codec=%s initMs=%s",
+                                eventTime.mediaPeriodId?.periodUid ?: currentMediaItem?.mediaId ?: "unknown",
+                                decoderName, initializationDurationMs,
+                            )
+                        }
+                        override fun onDownstreamFormatChanged(
+                            eventTime: AnalyticsListener.EventTime,
+                            mediaLoadData: androidx.media3.exoplayer.source.MediaLoadData,
+                        ) {
+                            if (mediaLoadData.trackType != C.TRACK_TYPE_AUDIO) return
+                            mediaLoadData.trackFormat?.let {
+                                Timber.tag("CapsuleCodec").i(
+                                    "music-audio-format id=%s mime=%s bitrate=%s rate=%s channels=%s",
+                                    currentMediaItem?.mediaId ?: "unknown",
+                                    it.sampleMimeType ?: "unknown", it.bitrate, it.sampleRate, it.channelCount,
+                                )
+                            }
+                        }
+                        override fun onAudioUnderrun(
+                            eventTime: AnalyticsListener.EventTime, bufferSize: Int,
+                            bufferSizeMs: Long, elapsedSinceLastFeedMs: Long,
+                        ) {
+                            Timber.tag("CapsuleCodec").w(
+                                "music-underrun id=%s bufferMs=%s timeSinceFeedMs=%s",
+                                currentMediaItem?.mediaId ?: "unknown",
+                                bufferSizeMs, elapsedSinceLastFeedMs,
+                            )
+                        }
+                    })
                     setOffloadEnabled(dataStore.get(AudioOffload, false))
                 }
 
