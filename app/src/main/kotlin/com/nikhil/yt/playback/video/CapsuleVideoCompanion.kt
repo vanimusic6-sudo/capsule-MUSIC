@@ -666,7 +666,11 @@ internal class CapsuleVideoSession(
                 // attached even though the app remains in the foreground.
                 val surfaceWaitTimedOut = foreground && !surfaceAttached &&
                     startupMs >= 8_000L
-                if (surfaceWaitTimedOut || startupMs >= startupBudgetMs || stallMs >= 12_000L) {
+                // After a local pinned-stream retry, cap the extra attempt;
+                // two attempts must never extend the spinner indefinitely.
+                val activeStartupBudget = if (lateEntryRescueAttempted)
+                    minOf(startupBudgetMs, 8_000L) else startupBudgetMs
+                if (surfaceWaitTimedOut || startupMs >= activeStartupBudget || stallMs >= 12_000L) {
                     fail(java.net.SocketTimeoutException("VIDEO readiness/stall timeout (surface=$surfaceAttached frame=$firstFrame audio=$hasAudio)"))
                     break
                 }
