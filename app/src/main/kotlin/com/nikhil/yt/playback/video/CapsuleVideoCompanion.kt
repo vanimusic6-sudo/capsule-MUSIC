@@ -186,6 +186,10 @@ internal class CapsuleVideoSession(
     private var generation = 0L
     private var foreground = true
     private var surfaceAttached = false
+    // A temporarily hidden/removed surface after a successful attachment is
+    // normal (mini-player, navigation, rotation). Only a COLD session that
+    // never received any output surface is eligible for the 8s UI timeout.
+    private var surfaceEverAttachedForSession = false
     // Physical frame lifetime differs from a session's presentation lifetime.
     // Media3 does not emit another first-frame event for a retained surface.
     private var preparedFrameAvailable = false
@@ -520,6 +524,7 @@ internal class CapsuleVideoSession(
         firstFrame = reuse && rendering && preparedFrameAvailable
         this.startupBudgetMs = startupBudgetMs
         id = mediaId
+        surfaceEverAttachedForSession = surfaceAttached
         startedAtMs = SystemClock.elapsedRealtime()
         readyReported = false
         val lease = generation
@@ -570,7 +575,7 @@ internal class CapsuleVideoSession(
     }
 
     private fun needsWatchdog(): Boolean = id != null && audio.playWhenReady &&
-        ((foreground && !surfaceAttached && !committed) ||
+        ((foreground && !surfaceAttached && !surfaceEverAttachedForSession && !committed) ||
             (rendering && !frameReported) ||
             ((rendering || committed) && video.playbackState == Player.STATE_BUFFERING))
 
@@ -594,10 +599,14 @@ internal class CapsuleVideoSession(
                 // On the first cold launch the TextureView may never attach.
                 // Do not interpret an absent local Surface as a slow YouTube
                 // server, and never leave the toggle spinning indefinitely.
-                if (foreground && audio.playWhenReady && !frameReported) startupMs += 500L
+                if ((rendering || (foreground && !surfaceEverAttachedForSession)) &&
+                    audio.playWhenReady && !frameReported
+                ) startupMs += 500L
                 if (ready && frameReported) startupMs = 0L
                 if ((rendering || committed) && audio.playWhenReady && video.playbackState == Player.STATE_BUFFERING) stallMs += 500L else stallMs = 0L
-                if (foreground && !surfaceAttached && startupMs >= 8_000L) {
+                if (foreground && !surfaceAttached && !surfaceEverAttachedForSession &&
+                    startupMs >= 8_000L
+                ) {
                     fail(IllegalStateException("VIDEO output surface unavailable on first opening"))
                     break
                 }
@@ -647,7 +656,10 @@ internal class CapsuleVideoSession(
         evaluate()
     }
     fun setForeground(value: Boolean) { if (foreground != value) changeRendering { foreground = value } }
-    fun setSurfaceAttached(value: Boolean) { if (surfaceAttached != value) changeRendering { surfaceAttached = value } }
+    fun setSurfaceAttached(value: Boolean) {
+        if (value && id != null) surfaceEverAttachedForSession = true
+        if (surfaceAttached != value) changeRendering { surfaceAttached = value }
+    }
     fun setVolume(value: Float) { volume = value.coerceIn(0f, 1f); video.volume = if (ownsSound && audible) volume * soundGain else 0f }
 
     private fun fail(cause: Throwable) {
