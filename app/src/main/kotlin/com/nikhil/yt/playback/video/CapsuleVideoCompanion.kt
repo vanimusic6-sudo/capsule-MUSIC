@@ -670,8 +670,15 @@ internal class CapsuleVideoSession(
                 // two attempts must never extend the spinner indefinitely.
                 val activeStartupBudget = if (lateEntryRescueAttempted)
                     minOf(startupBudgetMs, 8_000L) else startupBudgetMs
-                if (surfaceWaitTimedOut || startupMs >= activeStartupBudget || stallMs >= 12_000L) {
-                    fail(java.net.SocketTimeoutException("VIDEO readiness/stall timeout (surface=$surfaceAttached frame=$firstFrame audio=$hasAudio)"))
+                if (surfaceWaitTimedOut) {
+                    // No attached Surface is a UI lifecycle problem, NOT a
+                    // refused YouTube CDN stream. Avoid rotating extractors
+                    // or replaying HTTP requests while the view is absent.
+                    fail(IllegalStateException("VIDEO surface not attached while app is foreground"))
+                    break
+                }
+                if (startupMs >= activeStartupBudget || stallMs >= 12_000L) {
+                    fail(java.net.SocketTimeoutException("VIDEO readiness/stall timeout (surface=$surfaceAttached frame=$firstFrame audio=$hasAudio lateRescue=$lateEntryRescueAttempted)"))
                     break
                 }
             }
