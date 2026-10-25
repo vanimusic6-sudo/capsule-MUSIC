@@ -39,6 +39,12 @@ class CapsuleReleaseUiCorrectionsTest {
         val actions = source("ui/menu/YouTubeDownloadMenuItems.kt")
         assertTrue(actions.contains("confirmPartialDelete = true"))
         assertTrue(actions.contains("DownloadRemovalDialog("))
+        assertTrue("Player More must stay open when a confirmed download is removed",
+            actions.contains("if (!keepOpenOnDownload) onDismiss()"))
+        val playerMenu = source("ui/menu/PlayerMenu.kt")
+        val audiusCancel = playerMenu.substringAfter("ExperimentalDownload.cancelInProgress(")
+            .substringBefore("val savedAudiusFile")
+        assertFalse("Audius cancel must not collapse More", audiusCancel.contains("onDismiss()"))
         assertTrue(actions.contains("DownloadService.sendRemoveDownload("))
         assertFalse(actions.contains("sendSetStopReason("))
         val album = source("ui/screens/AlbumScreen.kt")
@@ -52,6 +58,7 @@ class CapsuleReleaseUiCorrectionsTest {
         assertTrue(coordinator.contains("session?.job?.cancel()"))
         assertTrue(coordinator.contains("DownloadService.sendRemoveDownload("))
         assertTrue(public.contains("key = \"playlist-download-action\""))
+        assertTrue(public.contains("headlineContent = { Text(stringResource(R.string.capsule_stop_and_delete_download)) }"))
         assertFalse(public.contains("R.string.capsule_stop_and_delete_download),"))
         assertFalse(local.contains("playlist?.id?.let { clearPlaylist(it) }"))
     }
