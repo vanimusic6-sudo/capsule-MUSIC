@@ -294,13 +294,11 @@ internal class AudioChunkedDataSource(
             // At most the remainder of THIS bounded request. No speculative
             // requests, no seek across slices, no write of unused bytes to cache.
             val upstreamRequested = minOf(OPUS_READAHEAD_BYTES.toLong(), chunkLeft).toInt()
-            val startedNs = System.nanoTime()
             val filled = upstream.read(opusReadAhead, 0, upstreamRequested)
-            ratePolicy.observeRead(
-                requestedBytes = upstreamRequested,
-                readBytes = filled,
-                elapsedMs = ((System.nanoTime() - startedNs).coerceAtLeast(0L) / 1_000_000L),
-            )
+            // Do not reinterpret a coalesced 8K read as evidence for CDN
+            // rate adaptation. Before this change Media3 requested tiny
+            // WebM fragments that deliberately did not drive that policy.
+            // Keep the same next-range sizes and recovery budget.
             if (filled > 0) {
                 bufferedOffset = minOf(requested, filled)
                 bufferedLength = filled
