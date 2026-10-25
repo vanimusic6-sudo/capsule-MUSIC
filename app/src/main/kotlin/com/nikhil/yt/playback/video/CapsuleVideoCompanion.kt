@@ -47,8 +47,9 @@ internal fun capsuleDashVideoInitialPosition(
     val resolved = item.localConfiguration?.tag as? YouTubeVideoResolver.ResolvedVideo ?: return null
     if (resolved.delivery != CapsuleVideoDelivery.DASH) return null
     val manifest = resolved.dashManifest?.takeIf { it.length in 1..(64 * 1024) } ?: return null
-    val duration = Regex("mediaPresentationDuration=\\\"PT([0-9]+(?:\\\\.[0-9]+)?)S\\\"")
-        .find(manifest)?.groupValues?.getOrNull(1)?.toDoubleOrNull()?.times(1000.0)?.toLong()
+    val duration = manifest.substringAfter("mediaPresentationDuration=", "")
+        .substringAfter("PT", "").substringBefore("S", "")
+        .toDoubleOrNull()?.times(1000.0)?.toLong() ?: return null
         ?: return null
     if (duration !in 10_000L..43_200_000L) return null
     val position = audioPositionMs.coerceAtLeast(0L)
