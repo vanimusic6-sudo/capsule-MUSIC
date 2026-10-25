@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -161,7 +162,12 @@ fun ArtistScreen(
     val librarySongs by viewModel.librarySongs.collectAsState()
     val libraryAlbums by viewModel.libraryAlbums.collectAsState()
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
-    val lazyListState = rememberLazyListState()
+    // Anchor scrolling to the actual artist, not a reused destination
+    // composition. Remembered index/offset survives a toolbar/hero recompose
+    // without leaking the previous artist's scroll position to this one.
+    val lazyListState = rememberSaveable(viewModel.artistId, saver = LazyListState.Saver) {
+        LazyListState()
+    }
     var descriptionMoving by remember(viewModel.artistId) { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     var showLocal by rememberSaveable(viewModel.artistId) { mutableStateOf(false) }
