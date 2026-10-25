@@ -41,10 +41,12 @@ class PlayerArtworkReliabilityTest {
         assertTrue(immersive.contains("coverLoadRetry by remember(mediaMetadata.id, artworkTone.displayUrl)"))
         assertTrue(immersive.contains("key(mediaMetadata.id, artworkTone.displayUrl, coverLoadRetry)"))
         assertTrue(immersive.contains("if (coverLoadRetry < 1) coverLoadRetry++"))
-        assertTrue(immersive.contains("onSuccess = { coverImageReady = true }"))
+        assertTrue(immersive.contains("decodedCoverPainter = success.painter"))
         assertTrue(immersive.contains("visibleArtworkRebind"))
         assertTrue(immersive.contains("onError = { error ->"))
         assertTrue(immersive.contains(".size(960, 960)"))
+        assertTrue(immersive.contains("decodedCoverPainter?.let { ready ->"))
+        assertTrue(immersive.contains("delay(if (decodedCoverPainter != null) 1_000L else 3_000L)"))
     }
 
     @Test fun lightAndCosmoKeepImageFallbackLocalToTheirOwnArtwork() {
@@ -54,10 +56,12 @@ class PlayerArtworkReliabilityTest {
         assertTrue(full.contains(".size(960, 960)"))
         assertTrue(full.contains(".crossfade(false)"))
         assertTrue(full.contains("artworkRebind"))
-        assertTrue(full.contains("delay(6_000L)"))
+        assertTrue(full.contains("retainedArtworkPainter = success.painter"))
+        assertTrue(full.contains("retainedArtworkPainter?.let { ready ->"))
+        assertTrue(full.contains("delay(if (retainedArtworkPainter != null) 1_000L else 3_000L)"))
         assertTrue(full.contains("onError = {"))
         assertTrue(full.contains("artworkFailed = true"))
-        assertTrue(full.contains("if (artworkFailed)"))
+        assertTrue(full.contains("if (artworkFailed && retainedArtworkPainter == null)"))
         // The animation and gradient extraction algorithms must not be replaced.
         assertTrue(full.contains("CapsuleVideoArtworkTransition("))
     }
