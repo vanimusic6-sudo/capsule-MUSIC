@@ -8,6 +8,7 @@ import coil3.imageLoader
 import coil3.intercept.Interceptor
 import coil3.request.ImageRequest
 import coil3.request.ImageResult
+import coil3.request.CachePolicy
 import coil3.request.SuccessResult
 import coil3.request.allowHardware
 import coil3.toBitmap
@@ -41,6 +42,18 @@ internal object DownloadedArtwork {
     internal fun needsUpgrade(file: File, originalUrl: String): Boolean =
         optimizedUrl(originalUrl) != originalUrl && !attempted(file).isFile &&
             (bounds(file)?.let { minOf(it.first, it.second) < MIN_SHARP_EDGE_PX } == true)
+    /** A 640px upgrade must not be shadowed by our own legacy 120px offline cache. */
+    internal fun needsFullResolutionFetch(file: File, requestedUrl: String): Boolean {
+        val requestedSize = Regex("""=w(\\d+)-h(\\d+)""").find(requestedUrl)
+            ?.groupValues?.drop(1)?.mapNotNull(String::toIntOrNull)?.minOrNull()
+            ?: Regex("""=s(\\d+)""").find(requestedUrl)?.groupValues?.get(1)?.toIntOrNull()
+            ?: return false
+        return requestedSize >= MIN_SHARP_EDGE_PX &&
+            capsuleArtworkUrl(requestedUrl, 960) != requestedUrl &&
+            !attempted(file).isFile &&
+            (bounds(file)?.let { minOf(it.first, it.second) < MIN_SHARP_EDGE_PX } == true)
+    }
+
     private fun savedJpeg(bitmap: Bitmap): ByteArray {
         // Never upsample a source thumbnail; encode once at a bounded physical resolution.
         val scale = minOf(1f, COVER_SIZE_PX.toFloat() / maxOf(bitmap.width, bitmap.height))
@@ -85,6 +98,9 @@ internal object DownloadedArtwork {
                 val loaded = if (!valid(target) || needsUpgrade(target, url)) {
                     imageLoader.execute(ImageRequest.Builder(context)
                         .data(sourceUrl).size(COVER_SIZE_PX, COVER_SIZE_PX)
+                        // A legacy file may have been cached under this exact URI.
+                        // The remote-upgrade request must not retrieve that stale copy.
+                        .memoryCachePolicy(if (valid(target)) CachePolicy.DISABLED else CachePolicy.ENABLED)
                         .allowHardware(false).build()) as? SuccessResult
                 } else null
                 writes.withLock {
@@ -164,7 +180,7 @@ internal class DownloadedArtworkInterceptor(private val context: Context) : Inte
         val url = if (data is String || data is android.net.Uri || data is coil3.Uri) data.toString() else null
         val local = if (url?.startsWith("https://") == true) withContext(Dispatchers.IO) {
             DownloadedArtwork.file(context, url).takeIf { target ->
-                DownloadedArtwork.valid(target) && !DownloadedArtwork.needsUpgrade(target, url)
+                DownloadedArtwork.valid(target) && !DownloadedArtwork.needsFullResolutionFetch(target, url)
             }
         } else null
         if (local == null) return chain.proceed()
