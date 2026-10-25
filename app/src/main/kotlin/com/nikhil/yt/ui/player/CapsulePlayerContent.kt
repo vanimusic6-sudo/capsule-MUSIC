@@ -15,6 +15,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -69,6 +70,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -621,6 +623,12 @@ fun CapsulePlayerContent(
                         var artworkLoading by remember(mediaMetadata.id, originalArtworkUrl) {
                             mutableStateOf(false)
                         }
+                        // A successfully decoded image belongs to THIS track only.
+                        // Preserve its painter across a visible Coil rebind so an
+                        // interrupted update cannot flash the grey player surface.
+                        var retainedArtworkPainter by remember(mediaMetadata.id, originalArtworkUrl) {
+                            mutableStateOf<Painter?>(null)
+                        }
                         // The old painter could stay blank after a transient Coil
                         // cancellation, despite the image already existing in
                         // memory/disk. One bounded rebind restores the real bitmap
@@ -648,7 +656,7 @@ fun CapsulePlayerContent(
                             }
                             // Cold image fetches can legitimately be slow.
                             // Rescue at most once and only while this cover is visible.
-                            delay(6_000L)
+                            delay(if (retainedArtworkPainter != null) 1_000L else 3_000L)
                             if (artworkLoading) {
                                 Timber.tag("CapsuleArtwork").w(
                                     "player-artwork-stalled id=%s original=%s rebind=%s",
@@ -662,12 +670,27 @@ fun CapsulePlayerContent(
                             }
                         }
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            if (artworkLoading || artworkFailed) {
+                                retainedArtworkPainter?.let { ready ->
+                                    Image(
+                                        painter = ready,
+                                        contentDescription = null,
+                                        contentScale = if (cropAlbumArt) ContentScale.Crop
+                                            else ContentScale.Fit,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                }
+                            }
                             key(mediaMetadata.id, requestedArtworkUrl, artworkRebind) {
                             AsyncImage(
                                 model = imageRequest,
                                 contentDescription = mediaMetadata.title,
                                 onLoading = { artworkLoading = true; artworkFailed = false },
-                                onSuccess = { artworkLoading = false; artworkFailed = false },
+                                onSuccess = { success ->
+                                    retainedArtworkPainter = success.painter
+                                    artworkLoading = false
+                                    artworkFailed = false
+                                },
                                 onError = { error ->
                                     artworkLoading = false
                                     Timber.tag("CapsuleArtwork").w(
@@ -707,7 +730,7 @@ fun CapsulePlayerContent(
                                 modifier = Modifier.fillMaxSize(),
                             )
                             }
-                            if (artworkFailed) {
+                            if (artworkFailed && retainedArtworkPainter == null) {
                                 Icon(
                                     painter = painterResource(R.drawable.album),
                                     contentDescription = mediaMetadata.title,
