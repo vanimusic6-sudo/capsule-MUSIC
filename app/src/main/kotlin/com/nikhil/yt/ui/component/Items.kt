@@ -944,6 +944,9 @@ fun YouTubeListItem(
     isPlaying: Boolean = false,
     isSwipeable: Boolean = true,
     showSourceIcon: Boolean = false,
+    // Search suggestions sometimes expose just a primary credited artist;
+    // display a richer already-known credit without touching other callers.
+    artistSubtitleOverride: String? = null,
     trailingContent: @Composable RowScope.() -> Unit = {},
     badges: @Composable RowScope.() -> Unit = {
         DefaultYouTubeItemBadges(item)
@@ -959,7 +962,8 @@ fun YouTubeListItem(
                 badges()
 
                 val author = when (item) {
-                    is SongItem -> item.artists.joinToString { it.name }
+                    is SongItem -> artistSubtitleOverride?.takeIf { it.isNotBlank() }
+                        ?: item.artists.joinToString { it.name }
                     is AlbumItem -> item.artists?.joinToString { it.name }.orEmpty()
                     is ArtistItem -> ""
                     is PlaylistItem -> item.author?.name.orEmpty()
