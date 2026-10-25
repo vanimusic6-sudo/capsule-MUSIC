@@ -143,11 +143,12 @@ internal object CapsuleAudioFallbackPolicy {
             YouTubeFailureKind.AGE_RESTRICTED,
             YouTubeFailureKind.UNPLAYABLE,
             YouTubeFailureKind.NONE,
+            // One bounded foreground alternate after a network /player timeout.
+            YouTubeFailureKind.TRANSIENT,
             -> true
 
             YouTubeFailureKind.RATE_LIMITED,
             YouTubeFailureKind.BOT_CHECK,
-            YouTubeFailureKind.TRANSIENT,
             YouTubeFailureKind.PERMANENT,
             -> false
         }
