@@ -98,6 +98,43 @@ class CapsuleVideoSessionTest {
             session.start("song", MediaItem.Builder().setMediaId("song").build(), 0.8f)
         }
     }
+    private fun indexedVideoItem(seconds: Int = 180): MediaItem =
+        MediaItem.Builder().setMediaId("song").setUri("https://example.test/clip").setTag(
+            YouTubeVideoResolver.ResolvedVideo(
+                sourceMediaId = "song", videoId = "abcdefghijk",
+                videoStreamUrl = "https://rr.googlevideo.com/videoplayback",
+                videoFormat = YouTubeVideoResolver.StreamFormat(248, 1280, 720, "720p"),
+                expiresAtMs = Long.MAX_VALUE,
+                delivery = com.nikhil.yt.innertube.video.CapsuleVideoDelivery.DASH,
+                dashManifest = "<MPD mediaPresentationDuration=\\"PT${seconds}.0S\\"/>",
+            ),
+        ).build()
+
+    @Test fun indexedDashStartsNearMusicWithoutThrowawayFrameAndNetworkSeek() = runTest {
+        val f = Fixture(this)
+        f.music.position = 12_000L
+        f.session.setSurfaceAttached(true)
+        f.session.start("song", indexedVideoItem(), 0.8f)
+        assertEquals(13_400L, f.clip.position)
+        assertTrue(f.clip.seeks.isEmpty())
+        f.music.position = 13_450L
+        f.clip.ready(); f.clip.frame()
+        advanceTimeBy(261L); runCurrent()
+        assertEquals(listOf("song"), f.frames)
+        assertTrue(f.clip.seeks.isEmpty())
+        f.session.stop()
+    }
+
+    @Test fun indexedDashPreseekFallsBackNearClipEndOrWithoutDuration() {
+        val item = indexedVideoItem(seconds = 60)
+        assertEquals(11_400L, capsuleDashVideoInitialPosition(item, 10_000L, true))
+        assertEquals(10_000L, capsuleDashVideoInitialPosition(item, 10_000L, false))
+        assertNull(capsuleDashVideoInitialPosition(item, 58_000L, true))
+        assertNull(capsuleDashVideoInitialPosition(
+            item.buildUpon().setTag(null).build(), 10_000L, true,
+        ))
+    }
+
     @Test fun frameReadyTracksOrderingAndShortSeam() = runTest {
         val f = Fixture(this); f.start()
         f.clip.frame(); f.clip.ready(audioSelected = false)
