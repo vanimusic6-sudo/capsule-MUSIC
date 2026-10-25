@@ -45,6 +45,18 @@ import timber.log.Timber
  */
 internal const val AUDIO_CHUNK_BYTES = 1L * 1024 * 1024
 
+// Media3's Matroska/WebM extractor requested ~19,000 tiny read() calls for
+// 1 MiB of Opus, versus ~3,000 for MP4/AAC in the same phone capture.
+// Readahead below coalesces ONLY upstream Opus network reads. It never
+// changes the signed URL, seek offsets, CDN range size or cached audio bytes.
+internal const val OPUS_READAHEAD_BYTES = 8 * 1024
+
+internal fun isOpusChunkKey(key: String?): Boolean {
+    if (key?.startsWith("capsule:audio:") != true) return false
+    val itag = key.substringBeforeLast(':').substringAfterLast(':').toIntOrNull()
+    return itag == 249 || itag == 250 || itag == 251
+}
+
 /** Initial CDN open plus ONE same-link retry before the service tries the next client. */
 internal const val CHUNK_OPEN_ATTEMPTS = 2
 // Always respect the extractor's bounded audio ranges. The temporary
@@ -150,12 +162,19 @@ internal class AudioChunkedDataSource(
     private var adaptiveChunkBytes = chunkBytes
     private var ratePolicy = AudioCdnChunkRatePolicy(chunkBytes)
     private var currentChunkBytes = 0L
+    private val opusReadAhead = ByteArray(OPUS_READAHEAD_BYTES)
+    private var bufferedOffset = 0
+    private var bufferedLength = 0
+    private var opusReadAheadEnabled = false
 
     override fun addTransferListener(transferListener: TransferListener) {
         upstream.addTransferListener(transferListener)
     }
 
     override fun open(dataSpec: DataSpec): Long {
+        bufferedOffset = 0
+        bufferedLength = 0
+        opusReadAheadEnabled = isOpusChunkKey(dataSpec.key)
         /*
          * The library's own size wins when it named one. It works this out per client, which is
          * something a single constant here cannot do — and the constant was only ever chosen by
@@ -253,24 +272,54 @@ internal class AudioChunkedDataSource(
     }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        if (length == 0) return 0
         if (request == null) return upstream.read(buffer, offset, length)
         if (bytesLeft == 0L) return C.RESULT_END_OF_INPUT
 
         if (chunkLeft == 0L) {
+            // Every cached byte must be delivered before crossing a CDN range.
+            check(bufferedOffset == bufferedLength)
             upstream.close()
             openNextChunk()
         }
 
         val requested = minOf(length.toLong(), chunkLeft).toInt()
-        val readStartedNs = System.nanoTime()
-        val read = upstream.read(buffer, offset, requested)
-        // This is network blocking time, not the wall-clock age of the range.
-        // Media3 may stop requesting bytes for minutes when its buffer is full.
-        ratePolicy.observeRead(
-            requestedBytes = requested,
-            readBytes = read,
-            elapsedMs = ((System.nanoTime() - readStartedNs).coerceAtLeast(0L) / 1_000_000L),
-        )
+        val read: Int
+        if (opusReadAheadEnabled && bufferedOffset < bufferedLength) {
+            // No socket access on the thousands of tiny WebM extractor reads.
+            read = minOf(requested, bufferedLength - bufferedOffset)
+            opusReadAhead.copyInto(buffer, offset, bufferedOffset, bufferedOffset + read)
+            bufferedOffset += read
+        } else if (opusReadAheadEnabled && requested < OPUS_READAHEAD_BYTES) {
+            // At most the remainder of THIS bounded request. No speculative
+            // requests, no seek across slices, no write of unused bytes to cache.
+            val upstreamRequested = minOf(OPUS_READAHEAD_BYTES.toLong(), chunkLeft).toInt()
+            val startedNs = System.nanoTime()
+            val filled = upstream.read(opusReadAhead, 0, upstreamRequested)
+            ratePolicy.observeRead(
+                requestedBytes = upstreamRequested,
+                readBytes = filled,
+                elapsedMs = ((System.nanoTime() - startedNs).coerceAtLeast(0L) / 1_000_000L),
+            )
+            if (filled > 0) {
+                bufferedOffset = minOf(requested, filled)
+                bufferedLength = filled
+                opusReadAhead.copyInto(buffer, offset, 0, bufferedOffset)
+                read = bufferedOffset
+            } else {
+                read = filled
+            }
+        } else {
+            val startedNs = System.nanoTime()
+            read = upstream.read(buffer, offset, requested)
+            // Measure actual upstream blocking, never total Media3 idle time.
+            // Tiny reads are not evidence of CDN throttling.
+            if (requested >= 8 * 1024) ratePolicy.observeRead(
+                requestedBytes = requested,
+                readBytes = read,
+                elapsedMs = ((System.nanoTime() - startedNs).coerceAtLeast(0L) / 1_000_000L),
+            )
+        }
         if (read == C.RESULT_END_OF_INPUT) {
             // This is a bounded request with a known remaining length: EOF before chunkLeft
             // reaches zero means that the CDN truncated this slice, not that the song ended.
@@ -322,6 +371,9 @@ internal class AudioChunkedDataSource(
         firstChunkPending = false
         adaptiveChunkBytes = chunkBytes
         currentChunkBytes = 0L
+        bufferedOffset = 0
+        bufferedLength = 0
+        opusReadAheadEnabled = false
         upstream.close()
     }
 
