@@ -77,7 +77,7 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
         // with the current app; neither requires additional extractor routes.
         val routeTimings = mutableListOf<String>()
         return runCatching {
-            VideoExtractionRequests.withRequest(requestId, CapsuleVideoIpc.REQUEST_TIMEOUT_MS) {
+            VideoExtractionRequests.withRequest(requestId, 20_000L) {
                 if (extras?.getBoolean(CapsuleVideoIpc.EXTRA_REFRESH, false) == true) {
                     CapsuleNewPipeExtractor.invalidate(videoId)
                 }
