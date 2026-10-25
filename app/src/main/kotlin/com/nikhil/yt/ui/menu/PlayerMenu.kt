@@ -433,17 +433,10 @@ fun PlayerMenu(
 
     Spacer(modifier = Modifier.height(16.dp))
 
-    LazyColumn(
-        state = androidx.compose.foundation.lazy.rememberLazyListState(),
-        modifier = Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(
-            start = 0.dp,
-            top = 0.dp,
-            end = 0.dp,
-            bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
-        ),
-    ) {
-        item(key = "quick-actions", contentType = "actions") {
+    // These quick buttons (and their rounded surface) are a fixed part of
+    // the More sheet, not a scrolling LazyColumn item. Moving the old section
+    // through the viewport made the background visibly slide out from beneath
+    // the buttons on fast flings or initial sheet expansion.
             MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                 NewActionGrid(
                     actions = listOf(
@@ -545,10 +538,19 @@ fun PlayerMenu(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)
                 )
             }
-        }
-        item(key = "actions-gap", contentType = "spacer") {
-            Spacer(modifier = Modifier.height(12.dp))
-        }
+
+    Spacer(modifier = Modifier.height(12.dp))
+
+    LazyColumn(
+        state = androidx.compose.foundation.lazy.rememberLazyListState(),
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(
+            start = 0.dp,
+            top = 0.dp,
+            end = 0.dp,
+            bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
+        ),
+    ) {
         if ((!isRadio && !isOfflineAudio && splitArtists.isNotEmpty()) || mediaMetadata.album != null) {
             item(key = "artists-album", contentType = "menu-section") {
                 MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
