@@ -715,9 +715,10 @@ internal fun CapsuleImmersiveContent(
             mutableStateOf(false)
         }
         LaunchedEffect(frame?.key, frame?.imageUrl, visibleArtworkRebind, visibleArtworkPending) {
-            if (frame?.key != visualKey || !visibleArtworkPending ||
-                visibleArtworkRebind > 0 || frame.imageUrl.isBlank()
-            ) return@LaunchedEffect
+            frame?.takeIf {
+                it.key == visualKey && it.imageUrl.isNotBlank()
+            } ?: return@LaunchedEffect
+            if (!visibleArtworkPending || visibleArtworkRebind > 0) return@LaunchedEffect
             delay(6_000L)
             if (visibleArtworkPending && visibleArtworkRebind == 0) {
                 Timber.tag("CapsuleArtwork").w(
