@@ -225,6 +225,10 @@ fun YouTubePlaylistMenu(
     // A bulk enqueue is asynchronous; cancelling only Media3 entries is not
     // enough if the producer is still adding the next batch behind our back.
     val playlistEnqueueJob = remember(playlist.id) { mutableStateOf<Job?>(null) }
+    // The first entry is woken via a queued DownloadService intent. Keep its
+    // ID until the cancel command is sent, so a late service wake cannot
+    // resurrect a playlist download after the manager index was cleared.
+    val pendingServiceWakeId = remember(playlist.id) { mutableStateOf<String?>(null) }
     var showRemoveDownloadDialog by remember {
         mutableStateOf(false)
     }
@@ -261,6 +265,12 @@ fun YouTubePlaylistMenu(
                         com.nikhil.yt.playback.removeCollectionDownloads(
                             downloadUtil.downloadManager, collectionIds,
                         )
+                        pendingServiceWakeId.value?.let { id ->
+                            DownloadService.sendRemoveDownload(
+                                context, ExoDownloadService::class.java, id, false,
+                            )
+                        }
+                        pendingServiceWakeId.value = null
                     }
                 ) {
                     Text(text = stringResource(android.R.string.ok))
@@ -666,6 +676,7 @@ fun YouTubePlaylistMenu(
                                                 .setData(song.title.toByteArray())
                                                 .build()
                                             if (!serviceStarted) {
+                                                pendingServiceWakeId.value = id
                                                 DownloadService.sendAddDownload(
                                                     context, ExoDownloadService::class.java,
                                                     request, false,
