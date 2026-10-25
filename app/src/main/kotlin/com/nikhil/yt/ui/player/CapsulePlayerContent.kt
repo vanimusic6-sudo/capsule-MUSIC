@@ -626,7 +626,7 @@ fun CapsulePlayerContent(
                         // A successfully decoded image belongs to THIS track only.
                         // Preserve its painter across a visible Coil rebind so an
                         // interrupted update cannot flash the grey player surface.
-                        var retainedArtworkPainter by remember(mediaMetadata.id, originalArtworkUrl) {
+                        var retainedArtworkPainter by remember(mediaMetadata.id) {
                             mutableStateOf<Painter?>(null)
                         }
                         // The old painter could stay blank after a transient Coil
