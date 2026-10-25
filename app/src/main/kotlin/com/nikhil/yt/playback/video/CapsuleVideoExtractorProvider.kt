@@ -68,27 +68,25 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
             )
         }
 
-        // Restore the cleanup/capsule-player-only VIDEO core: one isolated,
-        // upstream-maintained NewPipe extractor, not the later five sequential
-        // direct/Vision/PipePipe/NewPipe routes. Those could consume 18–32s
-        // and return adaptive video whose audio stream never became READY.
-        //
-        // Keep IPC cancellation and optional cache invalidation compatible
-        // with the current app; neither requires additional extractor routes.
         val routeTimings = mutableListOf<String>()
         return runCatching {
-            VideoExtractionRequests.withRequest(requestId, 20_000L) {
+            VideoExtractionRequests.withRequest(requestId, CapsuleVideoIpc.EXTRACTION_TIMEOUT_MS) {
+                extras?.getString(CapsuleVideoIpc.EXTRA_SESSION_KEY)?.let(CapsuleDirectVideoExtractor::beginSession)
                 if (extras?.getBoolean(CapsuleVideoIpc.EXTRA_REFRESH, false) == true) {
                     CapsuleNewPipeExtractor.invalidate(videoId)
                 }
-                val startedNs = System.nanoTime()
-                CapsuleNewPipeExtractor.resolve(
+                CapsuleNewPipeExtractor.resolveWithFallback(
                     videoId,
                     CapsuleNewPipeQuality.valueOf(quality.name),
                     muxedOnly,
-                ).also {
-                    routeTimings += "newpipe:${(System.nanoTime() - startedNs) / 1_000_000L}ms:ok"
-                }
+                    extras?.getString(CapsuleVideoIpc.EXTRA_FAILED_BACKEND),
+                    onAttempt = { route, elapsed, success -> routeTimings += "$route:${elapsed}ms:${if (success) "ok" else "fallback"}" },
+                    onRouteFailure = { route, failure ->
+                        val kind = CapsuleNewPipeExtractor.classify(failure)
+                        routeTimings += "$route:$kind:${CapsuleNewPipeExtractor.routeDiagnostic(failure)}"
+                        timber.log.Timber.tag("CapsuleVideo").w(failure, "VIDEO route=%s failed kind=%s", route, kind)
+                    },
+                )
             }
         }.fold(
             onSuccess = { resolved ->
