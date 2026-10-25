@@ -15,7 +15,11 @@ class MoreMenuScrollRegressionTest {
         val player = source("com/nikhil/yt/ui/menu/PlayerMenu.kt")
         val lyrics = source("com/nikhil/yt/ui/menu/LyricsMenu.kt")
         assertTrue(player.contains("rememberLazyListState()"))
-        assertTrue(player.contains("key = \"quick-actions\""))
+        // The action cards and their background stay pinned above the scroll list.
+        val pinned = player.indexOf("NewActionGrid(")
+        val list = player.indexOf("    LazyColumn(")
+        assertTrue("More action surface must not slide with list rows", pinned in 0 until list)
+        assertFalse(player.contains("key = \"quick-actions\""))
         assertTrue(player.contains("contentType = \"menu-section\""))
         assertTrue(lyrics.contains("key = \"lyrics-actions\""))
         assertFalse(lyrics.contains("userScrollEnabled = !isPortrait"))
