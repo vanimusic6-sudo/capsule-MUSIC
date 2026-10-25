@@ -12,6 +12,8 @@ import androidx.media3.common.Tracks
 import com.nikhil.yt.innertube.video.CapsuleVideoDelivery
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import com.nikhil.yt.playback.CapsuleOpusCodecSelector
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import androidx.media3.exoplayer.source.MediaSource
@@ -67,6 +69,13 @@ internal class CapsuleVideoCompanion(
 ) {
     private var idleExpiry: Job? = null
     val player: ExoPlayer = ExoPlayer.Builder(context)
+        // The video soundtrack can create a SECOND Opus decoder while MUSIC is
+        // still audible. Use the same Android 17 native in-process preference
+        // to reduce media codec IPC on supported devices, without touching
+        // the default VP9/AV1/H.264 video decoder ordering.
+        .setRenderersFactory(DefaultRenderersFactory(context)
+            .setMediaCodecSelector(CapsuleOpusCodecSelector)
+            .setEnableDecoderFallback(true))
         // AUDIO downloads must not make HLS assume the VIDEO host is fast.
         .setBandwidthMeter(DefaultBandwidthMeter.Builder(context).build())
         .setMediaSourceFactory(factory)
