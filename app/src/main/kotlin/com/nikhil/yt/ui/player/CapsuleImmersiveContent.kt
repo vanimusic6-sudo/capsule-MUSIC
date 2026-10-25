@@ -40,6 +40,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
+import timber.log.Timber
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -702,6 +704,28 @@ internal fun CapsuleImmersiveContent(
         // Only near-white, low-saturation covers use the slightly more
         // diffuse current technique to avoid a harsh white/grey seam.
         val frame = shownGradient
+        // The offscreen preloader may have decoded this cover successfully,
+        // yet the visible AsyncImage can still lose its own Coil painter
+        // during a GPU/surface lifecycle change. Rebind only that painter
+        // once if its own load hangs or fails, never the whole gradient.
+        var visibleArtworkRebind by remember(frame?.key, frame?.imageUrl) {
+            mutableIntStateOf(0)
+        }
+        var visibleArtworkPending by remember(frame?.key, frame?.imageUrl) {
+            mutableStateOf(false)
+        }
+        LaunchedEffect(frame?.key, frame?.imageUrl, visibleArtworkRebind, visibleArtworkPending) {
+            if (frame?.key != visualKey || !visibleArtworkPending ||
+                visibleArtworkRebind > 0 || frame.imageUrl.isBlank()
+            ) return@LaunchedEffect
+            delay(6_000L)
+            if (visibleArtworkPending && visibleArtworkRebind == 0) {
+                Timber.tag("CapsuleArtwork").w(
+                    "immersive-artwork-stalled id=%s; rebind visible painter", mediaMetadata.id,
+                )
+                visibleArtworkRebind++
+            }
+        }
         val nearWhite = frame?.nearWhiteBackground == true
         val pageEdge = frame?.edge ?: IMMERSIVE_NEUTRAL_COLOR
         val pageFloor = frame?.floor ?: IMMERSIVE_NEUTRAL_COLOR
@@ -824,10 +848,22 @@ internal fun CapsuleImmersiveContent(
                         trackFadeAlpha = gradientAlpha.value,
                     )
                 }) {
+                    key(frame.key, frame.imageUrl, visibleArtworkRebind) {
                     AsyncImage(
                         model = rememberImmersiveArtworkRequest(frame.imageUrl),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
+                        onLoading = { visibleArtworkPending = true },
+                        onSuccess = { visibleArtworkPending = false },
+                        onError = { error ->
+                            visibleArtworkPending = false
+                            Timber.tag("CapsuleArtwork").w(
+                                "immersive-artwork-error id=%s retry=%s type=%s",
+                                mediaMetadata.id, visibleArtworkRebind,
+                                error.result.throwable::class.java.simpleName,
+                            )
+                            if (visibleArtworkRebind == 0) visibleArtworkRebind++
+                        },
                         modifier = Modifier
                             .fillMaxSize()
                             .graphicsLayer(
@@ -835,6 +871,7 @@ internal fun CapsuleImmersiveContent(
                                 scaleY = if (frame.landscape) 1.06f else 1f,
                             ),
                     )
+                    }
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -1401,6 +1438,9 @@ private fun rememberImmersiveArtworkRequest(url: String?): ImageRequest {
     return remember(context, url) {
         ImageRequest.Builder(context)
             .data(url)
+            // Same decode/cache target for the invisible preload and the
+            // visible frame; avoids a second full-size GPU allocation.
+            .size(960, 960)
             .crossfade(false)
             .build()
     }
