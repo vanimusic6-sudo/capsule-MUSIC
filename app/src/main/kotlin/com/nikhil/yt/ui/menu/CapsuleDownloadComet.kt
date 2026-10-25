@@ -13,44 +13,52 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.unit.dp
-import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Download comet only exists while the user has the More sheet open.
- * No background frame callback survives dismissing that sheet.
+ * Tiny version of the existing CapsuleOrbitButton comet (ellipse, tail,
+ * moving dot and centre). Animates ONLY while a More-sheet download row
+ * is composed, never as hidden playback-wide background work.
  */
 @Composable
 internal fun CapsuleDownloadComet() {
-    val phase = rememberInfiniteTransition(label = "download-comet")
+    val rotation = rememberInfiniteTransition(label = "download-comet")
         .animateFloat(
-            initialValue = 0f, targetValue = 360f,
-            animationSpec = infiniteRepeatable(tween(1150, easing = LinearEasing),
-                repeatMode = RepeatMode.Restart),
-            label = "download-comet-angle",
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(2_200, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "download-orbit",
         )
     val color = MaterialTheme.colorScheme.primary
-    Canvas(Modifier.size(23.dp)) {
-        val strokeWidth = 2.25.dp.toPx()
-        val pad = strokeWidth * 1.45f
-        val rect = Size(size.width - 2 * pad, size.height - 2 * pad)
-        rotate(phase.value) {
-            drawArc(color.copy(alpha = .20f), -90f, 250f, false,
-                topLeft = Offset(pad, pad), size = rect,
-                style = Stroke(strokeWidth, cap = StrokeCap.Round))
-            drawArc(color, 110f, 56f, false,
-                topLeft = Offset(pad, pad), size = rect,
-                style = Stroke(strokeWidth, cap = StrokeCap.Round))
-            val headAngle = Math.toRadians(166.0)
-            val radius = rect.width / 2f
-            val head = Offset(center.x + cos(headAngle).toFloat() * radius,
-                center.y + sin(headAngle).toFloat() * radius)
-            drawCircle(color, strokeWidth * .68f, center = head)
+    Canvas(Modifier.size(24.dp)) {
+        val w = size.width
+        val centerX = w / 2f
+        val centerY = size.height / 2f
+        val rx = w * .46f
+        val ry = size.height * .19f
+        rotate(-25f) {
+            drawOval(
+                color = color.copy(alpha = .63f),
+                topLeft = Offset(centerX - rx, centerY - ry),
+                size = Size(rx * 2f, ry * 2f),
+                style = Stroke(width = w * .045f),
+            )
+            val angle = Math.toRadians(rotation.value.toDouble())
+            val tailAngle = Math.toRadians((rotation.value - 19f).toDouble())
+            val head = Offset(centerX + rx * cos(angle).toFloat(),
+                centerY + ry * sin(angle).toFloat())
+            val tail = Offset(centerX + rx * cos(tailAngle).toFloat(),
+                centerY + ry * sin(tailAngle).toFloat())
+            drawLine(color.copy(alpha = .35f), tail, head, strokeWidth = w * .035f)
+            drawCircle(color, radius = w * .052f, center = head)
         }
+        drawCircle(color, radius = w * .115f, center = Offset(centerX, centerY))
     }
 }
