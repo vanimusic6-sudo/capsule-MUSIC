@@ -18,7 +18,7 @@ class ArtistScreenDesignTest {
         // The hero already fades into the same background. Blending a second
         // 50%-opaque toolbar over it produces a much darker strip (alpha
         // compositing squares the remaining photo: (1 - 0.5)^2).
-        val alpha = com.nikhil.yt.ui.component::artistToolbarSurfaceAlpha
+        val alpha: (Float) -> Float = { com.nikhil.yt.ui.component.artistToolbarSurfaceAlpha(it) }
         org.junit.Assert.assertEquals(0f, alpha(0f), 0f)
         for (fraction in listOf(0.1f, 0.25f, 0.5f, 0.75f, 0.95f)) {
             org.junit.Assert.assertEquals("No overlay while photograph is visible",
