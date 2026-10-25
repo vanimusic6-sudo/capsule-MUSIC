@@ -551,6 +551,38 @@ class MusicService :
         CacheBitmapLoader(CoilBitmapLoader(this, scope))
     }
     private var systemArtworkJob: Job? = null
+    // HONOR/Huawei's island may keep an old system playback timestamp even
+    // though Media3's in-app clock has moved. Never poll on other OEMs.
+    private var islandClockJob: Job? = null
+    private var lastIslandRefreshMs = 0L
+    private val hasHonorIsland: Boolean
+        get() = Build.MANUFACTURER.equals("HONOR", ignoreCase = true) ||
+            Build.MANUFACTURER.equals("HUAWEI", ignoreCase = true)
+
+    private fun refreshIslandClock() {
+        if (!hasHonorIsland || !::mediaSession.isInitialized) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastIslandRefreshMs < 650L) return
+        lastIslandRefreshMs = now
+        // Ask Media3 to publish a fresh, timestamped media notification, without
+        // mutating the queue, seeking, recreating the player or downloading art.
+        runCatching { super.onUpdateNotification(mediaSession, player.isPlaying) }
+            .onFailure { Timber.tag("CapsuleIsland").w("System media refresh failed: %s", it.javaClass.simpleName) }
+    }
+
+    private fun scheduleIslandClock() {
+        if (!hasHonorIsland) return
+        islandClockJob?.cancel()
+        islandClockJob = null
+        if (!::mediaSession.isInitialized || !screenInteractive ||
+            player.currentMediaItem == null || !player.playWhenReady) return
+        islandClockJob = scope.launch {
+            while (screenInteractive && player.currentMediaItem != null && player.playWhenReady) {
+                delay(3_000L)
+                if (screenInteractive && player.currentMediaItem != null && player.playWhenReady) refreshIslandClock()
+            }
+        }
+    }
 
     private val songMutationMutex = Mutex()
     private val binder = MusicBinder()
@@ -1317,16 +1349,19 @@ class MusicService :
                 when (intent?.action) {
                     Intent.ACTION_SCREEN_OFF -> {
                         screenInteractive = false
+                        scheduleIslandClock()
                         suspendCapsuleVideoForScreenOff()
                     }
 
                     Intent.ACTION_SCREEN_ON -> {
                         screenInteractive = true
+                        scheduleIslandClock()
                         resumeCapsuleVideoAfterUnlockIfAllowed()
                     }
 
                     Intent.ACTION_USER_PRESENT -> {
                         screenInteractive = true
+                        scheduleIslandClock()
                         resumeCapsuleVideoAfterUnlockIfAllowed()
                     }
                 }
@@ -3745,6 +3780,8 @@ class MusicService :
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         super.onMediaItemTransition(mediaItem, reason)
         publishSystemArtwork(mediaItem)
+        scheduleIslandClock()
+        refreshIslandClock()
         if (::offlinePlaybackQueue.isInitialized) offlinePlaybackQueue.checkCurrent()
 
         if (mediaItem?.mediaId?.startsWith(EXPERIMENTAL_MEDIA_PREFIX) == true) {
@@ -4115,6 +4152,8 @@ class MusicService :
 
     override fun onIsPlayingChanged(isPlaying: Boolean) {
         super.onIsPlayingChanged(isPlaying)
+        scheduleIslandClock()
+        refreshIslandClock()
         updateVideoPauseCollapse()
         val activeMediaId = player.currentMediaItem?.mediaId
         playbackRecoveryCoordinator.onPlaybackActivity(
@@ -4133,6 +4172,8 @@ class MusicService :
         }
         if (events.contains(EVENT_POSITION_DISCONTINUITY)) {
             playbackPositionGeneration.markDiscontinuity()
+            // Native OEM progress UI otherwise sometimes keeps the pre-seek clock.
+            refreshIslandClock()
         }
         if (events.containsAny(
                 Player.EVENT_PLAY_WHEN_READY_CHANGED,
@@ -6068,6 +6109,8 @@ class MusicService :
     }
 
     override fun onDestroy() {
+        islandClockJob?.cancel()
+        islandClockJob = null
         videoPauseCollapseJob?.cancel()
         videoModeSwitchJob?.cancel()
         videoReturnGapJob?.cancel()
