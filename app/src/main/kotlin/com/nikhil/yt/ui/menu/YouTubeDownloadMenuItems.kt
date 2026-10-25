@@ -49,7 +49,10 @@ internal fun YouTubeDownloadMenuItems(
     // not seconds later when DownloadManager finally publishes its state.
     LaunchedEffect(waitingForIndex, download?.visibleState) {
         if (!waitingForIndex) return@LaunchedEffect
-        if (download != null) waitingForIndex = false
+        if (download?.visibleState in listOf(
+                Download.STATE_QUEUED, Download.STATE_DOWNLOADING,
+                Download.STATE_RESTARTING, Download.STATE_COMPLETED,
+            )) waitingForIndex = false
         else { delay(6_000); waitingForIndex = false }
     }
 
