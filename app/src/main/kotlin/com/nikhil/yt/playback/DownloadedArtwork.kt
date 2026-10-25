@@ -3,6 +3,7 @@ package com.nikhil.yt.playback
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import com.nikhil.yt.ui.component.capsuleArtworkUrl
 import coil3.imageLoader
 import coil3.intercept.Interceptor
 import coil3.request.ImageRequest
@@ -17,12 +18,49 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
+import java.io.ByteArrayOutputStream
 import java.security.MessageDigest
 import timber.log.Timber
 
 /** Downloaded covers live with user files, not in Coil's evictable/optional image cache. */
 internal object DownloadedArtwork {
     private val writes = Mutex()
+    // 640px retains sharp full-player artwork without downloading 2K/4K covers.
+    internal const val COVER_SIZE_PX = 640
+    private const val MIN_SHARP_EDGE_PX = 480
+    private const val MAX_SAVED_JPEG_BYTES = 320_000
+    internal fun optimizedUrl(url: String): String = capsuleArtworkUrl(url, COVER_SIZE_PX) ?: url
+    private fun attempted(file: File) = File(file.parentFile, "${file.name}.quality-v2")
+    private fun bounds(file: File): Pair<Int, Int>? {
+        if (!file.isFile || file.length() == 0L) return null
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.path, options)
+        return if (options.outWidth > 0 && options.outHeight > 0) options.outWidth to options.outHeight else null
+    }
+    /** Only public, safely resizable CDN URLs can be upgraded. Never enlarge an unknown host. */
+    internal fun needsUpgrade(file: File, originalUrl: String): Boolean =
+        optimizedUrl(originalUrl) != originalUrl && !attempted(file).isFile &&
+            (bounds(file)?.let { minOf(it.first, it.second) < MIN_SHARP_EDGE_PX } == true)
+    private fun savedJpeg(bitmap: Bitmap): ByteArray {
+        // Never upsample a source thumbnail; encode once at a bounded physical resolution.
+        val scale = minOf(1f, COVER_SIZE_PX.toFloat() / maxOf(bitmap.width, bitmap.height))
+        val sized = if (scale == 1f) bitmap else Bitmap.createScaledBitmap(bitmap,
+            (bitmap.width * scale).toInt().coerceAtLeast(1),
+            (bitmap.height * scale).toInt().coerceAtLeast(1), true)
+        try {
+            var bytes = ByteArrayOutputStream().use { out ->
+                check(sized.compress(Bitmap.CompressFormat.JPEG, 82, out)); out.toByteArray()
+            }
+            if (bytes.size > MAX_SAVED_JPEG_BYTES) bytes = ByteArrayOutputStream().use { out ->
+                check(sized.compress(Bitmap.CompressFormat.JPEG, 72, out)); out.toByteArray()
+            }
+            if (bytes.size > MAX_SAVED_JPEG_BYTES) bytes = ByteArrayOutputStream().use { out ->
+                check(sized.compress(Bitmap.CompressFormat.JPEG, 60, out)); out.toByteArray()
+            }
+            require(bytes.size in 1..MAX_SAVED_JPEG_BYTES) { "Cover exceeded compact JPEG budget" }
+            return bytes
+        } finally { if (sized !== bitmap) sized.recycle() }
+    }
     internal fun key(url: String): String {
         val canonical = if (url.startsWith("https://lh") && url.contains(".googleusercontent.com/") ||
             url.startsWith("https://yt3.ggpht.com/") || url.startsWith("https://yt3.googleusercontent.com/")) {
@@ -41,25 +79,40 @@ internal object DownloadedArtwork {
         try {
             withTimeoutOrNull(8_000) {
                 val target = file(context, url)
-                // Network image loading happens OUTSIDE the global disk-write mutex.
-                // Otherwise a slow cover for song A serializes song B's completion.
-                val loaded = if (!valid(target)) {
+                val sourceUrl = optimizedUrl(url)
+                // Coil's .size() only limits decoding: upgrade the upstream Google URL
+                // itself, while keeping existing tiny covers if a retry fails.
+                val loaded = if (!valid(target) || needsUpgrade(target, url)) {
                     imageLoader.execute(ImageRequest.Builder(context)
-                        .data(url).size(768, 768).allowHardware(false).build()) as? SuccessResult
+                        .data(sourceUrl).size(COVER_SIZE_PX, COVER_SIZE_PX)
+                        .allowHardware(false).build()) as? SuccessResult
                 } else null
                 writes.withLock {
-                    if (!valid(target)) {
-                        val result = loaded ?: return@withLock false
-                        target.parentFile!!.mkdirs()
-                        val temporary = File(target.parentFile, "${target.name}.part")
-                        try {
+                    val existing = bounds(target)
+                    val upgrade = needsUpgrade(target, url)
+                    if (existing == null || upgrade) {
+                        val result = loaded
+                        if (result == null && existing == null) return@withLock false
+                        if (result != null) {
                             val bitmap = result.image.toBitmap()
-                            temporary.outputStream().use {
-                                check(bitmap.compress(Bitmap.CompressFormat.JPEG, 92, it))
+                            val improve = existing == null ||
+                                minOf(bitmap.width, bitmap.height) > minOf(existing.first, existing.second)
+                            if (improve) {
+                                target.parentFile!!.mkdirs()
+                                val temporary = File(target.parentFile, "${target.name}.part")
+                                try {
+                                    temporary.writeBytes(savedJpeg(bitmap))
+                                    check(valid(temporary))
+                                    // Preserve a previous good cover if saving an upgrade fails.
+                                    check(temporary.renameTo(target))
+                                } finally { temporary.delete() }
                             }
-                            check(valid(temporary))
-                            check(temporary.renameTo(target))
-                        } finally { temporary.delete() }
+                            // A small upstream source cannot be magically upscaled.
+                            // Do not re-download the same unavailable resolution per song.
+                            if (minOf(bitmap.width, bitmap.height) < MIN_SHARP_EDGE_PX) {
+                                attempted(target).writeText("checked")
+                            } else attempted(target).delete()
+                        }
                     }
                     val reference = owner(context, mediaId)
                     val temporary = File(reference.parentFile, "${reference.name}.part")
@@ -88,6 +141,7 @@ internal object DownloadedArtwork {
                 if (key != null && key.matches(Regex("[0-9a-f]{64}")) &&
                     directory(context).listFiles().orEmpty().none { it.extension == "ref" && it.readText() == key }) {
                     File(directory(context), "$key.jpg").delete()
+                    File(directory(context), "$key.jpg.quality-v2").delete()
                 }
             }
         } catch (cancelled: CancellationException) {
@@ -99,10 +153,7 @@ internal object DownloadedArtwork {
 
 
     internal fun valid(file: File): Boolean {
-        if (!file.isFile || file.length() == 0L) return false
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(file.path, bounds)
-        return bounds.outWidth > 0 && bounds.outHeight > 0
+        return bounds(file) != null
     }
 }
 
@@ -112,7 +163,9 @@ internal class DownloadedArtworkInterceptor(private val context: Context) : Inte
         val data = chain.request.data
         val url = if (data is String || data is android.net.Uri || data is coil3.Uri) data.toString() else null
         val local = if (url?.startsWith("https://") == true) withContext(Dispatchers.IO) {
-            DownloadedArtwork.file(context, url).takeIf(DownloadedArtwork::valid)
+            DownloadedArtwork.file(context, url).takeIf { target ->
+                DownloadedArtwork.valid(target) && !DownloadedArtwork.needsUpgrade(target, url)
+            }
         } else null
         if (local == null) return chain.proceed()
         val result = chain.withRequest(chain.request.newBuilder().data(local).build()).proceed()
