@@ -115,9 +115,9 @@ class CapsuleVideoSessionTest {
         f.music.position = 12_000L
         f.session.setSurfaceAttached(true)
         f.session.start("song", indexedVideoItem(), 0.8f)
-        assertEquals(13_400L, f.clip.position)
+        assertEquals(14_000L, f.clip.position)
         assertTrue(f.clip.seeks.isEmpty())
-        f.music.position = 13_450L
+        f.music.position = 14_050L
         f.clip.ready(); f.clip.frame()
         advanceTimeBy(261L); runCurrent()
         assertEquals(listOf("song"), f.frames)
@@ -125,9 +125,27 @@ class CapsuleVideoSessionTest {
         f.session.stop()
     }
 
+    @Test fun measuredTwoSecondDashStartupAvoidsBothCorrectionSeeks() = runTest {
+        val f = Fixture(this)
+        f.music.position = 5_440L
+        f.session.setSurfaceAttached(true)
+        f.session.start("song", indexedVideoItem(), 0.8f)
+        // Original October 25 capture: 1.4s anticipation left MUSIC
+        // ~582ms ahead after a 2s indexed DASH startup; alignment then
+        // caused a second buffered correction. Now stay inside 400ms.
+        assertEquals(7_440L, f.clip.position)
+        f.music.position = 7_500L
+        f.clip.ready()
+        f.clip.frame()
+        advanceTimeBy(261L); runCurrent()
+        assertEquals(listOf("song"), f.frames)
+        assertTrue("startup should not issue a second CDN seek", f.clip.seeks.isEmpty())
+        f.session.stop()
+    }
+
     @Test fun indexedDashPreseekFallsBackNearClipEndOrWithoutDuration() {
         val item = indexedVideoItem(seconds = 60)
-        assertEquals(11_400L, capsuleDashVideoInitialPosition(item, 10_000L, true))
+        assertEquals(12_000L, capsuleDashVideoInitialPosition(item, 10_000L, true))
         assertEquals(10_000L, capsuleDashVideoInitialPosition(item, 10_000L, false))
         assertNull(capsuleDashVideoInitialPosition(item, 58_000L, true))
         assertNull(capsuleDashVideoInitialPosition(
