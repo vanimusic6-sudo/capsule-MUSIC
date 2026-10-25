@@ -6,6 +6,7 @@ on:
     branches:
       - experimental/discovery-open-catalogs-20261022
       - main
+      - fix/posttest-ui-rework-20261026
       - cleanup/capsule-player-only
       - next/capsule-clay
       - perf/thermal-audit-20261005
