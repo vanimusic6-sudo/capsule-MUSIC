@@ -682,6 +682,7 @@ fun ArtistScreen(
         name = artistName.orEmpty(),
         overArtwork = artworkFade < 1f,
         artworkFade = artworkFade,
+        artworkFadeProvider = { artworkFade },
         canShare = artistPage != null,
         onBack = navController::navigateUp,
         onBackLongClick = navController::backToMain,
