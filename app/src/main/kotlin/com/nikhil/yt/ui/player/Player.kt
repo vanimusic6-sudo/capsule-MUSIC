@@ -94,6 +94,11 @@ import kotlin.math.abs
 import kotlin.math.sin
 import kotlin.math.PI
 
+/** An empty Media3 artwork string must not shadow an already cached thumbnail. */
+internal fun capsulePlayerArtworkUrl(playbackUrl: String?, cachedUrl: String?): String? =
+    playbackUrl?.takeIf { it.isNotBlank() }
+        ?: cachedUrl?.takeIf { it.isNotBlank() }
+
 internal fun capsulePlayerDesignForOrientation(
     selected: CapsulePlayerDesign,
     isLandscape: Boolean,
@@ -205,8 +210,9 @@ fun BottomSheetPlayer(
                 // freshly selected track. An empty string is NOT a valid
                 // image, and previously masked the already cached Room art
                 // until navigation/track switching forced a new composition.
-                thumbnailUrl = metadata.thumbnailUrl?.takeIf { it.isNotBlank() }
-                    ?: currentSongForTrack?.song?.thumbnailUrl?.takeIf { it.isNotBlank() },
+                thumbnailUrl = capsulePlayerArtworkUrl(
+                    metadata.thumbnailUrl, currentSongForTrack?.song?.thumbnailUrl,
+                ),
                 album = album,
             )
         }
