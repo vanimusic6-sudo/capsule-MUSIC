@@ -401,8 +401,21 @@ constructor(
                         ?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true &&
                     connectivityManager.getNetworkCapabilities(network)
                         ?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == true) {
-                    result.values.asSequence().filter { it.state == Download.STATE_COMPLETED }
-                        .take(6).forEach { repairArtwork(it.request.id) }
+                    val completedIds = result.values.asSequence()
+                        .filter { it.state == Download.STATE_COMPLETED }
+                        .map { it.request.id }.sorted().toList()
+                    if (completedIds.isNotEmpty()) {
+                        // Rotate through old downloads across launches. The old
+                        // take(6) permanently starved every cover after item six.
+                        // Do not turn this into a bulk network job.
+                        val prefs = context.getSharedPreferences("capsule-artwork-repair", Context.MODE_PRIVATE)
+                        val start = prefs.getInt("cursor", 0).coerceAtLeast(0) % completedIds.size
+                        val count = minOf(6, completedIds.size)
+                        repeat(count) { offset ->
+                            repairArtwork(completedIds[(start + offset) % completedIds.size])
+                        }
+                        prefs.edit().putInt("cursor", (start + count) % completedIds.size).apply()
+                    }
                 }
             } catch (error: CancellationException) {
                 throw error
