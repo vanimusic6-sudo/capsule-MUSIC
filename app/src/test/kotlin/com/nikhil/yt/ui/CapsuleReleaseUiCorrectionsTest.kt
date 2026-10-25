@@ -25,11 +25,13 @@ class CapsuleReleaseUiCorrectionsTest {
         assertFalse(hero.contains("CapsuleSubscribeIcon("))
         assertFalse(hero.contains("CapsuleSubscribeLabel("))
         val toolbar = source("ui/component/ArtistToolbar.kt")
-        // The portrait and toolbar must now sample the same scroll state
-        // in the DRAW phase. The old compositional alpha could lag after a
-        // fast fling and its previous 90%-threshold made the gap visible.
+        // The hero already fades to the page colour. A second blended toolbar
+        // at the same fractional alpha causes a visibly darker stripe.
+        // The toolbar must wait until that photo has nearly vanished.
         assertTrue(toolbar.contains("artistToolbarSurfaceAlpha(artworkFadeProvider())"))
         assertTrue(toolbar.contains("drawBehind"))
+        assertTrue(toolbar.contains("((fade - 0.98f) / 0.02f)"))
+        assertFalse(toolbar.contains("return artworkFade.coerceIn(0f, 1f)"))
         assertFalse(toolbar.contains("fade >= 1f"))
     }
 
@@ -43,6 +45,10 @@ class CapsuleReleaseUiCorrectionsTest {
         assertTrue(album.contains("confirmActiveDownloadRemoval = true"))
         val local = source("ui/screens/playlist/LocalPlaylistScreen.kt")
         assertTrue(local.contains("showRemoveDownloadDialog = true"))
+        val public = source("ui/menu/YouTubePlaylistMenu.kt")
+        assertTrue(public.contains("playlistEnqueueJob.value?.cancel()"))
+        assertTrue(public.contains("key = \"playlist-download-action\""))
+        assertFalse(public.contains("R.string.capsule_stop_and_delete_download),"))
         assertFalse(local.contains("playlist?.id?.let { clearPlaylist(it) }"))
     }
 
