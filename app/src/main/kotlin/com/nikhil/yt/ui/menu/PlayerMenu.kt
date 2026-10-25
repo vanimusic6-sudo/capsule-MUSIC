@@ -188,7 +188,7 @@ fun PlayerMenu(
             onConfirm = {
                 confirmAudiusCancellation = false
                 ExperimentalDownload.cancelInProgress(context, mediaMetadata.id)
-                onDismiss()
+                // Keep More visible while the worker updates its row state.
             },
         )
     }
