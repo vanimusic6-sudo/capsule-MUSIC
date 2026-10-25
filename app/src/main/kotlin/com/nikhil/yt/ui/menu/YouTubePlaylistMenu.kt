@@ -214,6 +214,12 @@ fun YouTubePlaylistMenu(
         }
     }
     val downloadState = rememberCollectionDownloadState(downloadSongs.map { it.id })
+    // A partially saved playlist is NOT the same as a never-downloaded list.
+    // Its existing downloads must always have a working delete path, even
+    // after the user stops/cancels the transfer.
+    val indexedDownloads by downloadUtil.downloads.collectAsState()
+    val collectionIds = downloadSongs.map { it.id }.distinct()
+    val hasAnyCollectionDownload = collectionIds.any { indexedDownloads.containsKey(it) }
     var showRemoveDownloadDialog by remember {
         mutableStateOf(false)
     }
@@ -239,14 +245,12 @@ fun YouTubePlaylistMenu(
                 TextButton(
                     onClick = {
                         showRemoveDownloadDialog = false
-                        downloadSongs.forEach { song ->
-                            DownloadService.sendRemoveDownload(
-                                context,
-                                ExoDownloadService::class.java,
-                                song.id,
-                                false
-                            )
-                        }
+                        // Remove through the existing live Media3 manager;
+                        // do not enqueue hundreds of service start intents for
+                        // a playlist or leave STOPPED partial entries behind.
+                        com.nikhil.yt.playback.removeCollectionDownloads(
+                            downloadUtil.downloadManager, collectionIds,
+                        )
                     }
                 ) {
                     Text(text = stringResource(android.R.string.ok))
@@ -614,43 +618,70 @@ fun YouTubePlaylistMenu(
                         }
                     )
                 }
-                Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> {
+                Download.STATE_QUEUED, Download.STATE_DOWNLOADING, Download.STATE_RESTARTING -> {
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.downloading)) },
-                        leadingContent = {
-                            VeluneLoader(size = 24.dp)
-                        },
+                        leadingContent = { CapsuleDownloadComet() },
                         modifier = Modifier.clickable {
-                            com.nikhil.yt.playback.stopCollectionDownloads(downloadUtil.downloadManager, downloadSongs.map { it.id })
+                            com.nikhil.yt.playback.stopCollectionDownloads(
+                                downloadUtil.downloadManager, collectionIds,
+                            )
                         }
+                    )
+                    // Stopping must not be the only way to cancel a large
+                    // online playlist: offer explicit confirmed deletion.
+                    ListItem(
+                        headlineContent = {
+                            Text(stringResource(R.string.capsule_stop_and_delete_download),
+                                color = MaterialTheme.colorScheme.error)
+                        },
+                        leadingContent = {
+                            Icon(painterResource(R.drawable.close), contentDescription = null)
+                        },
+                        modifier = Modifier.clickable { showRemoveDownloadDialog = true },
                     )
                 }
                 else -> {
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.action_download)) },
                         leadingContent = {
-                            Icon(
-                                painter = painterResource(R.drawable.download),
-                                contentDescription = null,
-                            )
+                            Icon(painterResource(R.drawable.download), contentDescription = null)
                         },
                         modifier = Modifier.clickable(enabled = downloadSongs.isNotEmpty()) {
                             coroutineScope.launch {
-                                downloadSongs.forEach { song ->
-                                        val downloadRequest = DownloadRequest.Builder(song.id, song.id.toUri())
-                                            .setCustomCacheKey(song.id)
-                                            .setData(song.title.toByteArray())
-                                            .build()
-                                        DownloadService.sendAddDownload(
-                                            context,
-                                            ExoDownloadService::class.java,
-                                            downloadRequest,
-                                            false
-                                        )
+                                // Resume stopped members instead of adding
+                                // them again, so partial cache bytes survive.
+                                collectionIds.forEach { id ->
+                                    val existing = indexedDownloads[id]
+                                    if (existing != null) {
+                                        downloadUtil.downloadManager.setStopReason(id, Download.STOP_REASON_NONE)
+                                    } else {
+                                        downloadSongs.firstOrNull { it.id == id }?.let { song ->
+                                            val request = DownloadRequest.Builder(song.id, song.id.toUri())
+                                                .setCustomCacheKey(song.id)
+                                                .setData(song.title.toByteArray())
+                                                .build()
+                                            DownloadService.sendAddDownload(
+                                                context, ExoDownloadService::class.java, request, false,
+                                            )
+                                        }
                                     }
+                                }
                             }
                         }
                     )
+                    if (hasAnyCollectionDownload) {
+                        ListItem(
+                            headlineContent = {
+                                Text(stringResource(R.string.remove_download),
+                                    color = MaterialTheme.colorScheme.error)
+                            },
+                            leadingContent = {
+                                Icon(painterResource(R.drawable.offline), contentDescription = null)
+                            },
+                            modifier = Modifier.clickable { showRemoveDownloadDialog = true },
+                        )
+                    }
                 }
             }
         }
