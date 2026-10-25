@@ -98,6 +98,12 @@ object YouTubeVideoResolver {
     private val resolveMutex = Mutex()
 
     private val songResolves = CapsuleVideoSingleFlight<Result<ResolvedVideo>>()
+    // MUSIC media IDs and official clip IDs often differ. A successful match
+    // remains useful even when its signed stream URL later expires.
+    private val matchedClips = object : LinkedHashMap<String, String>(64, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>): Boolean =
+            size > 64
+    }
 
     @Volatile
     private var initialized = false
@@ -145,6 +151,19 @@ object YouTubeVideoResolver {
             return Result.failure(IllegalArgumentException("Missing YouTube Music track id"))
         }
 
+        val knownClipId = if (originalVideo) canonicalId
+            else synchronized(matchedClips) { matchedClips[canonicalId] }
+        // This requires neither another MUSIC search nor another player request.
+        knownClipId?.let { id ->
+            cache[cacheKey(id, quality, muxedOnly = false)]?.let { return Result.success(it) }
+        }
+        // A verified server challenge must prevent a *new* metadata search.
+        // Previously the guard was checked only after the song->clip lookup.
+        if (CapsuleVideoRequestGuard.isBlocked()) {
+            return Result.failure(CapsuleVideoRequestGuard.RequestBlockedException(
+                "YouTube VIDEO requests paused for ${CapsuleVideoRequestGuard.remainingBackoffMs() / 1000L}s"
+            ))
+        }
         val requestKey = "$canonicalId:${quality.name}:${if (originalVideo) "original" else "matched"}"
         return songResolves.run(requestKey) {
             val result =
@@ -158,6 +177,8 @@ object YouTubeVideoResolver {
                         val videoId =
                             if (originalVideo) {
                                 canonicalId
+                            } else if (knownClipId != null) {
+                                knownClipId
                             } else {
                                 YouTubeMusicVideoLinkResolver
                                     .resolve(
@@ -184,6 +205,7 @@ object YouTubeVideoResolver {
                         Timber.tag(TAG).i("VIDEO timing extract clip=%s ms=%s backend=%s delivery=%s", videoId,
                             SystemClock.elapsedRealtime() - matchedAt, resolved.backend, resolved.delivery)
                         CapsuleVideoRequestGuard.noteSuccess()
+                        synchronized(matchedClips) { matchedClips[canonicalId] = videoId }
                         Result.success(resolved)
                     } ?: Result.failure(VideoBackendException(CapsuleVideoFailure.NETWORK, "VIDEO extraction timed out"))
                 } catch (cancelled: CancellationException) {
