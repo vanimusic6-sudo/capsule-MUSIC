@@ -159,14 +159,9 @@ fun SelectionSongMenu(
                 TextButton(
                     onClick = {
                         showRemoveDownloadDialog = false
-                        songSelection.forEach { song ->
-                            DownloadService.sendRemoveDownload(
-                                context,
-                                ExoDownloadService::class.java,
-                                song.song.id,
-                                false,
-                            )
-                        }
+                        com.nikhil.yt.playback.removeCollectionDownloads(
+                            downloadUtil.downloadManager, songSelection.map { it.id }, preserveManual = false,
+                        )
                     },
                 ) {
                     Text(text = stringResource(android.R.string.ok))
@@ -529,14 +524,9 @@ fun SelectionMediaMetadataMenu(
                 TextButton(
                     onClick = {
                         showRemoveDownloadDialog = false
-                        songSelection.forEach { song ->
-                            DownloadService.sendRemoveDownload(
-                                context,
-                                ExoDownloadService::class.java,
-                                song.id,
-                                false,
-                            )
-                        }
+                        com.nikhil.yt.playback.removeCollectionDownloads(
+                            downloadUtil.downloadManager, songSelection.map { it.id }, preserveManual = false,
+                        )
                     },
                 ) {
                     Text(text = stringResource(android.R.string.ok))
