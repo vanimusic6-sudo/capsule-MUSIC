@@ -26,6 +26,7 @@ import kotlinx.coroutines.delay
 internal fun YouTubeDownloadMenuItems(
     download: Download?,
     mediaId: String,
+    trackTitle: String? = null,
     onStart: () -> Unit,
     onDismiss: () -> Unit,
     keepOpenOnDownload: Boolean = false,
@@ -49,6 +50,8 @@ internal fun YouTubeDownloadMenuItems(
     }
 
     CapsuleDownloadAction(
+        actionKey = mediaId,
+        collectionName = trackTitle,
         hasStoredItems = download != null,
         state = if (pendingStart) Download.STATE_DOWNLOADING
             else download?.visibleState ?: Download.STATE_STOPPED,
