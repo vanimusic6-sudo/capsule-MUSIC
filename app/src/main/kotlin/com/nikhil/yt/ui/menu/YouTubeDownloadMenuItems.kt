@@ -31,6 +31,7 @@ internal fun YouTubeDownloadMenuItems(
     onDismiss: () -> Unit,
     keepOpenOnDownload: Boolean = false,
     showActiveStopAction: Boolean = true,
+    instantRemove: Boolean = false,
 ) {
     val context = LocalContext.current
     val manager = LocalDownloadUtil.current.downloadManager
@@ -53,6 +54,7 @@ internal fun YouTubeDownloadMenuItems(
         actionKey = mediaId,
         collectionName = trackTitle,
         isCollection = false,
+        instantRemove = instantRemove,
         hasStoredItems = download != null,
         state = if (pendingStart) Download.STATE_DOWNLOADING
             else download?.visibleState ?: Download.STATE_STOPPED,
