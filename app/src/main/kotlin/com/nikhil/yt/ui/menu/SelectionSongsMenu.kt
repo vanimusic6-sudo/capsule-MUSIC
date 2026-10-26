@@ -134,42 +134,9 @@ fun SelectionSongMenu(
         },
     )
 
-    var showRemoveDownloadDialog by remember {
-        mutableStateOf(false)
-    }
+    
 
-    if (showRemoveDownloadDialog) {
-        DefaultDialog(
-            onDismiss = { showRemoveDownloadDialog = false },
-            content = {
-                Text(
-                    text = stringResource(R.string.remove_download_playlist_confirm, "selection"),
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(horizontal = 18.dp),
-                )
-            },
-            buttons = {
-                TextButton(
-                    onClick = {
-                        showRemoveDownloadDialog = false
-                    },
-                ) {
-                    Text(text = stringResource(android.R.string.cancel))
-                }
-
-                TextButton(
-                    onClick = {
-                        showRemoveDownloadDialog = false
-                        com.nikhil.yt.playback.removeCollectionDownloads(
-                            downloadUtil.downloadManager, songSelection.map { it.id }, preserveManual = false,
-                        )
-                    },
-                ) {
-                    Text(text = stringResource(android.R.string.ok))
-                }
-            },
-        )
-    }
+    
 
     Spacer(modifier = Modifier.height(12.dp))
 
@@ -378,7 +345,12 @@ fun SelectionSongMenu(
                         preserveManual = false,
                     )
                 },
-                onRemove = { showRemoveDownloadDialog = true },
+                collectionName = "selection",
+                onRemove = {
+                    com.nikhil.yt.playback.removeCollectionDownloads(
+                        downloadUtil.downloadManager, songSelection.map { it.id }, preserveManual = false,
+                    )
+                },
             )
         }
 
@@ -497,42 +469,9 @@ fun SelectionMediaMetadataMenu(
     val downloadState = rememberCollectionDownloadState(songSelection.map { it.id })
     val downloadIndex by downloadUtil.downloads.collectAsState()
 
-    var showRemoveDownloadDialog by remember {
-        mutableStateOf(false)
-    }
+    
 
-    if (showRemoveDownloadDialog) {
-        DefaultDialog(
-            onDismiss = { showRemoveDownloadDialog = false },
-            content = {
-                Text(
-                    text = stringResource(R.string.remove_download_playlist_confirm, "selection"),
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(horizontal = 18.dp),
-                )
-            },
-            buttons = {
-                TextButton(
-                    onClick = {
-                        showRemoveDownloadDialog = false
-                    },
-                ) {
-                    Text(text = stringResource(android.R.string.cancel))
-                }
-
-                TextButton(
-                    onClick = {
-                        showRemoveDownloadDialog = false
-                        com.nikhil.yt.playback.removeCollectionDownloads(
-                            downloadUtil.downloadManager, songSelection.map { it.id }, preserveManual = false,
-                        )
-                    },
-                ) {
-                    Text(text = stringResource(android.R.string.ok))
-                }
-            },
-        )
-    }
+    
 
     LazyColumn(
         contentPadding = PaddingValues(
@@ -688,7 +627,12 @@ fun SelectionMediaMetadataMenu(
                         preserveManual = false,
                     )
                 },
-                onRemove = { showRemoveDownloadDialog = true },
+                collectionName = "selection",
+                onRemove = {
+                    com.nikhil.yt.playback.removeCollectionDownloads(
+                        downloadUtil.downloadManager, songSelection.map { it.id }, preserveManual = false,
+                    )
+                },
             )
         }
 
