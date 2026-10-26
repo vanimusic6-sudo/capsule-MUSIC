@@ -61,6 +61,7 @@ internal fun CapsuleDownloadAction(
     }
     val currentlyDownloading = active || pendingStart
     var showChoices by remember(actionKey) { mutableStateOf(false) }
+    var choiceOpenedDuringDownload by remember(actionKey) { mutableStateOf(false) }
     var confirmRemoval by remember(actionKey) { mutableStateOf(false) }
 
     // A stopped/partial collection needs a choice, not two stacked dialogs.
@@ -68,24 +69,24 @@ internal fun CapsuleDownloadAction(
         DefaultDialog(
             onDismiss = { showChoices = false },
             title = {
-                Text(stringResource(if (currentlyDownloading) R.string.downloading
+                Text(stringResource(if (choiceOpenedDuringDownload) R.string.downloading
                     else R.string.action_download))
             },
             content = {
                 ListItem(
                     headlineContent = {
                         Text(stringResource(
-                            if (currentlyDownloading) R.string.capsule_download_pause_keep
+                            if (choiceOpenedDuringDownload) R.string.capsule_download_pause_keep
                             else R.string.action_download,
                         ))
                     },
                     leadingContent = {
-                        Icon(painterResource(if (currentlyDownloading) R.drawable.pause
+                        Icon(painterResource(if (choiceOpenedDuringDownload) R.drawable.pause
                             else R.drawable.download), contentDescription = null)
                     },
                     modifier = Modifier.clickable {
                         showChoices = false
-                        if (currentlyDownloading) {
+                        if (choiceOpenedDuringDownload) {
                             pendingStart = false
                             onStop()
                         } else {
@@ -99,7 +100,7 @@ internal fun CapsuleDownloadAction(
                     headlineContent = {
                         Text(
                             stringResource(
-                                if (currentlyDownloading) R.string.capsule_download_stop_delete
+                                if (choiceOpenedDuringDownload) R.string.capsule_download_stop_delete
                                 else R.string.remove_download,
                             ),
                             color = MaterialTheme.colorScheme.error,
@@ -182,8 +183,14 @@ internal fun CapsuleDownloadAction(
         modifier = Modifier.clickable(enabled = !removing && (enabled || currentlyDownloading || completed || hasStoredItems)) {
             when {
                 completed -> confirmRemoval = true
-                currentlyDownloading -> showChoices = true
-                hasStoredItems -> showChoices = true
+                currentlyDownloading -> {
+                    choiceOpenedDuringDownload = true
+                    showChoices = true
+                }
+                hasStoredItems -> {
+                    choiceOpenedDuringDownload = false
+                    showChoices = true
+                }
                 else -> {
                     pendingStart = true
                     onDownload()
