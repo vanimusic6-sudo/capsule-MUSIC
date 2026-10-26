@@ -65,11 +65,89 @@ class CapsuleDownloadActionInteractionTest {
             }
         }
         rule.onNodeWithText(downloadLabel).performClick()
-        clickLastMatching(removeLabel)
+        // The chooser itself is confirmation: there must be no nested dialog.
         clickLastMatching(removeLabel)
         rule.runOnIdle {
             assertEquals(1, removed)
             assertEquals(0, resumed)
         }
     }
+    @Test fun fastSecondTapBeforeMedia3IndexUpdatesStillOffersDelete() {
+        var starts = 0
+        var deletes = 0
+        val startLabel = rule.activity.getString(R.string.action_download)
+        val deleteLabel = rule.activity.getString(R.string.capsule_download_stop_delete)
+        rule.setContent {
+            MaterialTheme {
+                CapsuleDownloadAction(
+                    state = Download.STATE_STOPPED,
+                    onDownload = { starts++ },
+                    onStop = {},
+                    onRemove = { deletes++ },
+                    actionKey = "still-queuing",
+                    collectionName = "Queue",
+                )
+            }
+        }
+        rule.onNodeWithText(startLabel).performClick()
+        rule.onNodeWithText(rule.activity.getString(R.string.downloading)).performClick()
+        rule.onNodeWithText(deleteLabel).performClick()
+        rule.runOnIdle {
+            assertEquals(1, starts)
+            assertEquals(1, deletes)
+        }
+    }
+
+    @Test fun secondTapDuringDownloadOffersDeleteInsteadOfStoppingImmediately() {
+        var stopped = 0
+        var removed = 0
+        val downloading = rule.activity.getString(R.string.downloading)
+        val delete = rule.activity.getString(R.string.capsule_download_stop_delete)
+        rule.setContent {
+            MaterialTheme {
+                CapsuleDownloadAction(
+                    state = Download.STATE_DOWNLOADING,
+                    onDownload = {},
+                    onStop = { stopped++ },
+                    onRemove = { removed++ },
+                    actionKey = "active-track",
+                    collectionName = "Test download",
+                )
+            }
+        }
+        rule.onNodeWithText(downloading).performClick()
+        rule.runOnIdle {
+            assertEquals("Second tap must not stop anything on its own", 0, stopped)
+            assertEquals(0, removed)
+        }
+        rule.onNodeWithText(delete).performClick()
+        rule.runOnIdle {
+            assertEquals(0, stopped)
+            assertEquals(1, removed)
+        }
+    }
+
+    @Test fun secondTapDuringDownloadAlsoAllowsKeepingPartialBytes() {
+        var stopped = 0
+        var removed = 0
+        rule.setContent {
+            MaterialTheme {
+                CapsuleDownloadAction(
+                    state = Download.STATE_DOWNLOADING,
+                    onDownload = {},
+                    onStop = { stopped++ },
+                    onRemove = { removed++ },
+                    actionKey = "active-keep",
+                )
+            }
+        }
+        rule.onNodeWithText(rule.activity.getString(R.string.downloading)).performClick()
+        rule.onNodeWithText(rule.activity.getString(R.string.capsule_download_pause_keep)).performClick()
+        rule.runOnIdle {
+            assertEquals(1, stopped)
+            assertEquals(0, removed)
+        }
+    }
+
+
 }

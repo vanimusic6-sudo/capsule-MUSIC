@@ -8,6 +8,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -17,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import androidx.media3.exoplayer.offline.Download
 import com.nikhil.yt.R
 import com.nikhil.yt.ui.component.DefaultDialog
@@ -37,44 +39,83 @@ internal fun CapsuleDownloadAction(
     enabled: Boolean = true,
     hasStoredItems: Boolean = false,
     collectionName: String? = null,
+    isCollection: Boolean = true,
     actionKey: String = collectionName.orEmpty(),
 ) {
     val active = state == Download.STATE_DOWNLOADING ||
         state == Download.STATE_QUEUED || state == Download.STATE_RESTARTING
     val completed = state == Download.STATE_COMPLETED
     val removing = state == Download.STATE_REMOVING
+    // Media3 does not update its index in the same frame as the first tap.
+    // Keep a short local pending state so a quick second tap opens the
+    // pause/delete menu rather than submitting the same ADD twice.
+    var pendingStart by remember(actionKey) { mutableStateOf(false) }
+    LaunchedEffect(pendingStart, state) {
+        if (pendingStart) {
+            if (active || completed || removing) pendingStart = false
+            else {
+                delay(2_000L)
+                pendingStart = false
+            }
+        }
+    }
+    val currentlyDownloading = active || pendingStart
     var showChoices by remember(actionKey) { mutableStateOf(false) }
+    var choiceOpenedDuringDownload by remember(actionKey) { mutableStateOf(false) }
     var confirmRemoval by remember(actionKey) { mutableStateOf(false) }
 
     // A stopped/partial collection needs a choice, not two stacked dialogs.
     if (showChoices) {
         DefaultDialog(
             onDismiss = { showChoices = false },
-            title = { Text(stringResource(R.string.action_download)) },
+            title = {
+                Text(stringResource(if (choiceOpenedDuringDownload) R.string.downloading
+                    else R.string.action_download))
+            },
             content = {
                 ListItem(
-                    headlineContent = { Text(stringResource(R.string.action_download)) },
+                    headlineContent = {
+                        Text(stringResource(
+                            if (choiceOpenedDuringDownload) R.string.capsule_download_pause_keep
+                            else R.string.action_download,
+                        ))
+                    },
                     leadingContent = {
-                        Icon(painterResource(R.drawable.download), contentDescription = null)
+                        Icon(painterResource(if (choiceOpenedDuringDownload) R.drawable.pause
+                            else R.drawable.download), contentDescription = null)
                     },
                     modifier = Modifier.clickable {
                         showChoices = false
-                        onDownload()
+                        if (choiceOpenedDuringDownload) {
+                            pendingStart = false
+                            onStop()
+                        } else {
+                            pendingStart = true
+                            onDownload()
+                        }
                     },
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 )
                 ListItem(
                     headlineContent = {
-                        Text(stringResource(R.string.remove_download),
-                            color = MaterialTheme.colorScheme.error)
+                        Text(
+                            stringResource(
+                                if (choiceOpenedDuringDownload) R.string.capsule_download_stop_delete
+                                else R.string.remove_download,
+                            ),
+                            color = MaterialTheme.colorScheme.error,
+                        )
                     },
                     leadingContent = {
                         Icon(painterResource(R.drawable.offline), contentDescription = null,
                             tint = MaterialTheme.colorScheme.error)
                     },
                     modifier = Modifier.clickable {
+                        // This *is* the requested second-tap confirmation.
+                        // Do not open another nested dialog before deleting.
                         showChoices = false
-                        confirmRemoval = true
+                        pendingStart = false
+                        onRemove()
                     },
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 )
@@ -94,8 +135,10 @@ internal fun CapsuleDownloadAction(
                 Text(
                     if (collectionName.isNullOrBlank()) {
                         stringResource(R.string.capsule_stop_and_delete_download_message)
-                    } else {
+                    } else if (isCollection) {
                         stringResource(R.string.remove_download_playlist_confirm, collectionName)
+                    } else {
+                        stringResource(R.string.capsule_download_track_remove_confirm, collectionName)
                     }
                 )
             },
@@ -117,7 +160,7 @@ internal fun CapsuleDownloadAction(
                 stringResource(
                     when {
                         completed || removing -> R.string.remove_download
-                        active -> R.string.downloading
+                        currentlyDownloading -> R.string.downloading
                         else -> R.string.action_download
                     }
                 ),
@@ -127,7 +170,7 @@ internal fun CapsuleDownloadAction(
         },
         leadingContent = {
             when {
-                active || removing -> VeluneLoader(size = 24.dp,
+                currentlyDownloading || removing -> VeluneLoader(size = 24.dp,
                     color = if (removing) MaterialTheme.colorScheme.error else null)
                 else -> Icon(
                     painter = painterResource(if (completed) R.drawable.offline else R.drawable.download),
@@ -137,12 +180,21 @@ internal fun CapsuleDownloadAction(
                 )
             }
         },
-        modifier = Modifier.clickable(enabled = !removing && (enabled || active || completed || hasStoredItems)) {
+        modifier = Modifier.clickable(enabled = !removing && (enabled || currentlyDownloading || completed || hasStoredItems)) {
             when {
                 completed -> confirmRemoval = true
-                active -> onStop()
-                hasStoredItems -> showChoices = true
-                else -> onDownload()
+                currentlyDownloading -> {
+                    choiceOpenedDuringDownload = true
+                    showChoices = true
+                }
+                hasStoredItems -> {
+                    choiceOpenedDuringDownload = false
+                    showChoices = true
+                }
+                else -> {
+                    pendingStart = true
+                    onDownload()
+                }
             }
         },
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),

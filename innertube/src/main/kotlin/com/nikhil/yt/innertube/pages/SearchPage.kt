@@ -34,14 +34,17 @@ object SearchPage {
             renderer.navigationEndpoint?.anyWatchEndpoint
                 ?: renderer.overlay?.musicItemThumbnailOverlayRenderer
                     ?.content?.musicPlayButtonRenderer?.playNavigationEndpoint?.anyWatchEndpoint
+        // Metrolist's SearchPage uses every flex-column metadata run, rather
+        // than taking only the first bullet-delimited group of column #2.
+        // Artist credits may be in later columns/groups; the old code silently
+        // reduced duets/collaborations to just the first performer.
+        val metadataRuns = renderer.flexColumns.drop(1).flatMap { column ->
+            column.musicResponsiveListItemFlexColumnRenderer.text?.runs.orEmpty()
+        }
         val secondaryLine =
-            renderer.flexColumns
-                .getOrNull(1)
-                ?.musicResponsiveListItemFlexColumnRenderer
-                ?.text
-                ?.runs
-                ?.splitBySeparator()
-                .orEmpty()
+            renderer.flexColumns.getOrNull(1)
+                ?.musicResponsiveListItemFlexColumnRenderer?.text?.runs
+                ?.splitBySeparator().orEmpty()
         return when {
             renderer.isSong -> {
                 SongItem(
@@ -54,20 +57,13 @@ object SearchPage {
                             ?.runs
                             ?.firstOrNull()
                             ?.text ?: return null,
-                    artists = PageHelper.extractArtists(secondaryLine.firstOrNull()),
-                    album =
-                        secondaryLine.getOrNull(1)?.firstOrNull()?.takeIf { it.navigationEndpoint?.browseEndpoint != null }?.let {
-                            Album(
-                                name = it.text,
-                                id = it.navigationEndpoint?.browseEndpoint?.browseId!!,
-                            )
-                        },
-                    duration =
-                        secondaryLine
-                            .lastOrNull()
-                            ?.firstOrNull()
-                            ?.text
-                            ?.parseTime(),
+                    artists = extractSearchSongArtists(metadataRuns),
+                    album = metadataRuns.firstOrNull {
+                        it.navigationEndpoint?.browseEndpoint?.isAlbumEndpoint == true
+                    }?.let { run ->
+                        Album(name = run.text, id = run.navigationEndpoint?.browseEndpoint?.browseId!!)
+                    },
+                    duration = extractSearchSongDuration(metadataRuns),
                     thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl() ?: return null,
                     explicit =
                         renderer.badges?.find {

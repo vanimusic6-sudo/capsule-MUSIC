@@ -670,7 +670,7 @@ fun PlayerMenu(
                         headlineContent = {
                             Text(stringResource(when {
                                 saved != null -> R.string.remove_download
-                                downloading -> R.string.capsule_stop_and_delete_download
+                                downloading -> R.string.downloading
                                 !canDownloadAudius -> R.string.capsule_audius_not_downloadable
                                 else -> R.string.action_download
                             }), color = if (saved != null) MaterialTheme.colorScheme.error

@@ -52,6 +52,7 @@ internal fun YouTubeDownloadMenuItems(
     CapsuleDownloadAction(
         actionKey = mediaId,
         collectionName = trackTitle,
+        isCollection = false,
         hasStoredItems = download != null,
         state = if (pendingStart) Download.STATE_DOWNLOADING
             else download?.visibleState ?: Download.STATE_STOPPED,
@@ -83,6 +84,7 @@ internal fun YouTubeDownloadMenuItems(
             )
         },
         onRemove = {
+            pendingStart = false
             DownloadService.sendRemoveDownload(
                 context, ExoDownloadService::class.java, mediaId, false,
             )
