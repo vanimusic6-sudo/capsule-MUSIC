@@ -10,6 +10,9 @@ internal fun collectionDownloadState(songIds: Collection<String>, downloads: Map
     if (songIds.isEmpty()) return Download.STATE_STOPPED
     val states = songIds.distinct().map { downloads[it]?.visibleState }
     return when {
+        // A REMOVE is asynchronous. Don't expose "Download/Resume" mid-delete:
+        // it could re-add a track while its cached bytes are being purged.
+        states.any { it == Download.STATE_REMOVING } -> Download.STATE_REMOVING
         states.all { it == Download.STATE_COMPLETED } -> Download.STATE_COMPLETED
         states.any { it == Download.STATE_QUEUED || it == Download.STATE_DOWNLOADING || it == Download.STATE_RESTARTING } ->
             Download.STATE_DOWNLOADING
