@@ -411,15 +411,17 @@ fun PlaylistMenu(
                 hasStoredItems = songs.map { it.id }.any { downloadIndex.containsKey(it) },
                     enabled = songs.isNotEmpty(),
                     onDownload = {
-                        songs.forEach { song ->
-                            val downloadRequest = DownloadRequest.Builder(song.id, song.id.toUri())
-                                .setCustomCacheKey(song.id)
-                                .setData(song.song.title.toByteArray())
-                                .build()
-                            com.nikhil.yt.playback.enqueueCollectionItem(context, downloadIndex, downloadRequest)
-                        }
-                    },
-                    onStop = {
+                    val requests = songs.map { song ->
+                        DownloadRequest.Builder(song.id, song.id.toUri())
+                            .setCustomCacheKey(song.id)
+                            .setData(song.song.title.toByteArray())
+                            .build()
+                    }
+                    com.nikhil.yt.playback.enqueueCollectionDownloads(
+                        context, downloadUtil.downloadManager, downloadIndex, requests,
+                    )
+                },
+                onStop = {
                         com.nikhil.yt.playback.stopCollectionDownloads(
                             downloadUtil.downloadManager, songs.map { it.id },
                         )
