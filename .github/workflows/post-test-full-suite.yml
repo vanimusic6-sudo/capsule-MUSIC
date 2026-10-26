@@ -2,7 +2,7 @@ name: Post-test full regression comparison
 
 on:
   push:
-    branches: [release/01-core-reliability, fix/posttest-ui-rework-20261026, fix/real-download-menu-repair-20261026, fix/download-actions-artist-credits-cover-20261026, fix/rebuild-download-artwork-search-20261026]
+    branches: [release/01-core-reliability, fix/posttest-ui-rework-20261026, fix/real-download-menu-repair-20261026, fix/download-actions-artist-credits-cover-20261026, fix/rebuild-download-artwork-search-20261026, fix/metrolist-search-active-download-20261026]
     paths:
       - .github/workflows/post-test-full-suite.yml
       - app/src/test/kotlin/com/nikhil/yt/ui/PlayerTransitionArchitectureTest.kt
@@ -22,6 +22,11 @@ on:
       - app/src/main/kotlin/com/nikhil/yt/ui/screens/search/OnlineSearchScreen.kt
       - app/src/test/kotlin/com/nikhil/yt/ui/screens/search/SearchArtistCreditsTest.kt
       - innertube/src/main/kotlin/com/nikhil/yt/innertube/pages/SearchSummaryPage.kt
+      - innertube/src/main/kotlin/com/nikhil/yt/innertube/pages/SearchPage.kt
+      - innertube/src/test/kotlin/com/nikhil/yt/innertube/pages/SearchSummaryMetadataTest.kt
+      - app/src/main/kotlin/com/nikhil/yt/viewmodels/OnlineSearchViewModel.kt
+      - app/src/main/res/values/strings.xml
+      - app/src/main/res/values-ru/strings.xml
       - app/src/test/kotlin/com/nikhil/yt/ui/menu/CapsuleDownloadActionInteractionTest.kt
       - app/src/main/kotlin/com/nikhil/yt/ui/player/CapsuleImmersiveContent.kt
       - app/src/main/kotlin/com/nikhil/yt/ui/screens/artist/ArtistScreen.kt
