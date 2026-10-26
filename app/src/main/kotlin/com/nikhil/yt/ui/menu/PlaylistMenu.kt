@@ -164,14 +164,9 @@ fun PlaylistMenu(
                 TextButton(
                     onClick = {
                         showRemoveDownloadDialog = false
-                        songs.forEach { song ->
-                            DownloadService.sendRemoveDownload(
-                                context,
-                                ExoDownloadService::class.java,
-                                song.id,
-                                false,
-                            )
-                        }
+                        com.nikhil.yt.playback.removeCollectionDownloads(
+                            downloadUtil.downloadManager, songs.map { it.id }, preserveManual = false,
+                        )
                     },
                 ) {
                     Text(text = stringResource(android.R.string.ok))
