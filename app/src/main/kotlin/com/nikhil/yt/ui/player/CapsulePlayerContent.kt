@@ -619,7 +619,12 @@ fun CapsulePlayerContent(
                         val originalArtworkUrl = mediaMetadata.thumbnailUrl
                         val highResArtworkUrl = remember(mediaMetadata.id, originalArtworkUrl) {
                             originalArtworkUrl?.let { artwork ->
-                                if (mediaMetadata.id.startsWith("capsule-open:")) artwork
+                                // Original-video posters can use different
+                                // frames/aspect crops at higher YouTube image
+                                // resolutions. Preserve the first displayed
+                                // thumbnail rather than recropping midway.
+                                if (mediaMetadata.isOriginalVideo ||
+                                    mediaMetadata.id.startsWith("capsule-open:")) artwork
                                 else artwork.toHighResThumbnail()
                             }
                         }
