@@ -15,6 +15,8 @@ import com.nikhil.yt.innertube.models.Run
 import com.nikhil.yt.innertube.models.splitBySeparator
 
 object PageHelper {
+    // Compile once, not once for every metadata run on every shelf.
+    private val artistDurationPattern = Regex("""\\d{1,2}:\\d{2}(?::\\d{2})?""")
     fun extractRuns(columns: List<FlexColumn>, typeLike: String): List<Run> {
         val filteredRuns = mutableListOf<Run>()
         for (column in columns) {
@@ -88,6 +90,14 @@ object PageHelper {
      */
     fun extractSongArtists(runs: List<Run>?): List<Artist> {
         val groups = runs.orEmpty().splitBySeparator()
+        val hasLinkedArtist = groups.any { group -> group.any { run ->
+            val browse = run.navigationEndpoint?.browseEndpoint ?: return@any false
+            val pageType = browse.browseEndpointContextSupportedConfigs
+                ?.browseEndpointContextMusicConfig?.pageType
+            pageType == MUSIC_PAGE_TYPE_ARTIST || pageType == MUSIC_PAGE_TYPE_LIBRARY_ARTIST ||
+                pageType == MUSIC_PAGE_TYPE_USER_CHANNEL ||
+                (pageType == null && browse.browseId.startsWith("UC"))
+        } }
         val all = mutableListOf<Artist>()
         groups.forEachIndexed { groupIndex, group ->
             val linked = group.indices.filter { index ->
@@ -111,7 +121,7 @@ object PageHelper {
                                 group.getOrNull(index + 1)?.text?.isArtistJoiner() == true)
                     }
                 }
-            } else if (groupIndex == 0) {
+            } else if (groupIndex == 0 && !hasLinkedArtist) {
                 // Some unauthenticated renderers omit ALL browse endpoints.
                 // Consider only the very first metadata group, never later
                 // album/genre/duration groups, to avoid false collaborators.
@@ -127,7 +137,7 @@ object PageHelper {
     }
 
     private fun String.isArtistDuration(): Boolean =
-        Regex("""\\d{1,2}:\\d{2}(?::\\d{2})?""").matches(trim())
+        artistDurationPattern.matches(trim())
 
     private fun String.isArtistJoiner(): Boolean {
         val value = trim().lowercase()
