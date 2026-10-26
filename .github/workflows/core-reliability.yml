@@ -2,7 +2,7 @@ name: Core reliability
 
 on:
   push:
-    branches: [release/01-core-reliability, fix/posttest-ui-rework-20261026, fix/real-download-menu-repair-20261026, fix/download-actions-artist-credits-cover-20261026]
+    branches: [release/01-core-reliability, fix/posttest-ui-rework-20261026, fix/real-download-menu-repair-20261026, fix/download-actions-artist-credits-cover-20261026, fix/rebuild-download-artwork-search-20261026]
   workflow_dispatch:
 
 permissions:
@@ -45,6 +45,9 @@ jobs:
           --tests 'com.nikhil.yt.ui.SeekableTransitionNaNTest'
           --tests 'com.nikhil.yt.CrashReportTest'
           --tests 'com.nikhil.yt.utils.BuildMarkerLogTest'
+          --tests 'com.nikhil.yt.ui.menu.CapsuleDownloadActionInteractionTest'
+          --tests 'com.nikhil.yt.ui.screens.search.SearchArtistCreditsTest'
+          --tests 'com.nikhil.yt.ui.player.PlayerArtworkReliabilityTest'
           --tests 'com.nikhil.yt.ui.ArtistHeroTest'
           --tests 'com.nikhil.yt.ui.component.ArtworkResolutionTest'
           --tests 'com.nikhil.yt.ui.CapsuleReleaseUiCorrectionsTest'
