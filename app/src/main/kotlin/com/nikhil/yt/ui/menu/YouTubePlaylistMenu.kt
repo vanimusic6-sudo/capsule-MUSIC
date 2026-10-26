@@ -231,7 +231,7 @@ fun YouTubePlaylistMenu(
     val enqueuingPlaylists by com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator
         .enqueuing.collectAsState()
     val collectionIds = com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator
-        .memberIds(playlist.id, downloadSongs.map { it.id })
+        .memberIds(playlist.id, context, downloadSongs.map { it.id })
     val downloadState = rememberCollectionDownloadState(collectionIds)
     val isEnqueuing = playlist.id in enqueuingPlaylists
     val effectiveDownloadState =
