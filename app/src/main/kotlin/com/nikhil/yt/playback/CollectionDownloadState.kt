@@ -61,7 +61,7 @@ internal fun enqueueCollectionItem(
     if (saved?.state == Download.STATE_STOPPED) {
         DownloadService.sendSetStopReason(
             context, ExoDownloadService::class.java,
-            request.id, Download.STOP_REASON_NONE, false,
+            request.id, DOWNLOAD_WAITING_FOR_SLOT, false,
         )
     } else {
         DownloadService.sendAddDownload(
@@ -70,7 +70,7 @@ internal fun enqueueCollectionItem(
         if (saved != null && saved.stopReason != Download.STOP_REASON_NONE) {
             DownloadService.sendSetStopReason(
                 context, ExoDownloadService::class.java,
-                request.id, Download.STOP_REASON_NONE, false,
+                request.id, DOWNLOAD_WAITING_FOR_SLOT, false,
             )
         }
     }
@@ -95,7 +95,10 @@ internal fun enqueueCollectionDownloads(
         when (existing?.state) {
             Download.STATE_COMPLETED -> Unit
             Download.STATE_STOPPED -> {
-                manager.setStopReason(request.id, Download.STOP_REASON_NONE)
+                // Never bypass the manual-first download admission queue.
+                if (existing.stopReason != DOWNLOAD_WAITING_FOR_SLOT) {
+                    manager.setStopReason(request.id, DOWNLOAD_WAITING_FOR_SLOT)
+                }
             }
             Download.STATE_QUEUED, Download.STATE_DOWNLOADING,
             Download.STATE_RESTARTING -> Unit
@@ -106,7 +109,7 @@ internal fun enqueueCollectionDownloads(
                     )
                     serviceStarted = true
                 } else {
-                    manager.addDownload(request)
+                    manager.addDownload(request, DOWNLOAD_WAITING_FOR_SLOT)
                 }
             }
         }
