@@ -2,7 +2,7 @@ name: Core reliability
 
 on:
   push:
-    branches: [release/01-core-reliability, fix/posttest-ui-rework-20261026, fix/real-download-menu-repair-20261026]
+    branches: [release/01-core-reliability, fix/posttest-ui-rework-20261026, fix/real-download-menu-repair-20261026, fix/download-actions-artist-credits-cover-20261026]
   workflow_dispatch:
 
 permissions:
