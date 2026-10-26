@@ -138,7 +138,11 @@ private val ArtistLatestReleaseArtworkSize = 112.dp
 internal fun artistArtworkFade(firstVisibleItemIndex: Int, offsetPx: Int, artworkHeightPx: Int, toolbarBottomPx: Int): Float {
     if (firstVisibleItemIndex > 0) return 1f
     val distance = (artworkHeightPx - toolbarBottomPx).coerceAtLeast(1)
-    val fraction = (offsetPx.toFloat() / distance).coerceIn(0f, 1f)
+    // Finish dissolving the portrait well before its lower edge travels under
+    // the pinned title/actions. The toolbar then becomes opaque over an
+    // already-solid page colour: no extra dark strip or sudden last-frame tint.
+    val fadeDistance = distance * 0.74f
+    val fraction = (offsetPx.toFloat() / fadeDistance).coerceIn(0f, 1f)
     return fraction * fraction * (3f - 2f * fraction)
 }
 
