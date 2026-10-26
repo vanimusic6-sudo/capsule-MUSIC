@@ -75,3 +75,40 @@ internal fun enqueueCollectionItem(
         }
     }
 }
+
+/**
+ * Batch start/resume for local and remote collections. Start DownloadService
+ * at most once; all remaining entries go directly to the already-initialized
+ * Media3 manager. This avoids one foreground-service intent per song and
+ * preserves the individual priority queue for manually selected tracks.
+ */
+internal fun enqueueCollectionDownloads(
+    context: Context,
+    manager: androidx.media3.exoplayer.offline.DownloadManager,
+    indexed: Map<String, Download>,
+    requests: List<DownloadRequest>,
+) {
+    var serviceStarted = false
+    val active = manager.currentDownloads.associateBy { it.request.id }
+    requests.distinctBy { it.id }.forEach { request ->
+        val existing = indexed[request.id] ?: active[request.id]
+        when (existing?.state) {
+            Download.STATE_COMPLETED -> Unit
+            Download.STATE_STOPPED -> {
+                manager.setStopReason(request.id, Download.STOP_REASON_NONE)
+            }
+            Download.STATE_QUEUED, Download.STATE_DOWNLOADING,
+            Download.STATE_RESTARTING -> Unit
+            else -> {
+                if (!serviceStarted) {
+                    DownloadService.sendAddDownload(
+                        context, ExoDownloadService::class.java, request, false,
+                    )
+                    serviceStarted = true
+                } else {
+                    manager.addDownload(request)
+                }
+            }
+        }
+    }
+}
