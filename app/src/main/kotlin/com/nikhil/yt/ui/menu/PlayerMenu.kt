@@ -713,6 +713,7 @@ fun PlayerMenu(
                         download = download, mediaId = mediaMetadata.id, onDismiss = onDismiss,
                         trackTitle = mediaMetadata.title,
                         keepOpenOnDownload = true, showActiveStopAction = false,
+                        instantRemove = true,
                         onStart = {
                             database.transaction { insert(mediaMetadata) }
                             val request = DownloadRequest.Builder(mediaMetadata.id, mediaMetadata.id.toUri())
