@@ -90,8 +90,8 @@ object PageHelper {
      */
     fun extractSongArtists(runs: List<Run>?): List<Artist> {
         val groups = runs.orEmpty().splitBySeparator()
-        val hasLinkedArtist = groups.any { group -> group.any { run ->
-            val browse = run.navigationEndpoint?.browseEndpoint ?: return@any false
+        val hasLinkedArtist = groups.any { group -> group.any anyRun@{ run ->
+            val browse = run.navigationEndpoint?.browseEndpoint ?: return@anyRun false
             val pageType = browse.browseEndpointContextSupportedConfigs
                 ?.browseEndpointContextMusicConfig?.pageType
             pageType == MUSIC_PAGE_TYPE_ARTIST || pageType == MUSIC_PAGE_TYPE_LIBRARY_ARTIST ||
@@ -133,7 +133,17 @@ object PageHelper {
             } else emptyList()
             all += extractArtists(creditRuns)
         }
-        return all.distinctBy { it.id ?: "credit:${it.name.trim().lowercase()}" }
+        // The same artist may appear linked in one column and unlinked in
+        // another. Prefer the navigable entry; never show a duplicate credit.
+        val unique = linkedMapOf<String, Artist>()
+        all.forEach { artist ->
+            val key = artist.name.trim().lowercase(java.util.Locale.ROOT)
+            val previous = unique[key]
+            if (previous == null || (previous.id == null && artist.id != null)) {
+                unique[key] = artist
+            }
+        }
+        return unique.values.toList()
     }
 
     private fun String.isArtistDuration(): Boolean =
