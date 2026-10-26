@@ -138,6 +138,23 @@ internal object OnlinePlaylistDownloadCoordinator {
                     }
                     if (index % 32 == 31) yield()
                 }
+                if (remote.isEmpty()) {
+                    // Offline/public metadata failure: the persistent index still
+                    // knows the requests for continuation-page tracks. Resume
+                    // them without inventing unavailable SongItem metadata.
+                    val shownIds = uniqueSongs.mapTo(hashSetOf()) { it.id }
+                    previouslyKnown.asSequence().filterNot { it in shownIds }
+                        .mapNotNull(indexed::get).forEach { saved ->
+                            currentCoroutineContext().ensureActive()
+                            when (saved.state) {
+                                Download.STATE_STOPPED ->
+                                    downloadManager.setStopReason(saved.request.id, DOWNLOAD_WAITING_FOR_SLOT)
+                                Download.STATE_FAILED ->
+                                    downloadManager.addDownload(saved.request, DOWNLOAD_WAITING_FOR_SLOT)
+                                else -> Unit
+                            }
+                        }
+                }
             } finally {
                 if (sessions[playlistId] === session) {
                     sessions.remove(playlistId)
