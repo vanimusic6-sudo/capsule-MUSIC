@@ -42,7 +42,7 @@ class CapsuleReleaseUiCorrectionsTest {
         assertTrue(shared.contains("currentlyDownloading -> showChoices = true"))
         assertTrue(shared.contains("capsule_download_stop_delete"))
         assertTrue(shared.contains("if (currentlyDownloading)"))
-        assertTrue(shared.contains("else -> onDownload()"))
+        assertTrue(shared.contains("pendingStart = true\n                    onDownload()"))
         assertTrue(shared.contains("DefaultDialog("))
         assertTrue(shared.contains("confirmRemoval = false\n                    onRemove()"))
         assertFalse("Delete cannot open a second nested dialog", source("ui/menu/PlaylistMenu.kt").contains("showRemoveDownloadDialog"))
