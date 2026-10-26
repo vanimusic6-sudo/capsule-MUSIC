@@ -135,45 +135,9 @@ fun PlaylistMenu(
         )
     }
 
-    var showRemoveDownloadDialog by remember {
-        mutableStateOf(false)
-    }
+    
 
-    if (showRemoveDownloadDialog) {
-        DefaultDialog(
-            onDismiss = { showRemoveDownloadDialog = false },
-            content = {
-                Text(
-                    text = stringResource(
-                        R.string.remove_download_playlist_confirm,
-                        playlist.playlist.name
-                    ),
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(horizontal = 18.dp),
-                )
-            },
-            buttons = {
-                TextButton(
-                    onClick = {
-                        showRemoveDownloadDialog = false
-                    },
-                ) {
-                    Text(text = stringResource(android.R.string.cancel))
-                }
-
-                TextButton(
-                    onClick = {
-                        showRemoveDownloadDialog = false
-                        com.nikhil.yt.playback.removeCollectionDownloads(
-                            downloadUtil.downloadManager, songs.map { it.id }, preserveManual = false,
-                        )
-                    },
-                ) {
-                    Text(text = stringResource(android.R.string.ok))
-                }
-            },
-        )
-    }
+    
 
     var showDeletePlaylistDialog by remember {
         mutableStateOf(false)
@@ -460,7 +424,12 @@ fun PlaylistMenu(
                             downloadUtil.downloadManager, songs.map { it.id },
                         )
                     },
-                    onRemove = { showRemoveDownloadDialog = true },
+                    collectionName = playlist.playlist.name,
+                onRemove = {
+                    com.nikhil.yt.playback.removeCollectionDownloads(
+                        downloadUtil.downloadManager, songs.map { it.id }, preserveManual = false,
+                    )
+                },
                 )
             }
         }
