@@ -707,6 +707,7 @@ fun SongMenu(
                     if (!independentSong) {
                         YouTubeDownloadMenuItems(
                             download = download, mediaId = song.id, onDismiss = onDismiss,
+                        trackTitle = song.song.title,
                             onStart = {
                                 val request = DownloadRequest.Builder(song.id, song.id.toUri())
                                     .setCustomCacheKey(song.id)
