@@ -134,11 +134,9 @@ fun AlbumMenu(
                 }
                 TextButton(onClick = {
                     confirmAlbumDownloadRemoval = false
-                    songs.forEach { song ->
-                        DownloadService.sendRemoveDownload(
-                            context, ExoDownloadService::class.java, song.id, false,
+                    com.nikhil.yt.playback.removeCollectionDownloads(
+                            downloadUtil.downloadManager, songs.map { it.id }, preserveManual = false,
                         )
-                    }
                 }) { Text(stringResource(android.R.string.ok)) }
             },
         )
