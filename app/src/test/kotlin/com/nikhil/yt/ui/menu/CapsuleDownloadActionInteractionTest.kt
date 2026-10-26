@@ -150,4 +150,67 @@ class CapsuleDownloadActionInteractionTest {
     }
 
 
+    @Test fun playerActiveDownloadSecondTapDeletesImmediatelyWithoutDialog() {
+        var stopped = 0
+        var removed = 0
+        rule.setContent {
+            MaterialTheme {
+                CapsuleDownloadAction(
+                    state = Download.STATE_DOWNLOADING,
+                    onDownload = {},
+                    onStop = { stopped++ },
+                    onRemove = { removed++ },
+                    instantRemove = true,
+                    actionKey = "player-downloading",
+                )
+            }
+        }
+        rule.onNodeWithText(rule.activity.getString(R.string.downloading)).performClick()
+        rule.runOnIdle {
+            assertEquals(1, removed)
+            assertEquals(0, stopped)
+        }
+        // The modal Delete/Stop chooser must NOT appear in Player More.
+        rule.onAllNodesWithText(rule.activity.getString(R.string.capsule_download_stop_delete))
+            .assertCountEquals(0)
+    }
+
+    @Test fun playerCompletedDownloadDeletesOnFirstTapWithoutDialog() {
+        var removed = 0
+        rule.setContent {
+            MaterialTheme {
+                CapsuleDownloadAction(
+                    state = Download.STATE_COMPLETED,
+                    onDownload = {},
+                    onStop = {},
+                    onRemove = { removed++ },
+                    instantRemove = true,
+                    actionKey = "player-completed",
+                )
+            }
+        }
+        rule.onNodeWithText(rule.activity.getString(R.string.remove_download)).performClick()
+        rule.runOnIdle { assertEquals(1, removed) }
+    }
+
+    @Test fun normalSongMenuStillShowsStopOrKeepOptions() {
+        var removed = 0
+        rule.setContent {
+            MaterialTheme {
+                CapsuleDownloadAction(
+                    state = Download.STATE_DOWNLOADING,
+                    onDownload = {},
+                    onStop = {},
+                    onRemove = { removed++ },
+                    instantRemove = false,
+                    actionKey = "not-player",
+                )
+            }
+        }
+        rule.onNodeWithText(rule.activity.getString(R.string.downloading)).performClick()
+        rule.runOnIdle { assertEquals(0, removed) }
+        rule.onNodeWithText(rule.activity.getString(R.string.capsule_download_stop_delete)).performClick()
+        rule.runOnIdle { assertEquals(1, removed) }
+    }
+
 }
