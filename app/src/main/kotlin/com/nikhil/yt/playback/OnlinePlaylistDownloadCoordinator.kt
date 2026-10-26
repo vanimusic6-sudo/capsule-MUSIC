@@ -43,8 +43,27 @@ internal object OnlinePlaylistDownloadCoordinator {
     private val _enqueuing = MutableStateFlow<Set<String>>(emptySet())
     val enqueuing = _enqueuing.asStateFlow()
 
-    fun memberIds(playlistId: String, currentlyVisibleIds: Collection<String>): List<String> =
-        (knownMembership[playlistId].orEmpty() + currentlyVisibleIds).distinct()
+    private const val MEMBERSHIP_PREFS = "capsule_online_playlist_download_members_v1"
+
+    // Persist ownership in addition to Media3's per-track index. A process
+    // restart must not make the Remove button forget songs from continuation
+    // pages that the current menu has not loaded yet.
+    private fun rememberedIds(context: Context, playlistId: String): List<String> =
+        context.applicationContext.getSharedPreferences(MEMBERSHIP_PREFS, Context.MODE_PRIVATE)
+            .getStringSet(playlistId, emptySet()).orEmpty().toList()
+
+    fun memberIds(
+        playlistId: String,
+        context: Context,
+        currentlyVisibleIds: Collection<String>,
+    ): List<String> =
+        (knownMembership[playlistId].orEmpty() + rememberedIds(context, playlistId) +
+            currentlyVisibleIds).distinct()
+
+    private fun appSaveMembership(context: Context, playlistId: String, ids: Collection<String>) {
+        context.applicationContext.getSharedPreferences(MEMBERSHIP_PREFS, Context.MODE_PRIVATE)
+            .edit().putStringSet(playlistId, ids.toSet()).apply()
+    }
 
     fun start(
         playlistId: String,
@@ -57,6 +76,7 @@ internal object OnlinePlaylistDownloadCoordinator {
         val uniqueSongs = songs.distinctBy { it.id }
         val session = Session(uniqueSongs.map { it.id })
         knownMembership[playlistId] = session.ids
+        appSaveMembership(context, playlistId, session.ids)
         sessions[playlistId] = session
         _enqueuing.value = _enqueuing.value + playlistId
         val appContext = context.applicationContext
@@ -136,7 +156,10 @@ internal object OnlinePlaylistDownloadCoordinator {
         session?.job?.cancel()
         _enqueuing.value = _enqueuing.value - playlistId
         val ids = (knownMembership.remove(playlistId).orEmpty() +
-            session?.ids.orEmpty() + currentlyVisibleIds).distinct()
+            rememberedIds(context, playlistId) + session?.ids.orEmpty() +
+            currentlyVisibleIds).distinct()
+        context.applicationContext.getSharedPreferences(MEMBERSHIP_PREFS, Context.MODE_PRIVATE)
+            .edit().remove(playlistId).apply()
         removeCollectionDownloads(downloadManager, ids, preserveManual = false)
         lastServiceWakeId.remove(playlistId)?.let { first ->
             // Service ADD is queued before REMOVE, so a stale wake-up cannot
