@@ -207,26 +207,12 @@ fun YouTubePlaylistMenu(
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
 
-    // Unlike a saved playlist, the online screen may have loaded only its
-    // first continuation page. Resolve full membership before starting a
-    // collection transfer or the Cancel/Remove action will miss later songs.
-    var downloadSongs by remember(playlist.id) { mutableStateOf(songs) }
-    // The first loaded page is already actionable; fetching later continuation
-    // pages enriches membership without blocking or replacing a running transfer.
-    var membershipReady by remember(playlist.id) { mutableStateOf(songs.isNotEmpty()) }
-    LaunchedEffect(playlist.id, songs) {
-        if (songs.isNotEmpty() && downloadSongs.isEmpty()) {
-            downloadSongs = songs
-            membershipReady = true
-        }
-        val allRemote = withContext(Dispatchers.IO) {
-            YouTube.playlist(playlist.id).completed().getOrNull()?.songs.orEmpty()
-        }
-        if (allRemote.size >= downloadSongs.size && allRemote.isNotEmpty()) {
-            downloadSongs = allRemote
-        }
-        membershipReady = downloadSongs.isNotEmpty()
-    }
+    // Reading the menu must be cheap and side-effect free. The process-owned
+    // download coordinator resolves continuation pages on an actual DOWNLOAD
+    // tap. Automatically fetching a huge public playlist every time More
+    // opened caused stale sheet state, slow buttons and duplicate network I/O.
+    val downloadSongs = songs
+    val membershipReady = songs.isNotEmpty()
     val indexedDownloads by downloadUtil.downloads.collectAsState()
     val enqueuingPlaylists by com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator
         .enqueuing.collectAsState()
