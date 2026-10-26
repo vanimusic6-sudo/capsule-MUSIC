@@ -8,6 +8,7 @@ on:
       - main
       - fix/posttest-ui-rework-20261026
       - fix/real-download-menu-repair-20261026
+      - fix/download-actions-artist-credits-cover-20261026
       - cleanup/capsule-player-only
       - next/capsule-clay
       - perf/thermal-audit-20261005

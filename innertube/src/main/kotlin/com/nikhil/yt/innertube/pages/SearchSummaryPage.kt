@@ -33,6 +33,7 @@ private val searchDurationPattern = Regex("""\d{1,2}:\d{2}(?::\d{2})?""")
 internal fun extractSearchSongArtists(runs: List<Run>): List<Artist> {
     val groups = runs.splitBySeparator()
 
+    val credits = mutableListOf<Artist>()
     for (group in groups) {
         val linkedArtistIndexes =
             group.indices.filter { index ->
@@ -65,10 +66,10 @@ internal fun extractSearchSongArtists(runs: List<Run>): List<Artist> {
                 }
             }
 
-        return PageHelper.extractArtists(creditRuns)
+        credits += PageHelper.extractArtists(creditRuns)
     }
 
-    return emptyList()
+    return credits.distinctBy { it.id ?: "credit:${it.name.trim().lowercase()}" }
 }
 
 private fun String.isArtistJoiner(): Boolean {
@@ -92,15 +93,26 @@ internal fun extractSearchCardArtists(renderer: MusicCardShelfRenderer): List<Ar
     }
 }
 
+/**
+ * A song in Top result may expose only the primary performer while its
+ * duplicate in Songs carries all collaborators (or vice versa). Merge the
+ * verified credits of the SAME video ID; never replace them with artists
+ * returned by an unrelated artist search query.
+ */
 internal fun enrichSearchSummaryArtists(summaries: List<SearchSummary>): List<SearchSummary> {
     val knownArtists = summaries.flatMap { it.items }
         .filterIsInstance<SongItem>()
-        .filter { it.artists.isNotEmpty() }
-        .associate { it.id to it.artists }
+        .groupBy { it.id }
+        .mapValues { (_, occurrences) ->
+            occurrences.flatMap { it.artists }
+                .distinctBy { it.id ?: "credit:${it.name.trim().lowercase()}" }
+        }
     return summaries.map { summary ->
         summary.copy(items = summary.items.map { item ->
-            if (item is SongItem && item.artists.isEmpty()) {
-                item.copy(artists = knownArtists[item.id].orEmpty())
+            if (item is SongItem) {
+                val merged = (item.artists + knownArtists[item.id].orEmpty())
+                    .distinctBy { it.id ?: "credit:${it.name.trim().lowercase()}" }
+                if (merged.size > item.artists.size) item.copy(artists = merged) else item
             } else item
         })
     }

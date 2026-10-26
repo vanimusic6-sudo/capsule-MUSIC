@@ -103,6 +103,7 @@ fun PlaylistMenu(
     }
 
     val downloadState = rememberCollectionDownloadState(songs.map { it.id })
+    val downloadIndex by downloadUtil.downloads.collectAsState()
 
     val editable: Boolean = playlist.playlist.isEditable == true
 
@@ -163,14 +164,9 @@ fun PlaylistMenu(
                 TextButton(
                     onClick = {
                         showRemoveDownloadDialog = false
-                        songs.forEach { song ->
-                            DownloadService.sendRemoveDownload(
-                                context,
-                                ExoDownloadService::class.java,
-                                song.id,
-                                false,
-                            )
-                        }
+                        com.nikhil.yt.playback.removeCollectionDownloads(
+                            downloadUtil.downloadManager, songs.map { it.id }, preserveManual = false,
+                        )
                     },
                 ) {
                     Text(text = stringResource(android.R.string.ok))
@@ -448,6 +444,7 @@ fun PlaylistMenu(
             item {
                 CapsuleDownloadAction(
                     state = downloadState,
+                hasStoredItems = songs.map { it.id }.any { downloadIndex.containsKey(it) },
                     enabled = songs.isNotEmpty(),
                     onDownload = {
                         songs.forEach { song ->
@@ -455,9 +452,7 @@ fun PlaylistMenu(
                                 .setCustomCacheKey(song.id)
                                 .setData(song.song.title.toByteArray())
                                 .build()
-                            DownloadService.sendAddDownload(
-                                context, ExoDownloadService::class.java, downloadRequest, false,
-                            )
+                            com.nikhil.yt.playback.enqueueCollectionItem(context, downloadIndex, downloadRequest)
                         }
                     },
                     onStop = {

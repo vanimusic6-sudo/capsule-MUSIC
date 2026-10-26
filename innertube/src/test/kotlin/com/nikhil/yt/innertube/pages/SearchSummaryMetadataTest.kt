@@ -69,6 +69,36 @@ class SearchSummaryMetadataTest {
         )
     }
 
+    @Test fun `top result supplements partially credited song without changing its shelf`() {
+        val lead = Artist("Primary", "UC_primary")
+        val guest = Artist("Guest", "UC_guest")
+        val top = SongItem(id = "same-video", title = "Duet", artists = listOf(lead),
+            duration = 180, thumbnail = "cover")
+        val full = top.copy(artists = listOf(lead, guest))
+        val shelves = enrichSearchSummaryArtists(listOf(
+            SearchSummary("Top result", listOf(top)),
+            SearchSummary("Songs", listOf(full)),
+        ))
+        assertEquals(2, shelves.size)
+        assertEquals(1, shelves[0].items.size)
+        assertEquals(listOf(lead, guest), (shelves[0].items.single() as SongItem).artists)
+        assertEquals(listOf(lead, guest), (shelves[1].items.single() as SongItem).artists)
+    }
+
+    @Test fun `separate linked credits from multiple metadata groups are preserved`() {
+        val runs = listOf(
+            Run("Main", artistEndpoint("UC_main")),
+            Run(" • ", null),
+            Run("Other", artistEndpoint("UC_other")),
+            Run(" • ", null),
+            Run("3:09", null),
+        )
+        assertEquals(
+            listOf(Artist("Main", "UC_main"), Artist("Other", "UC_other")),
+            extractSearchSongArtists(runs),
+        )
+    }
+
     @Test fun `top result inherits missing artist from the same song in Songs`() {
         val artist = Artist("Oliver Tree", "UC_oliver")
         val top = SongItem(id = "song-id", title = "Life Goes On", artists = emptyList(),

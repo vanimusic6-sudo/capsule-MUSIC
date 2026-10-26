@@ -26,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ListItem
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -104,6 +105,7 @@ fun SelectionSongMenu(
     }
 
     val downloadState = rememberCollectionDownloadState(songSelection.map { it.id })
+    val downloadIndex by downloadUtil.downloads.collectAsState()
 
     var showChoosePlaylistDialog by rememberSaveable {
         mutableStateOf(false)
@@ -158,14 +160,9 @@ fun SelectionSongMenu(
                 TextButton(
                     onClick = {
                         showRemoveDownloadDialog = false
-                        songSelection.forEach { song ->
-                            DownloadService.sendRemoveDownload(
-                                context,
-                                ExoDownloadService::class.java,
-                                song.song.id,
-                                false,
-                            )
-                        }
+                        com.nikhil.yt.playback.removeCollectionDownloads(
+                            downloadUtil.downloadManager, songSelection.map { it.id }, preserveManual = false,
+                        )
                     },
                 ) {
                     Text(text = stringResource(android.R.string.ok))
@@ -364,6 +361,7 @@ fun SelectionSongMenu(
         item {
             CapsuleDownloadAction(
                 state = downloadState,
+                hasStoredItems = songSelection.map { it.id }.any { downloadIndex.containsKey(it) },
                 enabled = songSelection.isNotEmpty(),
                 onDownload = {
                     songSelection.forEach { song ->
@@ -371,9 +369,7 @@ fun SelectionSongMenu(
                             .setCustomCacheKey(song.id)
                             .setData(song.song.title.toByteArray())
                             .build()
-                        DownloadService.sendAddDownload(
-                            context, ExoDownloadService::class.java, downloadRequest, false,
-                        )
+                        com.nikhil.yt.playback.enqueueCollectionItem(context, downloadIndex, downloadRequest)
                     }
                 },
                 onStop = {
@@ -499,6 +495,7 @@ fun SelectionMediaMetadataMenu(
     )
 
     val downloadState = rememberCollectionDownloadState(songSelection.map { it.id })
+    val downloadIndex by downloadUtil.downloads.collectAsState()
 
     var showRemoveDownloadDialog by remember {
         mutableStateOf(false)
@@ -526,14 +523,9 @@ fun SelectionMediaMetadataMenu(
                 TextButton(
                     onClick = {
                         showRemoveDownloadDialog = false
-                        songSelection.forEach { song ->
-                            DownloadService.sendRemoveDownload(
-                                context,
-                                ExoDownloadService::class.java,
-                                song.id,
-                                false,
-                            )
-                        }
+                        com.nikhil.yt.playback.removeCollectionDownloads(
+                            downloadUtil.downloadManager, songSelection.map { it.id }, preserveManual = false,
+                        )
                     },
                 ) {
                     Text(text = stringResource(android.R.string.ok))
@@ -679,6 +671,7 @@ fun SelectionMediaMetadataMenu(
         item {
             CapsuleDownloadAction(
                 state = downloadState,
+                hasStoredItems = songSelection.map { it.id }.any { downloadIndex.containsKey(it) },
                 enabled = songSelection.isNotEmpty(),
                 onDownload = {
                     songSelection.forEach { song ->
@@ -686,9 +679,7 @@ fun SelectionMediaMetadataMenu(
                             .setCustomCacheKey(song.id)
                             .setData(song.title.toByteArray())
                             .build()
-                        DownloadService.sendAddDownload(
-                            context, ExoDownloadService::class.java, downloadRequest, false,
-                        )
+                        com.nikhil.yt.playback.enqueueCollectionItem(context, downloadIndex, downloadRequest)
                     }
                 },
                 onStop = {

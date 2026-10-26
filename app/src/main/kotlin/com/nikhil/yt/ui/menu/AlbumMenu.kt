@@ -116,6 +116,7 @@ fun AlbumMenu(
     }
 
     val downloadState = rememberCollectionDownloadState(songs.map { it.id })
+    val downloadIndex by downloadUtil.downloads.collectAsState()
 
     var confirmAlbumDownloadRemoval by remember { mutableStateOf(false) }
     if (confirmAlbumDownloadRemoval) {
@@ -133,11 +134,9 @@ fun AlbumMenu(
                 }
                 TextButton(onClick = {
                     confirmAlbumDownloadRemoval = false
-                    songs.forEach { song ->
-                        DownloadService.sendRemoveDownload(
-                            context, ExoDownloadService::class.java, song.id, false,
+                    com.nikhil.yt.playback.removeCollectionDownloads(
+                            downloadUtil.downloadManager, songs.map { it.id }, preserveManual = false,
                         )
-                    }
                 }) { Text(stringResource(android.R.string.ok)) }
             },
         )
@@ -428,6 +427,7 @@ fun AlbumMenu(
         item {
             CapsuleDownloadAction(
                 state = downloadState,
+                hasStoredItems = songs.map { it.id }.any { downloadIndex.containsKey(it) },
                 enabled = songs.isNotEmpty(),
                 onDownload = {
                     songs.forEach { song ->
@@ -435,9 +435,7 @@ fun AlbumMenu(
                             .setCustomCacheKey(song.id)
                             .setData(song.song.title.toByteArray())
                             .build()
-                        DownloadService.sendAddDownload(
-                            context, ExoDownloadService::class.java, downloadRequest, false,
-                        )
+                        com.nikhil.yt.playback.enqueueCollectionItem(context, downloadIndex, downloadRequest)
                     }
                 },
                 onStop = {

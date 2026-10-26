@@ -70,10 +70,12 @@ internal object OnlinePlaylistDownloadCoordinator {
         context: Context,
         downloadManager: DownloadManager,
         songs: List<SongItem>,
+        knownDownloads: Map<String, Download> = emptyMap(),
     ) {
         // A new manual start replaces the old producer, never runs alongside it.
         sessions.remove(playlistId)?.job?.cancel()
         val uniqueSongs = songs.distinctBy { it.id }
+        lastServiceWakeId.remove(playlistId)
         val session = Session(uniqueSongs.map { it.id })
         knownMembership[playlistId] = session.ids
         appSaveMembership(context, playlistId, session.ids)
@@ -85,11 +87,12 @@ internal object OnlinePlaylistDownloadCoordinator {
                 var serviceStarted = false
                 // One snapshot, not a linear scan of all downloaded tracks
                 // for every playlist member (which would be quadratic).
-                val indexed = downloadManager.currentDownloads.associateBy { it.request.id }
+                val indexed = knownDownloads +
+                    downloadManager.currentDownloads.associateBy { it.request.id }
                 for ((index, song) in uniqueSongs.withIndex()) {
                     currentCoroutineContext().ensureActive()
                     val existing = indexed[song.id]
-                    if (existing != null) {
+                    if (existing != null && existing.state != Download.STATE_FAILED) {
                         if (existing.state != Download.STATE_COMPLETED) {
                             downloadManager.setStopReason(song.id, Download.STOP_REASON_NONE)
                         }

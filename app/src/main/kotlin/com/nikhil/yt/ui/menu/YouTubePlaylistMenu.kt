@@ -604,11 +604,24 @@ fun YouTubePlaylistMenu(
             // download/resume -> downloading (tap to stop) -> remove when complete.
             CapsuleDownloadAction(
                 state = effectiveDownloadState,
+                hasStoredItems = collectionIds.any { indexedDownloads.containsKey(it) },
                 enabled = membershipReady && downloadSongs.isNotEmpty(),
                 onDownload = {
-                    com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator.start(
-                        playlist.id, context, downloadUtil.downloadManager, downloadSongs,
-                    )
+                    if (downloadSongs.isNotEmpty()) {
+                        com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator.start(
+                            playlist.id, context, downloadUtil.downloadManager, downloadSongs,
+                            indexedDownloads,
+                        )
+                    } else {
+                        // The remote playlist may be unavailable offline while
+                        // previously indexed tracks still exist. Resume their
+                        // original requests without losing saved membership.
+                        collectionIds.mapNotNull(indexedDownloads::get).forEach { download ->
+                            com.nikhil.yt.playback.enqueueCollectionItem(
+                                context, indexedDownloads, download.request,
+                            )
+                        }
+                    }
                 },
                 onStop = {
                     com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator.stop(

@@ -115,6 +115,7 @@ fun YouTubeAlbumMenu(
     }
 
     val downloadState = rememberCollectionDownloadState(album?.songs.orEmpty().map { it.id })
+    val downloadIndex by downloadUtil.downloads.collectAsState()
 
     var confirmAlbumDownloadRemoval by remember { mutableStateOf(false) }
     if (confirmAlbumDownloadRemoval) {
@@ -132,11 +133,9 @@ fun YouTubeAlbumMenu(
                 }
                 TextButton(onClick = {
                     confirmAlbumDownloadRemoval = false
-                    album?.songs.orEmpty().forEach { song ->
-                        DownloadService.sendRemoveDownload(
-                            context, ExoDownloadService::class.java, song.id, false,
+                    com.nikhil.yt.playback.removeCollectionDownloads(
+                            downloadUtil.downloadManager, album?.songs.orEmpty().map { it.id }, preserveManual = false,
                         )
-                    }
                 }) { Text(stringResource(android.R.string.ok)) }
             },
         )
@@ -411,6 +410,7 @@ fun YouTubeAlbumMenu(
         item {
             CapsuleDownloadAction(
                 state = downloadState,
+                hasStoredItems = album?.songs.orEmpty().map { it.id }.any { downloadIndex.containsKey(it) },
                 enabled = album?.songs.orEmpty().isNotEmpty(),
                 onDownload = {
                     album?.songs.orEmpty().forEach { song ->
@@ -418,9 +418,7 @@ fun YouTubeAlbumMenu(
                             .setCustomCacheKey(song.id)
                             .setData(song.song.title.toByteArray())
                             .build()
-                        DownloadService.sendAddDownload(
-                            context, ExoDownloadService::class.java, downloadRequest, false,
-                        )
+                        com.nikhil.yt.playback.enqueueCollectionItem(context, downloadIndex, downloadRequest)
                     }
                 },
                 onStop = {

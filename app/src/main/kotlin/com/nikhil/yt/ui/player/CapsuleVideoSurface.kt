@@ -58,8 +58,21 @@ internal fun CapsuleVideoSurface(service: MusicService, modifier: Modifier = Mod
     // through pause/exit even if Media3 resets videoSize while stopping.
     val sourceSize = frame?.let { Size(it.bitmap.width.toFloat(), it.bitmap.height.toFloat()) }
         ?: presentation.videoSizeDp
+    // Media3 sometimes reports the real coded dimensions AFTER its first
+    // frame has already appeared. resizeWithContentScale would then recrop
+    // that visible frame a second time. Freeze the first known aspect for
+    // this video (or the initial 16:9 slot if none was reported yet).
+    val videoKey = player.currentMediaItem?.mediaId
+    var lockedViewportSize by remember(videoKey) { mutableStateOf<Size?>(null) }
+    val measuredSize = sourceSize?.takeIf { it.width > 0f && it.height > 0f }
+    LaunchedEffect(videoKey, measuredSize, state.firstFrameReady) {
+        if (lockedViewportSize == null && (measuredSize != null || state.firstFrameReady)) {
+            lockedViewportSize = measuredSize ?: Size(16f, 9f)
+        }
+    }
+    val viewportSize = lockedViewportSize ?: measuredSize ?: Size(16f, 9f)
     Box(modifier.clipToBounds().background(Color.Black)) {
-      CapsuleVideoViewport(sourceSize) {
+      CapsuleVideoViewport(viewportSize) {
         if (active) CapsuleVideoTextureOutput(service, player, retention, presentation.coverSurface, state.firstFrameReady)
         if (frame != null) {
             Image(
