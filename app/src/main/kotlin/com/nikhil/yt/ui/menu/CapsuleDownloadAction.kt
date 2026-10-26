@@ -37,12 +37,13 @@ internal fun CapsuleDownloadAction(
     enabled: Boolean = true,
     hasStoredItems: Boolean = false,
     collectionName: String? = null,
+    actionKey: String = collectionName.orEmpty(),
 ) {
     val active = state == Download.STATE_DOWNLOADING ||
         state == Download.STATE_QUEUED || state == Download.STATE_RESTARTING
     val completed = state == Download.STATE_COMPLETED
-    var showChoices by remember { mutableStateOf(false) }
-    var confirmRemoval by remember { mutableStateOf(false) }
+    var showChoices by remember(actionKey) { mutableStateOf(false) }
+    var confirmRemoval by remember(actionKey) { mutableStateOf(false) }
 
     // A stopped/partial collection needs a choice, not two stacked dialogs.
     if (showChoices) {
