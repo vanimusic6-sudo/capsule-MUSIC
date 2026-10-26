@@ -407,6 +407,7 @@ fun PlaylistMenu(
         if (downloadPlaylist != true) {
             item {
                 CapsuleDownloadAction(
+                actionKey = playlist.id,
                     state = downloadState,
                 hasStoredItems = songs.map { it.id }.any { downloadIndex.containsKey(it) },
                     enabled = songs.isNotEmpty(),
