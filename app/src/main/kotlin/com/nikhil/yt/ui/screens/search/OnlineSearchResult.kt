@@ -384,7 +384,11 @@ fun OnlineSearchResult(
                             modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
                         )
                     }
-                    items(summary.items, key = { "${summary.title}/${it.id}/${summary.items.indexOf(it)}" },
+                    val displayedItems = if (index == 0) {
+                        val originalIds = summary.items.map { it.id }.toSet()
+                        summary.items + viewModel.topArtistCandidates.filterNot { it.id in originalIds }
+                    } else summary.items
+                    items(displayedItems, key = { "${summary.title}/${it.id}/${displayedItems.indexOf(it)}" },
                         itemContent = youtubeItemContent)
                 }
                 if (searchSummary.summaries.isEmpty()) item(key = "all-empty") {
