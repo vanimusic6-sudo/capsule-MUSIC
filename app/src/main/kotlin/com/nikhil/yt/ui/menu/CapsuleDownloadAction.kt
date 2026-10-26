@@ -39,6 +39,7 @@ internal fun CapsuleDownloadAction(
     enabled: Boolean = true,
     hasStoredItems: Boolean = false,
     collectionName: String? = null,
+    isCollection: Boolean = true,
     actionKey: String = collectionName.orEmpty(),
 ) {
     val active = state == Download.STATE_DOWNLOADING ||
@@ -133,8 +134,10 @@ internal fun CapsuleDownloadAction(
                 Text(
                     if (collectionName.isNullOrBlank()) {
                         stringResource(R.string.capsule_stop_and_delete_download_message)
-                    } else {
+                    } else if (isCollection) {
                         stringResource(R.string.remove_download_playlist_confirm, collectionName)
+                    } else {
+                        stringResource(R.string.capsule_download_track_remove_confirm, collectionName)
                     }
                 )
             },
