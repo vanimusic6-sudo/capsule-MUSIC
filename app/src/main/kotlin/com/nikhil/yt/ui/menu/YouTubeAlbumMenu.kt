@@ -388,6 +388,7 @@ fun YouTubeAlbumMenu(
         }
         item {
             CapsuleDownloadAction(
+                actionKey = albumItem.id,
                 state = downloadState,
                 hasStoredItems = album?.songs.orEmpty().map { it.id }.any { downloadIndex.containsKey(it) },
                 enabled = album?.songs.orEmpty().isNotEmpty(),
