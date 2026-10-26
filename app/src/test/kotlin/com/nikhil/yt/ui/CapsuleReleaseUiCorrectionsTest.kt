@@ -30,7 +30,7 @@ class CapsuleReleaseUiCorrectionsTest {
         // The toolbar must wait until that photo has nearly vanished.
         assertTrue(toolbar.contains("artistToolbarSurfaceAlpha(artworkFadeProvider())"))
         assertTrue(toolbar.contains("drawBehind"))
-        assertTrue(toolbar.contains("artworkFade >= 0.99f"))
+        assertTrue(toolbar.contains("artworkFade >= 1f"))
         assertFalse(toolbar.contains("return artworkFade.coerceIn(0f, 1f)"))
         assertFalse(toolbar.contains("((fade - 0.98f) / 0.02f)"))
     }
