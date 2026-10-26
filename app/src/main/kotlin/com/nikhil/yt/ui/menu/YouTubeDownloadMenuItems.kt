@@ -55,9 +55,18 @@ internal fun YouTubeDownloadMenuItems(
         onDownload = {
             pendingStart = true
             if (download == null) onStart()
-            else enqueuePriorityAudioDownload(
-                context, ExoDownloadService::class.java, download.request, false,
-            )
+            else {
+                enqueuePriorityAudioDownload(
+                    context, ExoDownloadService::class.java, download.request, false,
+                )
+                // STOP_REASON_USER survives a DownloadRequest replacement in
+                // Media3. Explicitly clear it AFTER the service receives ADD,
+                // otherwise "Resume" can silently leave the item stopped.
+                DownloadService.sendSetStopReason(
+                    context, ExoDownloadService::class.java,
+                    mediaId, Download.STOP_REASON_NONE, false,
+                )
+            }
         },
         onStop = {
             pendingStart = false
