@@ -23,20 +23,22 @@ internal fun stopCollectionDownloads(manager: androidx.media3.exoplayer.offline.
 internal const val COLLECTION_STOP_REASON_USER = 1
 
 /**
- * Delete only existing playlist entries. A member manually downloaded as a
- * single track still belongs to the user's independent collection; preserve
- * it. Media3's live manager batches this correctly without hundreds of
- * DownloadService intents/restarts or UI-scoped coroutine work.
+ * Media3 getCurrentDownloads() excludes terminal completed entries: those
+ * persist only in DownloadIndex (and DownloadUtil.downloads). Filtering removal
+ * to currentDownloads caused "Remove downloaded" to do nothing for completed
+ * collections. Request deletion for every owned ID; Media3 safely ignores an
+ * ID that was not present. Preserve manually prioritized active singles only
+ * when a caller explicitly wants that policy.
  */
 internal fun removeCollectionDownloads(
     manager: androidx.media3.exoplayer.offline.DownloadManager,
     songIds: Collection<String>,
-    preserveManual: Boolean = true,
+    preserveManual: Boolean = false,
 ) {
-    val existing = manager.currentDownloads.associateBy { it.request.id }
-    songIds.distinct().forEach { id ->
-        val download = existing[id] ?: return@forEach
-        if (preserveManual && download.request.isManualDownload()) return@forEach
-        manager.removeDownload(id)
-    }
+    val protected = if (preserveManual) {
+        manager.currentDownloads.asSequence()
+            .filter { it.request.isManualDownload() }
+            .map { it.request.id }.toSet()
+    } else emptySet()
+    songIds.distinct().filterNot { it in protected }.forEach(manager::removeDownload)
 }
