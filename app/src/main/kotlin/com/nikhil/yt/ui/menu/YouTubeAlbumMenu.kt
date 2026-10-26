@@ -117,29 +117,8 @@ fun YouTubeAlbumMenu(
     val downloadState = rememberCollectionDownloadState(album?.songs.orEmpty().map { it.id })
     val downloadIndex by downloadUtil.downloads.collectAsState()
 
-    var confirmAlbumDownloadRemoval by remember { mutableStateOf(false) }
-    if (confirmAlbumDownloadRemoval) {
-        DefaultDialog(
-            onDismiss = { confirmAlbumDownloadRemoval = false },
-            content = {
-                Text(
-                    stringResource(R.string.remove_download_playlist_confirm, albumItem.title),
-                    modifier = Modifier.padding(horizontal = 18.dp),
-                )
-            },
-            buttons = {
-                TextButton(onClick = { confirmAlbumDownloadRemoval = false }) {
-                    Text(stringResource(android.R.string.cancel))
-                }
-                TextButton(onClick = {
-                    confirmAlbumDownloadRemoval = false
-                    com.nikhil.yt.playback.removeCollectionDownloads(
-                            downloadUtil.downloadManager, album?.songs.orEmpty().map { it.id }, preserveManual = false,
-                        )
-                }) { Text(stringResource(android.R.string.ok)) }
-            },
-        )
-    }
+    
+    
 
 
     // Artist separators for splitting artist names
@@ -426,7 +405,12 @@ fun YouTubeAlbumMenu(
                         downloadUtil.downloadManager, album?.songs.orEmpty().map { it.id },
                     )
                 },
-                onRemove = { confirmAlbumDownloadRemoval = true },
+                collectionName = albumItem.title,
+                onRemove = {
+                    com.nikhil.yt.playback.removeCollectionDownloads(
+                        downloadUtil.downloadManager, album?.songs.orEmpty().map { it.id }, preserveManual = false,
+                    )
+                },
             )
         }
 
