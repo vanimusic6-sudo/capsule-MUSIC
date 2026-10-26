@@ -58,6 +58,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -562,6 +563,13 @@ fun CapsulePlayerContent(
         }
     }
 
+    // Bounded decoded-painter cache lives at player level, not inside the
+    // per-track video/artwork slot. Revisiting a song must not reintroduce a
+    // blank mask while Coil reconnects to an already decoded cover.
+    val decodedArtworkCache = remember {
+        mutableStateMapOf<String, Pair<String, Painter>>()
+    }
+
     val artworkContent: @Composable () -> Unit = {
             val currentPlaybackError = playbackError
 
@@ -627,7 +635,10 @@ fun CapsulePlayerContent(
                         // Preserve its painter across a visible Coil rebind so an
                         // interrupted update cannot flash the grey player surface.
                         var retainedArtworkPainter by remember(mediaMetadata.id) {
-                            mutableStateOf<Painter?>(null)
+                            mutableStateOf<Painter?>(decodedArtworkCache[mediaMetadata.id]?.second)
+                        }
+                        var retainedArtworkUrl by remember(mediaMetadata.id) {
+                            mutableStateOf<String?>(decodedArtworkCache[mediaMetadata.id]?.first)
                         }
                         // The old painter could stay blank after a transient Coil
                         // cancellation, despite the image already existing in
@@ -670,17 +681,54 @@ fun CapsulePlayerContent(
                             }
                         }
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            if (artworkLoading || artworkFailed) {
-                                retainedArtworkPainter?.let { ready ->
-                                    Image(
-                                        painter = ready,
-                                        contentDescription = null,
-                                        contentScale = if (cropAlbumArt) ContentScale.Crop
-                                            else ContentScale.Fit,
-                                        modifier = Modifier.fillMaxSize(),
-                                    )
-                                }
+                            // Always draw the most recently *decoded* cover. An
+                            // AsyncImage's transient state can be Loading even
+                            // after this painter is fully usable; the image, not
+                            // the view's request state, owns visible pixels.
+                            retainedArtworkPainter?.let { ready ->
+                                Image(
+                                    painter = ready,
+                                    contentDescription = null,
+                                    contentScale = if (cropAlbumArt) ContentScale.Crop
+                                        else ContentScale.Fit,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
                             }
+                            // Show the smaller original cover immediately from
+                            // Coil's list/mini-player disk or memory cache while
+                            // the high-resolution player URL resolves. Previously
+                            // we requested ONLY the upgraded URL, leaving an
+                            // empty grey slot for several seconds per new song.
+                            if (retainedArtworkPainter == null &&
+                                !originalArtworkUrl.isNullOrBlank() &&
+                                requestedArtworkUrl != originalArtworkUrl
+                            ) {
+                                val previewRequest = remember(imageContext, originalArtworkUrl) {
+                                    ImageRequest.Builder(imageContext)
+                                        .data(originalArtworkUrl)
+                                        .size(256, 256)
+                                        .crossfade(false)
+                                        .build()
+                                }
+                                AsyncImage(
+                                    model = previewRequest,
+                                    contentDescription = null,
+                                    contentScale = if (cropAlbumArt) ContentScale.Crop
+                                        else ContentScale.Fit,
+                                    onSuccess = { preview ->
+                                        // Never downgrade an already decoded
+                                        // high-resolution image on a late callback.
+                                        if (retainedArtworkUrl != requestedArtworkUrl) {
+                                            retainedArtworkPainter = preview.painter
+                                            retainedArtworkUrl = originalArtworkUrl
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                            if (retainedArtworkPainter == null ||
+                                retainedArtworkUrl != requestedArtworkUrl
+                            ) {
                             key(mediaMetadata.id, requestedArtworkUrl, artworkRebind) {
                             AsyncImage(
                                 model = imageRequest,
@@ -688,6 +736,17 @@ fun CapsulePlayerContent(
                                 onLoading = { artworkLoading = true; artworkFailed = false },
                                 onSuccess = { success ->
                                     retainedArtworkPainter = success.painter
+                                    retainedArtworkUrl = requestedArtworkUrl
+                                    if (!requestedArtworkUrl.isNullOrBlank()) {
+                                        // Five decoded covers max: avoid unbounded bitmap
+                                        // retention during long sessions.
+                                        decodedArtworkCache.remove(mediaMetadata.id)
+                                        decodedArtworkCache[mediaMetadata.id] =
+                                            requestedArtworkUrl to success.painter
+                                        while (decodedArtworkCache.size > 5) {
+                                            decodedArtworkCache.remove(decodedArtworkCache.keys.first())
+                                        }
+                                    }
                                     artworkLoading = false
                                     artworkFailed = false
                                 },
@@ -730,6 +789,7 @@ fun CapsulePlayerContent(
                                 modifier = Modifier.fillMaxSize(),
                             )
                             }
+                            } // Visible AsyncImage only while no matching decoded painter exists.
                             if (artworkFailed && retainedArtworkPainter == null) {
                                 Icon(
                                     painter = painterResource(R.drawable.album),

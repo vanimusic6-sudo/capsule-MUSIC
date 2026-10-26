@@ -362,66 +362,30 @@ fun SelectionSongMenu(
             )
         }
         item {
-            when (downloadState) {
-                Download.STATE_COMPLETED -> {
-                    ListItem(
-                        headlineContent = {
-                            Text(
-                                text = stringResource(R.string.remove_download),
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        },
-                        leadingContent = {
-                            Icon(
-                                painter = painterResource(R.drawable.offline),
-                                contentDescription = null,
-                            )
-                        },
-                        modifier = Modifier.clickable {
-                            showRemoveDownloadDialog = true
-                        }
+            CapsuleDownloadAction(
+                state = downloadState,
+                enabled = songSelection.isNotEmpty(),
+                onDownload = {
+                    songSelection.forEach { song ->
+                        val downloadRequest = DownloadRequest.Builder(song.id, song.id.toUri())
+                            .setCustomCacheKey(song.id)
+                            .setData(song.song.title.toByteArray())
+                            .build()
+                        DownloadService.sendAddDownload(
+                            context, ExoDownloadService::class.java, downloadRequest, false,
+                        )
+                    }
+                },
+                onStop = {
+                    com.nikhil.yt.playback.stopCollectionDownloads(
+                        downloadUtil.downloadManager, songSelection.map { it.id },
+                        preserveManual = false,
                     )
-                }
-                Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> {
-                    ListItem(
-                        headlineContent = { Text(text = stringResource(R.string.downloading)) },
-                        leadingContent = {
-                            VeluneLoader(size = 24.dp)
-                        },
-                        modifier = Modifier.clickable {
-                            com.nikhil.yt.playback.stopCollectionDownloads(downloadUtil.downloadManager, songSelection.map { it.id }, preserveManual = false)
-                        }
-                    )
-                }
-                else -> {
-                    ListItem(
-                        headlineContent = { Text(text = stringResource(R.string.action_download)) },
-                        leadingContent = {
-                            Icon(
-                                painter = painterResource(R.drawable.download),
-                                contentDescription = null,
-                            )
-                        },
-                        modifier = Modifier.clickable {
-                            songSelection.forEach { song ->
-                                val downloadRequest =
-                                    DownloadRequest
-                                        .Builder(song.id, song.id.toUri())
-                                        .setCustomCacheKey(song.id)
-                                        .setData(song.song.title.toByteArray())
-                                        .build()
-                                DownloadService.sendAddDownload(
-                                    context,
-                                    ExoDownloadService::class.java,
-                                    downloadRequest,
-                                    false,
-                                )
-                            }
-                        }
-                    )
-                }
-            }
+                },
+                onRemove = { showRemoveDownloadDialog = true },
+            )
         }
+
         item {
             ListItem(
                 headlineContent = {
@@ -713,65 +677,29 @@ fun SelectionMediaMetadataMenu(
             )
         }
         item {
-            when (downloadState) {
-                Download.STATE_COMPLETED -> {
-                    ListItem(
-                        headlineContent = {
-                            Text(
-                                text = stringResource(R.string.remove_download),
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        },
-                        leadingContent = {
-                            Icon(
-                                painter = painterResource(R.drawable.offline),
-                                contentDescription = null,
-                            )
-                        },
-                        modifier = Modifier.clickable {
-                            showRemoveDownloadDialog = true
-                        }
+            CapsuleDownloadAction(
+                state = downloadState,
+                enabled = songSelection.isNotEmpty(),
+                onDownload = {
+                    songSelection.forEach { song ->
+                        val downloadRequest = DownloadRequest.Builder(song.id, song.id.toUri())
+                            .setCustomCacheKey(song.id)
+                            .setData(song.title.toByteArray())
+                            .build()
+                        DownloadService.sendAddDownload(
+                            context, ExoDownloadService::class.java, downloadRequest, false,
+                        )
+                    }
+                },
+                onStop = {
+                    com.nikhil.yt.playback.stopCollectionDownloads(
+                        downloadUtil.downloadManager, songSelection.map { it.id },
+                        preserveManual = false,
                     )
-                }
-                Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> {
-                    ListItem(
-                        headlineContent = { Text(text = stringResource(R.string.downloading)) },
-                        leadingContent = {
-                            VeluneLoader(size = 24.dp)
-                        },
-                        modifier = Modifier.clickable {
-                            com.nikhil.yt.playback.stopCollectionDownloads(downloadUtil.downloadManager, songSelection.map { it.id }, preserveManual = false)
-                        }
-                    )
-                }
-                else -> {
-                    ListItem(
-                        headlineContent = { Text(text = stringResource(R.string.action_download)) },
-                        leadingContent = {
-                            Icon(
-                                painter = painterResource(R.drawable.download),
-                                contentDescription = null,
-                            )
-                        },
-                        modifier = Modifier.clickable {
-                            songSelection.forEach { song ->
-                                val downloadRequest =
-                                    DownloadRequest
-                                        .Builder(song.id, song.id.toUri())
-                                        .setCustomCacheKey(song.id)
-                                        .setData(song.title.toByteArray())
-                                        .build()
-                                DownloadService.sendAddDownload(
-                                    context,
-                                    ExoDownloadService::class.java,
-                                    downloadRequest,
-                                    false,
-                                )
-                            }
-                        }
-                    )
-                }
-            }
+                },
+                onRemove = { showRemoveDownloadDialog = true },
+            )
         }
+
     }
 }

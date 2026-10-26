@@ -211,36 +211,38 @@ fun YouTubePlaylistMenu(
     // first continuation page. Resolve full membership before starting a
     // collection transfer or the Cancel/Remove action will miss later songs.
     var downloadSongs by remember(playlist.id) { mutableStateOf(songs) }
-    var membershipReady by remember(playlist.id) { mutableStateOf(false) }
+    // The first loaded page is already actionable; fetching later continuation
+    // pages enriches membership without blocking or replacing a running transfer.
+    var membershipReady by remember(playlist.id) { mutableStateOf(songs.isNotEmpty()) }
     LaunchedEffect(playlist.id, songs) {
-        membershipReady = false
+        if (songs.isNotEmpty() && downloadSongs.isEmpty()) {
+            downloadSongs = songs
+            membershipReady = true
+        }
         val allRemote = withContext(Dispatchers.IO) {
             YouTube.playlist(playlist.id).completed().getOrNull()?.songs.orEmpty()
         }
-        downloadSongs = if (allRemote.size >= songs.size) allRemote else songs
-        membershipReady = true
+        if (allRemote.size >= downloadSongs.size && allRemote.isNotEmpty()) {
+            downloadSongs = allRemote
+        }
+        membershipReady = downloadSongs.isNotEmpty()
     }
     val indexedDownloads by downloadUtil.downloads.collectAsState()
     val enqueuingPlaylists by com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator
         .enqueuing.collectAsState()
     val collectionIds = com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator
-        .memberIds(playlist.id, downloadSongs.map { it.id })
+        .memberIds(playlist.id, context, downloadSongs.map { it.id })
     val downloadState = rememberCollectionDownloadState(collectionIds)
     val isEnqueuing = playlist.id in enqueuingPlaylists
-    val isDownloading = isEnqueuing ||
-        downloadState == Download.STATE_DOWNLOADING ||
-        downloadState == Download.STATE_QUEUED ||
-        downloadState == Download.STATE_RESTARTING
-    val hasAnyCollectionDownload = collectionIds.any { indexedDownloads.containsKey(it) }
+    val effectiveDownloadState =
+        if (isEnqueuing) Download.STATE_DOWNLOADING else downloadState
     var showRemoveDownloadDialog by remember(playlist.id) { mutableStateOf(false) }
     if (showRemoveDownloadDialog) {
         DefaultDialog(
             onDismiss = { showRemoveDownloadDialog = false },
             content = {
                 Text(
-                    text = if (isDownloading)
-                        stringResource(R.string.capsule_stop_and_delete_download_message)
-                    else stringResource(R.string.remove_download_playlist_confirm, playlist.title),
+                    text = stringResource(R.string.remove_download_playlist_confirm, playlist.title),
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.padding(horizontal = 18.dp),
                 )
@@ -598,65 +600,23 @@ fun YouTubePlaylistMenu(
             )
         }
         item(key = "playlist-download-action", contentType = "menu-section") {
-            when {
-                isDownloading -> {
-                    // Exactly one active control, like saved playlists.
-                    // Closing/reopening the More sheet never loses the producer.
-                    ListItem(
-                        headlineContent = { Text(stringResource(R.string.capsule_stop_and_delete_download)) },
-                        leadingContent = { CapsuleDownloadComet() },
-                        modifier = Modifier.clickable { showRemoveDownloadDialog = true },
+            // Identical row and actions to a local playlist:
+            // download/resume -> downloading (tap to stop) -> remove when complete.
+            CapsuleDownloadAction(
+                state = effectiveDownloadState,
+                enabled = membershipReady && downloadSongs.isNotEmpty(),
+                onDownload = {
+                    com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator.start(
+                        playlist.id, context, downloadUtil.downloadManager, downloadSongs,
                     )
-                }
-                downloadState == Download.STATE_COMPLETED -> {
-                    ListItem(
-                        headlineContent = {
-                            Text(stringResource(R.string.remove_download),
-                                color = MaterialTheme.colorScheme.error)
-                        },
-                        leadingContent = {
-                            Icon(painterResource(R.drawable.offline), contentDescription = null)
-                        },
-                        modifier = Modifier.clickable { showRemoveDownloadDialog = true },
+                },
+                onStop = {
+                    com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator.stop(
+                        playlist.id, context, downloadUtil.downloadManager, collectionIds,
                     )
-                }
-                else -> {
-                    ListItem(
-                        headlineContent = {
-                            Text(
-                                stringResource(
-                                    if (membershipReady) R.string.action_download else R.string.loading
-                                )
-                            )
-                        },
-                        leadingContent = {
-                            Icon(painterResource(R.drawable.download), contentDescription = null)
-                        },
-                        modifier = Modifier.clickable(
-                            enabled = membershipReady && downloadSongs.isNotEmpty(),
-                        ) {
-                            com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator.start(
-                                playlist.id, context, downloadUtil.downloadManager, downloadSongs,
-                            )
-                        },
-                    )
-                    // A partially saved but stopped collection must retain
-                    // its existing remove path; the active state never gets
-                    // an extra action.
-                    if (hasAnyCollectionDownload) {
-                        ListItem(
-                            headlineContent = {
-                                Text(stringResource(R.string.remove_download),
-                                    color = MaterialTheme.colorScheme.error)
-                            },
-                            leadingContent = {
-                                Icon(painterResource(R.drawable.offline), contentDescription = null)
-                            },
-                            modifier = Modifier.clickable { showRemoveDownloadDialog = true },
-                        )
-                    }
-                }
-            }
+                },
+                onRemove = { showRemoveDownloadDialog = true },
+            )
         }
         item {
             ListItem(

@@ -43,8 +43,27 @@ internal object OnlinePlaylistDownloadCoordinator {
     private val _enqueuing = MutableStateFlow<Set<String>>(emptySet())
     val enqueuing = _enqueuing.asStateFlow()
 
-    fun memberIds(playlistId: String, currentlyVisibleIds: Collection<String>): List<String> =
-        (knownMembership[playlistId].orEmpty() + currentlyVisibleIds).distinct()
+    private const val MEMBERSHIP_PREFS = "capsule_online_playlist_download_members_v1"
+
+    // Persist ownership in addition to Media3's per-track index. A process
+    // restart must not make the Remove button forget songs from continuation
+    // pages that the current menu has not loaded yet.
+    private fun rememberedIds(context: Context, playlistId: String): List<String> =
+        context.applicationContext.getSharedPreferences(MEMBERSHIP_PREFS, Context.MODE_PRIVATE)
+            .getStringSet(playlistId, emptySet()).orEmpty().toList()
+
+    fun memberIds(
+        playlistId: String,
+        context: Context,
+        currentlyVisibleIds: Collection<String>,
+    ): List<String> =
+        (knownMembership[playlistId].orEmpty() + rememberedIds(context, playlistId) +
+            currentlyVisibleIds).distinct()
+
+    private fun appSaveMembership(context: Context, playlistId: String, ids: Collection<String>) {
+        context.applicationContext.getSharedPreferences(MEMBERSHIP_PREFS, Context.MODE_PRIVATE)
+            .edit().putStringSet(playlistId, ids.toSet()).apply()
+    }
 
     fun start(
         playlistId: String,
@@ -57,6 +76,7 @@ internal object OnlinePlaylistDownloadCoordinator {
         val uniqueSongs = songs.distinctBy { it.id }
         val session = Session(uniqueSongs.map { it.id })
         knownMembership[playlistId] = session.ids
+        appSaveMembership(context, playlistId, session.ids)
         sessions[playlistId] = session
         _enqueuing.value = _enqueuing.value + playlistId
         val appContext = context.applicationContext
@@ -102,6 +122,29 @@ internal object OnlinePlaylistDownloadCoordinator {
         }
     }
 
+    /** Match local playlists: tapping the active row pauses, never deletes cached bytes. */
+    fun stop(
+        playlistId: String,
+        context: Context,
+        downloadManager: DownloadManager,
+        currentlyVisibleIds: Collection<String>,
+    ) {
+        val session = sessions.remove(playlistId)
+        session?.job?.cancel()
+        _enqueuing.value = _enqueuing.value - playlistId
+        val ids = (knownMembership[playlistId].orEmpty() +
+            session?.ids.orEmpty() + currentlyVisibleIds).distinct()
+        stopCollectionDownloads(downloadManager, ids)
+        // First ADD may still be waiting in the service intent queue; sending
+        // STOP *after* that ADD prevents a delayed restart after user taps Stop.
+        lastServiceWakeId[playlistId]?.let { first ->
+            DownloadService.sendSetStopReason(
+                context.applicationContext, ExoDownloadService::class.java,
+                first, COLLECTION_STOP_REASON_USER, false,
+            )
+        }
+    }
+
     /** Cancel the producing coroutine *before* removing anything from Media3. */
     fun cancelAndRemove(
         playlistId: String,
@@ -113,21 +156,17 @@ internal object OnlinePlaylistDownloadCoordinator {
         session?.job?.cancel()
         _enqueuing.value = _enqueuing.value - playlistId
         val ids = (knownMembership.remove(playlistId).orEmpty() +
-            session?.ids.orEmpty() + currentlyVisibleIds).distinct()
-        removeCollectionDownloads(downloadManager, ids)
+            rememberedIds(context, playlistId) + session?.ids.orEmpty() +
+            currentlyVisibleIds).distinct()
+        context.applicationContext.getSharedPreferences(MEMBERSHIP_PREFS, Context.MODE_PRIVATE)
+            .edit().remove(playlistId).apply()
+        removeCollectionDownloads(downloadManager, ids, preserveManual = false)
         lastServiceWakeId.remove(playlistId)?.let { first ->
-            // Never undo a priority single-track download that was started
-            // independently after this collection's first ADD.
-            val isManualNow = downloadManager.currentDownloads.any {
-                it.request.id == first && it.request.isManualDownload()
-            }
-            if (!isManualNow) {
-                // Service intents execute in order. A REMOVE after an in-flight
-                // first ADD prevents late reappearance after cancellation.
-                DownloadService.sendRemoveDownload(
-                    context.applicationContext, ExoDownloadService::class.java, first, false,
-                )
-            }
+            // Service ADD is queued before REMOVE, so a stale wake-up cannot
+            // resurrect the downloaded item after the collection is deleted.
+            DownloadService.sendRemoveDownload(
+                context.applicationContext, ExoDownloadService::class.java, first, false,
+            )
         }
     }
 }

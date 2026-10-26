@@ -6,6 +6,7 @@ on:
     branches:
       - release/01-core-reliability
       - fix/posttest-ui-rework-20261026
+      - fix/real-download-menu-repair-20261026
       - experimental/discovery-open-catalogs-20261022
       - next/capsule-clay
       - perf/thermal-audit-20261005

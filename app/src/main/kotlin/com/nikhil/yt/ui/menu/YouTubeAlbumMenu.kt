@@ -33,6 +33,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ListItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -63,6 +64,7 @@ import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalDownloadUtil
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.ui.component.rememberCollectionDownloadState
+import com.nikhil.yt.ui.component.DefaultDialog
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.ArtistSeparatorsKey
 import com.nikhil.yt.constants.ListThumbnailSize
@@ -113,6 +115,33 @@ fun YouTubeAlbumMenu(
     }
 
     val downloadState = rememberCollectionDownloadState(album?.songs.orEmpty().map { it.id })
+
+    var confirmAlbumDownloadRemoval by remember { mutableStateOf(false) }
+    if (confirmAlbumDownloadRemoval) {
+        DefaultDialog(
+            onDismiss = { confirmAlbumDownloadRemoval = false },
+            content = {
+                Text(
+                    stringResource(R.string.remove_download_playlist_confirm, albumItem.title),
+                    modifier = Modifier.padding(horizontal = 18.dp),
+                )
+            },
+            buttons = {
+                TextButton(onClick = { confirmAlbumDownloadRemoval = false }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+                TextButton(onClick = {
+                    confirmAlbumDownloadRemoval = false
+                    album?.songs.orEmpty().forEach { song ->
+                        DownloadService.sendRemoveDownload(
+                            context, ExoDownloadService::class.java, song.id, false,
+                        )
+                    }
+                }) { Text(stringResource(android.R.string.ok)) }
+            },
+        )
+    }
+
 
     // Artist separators for splitting artist names
     val (artistSeparators) = rememberPreference(ArtistSeparatorsKey, defaultValue = ",;/&")
@@ -380,73 +409,29 @@ fun YouTubeAlbumMenu(
             )
         }
         item {
-            when (downloadState) {
-                Download.STATE_COMPLETED -> {
-                    ListItem(
-                        headlineContent = {
-                            Text(
-                                text = stringResource(R.string.remove_download),
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        },
-                        leadingContent = {
-                            Icon(
-                                painter = painterResource(R.drawable.offline),
-                                contentDescription = null,
-                            )
-                        },
-                        modifier = Modifier.clickable {
-                            album?.songs?.forEach { song ->
-                                DownloadService.sendRemoveDownload(
-                                    context,
-                                    ExoDownloadService::class.java,
-                                    song.id,
-                                    false,
-                                )
-                            }
-                        }
+            CapsuleDownloadAction(
+                state = downloadState,
+                enabled = album?.songs.orEmpty().isNotEmpty(),
+                onDownload = {
+                    album?.songs.orEmpty().forEach { song ->
+                        val downloadRequest = DownloadRequest.Builder(song.id, song.id.toUri())
+                            .setCustomCacheKey(song.id)
+                            .setData(song.song.title.toByteArray())
+                            .build()
+                        DownloadService.sendAddDownload(
+                            context, ExoDownloadService::class.java, downloadRequest, false,
+                        )
+                    }
+                },
+                onStop = {
+                    com.nikhil.yt.playback.stopCollectionDownloads(
+                        downloadUtil.downloadManager, album?.songs.orEmpty().map { it.id },
                     )
-                }
-                Download.STATE_QUEUED, Download.STATE_DOWNLOADING -> {
-                    ListItem(
-                        headlineContent = { Text(text = stringResource(R.string.downloading)) },
-                        leadingContent = {
-                            VeluneLoader(size = 24.dp)
-                        },
-                        modifier = Modifier.clickable {
-                            com.nikhil.yt.playback.stopCollectionDownloads(downloadUtil.downloadManager, album?.songs.orEmpty().map { it.id })
-                        }
-                    )
-                }
-                else -> {
-                    ListItem(
-                        headlineContent = { Text(text = stringResource(R.string.action_download)) },
-                        leadingContent = {
-                            Icon(
-                                painter = painterResource(R.drawable.download),
-                                contentDescription = null,
-                            )
-                        },
-                        modifier = Modifier.clickable {
-                            album?.songs?.forEach { song ->
-                                val downloadRequest =
-                                    DownloadRequest
-                                        .Builder(song.id, song.id.toUri())
-                                        .setCustomCacheKey(song.id)
-                                        .setData(song.song.title.toByteArray())
-                                        .build()
-                                DownloadService.sendAddDownload(
-                                    context,
-                                    ExoDownloadService::class.java,
-                                    downloadRequest,
-                                    false,
-                                )
-                            }
-                        }
-                    )
-                }
-            }
+                },
+                onRemove = { confirmAlbumDownloadRemoval = true },
+            )
         }
+
         albumItem.artists?.let { artists ->
             item {
                 ListItem(

@@ -1,164 +1,78 @@
 package com.nikhil.yt.ui.menu
 
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.delay
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadService
-import com.nikhil.yt.R
+import com.nikhil.yt.LocalDownloadUtil
+import com.nikhil.yt.playback.COLLECTION_STOP_REASON_USER
 import com.nikhil.yt.playback.ExoDownloadService
-import com.nikhil.yt.playback.canPrioritize
 import com.nikhil.yt.playback.enqueuePriorityAudioDownload
 import com.nikhil.yt.playback.visibleState
+import kotlinx.coroutines.delay
 
 /**
- * Keep all YouTube download entry points consistent. A paused/failed item
- * retains cached bytes and MUST offer both resume and permanent removal.
+ * All YouTube single-track menus, including the player, use exactly the
+ * same visible action and icon as local playlists. Download interactions do
+ * not dismiss More; the current row updates when Media3 publishes its state.
  */
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun YouTubeDownloadMenuItems(
     download: Download?,
     mediaId: String,
     onStart: () -> Unit,
     onDismiss: () -> Unit,
-    // Player More must remain visible when an audio download starts.
     keepOpenOnDownload: Boolean = false,
-    // The player menu has no destructive X for an active transfer.
     showActiveStopAction: Boolean = true,
 ) {
     val context = LocalContext.current
-    var confirmPartialDelete by remember(mediaId) { mutableStateOf(false) }
-    var waitingForIndex by remember(mediaId) { mutableStateOf(false) }
-    var removingFromIndex by remember(mediaId) { mutableStateOf(false) }
-    LaunchedEffect(removingFromIndex, download) {
-        if (removingFromIndex) {
-            if (download == null) removingFromIndex = false
-            else { delay(3_000); removingFromIndex = false }
-        }
-    }
-    // Media3 changes download state asynchronously. Start the comet on tap,
-    // not seconds later when DownloadManager finally publishes its state.
-    LaunchedEffect(waitingForIndex, download?.visibleState) {
-        if (!waitingForIndex) return@LaunchedEffect
-        if (download?.visibleState in listOf(
-                Download.STATE_QUEUED, Download.STATE_DOWNLOADING,
-                Download.STATE_RESTARTING, Download.STATE_COMPLETED,
-            )) waitingForIndex = false
-        else { delay(6_000); waitingForIndex = false }
-    }
-
-    @Composable
-    fun Action(label: Int, icon: Int, destructive: Boolean = false,
-        busy: Boolean = false, closeMenu: Boolean = true, enabled: Boolean = true,
-        click: () -> Unit) {
-        ListItem(
-            headlineContent = {
-                Crossfade(targetState = label, animationSpec = tween(160),
-                    label = "download-menu-label") { displayed ->
-                    Text(stringResource(displayed),
-                        color = if (destructive) MaterialTheme.colorScheme.error
-                            else MaterialTheme.colorScheme.onSurface)
-                }
-            },
-            leadingContent = {
-                Crossfade(targetState = if (busy) -1 else icon,
-                    animationSpec = tween(160), label = "download-menu-icon") { displayed ->
-                    if (displayed == -1) CapsuleDownloadComet()
-                    else Icon(painterResource(displayed), contentDescription = null,
-                        tint = if (destructive) MaterialTheme.colorScheme.error
-                            else MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            },
-            modifier = Modifier.clickable(enabled = enabled) {
-                click()
-                if (closeMenu) onDismiss()
-            },
-            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-        )
-    }
-
-    Column {
-        if (removingFromIndex) {
-            Action(R.string.remove_download, R.drawable.offline,
-                destructive = true, busy = true, enabled = false) {}
-        } else when (download?.visibleState) {
-            Download.STATE_COMPLETED -> {
-                Action(R.string.remove_download, R.drawable.offline,
-                    destructive = true, closeMenu = !keepOpenOnDownload) {
-                    removingFromIndex = true
-                    DownloadService.sendRemoveDownload(
-                        context, ExoDownloadService::class.java, mediaId, false)
-                }
-            }
-            Download.STATE_QUEUED, Download.STATE_DOWNLOADING, Download.STATE_RESTARTING -> {
-                val entry = download ?: return@Column
-                if (entry.canPrioritize) {
-                    Action(R.string.download_now, R.drawable.download,
-                        busy = true, closeMenu = !keepOpenOnDownload) {
-                        waitingForIndex = true
-                        enqueuePriorityAudioDownload(
-                            context, ExoDownloadService::class.java, entry.request, false)
-                    }
-                } else if (showActiveStopAction) {
-                    Action(R.string.capsule_stop_and_delete_download, R.drawable.close,
-                        destructive = true, closeMenu = false) {
-                        confirmPartialDelete = true
-                    }
-                } else {
-                    ListItem(
-                        headlineContent = { Text(stringResource(R.string.downloading)) },
-                        leadingContent = { CapsuleDownloadComet() },
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    )
-                }
-            }
-            else -> {
-                Action(if (waitingForIndex) R.string.downloading else R.string.action_download,
-                    R.drawable.download, busy = waitingForIndex,
-                    closeMenu = !keepOpenOnDownload) {
-                    waitingForIndex = true
-                    if (download == null) onStart()
-                    else enqueuePriorityAudioDownload(
-                        context, ExoDownloadService::class.java, download.request, false)
-                }
-                if (download != null) {
-                    Action(R.string.remove_download, R.drawable.offline,
-                        destructive = true, closeMenu = !keepOpenOnDownload) {
-                        removingFromIndex = true
-                        DownloadService.sendRemoveDownload(
-                            context, ExoDownloadService::class.java, mediaId, false)
-                    }
-                }
+    val manager = LocalDownloadUtil.current.downloadManager
+    var pendingStart by remember(mediaId) { mutableStateOf(false) }
+    LaunchedEffect(pendingStart, download?.visibleState) {
+        if (pendingStart) {
+            if (download?.visibleState == Download.STATE_QUEUED ||
+                download?.visibleState == Download.STATE_DOWNLOADING ||
+                download?.visibleState == Download.STATE_RESTARTING ||
+                download?.visibleState == Download.STATE_COMPLETED
+            ) pendingStart = false
+            else {
+                delay(4_000)
+                pendingStart = false
             }
         }
     }
-    if (confirmPartialDelete) {
-        DownloadRemovalDialog(
-            onDismiss = { confirmPartialDelete = false },
-            onConfirm = {
-                confirmPartialDelete = false
-                DownloadService.sendRemoveDownload(
-                    context, ExoDownloadService::class.java, mediaId, false)
-                if (!keepOpenOnDownload) onDismiss()
-            },
-        )
-    }
+
+    CapsuleDownloadAction(
+        state = if (pendingStart) Download.STATE_DOWNLOADING
+            else download?.visibleState ?: Download.STATE_STOPPED,
+        onDownload = {
+            pendingStart = true
+            if (download == null) onStart()
+            else enqueuePriorityAudioDownload(
+                context, ExoDownloadService::class.java, download.request, false,
+            )
+        },
+        onStop = {
+            pendingStart = false
+            // Local playlists stop with a nonzero stop reason; do the same
+            // for individual tracks, preserving partial cache for resume.
+            manager.setStopReason(mediaId, COLLECTION_STOP_REASON_USER)
+            // A newly dispatched ADD may not yet be present in the manager.
+            DownloadService.sendSetStopReason(
+                context, ExoDownloadService::class.java,
+                mediaId, COLLECTION_STOP_REASON_USER, false,
+            )
+        },
+        onRemove = {
+            DownloadService.sendRemoveDownload(
+                context, ExoDownloadService::class.java, mediaId, false,
+            )
+        },
+    )
 }
