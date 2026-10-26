@@ -78,6 +78,8 @@
     <string name="action_download">Скачать</string>
     <string name="downloading">Скачивание</string>
     <string name="remove_download">Убрать из скачанных</string>
+    <string name="capsule_download_pause_keep">Остановить (сохранить скачанное)</string>
+    <string name="capsule_download_stop_delete">Остановить и удалить скачанное</string>
     <string name="capsule_download_remove_failed">Не удалось удалить скачанный трек. Проверьте доступ к файлам.</string>
     <string name="import_playlist">Импортировать плейлист</string>
     <string name="import_failed">Ошибка импорта</string>
