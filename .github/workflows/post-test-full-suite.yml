@@ -7,6 +7,7 @@ on:
       - .github/workflows/post-test-full-suite.yml
       - app/src/test/kotlin/com/nikhil/yt/ui/PlayerTransitionArchitectureTest.kt
       - app/src/test/kotlin/com/nikhil/yt/ui/CapsuleReleaseUiCorrectionsTest.kt
+      - app/src/test/kotlin/com/nikhil/yt/ui/UiEnergyRegressionTest.kt
       - app/src/main/kotlin/com/nikhil/yt/playback/OnlinePlaylistDownloadCoordinator.kt
       - app/src/main/kotlin/com/nikhil/yt/ui/menu/YouTubePlaylistMenu.kt
       - app/src/main/kotlin/com/nikhil/yt/ui/menu/PlayerMenu.kt
