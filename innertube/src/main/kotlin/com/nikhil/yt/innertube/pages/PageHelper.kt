@@ -16,7 +16,7 @@ import com.nikhil.yt.innertube.models.splitBySeparator
 
 object PageHelper {
     // Compile once, not once for every metadata run on every shelf.
-    private val artistDurationPattern = Regex("""\\d{1,2}:\\d{2}(?::\\d{2})?""")
+    private val artistDurationPattern = Regex("""\d{1,2}:\d{2}(?::\d{2})?""")
     fun extractRuns(columns: List<FlexColumn>, typeLike: String): List<Run> {
         val filteredRuns = mutableListOf<Run>()
         for (column in columns) {
