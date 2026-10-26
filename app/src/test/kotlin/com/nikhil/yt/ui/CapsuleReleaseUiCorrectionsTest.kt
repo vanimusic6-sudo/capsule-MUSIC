@@ -39,7 +39,7 @@ class CapsuleReleaseUiCorrectionsTest {
         val shared = source("ui/menu/CapsuleDownloadAction.kt")
         assertTrue(shared.contains("VeluneLoader(size = 24.dp"))
         assertTrue(shared.contains("completed -> confirmRemoval = true"))
-        assertTrue(shared.contains("currentlyDownloading -> showChoices = true"))
+        assertTrue(shared.contains("currentlyDownloading -> {"))
         assertTrue(shared.contains("capsule_download_stop_delete"))
         assertTrue(shared.contains("choiceOpenedDuringDownload"))
         assertTrue(shared.contains("pendingStart = true\n                    onDownload()"))
