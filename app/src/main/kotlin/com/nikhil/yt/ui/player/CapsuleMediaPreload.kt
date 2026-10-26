@@ -21,7 +21,7 @@ import com.nikhil.yt.ui.component.PreloadArtistPortraits
 import kotlinx.coroutines.delay
 
 private const val CAPSULE_FULL_ARTWORK_PREFETCH_SIZE = 960
-private const val CAPSULE_VISUAL_PREFETCH_SETTLE_MS = 1_200L
+internal const val CAPSULE_VISUAL_PREFETCH_SETTLE_MS = 420L
 
 /**
  * The full player is normally collapsed when a track begins. Warm its high-res
@@ -41,7 +41,12 @@ private const val CAPSULE_VISUAL_PREFETCH_SETTLE_MS = 1_200L
 @Composable
 internal fun PreloadCapsuleTrackAssets(mediaMetadata: MediaMetadata?) {
     val context = LocalContext.current
-    val artworkUrl = mediaMetadata?.thumbnailUrl?.toHighResThumbnail()
+    val artworkUrl = mediaMetadata?.thumbnailUrl?.let { url ->
+        // Video poster cropping must not jump from one YouTube thumbnail
+        // variant to a different one when the player expands.
+        if (mediaMetadata.isOriginalVideo || mediaMetadata.id.startsWith("capsule-open:")) url
+        else url.toHighResThumbnail()
+    }
     val onScreen = appIsOnScreen()
     var stableEnoughToWarm by
         remember(mediaMetadata?.id, artworkUrl) {
@@ -55,7 +60,7 @@ internal fun PreloadCapsuleTrackAssets(mediaMetadata: MediaMetadata?) {
         /*
          * Rapid skips are the worst possible moment to decode 960 px artwork and artist portraits:
          * every request is obsolete before the user could open the player. Let the selected track
-         * survive a short settle window first. This coroutine is cancelled automatically on the
+         * survive a short settle window first (420ms, not the previous 1200ms This coroutine is cancelled automatically on the
          * next media id, so skipped tracks do no high-resolution visual work at all.
          */
         delay(CAPSULE_VISUAL_PREFETCH_SETTLE_MS)
