@@ -327,6 +327,7 @@ fun SelectionSongMenu(
         }
         item {
             CapsuleDownloadAction(
+                actionKey = songSelection.joinToString(separator = ",") { it.id },
                 state = downloadState,
                 hasStoredItems = songSelection.map { it.id }.any { downloadIndex.containsKey(it) },
                 enabled = songSelection.isNotEmpty(),
@@ -611,6 +612,7 @@ fun SelectionMediaMetadataMenu(
         }
         item {
             CapsuleDownloadAction(
+                actionKey = songSelection.joinToString(separator = ",") { it.id },
                 state = downloadState,
                 hasStoredItems = songSelection.map { it.id }.any { downloadIndex.containsKey(it) },
                 enabled = songSelection.isNotEmpty(),
