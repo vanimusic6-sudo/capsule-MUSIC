@@ -2,7 +2,7 @@ name: Post-test full regression comparison
 
 on:
   push:
-    branches: [release/01-core-reliability, fix/posttest-ui-rework-20261026]
+    branches: [release/01-core-reliability, fix/posttest-ui-rework-20261026, fix/real-download-menu-repair-20261026]
     paths:
       - .github/workflows/post-test-full-suite.yml
       - app/src/test/kotlin/com/nikhil/yt/ui/PlayerTransitionArchitectureTest.kt
