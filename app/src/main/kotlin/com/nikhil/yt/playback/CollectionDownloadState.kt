@@ -1,6 +1,9 @@
 package com.nikhil.yt.playback
 
+import android.content.Context
 import androidx.media3.exoplayer.offline.Download
+import androidx.media3.exoplayer.offline.DownloadRequest
+import androidx.media3.exoplayer.offline.DownloadService
 
 /** A collection is complete only when every member is complete; empty is never downloaded. */
 internal fun collectionDownloadState(songIds: Collection<String>, downloads: Map<String, Download>): Int {
@@ -41,4 +44,34 @@ internal fun removeCollectionDownloads(
             .map { it.request.id }.toSet()
     } else emptySet()
     songIds.distinct().filterNot { it in protected }.forEach(manager::removeDownload)
+}
+
+/**
+ * The shared collection start/resume operation. A Media3 user stop reason is
+ * sticky: adding the same DownloadRequest alone does not reliably resume it.
+ * Use the same service path in local playlists, albums and multi-select.
+ */
+internal fun enqueueCollectionItem(
+    context: Context,
+    indexed: Map<String, Download>,
+    request: DownloadRequest,
+) {
+    val saved = indexed[request.id]
+    if (saved?.state == Download.STATE_COMPLETED) return
+    if (saved?.state == Download.STATE_STOPPED) {
+        DownloadService.sendSetStopReason(
+            context, ExoDownloadService::class.java,
+            request.id, Download.STOP_REASON_NONE, false,
+        )
+    } else {
+        DownloadService.sendAddDownload(
+            context, ExoDownloadService::class.java, request, false,
+        )
+        if (saved != null && saved.stopReason != Download.STOP_REASON_NONE) {
+            DownloadService.sendSetStopReason(
+                context, ExoDownloadService::class.java,
+                request.id, Download.STOP_REASON_NONE, false,
+            )
+        }
+    }
 }
