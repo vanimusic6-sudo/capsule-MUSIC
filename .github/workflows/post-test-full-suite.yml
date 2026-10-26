@@ -16,6 +16,8 @@ on:
       - app/src/main/kotlin/com/nikhil/yt/ui/menu/CapsuleDownloadAction.kt
       - app/src/main/kotlin/com/nikhil/yt/playback/CollectionDownloadState.kt
       - app/src/main/kotlin/com/nikhil/yt/ui/screens/search/OnlineSearchResult.kt
+      - app/src/main/kotlin/com/nikhil/yt/ui/screens/search/OnlineSearchScreen.kt
+      - app/src/test/kotlin/com/nikhil/yt/ui/screens/search/SearchArtistCreditsTest.kt
       - innertube/src/main/kotlin/com/nikhil/yt/innertube/pages/SearchSummaryPage.kt
       - app/src/test/kotlin/com/nikhil/yt/ui/menu/CapsuleDownloadActionInteractionTest.kt
       - app/src/main/kotlin/com/nikhil/yt/ui/player/CapsuleImmersiveContent.kt
