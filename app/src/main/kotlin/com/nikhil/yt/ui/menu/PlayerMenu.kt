@@ -176,11 +176,17 @@ fun PlayerMenu(
         ExperimentalCatalog.playingTrack(mediaMetadata.id)
     }
     val canDownloadAudius = isAudius && originalAudiusTrack?.downloadUrl != null
-    val externalDownloadStates by ExperimentalDownload.states.collectAsState()
-    val externalDownloadStatus = externalDownloadStates[mediaMetadata.id]
-    // Independent recordings live in MediaStore, not in the Media3 download
-    // index. WorkManager's transient status is not enough after process death.
-    val savedFilesRevision by ExperimentalDownload.savedFilesRevision.collectAsState()
+    // Non-Audius tracks should not subscribe to global independent-download
+    // state updates: those would recompose the entire player More sheet whenever
+    // an unrelated background worker reports progress.
+    val externalDownloadStatus = if (isAudius) {
+        ExperimentalDownload.states.collectAsState().value[mediaMetadata.id]
+    } else null
+    // Observe MediaStore changes only for an Audius track. Other tracks have
+    // their own Media3 index and should not recompose on unrelated file writes.
+    val savedFilesRevision = if (isAudius) {
+        ExperimentalDownload.savedFilesRevision.collectAsState().value
+    } else 0L
     val savedAudiusFile by produceState<ExperimentalDownload.SavedAudio?>(
         initialValue = null, mediaMetadata.id, savedFilesRevision,
     ) {
