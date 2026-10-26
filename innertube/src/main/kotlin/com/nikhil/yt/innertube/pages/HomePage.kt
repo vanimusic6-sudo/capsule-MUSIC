@@ -66,11 +66,11 @@ data class HomePage(
                     renderer.flexColumns.firstOrNull()
                         ?.musicResponsiveListItemFlexColumnRenderer?.text
                         ?.runs?.firstOrNull()?.text ?: return null
-                val artists =
-                    renderer.flexColumns.getOrNull(1)
-                        ?.musicResponsiveListItemFlexColumnRenderer?.text?.runs
-                        ?.splitBySeparator()?.firstOrNull()
-                        ?.let(PageHelper::extractArtists).orEmpty()
+                val artists = PageHelper.extractSongArtists(
+                    renderer.flexColumns.drop(1).flatMap { column ->
+                        column.musicResponsiveListItemFlexColumnRenderer.text?.runs.orEmpty()
+                    }
+                )
                 val thumbnail =
                     renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl()
                         ?: renderer.thumbnail?.croppedSquareThumbnailRenderer?.getThumbnailUrl()
@@ -92,9 +92,7 @@ data class HomePage(
                 return when {
                     renderer.isSong -> {
                         val subtitleRuns = renderer.subtitle?.runs ?: return null
-                        val subtitleGroups = subtitleRuns.splitBySeparator()
-                        val artistRuns = subtitleGroups.firstOrNull()
-                        val artists = PageHelper.extractArtists(artistRuns)
+                        val artists = PageHelper.extractSongArtists(subtitleRuns)
                         SongItem(
                             id = renderer.navigationEndpoint.watchEndpoint?.videoId ?: return null,
                             title = renderer.title.runs?.firstOrNull()?.text ?: return null,
