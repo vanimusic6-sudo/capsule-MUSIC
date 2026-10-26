@@ -65,7 +65,7 @@ class CapsuleDownloadActionInteractionTest {
             }
         }
         rule.onNodeWithText(downloadLabel).performClick()
-        clickLastMatching(removeLabel)
+        // The chooser itself is confirmation: there must be no nested dialog.
         clickLastMatching(removeLabel)
         rule.runOnIdle {
             assertEquals(1, removed)
