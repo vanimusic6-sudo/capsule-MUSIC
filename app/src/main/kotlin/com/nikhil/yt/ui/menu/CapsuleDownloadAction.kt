@@ -40,6 +40,9 @@ internal fun CapsuleDownloadAction(
     hasStoredItems: Boolean = false,
     collectionName: String? = null,
     isCollection: Boolean = true,
+    // Player's single-track download is an intentionally fast exception:
+    // second tap cancels + discards, completed tap removes immediately.
+    instantRemove: Boolean = false,
     actionKey: String = collectionName.orEmpty(),
 ) {
     val active = state == Download.STATE_DOWNLOADING ||
@@ -182,6 +185,10 @@ internal fun CapsuleDownloadAction(
         },
         modifier = Modifier.clickable(enabled = !removing && (enabled || currentlyDownloading || completed || hasStoredItems)) {
             when {
+                instantRemove && (completed || currentlyDownloading || hasStoredItems) -> {
+                    pendingStart = false
+                    onRemove()
+                }
                 completed -> confirmRemoval = true
                 currentlyDownloading -> {
                     choiceOpenedDuringDownload = true
