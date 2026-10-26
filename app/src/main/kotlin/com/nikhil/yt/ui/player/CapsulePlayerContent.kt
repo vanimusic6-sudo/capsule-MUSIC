@@ -694,6 +694,38 @@ fun CapsulePlayerContent(
                                     modifier = Modifier.fillMaxSize(),
                                 )
                             }
+                            // Show the smaller original cover immediately from
+                            // Coil's list/mini-player disk or memory cache while
+                            // the high-resolution player URL resolves. Previously
+                            // we requested ONLY the upgraded URL, leaving an
+                            // empty grey slot for several seconds per new song.
+                            if (retainedArtworkPainter == null &&
+                                !originalArtworkUrl.isNullOrBlank() &&
+                                requestedArtworkUrl != originalArtworkUrl
+                            ) {
+                                val previewRequest = remember(imageContext, originalArtworkUrl) {
+                                    ImageRequest.Builder(imageContext)
+                                        .data(originalArtworkUrl)
+                                        .size(256, 256)
+                                        .crossfade(false)
+                                        .build()
+                                }
+                                AsyncImage(
+                                    model = previewRequest,
+                                    contentDescription = null,
+                                    contentScale = if (cropAlbumArt) ContentScale.Crop
+                                        else ContentScale.Fit,
+                                    onSuccess = { preview ->
+                                        // Never downgrade an already decoded
+                                        // high-resolution image on a late callback.
+                                        if (retainedArtworkUrl != requestedArtworkUrl) {
+                                            retainedArtworkPainter = preview.painter
+                                            retainedArtworkUrl = originalArtworkUrl
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
                             if (retainedArtworkPainter == null ||
                                 retainedArtworkUrl != requestedArtworkUrl
                             ) {
