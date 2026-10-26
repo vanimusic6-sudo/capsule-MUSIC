@@ -236,30 +236,8 @@ fun YouTubePlaylistMenu(
     val isEnqueuing = playlist.id in enqueuingPlaylists
     val effectiveDownloadState =
         if (isEnqueuing) Download.STATE_DOWNLOADING else downloadState
-    var showRemoveDownloadDialog by remember(playlist.id) { mutableStateOf(false) }
-    if (showRemoveDownloadDialog) {
-        DefaultDialog(
-            onDismiss = { showRemoveDownloadDialog = false },
-            content = {
-                Text(
-                    text = stringResource(R.string.remove_download_playlist_confirm, playlist.title),
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(horizontal = 18.dp),
-                )
-            },
-            buttons = {
-                TextButton(onClick = { showRemoveDownloadDialog = false }) {
-                    Text(stringResource(android.R.string.cancel))
-                }
-                TextButton(onClick = {
-                    showRemoveDownloadDialog = false
-                    com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator.cancelAndRemove(
-                        playlist.id, context, downloadUtil.downloadManager, collectionIds,
-                    )
-                }) { Text(stringResource(android.R.string.ok)) }
-            },
-        )
-    }
+    
+    
 
     ImportPlaylistDialog(
         isVisible = showImportPlaylistDialog,
@@ -628,7 +606,12 @@ fun YouTubePlaylistMenu(
                         playlist.id, context, downloadUtil.downloadManager, collectionIds,
                     )
                 },
-                onRemove = { showRemoveDownloadDialog = true },
+                collectionName = playlist.title,
+                onRemove = {
+                    com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator.cancelAndRemove(
+                        playlist.id, context, downloadUtil.downloadManager, collectionIds,
+                    )
+                },
             )
         }
         item {
