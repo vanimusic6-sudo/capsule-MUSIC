@@ -49,6 +49,7 @@ internal fun YouTubeDownloadMenuItems(
     }
 
     CapsuleDownloadAction(
+        hasStoredItems = download != null,
         state = if (pendingStart) Download.STATE_DOWNLOADING
             else download?.visibleState ?: Download.STATE_STOPPED,
         onDownload = {
