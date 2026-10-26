@@ -178,8 +178,7 @@ fun OnlineSearchScreen(
                 mediaMetadata?.artists?.map { it.name }.orEmpty()
             } else emptyList()
             val richerCredits = if (item is SongItem) {
-                listOf(item.artists.map { it.name }, cachedCredits, activeCredits)
-                    .maxByOrNull { it.size }.orEmpty()
+                mergeSearchArtistCredits(item.artists.map { it.name }, cachedCredits, activeCredits)
                     .takeIf { it.size > item.artists.size }
                     ?.joinToString(", ")
             } else null
