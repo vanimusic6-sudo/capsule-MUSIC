@@ -65,6 +65,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
@@ -667,7 +668,7 @@ fun CapsulePlayerContent(
                             }
                             // Cold image fetches can legitimately be slow.
                             // Rescue at most once and only while this cover is visible.
-                            delay(if (retainedArtworkPainter != null) 1_000L else 3_000L)
+                            delay(if (retainedArtworkPainter != null) 650L else 1_600L)
                             if (artworkLoading) {
                                 Timber.tag("CapsuleArtwork").w(
                                     "player-artwork-stalled id=%s original=%s rebind=%s",
@@ -680,6 +681,21 @@ fun CapsulePlayerContent(
                                 }
                             }
                         }
+                        // Deliberately retain a neutral surface while rapidly
+                        // skipping (no wrong-track flash). Once this song's bitmap
+                        // is decoded, a short, softly defocused reveal replaces
+                        // the long abrupt grey-to-photo switch.
+                        val artworkReveal by animateFloatAsState(
+                            targetValue = if (retainedArtworkPainter != null) 1f else 0f,
+                            animationSpec = tween(durationMillis = 230),
+                            label = "capsule-artwork-soft-reveal",
+                        )
+                        val artworkContentScale =
+                            if (cropAlbumArt ||
+                                (useClayLayout && (artworkResizeActive ||
+                                    abs(lightArtworkWidthScale - 1f) > 0.01f ||
+                                    abs(lightArtworkHeightScale - 1f) > 0.01f))
+                            ) ContentScale.Crop else ContentScale.Fit
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             // Always draw the most recently *decoded* cover. An
                             // AsyncImage's transient state can be Loading even
@@ -689,9 +705,10 @@ fun CapsulePlayerContent(
                                 Image(
                                     painter = ready,
                                     contentDescription = null,
-                                    contentScale = if (cropAlbumArt) ContentScale.Crop
-                                        else ContentScale.Fit,
-                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = artworkContentScale,
+                                    modifier = Modifier.fillMaxSize()
+                                        .blur(((1f - artworkReveal) * 2.5f).dp)
+                                        .graphicsLayer { alpha = artworkReveal },
                                 )
                             }
                             // Show the smaller original cover immediately from
@@ -713,8 +730,7 @@ fun CapsulePlayerContent(
                                 AsyncImage(
                                     model = previewRequest,
                                     contentDescription = null,
-                                    contentScale = if (cropAlbumArt) ContentScale.Crop
-                                        else ContentScale.Fit,
+                                    contentScale = artworkContentScale,
                                     onSuccess = { preview ->
                                         // Never downgrade an already decoded
                                         // high-resolution image on a late callback.
@@ -723,7 +739,9 @@ fun CapsulePlayerContent(
                                             retainedArtworkUrl = originalArtworkUrl
                                         }
                                     },
-                                    modifier = Modifier.fillMaxSize(),
+                                    // Coil still decodes and caches while only the
+                                    // single retained painter owns visible pixels.
+                                    modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 0f },
                                 )
                             }
                             if (retainedArtworkPainter == null ||
@@ -786,10 +804,10 @@ fun CapsulePlayerContent(
                                     } else {
                                         ContentScale.Fit
                                     },
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 0f },
                             )
                             }
-                            } // Visible AsyncImage only while no matching decoded painter exists.
+                            } // The successful painter, not an unfinished request, is displayed.
                             if (artworkFailed && retainedArtworkPainter == null) {
                                 Icon(
                                     painter = painterResource(R.drawable.album),
