@@ -609,6 +609,7 @@ fun YouTubePlaylistMenu(
                 onDownload = {
                     com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator.start(
                         playlist.id, context, downloadUtil.downloadManager, downloadSongs,
+                        indexedDownloads,
                     )
                 },
                 onStop = {
