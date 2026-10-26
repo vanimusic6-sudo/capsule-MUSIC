@@ -184,7 +184,10 @@ fun SongItem.toMediaMetadata() =
             }
             .sanitizedArtistCredits(),
         duration = duration ?: -1,
-        thumbnailUrl = thumbnail.resize(544, 544),
+        // Video posters should keep their source's native crop/aspect.
+        // Resizing a 16:9 thumbnail to 544x544 silently swaps it to a
+        // different square-cropped YouTube image after the initial frame.
+        thumbnailUrl = if (isOriginalVideo) thumbnail else thumbnail.resize(544, 544),
         album =
         album?.let {
             MediaMetadata.Album(
