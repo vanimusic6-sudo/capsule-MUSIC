@@ -42,6 +42,7 @@ internal fun CapsuleDownloadAction(
     val active = state == Download.STATE_DOWNLOADING ||
         state == Download.STATE_QUEUED || state == Download.STATE_RESTARTING
     val completed = state == Download.STATE_COMPLETED
+    val removing = state == Download.STATE_REMOVING
     var showChoices by remember(actionKey) { mutableStateOf(false) }
     var confirmRemoval by remember(actionKey) { mutableStateOf(false) }
 
@@ -115,18 +116,19 @@ internal fun CapsuleDownloadAction(
             Text(
                 stringResource(
                     when {
-                        completed -> R.string.remove_download
+                        completed || removing -> R.string.remove_download
                         active -> R.string.downloading
                         else -> R.string.action_download
                     }
                 ),
-                color = if (completed) MaterialTheme.colorScheme.error
+                color = if (completed || removing) MaterialTheme.colorScheme.error
                     else MaterialTheme.colorScheme.onSurface,
             )
         },
         leadingContent = {
             when {
-                active -> VeluneLoader(size = 24.dp)
+                active || removing -> VeluneLoader(size = 24.dp,
+                    color = if (removing) MaterialTheme.colorScheme.error else null)
                 else -> Icon(
                     painter = painterResource(if (completed) R.drawable.offline else R.drawable.download),
                     contentDescription = null,
@@ -135,7 +137,7 @@ internal fun CapsuleDownloadAction(
                 )
             }
         },
-        modifier = Modifier.clickable(enabled = enabled || active || completed || hasStoredItems) {
+        modifier = Modifier.clickable(enabled = !removing && (enabled || active || completed || hasStoredItems)) {
             when {
                 completed -> confirmRemoval = true
                 active -> onStop()
