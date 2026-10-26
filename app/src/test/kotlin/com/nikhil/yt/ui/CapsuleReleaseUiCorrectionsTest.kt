@@ -41,7 +41,7 @@ class CapsuleReleaseUiCorrectionsTest {
         assertTrue(shared.contains("completed -> confirmRemoval = true"))
         assertTrue(shared.contains("currentlyDownloading -> showChoices = true"))
         assertTrue(shared.contains("capsule_download_stop_delete"))
-        assertTrue(shared.contains("if (currentlyDownloading)"))
+        assertTrue(shared.contains("choiceOpenedDuringDownload"))
         assertTrue(shared.contains("pendingStart = true\n                    onDownload()"))
         assertTrue(shared.contains("DefaultDialog("))
         assertTrue(shared.contains("confirmRemoval = false\n                    onRemove()"))
