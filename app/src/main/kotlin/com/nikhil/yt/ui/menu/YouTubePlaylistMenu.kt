@@ -581,6 +581,7 @@ fun YouTubePlaylistMenu(
             // Identical row and actions to a local playlist:
             // download/resume -> downloading (tap to stop) -> remove when complete.
             CapsuleDownloadAction(
+                actionKey = playlist.id,
                 state = effectiveDownloadState,
                 hasStoredItems = collectionIds.any { indexedDownloads.containsKey(it) },
                 enabled = membershipReady && downloadSongs.isNotEmpty(),
