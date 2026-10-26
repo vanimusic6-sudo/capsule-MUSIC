@@ -10,6 +10,7 @@ import androidx.compose.ui.test.performClick
 import androidx.media3.exoplayer.offline.Download
 import com.nikhil.yt.R
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -171,8 +172,10 @@ class CapsuleDownloadActionInteractionTest {
             assertEquals(0, stopped)
         }
         // The modal Delete/Stop chooser must NOT appear in Player More.
-        rule.onAllNodesWithText(rule.activity.getString(R.string.capsule_download_stop_delete))
-            .assertCountEquals(0)
+        assertTrue(
+            rule.onAllNodesWithText(rule.activity.getString(R.string.capsule_download_stop_delete))
+                .fetchSemanticsNodes().isEmpty()
+        )
     }
 
     @Test fun playerCompletedDownloadDeletesOnFirstTapWithoutDialog() {
