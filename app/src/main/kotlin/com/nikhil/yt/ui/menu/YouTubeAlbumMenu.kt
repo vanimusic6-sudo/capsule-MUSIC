@@ -133,11 +133,9 @@ fun YouTubeAlbumMenu(
                 }
                 TextButton(onClick = {
                     confirmAlbumDownloadRemoval = false
-                    album?.songs.orEmpty().forEach { song ->
-                        DownloadService.sendRemoveDownload(
-                            context, ExoDownloadService::class.java, song.id, false,
+                    com.nikhil.yt.playback.removeCollectionDownloads(
+                            downloadUtil.downloadManager, album?.songs.orEmpty().map { it.id }, preserveManual = false,
                         )
-                    }
                 }) { Text(stringResource(android.R.string.ok)) }
             },
         )
