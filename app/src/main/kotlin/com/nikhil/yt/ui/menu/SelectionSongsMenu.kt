@@ -104,6 +104,7 @@ fun SelectionSongMenu(
     }
 
     val downloadState = rememberCollectionDownloadState(songSelection.map { it.id })
+    val downloadIndex by downloadUtil.downloads.collectAsState()
 
     var showChoosePlaylistDialog by rememberSaveable {
         mutableStateOf(false)
@@ -364,6 +365,7 @@ fun SelectionSongMenu(
         item {
             CapsuleDownloadAction(
                 state = downloadState,
+                hasStoredItems = songSelection.map { it.id }.any { downloadIndex.containsKey(it) },
                 enabled = songSelection.isNotEmpty(),
                 onDownload = {
                     songSelection.forEach { song ->
@@ -499,6 +501,7 @@ fun SelectionMediaMetadataMenu(
     )
 
     val downloadState = rememberCollectionDownloadState(songSelection.map { it.id })
+    val downloadIndex by downloadUtil.downloads.collectAsState()
 
     var showRemoveDownloadDialog by remember {
         mutableStateOf(false)
@@ -679,6 +682,7 @@ fun SelectionMediaMetadataMenu(
         item {
             CapsuleDownloadAction(
                 state = downloadState,
+                hasStoredItems = songSelection.map { it.id }.any { downloadIndex.containsKey(it) },
                 enabled = songSelection.isNotEmpty(),
                 onDownload = {
                     songSelection.forEach { song ->
