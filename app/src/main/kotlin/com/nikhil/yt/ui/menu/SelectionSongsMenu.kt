@@ -368,9 +368,7 @@ fun SelectionSongMenu(
                             .setCustomCacheKey(song.id)
                             .setData(song.song.title.toByteArray())
                             .build()
-                        DownloadService.sendAddDownload(
-                            context, ExoDownloadService::class.java, downloadRequest, false,
-                        )
+                        com.nikhil.yt.playback.enqueueCollectionItem(context, downloadIndex, downloadRequest)
                     }
                 },
                 onStop = {
@@ -680,9 +678,7 @@ fun SelectionMediaMetadataMenu(
                             .setCustomCacheKey(song.id)
                             .setData(song.title.toByteArray())
                             .build()
-                        DownloadService.sendAddDownload(
-                            context, ExoDownloadService::class.java, downloadRequest, false,
-                        )
+                        com.nikhil.yt.playback.enqueueCollectionItem(context, downloadIndex, downloadRequest)
                     }
                 },
                 onStop = {
