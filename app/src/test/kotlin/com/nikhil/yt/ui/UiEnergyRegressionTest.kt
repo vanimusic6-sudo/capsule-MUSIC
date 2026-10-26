@@ -65,7 +65,9 @@ class UiEnergyRegressionTest {
     @Test
     fun `rapid track changes do not immediately start high resolution visual preloads`() {
         val source = source("com/nikhil/yt/ui/player/CapsuleMediaPreload.kt")
-        assertTrue(source.contains("CAPSULE_VISUAL_PREFETCH_SETTLE_MS = 1_200L"))
+        // A 420 ms dwell still cancels speculative decoding during rapid skips,
+        // but unlike 1.2 s no longer strands stable tracks behind a grey cover.
+        assertTrue(source.contains("CAPSULE_VISUAL_PREFETCH_SETTLE_MS = 420L"))
         assertTrue(source.contains("delay(CAPSULE_VISUAL_PREFETCH_SETTLE_MS)"))
     }
 

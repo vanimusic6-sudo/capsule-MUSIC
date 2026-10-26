@@ -117,29 +117,8 @@ fun YouTubeAlbumMenu(
     val downloadState = rememberCollectionDownloadState(album?.songs.orEmpty().map { it.id })
     val downloadIndex by downloadUtil.downloads.collectAsState()
 
-    var confirmAlbumDownloadRemoval by remember { mutableStateOf(false) }
-    if (confirmAlbumDownloadRemoval) {
-        DefaultDialog(
-            onDismiss = { confirmAlbumDownloadRemoval = false },
-            content = {
-                Text(
-                    stringResource(R.string.remove_download_playlist_confirm, albumItem.title),
-                    modifier = Modifier.padding(horizontal = 18.dp),
-                )
-            },
-            buttons = {
-                TextButton(onClick = { confirmAlbumDownloadRemoval = false }) {
-                    Text(stringResource(android.R.string.cancel))
-                }
-                TextButton(onClick = {
-                    confirmAlbumDownloadRemoval = false
-                    com.nikhil.yt.playback.removeCollectionDownloads(
-                            downloadUtil.downloadManager, album?.songs.orEmpty().map { it.id }, preserveManual = false,
-                        )
-                }) { Text(stringResource(android.R.string.ok)) }
-            },
-        )
-    }
+    
+    
 
 
     // Artist separators for splitting artist names
@@ -409,24 +388,32 @@ fun YouTubeAlbumMenu(
         }
         item {
             CapsuleDownloadAction(
+                actionKey = albumItem.id,
                 state = downloadState,
                 hasStoredItems = album?.songs.orEmpty().map { it.id }.any { downloadIndex.containsKey(it) },
                 enabled = album?.songs.orEmpty().isNotEmpty(),
                 onDownload = {
-                    album?.songs.orEmpty().forEach { song ->
-                        val downloadRequest = DownloadRequest.Builder(song.id, song.id.toUri())
+                    val requests = album?.songs.orEmpty().map { song ->
+                        DownloadRequest.Builder(song.id, song.id.toUri())
                             .setCustomCacheKey(song.id)
                             .setData(song.song.title.toByteArray())
                             .build()
-                        com.nikhil.yt.playback.enqueueCollectionItem(context, downloadIndex, downloadRequest)
                     }
+                    com.nikhil.yt.playback.enqueueCollectionDownloads(
+                        context, downloadUtil.downloadManager, downloadIndex, requests,
+                    )
                 },
                 onStop = {
                     com.nikhil.yt.playback.stopCollectionDownloads(
                         downloadUtil.downloadManager, album?.songs.orEmpty().map { it.id },
                     )
                 },
-                onRemove = { confirmAlbumDownloadRemoval = true },
+                collectionName = albumItem.title,
+                onRemove = {
+                    com.nikhil.yt.playback.removeCollectionDownloads(
+                        downloadUtil.downloadManager, album?.songs.orEmpty().map { it.id }, preserveManual = false,
+                    )
+                },
             )
         }
 

@@ -134,42 +134,9 @@ fun SelectionSongMenu(
         },
     )
 
-    var showRemoveDownloadDialog by remember {
-        mutableStateOf(false)
-    }
+    
 
-    if (showRemoveDownloadDialog) {
-        DefaultDialog(
-            onDismiss = { showRemoveDownloadDialog = false },
-            content = {
-                Text(
-                    text = stringResource(R.string.remove_download_playlist_confirm, "selection"),
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(horizontal = 18.dp),
-                )
-            },
-            buttons = {
-                TextButton(
-                    onClick = {
-                        showRemoveDownloadDialog = false
-                    },
-                ) {
-                    Text(text = stringResource(android.R.string.cancel))
-                }
-
-                TextButton(
-                    onClick = {
-                        showRemoveDownloadDialog = false
-                        com.nikhil.yt.playback.removeCollectionDownloads(
-                            downloadUtil.downloadManager, songSelection.map { it.id }, preserveManual = false,
-                        )
-                    },
-                ) {
-                    Text(text = stringResource(android.R.string.ok))
-                }
-            },
-        )
-    }
+    
 
     Spacer(modifier = Modifier.height(12.dp))
 
@@ -360,17 +327,20 @@ fun SelectionSongMenu(
         }
         item {
             CapsuleDownloadAction(
+                actionKey = songSelection.joinToString(separator = ",") { it.id },
                 state = downloadState,
                 hasStoredItems = songSelection.map { it.id }.any { downloadIndex.containsKey(it) },
                 enabled = songSelection.isNotEmpty(),
                 onDownload = {
-                    songSelection.forEach { song ->
-                        val downloadRequest = DownloadRequest.Builder(song.id, song.id.toUri())
+                    val requests = songSelection.map { song ->
+                        DownloadRequest.Builder(song.id, song.id.toUri())
                             .setCustomCacheKey(song.id)
                             .setData(song.song.title.toByteArray())
                             .build()
-                        com.nikhil.yt.playback.enqueueCollectionItem(context, downloadIndex, downloadRequest)
                     }
+                    com.nikhil.yt.playback.enqueueCollectionDownloads(
+                        context, downloadUtil.downloadManager, downloadIndex, requests,
+                    )
                 },
                 onStop = {
                     com.nikhil.yt.playback.stopCollectionDownloads(
@@ -378,7 +348,12 @@ fun SelectionSongMenu(
                         preserveManual = false,
                     )
                 },
-                onRemove = { showRemoveDownloadDialog = true },
+                collectionName = "selection",
+                onRemove = {
+                    com.nikhil.yt.playback.removeCollectionDownloads(
+                        downloadUtil.downloadManager, songSelection.map { it.id }, preserveManual = false,
+                    )
+                },
             )
         }
 
@@ -497,42 +472,9 @@ fun SelectionMediaMetadataMenu(
     val downloadState = rememberCollectionDownloadState(songSelection.map { it.id })
     val downloadIndex by downloadUtil.downloads.collectAsState()
 
-    var showRemoveDownloadDialog by remember {
-        mutableStateOf(false)
-    }
+    
 
-    if (showRemoveDownloadDialog) {
-        DefaultDialog(
-            onDismiss = { showRemoveDownloadDialog = false },
-            content = {
-                Text(
-                    text = stringResource(R.string.remove_download_playlist_confirm, "selection"),
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(horizontal = 18.dp),
-                )
-            },
-            buttons = {
-                TextButton(
-                    onClick = {
-                        showRemoveDownloadDialog = false
-                    },
-                ) {
-                    Text(text = stringResource(android.R.string.cancel))
-                }
-
-                TextButton(
-                    onClick = {
-                        showRemoveDownloadDialog = false
-                        com.nikhil.yt.playback.removeCollectionDownloads(
-                            downloadUtil.downloadManager, songSelection.map { it.id }, preserveManual = false,
-                        )
-                    },
-                ) {
-                    Text(text = stringResource(android.R.string.ok))
-                }
-            },
-        )
-    }
+    
 
     LazyColumn(
         contentPadding = PaddingValues(
@@ -670,17 +612,20 @@ fun SelectionMediaMetadataMenu(
         }
         item {
             CapsuleDownloadAction(
+                actionKey = songSelection.joinToString(separator = ",") { it.id },
                 state = downloadState,
                 hasStoredItems = songSelection.map { it.id }.any { downloadIndex.containsKey(it) },
                 enabled = songSelection.isNotEmpty(),
                 onDownload = {
-                    songSelection.forEach { song ->
-                        val downloadRequest = DownloadRequest.Builder(song.id, song.id.toUri())
+                    val requests = songSelection.map { song ->
+                        DownloadRequest.Builder(song.id, song.id.toUri())
                             .setCustomCacheKey(song.id)
                             .setData(song.title.toByteArray())
                             .build()
-                        com.nikhil.yt.playback.enqueueCollectionItem(context, downloadIndex, downloadRequest)
                     }
+                    com.nikhil.yt.playback.enqueueCollectionDownloads(
+                        context, downloadUtil.downloadManager, downloadIndex, requests,
+                    )
                 },
                 onStop = {
                     com.nikhil.yt.playback.stopCollectionDownloads(
@@ -688,7 +633,12 @@ fun SelectionMediaMetadataMenu(
                         preserveManual = false,
                     )
                 },
-                onRemove = { showRemoveDownloadDialog = true },
+                collectionName = "selection",
+                onRemove = {
+                    com.nikhil.yt.playback.removeCollectionDownloads(
+                        downloadUtil.downloadManager, songSelection.map { it.id }, preserveManual = false,
+                    )
+                },
             )
         }
 

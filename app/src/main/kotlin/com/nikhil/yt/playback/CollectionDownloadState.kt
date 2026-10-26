@@ -10,6 +10,9 @@ internal fun collectionDownloadState(songIds: Collection<String>, downloads: Map
     if (songIds.isEmpty()) return Download.STATE_STOPPED
     val states = songIds.distinct().map { downloads[it]?.visibleState }
     return when {
+        // A REMOVE is asynchronous. Don't expose "Download/Resume" mid-delete:
+        // it could re-add a track while its cached bytes are being purged.
+        states.any { it == Download.STATE_REMOVING } -> Download.STATE_REMOVING
         states.all { it == Download.STATE_COMPLETED } -> Download.STATE_COMPLETED
         states.any { it == Download.STATE_QUEUED || it == Download.STATE_DOWNLOADING || it == Download.STATE_RESTARTING } ->
             Download.STATE_DOWNLOADING
@@ -61,7 +64,7 @@ internal fun enqueueCollectionItem(
     if (saved?.state == Download.STATE_STOPPED) {
         DownloadService.sendSetStopReason(
             context, ExoDownloadService::class.java,
-            request.id, Download.STOP_REASON_NONE, false,
+            request.id, DOWNLOAD_WAITING_FOR_SLOT, false,
         )
     } else {
         DownloadService.sendAddDownload(
@@ -70,8 +73,48 @@ internal fun enqueueCollectionItem(
         if (saved != null && saved.stopReason != Download.STOP_REASON_NONE) {
             DownloadService.sendSetStopReason(
                 context, ExoDownloadService::class.java,
-                request.id, Download.STOP_REASON_NONE, false,
+                request.id, DOWNLOAD_WAITING_FOR_SLOT, false,
             )
+        }
+    }
+}
+
+/**
+ * Batch start/resume for local and remote collections. Start DownloadService
+ * at most once; all remaining entries go directly to the already-initialized
+ * Media3 manager. This avoids one foreground-service intent per song and
+ * preserves the individual priority queue for manually selected tracks.
+ */
+internal fun enqueueCollectionDownloads(
+    context: Context,
+    manager: androidx.media3.exoplayer.offline.DownloadManager,
+    indexed: Map<String, Download>,
+    requests: List<DownloadRequest>,
+) {
+    var serviceStarted = false
+    val active = manager.currentDownloads.associateBy { it.request.id }
+    requests.distinctBy { it.id }.forEach { request ->
+        val existing = indexed[request.id] ?: active[request.id]
+        when (existing?.state) {
+            Download.STATE_COMPLETED -> Unit
+            Download.STATE_STOPPED -> {
+                // Never bypass the manual-first download admission queue.
+                if (existing.stopReason != DOWNLOAD_WAITING_FOR_SLOT) {
+                    manager.setStopReason(request.id, DOWNLOAD_WAITING_FOR_SLOT)
+                }
+            }
+            Download.STATE_QUEUED, Download.STATE_DOWNLOADING,
+            Download.STATE_RESTARTING -> Unit
+            else -> {
+                if (!serviceStarted) {
+                    DownloadService.sendAddDownload(
+                        context, ExoDownloadService::class.java, request, false,
+                    )
+                    serviceStarted = true
+                } else {
+                    manager.addDownload(request, DOWNLOAD_WAITING_FOR_SLOT)
+                }
+            }
         }
     }
 }

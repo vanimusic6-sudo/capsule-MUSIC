@@ -207,26 +207,12 @@ fun YouTubePlaylistMenu(
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
 
-    // Unlike a saved playlist, the online screen may have loaded only its
-    // first continuation page. Resolve full membership before starting a
-    // collection transfer or the Cancel/Remove action will miss later songs.
-    var downloadSongs by remember(playlist.id) { mutableStateOf(songs) }
-    // The first loaded page is already actionable; fetching later continuation
-    // pages enriches membership without blocking or replacing a running transfer.
-    var membershipReady by remember(playlist.id) { mutableStateOf(songs.isNotEmpty()) }
-    LaunchedEffect(playlist.id, songs) {
-        if (songs.isNotEmpty() && downloadSongs.isEmpty()) {
-            downloadSongs = songs
-            membershipReady = true
-        }
-        val allRemote = withContext(Dispatchers.IO) {
-            YouTube.playlist(playlist.id).completed().getOrNull()?.songs.orEmpty()
-        }
-        if (allRemote.size >= downloadSongs.size && allRemote.isNotEmpty()) {
-            downloadSongs = allRemote
-        }
-        membershipReady = downloadSongs.isNotEmpty()
-    }
+    // Reading the menu must be cheap and side-effect free. The process-owned
+    // download coordinator resolves continuation pages on an actual DOWNLOAD
+    // tap. Automatically fetching a huge public playlist every time More
+    // opened caused stale sheet state, slow buttons and duplicate network I/O.
+    val downloadSongs = songs
+    val membershipReady = songs.isNotEmpty()
     val indexedDownloads by downloadUtil.downloads.collectAsState()
     val enqueuingPlaylists by com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator
         .enqueuing.collectAsState()
@@ -236,30 +222,8 @@ fun YouTubePlaylistMenu(
     val isEnqueuing = playlist.id in enqueuingPlaylists
     val effectiveDownloadState =
         if (isEnqueuing) Download.STATE_DOWNLOADING else downloadState
-    var showRemoveDownloadDialog by remember(playlist.id) { mutableStateOf(false) }
-    if (showRemoveDownloadDialog) {
-        DefaultDialog(
-            onDismiss = { showRemoveDownloadDialog = false },
-            content = {
-                Text(
-                    text = stringResource(R.string.remove_download_playlist_confirm, playlist.title),
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(horizontal = 18.dp),
-                )
-            },
-            buttons = {
-                TextButton(onClick = { showRemoveDownloadDialog = false }) {
-                    Text(stringResource(android.R.string.cancel))
-                }
-                TextButton(onClick = {
-                    showRemoveDownloadDialog = false
-                    com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator.cancelAndRemove(
-                        playlist.id, context, downloadUtil.downloadManager, collectionIds,
-                    )
-                }) { Text(stringResource(android.R.string.ok)) }
-            },
-        )
-    }
+    
+    
 
     ImportPlaylistDialog(
         isVisible = showImportPlaylistDialog,
@@ -603,6 +567,7 @@ fun YouTubePlaylistMenu(
             // Identical row and actions to a local playlist:
             // download/resume -> downloading (tap to stop) -> remove when complete.
             CapsuleDownloadAction(
+                actionKey = playlist.id,
                 state = effectiveDownloadState,
                 hasStoredItems = collectionIds.any { indexedDownloads.containsKey(it) },
                 enabled = membershipReady && downloadSongs.isNotEmpty(),
@@ -616,11 +581,11 @@ fun YouTubePlaylistMenu(
                         // The remote playlist may be unavailable offline while
                         // previously indexed tracks still exist. Resume their
                         // original requests without losing saved membership.
-                        collectionIds.mapNotNull(indexedDownloads::get).forEach { download ->
-                            com.nikhil.yt.playback.enqueueCollectionItem(
-                                context, indexedDownloads, download.request,
-                            )
-                        }
+                        val requests = collectionIds.mapNotNull(indexedDownloads::get)
+                            .map { it.request }
+                        com.nikhil.yt.playback.enqueueCollectionDownloads(
+                            context, downloadUtil.downloadManager, indexedDownloads, requests,
+                        )
                     }
                 },
                 onStop = {
@@ -628,7 +593,12 @@ fun YouTubePlaylistMenu(
                         playlist.id, context, downloadUtil.downloadManager, collectionIds,
                     )
                 },
-                onRemove = { showRemoveDownloadDialog = true },
+                collectionName = playlist.title,
+                onRemove = {
+                    com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator.cancelAndRemove(
+                        playlist.id, context, downloadUtil.downloadManager, collectionIds,
+                    )
+                },
             )
         }
         item {

@@ -33,6 +33,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
+import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.AppBarHeight
@@ -136,6 +137,7 @@ fun OnlineSearchResult(
     navController: NavController,
     viewModel: OnlineSearchViewModel = hiltViewModel(),
 ) {
+    val database = LocalDatabase.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val menuState = LocalMenuState.current
     val context = LocalContext.current
@@ -197,8 +199,25 @@ fun OnlineSearchResult(
                     rowHeight = 78.dp, thumbnailSize = 60.dp, thumbnailCornerRadius = 11.dp,
                 ),
         ) {
+        // "Top result" credits belong to the SONG, not to a list of
+        // suggested ArtistItems. Reconcile only credits for this same video
+        // already present in the local catalogue or active playback.
+        val savedSong = if (item is SongItem) {
+            val song by database.song(item.id).collectAsState(initial = null)
+            song
+        } else null
+        val knownNames = if (item is SongItem) {
+            mergeSearchArtistCredits(
+                item.artists.map { it.name },
+                savedSong?.artists?.map { it.name }.orEmpty(),
+                if (mediaMetadata?.id == item.id) mediaMetadata?.artists?.map { it.name }.orEmpty()
+                else emptyList(),
+            )
+        } else emptyList()
         YouTubeListItem(
             item = item,
+            artistSubtitleOverride = if (item is SongItem) knownNames.joinToString(", ")
+                .takeIf { it.isNotBlank() } else null,
             isActive = when(item) {
                 is SongItem -> mediaMetadata?.id == item.id
                 is AlbumItem -> mediaMetadata?.album?.id == item.id
@@ -494,4 +513,12 @@ fun OnlineSearchResult(
             ),
         )
     }
+}
+
+/** Stable order, no unrelated artist search results or invented song credits. */
+internal fun mergeSearchArtistCredits(vararg sources: List<String>): List<String> {
+    val seen = hashSetOf<String>()
+    return sources.asSequence().flatten()
+        .map(String::trim).filter(String::isNotBlank)
+        .filter { seen.add(it.lowercase(java.util.Locale.ROOT)) }.toList()
 }

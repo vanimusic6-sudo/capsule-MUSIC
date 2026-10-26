@@ -6,6 +6,8 @@ import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadManager
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
+import com.nikhil.yt.innertube.YouTube
+import com.nikhil.yt.innertube.utils.completed
 import com.nikhil.yt.innertube.models.SongItem
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -16,6 +18,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 
 /**
@@ -29,7 +32,7 @@ import kotlinx.coroutines.yield
 internal object OnlinePlaylistDownloadCoordinator {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    private class Session(val ids: List<String>) {
+    private class Session(var ids: List<String>) {
         var job: Job? = null
     }
 
@@ -74,16 +77,32 @@ internal object OnlinePlaylistDownloadCoordinator {
     ) {
         // A new manual start replaces the old producer, never runs alongside it.
         sessions.remove(playlistId)?.job?.cancel()
-        val uniqueSongs = songs.distinctBy { it.id }
+        val firstPage = songs.distinctBy { it.id }
         lastServiceWakeId.remove(playlistId)
-        val session = Session(uniqueSongs.map { it.id })
-        knownMembership[playlistId] = session.ids
-        appSaveMembership(context, playlistId, session.ids)
+        val session = Session(firstPage.map { it.id })
+        // Record current IDs immediately so Stop/Remove is valid even before
+        // the network resolves further continuation pages.
+        val previouslyKnown = rememberedIds(context, playlistId)
+        knownMembership[playlistId] = (previouslyKnown + session.ids).distinct()
+        appSaveMembership(context, playlistId, knownMembership[playlistId].orEmpty())
         sessions[playlistId] = session
         _enqueuing.value = _enqueuing.value + playlistId
         val appContext = context.applicationContext
         session.job = scope.launch {
             try {
+                // A public playlist often arrives as one short initial page.
+                // Resolve the FULL collection in this process-owned producer
+                // BEFORE enqueuing. The More sheet can close or be cancelled
+                // without leaving a producer that re-adds deleted tracks.
+                val remote = withContext(Dispatchers.IO) {
+                    YouTube.playlist(playlistId).completed().getOrNull()?.songs.orEmpty()
+                }
+                currentCoroutineContext().ensureActive()
+                val uniqueSongs = remote.ifEmpty { firstPage }.distinctBy { it.id }
+                session.ids = uniqueSongs.map { it.id }
+                val allIds = (previouslyKnown + session.ids).distinct()
+                knownMembership[playlistId] = allIds
+                appSaveMembership(context, playlistId, allIds)
                 var serviceStarted = false
                 // One snapshot, not a linear scan of all downloaded tracks
                 // for every playlist member (which would be quadratic).
@@ -93,9 +112,12 @@ internal object OnlinePlaylistDownloadCoordinator {
                     currentCoroutineContext().ensureActive()
                     val existing = indexed[song.id]
                     if (existing != null && existing.state != Download.STATE_FAILED) {
-                        if (existing.state != Download.STATE_COMPLETED) {
-                            downloadManager.setStopReason(song.id, Download.STOP_REASON_NONE)
+                        if (existing.state == Download.STATE_STOPPED &&
+                            existing.stopReason != DOWNLOAD_WAITING_FOR_SLOT) {
+                            downloadManager.setStopReason(song.id, DOWNLOAD_WAITING_FOR_SLOT)
                         }
+                        // Already queued, running or completed entries must not
+                        // be restarted: preserve independent manual priority.
                     } else {
                         val request = DownloadRequest.Builder(song.id, song.id.toUri())
                             .setCustomCacheKey(song.id)
@@ -111,10 +133,27 @@ internal object OnlinePlaylistDownloadCoordinator {
                             )
                             serviceStarted = true
                         } else {
-                            downloadManager.addDownload(request)
+                            downloadManager.addDownload(request, DOWNLOAD_WAITING_FOR_SLOT)
                         }
                     }
                     if (index % 32 == 31) yield()
+                }
+                if (remote.isEmpty()) {
+                    // Offline/public metadata failure: the persistent index still
+                    // knows the requests for continuation-page tracks. Resume
+                    // them without inventing unavailable SongItem metadata.
+                    val shownIds = uniqueSongs.mapTo(hashSetOf()) { it.id }
+                    previouslyKnown.asSequence().filterNot { it in shownIds }
+                        .mapNotNull(indexed::get).forEach { saved ->
+                            currentCoroutineContext().ensureActive()
+                            when (saved.state) {
+                                Download.STATE_STOPPED ->
+                                    downloadManager.setStopReason(saved.request.id, DOWNLOAD_WAITING_FOR_SLOT)
+                                Download.STATE_FAILED ->
+                                    downloadManager.addDownload(saved.request, DOWNLOAD_WAITING_FOR_SLOT)
+                                else -> Unit
+                            }
+                        }
                 }
             } finally {
                 if (sessions[playlistId] === session) {

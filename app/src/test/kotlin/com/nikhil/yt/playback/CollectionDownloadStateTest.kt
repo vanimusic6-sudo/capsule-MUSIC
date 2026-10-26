@@ -30,6 +30,15 @@ class CollectionDownloadStateTest {
         assertEquals(Download.STATE_COMPLETED, collectionDownloadState(listOf("a"), complete - "b"))
         assertEquals(Download.STATE_STOPPED, collectionDownloadState(listOf("a", "b"), complete + ("b" to download("b", Download.STATE_FAILED))))
     }
+    @Test fun deleteInProgressNeverLooksLikeAResumableOrCompletedCollection() {
+        val downloads = mapOf(
+            "a" to download("a", Download.STATE_REMOVING),
+            "b" to download("b", Download.STATE_COMPLETED),
+        )
+        assertEquals(Download.STATE_REMOVING, collectionDownloadState(listOf("a", "b"), downloads))
+        assertEquals(Download.STATE_STOPPED, collectionDownloadState(listOf("a", "b"), emptyMap()))
+    }
+
     @Test fun oneActiveTrackKeepsABatchVisibleEvenWhenAnotherFailed() {
         for (active in listOf(Download.STATE_QUEUED, Download.STATE_DOWNLOADING, Download.STATE_RESTARTING)) {
             val downloads = mapOf("a" to download("a", active), "b" to download("b", Download.STATE_FAILED))

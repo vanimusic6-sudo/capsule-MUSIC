@@ -135,45 +135,9 @@ fun PlaylistMenu(
         )
     }
 
-    var showRemoveDownloadDialog by remember {
-        mutableStateOf(false)
-    }
+    
 
-    if (showRemoveDownloadDialog) {
-        DefaultDialog(
-            onDismiss = { showRemoveDownloadDialog = false },
-            content = {
-                Text(
-                    text = stringResource(
-                        R.string.remove_download_playlist_confirm,
-                        playlist.playlist.name
-                    ),
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(horizontal = 18.dp),
-                )
-            },
-            buttons = {
-                TextButton(
-                    onClick = {
-                        showRemoveDownloadDialog = false
-                    },
-                ) {
-                    Text(text = stringResource(android.R.string.cancel))
-                }
-
-                TextButton(
-                    onClick = {
-                        showRemoveDownloadDialog = false
-                        com.nikhil.yt.playback.removeCollectionDownloads(
-                            downloadUtil.downloadManager, songs.map { it.id }, preserveManual = false,
-                        )
-                    },
-                ) {
-                    Text(text = stringResource(android.R.string.ok))
-                }
-            },
-        )
-    }
+    
 
     var showDeletePlaylistDialog by remember {
         mutableStateOf(false)
@@ -443,24 +407,32 @@ fun PlaylistMenu(
         if (downloadPlaylist != true) {
             item {
                 CapsuleDownloadAction(
+                actionKey = playlist.id,
                     state = downloadState,
                 hasStoredItems = songs.map { it.id }.any { downloadIndex.containsKey(it) },
                     enabled = songs.isNotEmpty(),
                     onDownload = {
-                        songs.forEach { song ->
-                            val downloadRequest = DownloadRequest.Builder(song.id, song.id.toUri())
-                                .setCustomCacheKey(song.id)
-                                .setData(song.song.title.toByteArray())
-                                .build()
-                            com.nikhil.yt.playback.enqueueCollectionItem(context, downloadIndex, downloadRequest)
-                        }
-                    },
-                    onStop = {
+                    val requests = songs.map { song ->
+                        DownloadRequest.Builder(song.id, song.id.toUri())
+                            .setCustomCacheKey(song.id)
+                            .setData(song.song.title.toByteArray())
+                            .build()
+                    }
+                    com.nikhil.yt.playback.enqueueCollectionDownloads(
+                        context, downloadUtil.downloadManager, downloadIndex, requests,
+                    )
+                },
+                onStop = {
                         com.nikhil.yt.playback.stopCollectionDownloads(
                             downloadUtil.downloadManager, songs.map { it.id },
                         )
                     },
-                    onRemove = { showRemoveDownloadDialog = true },
+                    collectionName = playlist.playlist.name,
+                onRemove = {
+                    com.nikhil.yt.playback.removeCollectionDownloads(
+                        downloadUtil.downloadManager, songs.map { it.id }, preserveManual = false,
+                    )
+                },
                 )
             }
         }

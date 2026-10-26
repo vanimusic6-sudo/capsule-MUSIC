@@ -49,6 +49,16 @@ class PlayerArtworkReliabilityTest {
         assertTrue(immersive.contains("delay(if (decodedCoverPainter != null) 1_000L else 3_000L)"))
     }
 
+    @Test fun preloaderUsesShortActualDebounceRatherThanOldSecondLongTimer() {
+        val code = java.io.File("src/main/kotlin/com/nikhil/yt/ui/player/CapsuleMediaPreload.kt")
+            .takeIf { it.exists() }
+            ?: java.io.File("app/src/main/kotlin/com/nikhil/yt/ui/player/CapsuleMediaPreload.kt")
+        val preloader = code.readText()
+        assertTrue(preloader.contains("CAPSULE_VISUAL_PREFETCH_SETTLE_MS = 420L"))
+        assertTrue(preloader.contains("delay(CAPSULE_VISUAL_PREFETCH_SETTLE_MS)"))
+        assertFalse(preloader.contains("CAPSULE_VISUAL_PREFETCH_SETTLE_MS = 1_200L"))
+    }
+
     @Test fun lightAndCosmoKeepImageFallbackLocalToTheirOwnArtwork() {
         val full = source("CapsulePlayerContent.kt")
         assertTrue(full.contains("val originalArtworkUrl = mediaMetadata.thumbnailUrl"))
@@ -58,7 +68,9 @@ class PlayerArtworkReliabilityTest {
         assertTrue(full.contains("artworkRebind"))
         assertTrue(full.contains("retainedArtworkPainter = success.painter"))
         assertTrue(full.contains("retainedArtworkPainter?.let { ready ->"))
-        assertTrue(full.contains("delay(if (retainedArtworkPainter != null) 1_000L else 3_000L)"))
+        assertTrue(full.contains("delay(if (retainedArtworkPainter != null) 650L else 1_600L)"))
+        assertTrue("Decoded cover owns visible pixels during loading", full.contains("retainedArtworkPainter?.let { ready ->"))
+        assertTrue(full.contains("capsule-artwork-soft-reveal"))
         assertTrue(full.contains("onError = {"))
         assertTrue(full.contains("artworkFailed = true"))
         assertTrue(full.contains("if (artworkFailed && retainedArtworkPainter == null)"))
