@@ -604,6 +604,7 @@ fun YouTubePlaylistMenu(
             // download/resume -> downloading (tap to stop) -> remove when complete.
             CapsuleDownloadAction(
                 state = effectiveDownloadState,
+                hasStoredItems = collectionIds.any { indexedDownloads.containsKey(it) },
                 enabled = membershipReady && downloadSongs.isNotEmpty(),
                 onDownload = {
                     com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator.start(
