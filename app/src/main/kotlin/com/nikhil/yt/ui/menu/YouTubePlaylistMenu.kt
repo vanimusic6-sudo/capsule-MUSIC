@@ -207,55 +207,55 @@ fun YouTubePlaylistMenu(
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
 
+    // Unlike a saved playlist, the online screen may have loaded only its
+    // first continuation page. Resolve full membership before starting a
+    // collection transfer or the Cancel/Remove action will miss later songs.
     var downloadSongs by remember(playlist.id) { mutableStateOf(songs) }
+    var membershipReady by remember(playlist.id) { mutableStateOf(false) }
     LaunchedEffect(playlist.id, songs) {
-        downloadSongs = songs.ifEmpty {
-            withContext(Dispatchers.IO) { YouTube.playlist(playlist.id).completed().getOrNull()?.songs.orEmpty() }
+        membershipReady = false
+        val allRemote = withContext(Dispatchers.IO) {
+            YouTube.playlist(playlist.id).completed().getOrNull()?.songs.orEmpty()
         }
+        downloadSongs = if (allRemote.size >= songs.size) allRemote else songs
+        membershipReady = true
     }
-    val downloadState = rememberCollectionDownloadState(downloadSongs.map { it.id })
-    // A partially saved playlist is NOT the same as a never-downloaded list.
-    // Its existing downloads must always have a working delete path, even
-    // after the user stops/cancels the transfer.
     val indexedDownloads by downloadUtil.downloads.collectAsState()
-    val collectionIds = downloadSongs.map { it.id }.distinct()
+    val enqueuingPlaylists by com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator
+        .enqueuing.collectAsState()
+    val collectionIds = com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator
+        .memberIds(playlist.id, downloadSongs.map { it.id })
+    val downloadState = rememberCollectionDownloadState(collectionIds)
+    val isEnqueuing = playlist.id in enqueuingPlaylists
+    val isDownloading = isEnqueuing ||
+        downloadState == Download.STATE_DOWNLOADING ||
+        downloadState == Download.STATE_QUEUED ||
+        downloadState == Download.STATE_RESTARTING
     val hasAnyCollectionDownload = collectionIds.any { indexedDownloads.containsKey(it) }
-    var showRemoveDownloadDialog by remember {
-        mutableStateOf(false)
-    }
+    var showRemoveDownloadDialog by remember(playlist.id) { mutableStateOf(false) }
     if (showRemoveDownloadDialog) {
         DefaultDialog(
             onDismiss = { showRemoveDownloadDialog = false },
             content = {
                 Text(
-                    text = stringResource(
-                        R.string.remove_download_playlist_confirm,
-                        playlist.title
-                    ),
+                    text = if (isDownloading)
+                        stringResource(R.string.capsule_stop_and_delete_download_message)
+                    else stringResource(R.string.remove_download_playlist_confirm, playlist.title),
                     style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(horizontal = 18.dp)
+                    modifier = Modifier.padding(horizontal = 18.dp),
                 )
             },
             buttons = {
-                TextButton(
-                    onClick = { showRemoveDownloadDialog = false }
-                ) {
-                    Text(text = stringResource(android.R.string.cancel))
+                TextButton(onClick = { showRemoveDownloadDialog = false }) {
+                    Text(stringResource(android.R.string.cancel))
                 }
-                TextButton(
-                    onClick = {
-                        showRemoveDownloadDialog = false
-                        // Remove through the existing live Media3 manager;
-                        // do not enqueue hundreds of service start intents for
-                        // a playlist or leave STOPPED partial entries behind.
-                        com.nikhil.yt.playback.removeCollectionDownloads(
-                            downloadUtil.downloadManager, collectionIds,
-                        )
-                    }
-                ) {
-                    Text(text = stringResource(android.R.string.ok))
-                }
-            }
+                TextButton(onClick = {
+                    showRemoveDownloadDialog = false
+                    com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator.cancelAndRemove(
+                        playlist.id, context, downloadUtil.downloadManager, collectionIds,
+                    )
+                }) { Text(stringResource(android.R.string.ok)) }
+            },
         )
     }
 
@@ -597,101 +597,52 @@ fun YouTubePlaylistMenu(
                 }
             )
         }
-        item {
-            when (downloadState) {
-                Download.STATE_COMPLETED -> {
+        item(key = "playlist-download-action", contentType = "menu-section") {
+            when {
+                isDownloading -> {
+                    // Exactly one active control, like saved playlists.
+                    // Closing/reopening the More sheet never loses the producer.
                     ListItem(
-                        headlineContent = {
-                            Text(
-                                text = stringResource(R.string.remove_download),
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        },
-                        leadingContent = {
-                            Icon(
-                                painter = painterResource(R.drawable.offline),
-                                contentDescription = null,
-                            )
-                        },
-                        modifier = Modifier.clickable {
-                            showRemoveDownloadDialog = true
-                        }
+                        headlineContent = { Text(stringResource(R.string.capsule_stop_and_delete_download)) },
+                        leadingContent = { CapsuleDownloadComet() },
+                        modifier = Modifier.clickable { showRemoveDownloadDialog = true },
                     )
                 }
-                Download.STATE_QUEUED, Download.STATE_DOWNLOADING, Download.STATE_RESTARTING -> {
-                    ListItem(
-                        // "Cancel" pauses/resumes with cached bytes intact;
-                        // the following destructive row permanently deletes.
-                        headlineContent = { Text(text = stringResource(R.string.cancel_button)) },
-                        leadingContent = { CapsuleDownloadComet() },
-                        modifier = Modifier.clickable {
-                            com.nikhil.yt.playback.stopCollectionDownloads(
-                                downloadUtil.downloadManager, collectionIds,
-                            )
-                        }
-                    )
-                    // Stopping must not be the only way to cancel a large
-                    // online playlist: offer explicit confirmed deletion.
+                downloadState == Download.STATE_COMPLETED -> {
                     ListItem(
                         headlineContent = {
-                            Text(stringResource(R.string.capsule_stop_and_delete_download),
+                            Text(stringResource(R.string.remove_download),
                                 color = MaterialTheme.colorScheme.error)
                         },
                         leadingContent = {
-                            Icon(painterResource(R.drawable.close), contentDescription = null)
+                            Icon(painterResource(R.drawable.offline), contentDescription = null)
                         },
                         modifier = Modifier.clickable { showRemoveDownloadDialog = true },
                     )
                 }
                 else -> {
                     ListItem(
-                        headlineContent = { Text(text = stringResource(R.string.action_download)) },
+                        headlineContent = {
+                            Text(
+                                stringResource(
+                                    if (membershipReady) R.string.action_download else R.string.loading
+                                )
+                            )
+                        },
                         leadingContent = {
                             Icon(painterResource(R.drawable.download), contentDescription = null)
                         },
-                        modifier = Modifier.clickable(enabled = downloadSongs.isNotEmpty()) {
-                            coroutineScope.launch {
-                                // Resume stopped members instead of adding
-                                // them again, so partial cache bytes survive.
-                                var serviceStarted = false
-                                val songById = downloadSongs.associateBy { it.id }
-                                collectionIds.forEachIndexed { index, id ->
-                                    val existing = indexedDownloads[id]
-                                    if (existing != null) {
-                                        if (existing.state != Download.STATE_COMPLETED) {
-                                            downloadUtil.downloadManager.setStopReason(
-                                                id, Download.STOP_REASON_NONE,
-                                            )
-                                        }
-                                    } else {
-                                        songById[id]?.let { song ->
-                                            val request = DownloadRequest.Builder(song.id, song.id.toUri())
-                                                .setCustomCacheKey(song.id)
-                                                .setData(song.title.toByteArray())
-                                                .build()
-                                            if (!serviceStarted) {
-                                                // Only ONE service wake-up for
-                                                // the entire online playlist.
-                                                DownloadService.sendAddDownload(
-                                                    context, ExoDownloadService::class.java,
-                                                    request, false,
-                                                )
-                                                serviceStarted = true
-                                            } else {
-                                                // The app/service share one Media3
-                                                // manager. Avoid an Android
-                                                // service intent for every song.
-                                                downloadUtil.downloadManager.addDownload(request)
-                                            }
-                                        }
-                                    }
-                                    // Keep the UI responsive when a remote
-                                    // playlist contains hundreds of tracks.
-                                    if (index % 32 == 31) kotlinx.coroutines.yield()
-                                }
-                            }
-                        }
+                        modifier = Modifier.clickable(
+                            enabled = membershipReady && downloadSongs.isNotEmpty(),
+                        ) {
+                            com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator.start(
+                                playlist.id, context, downloadUtil.downloadManager, downloadSongs,
+                            )
+                        },
                     )
+                    // A partially saved but stopped collection must retain
+                    // its existing remove path; the active state never gets
+                    // an extra action.
                     if (hasAnyCollectionDownload) {
                         ListItem(
                             headlineContent = {

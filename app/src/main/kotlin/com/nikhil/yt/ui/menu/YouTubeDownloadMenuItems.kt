@@ -157,7 +157,7 @@ internal fun YouTubeDownloadMenuItems(
                 confirmPartialDelete = false
                 DownloadService.sendRemoveDownload(
                     context, ExoDownloadService::class.java, mediaId, false)
-                onDismiss()
+                if (!keepOpenOnDownload) onDismiss()
             },
         )
     }

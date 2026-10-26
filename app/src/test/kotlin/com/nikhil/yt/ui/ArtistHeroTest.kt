@@ -258,6 +258,36 @@ class ArtistHeroTest {
         }
     }
 
+    @Test fun toolbarAndPhotoHaveIdenticalToneWhilePortraitIsVisible() {
+        var fade by mutableStateOf(0.25f)
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                Box(Modifier.width(360.dp).background(Color(0xFF121212)).testTag("artist-seam")) {
+                    ArtistHeroLayout(
+                        background = Color(0xFF121212),
+                        artwork = { Box(Modifier.fillMaxSize().background(Color(0xFF824634))) },
+                        title = {}, actions = {},
+                        artworkAlpha = { 1f - fade },
+                    )
+                    ArtistToolbar("Artist", true, false, {}, {}, {}, {}, artworkFade = fade)
+                }
+            }
+        }
+        for (fraction in listOf(0.25f, 0.50f, 0.75f)) {
+            compose.runOnIdle { fade = fraction }
+            val bitmap = capture("artist-seam")
+            val px = bitmap.width / 360f
+            // Both samples are inside the unchanged photograph; the first one
+            // is underneath the pinned toolbar. A second alpha scrim previously
+            // darkened only that top sample on every intermediate frame.
+            val x = (4 * px).roundToInt()
+            val toolbarRed = android.graphics.Color.red(bitmap.getPixel(x, (35 * px).roundToInt()))
+            val portraitRed = android.graphics.Color.red(bitmap.getPixel(x, (115 * px).roundToInt()))
+            assertTrue("Toolbar introduced a dark stripe at $fraction: $toolbarRed vs $portraitRed",
+                kotlin.math.abs(toolbarRed - portraitRed) <= 3)
+        }
+    }
+
     @Test fun toolbarCoversScrollingRowsBeforePortraitCompletelyVanishes() {
         var fade by mutableStateOf(0.5f)
         compose.setContent {

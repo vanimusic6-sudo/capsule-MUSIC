@@ -245,6 +245,10 @@ fun ArtistScreen(
         ) {
             LazyColumn(
                 state = lazyListState,
+                // The loading-row → remote-sections swap changes every item
+                // key. A fling during that replacement loses its anchor and
+                // can visibly snap the artist page back to the top.
+                userScrollEnabled = !remoteLoading,
                 contentPadding =
                     LocalPlayerAwareWindowInsets.current
                         .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
@@ -333,7 +337,7 @@ fun ArtistScreen(
                 if (showLocal) {
                     // Local Songs Section
                     if (librarySongs.isNotEmpty()) {
-                        item {
+                        item(key = "local-songs-title") {
                             NavigationTitle(
                                 title = stringResource(R.string.songs),
                                 onClick = {
@@ -409,7 +413,7 @@ fun ArtistScreen(
 
                         // Show "View All" if more songs available
                         if (filteredLibrarySongs.size > 5) {
-                            item {
+                            item(key = "local-songs-view-all") {
                                 Surface(
                                     onClick = {
                                         navController.navigate("artist/${viewModel.artistId}/songs")
@@ -436,7 +440,7 @@ fun ArtistScreen(
 
                     // Local Albums Section
                     if (libraryAlbums.isNotEmpty()) {
-                        item {
+                        item(key = "local-albums-title") {
                             NavigationTitle(
                                 title = stringResource(R.string.albums),
                                 onClick = {
@@ -445,7 +449,7 @@ fun ArtistScreen(
                             )
                         }
 
-                        item {
+                        item(key = "local-albums-row") {
                             val filteredLibraryAlbums = if (hideExplicit) {
                                 libraryAlbums.filter { !it.album.explicit }
                             } else {
@@ -656,8 +660,8 @@ fun ArtistScreen(
                     }
                 }
 
-                // Bottom spacing
-                item {
+                // Stable key keeps the list anchor when remote sections update.
+                item(key = "artist-bottom-padding") {
                     Spacer(modifier = Modifier.height(16.dp))
                 }
             }

@@ -2,11 +2,22 @@ name: Post-test full regression comparison
 
 on:
   push:
-    branches: [release/01-core-reliability]
+    branches: [release/01-core-reliability, fix/posttest-ui-rework-20261026]
     paths:
       - .github/workflows/post-test-full-suite.yml
       - app/src/test/kotlin/com/nikhil/yt/ui/PlayerTransitionArchitectureTest.kt
       - app/src/test/kotlin/com/nikhil/yt/ui/CapsuleReleaseUiCorrectionsTest.kt
+      - app/src/main/kotlin/com/nikhil/yt/playback/OnlinePlaylistDownloadCoordinator.kt
+      - app/src/main/kotlin/com/nikhil/yt/ui/menu/YouTubePlaylistMenu.kt
+      - app/src/main/kotlin/com/nikhil/yt/ui/menu/PlayerMenu.kt
+      - app/src/main/kotlin/com/nikhil/yt/ui/menu/CapsuleDownloadComet.kt
+      - app/src/main/kotlin/com/nikhil/yt/ui/player/CapsulePlayerContent.kt
+      - app/src/main/kotlin/com/nikhil/yt/ui/player/CapsuleImmersiveContent.kt
+      - app/src/main/kotlin/com/nikhil/yt/ui/screens/artist/ArtistScreen.kt
+      - app/src/test/kotlin/com/nikhil/yt/ui/ArtistHeroTest.kt
+      - app/src/test/kotlin/com/nikhil/yt/ui/ArtistScreenDesignTest.kt
+      - app/src/test/kotlin/com/nikhil/yt/ui/MoreMenuScrollRegressionTest.kt
+      - app/src/test/kotlin/com/nikhil/yt/ui/player/PlayerArtworkReliabilityTest.kt
       - app/src/main/kotlin/com/nikhil/yt/ui/component/ArtistToolbar.kt
       - app/src/main/kotlin/com/nikhil/yt/ui/component/ArtistHero.kt
       - app/src/main/kotlin/com/nikhil/yt/ui/component/Items.kt

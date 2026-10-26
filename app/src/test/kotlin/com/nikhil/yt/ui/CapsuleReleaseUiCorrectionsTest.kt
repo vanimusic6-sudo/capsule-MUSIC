@@ -25,11 +25,13 @@ class CapsuleReleaseUiCorrectionsTest {
         assertFalse(hero.contains("CapsuleSubscribeIcon("))
         assertFalse(hero.contains("CapsuleSubscribeLabel("))
         val toolbar = source("ui/component/ArtistToolbar.kt")
-        // The portrait and toolbar must now sample the same scroll state
-        // in the DRAW phase. The old compositional alpha could lag after a
-        // fast fling and its previous 90%-threshold made the gap visible.
+        // The hero already fades to the page colour. A second blended toolbar
+        // at the same fractional alpha causes a visibly darker stripe.
+        // The toolbar must wait until that photo has nearly vanished.
         assertTrue(toolbar.contains("artistToolbarSurfaceAlpha(artworkFadeProvider())"))
         assertTrue(toolbar.contains("drawBehind"))
+        assertTrue(toolbar.contains("((fade - 0.98f) / 0.02f)"))
+        assertFalse(toolbar.contains("return artworkFade.coerceIn(0f, 1f)"))
         assertFalse(toolbar.contains("fade >= 1f"))
     }
 
@@ -37,12 +39,27 @@ class CapsuleReleaseUiCorrectionsTest {
         val actions = source("ui/menu/YouTubeDownloadMenuItems.kt")
         assertTrue(actions.contains("confirmPartialDelete = true"))
         assertTrue(actions.contains("DownloadRemovalDialog("))
+        assertTrue("Player More must stay open when a confirmed download is removed",
+            actions.contains("if (!keepOpenOnDownload) onDismiss()"))
+        val playerMenu = source("ui/menu/PlayerMenu.kt")
+        val audiusCancel = playerMenu.substringAfter("ExperimentalDownload.cancelInProgress(")
+            .substringBefore("val savedAudiusFile")
+        assertFalse("Audius cancel must not collapse More", audiusCancel.contains("onDismiss()"))
         assertTrue(actions.contains("DownloadService.sendRemoveDownload("))
         assertFalse(actions.contains("sendSetStopReason("))
         val album = source("ui/screens/AlbumScreen.kt")
         assertTrue(album.contains("confirmActiveDownloadRemoval = true"))
         val local = source("ui/screens/playlist/LocalPlaylistScreen.kt")
         assertTrue(local.contains("showRemoveDownloadDialog = true"))
+        val public = source("ui/menu/YouTubePlaylistMenu.kt")
+        assertTrue(public.contains("OnlinePlaylistDownloadCoordinator.cancelAndRemove("))
+        assertTrue(public.contains("OnlinePlaylistDownloadCoordinator.start("))
+        val coordinator = source("playback/OnlinePlaylistDownloadCoordinator.kt")
+        assertTrue(coordinator.contains("session?.job?.cancel()"))
+        assertTrue(coordinator.contains("DownloadService.sendRemoveDownload("))
+        assertTrue(public.contains("key = \"playlist-download-action\""))
+        assertTrue(public.contains("headlineContent = { Text(stringResource(R.string.capsule_stop_and_delete_download)) }"))
+        assertFalse(public.contains("R.string.capsule_stop_and_delete_download),"))
         assertFalse(local.contains("playlist?.id?.let { clearPlaylist(it) }"))
     }
 

@@ -30,7 +30,14 @@ internal val ArtistToolbarCompactHeight = 64.dp
  * The underlying surface is already exactly StandardChrome.background.
  */
 internal fun artistToolbarSurfaceAlpha(artworkFade: Float): Float {
-    return artworkFade.coerceIn(0f, 1f)
+    // The header itself already fades the portrait into StandardChrome.background.
+    // Painting the SAME colour at the SAME alpha above it would composite the
+    // fades twice (remaining photo = (1 - fade)^2), producing a dark toolbar
+    // stripe even though the scroll values are perfectly synchronized.
+    // Do not paint over the still-visible portrait. Only seal the bar in the
+    // last 2% of that dissolve, before list content reaches its hit area.
+    val fade = artworkFade.coerceIn(0f, 1f)
+    return ((fade - 0.98f) / 0.02f).coerceIn(0f, 1f)
 }
 
 /** Bare artwork controls at the reference height; their 48 dp touch targets are retained. */
@@ -53,11 +60,9 @@ internal fun ArtistToolbar(
     val artistSurfaceColor = StandardChrome.background
     val fade = artworkFade.coerceIn(0f, 1f)
     val foreground = lerp(Color.White, StandardChrome.text, fade)
-    // Fade the background in WHILE the fading portrait still fills the toolbar
-    // area, reaching full opacity BEFORE scrolling track rows move underneath.
-    // No boolean 'fully scrolled' switch and no frame-clock animation.
-    // Draw-phase sampling follows the portrait's exact scroll snapshot.
-    // Rapid flings no longer wait for a Compose colour recomposition.
+    // The hero owns the photographic dissolve. The toolbar only adds an opaque
+    // surface after the image is almost completely gone, avoiding double tint.
+    // Draw-phase sampling still keeps fast flings free of composition lag.
     val buttonColors = IconButtonDefaults.iconButtonColors(
         containerColor = Color.Transparent,
         contentColor = foreground,
