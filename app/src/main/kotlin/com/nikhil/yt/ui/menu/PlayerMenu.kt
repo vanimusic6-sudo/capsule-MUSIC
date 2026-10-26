@@ -181,17 +181,6 @@ fun PlayerMenu(
     // Independent recordings live in MediaStore, not in the Media3 download
     // index. WorkManager's transient status is not enough after process death.
     val savedFilesRevision by ExperimentalDownload.savedFilesRevision.collectAsState()
-    var confirmAudiusCancellation by remember(mediaMetadata.id) { mutableStateOf(false) }
-    if (confirmAudiusCancellation) {
-        DownloadRemovalDialog(
-            onDismiss = { confirmAudiusCancellation = false },
-            onConfirm = {
-                confirmAudiusCancellation = false
-                ExperimentalDownload.cancelInProgress(context, mediaMetadata.id)
-                // Keep More visible while the worker updates its row state.
-            },
-        )
-    }
     val savedAudiusFile by produceState<ExperimentalDownload.SavedAudio?>(
         initialValue = null, mediaMetadata.id, savedFilesRevision,
     ) {
@@ -688,7 +677,7 @@ fun PlayerMenu(
                         modifier = Modifier.clickable(enabled = saved != null ||
                             downloading || canDownloadAudius) {
                             if (downloading) {
-                                confirmAudiusCancellation = true
+                                ExperimentalDownload.cancelInProgress(context, mediaMetadata.id)
                             } else if (saved != null) {
                                 coroutineScope.launch {
                                     if (ExperimentalDownload.deleteSaved(context, saved)) {
