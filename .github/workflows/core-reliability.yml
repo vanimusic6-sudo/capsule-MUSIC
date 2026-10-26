@@ -48,6 +48,7 @@ jobs:
           --tests 'com.nikhil.yt.ui.menu.CapsuleDownloadActionInteractionTest'
           --tests 'com.nikhil.yt.ui.screens.search.SearchArtistCreditsTest'
           --tests 'com.nikhil.yt.ui.player.PlayerArtworkReliabilityTest'
+          --tests 'com.nikhil.yt.models.VideoPosterCropTest'
           --tests 'com.nikhil.yt.ui.ArtistHeroTest'
           --tests 'com.nikhil.yt.ui.component.ArtworkResolutionTest'
           --tests 'com.nikhil.yt.ui.CapsuleReleaseUiCorrectionsTest'
