@@ -115,6 +115,7 @@ fun YouTubeAlbumMenu(
     }
 
     val downloadState = rememberCollectionDownloadState(album?.songs.orEmpty().map { it.id })
+    val downloadIndex by downloadUtil.downloads.collectAsState()
 
     var confirmAlbumDownloadRemoval by remember { mutableStateOf(false) }
     if (confirmAlbumDownloadRemoval) {
@@ -411,6 +412,7 @@ fun YouTubeAlbumMenu(
         item {
             CapsuleDownloadAction(
                 state = downloadState,
+                hasStoredItems = album?.songs.orEmpty().map { it.id }.any { downloadIndex.containsKey(it) },
                 enabled = album?.songs.orEmpty().isNotEmpty(),
                 onDownload = {
                     album?.songs.orEmpty().forEach { song ->
