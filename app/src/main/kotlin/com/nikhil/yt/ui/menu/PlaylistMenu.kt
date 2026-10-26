@@ -452,9 +452,7 @@ fun PlaylistMenu(
                                 .setCustomCacheKey(song.id)
                                 .setData(song.song.title.toByteArray())
                                 .build()
-                            DownloadService.sendAddDownload(
-                                context, ExoDownloadService::class.java, downloadRequest, false,
-                            )
+                            com.nikhil.yt.playback.enqueueCollectionItem(context, downloadIndex, downloadRequest)
                         }
                     },
                     onStop = {
