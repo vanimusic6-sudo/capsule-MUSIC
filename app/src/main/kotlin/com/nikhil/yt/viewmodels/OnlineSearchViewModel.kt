@@ -17,6 +17,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nikhil.yt.innertube.YouTube
+import com.nikhil.yt.innertube.models.ArtistItem
 import com.nikhil.yt.innertube.models.filterExplicit
 import com.nikhil.yt.innertube.pages.SearchSummaryPage
 import com.nikhil.yt.constants.HideExplicitKey
@@ -46,6 +47,8 @@ constructor(
     val query = savedStateHandle.get<String>("query")!!
     val filter = MutableStateFlow<YouTube.SearchFilter?>(null)
     var summaryPage by mutableStateOf<SearchSummaryPage?>(null)
+    var topArtistCandidates by mutableStateOf<List<ArtistItem>>(emptyList())
+        private set
     val viewStateMap = mutableStateMapOf<String, ItemsPage?>()
 
     sealed interface ExperimentalSearchState {
@@ -67,6 +70,26 @@ constructor(
                             .searchSummary(query)
                             .onSuccess {
                                 summaryPage = it.filterExplicit(context.dataStore.get(HideExplicitKey, false))
+                                // The generic summary endpoint returns only one
+                                // artist for many queries. As in artist-filter
+                                // search, fetch additional real ArtistItems, not
+                                // fabricated artist names from song credits.
+                                launch {
+                                    val artistFilter = YouTube.SearchFilter.FILTER_ARTIST
+                                    val filterKey = artistFilter.value
+                                    val page = viewStateMap[filterKey]
+                                    if (page != null) {
+                                        topArtistCandidates =
+                                            page.items.filterIsInstance<ArtistItem>().take(5)
+                                    } else {
+                                        YouTube.search(query, artistFilter).onSuccess { artists ->
+                                            val safeItems = artists.items.distinctBy { item -> item.id }
+                                                .filterExplicit(context.dataStore.get(HideExplicitKey, false))
+                                            viewStateMap[filterKey] = ItemsPage(safeItems, artists.continuation)
+                                            topArtistCandidates = safeItems.filterIsInstance<ArtistItem>().take(5)
+                                        }.onFailure { reportException(it) }
+                                    }
+                                }
                             }.onFailure {
                                 reportException(it)
                             }
