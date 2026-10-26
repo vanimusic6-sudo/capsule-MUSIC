@@ -50,20 +50,37 @@ internal fun CapsuleDownloadAction(
         DefaultDialog(
             onDismiss = { showChoices = false },
             title = { Text(stringResource(R.string.action_download)) },
-            content = { Text(stringResource(R.string.remove_download)) },
+            content = {
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.action_download)) },
+                    leadingContent = {
+                        Icon(painterResource(R.drawable.download), contentDescription = null)
+                    },
+                    modifier = Modifier.clickable {
+                        showChoices = false
+                        onDownload()
+                    },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                )
+                ListItem(
+                    headlineContent = {
+                        Text(stringResource(R.string.remove_download),
+                            color = MaterialTheme.colorScheme.error)
+                    },
+                    leadingContent = {
+                        Icon(painterResource(R.drawable.offline), contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error)
+                    },
+                    modifier = Modifier.clickable {
+                        showChoices = false
+                        confirmRemoval = true
+                    },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                )
+            },
             buttons = {
                 TextButton(onClick = { showChoices = false }) {
                     Text(stringResource(android.R.string.cancel))
-                }
-                TextButton(onClick = {
-                    showChoices = false
-                    onDownload()
-                }) { Text(stringResource(R.string.action_download)) }
-                TextButton(onClick = {
-                    showChoices = false
-                    confirmRemoval = true
-                }) {
-                    Text(stringResource(R.string.remove_download), color = MaterialTheme.colorScheme.error)
                 }
             },
         )
