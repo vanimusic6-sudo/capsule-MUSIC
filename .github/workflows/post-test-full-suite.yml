@@ -13,6 +13,8 @@ on:
       - app/src/main/kotlin/com/nikhil/yt/ui/menu/CapsuleDownloadComet.kt
       - app/src/main/kotlin/com/nikhil/yt/ui/player/CapsulePlayerContent.kt
       - app/src/main/kotlin/com/nikhil/yt/ui/player/CapsuleMediaPreload.kt
+      - app/src/main/kotlin/com/nikhil/yt/models/MediaMetadata.kt
+      - app/src/test/kotlin/com/nikhil/yt/models/VideoPosterCropTest.kt
       - app/src/main/kotlin/com/nikhil/yt/ui/menu/CapsuleDownloadAction.kt
       - app/src/main/kotlin/com/nikhil/yt/playback/CollectionDownloadState.kt
       - app/src/main/kotlin/com/nikhil/yt/ui/screens/search/OnlineSearchResult.kt
