@@ -677,7 +677,7 @@ fun PlayerMenu(
                                 else MaterialTheme.colorScheme.onSurface)
                         },
                         leadingContent = {
-                            if (downloading) CapsuleDownloadComet()
+                            if (downloading) VeluneLoader(size = 24.dp)
                             else Icon(
                                 painterResource(if (saved != null) R.drawable.offline else R.drawable.download),
                                 contentDescription = null,
