@@ -97,9 +97,12 @@ internal object OnlinePlaylistDownloadCoordinator {
                     currentCoroutineContext().ensureActive()
                     val existing = indexed[song.id]
                     if (existing != null && existing.state != Download.STATE_FAILED) {
-                        if (existing.state != Download.STATE_COMPLETED) {
-                            downloadManager.setStopReason(song.id, Download.STOP_REASON_NONE)
+                        if (existing.state == Download.STATE_STOPPED &&
+                            existing.stopReason != DOWNLOAD_WAITING_FOR_SLOT) {
+                            downloadManager.setStopReason(song.id, DOWNLOAD_WAITING_FOR_SLOT)
                         }
+                        // Already queued, running or completed entries must not
+                        // be restarted: preserve independent manual priority.
                     } else {
                         val request = DownloadRequest.Builder(song.id, song.id.toUri())
                             .setCustomCacheKey(song.id)
@@ -115,7 +118,7 @@ internal object OnlinePlaylistDownloadCoordinator {
                             )
                             serviceStarted = true
                         } else {
-                            downloadManager.addDownload(request)
+                            downloadManager.addDownload(request, DOWNLOAD_WAITING_FOR_SLOT)
                         }
                     }
                     if (index % 32 == 31) yield()
