@@ -405,6 +405,7 @@ fun AlbumMenu(
         }
         item {
             CapsuleDownloadAction(
+                actionKey = album.id,
                 state = downloadState,
                 hasStoredItems = songs.map { it.id }.any { downloadIndex.containsKey(it) },
                 enabled = songs.isNotEmpty(),
