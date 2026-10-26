@@ -96,7 +96,7 @@ data class LibraryPage(
                     title = renderer.flexColumns.firstOrNull()
                         ?.musicResponsiveListItemFlexColumnRenderer?.text
                         ?.runs?.firstOrNull()?.text ?: return null,
-                    artists = PageHelper.extractArtists(
+                    artists = PageHelper.extractSongArtists(
                         renderer.flexColumns
                             .getOrNull(1)
                             ?.musicResponsiveListItemFlexColumnRenderer
