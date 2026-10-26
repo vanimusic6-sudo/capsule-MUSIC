@@ -581,11 +581,11 @@ fun YouTubePlaylistMenu(
                         // The remote playlist may be unavailable offline while
                         // previously indexed tracks still exist. Resume their
                         // original requests without losing saved membership.
-                        collectionIds.mapNotNull(indexedDownloads::get).forEach { download ->
-                            com.nikhil.yt.playback.enqueueCollectionItem(
-                                context, indexedDownloads, download.request,
-                            )
-                        }
+                        val requests = collectionIds.mapNotNull(indexedDownloads::get)
+                            .map { it.request }
+                        com.nikhil.yt.playback.enqueueCollectionDownloads(
+                            context, downloadUtil.downloadManager, indexedDownloads, requests,
+                        )
                     }
                 },
                 onStop = {
