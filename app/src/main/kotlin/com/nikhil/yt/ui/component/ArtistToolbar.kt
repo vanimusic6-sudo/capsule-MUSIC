@@ -30,14 +30,10 @@ internal val ArtistToolbarCompactHeight = 64.dp
  * The underlying surface is already exactly StandardChrome.background.
  */
 internal fun artistToolbarSurfaceAlpha(artworkFade: Float): Float {
-    // The header itself already fades the portrait into StandardChrome.background.
-    // Painting the SAME colour at the SAME alpha above it would composite the
-    // fades twice (remaining photo = (1 - fade)^2), producing a dark toolbar
-    // stripe even though the scroll values are perfectly synchronized.
-    // Do not paint over the still-visible portrait. Only seal the bar in the
-    // last 2% of that dissolve, before list content reaches its hit area.
-    val fade = artworkFade.coerceIn(0f, 1f)
-    return ((fade - 0.98f) / 0.02f).coerceIn(0f, 1f)
+    // No second fade over the pinned name: the portrait already dissolves
+    // into this exact colour. One near-invisible final switch avoids a strip
+    // that continues changing tone after the text has settled.
+    return if (artworkFade >= 0.99f) 1f else 0f
 }
 
 /** Bare artwork controls at the reference height; their 48 dp touch targets are retained. */
