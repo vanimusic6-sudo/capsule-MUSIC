@@ -103,6 +103,7 @@ fun PlaylistMenu(
     }
 
     val downloadState = rememberCollectionDownloadState(songs.map { it.id })
+    val downloadIndex by downloadUtil.downloads.collectAsState()
 
     val editable: Boolean = playlist.playlist.isEditable == true
 
@@ -448,6 +449,7 @@ fun PlaylistMenu(
             item {
                 CapsuleDownloadAction(
                     state = downloadState,
+                hasStoredItems = songs.map { it.id }.any { downloadIndex.containsKey(it) },
                     enabled = songs.isNotEmpty(),
                     onDownload = {
                         songs.forEach { song ->
