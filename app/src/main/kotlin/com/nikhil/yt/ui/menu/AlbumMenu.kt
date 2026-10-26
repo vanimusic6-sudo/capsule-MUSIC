@@ -116,6 +116,7 @@ fun AlbumMenu(
     }
 
     val downloadState = rememberCollectionDownloadState(songs.map { it.id })
+    val downloadIndex by downloadUtil.downloads.collectAsState()
 
     var confirmAlbumDownloadRemoval by remember { mutableStateOf(false) }
     if (confirmAlbumDownloadRemoval) {
@@ -428,6 +429,7 @@ fun AlbumMenu(
         item {
             CapsuleDownloadAction(
                 state = downloadState,
+                hasStoredItems = songs.map { it.id }.any { downloadIndex.containsKey(it) },
                 enabled = songs.isNotEmpty(),
                 onDownload = {
                     songs.forEach { song ->
