@@ -498,11 +498,3 @@ fun OnlineSearchResult(
         )
     }
 }
-
-/** Stable order, no unrelated artist search results or invented song credits. */
-internal fun mergeSearchArtistCredits(vararg sources: List<String>): List<String> {
-    val seen = hashSetOf<String>()
-    return sources.asSequence().flatten()
-        .map(String::trim).filter(String::isNotBlank)
-        .filter { seen.add(it.lowercase(java.util.Locale.ROOT)) }.toList()
-}
