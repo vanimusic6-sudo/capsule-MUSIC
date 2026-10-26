@@ -84,6 +84,7 @@ internal fun YouTubeDownloadMenuItems(
             )
         },
         onRemove = {
+            pendingStart = false
             DownloadService.sendRemoveDownload(
                 context, ExoDownloadService::class.java, mediaId, false,
             )
