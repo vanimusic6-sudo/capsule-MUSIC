@@ -1,11 +1,6 @@
 package com.nikhil.yt.ui.menu
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadService
@@ -14,7 +9,6 @@ import com.nikhil.yt.playback.COLLECTION_STOP_REASON_USER
 import com.nikhil.yt.playback.ExoDownloadService
 import com.nikhil.yt.playback.enqueuePriorityAudioDownload
 import com.nikhil.yt.playback.visibleState
-import kotlinx.coroutines.delay
 
 /**
  * All YouTube single-track menus, including the player, use exactly the
@@ -35,31 +29,14 @@ internal fun YouTubeDownloadMenuItems(
 ) {
     val context = LocalContext.current
     val manager = LocalDownloadUtil.current.downloadManager
-    var pendingStart by remember(mediaId) { mutableStateOf(false) }
-    LaunchedEffect(pendingStart, download?.visibleState) {
-        if (pendingStart) {
-            if (download?.visibleState == Download.STATE_QUEUED ||
-                download?.visibleState == Download.STATE_DOWNLOADING ||
-                download?.visibleState == Download.STATE_RESTARTING ||
-                download?.visibleState == Download.STATE_COMPLETED
-            ) pendingStart = false
-            else {
-                delay(4_000)
-                pendingStart = false
-            }
-        }
-    }
-
     CapsuleDownloadAction(
         actionKey = mediaId,
         collectionName = trackTitle,
         isCollection = false,
         instantRemove = instantRemove,
         hasStoredItems = download != null,
-        state = if (pendingStart) Download.STATE_DOWNLOADING
-            else download?.visibleState ?: Download.STATE_STOPPED,
+        state = download?.visibleState ?: Download.STATE_STOPPED,
         onDownload = {
-            pendingStart = true
             if (download == null) onStart()
             else {
                 enqueuePriorityAudioDownload(
@@ -75,7 +52,6 @@ internal fun YouTubeDownloadMenuItems(
             }
         },
         onStop = {
-            pendingStart = false
             // Local playlists stop with a nonzero stop reason; do the same
             // for individual tracks, preserving partial cache for resume.
             manager.setStopReason(mediaId, COLLECTION_STOP_REASON_USER)
@@ -86,7 +62,6 @@ internal fun YouTubeDownloadMenuItems(
             )
         },
         onRemove = {
-            pendingStart = false
             DownloadService.sendRemoveDownload(
                 context, ExoDownloadService::class.java, mediaId, false,
             )
