@@ -18,6 +18,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.filterExplicit
+import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.pages.SearchSummaryPage
 import com.nikhil.yt.constants.HideExplicitKey
 import com.nikhil.yt.models.ItemsPage
@@ -65,8 +66,36 @@ constructor(
                     if (summaryPage == null) {
                         YouTube
                             .searchSummary(query)
-                            .onSuccess {
-                                summaryPage = it.filterExplicit(context.dataStore.get(HideExplicitKey, false))
+                            .onSuccess { result ->
+                                val hideExplicit = context.dataStore.get(HideExplicitKey, false)
+                                summaryPage = result.filterExplicit(hideExplicit)
+                                // As in Metrolist, filtered Songs often exposes
+                                // linked collaborators absent from the Top card.
+                                // Fetch once off the critical summary/UI path.
+                                // Only SAME video IDs can enrich those credits.
+                                val needsCompleteCredits = result.summaries
+                                    .flatMap { it.items }
+                                    .any { it is SongItem && it.artists.size <= 1 }
+                                if (needsCompleteCredits) {
+                                    launch {
+                                        val key = YouTube.SearchFilter.FILTER_SONG.value
+                                        val known = viewStateMap[key]
+                                        val matchingSongs =
+                                            if (known != null) known.items.filterIsInstance<SongItem>()
+                                            else {
+                                                YouTube.search(query, YouTube.SearchFilter.FILTER_SONG)
+                                                    .getOrNull()?.let { page ->
+                                                        val filtered = page.items.distinctBy { it.id }
+                                                            .filterExplicit(hideExplicit)
+                                                        viewStateMap[key] = ItemsPage(filtered, page.continuation)
+                                                        filtered.filterIsInstance<SongItem>()
+                                                    }.orEmpty()
+                                            }
+                                        if (matchingSongs.isNotEmpty()) {
+                                            summaryPage = summaryPage?.withFilteredSongCredits(matchingSongs)
+                                        }
+                                    }
+                                }
                             }.onFailure {
                                 reportException(it)
                             }
