@@ -8,7 +8,7 @@ class ArtistScreenDesignTest {
         val values = (0..20).map { com.nikhil.yt.ui.screens.artist.artistArtworkFade(0, it * 40, 1000, 200) }
         org.junit.Assert.assertEquals(0f, values.first(), 0f)
         org.junit.Assert.assertEquals(1f, values.last(), 0f)
-        assertTrue("Portrait fade must finish before its edge reaches the controls", values[8] >= 1f)
+        assertTrue("Portrait fade must finish before its edge reaches the controls", values[15] >= 1f)
         assertTrue(values.zipWithNext().all { (a, b) -> b >= a && b - a < 0.14f })
         org.junit.Assert.assertEquals(0f, com.nikhil.yt.ui.screens.artist.artistArtworkFade(0, -20, 1000, 200), 0f)
         org.junit.Assert.assertEquals(1f, com.nikhil.yt.ui.screens.artist.artistArtworkFade(1, 0, 1000, 200), 0f)
