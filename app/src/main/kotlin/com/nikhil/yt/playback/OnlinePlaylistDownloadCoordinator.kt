@@ -77,8 +77,12 @@ internal object OnlinePlaylistDownloadCoordinator {
         val uniqueSongs = songs.distinctBy { it.id }
         lastServiceWakeId.remove(playlistId)
         val session = Session(uniqueSongs.map { it.id })
-        knownMembership[playlistId] = session.ids
-        appSaveMembership(context, playlistId, session.ids)
+        // A restarted process often has only page 1 when the user resumes.
+        // Never overwrite the complete persisted membership with that partial
+        // page or the rest of the cached tracks become impossible to remove.
+        val allKnownIds = (rememberedIds(context, playlistId) + session.ids).distinct()
+        knownMembership[playlistId] = allKnownIds
+        appSaveMembership(context, playlistId, allKnownIds)
         sessions[playlistId] = session
         _enqueuing.value = _enqueuing.value + playlistId
         val appContext = context.applicationContext
