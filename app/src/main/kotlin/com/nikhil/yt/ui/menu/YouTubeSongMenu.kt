@@ -396,6 +396,7 @@ fun YouTubeSongMenu(
         item {
             YouTubeDownloadMenuItems(
                 download = download, mediaId = song.id, onDismiss = onDismiss,
+                        trackTitle = song.title,
                 onStart = {
                     database.transaction { insert(song.toMediaMetadata()) }
                     val request = DownloadRequest.Builder(song.id, song.id.toUri())
