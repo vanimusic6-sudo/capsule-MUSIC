@@ -35,6 +35,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 @HiltViewModel
@@ -68,34 +69,35 @@ constructor(
                             .searchSummary(query)
                             .onSuccess { result ->
                                 val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-                                summaryPage = result.filterExplicit(hideExplicit)
-                                // As in Metrolist, filtered Songs often exposes
-                                // linked collaborators absent from the Top card.
-                                // Fetch once off the critical summary/UI path.
-                                // Only SAME video IDs can enrich those credits.
-                                val needsCompleteCredits = result.summaries
+                                val filteredSummary = result.filterExplicit(hideExplicit)
+                                // Atomic metadata publication. Previously we rendered one
+                                // artist, then updated the row ~500ms later when another
+                                // async Songs response arrived. Waiting (bounded) here
+                                // makes the title+credits appear in one stable frame.
+                                val needsFullCredits = filteredSummary.summaries
                                     .flatMap { it.items }
                                     .any { it is SongItem && it.artists.size <= 1 }
-                                if (needsCompleteCredits) {
-                                    launch {
-                                        val key = YouTube.SearchFilter.FILTER_SONG.value
-                                        val known = viewStateMap[key]
-                                        val matchingSongs =
-                                            if (known != null) known.items.filterIsInstance<SongItem>()
-                                            else {
-                                                YouTube.search(query, YouTube.SearchFilter.FILTER_SONG)
-                                                    .getOrNull()?.let { page ->
-                                                        val filtered = page.items.distinctBy { it.id }
-                                                            .filterExplicit(hideExplicit)
-                                                        viewStateMap[key] = ItemsPage(filtered, page.continuation)
-                                                        filtered.filterIsInstance<SongItem>()
-                                                    }.orEmpty()
-                                            }
-                                        if (matchingSongs.isNotEmpty()) {
-                                            summaryPage = summaryPage?.withFilteredSongCredits(matchingSongs)
+                                val completedSummary = if (needsFullCredits) {
+                                    val key = YouTube.SearchFilter.FILTER_SONG.value
+                                    val existing = viewStateMap[key]
+                                    val songPage = if (existing != null) existing else {
+                                        withTimeoutOrNull(1_800L) {
+                                            YouTube.search(query, YouTube.SearchFilter.FILTER_SONG)
+                                                .getOrNull()?.let { response ->
+                                                    val items = response.items.distinctBy { it.id }
+                                                        .filterExplicit(hideExplicit)
+                                                    ItemsPage(items, response.continuation).also { page ->
+                                                        viewStateMap[key] = page
+                                                    }
+                                                }
                                         }
                                     }
-                                }
+                                    filteredSummary.withFilteredSongCredits(
+                                        songPage?.items?.filterIsInstance<SongItem>().orEmpty()
+                                    )
+                                } else filteredSummary
+                                // One Compose state mutation, never a late second-credit jump.
+                                summaryPage = completedSummary
                             }.onFailure {
                                 reportException(it)
                             }
