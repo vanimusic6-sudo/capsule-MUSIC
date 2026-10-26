@@ -711,6 +711,7 @@ fun PlayerMenu(
                 MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                     YouTubeDownloadMenuItems(
                         download = download, mediaId = mediaMetadata.id, onDismiss = onDismiss,
+                        trackTitle = mediaMetadata.title,
                         keepOpenOnDownload = true, showActiveStopAction = false,
                         onStart = {
                             database.transaction { insert(mediaMetadata) }
