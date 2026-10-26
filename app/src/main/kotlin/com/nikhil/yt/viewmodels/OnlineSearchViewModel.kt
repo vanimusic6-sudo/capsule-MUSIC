@@ -67,9 +67,6 @@ constructor(
                             .searchSummary(query)
                             .onSuccess {
                                 summaryPage = it.filterExplicit(context.dataStore.get(HideExplicitKey, false))
-                            }.onFailure { reportException(it) }
-                                    }
-                                }
                             }.onFailure {
                                 reportException(it)
                             }
