@@ -331,13 +331,15 @@ fun SelectionSongMenu(
                 hasStoredItems = songSelection.map { it.id }.any { downloadIndex.containsKey(it) },
                 enabled = songSelection.isNotEmpty(),
                 onDownload = {
-                    songSelection.forEach { song ->
-                        val downloadRequest = DownloadRequest.Builder(song.id, song.id.toUri())
+                    val requests = songSelection.map { song ->
+                        DownloadRequest.Builder(song.id, song.id.toUri())
                             .setCustomCacheKey(song.id)
                             .setData(song.song.title.toByteArray())
                             .build()
-                        com.nikhil.yt.playback.enqueueCollectionItem(context, downloadIndex, downloadRequest)
                     }
+                    com.nikhil.yt.playback.enqueueCollectionDownloads(
+                        context, downloadUtil.downloadManager, downloadIndex, requests,
+                    )
                 },
                 onStop = {
                     com.nikhil.yt.playback.stopCollectionDownloads(
@@ -613,13 +615,15 @@ fun SelectionMediaMetadataMenu(
                 hasStoredItems = songSelection.map { it.id }.any { downloadIndex.containsKey(it) },
                 enabled = songSelection.isNotEmpty(),
                 onDownload = {
-                    songSelection.forEach { song ->
-                        val downloadRequest = DownloadRequest.Builder(song.id, song.id.toUri())
+                    val requests = songSelection.map { song ->
+                        DownloadRequest.Builder(song.id, song.id.toUri())
                             .setCustomCacheKey(song.id)
                             .setData(song.title.toByteArray())
                             .build()
-                        com.nikhil.yt.playback.enqueueCollectionItem(context, downloadIndex, downloadRequest)
                     }
+                    com.nikhil.yt.playback.enqueueCollectionDownloads(
+                        context, downloadUtil.downloadManager, downloadIndex, requests,
+                    )
                 },
                 onStop = {
                     com.nikhil.yt.playback.stopCollectionDownloads(
