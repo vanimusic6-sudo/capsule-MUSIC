@@ -99,6 +99,50 @@ class SearchSummaryMetadataTest {
         )
     }
 
+    @Test fun `Metrolist style filtered song credits augment only identical Top result videos`() {
+        val primary = Artist("MZLFF", "UC_mzlff")
+        val featured = Artist("Guest Artist", "UC_guest")
+        val top = SongItem(
+            id = "track-id", title = "Duet", artists = listOf(primary),
+            duration = 190, thumbnail = "cover",
+        )
+        val unrelated = SongItem(
+            id = "some-other-video", title = "Duet", artists = listOf(featured),
+            duration = 190, thumbnail = "cover",
+        )
+        val filtered = top.copy(artists = listOf(primary, featured))
+        val summary = SearchSummaryPage(listOf(
+            SearchSummary("Top result", listOf(top)),
+            SearchSummary("Songs", listOf(unrelated)),
+        ))
+        val result = summary.withFilteredSongCredits(listOf(filtered, unrelated))
+        assertEquals(listOf(primary, featured),
+            (result.summaries[0].items.single() as SongItem).artists)
+        assertEquals(listOf(featured),
+            (result.summaries[1].items.single() as SongItem).artists)
+        assertEquals(1, result.summaries[0].items.size)
+    }
+
+    @Test fun `filtered Songs parser reads artist metadata in later flex columns like Metrolist`() {
+        val primary = Run("Primary", artistEndpoint("UC_primary"))
+        val guest = Run("Guest", artistEndpoint("UC_guest"))
+        val base = songRenderer(
+            "track-id", "Duet", listOf(primary, Run(" • ", null), Run("3:10", null))
+        )
+        val withExtraColumn = base.copy(flexColumns = base.flexColumns + listOf(
+            MusicResponsiveListItemRenderer.FlexColumn(
+                MusicResponsiveListItemRenderer.FlexColumn.MusicResponsiveListItemFlexColumnRenderer(
+                    Runs(listOf(guest)),
+                )
+            )
+        ))
+        val song = SearchPage.toYTItem(withExtraColumn) as SongItem
+        assertEquals(
+            listOf(Artist("Primary", "UC_primary"), Artist("Guest", "UC_guest")),
+            song.artists,
+        )
+    }
+
     @Test fun `top result inherits missing artist from the same song in Songs`() {
         val artist = Artist("Oliver Tree", "UC_oliver")
         val top = SongItem(id = "song-id", title = "Life Goes On", artists = emptyList(),
