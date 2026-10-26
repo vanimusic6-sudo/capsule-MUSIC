@@ -38,7 +38,7 @@ object NextPage {
                     ?.runs
                     ?.firstOrNull()
                     ?.text ?: return null,
-            artists = PageHelper.extractArtists(longByLineRuns.firstOrNull()),
+            artists = PageHelper.extractSongArtists(renderer.longBylineText?.runs),
             album =
                 longByLineRuns
                     .getOrNull(1)
