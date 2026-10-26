@@ -33,7 +33,7 @@ internal fun artistToolbarSurfaceAlpha(artworkFade: Float): Float {
     // No second fade over the pinned name: the portrait already dissolves
     // into this exact colour. One near-invisible final switch avoids a strip
     // that continues changing tone after the text has settled.
-    return if (artworkFade >= 0.99f) 1f else 0f
+    return if (artworkFade >= 1f) 1f else 0f
 }
 
 /** Bare artwork controls at the reference height; their 48 dp touch targets are retained. */
