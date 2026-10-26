@@ -26,7 +26,9 @@ class ArtistScreenDesignTest {
         }
         org.junit.Assert.assertEquals(1f, alpha(1f), 0.00001f)
         val samples = (0..1000).map { alpha(it / 1000f) }
-        assertTrue(samples.zipWithNext().all { (a, b) -> b >= a && b - a <= 0.051f })
+        assertTrue(samples.zipWithNext().all { (a, b) -> b >= a })
+        org.junit.Assert.assertEquals(0f, alpha(0.985f), 0f)
+        org.junit.Assert.assertEquals(1f, alpha(0.99f), 0f)
         assertTrue(samples.all { it in 0f..1f })
     }
 }
