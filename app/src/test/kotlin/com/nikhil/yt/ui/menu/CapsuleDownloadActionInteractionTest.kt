@@ -21,6 +21,11 @@ import org.robolectric.annotation.Config
 class CapsuleDownloadActionInteractionTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
 
+    private fun clickLastMatching(label: String) {
+        val matches = rule.onAllNodesWithText(label)
+        matches[matches.fetchSemanticsNodes().lastIndex].performClick()
+    }
+
     @Test fun completedDownloadRequiresOneConfirmationAndActuallyInvokesRemove() {
         var removed = 0
         val label = rule.activity.getString(R.string.remove_download)
@@ -37,7 +42,7 @@ class CapsuleDownloadActionInteractionTest {
             }
         }
         rule.onNodeWithText(label).performClick()
-        rule.onAllNodesWithText(label).onLast().performClick()
+        clickLastMatching(label)
         rule.runOnIdle { assertEquals(1, removed) }
     }
 
@@ -60,8 +65,8 @@ class CapsuleDownloadActionInteractionTest {
             }
         }
         rule.onNodeWithText(downloadLabel).performClick()
-        rule.onAllNodesWithText(removeLabel).onLast().performClick()
-        rule.onAllNodesWithText(removeLabel).onLast().performClick()
+        clickLastMatching(removeLabel)
+        clickLastMatching(removeLabel)
         rule.runOnIdle {
             assertEquals(1, removed)
             assertEquals(0, resumed)
