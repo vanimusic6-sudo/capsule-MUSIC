@@ -1,7 +1,6 @@
 package com.nikhil.yt.ui.menu
 
 import androidx.compose.foundation.clickable
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
@@ -20,13 +19,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.media3.exoplayer.offline.Download
 import com.nikhil.yt.R
+import com.nikhil.yt.ui.component.DefaultDialog
 import com.nikhil.yt.ui.component.VeluneLoader
 
 /**
- * One download action, identical across collections and individual tracks.
- * Stopped/failed collections may have cached bytes but aren't COMPLETE:
- * expose both resume and deletion from the single row, rather than hiding
- * the only Delete operation or adding a second permanent button.
+ * Exactly one permanent row in all More menus. The row owns the ONLY
+ * confirmation, so callers must provide a real delete operation in onRemove,
+ * not open a second dialog. Incomplete downloads retain both resume and
+ * delete without adding a permanent duplicate action.
  */
 @Composable
 internal fun CapsuleDownloadAction(
@@ -36,33 +36,58 @@ internal fun CapsuleDownloadAction(
     onRemove: () -> Unit,
     enabled: Boolean = true,
     hasStoredItems: Boolean = false,
+    collectionName: String? = null,
 ) {
     val active = state == Download.STATE_DOWNLOADING ||
         state == Download.STATE_QUEUED || state == Download.STATE_RESTARTING
     val completed = state == Download.STATE_COMPLETED
-    var showStoppedActions by remember { mutableStateOf(false) }
+    var showChoices by remember { mutableStateOf(false) }
+    var confirmRemoval by remember { mutableStateOf(false) }
 
-    if (showStoppedActions) {
-        AlertDialog(
-            onDismissRequest = { showStoppedActions = false },
+    // A stopped/partial collection needs a choice, not two stacked dialogs.
+    if (showChoices) {
+        DefaultDialog(
+            onDismiss = { showChoices = false },
             title = { Text(stringResource(R.string.action_download)) },
-            text = { Text(stringResource(R.string.remove_download)) },
-            confirmButton = {
+            content = { Text(stringResource(R.string.remove_download)) },
+            buttons = {
+                TextButton(onClick = { showChoices = false }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
                 TextButton(onClick = {
-                    showStoppedActions = false
+                    showChoices = false
                     onDownload()
                 }) { Text(stringResource(R.string.action_download)) }
-            },
-            dismissButton = {
                 TextButton(onClick = {
-                    showStoppedActions = false
-                    onRemove()
+                    showChoices = false
+                    confirmRemoval = true
                 }) {
-                    Text(
-                        stringResource(R.string.remove_download),
-                        color = MaterialTheme.colorScheme.error,
-                    )
+                    Text(stringResource(R.string.remove_download), color = MaterialTheme.colorScheme.error)
                 }
+            },
+        )
+    }
+    if (confirmRemoval) {
+        DefaultDialog(
+            onDismiss = { confirmRemoval = false },
+            title = { Text(stringResource(R.string.remove_download)) },
+            content = {
+                Text(
+                    if (collectionName.isNullOrBlank()) {
+                        stringResource(R.string.capsule_stop_and_delete_download_message)
+                    } else {
+                        stringResource(R.string.remove_download_playlist_confirm, collectionName)
+                    }
+                )
+            },
+            buttons = {
+                TextButton(onClick = { confirmRemoval = false }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+                TextButton(onClick = {
+                    confirmRemoval = false
+                    onRemove()
+                }) { Text(stringResource(R.string.remove_download), color = MaterialTheme.colorScheme.error) }
             },
         )
     }
@@ -85,9 +110,7 @@ internal fun CapsuleDownloadAction(
             when {
                 active -> VeluneLoader(size = 24.dp)
                 else -> Icon(
-                    painterResource(
-                        if (completed) R.drawable.offline else R.drawable.download
-                    ),
+                    painter = painterResource(if (completed) R.drawable.offline else R.drawable.download),
                     contentDescription = null,
                     tint = if (completed) MaterialTheme.colorScheme.error
                         else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -96,9 +119,9 @@ internal fun CapsuleDownloadAction(
         },
         modifier = Modifier.clickable(enabled = enabled || active || completed || hasStoredItems) {
             when {
-                completed -> onRemove()
+                completed -> confirmRemoval = true
                 active -> onStop()
-                hasStoredItems -> showStoppedActions = true
+                hasStoredItems -> showChoices = true
                 else -> onDownload()
             }
         },
