@@ -30,53 +30,10 @@ import com.nikhil.yt.innertube.utils.parseTime
 
 private val searchDurationPattern = Regex("""\d{1,2}:\d{2}(?::\d{2})?""")
 
-internal fun extractSearchSongArtists(runs: List<Run>): List<Artist> {
-    val groups = runs.splitBySeparator()
-
-    val credits = mutableListOf<Artist>()
-    for (group in groups) {
-        val linkedArtistIndexes =
-            group.indices.filter { index ->
-                val run = group[index]
-                val endpoint = run.navigationEndpoint?.browseEndpoint ?: return@filter false
-                val pageType =
-                    endpoint.browseEndpointContextSupportedConfigs
-                        ?.browseEndpointContextMusicConfig
-                        ?.pageType
-                endpoint.isArtistEndpoint ||
-                    pageType == MUSIC_PAGE_TYPE_USER_CHANNEL ||
-                    pageType == MUSIC_PAGE_TYPE_LIBRARY_ARTIST ||
-                    (pageType == null && endpoint.browseId.startsWith("UC"))
-            }
-
-        if (linkedArtistIndexes.isEmpty()) continue
-
-        val creditRuns =
-            group.filterIndexed { index, run ->
-                if (index in linkedArtistIndexes) {
-                    true
-                } else if (run.navigationEndpoint != null) {
-                    false
-                } else {
-                    val text = run.text.trim()
-                    text.isNotEmpty() &&
-                        !searchDurationPattern.matches(text) &&
-                        (group.getOrNull(index - 1)?.text?.isArtistJoiner() == true ||
-                            group.getOrNull(index + 1)?.text?.isArtistJoiner() == true)
-                }
-            }
-
-        credits += PageHelper.extractArtists(creditRuns)
-    }
-
-    return credits.distinctBy { it.id ?: "credit:${it.name.trim().lowercase()}" }
-}
-
-private fun String.isArtistJoiner(): Boolean {
-    val value = trim().lowercase()
-    return value in setOf(",", "&", "/", ";", "feat.", "ft.", "featuring", "и", "and") ||
-        (value.isNotEmpty() && value.all { it == ',' || it == '&' || it == '/' || it == ';' })
-}
+// Compatibility wrapper for historical tests. All extraction now comes from
+// the same canonical PageHelper routine used by playlists and album pages.
+internal fun extractSearchSongArtists(runs: List<Run>): List<Artist> =
+    PageHelper.extractSongArtists(runs)
 
 internal fun extractSearchSongDuration(runs: List<Run>): Int? =
     runs.firstNotNullOfOrNull { run ->
