@@ -133,6 +133,34 @@ class PageHelperArtistCreditsTest {
         )
     }
 
+    @Test
+    fun `a localized song type label is not an artist`() {
+        assertEquals(
+            emptyList<Artist>(),
+            PageHelper.extractSongArtists(listOf(Run("Композиция", null))),
+        )
+        assertEquals(
+            emptyList<Artist>(),
+            PageHelper.extractArtists(listOf(Run("Композиция", null))),
+        )
+        assertEquals(
+            listOf(Artist("Guest", null)),
+            PageHelper.extractSongArtists(
+                listOf(Run("Композиция", null), Run(" • ", null), Run("Guest", null)),
+            ),
+        )
+    }
+
+    @Test
+    fun `a real artist called Song remains valid when linked`() {
+        assertEquals(
+            listOf(Artist("Song", "UC_song_artist")),
+            PageHelper.extractSongArtists(
+                listOf(Run("Song", artistEndpoint("UC_song_artist"))),
+            ),
+        )
+    }
+
     private fun artistEndpoint(id: String) =
         NavigationEndpoint(
             browseEndpoint =
