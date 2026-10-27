@@ -95,13 +95,18 @@ internal fun AlbumHeaderPlaceholder(background: Color, modifier: Modifier = Modi
         loading = true,
         modifier = modifier.clearAndSetSemantics { contentDescription = loading },
     ) {
+        // Decorative placeholders, not disabled clickable controls. Keep the
+        // loading layout fully inert for accessibility and pointer hit tests.
         repeat(5) {
-            PlaylistAction(
-                icon = R.drawable.play,
-                label = loading,
-                onClick = {},
-                enabled = false,
-            )
+            Box(
+                Modifier.weight(1f).height(60.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    Modifier.size(22.dp).clip(CircleShape)
+                        .background(StandardChrome.muted.copy(alpha = 0.18f)),
+                )
+            }
         }
     }
 }
