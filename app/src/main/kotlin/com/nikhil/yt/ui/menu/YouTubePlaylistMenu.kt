@@ -212,7 +212,9 @@ fun YouTubePlaylistMenu(
     // tap. Automatically fetching a huge public playlist every time More
     // opened caused stale sheet state, slow buttons and duplicate network I/O.
     val downloadSongs = songs
-    val membershipReady = songs.isNotEmpty()
+    // Search cards and public/user-created playlist menus usually open with
+    // NO preloaded songs. The coordinator loads the playlist after a tap.
+    // A missing preview page is NOT an unavailable download action.
     val indexedDownloads by downloadUtil.downloads.collectAsState()
     val enqueuingPlaylists by com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator
         .enqueuing.collectAsState()
@@ -570,23 +572,18 @@ fun YouTubePlaylistMenu(
                 actionKey = playlist.id,
                 state = effectiveDownloadState,
                 hasStoredItems = collectionIds.any { indexedDownloads.containsKey(it) },
-                enabled = membershipReady && downloadSongs.isNotEmpty(),
+                hasCompletedItems = collectionIds.any {
+                    indexedDownloads[it]?.state == Download.STATE_COMPLETED
+                },
+                enabled = true,
                 onDownload = {
-                    if (downloadSongs.isNotEmpty()) {
-                        com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator.start(
-                            playlist.id, context, downloadUtil.downloadManager, downloadSongs,
-                            indexedDownloads,
-                        )
-                    } else {
-                        // The remote playlist may be unavailable offline while
-                        // previously indexed tracks still exist. Resume their
-                        // original requests without losing saved membership.
-                        val requests = collectionIds.mapNotNull(indexedDownloads::get)
-                            .map { it.request }
-                        com.nikhil.yt.playback.enqueueCollectionDownloads(
-                            context, downloadUtil.downloadManager, indexedDownloads, requests,
-                        )
-                    }
+                    // Always start the coordinator, including from cards with
+                    // songs = emptyList(). Its process-owned job resolves
+                    // remote continuation pages without requiring the menu open.
+                    com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator.start(
+                        playlist.id, context, downloadUtil.downloadManager, downloadSongs,
+                        indexedDownloads,
+                    )
                 },
                 onStop = {
                     com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator.stop(
