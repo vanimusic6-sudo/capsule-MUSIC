@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.media3.exoplayer.offline.Download
@@ -233,6 +234,106 @@ class CapsuleDownloadActionInteractionTest {
         rule.runOnIdle { assertEquals(0, removed) }
         rule.onNodeWithText(rule.activity.getString(R.string.capsule_download_stop_delete)).performClick()
         rule.runOnIdle { assertEquals(1, removed) }
+    }
+
+    @Test fun collectionChoiceParenthesisIsAlwaysOnItsOwnLine() {
+        assertEquals("Остановить\n(сохранить скачанное)",
+            formatCollectionDownloadChoiceLabel("Остановить(сохранить скачанное)"))
+        assertEquals("Остановить\n(сохранить скачанное)",
+            formatCollectionDownloadChoiceLabel("Остановить (сохранить скачанное)"))
+        assertEquals("Скачать оставшиеся",
+            formatCollectionDownloadChoiceLabel("Скачать оставшиеся"))
+    }
+
+    @Test fun playlistHeroUsesTheSameStopKeepAndDeleteChooserAsMore() {
+        var stopped = 0
+        var removed = 0
+        rule.setContent {
+            MaterialTheme {
+                androidx.compose.foundation.layout.Row {
+                    CapsuleCollectionDownloadButton(
+                        actionKey = "header-active-unique",
+                        collectionName = "Playlist",
+                        state = Download.STATE_DOWNLOADING,
+                        hasStoredItems = true,
+                        hasCompletedItems = false,
+                        onDownload = {},
+                        onStop = { stopped++ },
+                        onRemove = { removed++ },
+                    )
+                }
+            }
+        }
+        rule.onNodeWithContentDescription(rule.activity.getString(R.string.downloading)).performClick()
+        rule.onNodeWithText(
+            formatCollectionDownloadChoiceLabel(
+                rule.activity.getString(R.string.capsule_download_pause_keep)
+            )
+        ).performClick()
+        rule.runOnIdle { assertEquals(1, stopped); assertEquals(0, removed) }
+    }
+
+    @Test fun removingCollectionHidesRedRemoveEvenWhileMedia3IndexIsStale() {
+        var finished by androidx.compose.runtime.mutableStateOf(false)
+        var deletes = 0
+        val removeLabel = rule.activity.getString(R.string.remove_download)
+        rule.setContent {
+            MaterialTheme {
+                CapsuleDownloadAction(
+                    actionKey = "pending-collection-red-unique",
+                    collectionName = "Playlist",
+                    state = if (finished) Download.STATE_STOPPED else Download.STATE_COMPLETED,
+                    hasStoredItems = !finished,
+                    hasCompletedItems = !finished,
+                    onDownload = {},
+                    onStop = {},
+                    onRemove = { deletes++ },
+                )
+            }
+        }
+        rule.onNodeWithText(removeLabel).performClick()
+        clickLastMatching(removeLabel)
+        rule.runOnIdle { assertEquals(1, deletes) }
+        assertTrue(rule.onAllNodesWithText(removeLabel).fetchSemanticsNodes().isEmpty())
+        rule.onNodeWithText(rule.activity.getString(R.string.capsule_download_removing)).assertExists()
+        rule.runOnIdle { finished = true }
+        rule.waitForIdle()
+        rule.onNodeWithText(rule.activity.getString(R.string.action_download)).assertExists()
+    }
+
+    @Test fun sharedPendingRemovePreventsOldRedMenuWhenOpeningAnotherSurface() {
+        val key = "shared-remove-unique"
+        var deleted = 0
+        var showSecond by androidx.compose.runtime.mutableStateOf(false)
+        rule.setContent {
+            MaterialTheme {
+                androidx.compose.foundation.layout.Column {
+                    CapsuleDownloadAction(
+                        actionKey = key,
+                        state = Download.STATE_COMPLETED,
+                        hasStoredItems = true,
+                        onDownload = {},
+                        onStop = {},
+                        onRemove = { deleted++; showSecond = true },
+                    )
+                    if (showSecond) CapsuleDownloadAction(
+                        actionKey = key,
+                        state = Download.STATE_COMPLETED,
+                        hasStoredItems = true,
+                        onDownload = {},
+                        onStop = {},
+                        onRemove = {},
+                    )
+                }
+            }
+        }
+        val remove = rule.activity.getString(R.string.remove_download)
+        rule.onNodeWithText(remove).performClick()
+        clickLastMatching(remove)
+        rule.runOnIdle { assertEquals(1, deleted) }
+        assertTrue(rule.onAllNodesWithText(remove).fetchSemanticsNodes().isEmpty())
+        rule.onAllNodesWithText(rule.activity.getString(R.string.capsule_download_removing))
+            .fetchSemanticsNodes().let { assertEquals(2, it.size) }
     }
 
 }

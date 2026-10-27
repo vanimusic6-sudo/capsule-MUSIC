@@ -12,6 +12,11 @@ import com.nikhil.yt.playback.queues.ListQueue
 import androidx.compose.material3.CenterAlignedTopAppBar
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
+import com.nikhil.yt.ui.menu.CapsuleCollectionDownloadButton
+import com.nikhil.yt.ui.component.rememberCollectionDownloadState
+import com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator
+import com.nikhil.yt.LocalDownloadUtil
+import androidx.media3.exoplayer.offline.Download
 import com.nikhil.yt.ui.component.StandardChrome
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -135,6 +140,16 @@ fun OnlinePlaylistScreen(
     val isLoadingMore by viewModel.isLoadingMore.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val error by viewModel.error.collectAsState()
+    val downloadUtil = LocalDownloadUtil.current
+    val downloadIndex by downloadUtil.downloads.collectAsState()
+    val enqueuing by OnlinePlaylistDownloadCoordinator.enqueuing.collectAsState()
+    val onlinePlaylistId = playlist?.id.orEmpty()
+    val collectionIds = OnlinePlaylistDownloadCoordinator.memberIds(
+        onlinePlaylistId, context, songs.map { it.id },
+    )
+    val collectionState = rememberCollectionDownloadState(collectionIds)
+    val effectiveCollectionState =
+        if (onlinePlaylistId in enqueuing) Download.STATE_DOWNLOADING else collectionState
 
     var selection by remember { mutableStateOf(false) }
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
@@ -341,6 +356,31 @@ fun OnlinePlaylistScreen(
                                         },
                                     )
                                 }
+                                CapsuleCollectionDownloadButton(
+                                    actionKey = playlist.id,
+                                    collectionName = playlist.title,
+                                    state = effectiveCollectionState,
+                                    hasStoredItems = collectionIds.any { downloadIndex.containsKey(it) },
+                                    hasCompletedItems = collectionIds.any {
+                                        downloadIndex[it]?.state == Download.STATE_COMPLETED
+                                    },
+                                    onDownload = {
+                                        OnlinePlaylistDownloadCoordinator.start(
+                                            playlist.id, context, downloadUtil.downloadManager,
+                                            songs, downloadIndex,
+                                        )
+                                    },
+                                    onStop = {
+                                        OnlinePlaylistDownloadCoordinator.stop(
+                                            playlist.id, context, downloadUtil.downloadManager, collectionIds,
+                                        )
+                                    },
+                                    onRemove = {
+                                        OnlinePlaylistDownloadCoordinator.cancelAndRemove(
+                                            playlist.id, context, downloadUtil.downloadManager, collectionIds,
+                                        )
+                                    },
+                                )
                                 PlaylistAction(
                                     icon = R.drawable.more_vert, label = stringResource(R.string.more),
                                     onClick = {
