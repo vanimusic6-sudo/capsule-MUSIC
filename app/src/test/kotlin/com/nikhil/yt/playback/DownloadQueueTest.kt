@@ -62,8 +62,11 @@ class DownloadQueueTest {
             await { index.getDownload("track-1")?.state == Download.STATE_COMPLETED }
             stopCollectionDownloads(manager, (1..101).map { "track-$it" })
             await {
-                manager.currentDownloads.none {
-                    it.request.id != "track-1" && it.stopReason == Download.STOP_REASON_NONE
+                (2..101).all { n ->
+                    index.getDownload("track-$n")?.let {
+                        it.state == Download.STATE_STOPPED &&
+                            it.stopReason == COLLECTION_STOP_REASON_USER
+                    } == true
                 }
             }
             assertEquals(Download.STATE_COMPLETED, index.getDownload("track-1")?.state)

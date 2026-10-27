@@ -65,7 +65,11 @@ internal class AudioDownloadQueue(private val manager: DownloadManager) : Downlo
     override fun onInitialized(downloadManager: DownloadManager) {
         // Upgrade old queued entries; already running transfers continue untouched.
         manager.currentDownloads.filter { it.state == Download.STATE_QUEUED }.forEach {
-            manager.setStopReason(it.request.id, DOWNLOAD_WAITING_FOR_SLOT)
+            manager.setStopReason(
+                it.request.id,
+                if (CollectionDownloadStopAdmission.isUserStopped(it.request.id))
+                    COLLECTION_STOP_REASON_USER else DOWNLOAD_WAITING_FOR_SLOT,
+            )
         }
         schedule()
     }
@@ -100,6 +104,17 @@ internal class AudioDownloadQueue(private val manager: DownloadManager) : Downlo
             scheduled = false
             if (!manager.isInitialized) return@post
             val entries = manager.currentDownloads
+            // If the service delivered an ADD after Stop, do not award it a slot.
+            val pendingStops = entries.filter {
+                CollectionDownloadStopAdmission.isUserStopped(it.request.id) &&
+                    it.stopReason != COLLECTION_STOP_REASON_USER &&
+                    it.state != Download.STATE_COMPLETED &&
+                    it.state != Download.STATE_REMOVING
+            }
+            if (pendingStops.isNotEmpty()) {
+                pendingStops.forEach { manager.setStopReason(it.request.id, COLLECTION_STOP_REASON_USER) }
+                return@post
+            }
             val entryIds = entries.map { it.request.id }.toSet()
             admitted.retainAll(entryIds)
             protectedBackground.retainAll(entryIds)
@@ -108,7 +123,9 @@ internal class AudioDownloadQueue(private val manager: DownloadManager) : Downlo
                 .map { it.request.id }.toSet() + admitted
             val waiting = entries.filter {
                 it.stopReason == DOWNLOAD_WAITING_FOR_SLOT &&
-                    it.state == Download.STATE_STOPPED && it.request.id !in admitted
+                    it.state == Download.STATE_STOPPED &&
+                    !CollectionDownloadStopAdmission.isUserStopped(it.request.id) &&
+                    it.request.id !in admitted
             }.toMutableList()
             // One pause per admission wave. Media3 cancels the worker and preserves partial cache;
             // the shared transfer semaphore also prevents overlap while that cancellation drains.

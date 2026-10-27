@@ -66,16 +66,20 @@ internal object CollectionDownloadStopAdmission {
         ) {
             val id = download.request.id
             if (id !in pending) return
-            if (download.state == Download.STATE_COMPLETED ||
-                download.state == Download.STATE_FAILED ||
-                download.state == Download.STATE_REMOVING ||
-                (download.state == Download.STATE_STOPPED &&
-                    download.stopReason == COLLECTION_STOP_REASON_USER)
-            ) {
-                pending.remove(id)
-                if (pending.isEmpty()) handler.removeCallbacks(expire)
-            } else {
-                downloadManager.setStopReason(id, COLLECTION_STOP_REASON_USER)
+            when {
+                download.state == Download.STATE_COMPLETED ||
+                    download.state == Download.STATE_FAILED ||
+                    download.state == Download.STATE_REMOVING -> {
+                    pending.remove(id)
+                    if (pending.isEmpty()) handler.removeCallbacks(expire)
+                }
+                download.stopReason != COLLECTION_STOP_REASON_USER -> {
+                    // A late ADD (or stale scheduler callback) can transition
+                    // STOPPED(1) back to WAITING(2). Hold Stop during admission.
+                    downloadManager.setStopReason(id, COLLECTION_STOP_REASON_USER)
+                }
+                // STOPPED(1) is not proof that all service intents have drained.
+                else -> Unit
             }
         }
 
@@ -120,6 +124,15 @@ internal object CollectionDownloadStopAdmission {
     fun clearForExplicitStart(id: String) {
         if (pending.remove(id) != null) scheduleExpiry()
     }
+
+    /** Guard all service and queue admissions until resume/delete or expiry. */
+    fun isUserStopped(id: String): Boolean {
+        val deadline = pending[id] ?: return false
+        if (deadline > SystemClock.uptimeMillis()) return true
+        pending.remove(id)
+        scheduleExpiry()
+        return false
+    }
 }
 
 /**
@@ -133,6 +146,10 @@ internal fun stopCollectionDownloads(manager: androidx.media3.exoplayer.offline.
         .filter { it.request.isManualDownload() }.map { it.request.id }.toSet() else emptySet()
     val ids = songIds.distinct().filterNot { it in independent }
     CollectionDownloadStopAdmission.request(manager, ids)
+    timber.log.Timber.tag("CollectionDownloadStop").i(
+        "stop requested members=%d indexed=%d", ids.size,
+        manager.currentDownloads.count { it.request.id in ids },
+    )
     ids.forEach { manager.setStopReason(it, COLLECTION_STOP_REASON_USER) }
 }
 

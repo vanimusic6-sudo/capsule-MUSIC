@@ -43,6 +43,13 @@ class ExoDownloadService : DownloadService(
             if (request != null) {
                 val existing = downloadManager.currentDownloads.firstOrNull { it.request.id == request.id }
                     ?: downloadUtil.downloads.value[request.id]
+                val mustRemainStopped = CollectionDownloadStopAdmission.isUserStopped(request.id)
+                if (mustRemainStopped && keepActiveDownload(existing)) {
+                    // Don't requeue a healthy transfer from a stale ADD.
+                    downloadManager.setStopReason(request.id, COLLECTION_STOP_REASON_USER)
+                    intent.action = ACTION_INIT
+                    return super.onStartCommand(intent, flags, startId)
+                }
                 if (existing?.state == Download.STATE_COMPLETED &&
                     com.nikhil.yt.playback.audio.AudioCacheIdentity.isComplete(downloadUtil.downloadCache, request.id)) {
                     downloadUtil.repairArtwork(request.id)
@@ -62,7 +69,10 @@ class ExoDownloadService : DownloadService(
                 }
                 val merged = if (existing?.request?.isManualDownload() == true) request.withManualPriority() else request
                 intent.putExtra(KEY_DOWNLOAD_REQUEST, merged)
-                intent.putExtra(KEY_STOP_REASON, DOWNLOAD_WAITING_FOR_SLOT)
+                intent.putExtra(
+                    KEY_STOP_REASON,
+                    if (mustRemainStopped) COLLECTION_STOP_REASON_USER else DOWNLOAD_WAITING_FOR_SLOT,
+                )
             }
         }
         if (intent?.action == REMOVE_ALL_PENDING_DOWNLOADS) {
