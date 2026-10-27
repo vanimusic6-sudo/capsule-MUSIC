@@ -38,6 +38,7 @@ internal fun CapsuleDownloadAction(
     onRemove: () -> Unit,
     enabled: Boolean = true,
     hasStoredItems: Boolean = false,
+    hasCompletedItems: Boolean = false,
     collectionName: String? = null,
     isCollection: Boolean = true,
     // Player's single-track download is an intentionally fast exception:
@@ -63,6 +64,11 @@ internal fun CapsuleDownloadAction(
         }
     }
     val currentlyDownloading = active || pendingStart
+    val idleDownloadTitle = when {
+        hasCompletedItems && !completed -> R.string.capsule_download_remaining
+        hasStoredItems && !completed -> R.string.capsule_download_resume_partial
+        else -> R.string.action_download
+    }
     var showChoices by remember(actionKey) { mutableStateOf(false) }
     var choiceOpenedDuringDownload by remember(actionKey) { mutableStateOf(false) }
     var confirmRemoval by remember(actionKey) { mutableStateOf(false) }
@@ -73,14 +79,14 @@ internal fun CapsuleDownloadAction(
             onDismiss = { showChoices = false },
             title = {
                 Text(stringResource(if (choiceOpenedDuringDownload) R.string.downloading
-                    else R.string.action_download))
+                    else idleDownloadTitle))
             },
             content = {
                 ListItem(
                     headlineContent = {
                         Text(stringResource(
                             if (choiceOpenedDuringDownload) R.string.capsule_download_pause_keep
-                            else R.string.action_download,
+                            else idleDownloadTitle,
                         ))
                     },
                     leadingContent = {
@@ -164,7 +170,7 @@ internal fun CapsuleDownloadAction(
                     when {
                         completed || removing -> R.string.remove_download
                         currentlyDownloading -> R.string.downloading
-                        else -> R.string.action_download
+                        else -> idleDownloadTitle
                     }
                 ),
                 color = if (completed || removing) MaterialTheme.colorScheme.error
