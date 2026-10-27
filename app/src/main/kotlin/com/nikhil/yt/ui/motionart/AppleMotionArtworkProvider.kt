@@ -30,7 +30,8 @@ import java.util.concurrent.TimeUnit
 internal object AppleMotionArtworkProvider {
     private const val AMP = "https://amp-api.music.apple.com/v1/catalog/us"
     private const val WEB = "https://music.apple.com"
-    private const val SUCCESS_TTL_MS = 6 * 60 * 60 * 1000L
+    // Editorial playlist URLs may be signed and expire sooner than metadata.
+    private const val SUCCESS_TTL_MS = 30 * 60 * 1000L
     private const val FAILURE_TTL_MS = 20 * 60 * 1000L
     private const val TOKEN_RETRY_MS = 20 * 60 * 1000L
     private val client = OkHttpClient.Builder()

@@ -17,6 +17,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Brush
@@ -34,6 +35,16 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.CancellationException
 import com.nikhil.yt.ui.component.LocalCapsuleBackgroundMotionEnabled
+
+/**
+ * Exclusivity across artist navigation and the expanded player: two background
+ * videos must never decode simultaneously on mobile. Player wins only when it
+ * actually has matching editorial motion; artist reclaims the slot on collapse.
+ */
+private object MotionDecoderSlots {
+    val contenders = mutableStateMapOf<Any, Int>()
+    val winner: Any? get() = contenders.maxByOrNull { it.value }?.key
+}
 
 @Composable
 internal fun AppleMotionSurface(
@@ -71,7 +82,14 @@ internal fun AppleMotionSurface(
           catch (_: Exception) { url = null }
     }
     val activeUrl = url?.takeIf { allowed && AppleMotionArtworkProvider.validVideoUrl(it) }
-    if (activeUrl != null) {
+    val slot = remember { Any() }
+    DisposableEffect(activeUrl, dimBackground) {
+        if (activeUrl != null) {
+            MotionDecoderSlots.contenders[slot] = if (dimBackground) 1 else 0
+        }
+        onDispose { MotionDecoderSlots.contenders.remove(slot) }
+    }
+    if (activeUrl != null && MotionDecoderSlots.winner === slot) {
         val exo = remember(activeUrl) {
             ExoPlayer.Builder(context).build().apply {
                 volume = 0f

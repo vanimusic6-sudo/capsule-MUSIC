@@ -445,7 +445,9 @@ fun BottomSheetPlayer(
                             album = enrichedMetadata?.album?.title,
                             enabled = appleMotionEnabled && state.isExpandedOrExpanding &&
                                 !showInlineLyrics && onScreen && isPlaying &&
-                                playbackState == Player.STATE_READY,
+                                playbackState == Player.STATE_READY &&
+                                !videoPlaybackState.presentingVideo &&
+                                !videoPlaybackState.needsSurface,
                             modifier = Modifier.fillMaxSize(),
                             dimBackground = true,
                         )
