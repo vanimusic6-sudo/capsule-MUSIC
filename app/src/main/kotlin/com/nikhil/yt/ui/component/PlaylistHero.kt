@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -58,6 +59,7 @@ internal fun CapsuleDetailHero(
         Box(
             Modifier.fillMaxWidth(0.87f)
                 .aspectRatio(1f)
+                .testTag("capsule:detail-artwork")
                 .clip(RoundedCornerShape(46.dp))
                 .background(StandardChrome.panel)
                 .border(
@@ -100,7 +102,9 @@ internal fun CapsuleDetailActionCluster(
     ) {
         // A real raised tab, partly hidden behind the opaque front tray.
         Surface(
-            modifier = Modifier.fillMaxWidth(0.78f).height(54.dp),
+            modifier = Modifier.fillMaxWidth(
+                if (metrics.size > 2) 0.94f else 0.78f,
+            ).height(54.dp).testTag("capsule:detail-metadata-tab"),
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             color = StandardChrome.panel,
         ) {
@@ -137,7 +141,8 @@ internal fun CapsuleDetailActionCluster(
             }
         }
         Surface(
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                .testTag("capsule:detail-actions"),
             shape = RoundedCornerShape(24.dp),
             color = StandardChrome.panel,
             border = BorderStroke(1.dp, StandardChrome.muted.copy(alpha = 0.27f)),

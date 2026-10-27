@@ -55,6 +55,16 @@ class PlaylistHeroTest {
             }
         }
         val counter = compose.onNodeWithText("34 songs").fetchSemanticsNode().boundsInRoot
+        val cover = compose.onNodeWithTag("capsule:detail-artwork").fetchSemanticsNode().boundsInRoot
+        val tab = compose.onNodeWithTag("capsule:detail-metadata-tab").fetchSemanticsNode().boundsInRoot
+        val tray = compose.onNodeWithTag("capsule:detail-actions").fetchSemanticsNode().boundsInRoot
+        val outer = compose.onNodeWithTag("playlist").fetchSemanticsNode().boundsInRoot
+        assertTrue("Square artwork", kotlin.math.abs(cover.width - cover.height) < 2f)
+        assertEquals("Artwork is 87 percent of its parent", outer.width * 0.87f, cover.width, 3f)
+        assertTrue("Metadata tab is behind, not above, the actions", tab.bottom > tray.top)
+        assertTrue("Metadata tab is narrower than the action tray", tab.width < tray.width)
+        assertTrue("Both pieces are horizontally centred",
+            kotlin.math.abs(tab.center.x - tray.center.x) < 2f)
         val actions = labels.map { compose.onNodeWithContentDescription(it).assertIsDisplayed() }
         val bounds = actions.map { it.fetchSemanticsNode().boundsInRoot }
         assertTrue(bounds.all { it.top > counter.bottom })

@@ -38,6 +38,8 @@ import com.nikhil.yt.ui.component.AlbumArtworkLayers
 import com.nikhil.yt.ui.component.AlbumHeaderLayout
 import com.nikhil.yt.ui.component.AlbumHeaderPlaceholder
 import com.nikhil.yt.ui.component.AlbumScreenLayout
+import com.nikhil.yt.ui.component.PlaylistHero
+import com.nikhil.yt.ui.component.PlaylistAction
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -103,7 +105,7 @@ class AlbumLayoutTest {
         compose.runOnIdle { assertEquals(1, backClicks) }
     }
 
-    @Test fun loadingHeaderUsesTheSameFullWidthCoverAndDoesNotMoveTheSongListOnLoad() {
+    @Test fun loadingAlbumUsesTheSameSquareHeroAndDoesNotMoveTheSongListOnLoad() {
         var loading by mutableStateOf(true)
         compose.setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
@@ -118,12 +120,17 @@ class AlbumLayoutTest {
                                     if (loading) {
                                         AlbumHeaderPlaceholder(Color.Black)
                                     } else {
-                                        AlbumHeaderLayout(
-                                            artwork = { AlbumArtworkLayers(ColorPainter(Color.White), null, Color.Black, Modifier.testTag("cover")) },
-                                            title = { Box(Modifier.fillMaxWidth().height(32.dp)) },
-                                            metadata = { Box(Modifier.fillMaxWidth().height(28.dp)) },
-                                            actions = { Box(Modifier.fillMaxWidth().height(56.dp)) },
-                                        )
+                                        PlaylistHero(
+                                            thumbnails = emptyList(),
+                                            songCount = "—",
+                                            year = "—",
+                                            duration = "—",
+                                            title = "Album",
+                                        ) {
+                                            repeat(5) {
+                                                PlaylistAction(R.drawable.play, "Play", {}, enabled = false)
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -140,11 +147,11 @@ class AlbumLayoutTest {
         compose.runOnIdle { loading = false }
         val loadedHeader = compose.onNodeWithTag("header").fetchSemanticsNode().boundsInRoot
         val loadedSong = compose.onNodeWithTag("song").fetchSemanticsNode().boundsInRoot
-        val cover = compose.onNodeWithTag("cover").fetchSemanticsNode().boundsInRoot
+        val cover = compose.onNodeWithTag("capsule:detail-artwork").fetchSemanticsNode().boundsInRoot
         assertEquals(loadingHeader.top, loadedHeader.top, 1f)
-        assertEquals(loadingHeader.height, loadedHeader.height, 1f)
-        assertEquals("Loading must not show the old compact header", loadingSong.top, loadedSong.top, 1f)
-        assertEquals(loadedHeader.width, cover.width, 1f)
-        assertEquals(cover.width / 0.85f, cover.height, 1f)
+        assertEquals(loadingHeader.height, loadedHeader.height, 2f)
+        assertEquals("Loading and content use one hero layout", loadingSong.top, loadedSong.top, 2f)
+        assertEquals("Artwork is centred at 87% width", loadedHeader.width * 0.87f, cover.width, 3f)
+        assertEquals(cover.width, cover.height, 2f)
     }
 }

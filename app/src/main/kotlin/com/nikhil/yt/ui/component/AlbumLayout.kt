@@ -79,41 +79,29 @@ internal fun AlbumHeaderLayout(
     }
 }
 
+/**
+ * Album skeleton uses the exact same square cover and layered tray as the
+ * loaded album. Do not flash the older edge-to-edge portrait during loading.
+ */
 @Composable
 internal fun AlbumHeaderPlaceholder(background: Color, modifier: Modifier = Modifier) {
     val loading = stringResource(R.string.loading)
-    val placeholder = StandardChrome.muted.copy(alpha = 0.18f)
-    AlbumHeaderLayout(
+    PlaylistHero(
+        thumbnails = emptyList(),
+        title = " ",
+        songCount = "—",
+        year = "—",
+        duration = "—",
+        loading = true,
         modifier = modifier.clearAndSetSemantics { contentDescription = loading },
-        artwork = {
-            AlbumArtworkLayers(ColorPainter(StandardChrome.panel), blurred = null, background = background)
-        },
-        title = {
-            Box(Modifier.fillMaxWidth(0.6f).height(32.dp).padding(vertical = 6.dp)
-                .clip(RoundedCornerShape(8.dp)).background(placeholder))
-        },
-        metadata = {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                listOf(64.dp, 96.dp, 72.dp).forEach { width ->
-                    Box(Modifier.width(width).height(28.dp).clip(CircleShape).background(placeholder))
-                }
-            }
-        },
-        actions = {
-            Surface(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                shape = RoundedCornerShape(16.dp),
-                color = StandardChrome.panel.copy(alpha = 0.92f),
-                border = BorderStroke(1.dp, StandardChrome.muted.copy(alpha = 0.22f)),
-            ) {
-                Row(
-                    Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    repeat(5) { Box(Modifier.size(20.dp).clip(CircleShape).background(placeholder)) }
-                }
-            }
-        },
-    )
+    ) {
+        repeat(5) {
+            PlaylistAction(
+                icon = R.drawable.play,
+                label = loading,
+                onClick = {},
+                enabled = false,
+            )
+        }
+    }
 }

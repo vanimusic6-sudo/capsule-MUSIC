@@ -338,26 +338,22 @@ fun OnlinePlaylistScreen(
                                     },
                                     enabled = playlist.playEndpoint != null || songs.isNotEmpty(),
                                 )
-                                playlist.shuffleEndpoint?.let { shuffleEndpoint ->
-                                    PlaylistAction(
-                                        icon = R.drawable.shuffle, label = stringResource(R.string.shuffle),
-                                        onClick = {
+                                PlaylistAction(
+                                    icon = R.drawable.shuffle,
+                                    label = stringResource(R.string.shuffle),
+                                    enabled = playlist.shuffleEndpoint != null || songs.isNotEmpty(),
+                                    onClick = {
+                                        val endpoint = playlist.shuffleEndpoint
+                                        if (endpoint != null) {
+                                            playerConnection.playQueue(YouTubeQueue(endpoint))
+                                        } else {
                                             playerConnection.playQueue(
-                                                YouTubeQueue(shuffleEndpoint)
+                                                ListQueue(title = playlist.title,
+                                                    items = songs.shuffled().map { it.toMediaItem() }),
                                             )
-                                        },
-                                    )
-                                }
-                                playlist.radioEndpoint?.let { radioEndpoint ->
-                                    PlaylistAction(
-                                        icon = R.drawable.radio, label = stringResource(R.string.radio),
-                                        onClick = {
-                                            playerConnection.playQueue(
-                                                YouTubeQueue(radioEndpoint)
-                                            )
-                                        },
-                                    )
-                                }
+                                        }
+                                    },
+                                )
                                 CapsuleCollectionDownloadButton(
                                     actionKey = playlist.id,
                                     collectionName = playlist.title,
