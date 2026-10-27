@@ -93,6 +93,7 @@ import com.nikhil.yt.ui.component.YouTubeGridItem
 import com.nikhil.yt.ui.component.shimmer.ListItemPlaceHolder
 import com.nikhil.yt.ui.component.shimmer.ShimmerHost
 import com.nikhil.yt.ui.menu.AlbumMenu
+import com.nikhil.yt.ui.menu.CapsuleDownloadAction
 import com.nikhil.yt.ui.menu.SelectionSongMenu
 import com.nikhil.yt.ui.menu.SongMenu
 import com.nikhil.yt.ui.menu.YouTubeAlbumMenu
@@ -152,21 +153,7 @@ fun AlbumScreen(
 
     val downloadUtil = LocalDownloadUtil.current
     val downloadState = rememberCollectionDownloadState(albumWithSongs?.songs.orEmpty().map { it.id })
-    var confirmActiveDownloadRemoval by remember { mutableStateOf(false) }
-    if (confirmActiveDownloadRemoval) {
-        com.nikhil.yt.ui.menu.DownloadRemovalDialog(
-            onDismiss = { confirmActiveDownloadRemoval = false },
-            onConfirm = {
-                confirmActiveDownloadRemoval = false
-                albumWithSongs?.songs.orEmpty().forEach { song ->
-                    DownloadService.sendRemoveDownload(
-                        context, ExoDownloadService::class.java, song.id, false)
-                }
-            },
-        )
-    }
-
-
+    val downloadIndex by downloadUtil.downloads.collectAsState()
     // State for LazyColumn to track scroll
     val lazyListState = rememberLazyListState()
 
@@ -276,52 +263,55 @@ fun AlbumScreen(
                                             playerConnection.playQueue(LocalAlbumRadio(albumWithSongs.copy(songs = albumWithSongs.songs.shuffled())))
                                         },
                                     )
-                                    androidx.compose.material3.IconButton(
-                                        onClick = {
-                                            when (downloadState) {
-                                                Download.STATE_COMPLETED -> {
-                                                    albumWithSongs.songs.forEach { song ->
-                                                        DownloadService.sendRemoveDownload(
-                                                            context,
-                                                            ExoDownloadService::class.java,
-                                                            song.id,
-                                                            false,
-                                                        )
-                                                    }
-                                                }
-                                                Download.STATE_DOWNLOADING -> {
-                                                    confirmActiveDownloadRemoval = true
-                                                }
-                                                else -> {
-                                                    albumWithSongs.songs.forEach { song ->
-                                                        val downloadRequest =
-                                                            DownloadRequest
-                                                                .Builder(song.id, song.id.toUri())
-                                                                .setCustomCacheKey(song.id)
-                                                                .setData(song.song.title.toByteArray())
-                                                                .build()
-                                                        DownloadService.sendAddDownload(
-                                                            context,
-                                                            ExoDownloadService::class.java,
-                                                            downloadRequest,
-                                                            false,
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        },
-                                    ) {
-                                        when (downloadState) {
-                                            Download.STATE_DOWNLOADING -> VeluneLoader(size = 24.dp)
-                                            else -> Icon(
-                                                painter = painterResource(if (downloadState == Download.STATE_COMPLETED) R.drawable.offline else R.drawable.download),
-                                                contentDescription = stringResource(when (downloadState) { Download.STATE_COMPLETED -> R.string.remove_download; Download.STATE_DOWNLOADING -> R.string.capsule_stop_and_delete_download; else -> R.string.download }),
-                                                tint = StandardChrome.muted,
-                                                modifier = Modifier.size(26.dp),
-                                            )
-                                        }
-                                    }
-                                    AlbumAction(
+                                    CapsuleDownloadAction(
+                                         actionKey = albumWithSongs.album.id,
+                                         collectionName = albumWithSongs.album.title,
+                                         state = downloadState,
+                                         hasStoredItems = albumWithSongs.songs.any { downloadIndex.containsKey(it.id) },
+                                         hasCompletedItems = albumWithSongs.songs.any {
+                                             downloadIndex[it.id]?.state == Download.STATE_COMPLETED
+                                         },
+                                         onDownload = {
+                                             val requests = albumWithSongs.songs.map { song ->
+                                                 DownloadRequest.Builder(song.id, song.id.toUri())
+                                                     .setCustomCacheKey(song.id)
+                                                     .setData(song.song.title.toByteArray())
+                                                     .build()
+                                             }
+                                             com.nikhil.yt.playback.enqueueCollectionDownloads(
+                                                 context, downloadUtil.downloadManager, downloadIndex, requests,
+                                             )
+                                         },
+                                         onStop = {
+                                             com.nikhil.yt.playback.stopCollectionDownloads(
+                                                 downloadUtil.downloadManager, albumWithSongs.songs.map { it.id },
+                                             )
+                                         },
+                                         onRemove = {
+                                             com.nikhil.yt.playback.removeCollectionDownloads(
+                                                 downloadUtil.downloadManager, albumWithSongs.songs.map { it.id },
+                                                 preserveManual = false,
+                                             )
+                                         },
+                                         renderAction = { visual, trigger ->
+                                             androidx.compose.material3.IconButton(
+                                                 onClick = trigger,
+                                                 enabled = visual.enabled,
+                                             ) {
+                                                 if (visual.isLoading) {
+                                                     com.nikhil.yt.ui.component.VeluneLoader(size = 24.dp)
+                                                 } else {
+                                                     Icon(
+                                                         painter = painterResource(visual.iconRes),
+                                                         contentDescription = stringResource(visual.labelRes),
+                                                         tint = StandardChrome.muted,
+                                                         modifier = Modifier.size(26.dp),
+                                                     )
+                                                 }
+                                             }
+                                         },
+                                     )
+                                     AlbumAction(
                                         icon = R.drawable.more_vert,
                                         label = stringResource(R.string.more),
                                         onClick = {
