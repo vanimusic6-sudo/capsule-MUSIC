@@ -44,6 +44,14 @@ on:
       - app/src/main/kotlin/com/nikhil/yt/ui/component/Items.kt
       - app/src/main/kotlin/com/nikhil/yt/ui/menu/YouTubeDownloadMenuItems.kt
       - app/src/main/AndroidManifest.xml
+      - app/src/main/kotlin/com/nikhil/yt/ui/menu/AlbumMenu.kt
+      - app/src/main/kotlin/com/nikhil/yt/ui/menu/YouTubeAlbumMenu.kt
+      - app/src/main/kotlin/com/nikhil/yt/ui/menu/PlaylistMenu.kt
+      - app/src/main/kotlin/com/nikhil/yt/ui/menu/SelectionSongsMenu.kt
+      - innertube/src/main/kotlin/com/nikhil/yt/innertube/YouTube.kt
+      - innertube/src/main/kotlin/com/nikhil/yt/innertube/pages/PlaylistPage.kt
+      - innertube/src/main/kotlin/com/nikhil/yt/innertube/pages/AlbumPage.kt
+      - innertube/src/main/kotlin/com/nikhil/yt/innertube/pages/SearchSuggestionPage.kt
   workflow_dispatch:
 
 permissions:
