@@ -282,6 +282,42 @@ class CapsuleDownloadActionInteractionTest {
         rule.runOnIdle { assertEquals(1, started); assertEquals(1, stopped) }
     }
 
+    @Test fun stoppedPlaylistImmediatelyShowsResumeWithoutWaitingForMedia3() {
+        var stopped = 0
+        var resumed = 0
+        val key = "stopped-aggregate-stays-active"
+        rule.setContent {
+            MaterialTheme {
+                // Simulates a manual single song still transferring inside
+                // this playlist after collection Stop was accepted.
+                CapsuleDownloadAction(
+                    state = Download.STATE_DOWNLOADING,
+                    actionKey = key,
+                    collectionName = "Mixed playlist",
+                    hasStoredItems = true,
+                    onDownload = { resumed++ },
+                    onStop = { stopped++ },
+                    onRemove = {},
+                )
+            }
+        }
+        rule.onNodeWithText(rule.activity.getString(R.string.downloading)).performClick()
+        rule.onNodeWithText(rule.activity.getString(R.string.capsule_download_pause_keep)).performClick()
+        rule.runOnIdle { assertEquals(1, stopped) }
+
+        // A stale aggregate DOWNLOADING must never trap the UI in Stopping…
+        rule.onNodeWithText(rule.activity.getString(R.string.capsule_download_resume_partial))
+            .assertExists()
+        assertTrue(rule.onAllNodesWithText(rule.activity.getString(R.string.capsule_download_stopping))
+            .fetchSemanticsNodes().isEmpty())
+
+        // User can immediately resume without waiting for a timeout or reboot.
+        rule.onNodeWithText(rule.activity.getString(R.string.capsule_download_resume_partial))
+            .performClick()
+        clickLastMatching(rule.activity.getString(R.string.capsule_download_resume_partial))
+        rule.runOnIdle { assertEquals(1, resumed) }
+    }
+
     @Test fun collectionChoiceParenthesisIsAlwaysOnItsOwnLine() {
         assertEquals("Остановить\n(сохранить скачанное)",
             formatCollectionDownloadChoiceLabel("Остановить(сохранить скачанное)"))

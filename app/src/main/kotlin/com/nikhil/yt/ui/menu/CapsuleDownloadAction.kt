@@ -39,8 +39,13 @@ internal object CollectionDownloadRemovalUi {
 }
 
 /**
- * Immediate visual acknowledgement shared by playlist header and More.
- * Backend late-ADD handling is independent from this UI state.
+ * Optimistic stopped state shared between the collection header and More.
+ *
+ * The aggregate may remain DOWNLOADING while one independent manual track
+ * continues or a service ADD is still being indexed. Waiting for !active
+ * before allowing further interaction caused a permanent "Stopping…" loader.
+ * A stop intent immediately exposes the resumable state instead; Media3
+ * admission is independently protected in CollectionDownloadStopAdmission.
  */
 internal object CollectionDownloadStopUi {
     private val stopping = mutableStateMapOf<String, Boolean>()
@@ -225,14 +230,16 @@ internal fun CapsuleDownloadAction(
     val visual = CapsuleDownloadVisual(
         labelRes = when {
             deleting -> R.string.capsule_download_removing
-            stopRequested -> R.string.capsule_download_stopping
+            // Stop has already been dispatched. Never wait for the aggregate
+            // Media3 state to leave DOWNLOADING while blocking the whole menu.
+            stopRequested -> idleDownloadTitle
             completed -> R.string.delete
             currentlyDownloading -> R.string.downloading
             else -> idleDownloadTitle
         },
         iconRes = if (completed && !deleting) R.drawable.offline else R.drawable.download,
-        isLoading = currentlyDownloading || deleting || stopRequested,
-        enabled = !deleting && !stopRequested &&
+        isLoading = currentlyDownloading || deleting,
+        enabled = !deleting &&
             (enabled || currentlyDownloading || completed || hasStoredItems),
     )
     val onActionClick: () -> Unit = {
@@ -240,7 +247,7 @@ internal fun CapsuleDownloadAction(
             instantRemove && (completed || currentlyDownloading || hasStoredItems) -> {
                 requestRemoval()
             }
-            completed -> confirmRemoval = true
+            completed && !stopRequested -> confirmRemoval = true
             currentlyDownloading -> {
                 choiceOpenedDuringDownload = true
                 showChoices = true

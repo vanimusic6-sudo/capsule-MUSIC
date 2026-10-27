@@ -42,8 +42,12 @@ class CapsuleReleaseUiCorrectionsTest {
         assertTrue(shared.contains("currentlyDownloading -> {"))
         assertTrue(shared.contains("capsule_download_stop_delete"))
         assertTrue(shared.contains("CollectionDownloadStopUi.request(actionKey)"))
+        // A previously reported stuck spinner must never disable the resume row.
+        assertTrue(shared.contains("stopRequested -> idleDownloadTitle"))
+        assertTrue(shared.contains("isLoading = currentlyDownloading || deleting"))
+        assertFalse(shared.contains("isLoading = currentlyDownloading || deleting || stopRequested"))
         assertTrue(shared.contains("choiceOpenedDuringDownload"))
-        assertTrue(shared.contains("pendingStart = true\n                    onDownload()"))
+        assertTrue(shared.contains("pendingStart = true") && shared.contains("onDownload()"))
         assertTrue(shared.contains("DefaultDialog("))
         assertTrue(shared.contains("confirmRemoval = false\n                    requestRemoval()"))
         assertFalse("Delete cannot open a second nested dialog", source("ui/menu/PlaylistMenu.kt").contains("showRemoveDownloadDialog"))
