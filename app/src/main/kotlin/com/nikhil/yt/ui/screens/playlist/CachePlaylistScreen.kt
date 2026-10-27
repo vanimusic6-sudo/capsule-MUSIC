@@ -168,7 +168,7 @@ fun CachePlaylistScreen(
         }
     }
 
-    val surfaceColor = if (StandardChrome.isDark) Color(0xFF090909) else StandardChrome.background
+    val surfaceColor = StandardChrome.background
 
 
 

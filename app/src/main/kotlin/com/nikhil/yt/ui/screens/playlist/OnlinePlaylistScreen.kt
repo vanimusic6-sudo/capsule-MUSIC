@@ -199,7 +199,7 @@ fun OnlinePlaylistScreen(
             .toMutableStateList()
 
 
-    val surfaceColor = if (StandardChrome.isDark) Color(0xFF090909) else StandardChrome.background
+    val surfaceColor = StandardChrome.background
 
 
 
@@ -266,6 +266,8 @@ fun OnlinePlaylistScreen(
                                 title = playlist.title,
                                 thumbnails = listOfNotNull(playlist.thumbnail),
                                 songCount = playlist.songCountText ?: pluralStringResource(R.plurals.n_song, songs.size, songs.size),
+                                duration = songs.sumOf { it.toMediaMetadata().duration.coerceAtLeast(0) }
+                                    .takeIf { it > 0 }?.let { com.nikhil.yt.utils.makeTimeString(it * 1000L) },
                                 subtitle = {
                                     playlist.author?.let { artist ->
                                         Text(

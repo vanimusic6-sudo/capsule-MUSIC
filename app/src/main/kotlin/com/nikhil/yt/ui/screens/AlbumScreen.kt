@@ -16,6 +16,9 @@ import com.nikhil.yt.ui.component.AlbumArtwork
 import com.nikhil.yt.ui.component.AlbumHeaderLayout
 import com.nikhil.yt.ui.component.AlbumHeaderPlaceholder
 import com.nikhil.yt.ui.component.AlbumScreenLayout
+import com.nikhil.yt.ui.component.PlaylistHero
+import com.nikhil.yt.ui.component.PlaylistAction
+import com.nikhil.yt.ui.menu.CapsuleCollectionDownloadButton
 import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.VeluneLoader
 import androidx.activity.compose.BackHandler
@@ -131,7 +134,7 @@ fun AlbumScreen(
     // System bars padding
     val systemBarsTopPadding = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
 
-    val surfaceColor = if (StandardChrome.isDark) Color(0xFF090909) else StandardChrome.background
+    val surfaceColor = StandardChrome.background
 
 
     val wrappedSongs = remember(albumWithSongs, hideExplicit) {
@@ -177,157 +180,92 @@ fun AlbumScreen(
             val hasSongs = albumWithSongs?.songs?.isNotEmpty() == true
             if (hasSongs) {
                 item(key = "header") {
-                    AlbumHeaderLayout(
-                        artwork = {
-                            AlbumArtwork(
-                                thumbnailUrl = albumWithSongs.album.thumbnailUrl,
-                                background = surfaceColor,
-                            )
-                        },
-                        title = {
-                            Text(
-                                text = albumWithSongs.album.title,
-                                style = MaterialTheme.typography.headlineSmall.copy(fontSize = 26.sp),
-                                fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(horizontal = 32.dp)
-                            )
-                        },
-                        metadata = {
-                            FlowRow(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
-                                verticalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
-                                // Year
-                                albumWithSongs.album.year?.let { year ->
-                                    MetadataChip(
-                                        icon = R.drawable.calendar_today,
-                                        text = year.toString()
-                                    )
-                                }
-
-                                // Song Count
-                                MetadataChip(
-                                    icon = R.drawable.music_note,
-                                    text = pluralStringResource(
-                                        R.plurals.n_song,
-                                        wrappedSongs.size,
-                                        wrappedSongs.size
-                                    )
+                    PlaylistHero(
+                        title = albumWithSongs.album.title,
+                        thumbnails = listOfNotNull(albumWithSongs.album.thumbnailUrl),
+                        songCount = pluralStringResource(
+                            R.plurals.n_song, wrappedSongs.size, wrappedSongs.size,
+                        ),
+                        year = albumWithSongs.album.year?.toString(),
+                        duration = wrappedSongs.sumOf { it.item.song.duration.coerceAtLeast(0) }
+                            .takeIf { it > 0 }?.let { makeTimeString(it * 1000L) },
+                    ) {
+                        PlaylistAction(
+                            icon = if (albumWithSongs.album.bookmarkedAt != null)
+                                R.drawable.favorite else R.drawable.favorite_border,
+                            label = stringResource(
+                                if (albumWithSongs.album.bookmarkedAt != null)
+                                    R.string.action_remove_like else R.string.action_like,
+                            ),
+                            tint = if (albumWithSongs.album.bookmarkedAt != null)
+                                StandardChrome.favorite else StandardChrome.text,
+                            onClick = { database.query { update(albumWithSongs.album.toggleLike()) } },
+                        )
+                        PlaylistAction(
+                            icon = R.drawable.play_outline,
+                            label = stringResource(R.string.play),
+                            onClick = {
+                                playerConnection.service.getAutomix(playlistId)
+                                playerConnection.playQueue(LocalAlbumRadio(albumWithSongs))
+                            },
+                        )
+                        PlaylistAction(
+                            icon = R.drawable.shuffle,
+                            label = stringResource(R.string.shuffle),
+                            onClick = {
+                                playerConnection.service.getAutomix(playlistId)
+                                playerConnection.playQueue(
+                                    LocalAlbumRadio(albumWithSongs.copy(
+                                        songs = albumWithSongs.songs.shuffled(),
+                                    )),
                                 )
-
-                                // Duration
-                                val totalDuration = wrappedSongs.sumOf { it.item.song.duration.coerceAtLeast(0) }
-                                if (totalDuration > 0) {
-                                    MetadataChip(
-                                        icon = R.drawable.timer,
-                                        text = makeTimeString(totalDuration * 1000L)
+                            },
+                        )
+                        CapsuleCollectionDownloadButton(
+                            actionKey = albumWithSongs.album.id,
+                            collectionName = albumWithSongs.album.title,
+                            state = downloadState,
+                            hasStoredItems = albumWithSongs.songs.any { downloadIndex.containsKey(it.id) },
+                            hasCompletedItems = albumWithSongs.songs.any {
+                                downloadIndex[it.id]?.state == Download.STATE_COMPLETED
+                            },
+                            onDownload = {
+                                val requests = albumWithSongs.songs.map { song ->
+                                    DownloadRequest.Builder(song.id, song.id.toUri())
+                                        .setCustomCacheKey(song.id)
+                                        .setData(song.song.title.toByteArray())
+                                        .build()
+                                }
+                                com.nikhil.yt.playback.enqueueCollectionDownloads(
+                                    context, downloadUtil.downloadManager, downloadIndex, requests,
+                                )
+                            },
+                            onStop = {
+                                com.nikhil.yt.playback.stopCollectionDownloads(
+                                    downloadUtil.downloadManager, albumWithSongs.songs.map { it.id },
+                                )
+                            },
+                            onRemove = {
+                                com.nikhil.yt.playback.removeCollectionDownloads(
+                                    downloadUtil.downloadManager, albumWithSongs.songs.map { it.id },
+                                    preserveManual = false,
+                                )
+                            },
+                        )
+                        PlaylistAction(
+                            icon = R.drawable.more_vert,
+                            label = stringResource(R.string.more),
+                            onClick = {
+                                menuState.show {
+                                    AlbumMenu(
+                                        originalAlbum = Album(albumWithSongs.album, albumWithSongs.artists),
+                                        navController = navController,
+                                        onDismiss = menuState::dismiss,
                                     )
                                 }
-                            }
-                        },
-                        actions = {
-                            Surface(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                                shape = RoundedCornerShape(16.dp),
-                                color = StandardChrome.panel.copy(alpha = 0.92f),
-                                border = BorderStroke(1.dp, StandardChrome.muted.copy(alpha = 0.22f)),
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp),
-                                    horizontalArrangement = Arrangement.SpaceEvenly,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    AlbumAction(
-                                        icon = if (albumWithSongs.album.bookmarkedAt != null) R.drawable.favorite else R.drawable.favorite_border,
-                                        label = stringResource(if (albumWithSongs.album.bookmarkedAt != null) R.string.action_remove_like else R.string.action_like),
-                                        tint = if (albumWithSongs.album.bookmarkedAt != null) StandardChrome.favorite else StandardChrome.muted,
-                                        onClick = { database.query { update(albumWithSongs.album.toggleLike()) } },
-                                    )
-                                    AlbumAction(
-                                        icon = R.drawable.play_outline,
-                                        label = stringResource(R.string.play),
-                                        onClick = {
-                                            playerConnection.service.getAutomix(playlistId)
-                                            playerConnection.playQueue(LocalAlbumRadio(albumWithSongs))
-                                        },
-                                    )
-                                    AlbumAction(
-                                        icon = R.drawable.shuffle,
-                                        label = stringResource(R.string.shuffle),
-                                        onClick = {
-                                            playerConnection.service.getAutomix(playlistId)
-                                            playerConnection.playQueue(LocalAlbumRadio(albumWithSongs.copy(songs = albumWithSongs.songs.shuffled())))
-                                        },
-                                    )
-                                    CapsuleDownloadAction(
-                                         actionKey = albumWithSongs.album.id,
-                                         collectionName = albumWithSongs.album.title,
-                                         state = downloadState,
-                                         hasStoredItems = albumWithSongs.songs.any { downloadIndex.containsKey(it.id) },
-                                         hasCompletedItems = albumWithSongs.songs.any {
-                                             downloadIndex[it.id]?.state == Download.STATE_COMPLETED
-                                         },
-                                         onDownload = {
-                                             val requests = albumWithSongs.songs.map { song ->
-                                                 DownloadRequest.Builder(song.id, song.id.toUri())
-                                                     .setCustomCacheKey(song.id)
-                                                     .setData(song.song.title.toByteArray())
-                                                     .build()
-                                             }
-                                             com.nikhil.yt.playback.enqueueCollectionDownloads(
-                                                 context, downloadUtil.downloadManager, downloadIndex, requests,
-                                             )
-                                         },
-                                         onStop = {
-                                             com.nikhil.yt.playback.stopCollectionDownloads(
-                                                 downloadUtil.downloadManager, albumWithSongs.songs.map { it.id },
-                                             )
-                                         },
-                                         onRemove = {
-                                             com.nikhil.yt.playback.removeCollectionDownloads(
-                                                 downloadUtil.downloadManager, albumWithSongs.songs.map { it.id },
-                                                 preserveManual = false,
-                                             )
-                                         },
-                                         renderAction = { visual, trigger ->
-                                             androidx.compose.material3.IconButton(
-                                                 onClick = trigger,
-                                                 enabled = visual.enabled,
-                                             ) {
-                                                 if (visual.isLoading) {
-                                                     com.nikhil.yt.ui.component.VeluneLoader(size = 24.dp)
-                                                 } else {
-                                                     Icon(
-                                                         painter = painterResource(visual.iconRes),
-                                                         contentDescription = stringResource(visual.labelRes),
-                                                         tint = StandardChrome.muted,
-                                                         modifier = Modifier.size(26.dp),
-                                                     )
-                                                 }
-                                             }
-                                         },
-                                     )
-                                     AlbumAction(
-                                        icon = R.drawable.more_vert,
-                                        label = stringResource(R.string.more),
-                                        onClick = {
-                                            menuState.show {
-                                                AlbumMenu(
-                                                    originalAlbum = Album(albumWithSongs.album, albumWithSongs.artists),
-                                                    navController = navController,
-                                                    onDismiss = menuState::dismiss,
-                                                )
-                                            }
-                                        },
-                                    )
-                                }
-                            }
-                        },
-                    )
+                            },
+                        )
+                    }
                 }
 
                 // Songs List
@@ -509,8 +447,8 @@ fun AlbumScreen(
             )
         } else {
             TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.surface,
-                scrolledContainerColor = MaterialTheme.colorScheme.surface
+                containerColor = surfaceColor,
+                scrolledContainerColor = surfaceColor
             )
         }
 
