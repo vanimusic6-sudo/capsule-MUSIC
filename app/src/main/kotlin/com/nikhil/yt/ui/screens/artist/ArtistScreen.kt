@@ -85,6 +85,7 @@ import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.HideExplicitKey
+import com.nikhil.yt.constants.AppleMotionArtworkEnabledKey
 import com.nikhil.yt.db.entities.ArtistEntity
 import com.nikhil.yt.extensions.togglePlayPause
 import com.nikhil.yt.extensions.toMediaItem
@@ -166,6 +167,7 @@ fun ArtistScreen(
     val librarySongs by viewModel.librarySongs.collectAsState()
     val libraryAlbums by viewModel.libraryAlbums.collectAsState()
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
+    val motionArtworkEnabled by rememberPreference(AppleMotionArtworkEnabledKey, false)
     // Anchor scrolling to the actual artist, not a reused destination
     // composition. Remembered index/offset survives a toolbar/hero recompose
     // without leaking the previous artist's scroll position to this one.
@@ -272,6 +274,7 @@ fun ArtistScreen(
                     loading = remoteLoading && libraryArtist == null,
                     topSafePadding = systemBarsTopPadding,
                     artworkAlpha = { 1f - artworkFade },
+                    motionArtworkEnabled = motionArtworkEnabled && !showLocal && artworkFade < 0.98f,
                     onSubscribe = {
                         val artist = libraryArtist?.artist ?: artistPage?.artist?.let { remote ->
                             ArtistEntity(

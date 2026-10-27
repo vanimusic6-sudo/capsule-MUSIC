@@ -46,6 +46,7 @@ import androidx.navigation.NavController
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.CapsuleLightLyricLineKey
+import com.nikhil.yt.constants.AppleMotionArtworkEnabledKey
 import com.nikhil.yt.constants.CapsulePlayerDesign
 import com.nikhil.yt.constants.ReleaseAppearanceDefaults
 import com.nikhil.yt.constants.SettingsAdvancedModeKey
@@ -102,6 +103,7 @@ fun AppearanceSettings(
     scrollBehavior: TopAppBarScrollBehavior,
 ) {
     val (advancedSettings, _) = rememberPreference(SettingsAdvancedModeKey, false)
+    val (appleMotionEnabled, setAppleMotionEnabled) = rememberPreference(AppleMotionArtworkEnabledKey, false)
     val (playerDesign, onPlayerDesignChange) = rememberEnumPreference(
         CapsulePlayerDesignKey,
         defaultValue = ReleaseAppearanceDefaults.playerDesign,
@@ -720,6 +722,9 @@ fun AppearanceSettings(
                 onPlayerBackgroundChange,
             valueText = {
                 when (it) {
+                    PlayerBackgroundStyle.APPLE_MOTION ->
+                        stringResource(R.string.capsule_apple_motion_background)
+
                     PlayerBackgroundStyle.DEFAULT ->
                         stringResource(R.string.background_theme_color)
 
@@ -745,6 +750,14 @@ fun AppearanceSettings(
                         stringResource(R.string.background_capsule_glow)
                 }
             },
+        )
+
+        SwitchPreference(
+            title = { Text(stringResource(R.string.capsule_apple_motion_original)) },
+            description = stringResource(R.string.capsule_apple_motion_description),
+            icon = { Icon(painterResource(R.drawable.album), contentDescription = null) },
+            checked = appleMotionEnabled,
+            onCheckedChange = setAppleMotionEnabled,
         )
 
         EnumListPreference(

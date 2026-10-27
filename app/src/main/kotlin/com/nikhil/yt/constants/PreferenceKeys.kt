@@ -389,6 +389,7 @@ enum class CapsulePlayerDesign {
 }
 
 enum class PlayerBackgroundStyle {
+    APPLE_MOTION,
     CAPSULE_STAR,
     GLOW_ANIMATED,
     NEBULA,
@@ -440,6 +441,8 @@ val TopSize = stringPreferencesKey("topSize")
 val HistoryDuration = floatPreferencesKey("historyDuration")
 
 val PlayerBackgroundStyleKey = stringPreferencesKey("playerBackgroundStyle")
+/** Explicit opt-in for third-party decorative editorial motion video. */
+val AppleMotionArtworkEnabledKey = booleanPreferencesKey("appleMotionArtworkEnabled")
 val CapsulePlayerDesignKey = stringPreferencesKey("capsulePlayerDesign")
 val CapsuleLightLyricLineKey = booleanPreferencesKey("capsuleLightLyricLine")
 /** Enables long-press block reordering only on the Capsule Light full player. */

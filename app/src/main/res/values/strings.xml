@@ -96,6 +96,9 @@
     <string name="downloading">Downloading</string>
     <string name="remove_download">Remove download</string>
     <string name="capsule_online_playlist_download_unavailable">Could not load tracks from this playlist. Try again later.</string>
+    <string name="capsule_apple_motion_background">Motion Artwork (Apple-style)</string>
+    <string name="capsule_apple_motion_original">Original Apple Music motion artwork</string>
+    <string name="capsule_apple_motion_description">Experimental: animations on artist pages and in the Motion Artwork player background, when available. Uses network and battery; otherwise shows Capsule's animated color flow.</string>
     <string name="capsule_download_removing">Removing download…</string>
     <string name="capsule_download_stopping">Stopping…</string>
     <string name="capsule_download_remaining">Download remaining tracks</string>
