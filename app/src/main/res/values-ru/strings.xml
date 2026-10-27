@@ -79,9 +79,6 @@
     <string name="downloading">Скачивание</string>
     <string name="remove_download">Убрать из скачанных</string>
     <string name="capsule_online_playlist_download_unavailable">Не удалось получить треки плейлиста. Попробуйте ещё раз.</string>
-    <string name="capsule_apple_motion_background">Motion Artwork (Apple Music)</string>
-    <string name="capsule_apple_motion_original">Оригинальные анимации Apple Music</string>
-    <string name="capsule_apple_motion_description">Экспериментально: анимации на страницах исполнителей и в фоне плеера Motion Artwork, когда они доступны. Дополнительная нагрузка на сеть и батарею; иначе отображается плавный цветовой фон Capsule.</string>
     <string name="capsule_download_removing">Удаление загрузки…</string>
     <string name="capsule_download_stopping">Остановка…</string>
     <string name="capsule_download_remaining">Скачать оставшиеся</string>

@@ -25,15 +25,6 @@ fun PlayerBackground(
     when (playerBackground) {
         PlayerBackgroundStyle.DEFAULT -> Unit
 
-        PlayerBackgroundStyle.APPLE_MOTION ->
-            CapsuleProceduralBackground(
-                effect = CapsuleBackgroundEffect.COLOR_FLOW,
-                colors = gradientColors,
-                modifier = modifier,
-                animated = animated,
-                sharedAnimationTime = sharedAnimationTime,
-            )
-
         PlayerBackgroundStyle.CAPSULE_GLOW ->
             CapsuleProceduralBackground(
                 effect = CapsuleBackgroundEffect.CAPSULE_GLOW,

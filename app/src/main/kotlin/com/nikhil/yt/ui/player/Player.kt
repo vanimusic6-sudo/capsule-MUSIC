@@ -60,8 +60,6 @@ import androidx.navigation.NavController
 import com.kyant.backdrop.Backdrop
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.constants.CapsulePlayerDesign
-import com.nikhil.yt.constants.AppleMotionArtworkEnabledKey
-import com.nikhil.yt.ui.motionart.AppleMotionSurface
 import com.nikhil.yt.constants.CapsulePlayerDesignKey
 import com.nikhil.yt.constants.ReleaseAppearanceDefaults
 import com.nikhil.yt.constants.DarkModeKey
@@ -148,7 +146,6 @@ fun BottomSheetPlayer(
             key = PlayerBackgroundStyleKey,
             defaultValue = ReleaseAppearanceDefaults.playerBackground,
         )
-    val appleMotionEnabled by rememberPreference(AppleMotionArtworkEnabledKey, false)
     val miniPlayerBackground by
         rememberEnumPreference(
             MiniPlayerBackgroundStyleKey,
@@ -333,7 +330,6 @@ fun BottomSheetPlayer(
     val backdropNeedsClock =
         when (playerBackground) {
             PlayerBackgroundStyle.GLOW_ANIMATED,
-            PlayerBackgroundStyle.APPLE_MOTION,
             PlayerBackgroundStyle.CAPSULE_STAR,
             PlayerBackgroundStyle.NEBULA,
             -> true
@@ -439,19 +435,6 @@ fun BottomSheetPlayer(
                         animated = backdropTimelineRunning,
                         sharedAnimationTime = sharedBackdropAnimationTime,
                     )
-                    if (playerBackground == PlayerBackgroundStyle.APPLE_MOTION) {
-                        AppleMotionSurface(
-                            artist = enrichedMetadata?.artists?.firstOrNull()?.name.orEmpty(),
-                            album = enrichedMetadata?.album?.title,
-                            enabled = appleMotionEnabled && state.isExpandedOrExpanding &&
-                                !showInlineLyrics && onScreen && isPlaying &&
-                                playbackState == Player.STATE_READY &&
-                                !videoPlaybackState.presentingVideo &&
-                                !videoPlaybackState.needsSurface,
-                            modifier = Modifier.fillMaxSize(),
-                            dimBackground = true,
-                        )
-                    }
                 }
             }
         },

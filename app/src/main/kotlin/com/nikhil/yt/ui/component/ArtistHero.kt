@@ -43,7 +43,6 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import com.nikhil.yt.R
-import com.nikhil.yt.ui.motionart.AppleMotionSurface
 
 internal val ArtistHeroMaxWidth = 450.dp
 internal const val ArtistHeroArtworkHeightFactor = 1.25f
@@ -102,7 +101,6 @@ internal fun ArtistHero(
     loading: Boolean = false,
     topSafePadding: Dp = 0.dp,
     artworkAlpha: () -> Float = { 1f },
-    motionArtworkEnabled: Boolean = false,
 ) {
     val loadingLabel = stringResource(R.string.loading)
 
@@ -135,11 +133,6 @@ internal fun ArtistHero(
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     alignment = BiasAlignment(horizontalBias = -0.1f, verticalBias = -1f),
-                    modifier = Modifier.fillMaxSize(),
-                )
-                AppleMotionSurface(
-                    artist = name,
-                    enabled = motionArtworkEnabled && !loading,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
