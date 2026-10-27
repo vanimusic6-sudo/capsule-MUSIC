@@ -38,6 +38,17 @@ internal object CollectionDownloadRemovalUi {
     fun finish(key: String) { deleting.remove(key) }
 }
 
+/**
+ * Immediate visual acknowledgement shared by playlist header and More.
+ * Backend late-ADD handling is independent from this UI state.
+ */
+internal object CollectionDownloadStopUi {
+    private val stopping = mutableStateMapOf<String, Boolean>()
+    fun isStopping(key: String): Boolean = stopping[key] == true
+    fun request(key: String) { stopping[key] = true }
+    fun finish(key: String) { stopping.remove(key) }
+}
+
 /** The same action status can be rendered as either a menu row or a header button. */
 internal data class CapsuleDownloadVisual(
     val labelRes: Int,
@@ -73,6 +84,13 @@ internal fun CapsuleDownloadAction(
         state == Download.STATE_QUEUED || state == Download.STATE_RESTARTING
     val completed = state == Download.STATE_COMPLETED
     val removing = state == Download.STATE_REMOVING
+    val stopRequested = isCollection && CollectionDownloadStopUi.isStopping(actionKey)
+    LaunchedEffect(actionKey, stopRequested, active) {
+        if (stopRequested && !active) {
+            delay(120L)
+            CollectionDownloadStopUi.finish(actionKey)
+        }
+    }
     val removalRequested = isCollection && CollectionDownloadRemovalUi.isRemoving(actionKey)
     val deleting = removing || removalRequested
     LaunchedEffect(actionKey, removalRequested, hasStoredItems, active, completed, removing) {
@@ -94,7 +112,7 @@ internal fun CapsuleDownloadAction(
             }
         }
     }
-    val currentlyDownloading = !deleting && (active || pendingStart)
+    val currentlyDownloading = !deleting && !stopRequested && (active || pendingStart)
     val idleDownloadTitle = when {
         hasCompletedItems && !completed -> R.string.capsule_download_remaining
         hasStoredItems && !completed -> R.string.capsule_download_resume_partial
@@ -106,6 +124,7 @@ internal fun CapsuleDownloadAction(
 
     fun requestRemoval() {
         pendingStart = false
+        if (isCollection) CollectionDownloadStopUi.finish(actionKey)
         if (isCollection) CollectionDownloadRemovalUi.request(actionKey)
         onRemove()
     }
@@ -136,8 +155,10 @@ internal fun CapsuleDownloadAction(
                         showChoices = false
                         if (choiceOpenedDuringDownload) {
                             pendingStart = false
+                            if (isCollection) CollectionDownloadStopUi.request(actionKey)
                             onStop()
                         } else {
+                            if (isCollection) CollectionDownloadStopUi.finish(actionKey)
                             pendingStart = true
                             onDownload()
                         }
@@ -149,7 +170,7 @@ internal fun CapsuleDownloadAction(
                         Text(
                             stringResource(
                                 if (choiceOpenedDuringDownload) R.string.capsule_download_stop_delete
-                                else R.string.remove_download,
+                                else R.string.delete,
                             ).let { if (isCollection) formatCollectionDownloadChoiceLabel(it) else it },
                             color = MaterialTheme.colorScheme.error,
                         )
@@ -177,7 +198,7 @@ internal fun CapsuleDownloadAction(
     if (confirmRemoval) {
         DefaultDialog(
             onDismiss = { confirmRemoval = false },
-            title = { Text(stringResource(R.string.remove_download)) },
+            title = { Text(stringResource(R.string.delete)) },
             content = {
                 Text(
                     if (collectionName.isNullOrBlank()) {
@@ -196,7 +217,7 @@ internal fun CapsuleDownloadAction(
                 TextButton(onClick = {
                     confirmRemoval = false
                     requestRemoval()
-                }) { Text(stringResource(R.string.remove_download), color = MaterialTheme.colorScheme.error) }
+                }) { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) }
             },
         )
     }
@@ -204,13 +225,15 @@ internal fun CapsuleDownloadAction(
     val visual = CapsuleDownloadVisual(
         labelRes = when {
             deleting -> R.string.capsule_download_removing
-            completed -> R.string.remove_download
+            stopRequested -> R.string.capsule_download_stopping
+            completed -> R.string.delete
             currentlyDownloading -> R.string.downloading
             else -> idleDownloadTitle
         },
         iconRes = if (completed && !deleting) R.drawable.offline else R.drawable.download,
-        isLoading = currentlyDownloading || deleting,
-        enabled = !deleting && (enabled || currentlyDownloading || completed || hasStoredItems),
+        isLoading = currentlyDownloading || deleting || stopRequested,
+        enabled = !deleting && !stopRequested &&
+            (enabled || currentlyDownloading || completed || hasStoredItems),
     )
     val onActionClick: () -> Unit = {
         when {
@@ -227,6 +250,7 @@ internal fun CapsuleDownloadAction(
                 showChoices = true
             }
             else -> {
+                if (isCollection) CollectionDownloadStopUi.finish(actionKey)
                 pendingStart = true
                 onDownload()
             }

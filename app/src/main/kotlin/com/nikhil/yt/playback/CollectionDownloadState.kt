@@ -1,6 +1,9 @@
 package com.nikhil.yt.playback
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
@@ -20,13 +23,94 @@ internal fun collectionDownloadState(songIds: Collection<String>, downloads: Map
     }
 }
 
-/** Stop preserves partial bytes for resume. Media3 leaves completed entries complete, even in a completion race. */
-internal fun stopCollectionDownloads(manager: androidx.media3.exoplayer.offline.DownloadManager, songIds: Collection<String>, preserveManual: Boolean = true) {
-    val independent = if (preserveManual) manager.currentDownloads.filter { it.request.isManualDownload() }.map { it.request.id }.toSet() else emptySet()
-    songIds.distinct().filterNot { it in independent }.forEach { manager.setStopReason(it, COLLECTION_STOP_REASON_USER) }
+internal const val COLLECTION_STOP_REASON_USER = 1
+
+/**
+ * Media3 posts the first collection ADD via DownloadService. When Stop is tapped
+ * before that ADD reaches the index, setStopReason(id) is a no-op.
+ *
+ * Retain only the user-requested stop until the corresponding ADD is admitted,
+ * then apply the stop on its first callback. One lightweight main-thread listener
+ * for the process, no polling, no delay on audio downloads.
+ */
+internal object CollectionDownloadStopAdmission {
+    private const val ADMISSION_GRACE_MS = 45_000L
+    private val handler = Handler(Looper.getMainLooper())
+    private var manager: androidx.media3.exoplayer.offline.DownloadManager? = null
+    private val pending = mutableMapOf<String, Long>()
+
+    private val expire = object : Runnable {
+        override fun run() {
+            val now = SystemClock.uptimeMillis()
+            pending.entries.removeAll { it.value <= now }
+            scheduleExpiry()
+        }
+    }
+
+    private val listener = object : androidx.media3.exoplayer.offline.DownloadManager.Listener {
+        override fun onDownloadChanged(
+            downloadManager: androidx.media3.exoplayer.offline.DownloadManager,
+            download: Download,
+            finalException: Exception?,
+        ) {
+            val id = download.request.id
+            if (id !in pending) return
+            if (download.request.isManualDownload() ||
+                download.state == Download.STATE_COMPLETED ||
+                download.state == Download.STATE_FAILED ||
+                download.state == Download.STATE_REMOVING ||
+                (download.state == Download.STATE_STOPPED &&
+                    download.stopReason == COLLECTION_STOP_REASON_USER)
+            ) {
+                pending.remove(id)
+                scheduleExpiry()
+            } else {
+                downloadManager.setStopReason(id, COLLECTION_STOP_REASON_USER)
+            }
+        }
+
+        override fun onDownloadRemoved(
+            downloadManager: androidx.media3.exoplayer.offline.DownloadManager,
+            download: Download,
+        ) {
+            pending.remove(download.request.id)
+            scheduleExpiry()
+        }
+    }
+
+    private fun scheduleExpiry() {
+        handler.removeCallbacks(expire)
+        val soonest = pending.values.minOrNull() ?: return
+        handler.postDelayed(expire, (soonest - SystemClock.uptimeMillis()).coerceAtLeast(1L))
+    }
+
+    fun request(target: androidx.media3.exoplayer.offline.DownloadManager, ids: Collection<String>) {
+        if (manager !== target) {
+            manager?.removeListener(listener)
+            pending.clear()
+            manager = target
+            target.addListener(listener)
+        }
+        val deadline = SystemClock.uptimeMillis() + ADMISSION_GRACE_MS
+        ids.forEach { pending[it] = deadline }
+        scheduleExpiry()
+    }
+
+    fun clear(target: androidx.media3.exoplayer.offline.DownloadManager, ids: Collection<String>) {
+        if (manager !== target) return
+        ids.forEach(pending::remove)
+        scheduleExpiry()
+    }
 }
 
-internal const val COLLECTION_STOP_REASON_USER = 1
+/** Stop preserves partial bytes even if the first service ADD is not indexed yet. */
+internal fun stopCollectionDownloads(manager: androidx.media3.exoplayer.offline.DownloadManager, songIds: Collection<String>, preserveManual: Boolean = true) {
+    val independent = if (preserveManual) manager.currentDownloads
+        .filter { it.request.isManualDownload() }.map { it.request.id }.toSet() else emptySet()
+    val ids = songIds.distinct().filterNot { it in independent }
+    CollectionDownloadStopAdmission.request(manager, ids)
+    ids.forEach { manager.setStopReason(it, COLLECTION_STOP_REASON_USER) }
+}
 
 /**
  * Media3 getCurrentDownloads() excludes terminal completed entries: those
@@ -91,6 +175,7 @@ internal fun enqueueCollectionDownloads(
     indexed: Map<String, Download>,
     requests: List<DownloadRequest>,
 ) {
+    CollectionDownloadStopAdmission.clear(manager, requests.map { it.id })
     var serviceStarted = false
     val active = manager.currentDownloads.associateBy { it.request.id }
     requests.distinctBy { it.id }.forEach { request ->

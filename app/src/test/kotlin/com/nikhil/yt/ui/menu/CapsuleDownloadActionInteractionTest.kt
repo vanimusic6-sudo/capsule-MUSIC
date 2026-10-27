@@ -32,7 +32,7 @@ class CapsuleDownloadActionInteractionTest {
 
     @Test fun completedDownloadRequiresOneConfirmationAndActuallyInvokesRemove() {
         var removed = 0
-        val label = rule.activity.getString(R.string.remove_download)
+        val label = rule.activity.getString(R.string.delete)
         rule.setContent {
             MaterialTheme {
                 CapsuleDownloadAction(
@@ -54,7 +54,7 @@ class CapsuleDownloadActionInteractionTest {
         var removed = 0
         var resumed = 0
         val downloadLabel = rule.activity.getString(R.string.capsule_download_resume_partial)
-        val removeLabel = rule.activity.getString(R.string.remove_download)
+        val removeLabel = rule.activity.getString(R.string.delete)
         rule.setContent {
             MaterialTheme {
                 CapsuleDownloadAction(
@@ -215,11 +215,11 @@ class CapsuleDownloadActionInteractionTest {
                 )
             }
         }
-        rule.onNodeWithText(rule.activity.getString(R.string.remove_download)).performClick()
+        rule.onNodeWithText(rule.activity.getString(R.string.delete)).performClick()
         rule.runOnIdle { assertEquals(1, removed) }
     }
 
-    @Test fun normalSongMenuStillShowsStopOrKeepOptions() {
+    @Test fun individualSongMenuDeletesOnTapWithoutStopChooser() {
         var removed = 0
         rule.setContent {
             MaterialTheme {
@@ -228,16 +228,58 @@ class CapsuleDownloadActionInteractionTest {
                     onDownload = {},
                     onStop = {},
                     onRemove = { removed++ },
-                    instantRemove = false,
+                    instantRemove = true,
                     actionKey = "not-player",
                     isCollection = false,
                 )
             }
         }
         rule.onNodeWithText(rule.activity.getString(R.string.downloading)).performClick()
-        rule.runOnIdle { assertEquals(0, removed) }
-        rule.onNodeWithText(rule.activity.getString(R.string.capsule_download_stop_delete)).performClick()
         rule.runOnIdle { assertEquals(1, removed) }
+        assertTrue(rule.onAllNodesWithText(rule.activity.getString(R.string.capsule_download_pause_keep))
+            .fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test fun singleTrackFastSecondTapWorksBeforeMedia3IndexUpdates() {
+        var starts = 0
+        var removes = 0
+        rule.setContent {
+            MaterialTheme {
+                CapsuleDownloadAction(
+                    state = Download.STATE_STOPPED,
+                    actionKey = "single-early-second-tap",
+                    instantRemove = true,
+                    isCollection = false,
+                    onDownload = { starts++ },
+                    onStop = {},
+                    onRemove = { removes++ },
+                )
+            }
+        }
+        rule.onNodeWithText(rule.activity.getString(R.string.action_download)).performClick()
+        rule.onNodeWithText(rule.activity.getString(R.string.downloading)).performClick()
+        rule.runOnIdle { assertEquals(1, starts); assertEquals(1, removes) }
+    }
+
+    @Test fun stopOnFirstFrameIsAcknowledgedBeforeMedia3HasAnyEntry() {
+        var started = 0
+        var stopped = 0
+        rule.setContent {
+            MaterialTheme {
+                CapsuleDownloadAction(
+                    state = Download.STATE_STOPPED,
+                    actionKey = "batch-early-stop-ui",
+                    collectionName = "Playlist",
+                    onDownload = { started++ },
+                    onStop = { stopped++ },
+                    onRemove = {},
+                )
+            }
+        }
+        rule.onNodeWithText(rule.activity.getString(R.string.action_download)).performClick()
+        rule.onNodeWithText(rule.activity.getString(R.string.downloading)).performClick()
+        rule.onNodeWithText(rule.activity.getString(R.string.capsule_download_pause_keep)).performClick()
+        rule.runOnIdle { assertEquals(1, started); assertEquals(1, stopped) }
     }
 
     @Test fun collectionChoiceParenthesisIsAlwaysOnItsOwnLine() {
@@ -280,7 +322,7 @@ class CapsuleDownloadActionInteractionTest {
     @Test fun removingCollectionHidesRedRemoveEvenWhileMedia3IndexIsStale() {
         var finished by androidx.compose.runtime.mutableStateOf(false)
         var deletes = 0
-        val removeLabel = rule.activity.getString(R.string.remove_download)
+        val removeLabel = rule.activity.getString(R.string.delete)
         rule.setContent {
             MaterialTheme {
                 CapsuleDownloadAction(
@@ -302,7 +344,10 @@ class CapsuleDownloadActionInteractionTest {
         rule.onNodeWithText(rule.activity.getString(R.string.capsule_download_removing)).assertExists()
         rule.runOnIdle { finished = true }
         rule.waitForIdle()
-        rule.onNodeWithText(rule.activity.getString(R.string.action_download)).assertExists()
+        rule.waitUntil(3_000L) {
+            rule.onAllNodesWithText(rule.activity.getString(R.string.action_download))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
     }
 
     @Test fun sharedPendingRemovePreventsOldRedMenuWhenOpeningAnotherSurface() {
@@ -331,7 +376,7 @@ class CapsuleDownloadActionInteractionTest {
                 }
             }
         }
-        val remove = rule.activity.getString(R.string.remove_download)
+        val remove = rule.activity.getString(R.string.delete)
         rule.onNodeWithText(remove).performClick()
         clickLastMatching(remove)
         rule.runOnIdle { assertEquals(1, deleted) }

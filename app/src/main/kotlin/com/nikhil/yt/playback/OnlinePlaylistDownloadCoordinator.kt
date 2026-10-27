@@ -86,6 +86,11 @@ internal object OnlinePlaylistDownloadCoordinator {
         // Record current IDs immediately so Stop/Remove is valid even before
         // the network resolves further continuation pages.
         val previouslyKnown = rememberedIds(context, playlistId)
+        // A resume after immediate Stop must clear pending stop intents even
+        // when the playlist card has no preview songs yet.
+        CollectionDownloadStopAdmission.clear(
+            downloadManager, (previouslyKnown + session.ids).distinct(),
+        )
         knownMembership[playlistId] = (previouslyKnown + session.ids).distinct()
         appSaveMembership(context, playlistId, knownMembership[playlistId].orEmpty())
         sessions[playlistId] = session

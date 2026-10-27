@@ -4,8 +4,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadService
-import com.nikhil.yt.LocalDownloadUtil
-import com.nikhil.yt.playback.COLLECTION_STOP_REASON_USER
 import com.nikhil.yt.playback.ExoDownloadService
 import com.nikhil.yt.playback.enqueuePriorityAudioDownload
 import com.nikhil.yt.playback.visibleState
@@ -25,10 +23,9 @@ internal fun YouTubeDownloadMenuItems(
     onDismiss: () -> Unit,
     keepOpenOnDownload: Boolean = false,
     showActiveStopAction: Boolean = true,
-    instantRemove: Boolean = false,
+    instantRemove: Boolean = true,
 ) {
     val context = LocalContext.current
-    val manager = LocalDownloadUtil.current.downloadManager
     CapsuleDownloadAction(
         actionKey = mediaId,
         collectionName = trackTitle,
@@ -51,16 +48,7 @@ internal fun YouTubeDownloadMenuItems(
                 )
             }
         },
-        onStop = {
-            // Local playlists stop with a nonzero stop reason; do the same
-            // for individual tracks, preserving partial cache for resume.
-            manager.setStopReason(mediaId, COLLECTION_STOP_REASON_USER)
-            // A newly dispatched ADD may not yet be present in the manager.
-            DownloadService.sendSetStopReason(
-                context, ExoDownloadService::class.java,
-                mediaId, COLLECTION_STOP_REASON_USER, false,
-            )
-        },
+        onStop = {}, // Single-track taps only start or remove, never open a stop dialog.
         onRemove = {
             DownloadService.sendRemoveDownload(
                 context, ExoDownloadService::class.java, mediaId, false,
