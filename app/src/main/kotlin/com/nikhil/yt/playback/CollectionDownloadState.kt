@@ -111,6 +111,15 @@ internal object CollectionDownloadStopAdmission {
         ids.forEach(pending::remove)
         scheduleExpiry()
     }
+
+    /**
+     * A NEW explicit one-track start after Stop overrides the stale Stop
+     * intent for that track. Starts queued before Stop are unaffected because
+     * request() then runs after the enqueue and recreates the pending entry.
+     */
+    fun clearForExplicitStart(id: String) {
+        if (pending.remove(id) != null) scheduleExpiry()
+    }
 }
 
 /**
@@ -145,7 +154,10 @@ internal fun removeCollectionDownloads(
             .filter { it.request.isManualDownload() }
             .map { it.request.id }.toSet()
     } else emptySet()
-    songIds.distinct().filterNot { it in protected }.forEach(manager::removeDownload)
+    val ids = songIds.distinct().filterNot { it in protected }
+    // Deletion supersedes Stop and must not poison a subsequent fresh ADD.
+    CollectionDownloadStopAdmission.clear(manager, ids)
+    ids.forEach(manager::removeDownload)
 }
 
 /**

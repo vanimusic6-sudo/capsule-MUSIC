@@ -31,6 +31,9 @@ internal fun DownloadRequest.withManualPriority(): DownloadRequest = run {
 
 /** Single-track actions opt in; collection callers use the same service with ordinary metadata. */
 internal fun enqueuePriorityAudioDownload(context: Context, service: Class<out DownloadService>, request: DownloadRequest, foreground: Boolean) {
+    // A direct single-track action is a fresh user intent. Do not let a
+    // previous playlist Stop intercept the new request during service startup.
+    CollectionDownloadStopAdmission.clearForExplicitStart(request.id)
     DownloadService.sendAddDownload(context, service, request.withManualPriority(), foreground)
 }
 
