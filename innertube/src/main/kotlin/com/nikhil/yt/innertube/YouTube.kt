@@ -502,52 +502,69 @@ object YouTube {
     }
 
     suspend fun playlist(playlistId: String): Result<PlaylistPage> = runCatchingCancellable {
+        // A playlist shared by another YouTube user may arrive in a
+        // single-column renderer, with a musicDetailHeader and no custom
+        // thumbnail. None of those presentation differences mean it has no
+        // downloadable tracks.
+        val normalizedId = playlistId.removePrefix("VL")
         val response = innerTube.browse(
             client = WEB_REMIX,
-            browseId = "VL$playlistId",
-            setLogin = true
+            browseId = "VL$normalizedId",
+            setLogin = true,
         ).body<BrowseResponse>()
-        val base = response.contents?.twoColumnBrowseResultsRenderer?.tabs?.firstOrNull()?.tabRenderer?.content?.sectionListRenderer?.contents?.firstOrNull()
-        val header = base?.musicResponsiveHeaderRenderer ?: base?.musicEditablePlaylistDetailHeaderRenderer?.header?.musicResponsiveHeaderRenderer
-        if (header == null) throw IllegalStateException("PLAYLIST_PRIVATE")
-
-        val title = header.title.runs?.firstOrNull()?.text ?: throw IllegalStateException("PLAYLIST_PRIVATE")
-
-        val rawThumbnail = header.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails?.lastOrNull()?.url?.toHighResThumbnail()
+        val main = response.contents?.twoColumnBrowseResultsRenderer?.tabs?.firstOrNull()
+            ?.tabRenderer?.content?.sectionListRenderer
+            ?: response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
+                ?.tabRenderer?.content?.sectionListRenderer
+        val mainSections = main?.contents.orEmpty()
+        val secondary = response.contents?.twoColumnBrowseResultsRenderer?.secondaryContents
+            ?.sectionListRenderer
+        val secondarySections = secondary?.contents.orEmpty()
+        val header = (mainSections + secondarySections)
+            .firstNotNullOfOrNull { section ->
+                section.musicResponsiveHeaderRenderer
+                    ?: section.musicEditablePlaylistDetailHeaderRenderer?.header?.musicResponsiveHeaderRenderer
+            }
+        val fallbackHeader = response.header?.musicDetailHeaderRenderer
+            ?: response.header?.musicEditablePlaylistDetailHeaderRenderer?.header?.musicDetailHeaderRenderer
+        val title = header?.title?.runs?.firstOrNull()?.text
+            ?: fallbackHeader?.title?.runs?.firstOrNull()?.text
+            ?: response.header?.musicHeaderRenderer?.title?.runs?.firstOrNull()?.text
             ?: throw IllegalStateException("PLAYLIST_PRIVATE")
-
-        val thumbnail = rawThumbnail.toHighResThumbnail()
-
-
-        val editable = base?.musicEditablePlaylistDetailHeaderRenderer != null
-
+        val playlistShelf = (secondarySections + mainSections)
+            .firstNotNullOfOrNull { it.musicPlaylistShelfRenderer }
+        val musicShelf = if (playlistShelf == null) {
+            (secondarySections + mainSections).firstNotNullOfOrNull { it.musicShelfRenderer }
+        } else null
+        val tracks = playlistShelf?.contents?.getItems()
+            ?: musicShelf?.contents?.getItems().orEmpty()
+        val thumbnail = header?.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl()
+            ?: fallbackHeader?.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl()
+            ?: response.header?.musicHeaderRenderer?.thumbnail?.thumbnails?.lastOrNull()?.url
+        val editable = (mainSections + secondarySections)
+            .any { it.musicEditablePlaylistDetailHeaderRenderer != null }
         PlaylistPage(
             playlist = PlaylistItem(
-                id = playlistId,
+                id = normalizedId,
                 title = title,
-                author = header.straplineTextOne?.runs?.firstOrNull()?.let {
-                    Artist(
-                        name = it.text,
-                        id = it.navigationEndpoint?.browseEndpoint?.browseId
-                    )
+                author = header?.straplineTextOne?.runs?.firstOrNull()?.let {
+                    Artist(name = it.text, id = it.navigationEndpoint?.browseEndpoint?.browseId)
                 },
-                songCountText = header.secondSubtitle?.runs?.firstOrNull()?.text,
-                thumbnail = thumbnail,
+                songCountText = header?.secondSubtitle?.runs?.firstOrNull()?.text,
+                thumbnail = thumbnail?.toHighResThumbnail(),
                 playEndpoint = null,
-                shuffleEndpoint = header.buttons.lastOrNull()?.menuRenderer?.items?.firstOrNull()?.menuNavigationItemRenderer?.navigationEndpoint?.watchPlaylistEndpoint,
-                radioEndpoint = header.buttons.getOrNull(2)?.menuRenderer?.items?.find {
-                    it.menuNavigationItemRenderer?.icon?.iconType == "MIX"
-                }?.menuNavigationItemRenderer?.navigationEndpoint?.watchPlaylistEndpoint,
-                isEditable = editable
+                shuffleEndpoint = header?.buttons?.lastOrNull()?.menuRenderer?.items
+                    ?.firstOrNull()?.menuNavigationItemRenderer?.navigationEndpoint?.watchPlaylistEndpoint,
+                radioEndpoint = header?.buttons?.getOrNull(2)?.menuRenderer?.items
+                    ?.find { it.menuNavigationItemRenderer?.icon?.iconType == "MIX" }
+                    ?.menuNavigationItemRenderer?.navigationEndpoint?.watchPlaylistEndpoint,
+                isEditable = editable,
             ),
-            songs = response.contents?.twoColumnBrowseResultsRenderer?.secondaryContents?.sectionListRenderer
-                ?.contents?.firstOrNull()?.musicPlaylistShelfRenderer?.contents?.getItems()?.mapNotNull {
-                    PlaylistPage.fromMusicResponsiveListItemRenderer(it)
-                } ?: emptyList(),
-            songsContinuation = response.contents?.twoColumnBrowseResultsRenderer?.secondaryContents?.sectionListRenderer
-                ?.contents?.firstOrNull()?.musicPlaylistShelfRenderer?.contents?.getContinuation(),
-            continuation = response.contents?.twoColumnBrowseResultsRenderer?.secondaryContents?.sectionListRenderer
-                ?.continuations?.getContinuation()
+            songs = tracks.mapNotNull { PlaylistPage.fromMusicResponsiveListItemRenderer(it) },
+            songsContinuation = playlistShelf?.contents?.getContinuation()
+                ?: musicShelf?.contents?.getContinuation(),
+            continuation = secondary?.continuations?.getContinuation()
+                ?: main?.continuations?.getContinuation(),
         )
     }
 
