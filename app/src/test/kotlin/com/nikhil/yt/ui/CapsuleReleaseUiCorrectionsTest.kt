@@ -38,7 +38,7 @@ class CapsuleReleaseUiCorrectionsTest {
     @Test fun downloadsShareLocalPlaylistSemanticsAndNeverCloseMoreOnTap() {
         val shared = source("ui/menu/CapsuleDownloadAction.kt")
         assertTrue(shared.contains("VeluneLoader(size = 24.dp"))
-        assertTrue(shared.contains("completed -> confirmRemoval = true"))
+        assertTrue(shared.contains("completed && !stopRequested -> confirmRemoval = true"))
         assertTrue(shared.contains("currentlyDownloading -> {"))
         assertTrue(shared.contains("capsule_download_stop_delete"))
         assertTrue(shared.contains("CollectionDownloadStopUi.request(actionKey)"))
