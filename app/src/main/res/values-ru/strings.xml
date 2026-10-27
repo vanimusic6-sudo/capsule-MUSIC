@@ -79,6 +79,7 @@
     <string name="downloading">Скачивание</string>
     <string name="remove_download">Убрать из скачанных</string>
     <string name="capsule_online_playlist_download_unavailable">Не удалось получить треки плейлиста. Попробуйте ещё раз.</string>
+    <string name="capsule_download_removing">Удаление загрузки…</string>
     <string name="capsule_download_remaining">Скачать оставшиеся</string>
     <string name="capsule_download_resume_partial">Продолжить загрузку</string>
     <string name="capsule_download_pause_keep">Остановить (сохранить скачанное)</string>

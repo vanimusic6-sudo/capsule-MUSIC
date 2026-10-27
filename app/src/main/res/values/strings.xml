@@ -96,6 +96,7 @@
     <string name="downloading">Downloading</string>
     <string name="remove_download">Remove download</string>
     <string name="capsule_online_playlist_download_unavailable">Could not load tracks from this playlist. Try again later.</string>
+    <string name="capsule_download_removing">Removing download…</string>
     <string name="capsule_download_remaining">Download remaining tracks</string>
     <string name="capsule_download_resume_partial">Resume download</string>
     <string name="capsule_download_pause_keep">Stop download (keep progress)</string>
