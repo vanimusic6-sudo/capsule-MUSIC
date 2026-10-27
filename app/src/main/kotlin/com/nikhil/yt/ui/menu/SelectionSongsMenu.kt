@@ -330,6 +330,7 @@ fun SelectionSongMenu(
                 actionKey = songSelection.joinToString(separator = ",") { it.id },
                 state = downloadState,
                 hasStoredItems = songSelection.map { it.id }.any { downloadIndex.containsKey(it) },
+                hasCompletedItems = songSelection.map { it.id }.any { downloadIndex[it]?.state == Download.STATE_COMPLETED },
                 enabled = songSelection.isNotEmpty(),
                 onDownload = {
                     val requests = songSelection.map { song ->
@@ -615,6 +616,7 @@ fun SelectionMediaMetadataMenu(
                 actionKey = songSelection.joinToString(separator = ",") { it.id },
                 state = downloadState,
                 hasStoredItems = songSelection.map { it.id }.any { downloadIndex.containsKey(it) },
+                hasCompletedItems = songSelection.map { it.id }.any { downloadIndex[it]?.state == Download.STATE_COMPLETED },
                 enabled = songSelection.isNotEmpty(),
                 onDownload = {
                     val requests = songSelection.map { song ->
