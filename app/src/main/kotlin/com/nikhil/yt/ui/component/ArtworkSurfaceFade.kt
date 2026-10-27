@@ -14,6 +14,7 @@ internal fun ArtworkSurfaceFade(
     modifier: Modifier = Modifier,
     portrait: Boolean = false,
     topScrim: Boolean = true,
+    softPortrait: Boolean = false,
 ) {
     Box(modifier.drawWithCache {
         val navigationScrim = if (!topScrim) null else if (portrait) Brush.verticalGradient(
@@ -27,7 +28,22 @@ internal fun ArtworkSurfaceFade(
             0.25f to Color.Transparent,
             1f to Color.Transparent,
         )
-        val surfaceFade = if (portrait) Brush.verticalGradient(
+        // Albums gently surrender colour over most of the portrait instead
+        // of holding the image at full contrast until its last third.
+        // This is opt-in: artist heroes keep their existing gradient.
+        val surfaceFade = if (portrait && softPortrait) Brush.verticalGradient(
+            0f to Color.Transparent,
+            0.14f to Color.Transparent,
+            0.25f to background.copy(alpha = 0.04f),
+            0.35f to background.copy(alpha = 0.11f),
+            0.45f to background.copy(alpha = 0.22f),
+            0.55f to background.copy(alpha = 0.38f),
+            0.65f to background.copy(alpha = 0.56f),
+            0.75f to background.copy(alpha = 0.74f),
+            0.85f to background.copy(alpha = 0.89f),
+            0.93f to background.copy(alpha = 0.97f),
+            1f to background,
+        ) else if (portrait) Brush.verticalGradient(
             // A matte veil in the page colour, like the upper scrim: retain photo detail
             // while progressively replacing it with the surface, without filtering pixels.
             0f to background.copy(alpha = 0f),

@@ -190,6 +190,75 @@ internal fun CapsuleDetailActionCluster(
     }
 }
 
+/**
+ * Album-only control layout. Both the album facts and all five actions belong
+ * to ONE rounded capsule with ONE outer outline; unlike the separate stepped
+ * playlist silhouette there is no protruding stats tab or overlapping border.
+ *
+ * This intentionally reuses the same CapsuleHeroMetric / PlaylistAction data
+ * and interactive download button as the redesigned playlists.
+ */
+@Composable
+internal fun CapsuleAlbumControls(
+    metrics: List<CapsuleHeroMetric>,
+    actions: @Composable RowScope.() -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
+            .testTag("capsule:album-controls"),
+        color = StandardChrome.panel,
+        shape = RoundedCornerShape(27.dp),
+        border = BorderStroke(1.dp, StandardChrome.muted.copy(alpha = 0.32f)),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 5.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().height(35.dp)
+                    .padding(horizontal = 12.dp)
+                    .testTag("capsule:album-metrics"),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                metrics.forEach { metric ->
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            painter = painterResource(metric.icon),
+                            contentDescription = null,
+                            tint = StandardChrome.muted,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            text = metric.text,
+                            color = StandardChrome.muted,
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontSize = if (metrics.size > 2) 11.sp else 13.sp,
+                                fontWeight = FontWeight.Normal,
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().height(60.dp)
+                    .padding(horizontal = 7.dp)
+                    .testTag("capsule:album-actions"),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+                content = actions,
+            )
+        }
+    }
+}
+
 @Composable
 internal fun PlaylistHero(
     thumbnails: List<String>,

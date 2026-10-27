@@ -81,7 +81,7 @@ internal fun AlbumHeaderLayout(
 
 /**
  * Album skeleton keeps the ORIGINAL portrait 0.85 artwork, title position and
- * matte fade. Only the joined metadata/action outline follows the new style.
+ * matte fade. The metadata and action rows occupy the same single album capsule.
  * Its height matches the loaded content to prevent jumping on first render.
  */
 @Composable
@@ -106,7 +106,7 @@ internal fun AlbumHeaderPlaceholder(background: Color, modifier: Modifier = Modi
         },
         metadata = {},
         actions = {
-            CapsuleDetailActionCluster(
+            CapsuleAlbumControls(
                 metrics = listOf(
                     CapsuleHeroMetric(R.drawable.music_note, "—"),
                     CapsuleHeroMetric(R.drawable.calendar_today, "—"),

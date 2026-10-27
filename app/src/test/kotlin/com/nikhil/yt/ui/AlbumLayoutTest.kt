@@ -38,7 +38,7 @@ import com.nikhil.yt.ui.component.AlbumArtworkLayers
 import com.nikhil.yt.ui.component.AlbumHeaderLayout
 import com.nikhil.yt.ui.component.AlbumHeaderPlaceholder
 import com.nikhil.yt.ui.component.AlbumScreenLayout
-import com.nikhil.yt.ui.component.CapsuleDetailActionCluster
+import com.nikhil.yt.ui.component.CapsuleAlbumControls
 import com.nikhil.yt.ui.component.CapsuleHeroMetric
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -132,7 +132,7 @@ class AlbumLayoutTest {
                                             },
                                             metadata = {},
                                             actions = {
-                                                CapsuleDetailActionCluster(
+                                                CapsuleAlbumControls(
                                                     metrics = listOf(
                                                         CapsuleHeroMetric(R.drawable.music_note, "—"),
                                                         CapsuleHeroMetric(R.drawable.calendar_today, "—"),
@@ -163,13 +163,17 @@ class AlbumLayoutTest {
         val loadedHeader = compose.onNodeWithTag("header").fetchSemanticsNode().boundsInRoot
         val loadedSong = compose.onNodeWithTag("song").fetchSemanticsNode().boundsInRoot
         val cover = compose.onNodeWithTag("cover").fetchSemanticsNode().boundsInRoot
-        val tab = compose.onNodeWithTag("capsule:detail-metadata-tab").fetchSemanticsNode().boundsInRoot
-        val tray = compose.onNodeWithTag("capsule:detail-actions").fetchSemanticsNode().boundsInRoot
+        val capsule = compose.onNodeWithTag("capsule:album-controls").fetchSemanticsNode().boundsInRoot
+        val metrics = compose.onNodeWithTag("capsule:album-metrics").fetchSemanticsNode().boundsInRoot
+        val actions = compose.onNodeWithTag("capsule:album-actions").fetchSemanticsNode().boundsInRoot
         assertEquals(loadingHeader.top, loadedHeader.top, 1f)
         assertEquals(loadingHeader.height, loadedHeader.height, 2f)
         assertEquals("Loading and content must share the original album layout", loadingSong.top, loadedSong.top, 2f)
         assertEquals("Album cover should fill its width as before", loadedHeader.width, cover.width, 2f)
         assertEquals("Original portrait ratio remains 0.85", cover.width / 0.85f, cover.height, 2f)
-        assertTrue("Album info tab overlaps the controls", tab.bottom > tray.top)
+        assertTrue("Statistics are inside the same rounded capsule", metrics.top >= capsule.top)
+        assertTrue("Buttons are inside the same rounded capsule", actions.bottom <= capsule.bottom)
+        assertTrue("Stats sit above controls in one uninterrupted surface", metrics.bottom <= actions.top)
+        assertTrue("Album capsule surrounds its complete set of contents", capsule.left <= metrics.left && capsule.right >= actions.right)
     }
 }

@@ -16,7 +16,7 @@ import com.nikhil.yt.ui.component.AlbumArtwork
 import com.nikhil.yt.ui.component.AlbumHeaderLayout
 import com.nikhil.yt.ui.component.AlbumHeaderPlaceholder
 import com.nikhil.yt.ui.component.AlbumScreenLayout
-import com.nikhil.yt.ui.component.CapsuleDetailActionCluster
+import com.nikhil.yt.ui.component.CapsuleAlbumControls
 import com.nikhil.yt.ui.component.CapsuleHeroMetric
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.menu.CapsuleCollectionDownloadButton
@@ -182,7 +182,7 @@ fun AlbumScreen(
             if (hasSongs) {
                 item(key = "header") {
                     // Restore the original portrait album artwork and bold title.
-                    // Only the metadata/buttons inherit the new joined playlist tray.
+                    // Use the original portrait art with one unified album control capsule.
                     AlbumHeaderLayout(
                         artwork = {
                             AlbumArtwork(
@@ -203,7 +203,7 @@ fun AlbumScreen(
                         },
                         metadata = {},
                         actions = {
-                            CapsuleDetailActionCluster(
+                            CapsuleAlbumControls(
                                 metrics = listOfNotNull(
                                     CapsuleHeroMetric(
                                         R.drawable.music_note,
