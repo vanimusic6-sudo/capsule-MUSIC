@@ -174,6 +174,7 @@ object PageHelper {
     fun deduplicateArtistCredits(artists: List<Artist>): List<Artist> {
         val unique = linkedMapOf<String, Artist>()
         artists.forEach { artist ->
+            if (artist.id.isNullOrBlank() && isAudienceStatisticLabel(artist.name)) return@forEach
             val key = artist.name.trim().lowercase(java.util.Locale.ROOT)
             val previous = unique[key]
             if (previous == null || (previous.id == null && artist.id != null)) {
@@ -200,8 +201,20 @@ object PageHelper {
         return groups
     }
 
-    private fun String.isAudienceStatistic(): Boolean =
-        audienceStatisticPattern.matches(trim().trimStart('~', '≈').trim())
+    /** Share one counter detector across Innertube and old cached playback credits. */
+    fun isAudienceStatisticLabel(text: String): Boolean {
+        val normalized = text
+            .filterNot {
+                it == '\u200B' || it == '\u200C' || it == '\u200D' ||
+                    it == '\u200E' || it == '\u200F' || it == '\uFEFF'
+            }
+            .replace('\u00A0', ' ')
+            .replace('\u202F', ' ')
+            .trim().trimStart('~', '≈').trim()
+        return audienceStatisticPattern.matches(normalized)
+    }
+
+    private fun String.isAudienceStatistic(): Boolean = isAudienceStatisticLabel(this)
 
     private fun String.isMetadataTypeLabel(): Boolean =
         trim().lowercase(java.util.Locale.ROOT) in itemTypeLabels

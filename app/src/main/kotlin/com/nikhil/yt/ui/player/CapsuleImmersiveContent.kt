@@ -1090,8 +1090,7 @@ internal fun CapsuleImmersiveContent(
                                                 }
                                                 Text(
                                                     text =
-                                                        mediaMetadata.artists
-                                                            .joinToString { it.name },
+                                                        artistCredits.joinToString { it.name },
                                                     color = immersiveInk.copy(alpha = 0.62f),
                                                     fontSize = CapsulePlayerArtistFontSize,
                                                     lineHeight = CapsulePlayerArtistLineHeight,

@@ -124,6 +124,7 @@ import com.nikhil.yt.discovery.ExperimentalArtistRoute
 import com.nikhil.yt.discovery.ExperimentalCatalog
 import com.nikhil.yt.discovery.ExperimentalDownload
 import com.nikhil.yt.models.MediaMetadata
+import com.nikhil.yt.models.sanitizedArtistCredits
 import com.nikhil.yt.playback.EqCapabilities
 import com.nikhil.yt.playback.EqProfile
 import com.nikhil.yt.playback.EqProfilesPayload
@@ -196,9 +197,7 @@ fun PlayerMenu(
 
     val artists =
         remember(mediaMetadata.artists) {
-            mediaMetadata.artists.distinctBy { artist ->
-                artist.id ?: "name:${artist.name.trim().lowercase()}"
-            }
+            mediaMetadata.artists.sanitizedArtistCredits()
         }
 
     // Artist separators for splitting artist names
@@ -348,7 +347,7 @@ fun PlayerMenu(
 
     val nowPlayingSubtitle =
         remember(mediaMetadata.artists) {
-            mediaMetadata.artists.joinToString(separator = ", ") { it.name }
+            artists.joinToString(separator = ", ") { it.name }
         }
 
     Surface(

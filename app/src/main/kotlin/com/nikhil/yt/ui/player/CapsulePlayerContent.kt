@@ -1261,7 +1261,7 @@ fun CapsulePlayerContent(
                                                 }
 
                                                 Text(
-                                                    text = mediaMetadata.artists.joinToString { it.name },
+                                                    text = artistCredits.joinToString { it.name },
                                                     color = secondaryText,
                                                     fontSize = CapsulePlayerArtistFontSize,
                                                     lineHeight = CapsulePlayerArtistLineHeight,
@@ -1582,9 +1582,7 @@ fun CapsulePlayerContent(
 
                             Text(
                                 text =
-                                    mediaMetadata
-                                        .artists
-                                        .joinToString {
+                                    artistCredits.joinToString {
                                             it.name
                                         },
                                 color =

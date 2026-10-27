@@ -182,6 +182,29 @@ class PageHelperArtistCreditsTest {
     }
 
     @Test
+    fun `Russian plays label never becomes a third musician`() {
+        val artists = listOf(
+            Artist("MZLFF", "UC_mzlff"),
+            Artist("STED.D", "UC_sted"),
+            Artist("1,3 млн прослушиваний", null),
+        )
+        assertEquals(artists.take(2), PageHelper.deduplicateArtistCredits(artists))
+        assertEquals(true, PageHelper.isAudienceStatisticLabel("1,3 млн прослушиваний"))
+        assertEquals(true, PageHelper.isAudienceStatisticLabel("1,3\u00A0млн\u00A0прослушиваний"))
+        assertEquals(true, PageHelper.isAudienceStatisticLabel("1,3 млн прослушиваний\u200B"))
+        assertEquals(
+            artists.take(2),
+            PageHelper.extractSongArtists(listOf(
+                Run("MZLFF", artistEndpoint("UC_mzlff")),
+                Run(" & ", null),
+                Run("STED.D", artistEndpoint("UC_sted")),
+                Run(" • ", null),
+                Run("1,3 млн прослушиваний", null),
+            )),
+        )
+    }
+
+    @Test
     fun `statistics and localized song labels before an unlinked artist do not block it`() {
         val metadata = listOf(
             Run("Композиция", null),
