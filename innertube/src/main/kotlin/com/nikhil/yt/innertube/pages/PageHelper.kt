@@ -17,6 +17,19 @@ import com.nikhil.yt.innertube.models.splitBySeparator
 object PageHelper {
     // Compile once, not once for every metadata run on every shelf.
     private val artistDurationPattern = Regex("""\d{1,2}:\d{2}(?::\d{2})?""")
+    private val itemTypeLabels = setOf(
+        "композиция", "песня", "песни", "музыка", "видео", "клип",
+        "альбом", "плейлист", "подкаст", "эпизод", "исполнитель",
+        "song", "songs", "track", "music", "music video", "video",
+        "album", "playlist", "podcast", "episode", "artist",
+        "official audio", "audio", "recording",
+    )
+    private val artistJoinerTokens = setOf(
+        ",", "&", "/", ";", "feat.", "ft.", "featuring", "и", "and",
+    )
+    private val artistSeparatorTokens = artistJoinerTokens +
+        setOf("•", "·", "|")
+
     fun extractRuns(columns: List<FlexColumn>, typeLike: String): List<Run> {
         val filteredRuns = mutableListOf<Run>()
         for (column in columns) {
@@ -153,34 +166,21 @@ object PageHelper {
         return unique.values.toList()
     }
 
-    private fun String.isMetadataTypeLabel(): Boolean = trim().lowercase(java.util.Locale.ROOT) in
-        setOf(
-            "композиция", "песня", "песни", "музыка", "видео", "клип",
-            "альбом", "плейлист", "подкаст", "эпизод", "исполнитель",
-            "song", "songs", "track", "music", "music video", "video",
-            "album", "playlist", "podcast", "episode", "artist",
-            "official audio", "audio", "recording",
-        )
+    private fun String.isMetadataTypeLabel(): Boolean =
+        trim().lowercase(java.util.Locale.ROOT) in itemTypeLabels
 
     private fun String.isArtistDuration(): Boolean =
         artistDurationPattern.matches(trim())
 
     private fun String.isArtistJoiner(): Boolean {
         val value = trim().lowercase()
-        return value in setOf(",", "&", "/", ";", "feat.", "ft.", "featuring", "и", "and") ||
+        return value in artistJoinerTokens ||
             (value.isNotEmpty() && value.all { it == ',' || it == '&' || it == '/' || it == ';' })
     }
 
     private fun String.isArtistSeparator(): Boolean {
         val normalized = trim().lowercase()
-        if (
-            normalized in
-                setOf(
-                    "•", "·", ",", "&", "/", ";", "|",
-                    "feat.", "ft.", "featuring",
-                    "и", "and",
-                )
-        ) {
+        if (normalized in artistSeparatorTokens) {
             return true
         }
         return normalized.isNotEmpty() &&
