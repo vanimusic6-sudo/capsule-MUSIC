@@ -410,6 +410,7 @@ fun PlaylistMenu(
                 actionKey = playlist.id,
                     state = downloadState,
                 hasStoredItems = songs.map { it.id }.any { downloadIndex.containsKey(it) },
+                hasCompletedItems = songs.map { it.id }.any { downloadIndex[it]?.state == Download.STATE_COMPLETED },
                     enabled = songs.isNotEmpty(),
                     onDownload = {
                     val requests = songs.map { song ->
