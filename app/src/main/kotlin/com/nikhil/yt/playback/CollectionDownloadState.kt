@@ -63,7 +63,7 @@ internal object CollectionDownloadStopAdmission {
                     download.stopReason == COLLECTION_STOP_REASON_USER)
             ) {
                 pending.remove(id)
-                scheduleExpiry()
+                if (pending.isEmpty()) handler.removeCallbacks(expire)
             } else {
                 downloadManager.setStopReason(id, COLLECTION_STOP_REASON_USER)
             }
@@ -74,7 +74,7 @@ internal object CollectionDownloadStopAdmission {
             download: Download,
         ) {
             pending.remove(download.request.id)
-            scheduleExpiry()
+            if (pending.isEmpty()) handler.removeCallbacks(expire)
         }
     }
 
