@@ -1,6 +1,7 @@
 package com.nikhil.yt.innertube.pages
 
 import com.nikhil.yt.innertube.models.Artist
+import com.nikhil.yt.innertube.models.ArtistItem
 import com.nikhil.yt.innertube.models.BrowseEndpoint
 import com.nikhil.yt.innertube.models.BrowseEndpoint.BrowseEndpointContextSupportedConfigs
 import com.nikhil.yt.innertube.models.BrowseEndpoint.BrowseEndpointContextSupportedConfigs.BrowseEndpointContextMusicConfig
@@ -246,6 +247,30 @@ class SearchSummaryMetadataTest {
             listOf(Artist("Actual Performer", "UC_actual")),
             top.artists,
         )
+    }
+
+    @Test
+    fun `Top result artist card does not need optional play or shuffle actions`() {
+        val artist = SearchSummaryPage.fromMusicCardShelfRenderer(artistCard()) as ArtistItem
+        assertEquals("UC_oliver", artist.id)
+        assertEquals("Oliver Tree", artist.title)
+        assertEquals(null, artist.shuffleEndpoint)
+        assertEquals(null, artist.radioEndpoint)
+    }
+
+    @Test
+    fun `song search artist row stays visible without an optional action menu`() {
+        val row = songRenderer("unused", "Real Performer", emptyList()).copy(
+            playlistItemData = null,
+            navigationEndpoint = artistEndpoint("UC_real"),
+            menu = null,
+        )
+        val summaryArtist = SearchSummaryPage.fromMusicResponsiveListItemRenderer(row) as ArtistItem
+        val filteredArtist = SearchPage.toYTItem(row) as ArtistItem
+        assertEquals("UC_real", summaryArtist.id)
+        assertEquals("UC_real", filteredArtist.id)
+        assertEquals(null, summaryArtist.shuffleEndpoint)
+        assertEquals(null, filteredArtist.radioEndpoint)
     }
 
     private fun artistCard() = MusicCardShelfRenderer(

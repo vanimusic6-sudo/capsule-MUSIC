@@ -94,13 +94,13 @@ object SearchPage {
                             ?.find { it.menuNavigationItemRenderer?.icon?.iconType == "MUSIC_SHUFFLE" }
                             ?.menuNavigationItemRenderer
                             ?.navigationEndpoint
-                            ?.watchPlaylistEndpoint ?: return null,
+                            ?.watchPlaylistEndpoint,
                     radioEndpoint =
-                        renderer.menu.menuRenderer.items
+                        renderer.menu?.menuRenderer?.items
                             .find { it.menuNavigationItemRenderer?.icon?.iconType == "MIX" }
                             ?.menuNavigationItemRenderer
                             ?.navigationEndpoint
-                            ?.watchPlaylistEndpoint ?: return null,
+                            ?.watchPlaylistEndpoint,
                 )
             }
             renderer.isAlbum -> {
