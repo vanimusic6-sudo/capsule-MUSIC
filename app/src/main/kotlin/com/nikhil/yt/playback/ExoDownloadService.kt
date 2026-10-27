@@ -43,7 +43,7 @@ class ExoDownloadService : DownloadService(
             if (request != null) {
                 val existing = downloadManager.currentDownloads.firstOrNull { it.request.id == request.id }
                     ?: downloadUtil.downloads.value[request.id]
-                val mustRemainStopped = CollectionDownloadStopAdmission.isUserStopped(request.id)
+                val mustRemainStopped = CollectionDownloadStopAdmission.isUserStopped(request.id, downloadManager)
                 if (mustRemainStopped && keepActiveDownload(existing)) {
                     // Don't requeue a healthy transfer from a stale ADD.
                     downloadManager.setStopReason(request.id, COLLECTION_STOP_REASON_USER)

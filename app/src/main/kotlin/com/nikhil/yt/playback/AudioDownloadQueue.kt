@@ -67,7 +67,7 @@ internal class AudioDownloadQueue(private val manager: DownloadManager) : Downlo
         manager.currentDownloads.filter { it.state == Download.STATE_QUEUED }.forEach {
             manager.setStopReason(
                 it.request.id,
-                if (CollectionDownloadStopAdmission.isUserStopped(it.request.id))
+                if (CollectionDownloadStopAdmission.isUserStopped(it.request.id, manager))
                     COLLECTION_STOP_REASON_USER else DOWNLOAD_WAITING_FOR_SLOT,
             )
         }
@@ -106,7 +106,7 @@ internal class AudioDownloadQueue(private val manager: DownloadManager) : Downlo
             val entries = manager.currentDownloads
             // If the service delivered an ADD after Stop, do not award it a slot.
             val pendingStops = entries.filter {
-                CollectionDownloadStopAdmission.isUserStopped(it.request.id) &&
+                CollectionDownloadStopAdmission.isUserStopped(it.request.id, manager) &&
                     it.stopReason != COLLECTION_STOP_REASON_USER &&
                     it.state != Download.STATE_COMPLETED &&
                     it.state != Download.STATE_REMOVING
@@ -124,7 +124,7 @@ internal class AudioDownloadQueue(private val manager: DownloadManager) : Downlo
             val waiting = entries.filter {
                 it.stopReason == DOWNLOAD_WAITING_FOR_SLOT &&
                     it.state == Download.STATE_STOPPED &&
-                    !CollectionDownloadStopAdmission.isUserStopped(it.request.id) &&
+                    !CollectionDownloadStopAdmission.isUserStopped(it.request.id, manager) &&
                     it.request.id !in admitted
             }.toMutableList()
             // One pause per admission wave. Media3 cancels the worker and preserves partial cache;

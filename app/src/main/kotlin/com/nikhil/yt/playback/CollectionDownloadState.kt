@@ -126,7 +126,10 @@ internal object CollectionDownloadStopAdmission {
     }
 
     /** Guard all service and queue admissions until resume/delete or expiry. */
-    fun isUserStopped(id: String): Boolean {
+    fun isUserStopped(id: String, target: androidx.media3.exoplayer.offline.DownloadManager): Boolean {
+        // A stop belongs to one Media3 manager; a restored/re-created manager
+        // must never inherit pending commands for overlapping video IDs.
+        if (manager !== target) return false
         val deadline = pending[id] ?: return false
         if (deadline > SystemClock.uptimeMillis()) return true
         pending.remove(id)
