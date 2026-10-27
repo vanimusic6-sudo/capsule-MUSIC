@@ -97,7 +97,7 @@ object SearchPage {
                             ?.watchPlaylistEndpoint,
                     radioEndpoint =
                         renderer.menu?.menuRenderer?.items
-                            .find { it.menuNavigationItemRenderer?.icon?.iconType == "MIX" }
+                            ?.find { it.menuNavigationItemRenderer?.icon?.iconType == "MIX" }
                             ?.menuNavigationItemRenderer
                             ?.navigationEndpoint
                             ?.watchPlaylistEndpoint,
