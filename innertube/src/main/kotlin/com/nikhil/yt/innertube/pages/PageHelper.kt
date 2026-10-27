@@ -55,7 +55,7 @@ object PageHelper {
 
                 val endpoint = run.navigationEndpoint?.browseEndpoint
                 if (endpoint == null) {
-                    if (name.isArtistSeparator()) return@mapNotNull null
+                    if (name.isArtistSeparator() || name.isMetadataTypeLabel()) return@mapNotNull null
                     return@mapNotNull Artist(name = name, id = null)
                 }
 
@@ -90,6 +90,10 @@ object PageHelper {
      */
     fun extractSongArtists(runs: List<Run>?): List<Artist> {
         val groups = runs.orEmpty().splitBySeparator()
+        // Unlinked "Композиция • Artist" is not a credit! It is a
+        // YouTube Music item-type badge followed by the real artist group.
+        val firstGroupIsType = groups.firstOrNull()
+            ?.any { it.text.isMetadataTypeLabel() } == true
         val hasLinkedArtist = groups.any { group -> group.any anyRun@{ run ->
             val browse = run.navigationEndpoint?.browseEndpoint ?: return@anyRun false
             val pageType = browse.browseEndpointContextSupportedConfigs
@@ -121,14 +125,17 @@ object PageHelper {
                                 group.getOrNull(index + 1)?.text?.isArtistJoiner() == true)
                     }
                 }
-            } else if (groupIndex == 0 && !hasLinkedArtist) {
-                // Some unauthenticated renderers omit ALL browse endpoints.
-                // Consider only the very first metadata group, never later
-                // album/genre/duration groups, to avoid false collaborators.
+            } else if (!hasLinkedArtist &&
+                (groupIndex == 0 || (groupIndex == 1 && firstGroupIsType))) {
+                // Sometimes even the artist name has no browse endpoint.
+                // If the first subtitle group is a localized type marker
+                // ("Композиция"/"Song"), use the following group as credits;
+                // otherwise only the first group can be considered.
                 group.filter { run ->
                     run.navigationEndpoint == null &&
                         run.text.isNotBlank() && !run.text.isArtistDuration() &&
-                        !run.text.isArtistSeparator()
+                        !run.text.isArtistSeparator() &&
+                        !run.text.isMetadataTypeLabel()
                 }
             } else emptyList()
             all += extractArtists(creditRuns)
@@ -145,6 +152,15 @@ object PageHelper {
         }
         return unique.values.toList()
     }
+
+    private fun String.isMetadataTypeLabel(): Boolean = trim().lowercase(java.util.Locale.ROOT) in
+        setOf(
+            "композиция", "песня", "песни", "музыка", "видео", "клип",
+            "альбом", "плейлист", "подкаст", "эпизод", "исполнитель",
+            "song", "songs", "track", "music", "music video", "video",
+            "album", "playlist", "podcast", "episode", "artist",
+            "official audio", "audio", "recording",
+        )
 
     private fun String.isArtistDuration(): Boolean =
         artistDurationPattern.matches(trim())
