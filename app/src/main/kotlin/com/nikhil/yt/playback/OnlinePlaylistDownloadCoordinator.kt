@@ -99,7 +99,16 @@ internal object OnlinePlaylistDownloadCoordinator {
                 // without leaving a producer that re-adds deleted tracks.
                 val remote = withTimeoutOrNull(25_000L) {
                     withContext(Dispatchers.IO) {
-                        YouTube.playlist(playlistId).completed().getOrNull()?.songs.orEmpty()
+                        // Some public radio/mix lists have no browsable
+                        // playlist shelf but do expose a playable queue.
+                        // One fallback request only, and only after explicit
+                        // Download; opening More performs zero requests.
+                        val fromBrowse = YouTube.playlist(playlistId.removePrefix("VL"))
+                            .completed().getOrNull()?.songs.orEmpty()
+                        fromBrowse.ifEmpty {
+                            YouTube.queue(playlistId = playlistId.removePrefix("VL"))
+                                .getOrNull().orEmpty()
+                        }
                     }
                 }.orEmpty()
                 currentCoroutineContext().ensureActive()
