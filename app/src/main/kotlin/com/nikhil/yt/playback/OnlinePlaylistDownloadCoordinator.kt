@@ -1,6 +1,8 @@
 package com.nikhil.yt.playback
 
 import android.content.Context
+import android.widget.Toast
+import com.nikhil.yt.R
 import androidx.core.net.toUri
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadManager
@@ -19,6 +21,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
 
 /**
@@ -94,11 +97,22 @@ internal object OnlinePlaylistDownloadCoordinator {
                 // Resolve the FULL collection in this process-owned producer
                 // BEFORE enqueuing. The More sheet can close or be cancelled
                 // without leaving a producer that re-adds deleted tracks.
-                val remote = withContext(Dispatchers.IO) {
-                    YouTube.playlist(playlistId).completed().getOrNull()?.songs.orEmpty()
-                }
+                val remote = withTimeoutOrNull(25_000L) {
+                    withContext(Dispatchers.IO) {
+                        YouTube.playlist(playlistId).completed().getOrNull()?.songs.orEmpty()
+                    }
+                }.orEmpty()
                 currentCoroutineContext().ensureActive()
                 val uniqueSongs = remote.ifEmpty { firstPage }.distinctBy { it.id }
+                if (uniqueSongs.isEmpty() && previouslyKnown.none(knownDownloads::containsKey)) {
+                    // User/online playlist menus normally supply an empty first
+                    // page. Give a real failure explanation instead of showing
+                    // a dead, disabled button or silently doing nothing.
+                    Toast.makeText(
+                        appContext, R.string.capsule_online_playlist_download_unavailable,
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
                 session.ids = uniqueSongs.map { it.id }
                 val allIds = (previouslyKnown + session.ids).distinct()
                 knownMembership[playlistId] = allIds
