@@ -391,6 +391,7 @@ fun YouTubeAlbumMenu(
                 actionKey = albumItem.id,
                 state = downloadState,
                 hasStoredItems = album?.songs.orEmpty().map { it.id }.any { downloadIndex.containsKey(it) },
+                hasCompletedItems = album?.songs.orEmpty().map { it.id }.any { downloadIndex[it]?.state == Download.STATE_COMPLETED },
                 enabled = album?.songs.orEmpty().isNotEmpty(),
                 onDownload = {
                     val requests = album?.songs.orEmpty().map { song ->
