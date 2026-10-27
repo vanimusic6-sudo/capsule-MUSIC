@@ -562,7 +562,11 @@ object YouTube {
             ),
             songs = tracks.mapNotNull { PlaylistPage.fromMusicResponsiveListItemRenderer(it) },
             songsContinuation = playlistShelf?.contents?.getContinuation()
-                ?: musicShelf?.contents?.getContinuation(),
+                ?: playlistShelf?.continuations?.getContinuation()
+                ?: musicShelf?.contents?.getContinuation()
+                ?: musicShelf?.continuations?.getContinuation()
+                ?: secondary?.continuations?.getContinuation()
+                ?: main?.continuations?.getContinuation(),
             continuation = secondary?.continuations?.getContinuation()
                 ?: main?.continuations?.getContinuation(),
         )
@@ -591,11 +595,15 @@ object YouTube {
             ?.continuationItems
             .orEmpty()
 
-        val allContents = mainContents + appendedContents
+        val directShelfContents = response.continuationContents
+            ?.musicPlaylistShelfContinuation?.contents.orEmpty() +
+            response.continuationContents?.musicShelfContinuation?.contents.orEmpty()
+        val allContents = mainContents + directShelfContents + appendedContents
 
         val songs = allContents
             .mapNotNull(MusicShelfRenderer.Content::musicResponsiveListItemRenderer)
             .mapNotNull(PlaylistPage::fromMusicResponsiveListItemRenderer)
+            .distinctBy { it.id }
 
         val nextContinuation = if (songs.isEmpty()) null else {
             response.continuationContents
