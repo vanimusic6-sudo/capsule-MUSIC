@@ -114,8 +114,16 @@ fun YouTubeAlbumMenu(
         }
     }
 
-    val downloadState = rememberCollectionDownloadState(album?.songs.orEmpty().map { it.id })
+    // An album opened directly from an online search card may not have been
+    // inserted into Room yet. This must NOT disable its download action.
+    val albumSongs = album?.songs.orEmpty()
+    val collectionIds = com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator.memberIds(
+        albumItem.playlistId, context, albumSongs.map { it.id },
+    )
     val downloadIndex by downloadUtil.downloads.collectAsState()
+    val enqueuing by com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator.enqueuing.collectAsState()
+    val downloadState = if (albumItem.playlistId in enqueuing) Download.STATE_DOWNLOADING
+        else rememberCollectionDownloadState(collectionIds)
 
     
     
@@ -390,29 +398,36 @@ fun YouTubeAlbumMenu(
             CapsuleDownloadAction(
                 actionKey = albumItem.id,
                 state = downloadState,
-                hasStoredItems = album?.songs.orEmpty().map { it.id }.any { downloadIndex.containsKey(it) },
-                hasCompletedItems = album?.songs.orEmpty().map { it.id }.any { downloadIndex[it]?.state == Download.STATE_COMPLETED },
-                enabled = album?.songs.orEmpty().isNotEmpty(),
+                hasStoredItems = collectionIds.any { downloadIndex.containsKey(it) },
+                hasCompletedItems = collectionIds.any { downloadIndex[it]?.state == Download.STATE_COMPLETED },
+                enabled = true,
                 onDownload = {
-                    val requests = album?.songs.orEmpty().map { song ->
-                        DownloadRequest.Builder(song.id, song.id.toUri())
-                            .setCustomCacheKey(song.id)
-                            .setData(song.song.title.toByteArray())
-                            .build()
+                    if (albumSongs.isEmpty()) {
+                        com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator.start(
+                            albumItem.playlistId, context, downloadUtil.downloadManager,
+                            emptyList(), downloadIndex,
+                        )
+                    } else {
+                        val requests = albumSongs.map { song ->
+                            DownloadRequest.Builder(song.id, song.id.toUri())
+                                .setCustomCacheKey(song.id)
+                                .setData(song.song.title.toByteArray())
+                                .build()
+                        }
+                        com.nikhil.yt.playback.enqueueCollectionDownloads(
+                            context, downloadUtil.downloadManager, downloadIndex, requests,
+                        )
                     }
-                    com.nikhil.yt.playback.enqueueCollectionDownloads(
-                        context, downloadUtil.downloadManager, downloadIndex, requests,
-                    )
                 },
                 onStop = {
-                    com.nikhil.yt.playback.stopCollectionDownloads(
-                        downloadUtil.downloadManager, album?.songs.orEmpty().map { it.id },
+                    com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator.stop(
+                        albumItem.playlistId, context, downloadUtil.downloadManager, collectionIds,
                     )
                 },
                 collectionName = albumItem.title,
                 onRemove = {
-                    com.nikhil.yt.playback.removeCollectionDownloads(
-                        downloadUtil.downloadManager, album?.songs.orEmpty().map { it.id }, preserveManual = false,
+                    com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator.cancelAndRemove(
+                        albumItem.playlistId, context, downloadUtil.downloadManager, collectionIds,
                     )
                 },
             )
