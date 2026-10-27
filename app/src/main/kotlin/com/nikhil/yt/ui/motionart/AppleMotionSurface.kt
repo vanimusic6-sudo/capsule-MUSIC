@@ -5,9 +5,11 @@
  */
 package com.nikhil.yt.ui.motionart
 
-import android.app.Activity
 import android.content.Context
 import android.os.PowerManager
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -17,6 +19,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
@@ -28,8 +32,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
-import androidx.media3.ui.AspectRatioFrameLayout
 import kotlinx.coroutines.CancellationException
+import com.nikhil.yt.ui.component.LocalCapsuleBackgroundMotionEnabled
 
 @Composable
 internal fun AppleMotionSurface(
@@ -37,6 +41,7 @@ internal fun AppleMotionSurface(
     album: String? = null,
     enabled: Boolean,
     modifier: Modifier = Modifier,
+    dimBackground: Boolean = false,
 ) {
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
@@ -54,7 +59,8 @@ internal fun AppleMotionSurface(
     val powerSave = remember(context) {
         (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isPowerSaveMode == true
     }
-    val allowed = enabled && foreground && !powerSave && artist.isNotBlank()
+    val reduceMotion = !LocalCapsuleBackgroundMotionEnabled.current
+    val allowed = enabled && foreground && !powerSave && !reduceMotion && artist.isNotBlank()
     var url by remember(album, artist) { mutableStateOf<String?>(null) }
     LaunchedEffect(album, artist, allowed) {
         if (!allowed) return@LaunchedEffect
@@ -90,8 +96,13 @@ internal fun AppleMotionSurface(
                 exo.release()
             }
         }
+        val motionAlpha by animateFloatAsState(
+            targetValue = if (rendered && !failed) 1f else 0f,
+            animationSpec = tween(durationMillis = 580),
+            label = "capsuleMotionArtworkFirstFrame",
+        )
         if (!failed) {
-            Box(modifier.graphicsLayer { alpha = if (rendered) 1f else 0f }) {
+            Box(modifier.graphicsLayer { alpha = motionAlpha }) {
                 AndroidView(
                     factory = {
                         android.view.LayoutInflater.from(it)
@@ -100,6 +111,15 @@ internal fun AppleMotionSurface(
                     modifier = Modifier.fillMaxSize(),
                     update = { it.player = exo },
                 )
+                if (dimBackground) {
+                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
+                        listOf(
+                            Color.Black.copy(alpha = 0.2f),
+                            Color.Black.copy(alpha = 0.36f),
+                            Color.Black.copy(alpha = 0.68f),
+                        ),
+                    )))
+                }
             }
         }
     }

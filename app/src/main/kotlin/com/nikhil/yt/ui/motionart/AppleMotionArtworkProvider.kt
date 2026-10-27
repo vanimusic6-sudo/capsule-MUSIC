@@ -166,7 +166,10 @@ internal object AppleMotionArtworkProvider {
     internal fun validVideoUrl(value: String): Boolean {
         val uri = runCatching { java.net.URI(value) }.getOrNull() ?: return false
         val host = uri.host?.lowercase(Locale.ROOT) ?: return false
-        return uri.scheme == "https" && host.endsWith(".apple.com") &&
+        // Apple's motion assets are commonly on mzstatic CDN rather than apple.com.
+        val appleHost = host == "apple.com" || host.endsWith(".apple.com") ||
+            host == "mzstatic.com" || host.endsWith(".mzstatic.com")
+        return uri.scheme == "https" && appleHost && uri.userInfo == null &&
             (uri.path.orEmpty().endsWith(".m3u8") || uri.path.orEmpty().endsWith(".mp4"))
     }
 }

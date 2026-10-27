@@ -447,17 +447,7 @@ fun BottomSheetPlayer(
                                 !showInlineLyrics && onScreen && isPlaying &&
                                 playbackState == Player.STATE_READY,
                             modifier = Modifier.fillMaxSize(),
-                        )
-                        Box(
-                            Modifier.fillMaxSize().background(
-                                Brush.verticalGradient(
-                                    listOf(
-                                        Color.Black.copy(alpha = 0.22f),
-                                        Color.Black.copy(alpha = 0.38f),
-                                        Color.Black.copy(alpha = 0.72f),
-                                    )
-                                )
-                            )
+                            dimBackground = true,
                         )
                     }
                 }
