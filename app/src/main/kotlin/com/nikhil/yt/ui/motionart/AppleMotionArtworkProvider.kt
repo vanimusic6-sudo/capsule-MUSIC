@@ -46,7 +46,7 @@ internal object AppleMotionArtworkProvider {
     private var retryTokenAtMs = 0L
     private data class Cached(val url: String?, val expiresAt: Long)
     private val cache = object : LinkedHashMap<String, Cached>(48, .75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Cached>) =
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Cached>?) =
             size > 48
     }
 
