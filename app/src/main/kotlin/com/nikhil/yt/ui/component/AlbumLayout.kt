@@ -69,11 +69,13 @@ internal fun AlbumHeaderLayout(
 ) {
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         artwork()
-        Spacer(Modifier.height(16.dp))
+        // Lift the title and both action rows as one group. The album photo
+        // remains at the top under the existing navigation overlay.
+        Spacer(Modifier.height(10.dp))
         title()
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         metadata()
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(12.dp))
         actions()
         Spacer(Modifier.height(bottomSpacing))
     }

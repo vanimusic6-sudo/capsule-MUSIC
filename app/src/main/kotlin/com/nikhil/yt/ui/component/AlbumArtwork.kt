@@ -3,6 +3,8 @@ package com.nikhil.yt.ui.component
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,7 +17,9 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import coil3.compose.rememberAsyncImagePainter
 import coil3.compose.rememberConstraintsSizeResolver
 import coil3.request.ImageRequest
@@ -49,6 +53,18 @@ fun AlbumArtwork(
     )
 }
 
+/**
+ * Reserve enough of a small screen for the title and unified action capsule
+ * ABOVE the mini-player. On larger screens the original 0.85 portrait artwork
+ * is retained; compact screens gently crop its faded lower portion.
+ *
+ * Responsive sizing belongs to the album only; playlist art stays square.
+ */
+internal fun albumCoverHeight(width: Dp, screenHeight: Dp): Dp {
+    val natural = width / 0.85f
+    return minOf(natural, maxOf(natural * 0.83f, screenHeight * 0.50f))
+}
+
 @Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun AlbumArtworkLayers(
@@ -58,13 +74,12 @@ internal fun AlbumArtworkLayers(
     modifier: Modifier = Modifier,
     imageModifier: Modifier = Modifier,
 ) {
-    Box(
-        modifier
-            .widthIn(max = 560.dp)
-            .fillMaxWidth()
-            .aspectRatio(0.85f)
-            .background(background),
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
+    BoxWithConstraints(
+        modifier.widthIn(max = 560.dp).fillMaxWidth().background(background),
     ) {
+        val artworkHeight = albumCoverHeight(maxWidth, screenHeight)
+        Box(Modifier.fillMaxWidth().height(artworkHeight)) {
         Image(
             painter = painter,
             contentDescription = null,
@@ -80,5 +95,6 @@ internal fun AlbumArtworkLayers(
             topScrim = false,
             softPortrait = true,
         )
+        }
     }
 }

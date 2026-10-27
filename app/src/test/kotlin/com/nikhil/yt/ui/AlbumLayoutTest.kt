@@ -38,6 +38,7 @@ import com.nikhil.yt.ui.component.AlbumArtworkLayers
 import com.nikhil.yt.ui.component.AlbumHeaderLayout
 import com.nikhil.yt.ui.component.AlbumHeaderPlaceholder
 import com.nikhil.yt.ui.component.AlbumScreenLayout
+import com.nikhil.yt.ui.component.albumCoverHeight
 import com.nikhil.yt.ui.component.CapsuleAlbumControls
 import com.nikhil.yt.ui.component.CapsuleHeroMetric
 import org.junit.Assert.assertEquals
@@ -105,6 +106,15 @@ class AlbumLayoutTest {
         compose.runOnIdle { assertEquals(1, backClicks) }
     }
 
+    @Test fun albumCoverCompactsOnlyWhenScreenHeightRequiresIt() {
+        val narrow = albumCoverHeight(300.dp, 851.dp)
+        val normal = albumCoverHeight(393.dp, 851.dp)
+        val compact = albumCoverHeight(393.dp, 720.dp)
+        assertEquals("Original portrait ratio for narrower artwork", 300.dp / 0.85f, narrow)
+        assertTrue("A short screen should lift the album controls", compact < normal)
+        assertTrue("A short screen still shows a substantial album cover", compact > 375.dp)
+    }
+
     @Test fun loadingAlbumRetainsOriginalPortraitCoverAndUnifiedControlsOnLoad() {
         var loading by mutableStateOf(true)
         compose.setContent {
@@ -170,7 +180,8 @@ class AlbumLayoutTest {
         assertEquals(loadingHeader.height, loadedHeader.height, 2f)
         assertEquals("Loading and content must share the original album layout", loadingSong.top, loadedSong.top, 2f)
         assertEquals("Album cover should fill its width as before", loadedHeader.width, cover.width, 2f)
-        assertEquals("Original portrait ratio remains 0.85", cover.width / 0.85f, cover.height, 2f)
+        assertEquals("Original portrait ratio remains on roomy album layouts",
+            cover.width / 0.85f, cover.height, 2f)
         assertTrue("Statistics are inside the same rounded capsule", metrics.top >= capsule.top)
         assertTrue("Buttons are inside the same rounded capsule", actions.bottom <= capsule.bottom)
         assertTrue("Stats sit above controls in one uninterrupted surface", metrics.bottom <= actions.top)
