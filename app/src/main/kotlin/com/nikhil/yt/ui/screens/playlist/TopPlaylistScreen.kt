@@ -12,6 +12,7 @@ import androidx.compose.material3.CenterAlignedTopAppBar
 import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
+import com.nikhil.yt.ui.menu.CapsuleCollectionDownloadButton
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -153,6 +154,7 @@ fun TopPlaylistScreen(
 
     val downloadUtil = LocalDownloadUtil.current
     val downloadState = rememberCollectionDownloadState(songs.orEmpty().map { it.song.id })
+    val downloadIndex by downloadUtil.downloads.collectAsState()
 
     LaunchedEffect(songs) {
         mutableSongs.apply {
@@ -160,44 +162,6 @@ fun TopPlaylistScreen(
             songs?.let { addAll(it) }
         }
 
-    }
-
-    var showRemoveDownloadDialog by remember { mutableStateOf(false) }
-
-    if (showRemoveDownloadDialog) {
-        DefaultDialog(
-            onDismiss = { showRemoveDownloadDialog = false },
-            content = {
-                Text(
-                    text = stringResource(R.string.remove_download_playlist_confirm, name),
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(horizontal = 18.dp),
-                )
-            },
-            buttons = {
-                TextButton(
-                    onClick = { showRemoveDownloadDialog = false },
-                ) {
-                    Text(text = stringResource(android.R.string.cancel))
-                }
-
-                TextButton(
-                    onClick = {
-                        showRemoveDownloadDialog = false
-                        songs!!.forEach { song ->
-                            DownloadService.sendRemoveDownload(
-                                context,
-                                ExoDownloadService::class.java,
-                                song.song.id,
-                                false,
-                            )
-                        }
-                    },
-                ) {
-                    Text(text = stringResource(android.R.string.ok))
-                }
-            },
-        )
     }
 
     val filteredSongs = remember(wrappedSongs, query) {
@@ -275,38 +239,37 @@ fun TopPlaylistScreen(
                                         )
                                     },
                                 )
-                                PlaylistAction(
-                                    icon = if (downloadState == Download.STATE_COMPLETED) R.drawable.offline else R.drawable.download, label = stringResource(when (downloadState) { Download.STATE_COMPLETED -> R.string.remove_download; Download.STATE_DOWNLOADING -> R.string.cancel_button; else -> R.string.download }),
-                                    onClick = {
-                                        when (downloadState) {
-                                            Download.STATE_COMPLETED -> {
-                                                showRemoveDownloadDialog = true
-                                            }
-                                            Download.STATE_DOWNLOADING -> {
-                                                com.nikhil.yt.playback.stopCollectionDownloads(downloadUtil.downloadManager, songs.orEmpty().map { it.song.id })
-                                            }
-                                            else -> {
-                                                songs!!.forEach { song ->
-                                                    val downloadRequest =
-                                                        DownloadRequest
-                                                            .Builder(
-                                                                song.song.id,
-                                                                song.song.id.toUri(),
-                                                            )
-                                                            .setCustomCacheKey(song.song.id)
-                                                            .setData(song.song.title.toByteArray())
-                                                            .build()
-                                                    DownloadService.sendAddDownload(
-                                                        context,
-                                                        ExoDownloadService::class.java,
-                                                        downloadRequest,
-                                                        false,
-                                                    )
-                                                }
-                                            }
-                                        }
+                                CapsuleCollectionDownloadButton(
+                                    actionKey = "top:${maxSize}:${sortType}",
+                                    collectionName = name,
+                                    state = downloadState,
+                                    hasStoredItems = songs.orEmpty().any { downloadIndex.containsKey(it.song.id) },
+                                    hasCompletedItems = songs.orEmpty().any {
+                                        downloadIndex[it.song.id]?.state == Download.STATE_COMPLETED
                                     },
-                                    loading = downloadState == Download.STATE_DOWNLOADING,
+                                    enabled = songs.orEmpty().isNotEmpty(),
+                                    onDownload = {
+                                        val requests = songs.orEmpty().map { song ->
+                                            DownloadRequest.Builder(song.song.id, song.song.id.toUri())
+                                                .setCustomCacheKey(song.song.id)
+                                                .setData(song.song.title.toByteArray())
+                                                .build()
+                                        }
+                                        com.nikhil.yt.playback.enqueueCollectionDownloads(
+                                            context, downloadUtil.downloadManager, downloadIndex, requests,
+                                        )
+                                    },
+                                    onStop = {
+                                        com.nikhil.yt.playback.stopCollectionDownloads(
+                                            downloadUtil.downloadManager, songs.orEmpty().map { it.song.id },
+                                        )
+                                    },
+                                    onRemove = {
+                                        com.nikhil.yt.playback.removeCollectionDownloads(
+                                            downloadUtil.downloadManager, songs.orEmpty().map { it.song.id },
+                                            preserveManual = false,
+                                        )
+                                    },
                                 )
                                 PlaylistAction(
                                     icon = R.drawable.queue_music, label = stringResource(R.string.add_to_queue),
