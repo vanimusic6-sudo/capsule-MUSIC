@@ -64,6 +64,20 @@ class CapsuleReleaseUiCorrectionsTest {
         assertFalse(local.contains("playlist?.id?.let { clearPlaylist(it) }"))
     }
 
+    @Test fun onlinePlaylistAndAlbumCanDownloadWithoutPreviewSongs() {
+        val playlist = source("ui/menu/YouTubePlaylistMenu.kt")
+        assertTrue(playlist.contains("enabled = true"))
+        assertFalse(playlist.contains("enabled = membershipReady"))
+        assertTrue(playlist.contains("OnlinePlaylistDownloadCoordinator.start("))
+        val album = source("ui/menu/YouTubeAlbumMenu.kt")
+        assertTrue(album.contains("enabled = true"))
+        assertTrue(album.contains("if (albumSongs.isEmpty())"))
+        assertTrue(album.contains("OnlinePlaylistDownloadCoordinator.start("))
+        val coordinator = source("playback/OnlinePlaylistDownloadCoordinator.kt")
+        assertTrue(coordinator.contains("YouTube.playlist(playlistId.removePrefix(\"VL\"))"))
+        assertTrue(coordinator.contains("YouTube.queue(playlistId = playlistId.removePrefix(\"VL\"))"))
+    }
+
     @Test fun onlinePlaylistStopKeepsCacheAndRemovalRecoversFullMembership() {
         val coordinator = source("playback/OnlinePlaylistDownloadCoordinator.kt")
         assertTrue(coordinator.contains("session?.job?.cancel()"))
