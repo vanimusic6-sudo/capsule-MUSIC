@@ -25,7 +25,7 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28], application = Application::class, manifest = Config.NONE)
 class DownloadQueueTest {
-    @Test fun manualTrackImmediatelyPausesOneBackgroundTransferWithoutRemovingItOrExceedingTwoSlots() {
+    @Test fun manualPriorityPreemptsBackgroundButStopCollectionPausesAllMembersWithoutRemovingThem() {
         val provider = StandaloneDatabaseProvider(RuntimeEnvironment.getApplication())
         val started = Collections.synchronizedList(mutableListOf<String>())
         val gates = (1..102).associate { "track-$it" to CountDownLatch(1) }
@@ -61,11 +61,21 @@ class DownloadQueueTest {
             gates.getValue("track-1").countDown()
             await { index.getDownload("track-1")?.state == Download.STATE_COMPLETED }
             stopCollectionDownloads(manager, (1..101).map { "track-$it" })
-            await { manager.currentDownloads.none { !it.request.isManualDownload() && it.stopReason == 0 } }
+            await {
+                manager.currentDownloads.none {
+                    it.request.id != "track-1" && it.stopReason == Download.STOP_REASON_NONE
+                }
+            }
             assertEquals(Download.STATE_COMPLETED, index.getDownload("track-1")?.state)
-            assertEquals(Download.STATE_DOWNLOADING, index.getDownload("track-101")?.state)
-            // Stop correctly preserves the user's separate priority download,
-            // but the playlist itself must not claim to be downloading.
+            await {
+                index.getDownload("track-101")?.let {
+                    it.state == Download.STATE_STOPPED &&
+                        it.stopReason == COLLECTION_STOP_REASON_USER
+                } == true
+            }
+            // Stopped manually prioritized downloads retain their partial bytes
+            // and remain resumable; they must not continue transferring.
+            assertTrue(index.getDownload("track-101")!!.request.isManualDownload())
             val collectionIndex = (1..101).mapNotNull { n ->
                 index.getDownload("track-$n")?.let { "track-$n" to it }
             }.toMap()
@@ -75,8 +85,6 @@ class DownloadQueueTest {
                     (2..101).map { "track-$it" }, collectionIndex,
                 ),
             )
-            gates.getValue("track-101").countDown()
-            await { index.getDownload("track-101")?.state == Download.STATE_COMPLETED }
             assertEquals(2, maximum.get())
         } finally {
             gates.values.forEach { it.countDown() }; queue.close(); manager.release(); provider.close()

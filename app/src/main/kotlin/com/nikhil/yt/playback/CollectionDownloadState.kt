@@ -10,8 +10,8 @@ import androidx.media3.exoplayer.offline.DownloadService
 
 /**
  * A collection is complete only when every member is complete.
- * Downloading reflects collection-owned work, not independent manual-priority
- * requests for songs that happen to share a playlist ID.
+ * Stop must actually transition all matching entries out of active states,
+ * rather than suppressing the active status in the UI.
  */
 internal fun collectionDownloadState(songIds: Collection<String>, downloads: Map<String, Download>): Int {
     if (songIds.isEmpty()) return Download.STATE_STOPPED
@@ -21,12 +21,11 @@ internal fun collectionDownloadState(songIds: Collection<String>, downloads: Map
         entries.any { it?.state == Download.STATE_REMOVING } -> Download.STATE_REMOVING
         entries.all { it?.state == Download.STATE_COMPLETED } -> Download.STATE_COMPLETED
 
-        // Manual-priority tracks are separate single-track requests, even when
-        // their ID also happens to be in this playlist. Collection Stop
-        // deliberately preserves those downloads. Counting them as active
-        // collection work made the playlist look stuck in DOWNLOADING forever.
+        // All actual active members count. A playlist Stop targets every one
+        // of them, including an overlapping priority single. Merely hiding
+        // manually prioritized transfers here would mask an ongoing download.
         entries.any { download ->
-            download != null && !download.request.isManualDownload() &&
+            download != null &&
                 download.visibleState in listOf(
                     Download.STATE_QUEUED, Download.STATE_DOWNLOADING, Download.STATE_RESTARTING,
                 )
@@ -67,8 +66,7 @@ internal object CollectionDownloadStopAdmission {
         ) {
             val id = download.request.id
             if (id !in pending) return
-            if (download.request.isManualDownload() ||
-                download.state == Download.STATE_COMPLETED ||
+            if (download.state == Download.STATE_COMPLETED ||
                 download.state == Download.STATE_FAILED ||
                 download.state == Download.STATE_REMOVING ||
                 (download.state == Download.STATE_STOPPED &&
@@ -115,8 +113,13 @@ internal object CollectionDownloadStopAdmission {
     }
 }
 
-/** Stop preserves partial bytes even if the first service ADD is not indexed yet. */
-internal fun stopCollectionDownloads(manager: androidx.media3.exoplayer.offline.DownloadManager, songIds: Collection<String>, preserveManual: Boolean = true) {
+/**
+ * Stop every listed collection member by default, regardless of manual
+ * priority. Priority only affects scheduling, never whether Stop works.
+ * Explicit callers can opt into preserving manual transfers if needed.
+ * Preserve the actual cached bytes in both cases.
+ */
+internal fun stopCollectionDownloads(manager: androidx.media3.exoplayer.offline.DownloadManager, songIds: Collection<String>, preserveManual: Boolean = false) {
     val independent = if (preserveManual) manager.currentDownloads
         .filter { it.request.isManualDownload() }.map { it.request.id }.toSet() else emptySet()
     val ids = songIds.distinct().filterNot { it in independent }

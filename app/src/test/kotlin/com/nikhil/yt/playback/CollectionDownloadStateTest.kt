@@ -49,16 +49,17 @@ class CollectionDownloadStateTest {
         val saved = download("saved", Download.STATE_COMPLETED)
         val member = download("batch", Download.STATE_STOPPED)
 
-        // This transfer is intentionally allowed to finish independently.
+        // A still-running manual single is a real active download. The
+        // collection must not hide it behind a false "stopped" status.
         assertEquals(
-            Download.STATE_STOPPED,
+            Download.STATE_DOWNLOADING,
             collectionDownloadState(
                 listOf("saved", "batch", "manual"),
                 mapOf("saved" to saved, "batch" to member, "manual" to manualTransfer),
             ),
         )
 
-        // A genuinely downloading collection request must remain visible.
+        // A batch request downloading alongside the manual item stays active.
         assertEquals(
             Download.STATE_DOWNLOADING,
             collectionDownloadState(
