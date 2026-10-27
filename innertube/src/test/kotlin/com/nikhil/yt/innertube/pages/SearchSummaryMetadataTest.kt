@@ -194,6 +194,60 @@ class SearchSummaryMetadataTest {
         assertEquals("podcast-video-id", item.endpoint?.videoId)
     }
 
+    @Test
+    fun `Top result play count is not displayed as artist and Songs restores true credit`() {
+        val songCard = artistCard().copy(
+            title = Runs(listOf(Run("Duet", null))),
+            subtitle = Runs(listOf(
+                Run("Композиция", null), Run(" • ", null),
+                Run("3,4 млн прослушиваний", null),
+            )),
+            onTap = NavigationEndpoint(watchEndpoint = WatchEndpoint(videoId = "top-song")),
+        )
+        val top = SearchSummaryPage.fromMusicCardShelfRenderer(songCard) as SongItem
+        assertEquals(emptyList<Artist>(), top.artists)
+        val correct = Artist("Actual Performer", "UC_actual")
+        val enriched = SearchSummaryPage(
+            listOf(SearchSummary("Top result", listOf(top))),
+        ).withFilteredSongCredits(listOf(top.copy(artists = listOf(correct))))
+        assertEquals(
+            listOf(correct),
+            (enriched.summaries.single().items.single() as SongItem).artists,
+        )
+    }
+
+    @Test
+    fun `filtered songs and summary prefer linked copy without duplicated artist text`() {
+        val anonymous = Artist("Featured", null)
+        val linked = Artist("Featured", "UC_featured")
+        val summary = SearchSummaryPage(
+            listOf(SearchSummary("Top result", listOf(
+                SongItem(id = "same-track", title = "Title",
+                    artists = listOf(anonymous), duration = 140, thumbnail = "cover")
+            ))),
+        )
+        val matched = SongItem(id = "same-track", title = "Title",
+            artists = listOf(linked), duration = 140, thumbnail = "cover")
+        val enriched = summary.withFilteredSongCredits(listOf(matched))
+        assertEquals(
+            listOf(linked),
+            (enriched.summaries.single().items.single() as SongItem).artists,
+        )
+    }
+
+    @Test
+    fun `Top result row ignores metrics in additional columns`() {
+        val renderer = songRenderer("top-track", "Track", listOf(
+            Run("14M views", null), Run(" • ", null),
+            Run("Actual Performer", artistEndpoint("UC_actual")),
+        ))
+        val top = SearchSummaryPage.fromMusicResponsiveListItemRenderer(renderer) as SongItem
+        assertEquals(
+            listOf(Artist("Actual Performer", "UC_actual")),
+            top.artists,
+        )
+    }
+
     private fun artistCard() = MusicCardShelfRenderer(
         title = Runs(listOf(Run("Oliver Tree", null))),
         subtitle = Runs(emptyList()),

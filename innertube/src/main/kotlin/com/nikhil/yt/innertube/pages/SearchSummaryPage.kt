@@ -61,15 +61,15 @@ internal fun enrichSearchSummaryArtists(summaries: List<SearchSummary>): List<Se
         .filterIsInstance<SongItem>()
         .groupBy { it.id }
         .mapValues { (_, occurrences) ->
-            occurrences.flatMap { it.artists }
-                .distinctBy { it.id ?: "credit:${it.name.trim().lowercase()}" }
+            PageHelper.deduplicateArtistCredits(occurrences.flatMap { it.artists })
         }
     return summaries.map { summary ->
         summary.copy(items = summary.items.map { item ->
             if (item is SongItem) {
-                val merged = (item.artists + knownArtists[item.id].orEmpty())
-                    .distinctBy { it.id ?: "credit:${it.name.trim().lowercase()}" }
-                if (merged.size > item.artists.size) item.copy(artists = merged) else item
+                val merged = PageHelper.deduplicateArtistCredits(
+                    item.artists + knownArtists[item.id].orEmpty()
+                )
+                if (merged != item.artists) item.copy(artists = merged) else item
             } else item
         })
     }
@@ -114,15 +114,15 @@ data class SearchSummaryPage(
     fun withFilteredSongCredits(filteredSongs: List<SongItem>): SearchSummaryPage {
         if (filteredSongs.isEmpty()) return this
         val creditsById = filteredSongs.groupBy { it.id }.mapValues { (_, songs) ->
-            songs.flatMap { it.artists }
-                .distinctBy { it.id ?: "credit:${it.name.trim().lowercase()}" }
+            PageHelper.deduplicateArtistCredits(songs.flatMap { it.artists })
         }
         return copy(summaries = summaries.map { summary ->
             summary.copy(items = summary.items.map { item ->
                 if (item !is SongItem) item else {
-                    val credited = (item.artists + creditsById[item.id].orEmpty())
-                        .distinctBy { it.id ?: "credit:${it.name.trim().lowercase()}" }
-                    if (credited.size > item.artists.size) item.copy(artists = credited) else item
+                    val credited = PageHelper.deduplicateArtistCredits(
+                        item.artists + creditsById[item.id].orEmpty()
+                    )
+                    if (credited != item.artists) item.copy(artists = credited) else item
                 }
             })
         })

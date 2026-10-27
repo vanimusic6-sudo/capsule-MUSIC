@@ -161,6 +161,75 @@ class PageHelperArtistCreditsTest {
         )
     }
 
+    @Test
+    fun `russian play counts never become performer credits`() {
+        val stats = listOf(
+            "1,7 млн прослушиваний",
+            "12 тыс. просмотров",
+            "2,3 млн слушателей за месяц",
+            "14 млн подписчиков",
+            "1 250 000 прослушиваний",
+            "5.6M views",
+            "24K plays",
+            "2.1 million monthly listeners",
+        )
+        stats.forEach { stat ->
+            assertEquals("Unexpected performer from: $stat",
+                emptyList<Artist>(), PageHelper.extractArtists(listOf(Run(stat, null))))
+            assertEquals("Unexpected song performer from: $stat",
+                emptyList<Artist>(), PageHelper.extractSongArtists(listOf(Run(stat, null))))
+        }
+    }
+
+    @Test
+    fun `statistics and localized song labels before an unlinked artist do not block it`() {
+        val metadata = listOf(
+            Run("Композиция", null),
+            Run("·", null),
+            Run("18,3 млн прослушиваний", null),
+            Run(" • ", null),
+            Run("Real Artist", null),
+            Run(" • ", null),
+            Run("4:12", null),
+        )
+        assertEquals(
+            listOf(Artist("Real Artist", null)),
+            PageHelper.extractSongArtists(metadata),
+        )
+    }
+
+    @Test
+    fun `audience count after linked main credit is not a featured artist`() {
+        assertEquals(
+            listOf(Artist("Main", "UC_main"), Artist("Guest", null)),
+            PageHelper.extractSongArtists(listOf(
+                Run("Main", artistEndpoint("UC_main")),
+                Run(" & ", null),
+                Run("Guest", null),
+                Run(" & ", null),
+                Run("5M views", null),
+            )),
+        )
+    }
+
+    @Test
+    fun `unlinked artist named Million Views survives and linked names still win`() {
+        assertEquals(
+            listOf(Artist("Million Views", null)),
+            PageHelper.extractSongArtists(listOf(Run("Million Views", null))),
+        )
+        assertEquals(
+            listOf(Artist("42M Views", "UC_real_band")),
+            PageHelper.extractSongArtists(listOf(Run("42M Views", artistEndpoint("UC_real_band")))),
+        )
+        assertEquals(
+            listOf(Artist("Guest", "UC_guest")),
+            PageHelper.deduplicateArtistCredits(listOf(
+                Artist("Guest", null), Artist("Guest", "UC_guest"),
+            )),
+        )
+    }
+
     private fun artistEndpoint(id: String) =
         NavigationEndpoint(
             browseEndpoint =
