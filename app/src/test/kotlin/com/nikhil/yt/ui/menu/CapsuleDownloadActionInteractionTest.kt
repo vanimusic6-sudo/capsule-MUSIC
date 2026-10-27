@@ -50,7 +50,7 @@ class CapsuleDownloadActionInteractionTest {
     @Test fun stoppedDownloadOffersResumeOrRemoveWithoutNestedConfirmations() {
         var removed = 0
         var resumed = 0
-        val downloadLabel = rule.activity.getString(R.string.action_download)
+        val downloadLabel = rule.activity.getString(R.string.capsule_download_resume_partial)
         val removeLabel = rule.activity.getString(R.string.remove_download)
         rule.setContent {
             MaterialTheme {
@@ -73,6 +73,25 @@ class CapsuleDownloadActionInteractionTest {
             assertEquals(0, resumed)
         }
     }
+    @Test fun partiallySavedPlaylistLabelsNextActionDownloadRemaining() {
+        val label = rule.activity.getString(R.string.capsule_download_remaining)
+        rule.setContent {
+            MaterialTheme {
+                CapsuleDownloadAction(
+                    state = Download.STATE_STOPPED,
+                    hasStoredItems = true,
+                    hasCompletedItems = true,
+                    onDownload = {},
+                    onStop = {},
+                    onRemove = {},
+                    actionKey = "playlist-partial",
+                    collectionName = "My playlist",
+                )
+            }
+        }
+        rule.onNodeWithText(label).assertExists()
+    }
+
     @Test fun fastSecondTapBeforeMedia3IndexUpdatesStillOffersDelete() {
         var starts = 0
         var deletes = 0
