@@ -8,17 +8,29 @@ import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
 
-/** A collection is complete only when every member is complete; empty is never downloaded. */
+/**
+ * A collection is complete only when every member is complete.
+ * Downloading reflects collection-owned work, not independent manual-priority
+ * requests for songs that happen to share a playlist ID.
+ */
 internal fun collectionDownloadState(songIds: Collection<String>, downloads: Map<String, Download>): Int {
     if (songIds.isEmpty()) return Download.STATE_STOPPED
-    val states = songIds.distinct().map { downloads[it]?.visibleState }
+    val entries = songIds.distinct().map(downloads::get)
     return when {
-        // A REMOVE is asynchronous. Don't expose "Download/Resume" mid-delete:
-        // it could re-add a track while its cached bytes are being purged.
-        states.any { it == Download.STATE_REMOVING } -> Download.STATE_REMOVING
-        states.all { it == Download.STATE_COMPLETED } -> Download.STATE_COMPLETED
-        states.any { it == Download.STATE_QUEUED || it == Download.STATE_DOWNLOADING || it == Download.STATE_RESTARTING } ->
-            Download.STATE_DOWNLOADING
+        // Keep deletion and completion based on the real Media3 index.
+        entries.any { it?.state == Download.STATE_REMOVING } -> Download.STATE_REMOVING
+        entries.all { it?.state == Download.STATE_COMPLETED } -> Download.STATE_COMPLETED
+
+        // Manual-priority tracks are separate single-track requests, even when
+        // their ID also happens to be in this playlist. Collection Stop
+        // deliberately preserves those downloads. Counting them as active
+        // collection work made the playlist look stuck in DOWNLOADING forever.
+        entries.any { download ->
+            download != null && !download.request.isManualDownload() &&
+                download.visibleState in listOf(
+                    Download.STATE_QUEUED, Download.STATE_DOWNLOADING, Download.STATE_RESTARTING,
+                )
+        } -> Download.STATE_DOWNLOADING
         else -> Download.STATE_STOPPED
     }
 }

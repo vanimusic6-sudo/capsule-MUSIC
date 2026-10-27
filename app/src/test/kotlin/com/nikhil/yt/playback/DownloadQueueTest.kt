@@ -64,6 +64,17 @@ class DownloadQueueTest {
             await { manager.currentDownloads.none { !it.request.isManualDownload() && it.stopReason == 0 } }
             assertEquals(Download.STATE_COMPLETED, index.getDownload("track-1")?.state)
             assertEquals(Download.STATE_DOWNLOADING, index.getDownload("track-101")?.state)
+            // Stop correctly preserves the user's separate priority download,
+            // but the playlist itself must not claim to be downloading.
+            val collectionIndex = (1..101).mapNotNull { n ->
+                index.getDownload("track-$n")?.let { "track-$n" to it }
+            }.toMap()
+            assertEquals(
+                Download.STATE_STOPPED,
+                collectionDownloadState(
+                    (2..101).map { "track-$it" }, collectionIndex,
+                ),
+            )
             gates.getValue("track-101").countDown()
             await { index.getDownload("track-101")?.state == Download.STATE_COMPLETED }
             assertEquals(2, maximum.get())
