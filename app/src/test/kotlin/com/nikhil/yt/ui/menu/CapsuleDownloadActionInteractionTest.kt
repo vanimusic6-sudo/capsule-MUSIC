@@ -3,6 +3,8 @@ package com.nikhil.yt.ui.menu
 import android.app.Application
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -159,6 +161,7 @@ class CapsuleDownloadActionInteractionTest {
                     onStop = { stopped++ },
                     onRemove = { removed++ },
                     actionKey = "active-keep",
+                    isCollection = false,
                 )
             }
         }
@@ -227,6 +230,7 @@ class CapsuleDownloadActionInteractionTest {
                     onRemove = { removed++ },
                     instantRemove = false,
                     actionKey = "not-player",
+                    isCollection = false,
                 )
             }
         }
