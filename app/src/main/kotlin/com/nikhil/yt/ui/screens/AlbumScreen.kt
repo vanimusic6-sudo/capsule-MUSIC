@@ -16,7 +16,8 @@ import com.nikhil.yt.ui.component.AlbumArtwork
 import com.nikhil.yt.ui.component.AlbumHeaderLayout
 import com.nikhil.yt.ui.component.AlbumHeaderPlaceholder
 import com.nikhil.yt.ui.component.AlbumScreenLayout
-import com.nikhil.yt.ui.component.PlaylistHero
+import com.nikhil.yt.ui.component.CapsuleDetailActionCluster
+import com.nikhil.yt.ui.component.CapsuleHeroMetric
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.menu.CapsuleCollectionDownloadButton
 import com.nikhil.yt.ui.component.StandardChrome
@@ -180,16 +181,47 @@ fun AlbumScreen(
             val hasSongs = albumWithSongs?.songs?.isNotEmpty() == true
             if (hasSongs) {
                 item(key = "header") {
-                    PlaylistHero(
-                        title = albumWithSongs.album.title,
-                        thumbnails = listOfNotNull(albumWithSongs.album.thumbnailUrl),
-                        songCount = pluralStringResource(
-                            R.plurals.n_song, wrappedSongs.size, wrappedSongs.size,
-                        ),
-                        year = albumWithSongs.album.year?.toString(),
-                        duration = wrappedSongs.sumOf { it.item.song.duration.coerceAtLeast(0) }
-                            .takeIf { it > 0 }?.let { makeTimeString(it * 1000L) },
-                    ) {
+                    // Restore the original portrait album artwork and bold title.
+                    // Only the metadata/buttons inherit the new joined playlist tray.
+                    AlbumHeaderLayout(
+                        artwork = {
+                            AlbumArtwork(
+                                thumbnailUrl = albumWithSongs.album.thumbnailUrl,
+                                background = surfaceColor,
+                            )
+                        },
+                        title = {
+                            Text(
+                                text = albumWithSongs.album.title,
+                                style = MaterialTheme.typography.headlineSmall.copy(fontSize = 26.sp),
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(horizontal = 32.dp),
+                            )
+                        },
+                        metadata = {},
+                        actions = {
+                            CapsuleDetailActionCluster(
+                                metrics = listOfNotNull(
+                                    CapsuleHeroMetric(
+                                        R.drawable.music_note,
+                                        pluralStringResource(
+                                            R.plurals.n_song, wrappedSongs.size, wrappedSongs.size,
+                                        ),
+                                    ),
+                                    albumWithSongs.album.year?.let { year ->
+                                        CapsuleHeroMetric(R.drawable.calendar_today, year.toString())
+                                    },
+                                    wrappedSongs.sumOf { it.item.song.duration.coerceAtLeast(0) }
+                                        .takeIf { it > 0 }?.let { duration ->
+                                            CapsuleHeroMetric(
+                                                R.drawable.timer, makeTimeString(duration * 1000L),
+                                            )
+                                        },
+                                ),
+                            ) {
                         PlaylistAction(
                             icon = if (albumWithSongs.album.bookmarkedAt != null)
                                 R.drawable.favorite else R.drawable.favorite_border,
@@ -265,7 +297,10 @@ fun AlbumScreen(
                                 }
                             },
                         )
-                    }
+                            }
+                        },
+                        bottomSpacing = 34.dp,
+                    )
                 }
 
                 // Songs List

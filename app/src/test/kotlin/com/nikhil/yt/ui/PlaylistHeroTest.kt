@@ -60,6 +60,8 @@ class PlaylistHeroTest {
         val tray = compose.onNodeWithTag("capsule:detail-actions").fetchSemanticsNode().boundsInRoot
         val outer = compose.onNodeWithTag("playlist").fetchSemanticsNode().boundsInRoot
         assertTrue("Square artwork", kotlin.math.abs(cover.width - cover.height) < 2f)
+        assertTrue("Playlist cover and controls are lowered below the toolbar",
+            cover.top >= with(compose.density) { 95.dp.toPx() })
         assertEquals("Artwork is 87 percent of its parent", outer.width * 0.87f, cover.width, 3f)
         assertTrue("Metadata tab is behind, not above, the actions", tab.bottom > tray.top)
         assertTrue("Metadata tab is narrower than the action tray", tab.width < tray.width)

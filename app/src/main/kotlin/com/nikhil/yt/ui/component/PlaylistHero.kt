@@ -4,6 +4,7 @@ import androidx.annotation.DrawableRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -16,6 +17,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -24,7 +27,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -55,7 +57,7 @@ internal fun CapsuleDetailHero(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         // The app toolbar sits over the top of the scrolling detail hero.
-        Spacer(Modifier.height(54.dp))
+        Spacer(Modifier.height(100.dp))
         Box(
             Modifier.fillMaxWidth(0.87f)
                 .aspectRatio(1f)
@@ -91,69 +93,100 @@ internal fun CapsuleDetailHero(
     }
 }
 
+/**
+ * One continuous outline follows the entire two-level shape: it goes around
+ * the raised stats tab, extends along each shoulder of the bottom action tray,
+ * then rounds the bottom corners. Neither half has its own separate border.
+ * This is a single path rather than two overlapping outlined rectangles.
+ */
 @Composable
 internal fun CapsuleDetailActionCluster(
     metrics: List<CapsuleHeroMetric>,
     actions: @Composable RowScope.() -> Unit,
 ) {
+    val panel = StandardChrome.panel
+    val outline = StandardChrome.muted.copy(alpha = 0.32f)
+    val tabFraction = if (metrics.size > 2) 0.94f else 0.78f
+
     Box(
-        Modifier.fillMaxWidth().padding(horizontal = 24.dp).height(91.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).height(91.dp),
         contentAlignment = Alignment.TopCenter,
     ) {
-        // A real raised tab, partly hidden behind the opaque front tray.
-        Surface(
-            modifier = Modifier.fillMaxWidth(
-                if (metrics.size > 2) 0.94f else 0.78f,
-            ).height(54.dp).testTag("capsule:detail-metadata-tab"),
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            color = StandardChrome.panel,
+        Canvas(Modifier.matchParentSize()) {
+            val w = size.width
+            val h = size.height
+            val tabLeft = w * (1f - tabFraction) / 2f
+            val tabRight = w - tabLeft
+            val shoulderY = h - 60.dp.toPx()
+            val upperRadius = minOf(24.dp.toPx(), (tabRight - tabLeft) / 3f)
+            // Preserve the stepped silhouette on narrower 3-stat albums.
+            val shoulderRadius = minOf(24.dp.toPx(), tabLeft * 0.75f)
+            val bottomRadius = 24.dp.toPx()
+
+            val combined = Path().apply {
+                moveTo(tabLeft + upperRadius, 0f)
+                lineTo(tabRight - upperRadius, 0f)
+                quadraticBezierTo(tabRight, 0f, tabRight, upperRadius)
+                lineTo(tabRight, shoulderY)
+                lineTo(w - shoulderRadius, shoulderY)
+                quadraticBezierTo(w, shoulderY, w, shoulderY + shoulderRadius)
+                lineTo(w, h - bottomRadius)
+                quadraticBezierTo(w, h, w - bottomRadius, h)
+                lineTo(bottomRadius, h)
+                quadraticBezierTo(0f, h, 0f, h - bottomRadius)
+                lineTo(0f, shoulderY + shoulderRadius)
+                quadraticBezierTo(0f, shoulderY, shoulderRadius, shoulderY)
+                lineTo(tabLeft, shoulderY)
+                lineTo(tabLeft, upperRadius)
+                quadraticBezierTo(tabLeft, 0f, tabLeft + upperRadius, 0f)
+                close()
+            }
+            drawPath(combined, color = panel)
+            drawPath(combined, color = outline, style = Stroke(width = 1.dp.toPx()))
+        }
+
+        Row(
+            modifier = Modifier.align(Alignment.TopCenter)
+                .fillMaxWidth(tabFraction).height(37.dp)
+                .padding(horizontal = 7.dp)
+                .testTag("capsule:detail-metadata-tab"),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 9.dp).padding(bottom = 17.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                metrics.forEach { metric ->
-                    Row(
-                        Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            painter = painterResource(metric.icon),
-                            contentDescription = null,
-                            tint = StandardChrome.muted,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            text = metric.text,
-                            color = StandardChrome.muted,
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontWeight = FontWeight.Normal,
-                                fontSize = if (metrics.size > 2) 11.sp else 13.sp,
-                            ),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
+            metrics.forEach { metric ->
+                Row(
+                    Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        painter = painterResource(metric.icon),
+                        contentDescription = null,
+                        tint = StandardChrome.muted,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = metric.text,
+                        color = StandardChrome.muted,
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.Normal,
+                            fontSize = if (metrics.size > 2) 11.sp else 13.sp,
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }
-        Surface(
+        Row(
             modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                .height(60.dp).padding(horizontal = 7.dp)
                 .testTag("capsule:detail-actions"),
-            shape = RoundedCornerShape(24.dp),
-            color = StandardChrome.panel,
-            border = BorderStroke(1.dp, StandardChrome.muted.copy(alpha = 0.27f)),
-        ) {
-            Row(
-                Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 7.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
-                content = actions,
-            )
-        }
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+            content = actions,
+        )
     }
 }
 

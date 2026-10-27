@@ -80,33 +80,51 @@ internal fun AlbumHeaderLayout(
 }
 
 /**
- * Album skeleton uses the exact same square cover and layered tray as the
- * loaded album. Do not flash the older edge-to-edge portrait during loading.
+ * Album skeleton keeps the ORIGINAL portrait 0.85 artwork, title position and
+ * matte fade. Only the joined metadata/action outline follows the new style.
+ * Its height matches the loaded content to prevent jumping on first render.
  */
 @Composable
 internal fun AlbumHeaderPlaceholder(background: Color, modifier: Modifier = Modifier) {
     val loading = stringResource(R.string.loading)
-    PlaylistHero(
-        thumbnails = emptyList(),
-        title = " ",
-        songCount = "—",
-        year = "—",
-        duration = "—",
-        loading = true,
+    val placeholder = StandardChrome.muted.copy(alpha = 0.18f)
+    AlbumHeaderLayout(
         modifier = modifier.clearAndSetSemantics { contentDescription = loading },
-    ) {
-        // Decorative placeholders, not disabled clickable controls. Keep the
-        // loading layout fully inert for accessibility and pointer hit tests.
-        repeat(5) {
+        artwork = {
+            AlbumArtworkLayers(
+                ColorPainter(StandardChrome.panel),
+                blurred = null,
+                background = background,
+            )
+        },
+        title = {
             Box(
-                Modifier.weight(1f).height(60.dp),
-                contentAlignment = Alignment.Center,
+                Modifier.fillMaxWidth(0.6f).height(32.dp)
+                    .padding(vertical = 6.dp).clip(RoundedCornerShape(8.dp))
+                    .background(placeholder),
+            )
+        },
+        metadata = {},
+        actions = {
+            CapsuleDetailActionCluster(
+                metrics = listOf(
+                    CapsuleHeroMetric(R.drawable.music_note, "—"),
+                    CapsuleHeroMetric(R.drawable.calendar_today, "—"),
+                    CapsuleHeroMetric(R.drawable.timer, "—"),
+                ),
             ) {
-                Box(
-                    Modifier.size(22.dp).clip(CircleShape)
-                        .background(StandardChrome.muted.copy(alpha = 0.18f)),
-                )
+                repeat(5) {
+                    Box(
+                        Modifier.weight(1f).height(60.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            Modifier.size(22.dp).clip(CircleShape).background(placeholder),
+                        )
+                    }
+                }
             }
-        }
-    }
+        },
+        bottomSpacing = 34.dp,
+    )
 }

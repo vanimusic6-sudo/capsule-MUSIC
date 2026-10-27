@@ -38,8 +38,8 @@ import com.nikhil.yt.ui.component.AlbumArtworkLayers
 import com.nikhil.yt.ui.component.AlbumHeaderLayout
 import com.nikhil.yt.ui.component.AlbumHeaderPlaceholder
 import com.nikhil.yt.ui.component.AlbumScreenLayout
-import com.nikhil.yt.ui.component.PlaylistHero
-import com.nikhil.yt.ui.component.PlaylistAction
+import com.nikhil.yt.ui.component.CapsuleDetailActionCluster
+import com.nikhil.yt.ui.component.CapsuleHeroMetric
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -105,7 +105,7 @@ class AlbumLayoutTest {
         compose.runOnIdle { assertEquals(1, backClicks) }
     }
 
-    @Test fun loadingAlbumUsesTheSameSquareHeroAndDoesNotMoveTheSongListOnLoad() {
+    @Test fun loadingAlbumRetainsOriginalPortraitCoverAndUnifiedControlsOnLoad() {
         var loading by mutableStateOf(true)
         compose.setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
@@ -120,17 +120,32 @@ class AlbumLayoutTest {
                                     if (loading) {
                                         AlbumHeaderPlaceholder(Color.Black)
                                     } else {
-                                        PlaylistHero(
-                                            thumbnails = emptyList(),
-                                            songCount = "—",
-                                            year = "—",
-                                            duration = "—",
-                                            title = "Album",
-                                        ) {
-                                            repeat(5) {
-                                                PlaylistAction(R.drawable.play, "Play", {}, enabled = false)
-                                            }
-                                        }
+                                        AlbumHeaderLayout(
+                                            artwork = {
+                                                AlbumArtworkLayers(
+                                                    ColorPainter(Color.White), null, Color.Black,
+                                                    Modifier.testTag("cover"),
+                                                )
+                                            },
+                                            title = {
+                                                Box(Modifier.fillMaxWidth(0.6f).height(32.dp))
+                                            },
+                                            metadata = {},
+                                            actions = {
+                                                CapsuleDetailActionCluster(
+                                                    metrics = listOf(
+                                                        CapsuleHeroMetric(R.drawable.music_note, "—"),
+                                                        CapsuleHeroMetric(R.drawable.calendar_today, "—"),
+                                                        CapsuleHeroMetric(R.drawable.timer, "—"),
+                                                    ),
+                                                ) {
+                                                    repeat(5) {
+                                                        Box(Modifier.weight(1f).height(60.dp))
+                                                    }
+                                                }
+                                            },
+                                            bottomSpacing = 34.dp,
+                                        )
                                     }
                                 }
                             }
@@ -147,11 +162,14 @@ class AlbumLayoutTest {
         compose.runOnIdle { loading = false }
         val loadedHeader = compose.onNodeWithTag("header").fetchSemanticsNode().boundsInRoot
         val loadedSong = compose.onNodeWithTag("song").fetchSemanticsNode().boundsInRoot
-        val cover = compose.onNodeWithTag("capsule:detail-artwork").fetchSemanticsNode().boundsInRoot
+        val cover = compose.onNodeWithTag("cover").fetchSemanticsNode().boundsInRoot
+        val tab = compose.onNodeWithTag("capsule:detail-metadata-tab").fetchSemanticsNode().boundsInRoot
+        val tray = compose.onNodeWithTag("capsule:detail-actions").fetchSemanticsNode().boundsInRoot
         assertEquals(loadingHeader.top, loadedHeader.top, 1f)
         assertEquals(loadingHeader.height, loadedHeader.height, 2f)
-        assertEquals("Loading and content use one hero layout", loadingSong.top, loadedSong.top, 2f)
-        assertEquals("Artwork is centred at 87% width", loadedHeader.width * 0.87f, cover.width, 3f)
-        assertEquals(cover.width, cover.height, 2f)
+        assertEquals("Loading and content must share the original album layout", loadingSong.top, loadedSong.top, 2f)
+        assertEquals("Album cover should fill its width as before", loadedHeader.width, cover.width, 2f)
+        assertEquals("Original portrait ratio remains 0.85", cover.width / 0.85f, cover.height, 2f)
+        assertTrue("Album info tab overlaps the controls", tab.bottom > tray.top)
     }
 }
