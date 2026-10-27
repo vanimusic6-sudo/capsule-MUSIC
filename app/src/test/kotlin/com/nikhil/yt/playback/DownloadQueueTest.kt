@@ -90,6 +90,46 @@ class DownloadQueueTest {
             gates.values.forEach { it.countDown() }; queue.close(); manager.release(); provider.close()
         }
     }
+    @Test fun immediatePlaylistStopCatchesLateManualServiceAdd() {
+        // Reproduces the first-tap race: download has not reached the Media3
+        // index when the user presses Stop. A manually prioritized same-ID ADD
+        // must not slip through as an endlessly active transfer.
+        val context = RuntimeEnvironment.getApplication()
+        val provider = StandaloneDatabaseProvider(context)
+        val index = DefaultDownloadIndex(provider)
+        val started = AtomicInteger()
+        val manager = DownloadManager(context, index, DownloaderFactory { _ ->
+            object : Downloader {
+                override fun download(listener: Downloader.ProgressListener?) {
+                    started.incrementAndGet()
+                }
+                override fun cancel() {}
+                override fun remove() {}
+            }
+        })
+        val queue = AudioDownloadQueue(manager)
+        try {
+            manager.setRequirements(Requirements(0))
+            manager.resumeDownloads()
+            await { manager.isInitialized }
+            val id = "track-77"
+            stopCollectionDownloads(manager, listOf(id))
+            // Simulate delayed DownloadService ADD after the Stop action.
+            manager.addDownload(request(77).withManualPriority(), DOWNLOAD_WAITING_FOR_SLOT)
+            await {
+                index.getDownload(id)?.let {
+                    it.state == Download.STATE_STOPPED &&
+                        it.stopReason == COLLECTION_STOP_REASON_USER
+                } == true
+            }
+            assertEquals("A late ADD must not start downloading", 0, started.get())
+        } finally {
+            queue.close()
+            manager.release()
+            provider.close()
+        }
+    }
+
     @Test fun buttonDistinguishesWaitingBackgroundFromActivePausedFailedAndCompleted() {
         val pending = entry(request(1), 1)
         assertTrue(pending.canPrioritize)
