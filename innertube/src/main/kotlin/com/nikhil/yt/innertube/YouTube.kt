@@ -69,6 +69,7 @@ import com.nikhil.yt.innertube.pages.SearchSuggestionPage
 import com.nikhil.yt.innertube.pages.SearchSummary
 import com.nikhil.yt.innertube.pages.SearchSummaryPage
 import com.nikhil.yt.innertube.pages.enrichSearchSummaryArtists
+import com.nikhil.yt.innertube.pages.mergeSearchSameVideoCredits
 import com.nikhil.yt.innertube.pages.markExplicitVideoShelves
 import com.nikhil.yt.innertube.pages.extractSearchCardArtists
 import io.ktor.client.call.body
@@ -181,7 +182,7 @@ object YouTube {
 
                             SearchSummary(
                                 title = renderer.header?.musicCardShelfHeaderBasicRenderer?.title?.runs?.firstOrNull()?.text ?: "Top result",
-                                items = (listOfNotNull(topItem) + subItems).distinctBy { it.id }
+                                items = mergeSearchSameVideoCredits(listOfNotNull(topItem) + subItems)
                             )
                         }
 
@@ -198,7 +199,7 @@ object YouTube {
 
                             SearchSummary(
                                 title = renderer.title?.runs?.firstOrNull()?.text ?: "Other",
-                                items = parsedItems.distinctBy { it.id }
+                                items = mergeSearchSameVideoCredits(parsedItems)
                             )
                         }
 
@@ -212,7 +213,7 @@ object YouTube {
 
                             SearchSummary(
                                 title = renderer.header?.musicCarouselShelfBasicHeaderRenderer?.title?.runs?.firstOrNull()?.text ?: "More",
-                                items = parsedItems.distinctBy { it.id }
+                                items = mergeSearchSameVideoCredits(parsedItems)
                             )
                         }
                         else -> null
@@ -255,11 +256,11 @@ object YouTube {
             ?.tabRenderer?.content?.sectionListRenderer?.contents.orEmpty()
             .mapNotNull { it.musicShelfRenderer }
         SearchResult(
-            items = shelves.flatMap { shelf ->
+            items = mergeSearchSameVideoCredits(shelves.flatMap { shelf ->
                 shelf.contents.orEmpty().getItems().mapNotNull {
                     SearchPage.toYTItem(it, selectedFromVideoResults = filter == SearchFilter.FILTER_VIDEO)
                 }
-            }.distinctBy { it.id },
+            }),
             continuation = shelves.lastOrNull { it.continuations?.getContinuation() != null }
                 ?.continuations?.getContinuation(),
         )

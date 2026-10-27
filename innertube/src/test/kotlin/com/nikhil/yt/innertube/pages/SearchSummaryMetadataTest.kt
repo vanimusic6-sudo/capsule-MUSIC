@@ -273,6 +273,34 @@ class SearchSummaryMetadataTest {
         assertEquals(null, filteredArtist.radioEndpoint)
     }
 
+    @Test
+    fun `Top card and nested song row with the same video retain all artists`() {
+        val lead = Artist("Lead", "UC_lead")
+        val guest = Artist("Guest", "UC_guest")
+        val top = SongItem(id = "same-video", title = "Duet",
+            artists = listOf(lead), duration = null, thumbnail = "cover")
+        val inner = top.copy(artists = listOf(lead, guest), duration = 201)
+        val merged = mergeSearchSameVideoCredits(listOf(top, inner, top))
+        assertEquals(1, merged.size)
+        assertEquals(listOf(lead, guest), (merged.single() as SongItem).artists)
+        assertEquals(201, (merged.single() as SongItem).duration)
+    }
+
+    @Test
+    fun `Top result merges queue guest credits only for its exact video ID`() {
+        val lead = Artist("Lead", "UC_lead")
+        val guest = Artist("Guest", "UC_guest")
+        val top = SongItem(id = "one-video", title = "Same title",
+            artists = listOf(lead), duration = 180, thumbnail = "cover")
+        val unrelated = SongItem(id = "other-video", title = "Same title",
+            artists = listOf(Artist("Wrong", "UC_wrong")), duration = 180, thumbnail = "cover")
+        val queueTrack = top.copy(artists = listOf(lead, guest))
+        val enriched = SearchSummaryPage(listOf(SearchSummary("Top result", listOf(top))))
+            .withFilteredSongCredits(listOf(unrelated, queueTrack))
+        assertEquals(listOf(lead, guest),
+            (enriched.summaries.single().items.single() as SongItem).artists)
+    }
+
     private fun artistCard() = MusicCardShelfRenderer(
         title = Runs(listOf(Run("Oliver Tree", null))),
         subtitle = Runs(emptyList()),

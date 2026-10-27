@@ -32,6 +32,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -75,25 +77,41 @@ constructor(
                                 // async Songs response arrived. Waiting (bounded) here
                                 // makes the title+credits appear in one stable frame.
                                 val needsFullCredits = filteredSummary.summaries
-                                    .flatMap { it.items }
-                                    .any { it is SongItem && it.artists.size <= 1 }
+                                    .flatMap { it.items }.filterIsInstance<SongItem>()
+                                    .any { it.artists.size < 2 }
+                                // Resolve only Top result videos that have incomplete credits.
+                                // Metrolist also uses the queue endpoint for track-specific
+                                // metadata, rather than guessing from a matching song title.
+                                val topIds = filteredSummary.summaries.firstOrNull()
+                                    ?.items?.filterIsInstance<SongItem>()
+                                    ?.filter { it.artists.size < 2 }
+                                    ?.map { it.id }?.distinct()?.take(3).orEmpty()
                                 val completedSummary = if (needsFullCredits) {
                                     val key = YouTube.SearchFilter.FILTER_SONG.value
                                     val existing = viewStateMap[key]
-                                    val songPage = if (existing != null) existing else {
-                                        withTimeoutOrNull(1_800L) {
-                                            YouTube.search(query, YouTube.SearchFilter.FILTER_SONG)
-                                                .getOrNull()?.let { response ->
-                                                    val items = response.items.distinctBy { it.id }
-                                                        .filterExplicit(hideExplicit)
-                                                    ItemsPage(items, response.continuation).also { page ->
-                                                        viewStateMap[key] = page
+                                    val (songPage, queueSongs) = coroutineScope {
+                                        val songsJob = async {
+                                            existing ?: withTimeoutOrNull(1_800L) {
+                                                YouTube.search(query, YouTube.SearchFilter.FILTER_SONG)
+                                                    .getOrNull()?.let { response ->
+                                                        val items = response.items.filterExplicit(hideExplicit)
+                                                        ItemsPage(items, response.continuation).also { page ->
+                                                            viewStateMap[key] = page
+                                                        }
                                                     }
-                                                }
+                                            }
                                         }
+                                        val queueJob = async {
+                                            if (topIds.isEmpty()) emptyList<SongItem>()
+                                            else withTimeoutOrNull(1_800L) {
+                                                YouTube.queue(videoIds = topIds).getOrNull().orEmpty()
+                                            }.orEmpty()
+                                        }
+                                        songsJob.await() to queueJob.await()
                                     }
+                                    // Resolve before the sole summary publication: no text jump.
                                     filteredSummary.withFilteredSongCredits(
-                                        songPage?.items?.filterIsInstance<SongItem>().orEmpty()
+                                        songPage?.items?.filterIsInstance<SongItem>().orEmpty() + queueSongs
                                     )
                                 } else filteredSummary
                                 // One Compose state mutation, never a late second-credit jump.

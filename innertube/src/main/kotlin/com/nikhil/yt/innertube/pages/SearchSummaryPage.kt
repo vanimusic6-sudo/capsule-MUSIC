@@ -56,6 +56,29 @@ internal fun extractSearchCardArtists(renderer: MusicCardShelfRenderer): List<Ar
  * verified credits of the SAME video ID; never replace them with artists
  * returned by an unrelated artist search query.
  */
+/**
+ * Search can return the very same video twice: the Top card lists the lead,
+ * while its inner song row contains both performers. Keep the first item but
+ * merge all linked credits before deduplicating the results.
+ */
+internal fun mergeSearchSameVideoCredits(items: List<YTItem>): List<YTItem> {
+    val byId = linkedMapOf<String, YTItem>()
+    items.forEach { item ->
+        val previous = byId[item.id]
+        byId[item.id] = when {
+            previous is SongItem && item is SongItem -> previous.copy(
+                artists = PageHelper.deduplicateArtistCredits(previous.artists + item.artists),
+                album = previous.album ?: item.album,
+                duration = previous.duration ?: item.duration,
+                endpoint = previous.endpoint ?: item.endpoint,
+            )
+            previous == null -> item
+            else -> previous
+        }
+    }
+    return byId.values.toList()
+}
+
 internal fun enrichSearchSummaryArtists(summaries: List<SearchSummary>): List<SearchSummary> {
     val knownArtists = summaries.flatMap { it.items }
         .filterIsInstance<SongItem>()
