@@ -1,0 +1,69 @@
+name: Capsule Security Audit
+
+on:
+  push:
+    branches: [audit/security-deep-20261028]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.5.0'
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [[ -x "$SDKMANAGER" ]]; then
+            "$SDKMANAGER" 'platforms;android-37.1'
+          fi
+      - name: Source audit (flags live risks; fails on leaked tokens)
+        run: python3 scripts/capsule_security_audit.py
+      - name: Resolved dependency inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p security-results
+          gradle :app:dependencies --configuration universalReleaseRuntimeClasspath             --no-daemon > security-results/gradle-runtime-dependencies.txt
+      - name: OSV public vulnerability lookup
+        shell: bash
+        run: |
+          python3 scripts/capsule_security_audit.py             --dependencies security-results/gradle-runtime-dependencies.txt
+      - name: Build inspectable debug APK
+        shell: bash
+        run: |
+          echo 'unqualifiedResLocale=en-US' > app/src/main/res/resources.properties
+          gradle :app:assembleUniversalDebug --no-daemon --max-workers=2
+          mkdir -p security-results
+          APK="$(find app/build/outputs/apk/universal/debug -name '*.apk' | head -n 1)"
+          test -s "$APK"
+          sha256sum "$APK" > security-results/debug-apk-sha256.txt
+          python3 - "$APK" <<'PY'
+          import json, sys, zipfile
+          from pathlib import Path
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              names=z.namelist()
+              data={"entries":len(names),"native_libraries":sorted(n for n in names if n.endswith('.so')),
+                    "dex_count":sum(n.endswith('.dex') for n in names),
+                    "asset_count":sum(n.startswith('assets/') for n in names)}
+          Path("security-results/debug-apk-inventory.json").write_text(json.dumps(data,indent=2))
+          PY
+      - name: Persist complete evidence, including incomplete scans
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capsule-security-evidence
+          path: security-results/
+          retention-days: 30
+          if-no-files-found: warn
