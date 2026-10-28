@@ -8,6 +8,29 @@
 > No test accounts, decrypted runtime traffic, installed-device filesystem, or release-APK
 > executable behavior were available to inspect from this connector.
 
+## Measured evidence (actual signed build + resolved dependencies)
+
+A **completed** Actions security audit run [#40655911710](https://github.com/vanimusic6-sudo/capsule-MUSIC/actions/runs/40655911710) produced reproducible evidence. The source inventory is a *heuristic* check, **not an exploitability analysis**:
+
+- **1,335 tracked repository files**, 893 Kotlin; reviewed high-risk components, not line-by-line verification of every source.
+- **20 flagged source risks** (one known upstream embedded Google API key triaged as a public client key, not a leaked private account token); **zero untriaged secret pattern blockers** in the completed run.
+- **356 resolved Maven runtime coordinates**, all queried successfully through OSV; **4 advisory matches** for **3 dependencies**:
+  | Package/version in release graph | Advisory | Severity | Remediation research |
+  | --- | --- | --- | --- |
+  | `com.google.guava:guava:33.5.0-jre` | `GHSA-xxph-c9ww-hj94` | Moderate | Fix >= 33.7.2; risky when Java ObjectInputStream deserializes attacker-controlled structures. |
+  | `com.squareup.wire:wire-runtime:6.4.1` | `GHSA-9rm7-3qhh-h2mc` | High | Fix >= 6.4.5; crafted protobuf length could cause decoding DoS. |
+  | `org.jsoup:jsoup:1.22.2` | `GHSA-65r4-943x-97jj`, `CVE-2026-75140` | High | XML deeply nested namespaces may exhaust memory; vendor patched source commit 862ba2f, verify fixed artifact version carefully before adopting. |
+  | `org.jsoup:jsoup:1.22.2` | `GHSA-pmhh-3w7g-xqp8`, `CVE-2026-71497` | Moderate | Fix >=1.23.1; custom Safelist only (built-in Safelists unaffected). |
+
+  Versions are present in the **resolved dependency tree**, not proof that the vulnerable paths are reachable. Do not force transitive versions into production without media regression tests.
+- **Signed Universal Release APK** from GitHub run `40650413220` directly analyzed: SHA-256 `b68d4d0cae6c84fe042472d2e4e6f48793a6f5e627e3df9261313ec3e0d8b822`. Package `com.nikhil.yt`, versionCode 10, versionName 1.1.2, minSdk 26, targetSdk 36.
+- APK signing checked using Android `apksigner`: **v2 valid, one RSA 4096-bit signer**; SHA-256 certificate fingerprint `c044579fd886ee7f6ae919d705fb3345f7417957d8cd49fd110d596f864ddd7d`.
+- Actual release archive: **1,644 files, two DEX files, eight native .so files** (graphics path + datastore shared counter for four ABIs). The byte scan detects an embedded Google API key prefix but does **not** detect the literal `Token: ` in optimized DEX; **absence of that byte marker is NOT evidence that account tokens could not be logged**.
+- Merged release permissions enumerated: Internet, notifications, network state, audio media, boot, wakelock, foreground media/data services, Bluetooth, legacy audio storage. No requested permission for contacts, camera, microphone or location in this artifact.
+- Independent Semgrep `p/security-audit` run **1,031 source files**, **13 applicable rules**, **0 alerts, 0 analyzer errors**. *Low rule coverage: zero is not evidence of safety*. Supplement with manual review and Android-specific rules.
+- **No controlled real-device traffic or WebView attacker simulation** has been run. No assertion of exfiltration or absence of malware.
+- CI security audit green means **the inventory executed**; it does not clear unresolved high-risk findings or the four OSV advisories.
+
 ## What was actually examined
 
 - Repository tree (1,335 files, 893 Kotlin files) and high-risk application files;
