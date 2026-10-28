@@ -105,7 +105,9 @@ internal fun AlbumArtworkLayers(
             background = background,
             modifier = Modifier.matchParentSize(),
             portrait = true,
-            topScrim = false,
+            // The album portrait now starts 44dp below the top of the sheet.
+            // Feather its top edge into the same surface, never a hard horizontal line.
+            topScrim = true,
             softPortrait = true,
         )
         }
