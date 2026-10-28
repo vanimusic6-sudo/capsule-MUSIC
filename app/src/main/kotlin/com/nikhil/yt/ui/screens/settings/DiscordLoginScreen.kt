@@ -9,7 +9,7 @@
 package com.nikhil.yt.ui.screens.settings
 
 import android.annotation.SuppressLint
-import android.util.Log
+import com.nikhil.yt.BuildConfig
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.*
@@ -74,7 +74,8 @@ fun DiscordLoginScreen(navController: NavController) {
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
 
-                WebView.setWebContentsDebuggingEnabled(true)
+                // Remote DevTools must never be exposed for a production login WebView.
+                WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
 
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
@@ -91,7 +92,7 @@ fun DiscordLoginScreen(navController: NavController) {
                 addJavascriptInterface(object {
                     @JavascriptInterface
                     fun onRetrieveToken(token: String) {
-                        Log.d("DiscordWebView", "Token: $token")
+                        // Never log user credentials: logcat may be collected or exported.
                         scope.launch(Dispatchers.Main) { completeLogin(token) }
                     }
                 }, "Android")
