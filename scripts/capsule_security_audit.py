@@ -114,7 +114,7 @@ def source_findings():
                     "playback/audio/potoken/PoTokenWebView.kt"
                 ):
                     line_text = data.splitlines()[line_num - 1]
-                    if re.match(r'\\s*private const val GOOGLE_API_KEY\\s*=\\s*"', line_text):
+                    if re.match(r'\s*private const val GOOGLE_API_KEY\s*=\s*"', line_text):
                         findings.append(dict(
                             id="EMBEDDED_PUBLIC_GOOGLE_CLIENT_KEY", severity="MEDIUM",
                             path=relative, line=line_num,
