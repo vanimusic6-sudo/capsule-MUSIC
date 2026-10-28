@@ -9,7 +9,7 @@ package com.nikhil.yt.ui.screens.playlist
 
 import androidx.compose.foundation.clickable
 import com.nikhil.yt.playback.queues.ListQueue
-import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.TopAppBar
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
 import com.nikhil.yt.ui.menu.CapsuleCollectionDownloadButton
@@ -573,7 +573,8 @@ fun OnlinePlaylistScreen(
 
         // Top App Bar
         // One measured title handoff. The bar stays transparent throughout.
-        CenterAlignedTopAppBar(
+        // Match AlbumScreen: the compact title is left-aligned beside the back button.
+        TopAppBar(
             modifier = Modifier.onGloballyPositioned(titleMotion::measureToolbar)
                 .artistStyleDetailBackdrop(titleMotion, surfaceColor, forceOpaque = selection || isSearching),
             colors = TopAppBarDefaults.topAppBarColors(

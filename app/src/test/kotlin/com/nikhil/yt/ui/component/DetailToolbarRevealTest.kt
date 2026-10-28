@@ -32,10 +32,10 @@ class DetailToolbarRevealTest {
             assertTrue(m.sourceTitle in 0f..1f && m.pinnedTitle in 0f..1f)
             assertTrue(m.photoDissolve in 0f..1f)
         }
-        assertEquals(1f, detailHeaderFractions(74f, 1f).sourceTitle, 0f)
-        assertEquals(0f, detailHeaderFractions(-24f, 1f).sourceTitle, 0f)
-        assertEquals(0f, detailHeaderFractions(-24f, 1f).pinnedTitle, 0f)
-        assertEquals(1f, detailHeaderFractions(-70f, 1f).pinnedTitle, 0f)
+        assertEquals(1f, detailHeaderFractions(150f, 1f).sourceTitle, 0f)
+        assertEquals(0f, detailHeaderFractions(-34f, 1f).sourceTitle, 0f)
+        assertEquals(0f, detailHeaderFractions(-34f, 1f).pinnedTitle, 0f)
+        assertEquals(1f, detailHeaderFractions(-146f, 1f).pinnedTitle, 0f)
     }
 
     @Test fun toolbarBackdropUsesArtistPolicyAndNeverDoubleTintsArtwork() {
@@ -57,9 +57,27 @@ class DetailToolbarRevealTest {
         ).photoDissolve), 0f)
     }
 
+    @Test fun bothTitlesUseGentleReversibleCrossingWithoutOverlap() {
+        val ascending = (-180..180).map { detailHeaderFractions(it.toFloat(), 1f) }
+        val maxSourceChange = ascending.zipWithNext().maxOf { (a, b) ->
+            kotlin.math.abs(a.sourceTitle - b.sourceTitle)
+        }
+        val maxPinnedChange = ascending.zipWithNext().maxOf { (a, b) ->
+            kotlin.math.abs(a.pinnedTitle - b.pinnedTitle)
+        }
+        assertTrue("Original title fades too abruptly: $maxSourceChange", maxSourceChange < .02f)
+        assertTrue("Pinned title appears too abruptly: $maxPinnedChange", maxPinnedChange < .02f)
+        for (d in -200..200) {
+            val f = detailHeaderFractions(d.toFloat(), 1f)
+            assertTrue("Two visible names at $d", f.sourceTitle == 0f || f.pinnedTitle == 0f)
+        }
+        assertEquals(0f, detailHeaderFractions(-34f, 1f).sourceTitle, 0f)
+        assertEquals(0f, detailHeaderFractions(-34f, 1f).pinnedTitle, 0f)
+    }
+
     @Test fun noStepAtPhaseBoundariesOrFirstFrame() {
-        val before = detailHeaderFractions(-23.99f, 1f)
-        val after = detailHeaderFractions(-24.01f, 1f)
+        val before = detailHeaderFractions(-33.99f, 1f)
+        val after = detailHeaderFractions(-34.01f, 1f)
         assertTrue(before.sourceTitle < 0.0001f)
         assertTrue(after.pinnedTitle < 0.0001f)
         assertEquals(0f, detailHeaderFractions(Float.POSITIVE_INFINITY, 1f).photoDissolve, 0f)

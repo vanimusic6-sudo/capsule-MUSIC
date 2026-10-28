@@ -72,10 +72,14 @@ internal data class DetailHeaderFractions(
     val pinnedTitle: Float,
 )
 
-private fun smoothstep(from: Float, to: Float, value: Float): Float {
+/** Fifth-order easing has zero velocity AND acceleration at both endpoints. */
+private fun smootherstep(from: Float, to: Float, value: Float): Float {
     val t = ((from - value) / (from - to)).coerceIn(0f, 1f)
-    return t * t * (3f - 2f * t)
+    return t * t * t * (t * (t * 6f - 15f) + 10f)
 }
+
+/** Both labels share one measured handoff point, so there is no overlap or dead interval. */
+private const val DetailTitleHandoffDp = -34f
 
 /**
  * Smooth photo dissolve across 286 dp, finishing just after the real header
@@ -87,9 +91,13 @@ private fun smoothstep(from: Float, to: Float, value: Float): Float {
  */
 internal fun detailHeaderFractions(titleDistancePx: Float, pxPerDp: Float): DetailHeaderFractions {
     val d = titleDistancePx / pxPerDp.coerceAtLeast(0.001f)
-    val photo = smoothstep(260f, -26f, d)
-    val source = 1f - smoothstep(74f, -24f, d)
-    val pinned = smoothstep(-24f, -70f, d)
+    // Preserve the artist-style portrait fade and solid backdrop timing.
+    val photo = smootherstep(260f, -26f, d)
+    // Longer, matched curves replace the short, jerky 98/46dp title fades.
+    // As the original finishes, the left-aligned toolbar name starts at exactly
+    // the same title-to-toolbar position; reverse scrolling works symmetrically.
+    val source = 1f - smootherstep(150f, DetailTitleHandoffDp, d)
+    val pinned = smootherstep(DetailTitleHandoffDp, -146f, d)
     return DetailHeaderFractions(photo, source, pinned)
 }
 

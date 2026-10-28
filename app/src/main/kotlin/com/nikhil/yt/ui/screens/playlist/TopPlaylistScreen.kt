@@ -8,7 +8,7 @@
 package com.nikhil.yt.ui.screens.playlist
 
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.TopAppBar
 import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
 import com.nikhil.yt.ui.component.artistStyleDetailBackdrop
@@ -389,7 +389,8 @@ fun TopPlaylistScreen(
 
 
         // Same measured title-to-toolbar handoff as every other playlist.
-        CenterAlignedTopAppBar(
+        // Match AlbumScreen: the compact title is left-aligned beside the back button.
+        TopAppBar(
             modifier = Modifier.onGloballyPositioned(titleMotion::measureToolbar)
                 .artistStyleDetailBackdrop(titleMotion, surfaceColor, forceOpaque = selection || isSearching),
             colors = TopAppBarDefaults.topAppBarColors(
