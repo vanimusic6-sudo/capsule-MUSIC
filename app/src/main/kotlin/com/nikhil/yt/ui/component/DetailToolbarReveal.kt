@@ -95,7 +95,11 @@ internal fun portraitDissolveFraction(offsetPx: Float, distancePx: Float): Float
     val start = distance * 0.12f
     val end = distance * 0.99f
     val fraction = ((offsetPx - start) / (end - start)).coerceIn(0f, 1f)
-    return fraction * fraction * fraction * (fraction * (fraction * 6f - 15f) + 10f)
+    // Evaluate the polynomial in Double: Float32 cancellation near t=1
+    // caused the last frames to wiggle backward (and fail monotonic tests).
+    // The returned draw alpha is still Float and stays strictly in [0, 1].
+    val t = fraction.toDouble()
+    return (t * t * t * (t * (t * 6.0 - 15.0) + 10.0)).toFloat().coerceIn(0f, 1f)
 }
 
 @Composable
