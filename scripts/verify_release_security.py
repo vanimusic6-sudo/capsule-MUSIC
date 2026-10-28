@@ -43,14 +43,17 @@ def verify(apk: Path, apksigner: str, aapt: str):
     sha256 = hashlib.file_digest(apk.open("rb"), "sha256").hexdigest()
     sig = subprocess.run([apksigner, "verify", "--verbose", "--print-certs", str(apk)],
                          text=True, capture_output=True, timeout=90, check=True).stdout
-    m = re.search(r"Signer #1 certificate SHA-256 digest:\s*([0-9a-f]{64})", sig, re.I)
-    if not m:
+    # On v2-signed APKs apksigner writes "V2 Signer:" without "#1".
+    # Compare the SET of fingerprints across all reported signature schemes.
+    certs = set(re.findall(
+        r"(?:V[234](?:\.\d+)? Signer(?: #\d+)?|Signer #\d+)\s*:\s*certificate SHA-256 digest:\s*([0-9a-f]{64})",
+        sig, re.I,
+    ))
+    if not certs:
         raise ValueError("Missing signer certificate digest")
-    cert = m.group(1).lower()
-    if cert != EXPECTED_SIGNER_SHA256:
-        raise ValueError("Release certificate differs from trusted baseline")
-    if re.search(r"Signer #2 certificate SHA-256 digest:", sig):
-        raise ValueError("Unexpected extra APK signer")
+    if certs != {EXPECTED_SIGNER_SHA256}:
+        raise ValueError("Release signer set differs from trusted baseline")
+    cert = EXPECTED_SIGNER_SHA256
 
     badging = subprocess.run([aapt, "dump", "badging", str(apk)],
                             text=True, capture_output=True, timeout=60, check=True).stdout
