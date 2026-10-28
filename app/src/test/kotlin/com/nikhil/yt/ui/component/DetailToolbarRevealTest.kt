@@ -5,72 +5,45 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DetailToolbarRevealTest {
-    private fun fraction(offset: Int, index: Int = 0, force: Boolean = false) =
-        detailToolbarRevealFraction(
-            firstVisibleItemIndex = index,
-            firstVisibleItemScrollOffset = offset,
-            headerHeightPx = 1000,
-            fadeDistancePx = 200,
-            toolbarHeightPx = 100,
-            forceVisible = force,
-        )
-
-    @Test fun revealStartsBeforeHeaderDisappearsAndIsContinuous() {
-        assertEquals(0f, fraction(699), 0f)
-        assertEquals(0f, fraction(700), 0f)
-        assertTrue(fraction(740) > 0f)
-        assertEquals(.5f, fraction(800), 0.0001f)
-        assertEquals(1f, fraction(900), 0f)
-        assertEquals(1f, fraction(0, index = 1), 0f)
+    @Test fun photoDissolvesAcrossLongEvenDistanceUntilTitleCrossesToolbar() {
+        assertEquals(0f, detailHeaderFractions(300f, 1f).photoDissolve, 0f)
+        assertEquals(0f, detailHeaderFractions(260f, 1f).photoDissolve, 0f)
+        assertTrue(detailHeaderFractions(180f, 1f).photoDissolve > 0f)
+        assertTrue(detailHeaderFractions(180f, 1f).photoDissolve < detailHeaderFractions(50f, 1f).photoDissolve)
+        assertEquals(1f, detailHeaderFractions(-26f, 1f).photoDissolve, 0f)
+        assertEquals(1f, detailHeaderFractions(-200f, 1f).photoDissolve, 0f)
     }
 
-    @Test fun enteringAndLeavingRevealHaveNoHardFirstFrameJump() {
-        assertTrue(fraction(701) < 0.001f)
-        assertTrue(1f - fraction(899) < 0.001f)
-        assertTrue(fraction(825) > fraction(775))
+    @Test fun samePhysicalTitleThresholdInDifferentDensities() {
+        for (density in listOf(1f, 1.75f, 2.75f, 3.5f)) {
+            val a = detailHeaderFractions(125f * density, density)
+            val b = detailHeaderFractions(125f, 1f)
+            assertEquals(b.photoDissolve, a.photoDissolve, 0.0001f)
+            assertEquals(b.sourceTitle, a.sourceTitle, 0.0001f)
+            assertEquals(b.pinnedTitle, a.pinnedTitle, 0.0001f)
+        }
     }
 
-    @Test fun initialUnmeasuredHeaderNeverFlashesTheTitle() {
-        assertEquals(0f, detailToolbarRevealFraction(0, 0, 0, 200, 100, false), 0f)
+    @Test fun originalAndPinnedTitlesNeverVisibleTogether() {
+        for (offset in -220..340) {
+            val m = detailHeaderFractions(offset.toFloat(), 1f)
+            assertTrue("Double title at distance $offset: $m",
+                m.sourceTitle < 0.00001f || m.pinnedTitle < 0.00001f)
+            assertTrue(m.sourceTitle in 0f..1f && m.pinnedTitle in 0f..1f)
+            assertTrue(m.photoDissolve in 0f..1f)
+        }
+        assertEquals(1f, detailHeaderFractions(74f, 1f).sourceTitle, 0f)
+        assertEquals(0f, detailHeaderFractions(-24f, 1f).sourceTitle, 0f)
+        assertEquals(0f, detailHeaderFractions(-24f, 1f).pinnedTitle, 0f)
+        assertEquals(1f, detailHeaderFractions(-70f, 1f).pinnedTitle, 0f)
     }
 
-    @Test fun artworkWaitsForTitleApproachAndFadesAcrossFullThreeHundredPixels() {
-        fun cover(offset: Int, index: Int = 0) =
-            detailArtworkFadeFraction(index, offset, artworkBottomPx = 600, toolbarBottomPx = 100)
-        // Title crossing: 600 + 10 - 100 = 510 px.
-        // The 300px dissolve begins at 306px and ends at 606px.
-        assertEquals(0f, cover(0), 0f)
-        assertEquals(0f, cover(305), 0f)
-        assertEquals(0f, cover(306), 0f)
-        assertEquals(0.5f, cover(456), 0.0001f)
-        assertEquals(1f, cover(606), 0f)
-        assertTrue(cover(400) < cover(500))
-        assertEquals(1f, cover(0, index = 1), 0f)
-        assertEquals(0f, detailArtworkFadeFraction(0, 0, 0, 100), 0f)
-    }
-
-    @Test fun toolbarIsContinuousAndItsTitleDoesNotPrecedeOriginalHeaderTitle() {
-        val earlier = detailArtworkFadeFraction(0, 400, 600, 100)
-        val crossing = detailArtworkFadeFraction(0, 510, 600, 100)
-        val finalFade = detailArtworkFadeFraction(0, 606, 600, 100)
-        assertEquals(0f, detailToolbarSurfaceAlpha(0f), 0f)
-        assertEquals(1f, detailToolbarSurfaceAlpha(1f), 0f)
-        assertTrue(detailToolbarSurfaceAlpha(earlier) > 0f)
-        assertTrue(detailToolbarSurfaceAlpha(earlier) < detailToolbarSurfaceAlpha(crossing))
-        assertEquals(0f, detailToolbarTitleAlpha(earlier), 0f)
-        assertTrue(detailToolbarTitleAlpha(crossing) > 0f)
-        assertTrue(detailToolbarTitleAlpha(crossing) < 1f)
-        assertEquals(1f, detailToolbarTitleAlpha(finalFade), 0f)
-        val before = detailToolbarSurfaceAlpha(detailArtworkFadeFraction(0, 605, 600, 100))
-        assertTrue("No one-frame opaque toolbar switch", 1f - before < 0.001f)
-    }
-
-    @Test fun forcedToolbarAndAbsentHeroAreAlwaysVisible() {
-        assertEquals(1f, fraction(0, force = true), 0f)
-        assertEquals(
-            1f,
-            detailToolbarRevealFraction(0, 0, 0, 200, 100, true),
-            0f,
-        )
+    @Test fun noStepAtPhaseBoundariesOrFirstFrame() {
+        val before = detailHeaderFractions(-23.99f, 1f)
+        val after = detailHeaderFractions(-24.01f, 1f)
+        assertTrue(before.sourceTitle < 0.0001f)
+        assertTrue(after.pinnedTitle < 0.0001f)
+        assertEquals(0f, detailHeaderFractions(Float.POSITIVE_INFINITY, 1f).photoDissolve, 0f)
+        assertEquals(1f, detailHeaderFractions(Float.NEGATIVE_INFINITY, 1f).pinnedTitle, 0f)
     }
 }

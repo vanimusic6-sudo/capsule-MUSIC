@@ -50,6 +50,7 @@ internal fun CapsuleDetailHero(
     artwork: @Composable () -> Unit,
     actions: @Composable RowScope.() -> Unit,
     artworkAlpha: () -> Float = { 1f },
+    titleMotion: DetailHeaderMotionState? = null,
 ) {
     BoxWithConstraints(modifier.fillMaxWidth().background(StandardChrome.background)) {
         val availableWidth = maxWidth
@@ -95,7 +96,8 @@ internal fun CapsuleDetailHero(
             textAlign = TextAlign.Center,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 26.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 26.dp)
+                .then(titleMotion?.originalTitleModifier() ?: Modifier),
         )
         if (subtitle != null) {
             Spacer(Modifier.height(6.dp))
@@ -194,6 +196,7 @@ internal fun PlaylistHero(
     subtitle: (@Composable () -> Unit)? = null,
     year: String? = null,
     artworkAlpha: () -> Float = { 1f },
+    titleMotion: DetailHeaderMotionState? = null,
     actions: @Composable RowScope.() -> Unit,
 ) {
     val metrics = buildList {
@@ -207,6 +210,7 @@ internal fun PlaylistHero(
         subtitle = subtitle,
         metrics = metrics,
         artworkAlpha = artworkAlpha,
+        titleMotion = titleMotion,
         artwork = {
             val covers = thumbnails.filter(String::isNotBlank).take(4)
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

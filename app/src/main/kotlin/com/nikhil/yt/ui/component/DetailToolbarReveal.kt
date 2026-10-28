@@ -1,141 +1,103 @@
 package com.nikhil.yt.ui.component
 
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.dp
 
 /**
- * Scroll-linked detail toolbar reveal shared by playlists and albums.
+ * A single, measured geometry source for the album and all playlist headers.
+ * No guessed cover dimensions, subtitle offsets, or index-driven toolbar fade.
  *
- * Old code switched at firstVisibleItemIndex > 0 and then animated for 280ms.
- * On a fast fling, the entire bar appeared AFTER the hero had disappeared.
- * Instead, fade during the last part of the header's actual scroll, so the
- * title and its surface are already fully visible when the next item arrives.
+ * Both titles and the artwork are driven by the same actual title-to-toolbar
+ * distance. Scroll offset is read only from graphicsLayer (draw phase), while
+ * title and toolbar positions are remembered in their rest positions (layout
+ * measurements update only when the physical geometry changes).
  */
-internal fun detailToolbarRevealFraction(
-    firstVisibleItemIndex: Int,
-    firstVisibleItemScrollOffset: Int,
-    headerHeightPx: Int,
-    fadeDistancePx: Int,
-    toolbarHeightPx: Int,
-    forceVisible: Boolean = false,
-): Float {
-    if (forceVisible || firstVisibleItemIndex > 0) return 1f
-    // First composition can precede LazyColumn's measurement: avoid a visible
-    // title flash until the actual header size has been measured.
-    if (headerHeightPx <= 0) return 0f
-    val distance = fadeDistancePx.coerceAtLeast(1)
-    val start = (headerHeightPx - toolbarHeightPx - distance).coerceAtLeast(0)
-    val linear = ((firstVisibleItemScrollOffset - start).toFloat() / distance)
-        .coerceIn(0f, 1f)
-    // S-curve removes the jerk at the beginning AND at the end of the fade.
-    return linear * linear * (3f - 2f * linear)
+internal class DetailHeaderMotionState(
+    private val scroll: LazyListState,
+    private val pxPerDp: Float,
+) {
+    var hasHeader: Boolean = true
+
+    private var restTitleTopPx by mutableFloatStateOf(Float.NaN)
+    private var toolbarBottomPx by mutableFloatStateOf(Float.NaN)
+
+    fun measureTitle(coordinates: LayoutCoordinates) {
+        if (scroll.firstVisibleItemIndex != 0) return
+        val measured = coordinates.positionInRoot().y + scroll.firstVisibleItemScrollOffset
+        if (!measured.isNaN() && (restTitleTopPx.isNaN() || kotlin.math.abs(restTitleTopPx - measured) > 0.5f)) {
+            restTitleTopPx = measured
+        }
+    }
+
+    fun measureToolbar(coordinates: LayoutCoordinates) {
+        val measured = coordinates.positionInRoot().y + coordinates.size.height
+        if (!measured.isNaN() && (toolbarBottomPx.isNaN() || kotlin.math.abs(toolbarBottomPx - measured) > 0.5f)) {
+            toolbarBottomPx = measured
+        }
+    }
+
+    fun fractions(): DetailHeaderFractions {
+        if (!hasHeader || scroll.firstVisibleItemIndex > 0) return detailHeaderFractions(Float.NEGATIVE_INFINITY, pxPerDp)
+        val title = restTitleTopPx
+        val toolbar = toolbarBottomPx
+        if (title.isNaN() || toolbar.isNaN()) return detailHeaderFractions(Float.POSITIVE_INFINITY, pxPerDp)
+        return detailHeaderFractions(title - scroll.firstVisibleItemScrollOffset - toolbar, pxPerDp)
+    }
+
+    fun artworkAlpha(): Float = 1f - fractions().photoDissolve
+    fun sourceTitleAlpha(): Float = fractions().sourceTitle
+    fun toolbarTitleAlpha(): Float = fractions().pinnedTitle
+
+    fun originalTitleModifier(): Modifier = Modifier
+        .onGloballyPositioned(::measureTitle)
+        .graphicsLayer { alpha = sourceTitleAlpha() }
 }
 
-@Composable
-internal fun detailToolbarReveal(
-    state: LazyListState,
-    forceVisible: Boolean,
-    hasHeader: Boolean = true,
-): Float {
-    val density = LocalDensity.current
-    val distance = with(density) { 170.dp.roundToPx() }
-    val toolbar = with(density) { 56.dp.roundToPx() }
-    val headerSize = state.layoutInfo.visibleItemsInfo
-        .firstOrNull { it.index == 0 }?.size ?: 0
-    return detailToolbarRevealFraction(
-        firstVisibleItemIndex = state.firstVisibleItemIndex,
-        firstVisibleItemScrollOffset = state.firstVisibleItemScrollOffset,
-        headerHeightPx = headerSize,
-        fadeDistancePx = distance,
-        toolbarHeightPx = toolbar,
-        forceVisible = forceVisible || !hasHeader,
-    )
-}
+internal data class DetailHeaderFractions(
+    val photoDissolve: Float,
+    val sourceTitle: Float,
+    val pinnedTitle: Float,
+)
 
-
-/**
- * Album/playlist covers use the artist card's scroll-tied smoothstep.
- * The actual artwork fades out BEFORE the top bar becomes opaque, so
- * the toolbar never double-tints a still-visible cover.
- */
-internal fun detailArtworkFadeFraction(
-    firstVisibleItemIndex: Int,
-    firstVisibleItemScrollOffset: Int,
-    artworkBottomPx: Int,
-    toolbarBottomPx: Int,
-    fadeDistancePx: Int = 300,
-): Float {
-    if (firstVisibleItemIndex > 0) return 1f
-    if (artworkBottomPx <= 0) return 0f
-    // Wait until the visible title APPROACHES the toolbar. The previous
-    // implementation faded the photo from scroll=0 and finished long before
-    // the title reached the pinned bar.
-    val titleCrossingPx = artworkBottomPx + (fadeDistancePx / 30f) - toolbarBottomPx
-    val distance = fadeDistancePx.coerceAtLeast(1)
-    val startPx = (titleCrossingPx - distance * 0.68f).coerceAtLeast(0f)
-    val t = ((firstVisibleItemScrollOffset - startPx) / distance).coerceIn(0f, 1f)
+private fun smoothstep(from: Float, to: Float, value: Float): Float {
+    val t = ((from - value) / (from - to)).coerceIn(0f, 1f)
     return t * t * (3f - 2f * t)
 }
 
-@Composable
-internal fun rememberDetailArtworkFade(
-    state: LazyListState,
-    isPlaylist: Boolean,
-    hasHeader: Boolean,
-    withSubtitle: Boolean = false,
-): () -> Float {
-    val density = LocalDensity.current
-    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
-    val statusHeight = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
-    return remember(state, density, screenHeight, statusHeight, isPlaylist, hasHeader, withSubtitle) {
-        {
-            if (!hasHeader) {
-                1f
-            } else {
-                val viewportWidthPx = state.layoutInfo.viewportSize.width
-                if (viewportWidthPx <= 0) {
-                    0f // first composition is not measured; no title flash
-                } else {
-                    val width = with(density) { viewportWidthPx.toDp() }
-                    val albumHeight = albumCoverHeight(width.coerceAtMost(560.dp), screenHeight)
-                    val artworkBottom = if (isPlaylist) {
-                        val squareSide = (width - 48.dp).coerceAtLeast(1.dp)
-                        val topGap = (playlistArtworkTopGap(albumHeight, squareSide) -
-                            if (withSubtitle) 22.dp else 0.dp).coerceAtLeast(22.dp)
-                        topGap + squareSide
-                    } else albumHeight
-                    detailArtworkFadeFraction(
-                        state.firstVisibleItemIndex,
-                        state.firstVisibleItemScrollOffset,
-                        with(density) { artworkBottom.roundToPx() },
-                        with(density) { (statusHeight + 64.dp).roundToPx() },
-                        with(density) { 300.dp.roundToPx() },
-                    )
-                }
-            }
-        }
-    }
-}
-
-/** Fade the themed surface continuously rather than snapping from 0 to 1. */
-internal fun detailToolbarSurfaceAlpha(fade: Float): Float {
-    val x = fade.coerceIn(0f, 1f)
-    return x * x * (3f - 2f * x)
-}
-
 /**
- * The toolbar text starts only as the ORIGINAL header title approaches it.
- * Its fade is deliberately later than the photo's: the same title must not
- * be strongly visible in two places at once.
+ * Smooth photo dissolve across 286 dp, finishing just after the real header
+ * title crosses the toolbar. The two title opacities NEVER overlap.
+ *
+ * There is intentionally no rectangular toolbar scrim at any progress:
+ * the whole page and the transparent pinned bar share the same true surface
+ * colour, so no horizontal seam can appear at the toolbar's lower edge.
  */
-internal fun detailToolbarTitleAlpha(coverFade: Float): Float {
-    val x = ((coverFade - 0.68f) / 0.32f).coerceIn(0f, 1f)
-    return x * x * (3f - 2f * x)
+internal fun detailHeaderFractions(titleDistancePx: Float, pxPerDp: Float): DetailHeaderFractions {
+    val d = titleDistancePx / pxPerDp.coerceAtLeast(0.001f)
+    val photo = smoothstep(260f, -26f, d)
+    val source = 1f - smoothstep(74f, -24f, d)
+    val pinned = smoothstep(-24f, -70f, d)
+    return DetailHeaderFractions(photo, source, pinned)
+}
+
+@Composable
+internal fun rememberDetailHeaderMotion(
+    state: LazyListState,
+    hasHeader: Boolean,
+): DetailHeaderMotionState {
+    val density = LocalDensity.current.density
+    val motion = remember(state, density) { DetailHeaderMotionState(state, density) }
+    SideEffect { motion.hasHeader = hasHeader }
+    return motion
 }

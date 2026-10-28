@@ -12,9 +12,7 @@ import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
 import com.nikhil.yt.ui.menu.CapsuleCollectionDownloadButton
 import com.nikhil.yt.ui.component.StandardChrome
-import com.nikhil.yt.ui.component.rememberDetailArtworkFade
-import com.nikhil.yt.ui.component.detailToolbarSurfaceAlpha
-import com.nikhil.yt.ui.component.detailToolbarTitleAlpha
+import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
 import android.annotation.SuppressLint
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -74,6 +72,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
@@ -377,9 +376,8 @@ fun LocalPlaylistScreen(
     ) {
 
 
-        val artworkFade = rememberDetailArtworkFade(
+        val titleMotion = rememberDetailHeaderMotion(
             state = lazyListState,
-            isPlaylist = true,
             hasHeader = playlist != null && !isSearching,
         )
 
@@ -394,7 +392,8 @@ fun LocalPlaylistScreen(
                         item(key = "header") {
                             val count = if (playlist.songCount == 0) playlist.playlist.remoteSongCount ?: 0 else playlist.songCount
                             PlaylistHero(
-                                artworkAlpha = { 1f - artworkFade() },
+                                artworkAlpha = titleMotion::artworkAlpha,
+                                titleMotion = titleMotion,
                                 title = playlist.playlist.name,
                                 thumbnails = playlist.thumbnails.filterNotNull(),
                                 songCount = pluralStringResource(R.plurals.n_song, count, count),
@@ -841,18 +840,15 @@ fun LocalPlaylistScreen(
 
 
         // Top App Bar
-        // Same overlay behaviour as AlbumScreen: cover reaches the top and the toolbar
-        // becomes solid only after its header scrolls away (or while searching/selecting).
-        val coverFade = artworkFade()
-        val titleOpacity = if (selection || isSearching) 1f else detailToolbarTitleAlpha(coverFade)
-        val surfaceOpacity = if (selection || isSearching) 1f else detailToolbarSurfaceAlpha(coverFade)
+        // One measured title handoff. The bar stays transparent throughout.
         CenterAlignedTopAppBar(
+            modifier = Modifier.onGloballyPositioned(titleMotion::measureToolbar),
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = surfaceColor.copy(alpha = surfaceOpacity),
-                scrolledContainerColor = surfaceColor.copy(alpha = detailToolbarSurfaceAlpha(titleOpacity)),
-                titleContentColor = lerp(Color.White, StandardChrome.text, titleOpacity),
-                navigationIconContentColor = lerp(Color.White, StandardChrome.text, titleOpacity),
-                actionIconContentColor = lerp(Color.White, StandardChrome.text, titleOpacity),
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent,
+                titleContentColor = StandardChrome.text,
+                navigationIconContentColor = StandardChrome.text,
+                actionIconContentColor = StandardChrome.text,
             ),
             title = {
                 if (selection) {
@@ -886,7 +882,7 @@ fun LocalPlaylistScreen(
                             .focusRequester(focusRequester)
                     )
                 } else {
-                    Text(playlist?.playlist?.name.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, color = StandardChrome.text, modifier = Modifier.graphicsLayer { alpha = titleOpacity })
+                    Text(playlist?.playlist?.name.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, color = StandardChrome.text, modifier = Modifier.graphicsLayer { alpha = if (selection || isSearching) 1f else titleMotion.toolbarTitleAlpha() })
                 }
             },
             navigationIcon = {

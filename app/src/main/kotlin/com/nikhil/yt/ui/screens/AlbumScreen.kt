@@ -14,9 +14,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.ui.unit.sp
 import com.nikhil.yt.ui.component.AlbumArtwork
 import com.nikhil.yt.ui.component.DetailHeroBottomSpacing
-import com.nikhil.yt.ui.component.rememberDetailArtworkFade
-import com.nikhil.yt.ui.component.detailToolbarSurfaceAlpha
-import com.nikhil.yt.ui.component.detailToolbarTitleAlpha
+import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
 import com.nikhil.yt.ui.component.AlbumHeaderLayout
 import com.nikhil.yt.ui.component.AlbumHeaderPlaceholder
 import com.nikhil.yt.ui.component.AlbumScreenLayout
@@ -54,6 +52,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -167,16 +166,11 @@ fun AlbumScreen(
     // State for LazyColumn to track scroll
     val lazyListState = rememberLazyListState()
 
-    // The artist-card motion: dissolve the cover before the themed toolbar
-    // becomes opaque, without darkening the artwork with an extra overlay.
-    val artworkFade = rememberDetailArtworkFade(
+    // Measure the actual title crossing rather than guessing from artwork size.
+    val titleMotion = rememberDetailHeaderMotion(
         state = lazyListState,
-        isPlaylist = false,
         hasHeader = albumWithSongs?.songs?.isNotEmpty() == true,
     )
-    val coverFade = artworkFade()
-    val toolbarOpacity = if (selection) 1f else detailToolbarTitleAlpha(coverFade)
-    val surfaceOpacity = if (selection) 1f else detailToolbarSurfaceAlpha(coverFade)
 
     AlbumScreenLayout(
         background = surfaceColor,
@@ -193,7 +187,7 @@ fun AlbumScreen(
                             AlbumArtwork(
                                 thumbnailUrl = albumWithSongs.album.thumbnailUrl,
                                 background = surfaceColor,
-                                artworkAlpha = { 1f - artworkFade() },
+                                artworkAlpha = titleMotion::artworkAlpha,
                             )
                         },
                         title = {
@@ -204,7 +198,8 @@ fun AlbumScreen(
                                 textAlign = TextAlign.Center,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(horizontal = 32.dp),
+                                modifier = Modifier.padding(horizontal = 32.dp)
+                                    .then(titleMotion.originalTitleModifier()),
                             )
                         },
                         metadata = {},
@@ -477,17 +472,18 @@ fun AlbumScreen(
             }
         },
     ) {
-        // The transparent toolbar sits over the artwork, below the status-bar inset.
+        // No semi-transparent toolbar slab: it produced the visible horizontal stripe.
         val topAppBarColors = TopAppBarDefaults.topAppBarColors(
-            containerColor = surfaceColor.copy(alpha = surfaceOpacity),
-            scrolledContainerColor = surfaceColor.copy(alpha = detailToolbarSurfaceAlpha(toolbarOpacity)),
-            navigationIconContentColor = lerp(Color.White, StandardChrome.text, toolbarOpacity),
+            containerColor = Color.Transparent,
+            scrolledContainerColor = Color.Transparent,
+            navigationIconContentColor = StandardChrome.text,
             titleContentColor = StandardChrome.text,
-            actionIconContentColor = lerp(Color.White, StandardChrome.text, toolbarOpacity),
+            actionIconContentColor = StandardChrome.text,
         )
 
         TopAppBar(
-            modifier = Modifier.align(Alignment.TopCenter),
+            modifier = Modifier.align(Alignment.TopCenter)
+                .onGloballyPositioned(titleMotion::measureToolbar),
             colors = topAppBarColors,
             // Keep the bar pinned like ArtistToolbar; a collapsing scrollBehavior
             // forced a second upward tug before album controls became visible.
@@ -504,7 +500,7 @@ fun AlbumScreen(
                         style = MaterialTheme.typography.titleLarge,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.graphicsLayer { alpha = toolbarOpacity },
+                        modifier = Modifier.graphicsLayer { alpha = if (selection) 1f else titleMotion.toolbarTitleAlpha() },
                     )
                 }
             },

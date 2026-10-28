@@ -10,9 +10,7 @@ package com.nikhil.yt.ui.screens.playlist
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.CenterAlignedTopAppBar
 import com.nikhil.yt.ui.component.StandardChrome
-import com.nikhil.yt.ui.component.rememberDetailArtworkFade
-import com.nikhil.yt.ui.component.detailToolbarSurfaceAlpha
-import com.nikhil.yt.ui.component.detailToolbarTitleAlpha
+import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
 import com.nikhil.yt.ui.menu.CapsuleCollectionDownloadButton
@@ -68,6 +66,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -251,9 +250,8 @@ fun AutoPlaylistScreen(
     ) {
 
 
-        val artworkFade = rememberDetailArtworkFade(
+        val titleMotion = rememberDetailHeaderMotion(
             state = lazyListState,
-            isPlaylist = true,
             hasHeader = (songs?.isNotEmpty() == true || externalSaved.isNotEmpty()) && !isSearching,
         )
 
@@ -282,7 +280,8 @@ fun AutoPlaylistScreen(
                     if (!isSearching && songs!!.isEmpty() && externalSaved.isNotEmpty()) {
                         item(key = "capsule:offline:hero") {
                             PlaylistHero(
-                                artworkAlpha = { 1f - artworkFade() },
+                                artworkAlpha = titleMotion::artworkAlpha,
+                                titleMotion = titleMotion,
                                 title = playlist,
                                 thumbnails = externalSaved.mapNotNull { it.artwork }.take(4),
                                 songCount = pluralStringResource(R.plurals.n_song, externalSaved.size, externalSaved.size),
@@ -312,6 +311,8 @@ fun AutoPlaylistScreen(
                         // Hero Header Item
                         item(key = "header") {
                             PlaylistHero(
+                                artworkAlpha = titleMotion::artworkAlpha,
+                                titleMotion = titleMotion,
                                 title = playlist,
                                 thumbnails = songs.orEmpty().mapNotNull { it.song.thumbnailUrl }.take(4),
                                 songCount = pluralStringResource(R.plurals.n_song, songs.orEmpty().size, songs.orEmpty().size),
@@ -553,18 +554,15 @@ fun AutoPlaylistScreen(
         }
 
 
-        // Same overlay behaviour as AlbumScreen: cover reaches the top and the toolbar
-        // becomes solid only after its header scrolls away (or while searching/selecting).
-        val coverFade = artworkFade()
-        val titleOpacity = if (selection || isSearching) 1f else detailToolbarTitleAlpha(coverFade)
-        val surfaceOpacity = if (selection || isSearching) 1f else detailToolbarSurfaceAlpha(coverFade)
+        // One measured title handoff. The bar stays transparent throughout.
         CenterAlignedTopAppBar(
+            modifier = Modifier.onGloballyPositioned(titleMotion::measureToolbar),
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = surfaceColor.copy(alpha = surfaceOpacity),
-                scrolledContainerColor = surfaceColor.copy(alpha = detailToolbarSurfaceAlpha(titleOpacity)),
-                titleContentColor = lerp(Color.White, StandardChrome.text, titleOpacity),
-                navigationIconContentColor = lerp(Color.White, StandardChrome.text, titleOpacity),
-                actionIconContentColor = lerp(Color.White, StandardChrome.text, titleOpacity),
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent,
+                titleContentColor = StandardChrome.text,
+                navigationIconContentColor = StandardChrome.text,
+                actionIconContentColor = StandardChrome.text,
             ),
             title = {
                 when {
@@ -605,7 +603,7 @@ fun AutoPlaylistScreen(
                             text = playlist,
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.titleLarge,
-                            modifier = Modifier.graphicsLayer { alpha = titleOpacity }
+                            modifier = Modifier.graphicsLayer { alpha = if (selection || isSearching) 1f else titleMotion.toolbarTitleAlpha() }
                         )
                     }
                 }
