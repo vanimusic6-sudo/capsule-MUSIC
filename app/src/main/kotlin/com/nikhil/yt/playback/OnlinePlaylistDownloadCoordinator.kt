@@ -92,6 +92,7 @@ internal object OnlinePlaylistDownloadCoordinator {
             downloadManager, (previouslyKnown + session.ids).distinct(),
         )
         knownMembership[playlistId] = (previouslyKnown + session.ids).distinct()
+        AudioDownloadQueue.wake(downloadManager)
         appSaveMembership(context, playlistId, knownMembership[playlistId].orEmpty())
         sessions[playlistId] = session
         _enqueuing.value = _enqueuing.value + playlistId
@@ -166,6 +167,8 @@ internal object OnlinePlaylistDownloadCoordinator {
                     }
                     if (index % 32 == 31) yield()
                 }
+                // Media3 won't emit a change for entries already waiting(2).
+                AudioDownloadQueue.wake(downloadManager)
                 if (remote.isEmpty()) {
                     // Offline/public metadata failure: the persistent index still
                     // knows the requests for continuation-page tracks. Resume

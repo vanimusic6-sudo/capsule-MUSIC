@@ -57,6 +57,9 @@ internal fun AlbumScreenLayout(
     }
 }
 
+/** One bottom gap for albums and every playlist, including loading placeholders. */
+internal val DetailHeroBottomSpacing = 34.dp
+
 /** Loading and loaded headers use the same spacing and cover geometry. */
 @Composable
 internal fun AlbumHeaderLayout(
@@ -65,7 +68,7 @@ internal fun AlbumHeaderLayout(
     metadata: @Composable () -> Unit,
     actions: @Composable () -> Unit,
     modifier: Modifier = Modifier,
-    bottomSpacing: androidx.compose.ui.unit.Dp = 56.dp,
+    bottomSpacing: androidx.compose.ui.unit.Dp = DetailHeroBottomSpacing,
 ) {
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         artwork()
@@ -127,6 +130,6 @@ internal fun AlbumHeaderPlaceholder(background: Color, modifier: Modifier = Modi
                 }
             }
         },
-        bottomSpacing = 34.dp,
+        bottomSpacing = DetailHeroBottomSpacing,
     )
 }

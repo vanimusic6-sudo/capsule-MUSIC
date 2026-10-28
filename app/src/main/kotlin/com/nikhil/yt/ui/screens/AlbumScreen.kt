@@ -13,6 +13,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.ui.unit.sp
 import com.nikhil.yt.ui.component.AlbumArtwork
+import com.nikhil.yt.ui.component.DetailHeroBottomSpacing
 import com.nikhil.yt.ui.component.AlbumHeaderLayout
 import com.nikhil.yt.ui.component.AlbumHeaderPlaceholder
 import com.nikhil.yt.ui.component.AlbumScreenLayout
@@ -299,7 +300,7 @@ fun AlbumScreen(
                         )
                             }
                         },
-                        bottomSpacing = 34.dp,
+                        bottomSpacing = DetailHeroBottomSpacing,
                     )
                 }
 

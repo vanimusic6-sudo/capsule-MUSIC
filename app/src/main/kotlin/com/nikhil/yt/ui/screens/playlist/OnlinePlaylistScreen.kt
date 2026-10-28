@@ -9,6 +9,8 @@ package com.nikhil.yt.ui.screens.playlist
 
 import androidx.compose.foundation.clickable
 import com.nikhil.yt.playback.queues.ListQueue
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.material3.CenterAlignedTopAppBar
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
@@ -73,6 +75,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -102,7 +105,6 @@ import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.WatchEndpoint
 import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.playback.queues.YouTubeQueue
-import com.nikhil.yt.ui.component.DraggableScrollbar
 import com.nikhil.yt.ui.component.IconButton
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.YouTubeListItem
@@ -557,26 +559,21 @@ fun OnlinePlaylistScreen(
             }
         }
 
-        DraggableScrollbar(
-            modifier =
-                Modifier.padding(
-                        LocalPlayerAwareWindowInsets.current
-                            .union(WindowInsets.ime)
-                            .asPaddingValues()
-                    )
-                    .align(Alignment.CenterEnd),
-            scrollState = lazyListState,
-            headerItems = headerItems
-        )
 
         // Top App Bar
         // Same overlay behaviour as AlbumScreen: cover reaches the top and the toolbar
         // becomes solid only after its header scrolls away (or while searching/selecting).
         val showPlaylistHero = lazyListState.firstVisibleItemIndex == 0 && !selection && !isSearching
+        // Fade toolbar title/surface instead of snapping at the first item.
+        val titleOpacity by animateFloatAsState(
+            targetValue = if (showPlaylistHero) 0f else 1f,
+            animationSpec = tween(durationMillis = 280),
+            label = "playlistTopBarTitleFade",
+        )
         CenterAlignedTopAppBar(
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = if (showPlaylistHero) Color.Transparent else surfaceColor,
-                scrolledContainerColor = if (showPlaylistHero) Color.Transparent else surfaceColor,
+                containerColor = surfaceColor.copy(alpha = titleOpacity),
+                scrolledContainerColor = surfaceColor.copy(alpha = titleOpacity),
                 titleContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
                 navigationIconContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
                 actionIconContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
@@ -612,7 +609,7 @@ fun OnlinePlaylistScreen(
                         modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
                     )
                 } else {
-                    if (!showPlaylistHero) Text(playlist?.title.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(playlist?.title.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.graphicsLayer { alpha = titleOpacity })
                 }
             },
             navigationIcon = {

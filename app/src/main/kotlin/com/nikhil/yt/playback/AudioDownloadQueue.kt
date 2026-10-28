@@ -3,6 +3,7 @@ package com.nikhil.yt.playback
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import java.util.WeakHashMap
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadManager
 import androidx.media3.exoplayer.offline.DownloadRequest
@@ -53,6 +54,14 @@ internal class AudioDownloadOrder {
 
 /** Main-looper admission, on top of the ONE existing Media3 manager. Manual requests can pause one collection transfer without deleting its cache. */
 internal class AudioDownloadQueue(private val manager: DownloadManager) : DownloadManager.Listener {
+    companion object {
+        // A resumed WAITING_FOR_SLOT request may not emit any new Media3
+        // callback. Explicitly nudge the existing one-per-manager scheduler.
+        private val installed = WeakHashMap<DownloadManager, AudioDownloadQueue>()
+        fun wake(manager: DownloadManager) {
+            installed[manager]?.schedule()
+        }
+    }
     private val handler = Handler(Looper.getMainLooper())
     private val order = AudioDownloadOrder()
     private val admitted = mutableSetOf<String>()
@@ -61,7 +70,10 @@ internal class AudioDownloadQueue(private val manager: DownloadManager) : Downlo
     private var scheduled = false
     private var closed = false
 
-    init { manager.addListener(this) }
+    init {
+        installed[manager] = this
+        manager.addListener(this)
+    }
     override fun onInitialized(downloadManager: DownloadManager) {
         // Upgrade old queued entries; already running transfers continue untouched.
         manager.currentDownloads.filter { it.state == Download.STATE_QUEUED }.forEach {
@@ -95,6 +107,7 @@ internal class AudioDownloadQueue(private val manager: DownloadManager) : Downlo
     }
     fun close() {
         closed = true; handler.removeCallbacksAndMessages(null); manager.removeListener(this)
+        if (installed[manager] === this) installed.remove(manager)
         admitted.clear(); pausing.clear(); protectedBackground.clear()
     }
     private fun schedule() {

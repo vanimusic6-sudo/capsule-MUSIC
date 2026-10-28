@@ -93,6 +93,55 @@ class DownloadQueueTest {
             gates.values.forEach { it.countDown() }; queue.close(); manager.release(); provider.close()
         }
     }
+    @Test fun pausedCollectionCanResumeItsExistingMedia3Request() {
+        val context = RuntimeEnvironment.getApplication()
+        val provider = StandaloneDatabaseProvider(context)
+        val index = DefaultDownloadIndex(provider)
+        val attempts = AtomicInteger()
+        val gates = Collections.synchronizedList(mutableListOf<CountDownLatch>())
+        val manager = DownloadManager(context, index, DownloaderFactory { _ ->
+            object : Downloader {
+                private val stop = CountDownLatch(1)
+                override fun download(listener: Downloader.ProgressListener?) {
+                    gates.add(stop)
+                    attempts.incrementAndGet()
+                    stop.await()
+                }
+                override fun cancel() { stop.countDown() }
+                override fun remove() {}
+            }
+        })
+        val queue = AudioDownloadQueue(manager)
+        try {
+            manager.maxParallelDownloads = 2
+            manager.setRequirements(Requirements(0))
+            manager.resumeDownloads()
+            await { manager.isInitialized }
+            manager.addDownload(request(40), DOWNLOAD_WAITING_FOR_SLOT)
+            await { index.getDownload("track-40")?.state == Download.STATE_DOWNLOADING }
+            stopCollectionDownloads(manager, listOf("track-40"))
+            await {
+                index.getDownload("track-40")?.let {
+                    it.state == Download.STATE_STOPPED &&
+                        it.stopReason == COLLECTION_STOP_REASON_USER
+                } == true
+            }
+            CollectionDownloadStopAdmission.clear(manager, listOf("track-40"))
+            manager.setStopReason("track-40", DOWNLOAD_WAITING_FOR_SLOT)
+            AudioDownloadQueue.wake(manager)
+            await {
+                index.getDownload("track-40")?.state == Download.STATE_DOWNLOADING &&
+                    attempts.get() >= 2
+            }
+            assertEquals(Download.STOP_REASON_NONE, index.getDownload("track-40")!!.stopReason)
+        } finally {
+            gates.forEach { it.countDown() }
+            queue.close()
+            manager.release()
+            provider.close()
+        }
+    }
+
     @Test fun immediatePlaylistStopCatchesLateManualServiceAdd() {
         // Reproduces the first-tap race: download has not reached the Media3
         // index when the user presses Stop. A manually prioritized same-ID ADD

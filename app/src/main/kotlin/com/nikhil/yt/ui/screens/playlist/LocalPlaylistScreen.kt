@@ -7,6 +7,8 @@
 
 package com.nikhil.yt.ui.screens.playlist
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.material3.CenterAlignedTopAppBar
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
@@ -116,7 +118,6 @@ import com.nikhil.yt.playback.ExoDownloadService
 import com.nikhil.yt.playback.queues.ListQueue
 import com.nikhil.yt.ui.component.DefaultDialog
 import com.nikhil.yt.ui.component.EditPlaylistDialog
-import com.nikhil.yt.ui.component.DraggableScrollbar
 import com.nikhil.yt.ui.component.EmptyPlaceholder
 import com.nikhil.yt.ui.component.AssignTagsDialog
 import com.nikhil.yt.ui.component.IconButton
@@ -829,25 +830,21 @@ fun LocalPlaylistScreen(
 
         }
 
-        DraggableScrollbar(
-            modifier = Modifier
-                .padding(
-                    LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime)
-                        .asPaddingValues()
-                )
-                .align(Alignment.CenterEnd),
-            scrollState = lazyListState,
-            headerItems = headerItems
-        )
 
         // Top App Bar
         // Same overlay behaviour as AlbumScreen: cover reaches the top and the toolbar
         // becomes solid only after its header scrolls away (or while searching/selecting).
         val showPlaylistHero = lazyListState.firstVisibleItemIndex == 0 && !selection && !isSearching
+        // Fade toolbar title/surface instead of snapping at the first item.
+        val titleOpacity by animateFloatAsState(
+            targetValue = if (showPlaylistHero) 0f else 1f,
+            animationSpec = tween(durationMillis = 280),
+            label = "playlistTopBarTitleFade",
+        )
         CenterAlignedTopAppBar(
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = if (showPlaylistHero) Color.Transparent else surfaceColor,
-                scrolledContainerColor = if (showPlaylistHero) Color.Transparent else surfaceColor,
+                containerColor = surfaceColor.copy(alpha = titleOpacity),
+                scrolledContainerColor = surfaceColor.copy(alpha = titleOpacity),
                 titleContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
                 navigationIconContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
                 actionIconContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
@@ -884,7 +881,7 @@ fun LocalPlaylistScreen(
                             .focusRequester(focusRequester)
                     )
                 } else {
-                    if (!showPlaylistHero) Text(playlist?.playlist?.name.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, color = StandardChrome.text)
+                    Text(playlist?.playlist?.name.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, color = StandardChrome.text, modifier = Modifier.graphicsLayer { alpha = titleOpacity })
                 }
             },
             navigationIcon = {

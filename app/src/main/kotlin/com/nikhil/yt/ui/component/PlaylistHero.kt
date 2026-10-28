@@ -35,7 +35,7 @@ internal data class CapsuleHeroMetric(@DrawableRes val icon: Int, val text: Stri
 /**
  * Drawing-derived shared detail layout.
  *
- * Square 87%-width artwork; centred regular-weight title; a single unified
+ * Cover and controls use matching 24.dp margins; centred title; a unified
  * controls capsule containing both stats and actions, matching album screens.
  * Keep the home theme's surface instead of hardcoded black; no added gradients.
  */
@@ -55,15 +55,16 @@ internal fun CapsuleDetailHero(
         // The app toolbar sits over the top of the scrolling detail hero.
         Spacer(Modifier.height(100.dp))
         Box(
-            Modifier.fillMaxWidth(0.87f)
-                .aspectRatio(1f)
+            Modifier.fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .aspectRatio(1.06f)
                 .testTag("capsule:detail-artwork")
-                .clip(RoundedCornerShape(46.dp))
+                .clip(RoundedCornerShape(27.dp))
                 .background(StandardChrome.panel)
                 .border(
                     1.dp,
                     StandardChrome.muted.copy(alpha = 0.2f),
-                    RoundedCornerShape(46.dp),
+                    RoundedCornerShape(27.dp),
                 ),
         ) {
             artwork()
@@ -85,7 +86,7 @@ internal fun CapsuleDetailHero(
         }
         Spacer(Modifier.height(16.dp))
         CapsuleAlbumControls(metrics = metrics, actions = actions)
-        Spacer(Modifier.height(34.dp))
+        Spacer(Modifier.height(DetailHeroBottomSpacing))
     }
 }
 

@@ -60,10 +60,12 @@ class PlaylistHeroTest {
         val stats = compose.onNodeWithTag("capsule:album-metrics").fetchSemanticsNode().boundsInRoot
         val tray = compose.onNodeWithTag("capsule:album-actions").fetchSemanticsNode().boundsInRoot
         val outer = compose.onNodeWithTag("playlist").fetchSemanticsNode().boundsInRoot
-        assertTrue("Square artwork", kotlin.math.abs(cover.width - cover.height) < 2f)
+        assertEquals("Playlist artwork is slightly shorter, but remains near-square",
+            cover.width / 1.06f, cover.height, 2f)
         assertTrue("Playlist cover and controls are lowered below the toolbar",
             cover.top >= with(compose.density) { 95.dp.toPx() })
-        assertEquals("Artwork is 87 percent of its parent", outer.width * 0.87f, cover.width, 3f)
+        assertEquals("Artwork shares the capsule's exact width", capsule.width, cover.width, 2f)
+        assertEquals("Artwork and capsule have the same left edge", capsule.left, cover.left, 2f)
         assertTrue("Playlist stats are enclosed inside the same capsule", stats.top >= capsule.top)
         assertTrue("Playlist actions are enclosed inside the same capsule", tray.bottom <= capsule.bottom)
         assertTrue("Stats and buttons share one surface without overlap", stats.bottom <= tray.top)

@@ -226,13 +226,23 @@ internal fun enqueueCollectionDownloads(
     var serviceStarted = false
     val active = manager.currentDownloads.associateBy { it.request.id }
     requests.distinctBy { it.id }.forEach { request ->
-        val existing = indexed[request.id] ?: active[request.id]
+        val existing = active[request.id] ?: indexed[request.id]
         when (existing?.state) {
             Download.STATE_COMPLETED -> Unit
             Download.STATE_STOPPED -> {
-                // Never bypass the manual-first download admission queue.
+                // Stop(1) -> WAITING(2), followed by a queue wake, is required
+                // even when Media3 has already persisted WAITING(2).
                 if (existing.stopReason != DOWNLOAD_WAITING_FOR_SLOT) {
                     manager.setStopReason(request.id, DOWNLOAD_WAITING_FOR_SLOT)
+                }
+                if (!serviceStarted) {
+                    // DownloadService may have exited while the entire
+                    // collection was paused. Wake it once, not for every item.
+                    DownloadService.sendSetStopReason(
+                        context, ExoDownloadService::class.java,
+                        request.id, DOWNLOAD_WAITING_FOR_SLOT, false,
+                    )
+                    serviceStarted = true
                 }
             }
             Download.STATE_QUEUED, Download.STATE_DOWNLOADING,
@@ -249,4 +259,5 @@ internal fun enqueueCollectionDownloads(
             }
         }
     }
+    AudioDownloadQueue.wake(manager)
 }
