@@ -76,3 +76,15 @@ and were present in the older UI design assumptions; rather than rewriting
 unrelated UI to placate assertions, the security CI runs targeted security
 unit tests, extractor tests, Android lint and runtime verification. The
 full-suite red run remains in GitHub Actions as evidence.
+
+## Current-release provenance gate
+
+`scripts/verify_release_security.py` is invoked for each **new** signed
+Release APK, before upload. It checks the package ID, an intentionally
+pinned signer certificate fingerprint, non-debuggable packaging, sensitive
+permission denylist, duplicate APK ZIP paths and DEX presence. Its JSON
+evidence accompanies the APK in a dedicated workflow artifact. Signing
+key rotation or adding sensitive permission is an explicit owner-reviewed
+change, not something CI silently accepts. This does not detect all
+malware; runtime network / device and dependency checks remain essential.
+

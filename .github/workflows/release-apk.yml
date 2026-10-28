@@ -189,6 +189,26 @@ jobs:
             --print-certs \
             "${{ steps.apk.outputs.path }}"
 
+      - name: Verify current APK signer provenance and permission privacy policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          python3 scripts/verify_release_security.py \
+            "${{ steps.apk.outputs.path }}" \
+            --apksigner "$APKSIGNER" \
+            --aapt "$AAPT" \
+            --output security-results/current-release-check.json
+
+      - name: Upload current-release security evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: Capsule-MUSIC-Release-Security
+          path: security-results/current-release-check.json
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
