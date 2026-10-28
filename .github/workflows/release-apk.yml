@@ -11,6 +11,7 @@ on:
       - fix/rebuild-download-artwork-search-20261026
       - fix/metrolist-search-active-download-20261026
       - fix/artist-atomic-player-download-efficiency-20261027
+      - audit/security-deep-20261028
       - experimental/discovery-open-catalogs-20261022
       - next/capsule-clay
       - perf/thermal-audit-20261005
