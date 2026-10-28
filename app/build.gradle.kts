@@ -72,18 +72,12 @@ android {
             localProperties.getProperty("LASTFM_API_KEY")
                 ?: System.getenv("LASTFM_API_KEY")
                 ?: ""
-        val lastfmSecret =
-            localProperties.getProperty("LASTFM_SECRET")
-                ?: System.getenv("LASTFM_SECRET")
-                ?: ""
+        // Public APKs must never embed app secrets: every BuildConfig field
+        // becomes visible after APK decompilation. The Last.fm secret and the
+        // disabled online Together bearer token need a server-side design.
         buildConfigField("String", "LASTFM_API_KEY", "\"$lastfmApiKey\"")
-        buildConfigField("String", "LASTFM_SECRET", "\"$lastfmSecret\"")
-
-        val togetherBearerToken =
-            localProperties.getProperty("TOGETHER_BEARER_TOKEN")
-                ?: System.getenv("TOGETHER_BEARER_TOKEN")
-                ?: ""
-        buildConfigField("String", "TOGETHER_BEARER_TOKEN", "\"$togetherBearerToken\"")
+        buildConfigField("String", "LASTFM_SECRET", "\"\"")
+        buildConfigField("String", "TOGETHER_BEARER_TOKEN", "\"\"")
 
         buildConfigField("String", "GIT_COMMIT", "\"$gitCommit\"")
     }
