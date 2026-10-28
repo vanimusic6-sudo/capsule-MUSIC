@@ -13,6 +13,7 @@ import java.util.Locale
 internal object BackupSecurity {
     const val MAX_SETTINGS_BYTES = 2L * 1024 * 1024
     const val MAX_DATABASE_BYTES = 256L * 1024 * 1024
+    const val MAX_ARCHIVE_BYTES = 512L * 1024 * 1024
     const val MAX_PLAYLIST_BYTES = 8L * 1024 * 1024
     const val MAX_PLAYLIST_TRACKS = 20_000
 

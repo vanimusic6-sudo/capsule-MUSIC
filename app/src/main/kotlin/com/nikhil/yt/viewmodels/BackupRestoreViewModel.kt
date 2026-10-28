@@ -270,6 +270,7 @@ class BackupRestoreViewModel @Inject constructor(
 
                 val entryNames = ArrayList<String>()
                 var hasDb = false
+                var totalUncompressedBytes = 0L
                 context.applicationContext.contentResolver.openInputStream(uri)?.use { stream ->
                     stream.zipInputStream().use { zip ->
                         var entry = zip.nextEntry
@@ -279,9 +280,17 @@ class BackupRestoreViewModel @Inject constructor(
                             }
                             entryNames.add(entry.name)
                             if (entry.name == InternalDatabase.DB_NAME) hasDb = true
-                            val entryLimit = if (entry.name == SETTINGS_XML_FILENAME || entry.name == SETTINGS_FILENAME)
-                                BackupSecurity.MAX_SETTINGS_BYTES else BackupSecurity.MAX_DATABASE_BYTES
-                            BackupSecurity.drainEntry(zip, entryLimit)
+                            val entryLimit = when (entry.name) {
+                                SETTINGS_XML_FILENAME, SETTINGS_FILENAME -> BackupSecurity.MAX_SETTINGS_BYTES
+                                InternalDatabase.DB_NAME,
+                                "${InternalDatabase.DB_NAME}-wal",
+                                "${InternalDatabase.DB_NAME}-shm",
+                                "${InternalDatabase.DB_NAME}-journal" -> BackupSecurity.MAX_DATABASE_BYTES
+                                else -> BackupSecurity.MAX_SETTINGS_BYTES
+                            }
+                            totalUncompressedBytes += BackupSecurity.drainEntry(zip, entryLimit)
+                            if (totalUncompressedBytes > BackupSecurity.MAX_ARCHIVE_BYTES)
+                                throw java.io.IOException("Archive exceeds safe extracted limit")
                             entry = zip.nextEntry
                         }
                     }
@@ -291,7 +300,7 @@ class BackupRestoreViewModel @Inject constructor(
                 val restoreEntries =
                     entryNames.filter { name ->
                         name == SETTINGS_XML_FILENAME ||
-                            name == SETTINGS_FILENAME ||
+                            // Never import the raw legacy DataStore file: may contain login credentials.
                             name == InternalDatabase.DB_NAME ||
                             name == "${InternalDatabase.DB_NAME}-wal" ||
                             name == "${InternalDatabase.DB_NAME}-shm" ||
