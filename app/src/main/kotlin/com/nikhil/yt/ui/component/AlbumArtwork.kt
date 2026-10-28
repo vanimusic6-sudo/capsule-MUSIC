@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
@@ -33,6 +34,7 @@ fun AlbumArtwork(
     thumbnailUrl: String?,
     background: Color,
     modifier: Modifier = Modifier,
+    artworkAlpha: () -> Float = { 1f },
 ) {
     val context = LocalContext.current
     val sizeResolver = rememberConstraintsSizeResolver()
@@ -50,6 +52,7 @@ fun AlbumArtwork(
         background = background,
         modifier = modifier,
         imageModifier = Modifier.then(sizeResolver),
+        artworkAlpha = artworkAlpha,
     )
 }
 
@@ -62,7 +65,9 @@ fun AlbumArtwork(
  */
 internal fun albumCoverHeight(width: Dp, screenHeight: Dp): Dp {
     val natural = width / 0.85f
-    return minOf(natural, maxOf(natural * 0.83f, screenHeight * 0.50f))
+    // Shift the album and matching playlist action baselines down slightly,
+    // without adding a sharp band above the full-bleed portrait.
+    return minOf(natural, maxOf(natural * 0.83f, screenHeight * 0.50f)) + 12.dp
 }
 
 @Suppress("UNUSED_PARAMETER")
@@ -73,6 +78,7 @@ internal fun AlbumArtworkLayers(
     background: Color,
     modifier: Modifier = Modifier,
     imageModifier: Modifier = Modifier,
+    artworkAlpha: () -> Float = { 1f },
 ) {
     val screenHeight = LocalConfiguration.current.screenHeightDp.dp
     BoxWithConstraints(
@@ -84,7 +90,8 @@ internal fun AlbumArtworkLayers(
             painter = painter,
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize().then(imageModifier),
+            modifier = Modifier.fillMaxSize().then(imageModifier)
+                .graphicsLayer { alpha = artworkAlpha().coerceIn(0f, 1f) },
         )
 
         // Identical matte fade to ArtistHero: the page colour replaces the photograph gradually.

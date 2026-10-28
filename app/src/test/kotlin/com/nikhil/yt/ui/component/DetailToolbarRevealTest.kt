@@ -34,6 +34,18 @@ class DetailToolbarRevealTest {
         assertEquals(0f, detailToolbarRevealFraction(0, 0, 0, 200, 100, false), 0f)
     }
 
+    @Test fun coverFadesSmoothlyAndToolbarWaitsUntilItReachesPageColour() {
+        fun cover(offset: Int, index: Int = 0) =
+            detailArtworkFadeFraction(index, offset, artworkBottomPx = 600, toolbarBottomPx = 100)
+        assertEquals(0f, cover(0), 0f)
+        assertEquals(0.5f, cover(185), 0.0001f)
+        assertEquals(1f, cover(370), 0f)
+        assertEquals(1f, cover(0, index = 1), 0f)
+        assertEquals(0f, detailToolbarSurfaceAlpha(cover(184)), 0f)
+        assertEquals(1f, detailToolbarSurfaceAlpha(cover(370)), 0f)
+        assertEquals(0f, detailArtworkFadeFraction(0, 0, 0, 100), 0f)
+    }
+
     @Test fun forcedToolbarAndAbsentHeroAreAlwaysVisible() {
         assertEquals(1f, fraction(0, force = true), 0f)
         assertEquals(

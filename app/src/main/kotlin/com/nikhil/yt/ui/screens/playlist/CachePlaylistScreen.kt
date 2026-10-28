@@ -10,7 +10,8 @@ package com.nikhil.yt.ui.screens.playlist
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.CenterAlignedTopAppBar
 import com.nikhil.yt.ui.component.StandardChrome
-import com.nikhil.yt.ui.component.detailToolbarReveal
+import com.nikhil.yt.ui.component.rememberDetailArtworkFade
+import com.nikhil.yt.ui.component.detailToolbarSurfaceAlpha
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
 import androidx.activity.compose.BackHandler
@@ -188,6 +189,12 @@ fun CachePlaylistScreen(
     ) {
 
 
+        val artworkFade = rememberDetailArtworkFade(
+            state = lazyListState,
+            isPlaylist = true,
+            hasHeader = filteredSongs.isNotEmpty() && !isSearching,
+        )
+
         LazyColumn(
             state = lazyListState,
             contentPadding = LocalPlayerAwareWindowInsets.current
@@ -214,6 +221,7 @@ fun CachePlaylistScreen(
                     // Hero Header Item
                     item(key = "header") {
                         PlaylistHero(
+                                artworkAlpha = { 1f - artworkFade() },
                             title = playlistTitle,
                             thumbnails = filteredSongs.mapNotNull { it.item.thumbnailUrl }.take(4),
                             songCount = pluralStringResource(R.plurals.n_song, filteredSongs.size, filteredSongs.size),
@@ -342,15 +350,11 @@ fun CachePlaylistScreen(
 
         // Same overlay behaviour as AlbumScreen: cover reaches the top and the toolbar
         // becomes solid only after its header scrolls away (or while searching/selecting).
-        val titleOpacity = detailToolbarReveal(
-            state = lazyListState,
-            forceVisible = selection || isSearching,
-            hasHeader = filteredSongs.isNotEmpty(),
-        )
+        val titleOpacity = if (selection || isSearching) 1f else artworkFade()
         CenterAlignedTopAppBar(
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = surfaceColor.copy(alpha = titleOpacity),
-                scrolledContainerColor = surfaceColor.copy(alpha = titleOpacity),
+                containerColor = surfaceColor.copy(alpha = detailToolbarSurfaceAlpha(titleOpacity)),
+                scrolledContainerColor = surfaceColor.copy(alpha = detailToolbarSurfaceAlpha(titleOpacity)),
                 titleContentColor = lerp(Color.White, StandardChrome.text, titleOpacity),
                 navigationIconContentColor = lerp(Color.White, StandardChrome.text, titleOpacity),
                 actionIconContentColor = lerp(Color.White, StandardChrome.text, titleOpacity),

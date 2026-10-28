@@ -12,7 +12,8 @@ import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
 import com.nikhil.yt.ui.menu.CapsuleCollectionDownloadButton
 import com.nikhil.yt.ui.component.StandardChrome
-import com.nikhil.yt.ui.component.detailToolbarReveal
+import com.nikhil.yt.ui.component.rememberDetailArtworkFade
+import com.nikhil.yt.ui.component.detailToolbarSurfaceAlpha
 import android.annotation.SuppressLint
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -375,6 +376,12 @@ fun LocalPlaylistScreen(
     ) {
 
 
+        val artworkFade = rememberDetailArtworkFade(
+            state = lazyListState,
+            isPlaylist = true,
+            hasHeader = playlist != null && !isSearching,
+        )
+
         LazyColumn(
             state = lazyListState,
             contentPadding = LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime)
@@ -386,6 +393,7 @@ fun LocalPlaylistScreen(
                         item(key = "header") {
                             val count = if (playlist.songCount == 0) playlist.playlist.remoteSongCount ?: 0 else playlist.songCount
                             PlaylistHero(
+                                artworkAlpha = { 1f - artworkFade() },
                                 title = playlist.playlist.name,
                                 thumbnails = playlist.thumbnails.filterNotNull(),
                                 songCount = pluralStringResource(R.plurals.n_song, count, count),
@@ -834,15 +842,11 @@ fun LocalPlaylistScreen(
         // Top App Bar
         // Same overlay behaviour as AlbumScreen: cover reaches the top and the toolbar
         // becomes solid only after its header scrolls away (or while searching/selecting).
-        val titleOpacity = detailToolbarReveal(
-            state = lazyListState,
-            forceVisible = selection || isSearching,
-            hasHeader = playlist != null,
-        )
+        val titleOpacity = if (selection || isSearching) 1f else artworkFade()
         CenterAlignedTopAppBar(
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = surfaceColor.copy(alpha = titleOpacity),
-                scrolledContainerColor = surfaceColor.copy(alpha = titleOpacity),
+                containerColor = surfaceColor.copy(alpha = detailToolbarSurfaceAlpha(titleOpacity)),
+                scrolledContainerColor = surfaceColor.copy(alpha = detailToolbarSurfaceAlpha(titleOpacity)),
                 titleContentColor = lerp(Color.White, StandardChrome.text, titleOpacity),
                 navigationIconContentColor = lerp(Color.White, StandardChrome.text, titleOpacity),
                 actionIconContentColor = lerp(Color.White, StandardChrome.text, titleOpacity),

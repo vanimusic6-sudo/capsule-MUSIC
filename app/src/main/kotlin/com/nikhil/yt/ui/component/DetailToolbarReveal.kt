@@ -1,6 +1,11 @@
 package com.nikhil.yt.ui.component
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -53,3 +58,64 @@ internal fun detailToolbarReveal(
         forceVisible = forceVisible || !hasHeader,
     )
 }
+
+
+/**
+ * Album/playlist covers use the artist card's scroll-tied smoothstep.
+ * The actual artwork fades out BEFORE the top bar becomes opaque, so
+ * the toolbar never double-tints a still-visible cover.
+ */
+internal fun detailArtworkFadeFraction(
+    firstVisibleItemIndex: Int,
+    firstVisibleItemScrollOffset: Int,
+    artworkBottomPx: Int,
+    toolbarBottomPx: Int,
+): Float {
+    if (firstVisibleItemIndex > 0) return 1f
+    if (artworkBottomPx <= 0) return 0f
+    val distance = (artworkBottomPx - toolbarBottomPx).coerceAtLeast(1) * 0.74f
+    val t = (firstVisibleItemScrollOffset / distance).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
+}
+
+@Composable
+internal fun rememberDetailArtworkFade(
+    state: LazyListState,
+    isPlaylist: Boolean,
+    hasHeader: Boolean,
+    withSubtitle: Boolean = false,
+): () -> Float {
+    val density = LocalDensity.current
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
+    val statusHeight = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
+    return remember(state, density, screenHeight, statusHeight, isPlaylist, hasHeader, withSubtitle) {
+        {
+            if (!hasHeader) {
+                1f
+            } else {
+                val viewportWidthPx = state.layoutInfo.viewportSize.width
+                if (viewportWidthPx <= 0) {
+                    0f // first composition is not measured; no title flash
+                } else {
+                    val width = with(density) { viewportWidthPx.toDp() }
+                    val albumHeight = albumCoverHeight(width.coerceAtMost(560.dp), screenHeight)
+                    val artworkBottom = if (isPlaylist) {
+                        val squareSide = (width - 48.dp).coerceAtLeast(1.dp)
+                        val topGap = (playlistArtworkTopGap(albumHeight, squareSide) -
+                            if (withSubtitle) 22.dp else 0.dp).coerceAtLeast(22.dp)
+                        topGap + squareSide
+                    } else albumHeight
+                    detailArtworkFadeFraction(
+                        state.firstVisibleItemIndex,
+                        state.firstVisibleItemScrollOffset,
+                        with(density) { artworkBottom.roundToPx() },
+                        with(density) { (statusHeight + 64.dp).roundToPx() },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Artist-style one-time surface handoff, after the cover has fully dissolved. */
+internal fun detailToolbarSurfaceAlpha(fade: Float): Float = if (fade >= 1f) 1f else 0f

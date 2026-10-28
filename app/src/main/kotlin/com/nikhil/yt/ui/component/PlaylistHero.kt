@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -48,6 +49,7 @@ internal fun CapsuleDetailHero(
     subtitle: (@Composable () -> Unit)? = null,
     artwork: @Composable () -> Unit,
     actions: @Composable RowScope.() -> Unit,
+    artworkAlpha: () -> Float = { 1f },
 ) {
     BoxWithConstraints(modifier.fillMaxWidth().background(StandardChrome.background)) {
         val availableWidth = maxWidth
@@ -73,6 +75,7 @@ internal fun CapsuleDetailHero(
                 // Never squash square music art to a 1.06:1 rectangle.
                 .aspectRatio(1f)
                 .testTag("capsule:detail-artwork")
+                .graphicsLayer { alpha = artworkAlpha().coerceIn(0f, 1f) }
                 .clip(RoundedCornerShape(27.dp))
                 .background(StandardChrome.panel)
                 .border(
@@ -190,6 +193,7 @@ internal fun PlaylistHero(
     title: String = "",
     subtitle: (@Composable () -> Unit)? = null,
     year: String? = null,
+    artworkAlpha: () -> Float = { 1f },
     actions: @Composable RowScope.() -> Unit,
 ) {
     val metrics = buildList {
@@ -202,6 +206,7 @@ internal fun PlaylistHero(
         modifier = modifier,
         subtitle = subtitle,
         metrics = metrics,
+        artworkAlpha = artworkAlpha,
         artwork = {
             val covers = thumbnails.filter(String::isNotBlank).take(4)
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

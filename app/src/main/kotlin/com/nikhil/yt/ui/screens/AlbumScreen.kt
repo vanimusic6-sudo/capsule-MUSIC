@@ -14,7 +14,8 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.ui.unit.sp
 import com.nikhil.yt.ui.component.AlbumArtwork
 import com.nikhil.yt.ui.component.DetailHeroBottomSpacing
-import com.nikhil.yt.ui.component.detailToolbarReveal
+import com.nikhil.yt.ui.component.rememberDetailArtworkFade
+import com.nikhil.yt.ui.component.detailToolbarSurfaceAlpha
 import com.nikhil.yt.ui.component.AlbumHeaderLayout
 import com.nikhil.yt.ui.component.AlbumHeaderPlaceholder
 import com.nikhil.yt.ui.component.AlbumScreenLayout
@@ -65,6 +66,7 @@ import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -164,13 +166,14 @@ fun AlbumScreen(
     // State for LazyColumn to track scroll
     val lazyListState = rememberLazyListState()
 
-    // Artwork, album title and toolbar are tied to one scroll fraction.
-    // Fade BEFORE the first song replaces the hero; no index-change flash.
-    val toolbarOpacity = detailToolbarReveal(
+    // The artist-card motion: dissolve the cover before the themed toolbar
+    // becomes opaque, without darkening the artwork with an extra overlay.
+    val artworkFade = rememberDetailArtworkFade(
         state = lazyListState,
-        forceVisible = selection,
+        isPlaylist = false,
         hasHeader = albumWithSongs?.songs?.isNotEmpty() == true,
     )
+    val toolbarOpacity = if (selection) 1f else artworkFade()
 
     AlbumScreenLayout(
         background = surfaceColor,
@@ -187,6 +190,7 @@ fun AlbumScreen(
                             AlbumArtwork(
                                 thumbnailUrl = albumWithSongs.album.thumbnailUrl,
                                 background = surfaceColor,
+                                artworkAlpha = { 1f - artworkFade() },
                             )
                         },
                         title = {
@@ -472,11 +476,11 @@ fun AlbumScreen(
     ) {
         // The transparent toolbar sits over the artwork, below the status-bar inset.
         val topAppBarColors = TopAppBarDefaults.topAppBarColors(
-            containerColor = surfaceColor.copy(alpha = toolbarOpacity),
-            scrolledContainerColor = surfaceColor.copy(alpha = toolbarOpacity),
-            navigationIconContentColor = MaterialTheme.colorScheme.onBackground,
-            titleContentColor = MaterialTheme.colorScheme.onBackground,
-            actionIconContentColor = MaterialTheme.colorScheme.onBackground,
+            containerColor = surfaceColor.copy(alpha = detailToolbarSurfaceAlpha(toolbarOpacity)),
+            scrolledContainerColor = surfaceColor.copy(alpha = detailToolbarSurfaceAlpha(toolbarOpacity)),
+            navigationIconContentColor = lerp(Color.White, StandardChrome.text, toolbarOpacity),
+            titleContentColor = StandardChrome.text,
+            actionIconContentColor = lerp(Color.White, StandardChrome.text, toolbarOpacity),
         )
 
         TopAppBar(
