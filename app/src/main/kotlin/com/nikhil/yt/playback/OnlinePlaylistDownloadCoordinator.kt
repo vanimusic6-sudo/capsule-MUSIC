@@ -98,12 +98,22 @@ internal object OnlinePlaylistDownloadCoordinator {
         // This runs on the UI/main looper (same owner as AudioDownloadQueue).
         val resumableIds = knownMembership[playlistId].orEmpty().toSet()
         val live = downloadManager.currentDownloads.associateBy { it.request.id }
+        var foundPausedDownload = false
         resumableIds.forEach { id ->
             val saved = live[id] ?: knownDownloads[id]
-            if (saved?.state == Download.STATE_STOPPED &&
-                saved.stopReason != DOWNLOAD_WAITING_FOR_SLOT) {
-                downloadManager.setStopReason(id, DOWNLOAD_WAITING_FOR_SLOT)
+            if (saved?.state == Download.STATE_STOPPED) {
+                foundPausedDownload = true
+                if (saved.stopReason != DOWNLOAD_WAITING_FOR_SLOT) {
+                    downloadManager.setStopReason(id, DOWNLOAD_WAITING_FOR_SLOT)
+                }
             }
+        }
+        if (foundPausedDownload) {
+            // An all-paused collection allows Android to stop DownloadService.
+            // Restart it immediately, independently of remote metadata. Do
+            // not send SET_STOP_REASON(2): a delayed command could overwrite
+            // the queue's already-admitted reason 0 and stall the spinner.
+            DownloadService.start(context.applicationContext, ExoDownloadService::class.java)
         }
         AudioDownloadQueue.wake(downloadManager)
         appSaveMembership(context, playlistId, knownMembership[playlistId].orEmpty())
@@ -146,6 +156,7 @@ internal object OnlinePlaylistDownloadCoordinator {
                 knownMembership[playlistId] = allIds
                 appSaveMembership(context, playlistId, allIds)
                 var serviceStarted = false
+                var resumedInProducer = false
                 // One snapshot, not a linear scan of all downloaded tracks
                 // for every playlist member (which would be quadratic).
                 val indexed = knownDownloads +
@@ -154,9 +165,11 @@ internal object OnlinePlaylistDownloadCoordinator {
                     currentCoroutineContext().ensureActive()
                     val existing = indexed[song.id]
                     if (existing != null && existing.state != Download.STATE_FAILED) {
-                        if (existing.state == Download.STATE_STOPPED &&
-                            existing.stopReason != DOWNLOAD_WAITING_FOR_SLOT) {
-                            downloadManager.setStopReason(song.id, DOWNLOAD_WAITING_FOR_SLOT)
+                        if (existing.state == Download.STATE_STOPPED) {
+                            resumedInProducer = true
+                            if (existing.stopReason != DOWNLOAD_WAITING_FOR_SLOT) {
+                                downloadManager.setStopReason(song.id, DOWNLOAD_WAITING_FOR_SLOT)
+                            }
                         }
                         // Already queued, running or completed entries must not
                         // be restarted: preserve independent manual priority.
@@ -179,6 +192,11 @@ internal object OnlinePlaylistDownloadCoordinator {
                         }
                     }
                     if (index % 32 == 31) yield()
+                }
+                // A fresh continuation page can expose stopped requests that
+                // were not yet in the saved membership from the initial page.
+                if (resumedInProducer && !serviceStarted && !foundPausedDownload) {
+                    DownloadService.start(appContext, ExoDownloadService::class.java)
                 }
                 // Media3 won't emit a change for entries already waiting(2).
                 AudioDownloadQueue.wake(downloadManager)
