@@ -247,3 +247,26 @@ jobs:
           path: security-results/
           retention-days: 30
           if-no-files-found: warn
+
+  history-secrets:
+    name: Historical credential exposure (redacted patterns)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Scan complete reachable git history without outputting secret contents
+        run: |
+          python3 scripts/capsule_git_history_secrets.py
+      - name: Upload only secret-free metadata
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capsule-git-history-security
+          path: security-results/git-history-credential-patterns.json
+          if-no-files-found: error
+          retention-days: 30
