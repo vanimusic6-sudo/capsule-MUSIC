@@ -61,14 +61,20 @@ class DownloadQueueTest {
             gates.getValue("track-1").countDown()
             await { index.getDownload("track-1")?.state == Download.STATE_COMPLETED }
             stopCollectionDownloads(manager, (1..101).map { "track-$it" })
-            await(timeoutSeconds = 25) {
-                (2..101).all { n ->
-                    index.getDownload("track-$n")?.let {
-                        it.state == Download.STATE_STOPPED &&
-                            it.stopReason == COLLECTION_STOP_REASON_USER
-                    } == true
+            await {
+                // Use DownloadManager's in-memory snapshot to observe the
+                // async transition rather than querying SQLite 100 times per
+                // 10ms Robolectric polling cycle (which starved the manager).
+                val members = manager.currentDownloads.filter { it.request.id != "track-1" }
+                members.size == 100 && members.all {
+                    it.state == Download.STATE_STOPPED &&
+                        it.stopReason == COLLECTION_STOP_REASON_USER
                 }
             }
+            // Verify durable Media3 index after the operation has settled.
+            assertTrue((2..101).all { n ->
+                index.getDownload("track-$n")?.stopReason == COLLECTION_STOP_REASON_USER
+            })
             assertEquals(Download.STATE_COMPLETED, index.getDownload("track-1")?.state)
             await {
                 index.getDownload("track-101")?.let {
@@ -268,12 +274,9 @@ class DownloadQueueTest {
         time, time, -1, DOWNLOAD_WAITING_FOR_SLOT, Download.FAILURE_REASON_NONE)
     private fun request(i: Int) = DownloadRequest.Builder("track-$i", Uri.parse("track-$i"))
         .setData("title-$i".toByteArray()).build()
-    private fun await(timeoutSeconds: Long = 10, condition: () -> Boolean) {
-        val deadline = System.nanoTime() + timeoutSeconds * 1_000_000_000L
-        while (!condition() && System.nanoTime() < deadline) {
-            shadowOf(Looper.getMainLooper()).idle()
-            Thread.sleep(10)
-        }
+    private fun await(condition: () -> Boolean) {
+        val deadline = System.nanoTime() + 10_000_000_000L
+        while (!condition() && System.nanoTime() < deadline) { shadowOf(Looper.getMainLooper()).idle(); Thread.sleep(10) }
         assertTrue("Media3 queue did not reach the expected state", condition())
     }
 }

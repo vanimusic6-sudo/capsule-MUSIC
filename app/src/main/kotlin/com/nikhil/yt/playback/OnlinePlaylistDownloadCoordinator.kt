@@ -92,6 +92,19 @@ internal object OnlinePlaylistDownloadCoordinator {
             downloadManager, (previouslyKnown + session.ids).distinct(),
         )
         knownMembership[playlistId] = (previouslyKnown + session.ids).distinct()
+        // Resume persisted Media3 requests immediately, BEFORE the remote
+        // continuation-page lookup. Remote playlist metadata may take up to 25s
+        // or be offline; existing cached partial audio must never wait for it.
+        // This runs on the UI/main looper (same owner as AudioDownloadQueue).
+        val resumableIds = knownMembership[playlistId].orEmpty().toSet()
+        val live = downloadManager.currentDownloads.associateBy { it.request.id }
+        resumableIds.forEach { id ->
+            val saved = live[id] ?: knownDownloads[id]
+            if (saved?.state == Download.STATE_STOPPED &&
+                saved.stopReason != DOWNLOAD_WAITING_FOR_SLOT) {
+                downloadManager.setStopReason(id, DOWNLOAD_WAITING_FOR_SLOT)
+            }
+        }
         AudioDownloadQueue.wake(downloadManager)
         appSaveMembership(context, playlistId, knownMembership[playlistId].orEmpty())
         sessions[playlistId] = session
@@ -186,6 +199,9 @@ internal object OnlinePlaylistDownloadCoordinator {
                             }
                         }
                 }
+                // The queue can be idle when the metadata request completes
+                // without an ADD/change callback; wake it after admission.
+                AudioDownloadQueue.wake(downloadManager)
             } finally {
                 if (sessions[playlistId] === session) {
                     sessions.remove(playlistId)
