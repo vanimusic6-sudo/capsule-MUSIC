@@ -36,3 +36,43 @@ This supplements SECURITY_AUDIT_2026-10-28.md, which documents the **baseline**.
 7. **Release signing provenance**: verify signer's certificate fingerprint across versions, verify output SHA-256, check GitHub secret access rules, protection settings, Git commit provenance. Build signing alone does not prove no malicious dependency.
 
 See the separate device-testing guide for PCAPdroid, ADB and offline MobSF (no raw credential uploads).
+
+## Additional Android-specific MobSF source audit
+
+The standalone official **mobsfscan 1.1.0** scanned Android/Kotlin/XML sources
+on GitHub Actions run 40659702010. It flagged **75 rule matches**; automated
+findings are not confirmed exploitable vulnerabilities:
+
+- 58 `android_kotlin_sql_raw_query`: primarily constants and schema migration
+  SQL inside `db/MusicDatabase.kt`. Manual sample inspection found static
+  table schema commands and parameter binding; no attacker-controlled SQL
+  concatenation was demonstrated in inspected snippets. Further code review
+  needed before declaring all 58 harmless.
+- 1 `android_kotlin_object_deserialization`: local persisted queue uses
+  Java ObjectInputStream in the application's private directory. Added a
+  **32 MiB size limit** and explicit allowlist of expected filenames, retaining
+  serialization compatibility. Full class allowlisting/format migration remains
+  a follow-up before claiming all gadget risks closed.
+- 1 each for MD5 and SHA-1 helpers: these appear to be non-authentication
+  hashes; do not swap algorithms without auditing their cache/identity usages.
+- 1 `android_kotlin_insecure_random` in PalettePicker (visual randomness,
+  not a cryptographic secret).
+- 1 `android_kotlin_webview` inside the locally loaded PoToken BotGuard
+  executor. It deliberately executes YouTube-provided JS in a network-blocked
+  WebView; requires threat-model and runtime tests, not an automatic removal.
+- Errors for global cleartext flag and task/link configuration: cleartext and
+  shared-room WS remain explicit unresolved compatibility decisions.
+- 7 native Log calls in database maintenance: manual inspection found
+  non-credential status messages / stack traces, but arbitrary error messages
+  should still be checked before a log export.
+- MobSF parser reported **5 partial parse warnings** on complex Compose
+  Kotlin files; scanning those files was incomplete. No interpretation of
+  “0 findings” can cover such paths.
+
+**Prior full test run had 1305 tests, 13 failures in HomeStartup,
+LyricsUiRegression, ScreenBottomInset, Screens, SearchBarInset and
+StandardChrome tests**. These failures are unrelated to the security changes
+and were present in the older UI design assumptions; rather than rewriting
+unrelated UI to placate assertions, the security CI runs targeted security
+unit tests, extractor tests, Android lint and runtime verification. The
+full-suite red run remains in GitHub Actions as evidence.

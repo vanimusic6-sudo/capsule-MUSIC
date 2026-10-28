@@ -111,7 +111,18 @@ internal class PlaybackPersistence(
 
     fun <T> read(fileName: String, type: Class<T>): T? {
         val persistentFile = filesDir.resolve(fileName)
+        // Only the 3 application-owned snapshots may be deserialized; do not
+        // allow a user-controlled filename to escape the sandbox via resolve().
+        if (fileName !in setOf(
+                PERSISTENT_QUEUE_FILE, PERSISTENT_AUTOMIX_FILE, PERSISTENT_PLAYER_STATE_FILE
+            )) return null
         if (!persistentFile.exists() || !persistentFile.isFile) return null
+        // Local Java serialization remains for backwards compatibility.
+        // Bounded input prevents oversized/corrupted files from exhausting memory.
+        if (persistentFile.length() > 32L * 1024 * 1024) {
+            runCatching { persistentFile.delete() }
+            return null
+        }
 
         return synchronized(stateLock) {
             runCatching {
