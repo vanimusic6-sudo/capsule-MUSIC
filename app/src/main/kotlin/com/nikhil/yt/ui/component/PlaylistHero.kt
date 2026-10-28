@@ -61,6 +61,7 @@ internal fun CapsuleDetailHero(
         artwork = {
             AlbumPortraitFrame(
                 background = bodyBackground,
+                modifier = Modifier.testTag("capsule:detail-artwork"),
                 artworkAlpha = artworkAlpha,
                 artworkMotion = titleMotion,
             ) {
