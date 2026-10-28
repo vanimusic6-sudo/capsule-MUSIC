@@ -15,7 +15,8 @@ class DetailToolbarRevealTest {
         assertTrue(fade(0, 90) > 0f)
         assertTrue(fade(0, 370) < 1f) // Former 74% threshold was too early
         assertTrue(fade(0, 450) < 1f)
-        assertEquals(1f, fade(0, 490), 0f)
+        assertTrue("Photo remains visible near its lower boundary", fade(0, 490) < 1f)
+        assertEquals(1f, fade(0, 495), 0f)
         assertEquals(1f, fade(1, 0), 0f)
         assertEquals(0f, fade(0, 100, Float.NaN), 0f)
     }
@@ -29,6 +30,19 @@ class DetailToolbarRevealTest {
         assertTrue(mid in .45f.. .55f)
         assertEquals(mid, fade(0, 270), 0f)
         assertEquals(1f, detailToolbarBackdropAlpha(1f), 0f)
+    }
+
+    @Test fun artistAndDetailNowShareExactlyOneMotionCurve() {
+        for (height in listOf(420, 650, 900)) {
+            for (offset in 0..height step 3) {
+                val detail = detailArtworkFadeLikeArtist(0, offset, height.toFloat() + 100f, 100f)
+                val artist = com.nikhil.yt.ui.screens.artist.artistArtworkFade(
+                    0, offset, height + 100, 100,
+                )
+                assertEquals("Artist/detail mismatch at height=$height, offset=$offset",
+                    artist, detail, 0f)
+            }
+        }
     }
 
     @Test fun toolbarSurfaceNeverDoubleTintsVisiblePhoto() {

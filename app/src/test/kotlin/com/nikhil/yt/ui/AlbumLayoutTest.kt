@@ -110,7 +110,8 @@ class AlbumLayoutTest {
         val narrow = albumCoverHeight(300.dp, 851.dp)
         val normal = albumCoverHeight(393.dp, 851.dp)
         val compact = albumCoverHeight(393.dp, 720.dp)
-        assertEquals("Portrait keeps the earlier 12dp sizing adjustment", 300.dp / 0.85f + 12.dp, narrow)
+        assertEquals("The 44dp upper gap is absorbed into the photo itself",
+            300.dp / 0.85f + 56.dp, narrow)
         assertTrue("A short screen should lift the album controls", compact < normal)
         assertTrue("A short screen still shows a substantial album cover", compact > 375.dp)
     }
@@ -177,13 +178,13 @@ class AlbumLayoutTest {
         val metrics = compose.onNodeWithTag("capsule:album-metrics").fetchSemanticsNode().boundsInRoot
         val actions = compose.onNodeWithTag("capsule:album-actions").fetchSemanticsNode().boundsInRoot
         assertEquals(loadingHeader.top, loadedHeader.top, 1f)
-        assertEquals("Album art moved down below the pinned artist-style title",
-            with(compose.density) { 44.dp.toPx() }, cover.top - loadedHeader.top, 2f)
+        assertEquals("No visible upper gap: portrait starts flush with the page",
+            loadedHeader.top, cover.top, 2f)
         assertEquals(loadingHeader.height, loadedHeader.height, 2f)
         assertEquals("Loading and content must share the original album layout", loadingSong.top, loadedSong.top, 2f)
         assertEquals("Album cover should fill its width as before", loadedHeader.width, cover.width, 2f)
-        assertEquals("Roomy album portrait keeps the shared 12dp cover-height adjustment",
-            cover.width / 0.85f + with(compose.density) { 12.dp.toPx() }, cover.height, 2f)
+        assertEquals("Former top-gap pixels must extend the portrait instead",
+            cover.width / 0.85f + with(compose.density) { 56.dp.toPx() }, cover.height, 2f)
         assertTrue("Statistics are inside the same rounded capsule", metrics.top >= capsule.top)
         assertTrue("Buttons are inside the same rounded capsule", actions.bottom <= capsule.bottom)
         assertTrue("Stats sit above controls in one uninterrupted surface", metrics.bottom <= actions.top)

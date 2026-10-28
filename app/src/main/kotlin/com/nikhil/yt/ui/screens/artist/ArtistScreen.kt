@@ -100,6 +100,7 @@ import com.nikhil.yt.ui.component.ArtistHero
 import com.nikhil.yt.ui.component.ArtistToolbarCompactHeight
 import com.nikhil.yt.ui.component.artistHeroArtworkHeight
 import com.nikhil.yt.ui.component.ArtistToolbar
+import com.nikhil.yt.ui.component.portraitDissolveFraction
 import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.AlbumGridItem
 import com.nikhil.yt.ui.component.HideOnScrollFAB
@@ -138,12 +139,9 @@ private val ArtistLatestReleaseArtworkSize = 112.dp
 internal fun artistArtworkFade(firstVisibleItemIndex: Int, offsetPx: Int, artworkHeightPx: Int, toolbarBottomPx: Int): Float {
     if (firstVisibleItemIndex > 0) return 1f
     val distance = (artworkHeightPx - toolbarBottomPx).coerceAtLeast(1)
-    // Finish dissolving the portrait well before its lower edge travels under
-    // the pinned title/actions. The toolbar then becomes opaque over an
-    // already-solid page colour: no extra dark strip or sudden last-frame tint.
-    val fadeDistance = distance * 0.74f
-    val fraction = (offsetPx.toFloat() / fadeDistance).coerceIn(0f, 1f)
-    return fraction * fraction * (3f - 2f * fraction)
+    // Same long, late, five-degree smootherstep used by album and playlist.
+    // Finish at the very last safe point before photo edge meets toolbar.
+    return portraitDissolveFraction(offsetPx.toFloat(), distance.toFloat())
 }
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)

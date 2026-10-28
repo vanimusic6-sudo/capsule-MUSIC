@@ -67,9 +67,8 @@ class PlaylistHeroTest {
         assertEquals("Playlist portrait matches album ratio/height",
             with(compose.density) { albumCoverHeight(393.dp, 851.dp).toPx() },
             cover.height, 2f)
-        assertEquals("Playlist and album start artwork at the same offset",
-            with(compose.density) { AlbumArtworkTopSpacing.toPx() },
-            cover.top - outer.top, 2f)
+        assertEquals("No blank upper strip on either album or playlist",
+            0f, cover.top - outer.top, 2f)
         assertTrue("Unified capsule stays inside the portrait's width",
             capsule.left >= cover.left && capsule.right <= cover.right)
         assertTrue("Playlist stats are enclosed inside the same capsule", stats.top >= capsule.top)

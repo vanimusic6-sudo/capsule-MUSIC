@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.LocalDensity
  * Measure the actual artwork's resting bottom edge, including any artwork
  * inset, rather than guessing the title/caption height or assuming one
  * device size. Drawing samples scroll state without a per-frame animation.
+ * Artist, album and playlist pages share the same fade function.
  */
 internal class DetailHeaderMotionState(
     private val scroll: LazyListState,
@@ -65,10 +66,9 @@ internal class DetailHeaderMotionState(
 }
 
 /**
- * A longer, later dissolve than the former 74%-distance transition.
- * Both detail layouts use the SAME measured photo bottom, not an estimated
- * title or hero height. It starts at 12% and finishes at 98% of the distance
- * between the photo's lower edge and the pinned toolbar's lower edge.
+ * A long, geometry-based dissolve, shared with the artist page.
+ * Keep the fade complete by the time artwork reaches the pinned bar. A photo
+ * that disappears later would expose an abrupt boundary below the toolbar.
  */
 internal fun detailArtworkFadeLikeArtist(
     firstVisibleItemIndex: Int,
@@ -79,11 +79,22 @@ internal fun detailArtworkFadeLikeArtist(
     if (firstVisibleItemIndex > 0) return 1f
     if (!artworkBottomPx.isFinite() || !toolbarBottomPx.isFinite()) return 0f
     val distance = (artworkBottomPx - toolbarBottomPx).coerceAtLeast(1f)
+    return portraitDissolveFraction(offsetPx.toFloat(), distance)
+}
+
+/**
+ * Unified motion for artist portrait / album cover / playlist artwork.
+ * Begin after the initial 12% of scrolling and dissolve through 99% of
+ * the image-to-toolbar travel, versus the old artist's 0..74%.
+ *
+ * Finishing AFTER the image's edge crosses the bar creates a sharp seam and
+ * translucent controls; 99% is the latest safe full-dissolve threshold.
+ */
+internal fun portraitDissolveFraction(offsetPx: Float, distancePx: Float): Float {
+    val distance = distancePx.coerceAtLeast(1f)
     val start = distance * 0.12f
-    val end = distance * 0.98f
+    val end = distance * 0.99f
     val fraction = ((offsetPx - start) / (end - start)).coerceIn(0f, 1f)
-    // Fifth-order easing keeps both the acceleration and velocity near zero
-    // on entry/exit; photo, toolbar surface and icon tint share this value.
     return fraction * fraction * fraction * (fraction * (fraction * 6f - 15f) + 10f)
 }
 

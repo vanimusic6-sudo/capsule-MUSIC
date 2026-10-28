@@ -57,8 +57,12 @@ internal fun AlbumScreenLayout(
     }
 }
 
-/** Leave a small photo-only gap under the always-pinned title, without moving the action capsule below the mini-player. */
-internal val AlbumArtworkTopSpacing = 44.dp
+/**
+ * No empty ribbon above the portrait: artwork begins at the window's top edge
+ * underneath the pinned artist-style toolbar. The old 44dp external spacer
+ * is incorporated into the portrait height instead, so buttons keep their Y.
+ */
+internal val AlbumArtworkTopSpacing = 0.dp
 
 /** One bottom gap for albums and every playlist, including loading placeholders. */
 internal val DetailHeroBottomSpacing = 34.dp
