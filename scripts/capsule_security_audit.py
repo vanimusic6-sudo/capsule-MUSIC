@@ -187,7 +187,7 @@ def main():
     print(f"Source findings={len(findings)} blockers={len(blockers)} "
           f"Maven packages={len(packages)} OSV={osv['status']} advisories={len(osv.get('findings', []))}")
     if blockers:
-        print("Blocking finding IDs: " + ", ".join(x["id"] for x in blockers))
+        print("Blocking source locations (no secret values): " + ", ".join(x["id"] + " at " + x["path"] + ":" + str(x.get("line", "?")) for x in blockers))
         return 2
     return 0
 
