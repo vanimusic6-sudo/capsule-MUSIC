@@ -8,6 +8,8 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.positionInRoot
@@ -79,9 +81,9 @@ private fun smoothstep(from: Float, to: Float, value: Float): Float {
  * Smooth photo dissolve across 286 dp, finishing just after the real header
  * title crosses the toolbar. The two title opacities NEVER overlap.
  *
- * There is intentionally no rectangular toolbar scrim at any progress:
- * the whole page and the transparent pinned bar share the same true surface
- * colour, so no horizontal seam can appear at the toolbar's lower edge.
+ * Like ArtistToolbar, the surface is applied only after the photo has
+ * dissolved completely. This avoids tinting visible artwork twice and
+ * prevents a stripe at the pinned toolbar's bottom edge.
  */
 internal fun detailHeaderFractions(titleDistancePx: Float, pxPerDp: Float): DetailHeaderFractions {
     val d = titleDistancePx / pxPerDp.coerceAtLeast(0.001f)
@@ -100,4 +102,27 @@ internal fun rememberDetailHeaderMotion(
     val motion = remember(state, density) { DetailHeaderMotionState(state, density) }
     SideEffect { motion.hasHeader = hasHeader }
     return motion
+}
+
+/**
+ * Use ArtistToolbar's EXACT one-step backdrop policy. The page itself fades the
+ * cover into StandardChrome.background, then the pinned toolbar paints the
+ * identical solid colour over any song rows scrolling underneath. An always-
+ * transparent top bar leaked the scrolling content through the icons/title.
+ */
+internal fun detailToolbarBackdropAlpha(
+    photoDissolve: Float,
+    forceOpaque: Boolean = false,
+): Float = if (forceOpaque) 1f else artistToolbarSurfaceAlpha(photoDissolve)
+
+/** Draw-phase sampling avoids recomposing the header and list on every fling. */
+internal fun Modifier.artistStyleDetailBackdrop(
+    motion: DetailHeaderMotionState,
+    surfaceColor: Color,
+    forceOpaque: Boolean = false,
+): Modifier = drawBehind {
+    drawRect(surfaceColor.copy(alpha = detailToolbarBackdropAlpha(
+        photoDissolve = motion.fractions().photoDissolve,
+        forceOpaque = forceOpaque,
+    )))
 }

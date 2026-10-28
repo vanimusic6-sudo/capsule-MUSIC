@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.sp
 import com.nikhil.yt.ui.component.AlbumArtwork
 import com.nikhil.yt.ui.component.DetailHeroBottomSpacing
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
+import com.nikhil.yt.ui.component.artistStyleDetailBackdrop
 import com.nikhil.yt.ui.component.AlbumHeaderLayout
 import com.nikhil.yt.ui.component.AlbumHeaderPlaceholder
 import com.nikhil.yt.ui.component.AlbumScreenLayout
@@ -472,7 +473,8 @@ fun AlbumScreen(
             }
         },
     ) {
-        // No semi-transparent toolbar slab: it produced the visible horizontal stripe.
+        // Exactly as in ArtistToolbar: draw the solid page backdrop only once
+        // the artwork has dissolved. Never paint a translucent strip over it.
         val topAppBarColors = TopAppBarDefaults.topAppBarColors(
             containerColor = Color.Transparent,
             scrolledContainerColor = Color.Transparent,
@@ -483,7 +485,8 @@ fun AlbumScreen(
 
         TopAppBar(
             modifier = Modifier.align(Alignment.TopCenter)
-                .onGloballyPositioned(titleMotion::measureToolbar),
+                .onGloballyPositioned(titleMotion::measureToolbar)
+                .artistStyleDetailBackdrop(titleMotion, surfaceColor, forceOpaque = selection),
             colors = topAppBarColors,
             // Keep the bar pinned like ArtistToolbar; a collapsing scrollBehavior
             // forced a second upward tug before album controls became visible.

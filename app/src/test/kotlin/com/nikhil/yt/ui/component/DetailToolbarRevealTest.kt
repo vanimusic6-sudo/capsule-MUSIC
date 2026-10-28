@@ -38,6 +38,25 @@ class DetailToolbarRevealTest {
         assertEquals(1f, detailHeaderFractions(-70f, 1f).pinnedTitle, 0f)
     }
 
+    @Test fun toolbarBackdropUsesArtistPolicyAndNeverDoubleTintsArtwork() {
+        for (fraction in 0..999) {
+            val fade = fraction / 1000f
+            assertEquals(
+                "No tint over visible cover: $fade",
+                artistToolbarSurfaceAlpha(fade),
+                detailToolbarBackdropAlpha(fade),
+                0f,
+            )
+            assertEquals(0f, detailToolbarBackdropAlpha(fade), 0f)
+        }
+        assertEquals(1f, detailToolbarBackdropAlpha(1f), 0f)
+        assertEquals(1f, detailToolbarBackdropAlpha(0f, forceOpaque = true), 0f)
+        // Missing or scrolled-past header: a solid panel must protect the buttons.
+        assertEquals(1f, detailToolbarBackdropAlpha(detailHeaderFractions(
+            Float.NEGATIVE_INFINITY, 1f,
+        ).photoDissolve), 0f)
+    }
+
     @Test fun noStepAtPhaseBoundariesOrFirstFrame() {
         val before = detailHeaderFractions(-23.99f, 1f)
         val after = detailHeaderFractions(-24.01f, 1f)

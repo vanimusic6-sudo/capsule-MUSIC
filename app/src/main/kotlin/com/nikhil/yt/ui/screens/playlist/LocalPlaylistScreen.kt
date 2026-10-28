@@ -13,6 +13,7 @@ import com.nikhil.yt.ui.component.PlaylistHero
 import com.nikhil.yt.ui.menu.CapsuleCollectionDownloadButton
 import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
+import com.nikhil.yt.ui.component.artistStyleDetailBackdrop
 import android.annotation.SuppressLint
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -842,7 +843,8 @@ fun LocalPlaylistScreen(
         // Top App Bar
         // One measured title handoff. The bar stays transparent throughout.
         CenterAlignedTopAppBar(
-            modifier = Modifier.onGloballyPositioned(titleMotion::measureToolbar),
+            modifier = Modifier.onGloballyPositioned(titleMotion::measureToolbar)
+                .artistStyleDetailBackdrop(titleMotion, surfaceColor, forceOpaque = selection || isSearching),
             colors = TopAppBarDefaults.topAppBarColors(
                 containerColor = Color.Transparent,
                 scrolledContainerColor = Color.Transparent,

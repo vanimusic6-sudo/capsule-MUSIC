@@ -19,6 +19,7 @@ import com.nikhil.yt.LocalDownloadUtil
 import androidx.media3.exoplayer.offline.Download
 import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
+import com.nikhil.yt.ui.component.artistStyleDetailBackdrop
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -573,7 +574,8 @@ fun OnlinePlaylistScreen(
         // Top App Bar
         // One measured title handoff. The bar stays transparent throughout.
         CenterAlignedTopAppBar(
-            modifier = Modifier.onGloballyPositioned(titleMotion::measureToolbar),
+            modifier = Modifier.onGloballyPositioned(titleMotion::measureToolbar)
+                .artistStyleDetailBackdrop(titleMotion, surfaceColor, forceOpaque = selection || isSearching),
             colors = TopAppBarDefaults.topAppBarColors(
                 containerColor = Color.Transparent,
                 scrolledContainerColor = Color.Transparent,

@@ -11,6 +11,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.CenterAlignedTopAppBar
 import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
+import com.nikhil.yt.ui.component.artistStyleDetailBackdrop
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
 import com.nikhil.yt.ui.menu.CapsuleCollectionDownloadButton
@@ -389,7 +390,8 @@ fun TopPlaylistScreen(
 
         // Same measured title-to-toolbar handoff as every other playlist.
         CenterAlignedTopAppBar(
-            modifier = Modifier.onGloballyPositioned(titleMotion::measureToolbar),
+            modifier = Modifier.onGloballyPositioned(titleMotion::measureToolbar)
+                .artistStyleDetailBackdrop(titleMotion, surfaceColor, forceOpaque = selection || isSearching),
             colors = TopAppBarDefaults.topAppBarColors(
                 containerColor = Color.Transparent,
                 scrolledContainerColor = Color.Transparent,
