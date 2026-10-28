@@ -65,7 +65,10 @@ internal fun AlbumPortraitFrame(
                 // the old opaque top scrim disguised the removed spacer as
                 // yet another grey band for the first ~14% of the photo.
                 topScrim = false,
-                softPortrait = true,
+                // Same static matte dissolve as ArtistHero. Previously the
+                // album-only softPortrait veil started much higher and made
+                // covers look faded long before their scroll transition.
+                softPortrait = false,
             )
         }
     }

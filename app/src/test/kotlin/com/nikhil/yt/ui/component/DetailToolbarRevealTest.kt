@@ -45,6 +45,27 @@ class DetailToolbarRevealTest {
         }
     }
 
+    @Test fun albumsAndPlaylistsUseArtistScrollDistanceInsteadOfTallerCover() {
+        for (offset in 0..550 step 5) {
+            val artist = com.nikhil.yt.ui.screens.artist.artistArtworkFade(
+                0, offset, 600, 100,
+            )
+            val detail = detailArtistLengthArtworkFade(
+                firstVisibleItemIndex = 0,
+                offsetPx = offset,
+                artistArtworkBottomPx = 600f,
+                detailArtworkBottomPx = 680f,
+                toolbarBottomPx = 100f,
+            )
+            assertEquals("Same fade at offset=$offset despite larger album photo",
+                artist, detail, 0f)
+        }
+        // On narrow / short screens never let the cover pass behind an
+        // unpainted bar while the longer artist-distance fade is unfinished.
+        assertEquals(1f, detailArtistLengthArtworkFade(0, 440, 600f, 540f, 100f), 0f)
+        assertEquals(1f, detailArtistLengthArtworkFade(1, 0, 600f, 680f, 100f), 0f)
+    }
+
     @Test fun toolbarSurfaceNeverDoubleTintsVisiblePhoto() {
         for (i in 0 until 1000) {
             val alpha = i / 1000f

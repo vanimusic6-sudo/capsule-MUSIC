@@ -14,6 +14,8 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import kotlin.math.min
 
 /**
  * One scroll-driven photo / pinned-toolbar transition for albums and all
@@ -26,6 +28,7 @@ import androidx.compose.ui.platform.LocalDensity
  */
 internal class DetailHeaderMotionState(
     private val scroll: LazyListState,
+    private val density: Density,
 ) {
     var hasHeader: Boolean = true
 
@@ -54,10 +57,19 @@ internal class DetailHeaderMotionState(
 
     fun artworkFade(): Float {
         if (!hasHeader) return 1f
-        return detailArtworkFadeLikeArtist(
+        val viewportWidth = scroll.layoutInfo.viewportSize.width
+        if (viewportWidth <= 0) return 0f
+        // The artist portrait uses a 1.25 * min(viewport width, 450.dp)
+        // reference height, not the album's separate 0.85-ratio portrait.
+        // Previously matching percentages still meant different scroll lengths.
+        val artistBottomPx = with(density) {
+            artistHeroArtworkHeight(viewportWidth.toDp()).roundToPx().toFloat()
+        }
+        return detailArtistLengthArtworkFade(
             firstVisibleItemIndex = scroll.firstVisibleItemIndex,
             offsetPx = scroll.firstVisibleItemScrollOffset,
-            artworkBottomPx = restArtworkBottomPx,
+            artistArtworkBottomPx = artistBottomPx,
+            detailArtworkBottomPx = restArtworkBottomPx,
             toolbarBottomPx = toolbarBottomPx,
         )
     }
@@ -66,10 +78,29 @@ internal class DetailHeaderMotionState(
 }
 
 /**
- * A long, geometry-based dissolve, shared with the artist page.
- * Keep the fade complete by the time artwork reaches the pinned bar. A photo
- * that disappears later would expose an abrupt boundary below the toolbar.
+ * Use the ARTIST'S actual scroll distance as the source of truth, rather than
+ * the larger album/playlist portrait dimensions. On compact screens where the
+ * portrait physically ends earlier, cap the distance to its real lower edge so
+ * the pinned toolbar never exposes content through a transparent background.
  */
+internal fun detailArtistLengthArtworkFade(
+    firstVisibleItemIndex: Int,
+    offsetPx: Int,
+    artistArtworkBottomPx: Float,
+    detailArtworkBottomPx: Float,
+    toolbarBottomPx: Float,
+): Float {
+    if (firstVisibleItemIndex > 0) return 1f
+    if (!artistArtworkBottomPx.isFinite() || !toolbarBottomPx.isFinite()) return 0f
+    val safeBottom = if (detailArtworkBottomPx.isFinite())
+        min(artistArtworkBottomPx, detailArtworkBottomPx)
+    else artistArtworkBottomPx
+    return detailArtworkFadeLikeArtist(
+        firstVisibleItemIndex, offsetPx, safeBottom, toolbarBottomPx,
+    )
+}
+
+/** Shared artist-style falloff for a measured artwork-bottom geometry. */
 internal fun detailArtworkFadeLikeArtist(
     firstVisibleItemIndex: Int,
     offsetPx: Int,
@@ -107,7 +138,8 @@ internal fun rememberDetailHeaderMotion(
     state: LazyListState,
     hasHeader: Boolean,
 ): DetailHeaderMotionState {
-    val motion = remember(state) { DetailHeaderMotionState(state) }
+    val density = LocalDensity.current
+    val motion = remember(state, density) { DetailHeaderMotionState(state, density) }
     SideEffect { motion.hasHeader = hasHeader }
     return motion
 }
