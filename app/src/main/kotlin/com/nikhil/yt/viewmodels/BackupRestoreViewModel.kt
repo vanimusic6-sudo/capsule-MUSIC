@@ -274,8 +274,14 @@ class BackupRestoreViewModel @Inject constructor(
                     stream.zipInputStream().use { zip ->
                         var entry = zip.nextEntry
                         while (entry != null) {
+                            if (entryNames.size >= 16 || entry.name.length > 160 || entry.name in entryNames) {
+                                throw java.io.IOException("Invalid or repeated backup entry")
+                            }
                             entryNames.add(entry.name)
                             if (entry.name == InternalDatabase.DB_NAME) hasDb = true
+                            val entryLimit = if (entry.name == SETTINGS_XML_FILENAME || entry.name == SETTINGS_FILENAME)
+                                BackupSecurity.MAX_SETTINGS_BYTES else BackupSecurity.MAX_DATABASE_BYTES
+                            BackupSecurity.drainEntry(zip, entryLimit)
                             entry = zip.nextEntry
                         }
                     }
@@ -328,7 +334,7 @@ class BackupRestoreViewModel @Inject constructor(
                                     val settingsDir = context.filesDir / "datastore"
                                     if (!settingsDir.exists()) settingsDir.mkdirs()
                                     (settingsDir / SETTINGS_FILENAME).outputStream().use { out ->
-                                        zip.copyTo(out)
+                                        BackupSecurity.copyBounded(zip, out, BackupSecurity.MAX_SETTINGS_BYTES)
                                     }
                                 }
                                 InternalDatabase.DB_NAME,
@@ -341,7 +347,7 @@ class BackupRestoreViewModel @Inject constructor(
                                         dbFile.delete()
                                     }
                                     FileOutputStream(dbFile).use { out ->
-                                        zip.copyTo(out)
+                                        BackupSecurity.copyBounded(zip, out, BackupSecurity.MAX_DATABASE_BYTES)
                                     }
                                 }
                             }
@@ -391,6 +397,7 @@ class BackupRestoreViewModel @Inject constructor(
         serializer.startTag(null, "Settings")
 
         for ((key, value) in prefs) {
+            if (!BackupSecurity.exportablePreference(key.name)) continue
             val tagName = when (value) {
                 is Boolean -> "boolean"
                 is Int -> "int"
@@ -423,7 +430,7 @@ class BackupRestoreViewModel @Inject constructor(
     }
 
     private suspend fun restoreSettingsFromXml(context: Context, inputStream: java.io.InputStream) {
-        val content = inputStream.readBytes().toString(Charsets.UTF_8)
+        val content = BackupSecurity.readBounded(inputStream, BackupSecurity.MAX_SETTINGS_BYTES).toString(Charsets.UTF_8)
         if (content.isBlank()) return
 
         val parser = android.util.Xml.newPullParser()
@@ -442,7 +449,7 @@ class BackupRestoreViewModel @Inject constructor(
                 val name = parser.name
                 val keyName = parser.getAttributeValue(null, "name")
 
-                if (keyName != null) {
+                if (keyName != null && BackupSecurity.exportablePreference(keyName)) {
                     when (name) {
                         "boolean" -> {
                             val value = parser.getAttributeValue(null, "value")?.toBoolean()
@@ -533,7 +540,11 @@ class BackupRestoreViewModel @Inject constructor(
 
                 runCatching {
                     context.contentResolver.openInputStream(uri)?.use { stream ->
-                        val reader = PushbackReader(InputStreamReader(stream, Charsets.UTF_8), 1)
+                        val reader = PushbackReader(
+                            java.io.StringReader(
+                                BackupSecurity.readBounded(stream, BackupSecurity.MAX_PLAYLIST_BYTES).toString(Charsets.UTF_8)
+                            ), 1
+                        )
                         val iterator = readCsvRecords(reader).iterator()
                         if (!iterator.hasNext()) return@use
 
@@ -575,7 +586,7 @@ class BackupRestoreViewModel @Inject constructor(
                         if (!hasHeader) {
                             addFromRecord(firstRecord)
                         }
-                        while (iterator.hasNext()) {
+                        while (iterator.hasNext() && out.size < BackupSecurity.MAX_PLAYLIST_TRACKS) {
                             addFromRecord(iterator.next())
                         }
                     }
@@ -607,10 +618,12 @@ class BackupRestoreViewModel @Inject constructor(
 
                 runCatching {
                     context.applicationContext.contentResolver.openInputStream(uri)?.use { stream ->
-                        val lines = stream.bufferedReader().readLines()
+                        val lines = BackupSecurity.readBounded(stream, BackupSecurity.MAX_PLAYLIST_BYTES)
+                            .toString(Charsets.UTF_8).lineSequence()
+                            .take(BackupSecurity.MAX_PLAYLIST_TRACKS * 4).toList()
                         if (lines.firstOrNull()?.startsWith("#EXTM3U") == true) {
                             lines.forEach { rawLine ->
-                                if (rawLine.startsWith("#EXTINF:")) {
+                                if (rawLine.startsWith("#EXTINF:") && out.size < BackupSecurity.MAX_PLAYLIST_TRACKS) {
                                     val artists =
                                         rawLine
                                             .substringAfter("#EXTINF:")
