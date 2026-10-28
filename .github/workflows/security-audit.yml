@@ -190,3 +190,46 @@ jobs:
           path: security-results/
           retention-days: 30
           if-no-files-found: warn
+
+
+  mobsf-source:
+    name: MobSF Kotlin and Android XML static rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install standalone MobSF source scanner
+        run: python -m pip install mobsfscan
+      - name: Scan Android source with MobSF rules
+        shell: bash
+        run: |
+          mkdir -p security-results
+          mobsfscan --type android --json --no-fail \
+            -o security-results/mobsfscan.json \
+            app/src/main/ innertube/src/main/ || true
+          test -s security-results/mobsfscan.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          data=json.loads(Path('security-results/mobsfscan.json').read_text())
+          findings=data.get('results', data.get('findings', {}))
+          if isinstance(findings, dict):
+              count=sum(len(v.get('files',[])) if isinstance(v,dict) else 1 for v in findings.values())
+          else:
+              count=len(findings)
+          result={'scanner':'mobsfscan', 'status':'completed', 'finding_count':count}
+          Path('security-results/mobsfscan-summary.json').write_text(json.dumps(result,indent=2))
+          print('MobSF source scan completed; findings:',count)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capsule-mobsf-source-evidence
+          path: security-results/
+          retention-days: 30
+          if-no-files-found: warn
