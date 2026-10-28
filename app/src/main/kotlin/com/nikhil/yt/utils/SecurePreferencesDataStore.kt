@@ -64,7 +64,7 @@ internal object SecurePreferencesDataStore {
                 val updated = transform(clear)
                 // Avoid rewriting a random IV on every application startup.
                 if (updated == clear && !containsLegacyPlainSecrets(old)) old
-                else encryptPreferences(updated)
+                else encryptPreferences(updated, clear, old)
             }
             return decryptPreferences(stored)
         }
@@ -92,12 +92,22 @@ internal object SecurePreferencesDataStore {
             return result.toPreferences()
         }
 
-        private fun encryptPreferences(clear: Preferences): Preferences {
+        private fun encryptPreferences(
+            clear: Preferences,
+            priorPlain: Preferences,
+            priorEncrypted: Preferences,
+        ): Preferences {
             val result = clear.toMutablePreferences()
             clear.asMap().forEach { (key, value) ->
                 if (isSensitivePreference(key.name) && value is String && value.isNotBlank()) {
-                    result[stringPreferencesKey(key.name)] =
-                        if (value.startsWith(KeystoreCipher.PREFIX)) value
+                    val preferenceKey = stringPreferencesKey(key.name)
+                    val oldCiphertext = priorEncrypted[preferenceKey]
+                    // Only encrypt changed credentials. Toggling a theme or moving a
+                    // slider must not churn all Keystore values and drain energy.
+                    result[preferenceKey] =
+                        if (oldCiphertext?.startsWith(KeystoreCipher.PREFIX) == true &&
+                            priorPlain[preferenceKey] == value
+                        ) oldCiphertext
                         else cipher.encrypt(value)
                 }
             }
