@@ -19,9 +19,12 @@ import io.ktor.websocket.WebSocketSession
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import io.ktor.websocket.send
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -88,7 +91,10 @@ class TogetherServer(
             if (engine != null) return
             engine =
                 embeddedServer(CIO, port = port, host = "0.0.0.0") {
-                    install(WebSockets)
+                    install(WebSockets) {
+                        // Never accept unlimited remote frames into app memory.
+                        maxFrameSize = 64L * 1024L
+                    }
                     routing {
                         webSocket("/together") {
                             handleClient()
@@ -225,7 +231,7 @@ class TogetherServer(
     private suspend fun WebSocketSession.handleClient() {
         val helloText =
             try {
-                incoming.receive() as? Frame.Text
+                withTimeoutOrNull(5_000L) { incoming.receive() as? Frame.Text }
             } catch (_: ClosedReceiveChannelException) {
                 null
             }
@@ -253,7 +259,10 @@ class TogetherServer(
             return
         }
 
-        if (hello.sessionId != sessionId || hello.sessionKey != sessionKey) {
+        if (hello.sessionId != sessionId || !MessageDigest.isEqual(
+                hello.sessionKey.toByteArray(StandardCharsets.UTF_8),
+                sessionKey.toByteArray(StandardCharsets.UTF_8)
+            )) {
             send(
                 TogetherJson.json.encodeToString(
                     TogetherMessage.serializer(),
@@ -264,6 +273,10 @@ class TogetherServer(
             return
         }
 
+        if (clients.size >= 24) {
+            close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "Room is full"))
+            return
+        }
         val participantId = UUID.randomUUID().toString()
         val isPending = mutex.withLock { settings.requireHostApprovalToJoin }
 
@@ -271,7 +284,7 @@ class TogetherServer(
             Client(
                 participantId = participantId,
                 clientId = hello.clientId,
-                name = hello.displayName.trim().ifBlank { "Guest" },
+                name = hello.displayName.trim().take(64).ifBlank { "Guest" },
                 session = this,
                 pending = isPending,
             )
