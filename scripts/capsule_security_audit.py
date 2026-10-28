@@ -204,6 +204,10 @@ def main():
     (out / "security-summary.md").write_text("\n".join(md)+"\n")
     print(f"Source findings={len(findings)} blockers={len(blockers)} "
           f"Maven packages={len(packages)} OSV={osv['status']} advisories={len(osv.get('findings', []))}")
+    for advisory in osv.get("findings", []):
+        # Public Maven package coordinates / advisory IDs only; never URLs or tokens.
+        print("OSV advisory: " + advisory["package"] + "@" + advisory["version"] +
+              " " + advisory["id"])
     if blockers:
         print("Blocking source locations (no secret values): " + ", ".join(x["id"] + " at " + x["path"] + ":" + str(x.get("line", "?")) for x in blockers))
         return 2
