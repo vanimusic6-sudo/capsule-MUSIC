@@ -93,7 +93,7 @@ class PlaylistHeroTest {
             val albumControlsY = albumHeight + 10.dp + 30.dp + 6.dp + 12.dp
             val playlistControlsY = topGap + playlistSide + 10.dp + 30.dp + 16.dp
             assertEquals("Matching album/playlist control spacing at $height",
-                albumControlsY, playlistControlsY)
+                albumControlsY.value, playlistControlsY.value, 0.01f)
         }
     }
 

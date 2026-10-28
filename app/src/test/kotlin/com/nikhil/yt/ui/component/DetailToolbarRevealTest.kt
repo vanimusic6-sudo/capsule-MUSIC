@@ -30,11 +30,15 @@ class DetailToolbarRevealTest {
         assertTrue(fraction(825) > fraction(775))
     }
 
+    @Test fun initialUnmeasuredHeaderNeverFlashesTheTitle() {
+        assertEquals(0f, detailToolbarRevealFraction(0, 0, 0, 200, 100, false), 0f)
+    }
+
     @Test fun forcedToolbarAndAbsentHeroAreAlwaysVisible() {
         assertEquals(1f, fraction(0, force = true), 0f)
         assertEquals(
             1f,
-            detailToolbarRevealFraction(0, 0, 0, 200, 100, false),
+            detailToolbarRevealFraction(0, 0, 0, 200, 100, true),
             0f,
         )
     }

@@ -21,7 +21,10 @@ internal fun detailToolbarRevealFraction(
     toolbarHeightPx: Int,
     forceVisible: Boolean = false,
 ): Float {
-    if (forceVisible || firstVisibleItemIndex > 0 || headerHeightPx <= 0) return 1f
+    if (forceVisible || firstVisibleItemIndex > 0) return 1f
+    // First composition can precede LazyColumn's measurement: avoid a visible
+    // title flash until the actual header size has been measured.
+    if (headerHeightPx <= 0) return 0f
     val distance = fadeDistancePx.coerceAtLeast(1)
     val start = (headerHeightPx - toolbarHeightPx - distance).coerceAtLeast(0)
     val linear = ((firstVisibleItemScrollOffset - start).toFloat() / distance)
