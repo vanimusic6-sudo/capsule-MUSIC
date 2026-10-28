@@ -63,12 +63,22 @@ class PoTokenExtractionActivity : ComponentActivity() {
 
         val targetUrl =
             intent.getStringExtra(EXTRA_SOURCE_URL)
-                ?.takeIf { it.isNotBlank() }
+                ?.takeIf(::isTrustedPoTokenSource)
                 ?: DEFAULT_EXTRACT_URL
 
         setContent {
             PoTokenExtractionContent(targetUrl)
         }
+    }
+
+    private fun isTrustedPoTokenSource(raw: String): Boolean {
+        val uri = runCatching { java.net.URI(raw) }.getOrNull() ?: return false
+        return uri.scheme.equals("https", ignoreCase = true) &&
+            uri.userInfo == null &&
+            (uri.port == -1 || uri.port == 443) &&
+            uri.host?.lowercase(java.util.Locale.ROOT) in setOf(
+                "youtube.com", "www.youtube.com", "music.youtube.com", "accounts.google.com"
+            )
     }
 
     override fun onDestroy() {
@@ -101,7 +111,7 @@ class PoTokenExtractionActivity : ComponentActivity() {
             if (current.isBlank() || destination.isBlank()) return false
             val currentHost = normalizeHost(current)
             val destinationHost = normalizeHost(destination)
-            if (currentHost != destinationHost) return false
+            if (currentHost != destinationHost || !isTrustedPoTokenSource(current) || !isTrustedPoTokenSource(destination)) return false
 
             val currentPath = normalizePath(current)
             val destinationPath = normalizePath(destination)
@@ -213,43 +223,33 @@ class PoTokenExtractionActivity : ComponentActivity() {
                 factory = { ctx ->
                     WebView(ctx).apply {
                         val cookieManager = CookieManager.getInstance()
-                        cookieManager.removeAllCookies(null)
-                        cookieManager.flush()
+                        // Preserve global YouTube/Google cookies; WebView CookieManager
+                        // is shared by all screens and removal logged users out.
                         cookieManager.setAcceptCookie(true)
-                        cookieManager.setAcceptThirdPartyCookies(this, true)
+                        cookieManager.setAcceptThirdPartyCookies(this, false)
 
                         clearHistory()
                         clearFormData()
                         clearCache(true)
 
                         settings.javaScriptEnabled = true
+                        settings.allowFileAccess = false
+                        settings.allowContentAccess = false
                         settings.domStorageEnabled = true
                         settings.setSupportZoom(true)
                         settings.builtInZoomControls = true
                         settings.displayZoomControls = false
 
-                        addJavascriptInterface(object {
-                            @JavascriptInterface
-                            fun onRetrieveVisitorData(newVisitorData: String?) {
-                                if (!newVisitorData.isNullOrBlank()) {
-                                    extractedVisitorData = newVisitorData
-                                    runOnUiThread { completeIfReady() }
-                                }
-                            }
-
-                            @JavascriptInterface
-                            fun onRetrievePoToken(newPoToken: String?) {
-                                if (!newPoToken.isNullOrBlank()) {
-                                    extractedGvsToken = newPoToken
-                                    runOnUiThread { completeIfReady() }
-                                }
-                            }
-                        }, "Android")
-
+                        // Tokens are read using top-frame evaluateJavascript callbacks.
+                        // Do NOT export Java native methods into remote subframes.
                         webViewClient = object : WebViewClient() {
                             override fun onPageFinished(view: WebView, url: String?) {
                                 currentUrl = url.orEmpty()
                             }
+                            override fun shouldOverrideUrlLoading(
+                                view: WebView,
+                                request: android.webkit.WebResourceRequest
+                            ): Boolean = !isTrustedPoTokenSource(request.url.toString())
                         }
 
                         loadUrl(targetUrl)
