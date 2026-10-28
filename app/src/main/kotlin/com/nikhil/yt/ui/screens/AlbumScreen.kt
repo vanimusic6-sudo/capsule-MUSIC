@@ -16,6 +16,8 @@ import com.nikhil.yt.ui.component.AlbumArtwork
 import com.nikhil.yt.ui.component.DetailHeroBottomSpacing
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
 import com.nikhil.yt.ui.component.artistStyleDetailBackdrop
+import com.nikhil.yt.ui.component.AlbumArtworkTopSpacing
+import com.nikhil.yt.ui.component.ArtistToolbarCompactHeight
 import com.nikhil.yt.ui.component.AlbumHeaderLayout
 import com.nikhil.yt.ui.component.AlbumHeaderPlaceholder
 import com.nikhil.yt.ui.component.AlbumScreenLayout
@@ -33,6 +35,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -167,7 +172,8 @@ fun AlbumScreen(
     // State for LazyColumn to track scroll
     val lazyListState = rememberLazyListState()
 
-    // Measure the actual title crossing rather than guessing from artwork size.
+    // Like the artist screen, the title lives permanently in the pinned top bar.
+    // The artwork and toolbar share one measured scroll-driven dissolve.
     val titleMotion = rememberDetailHeaderMotion(
         state = lazyListState,
         hasHeader = albumWithSongs?.songs?.isNotEmpty() == true,
@@ -181,28 +187,19 @@ fun AlbumScreen(
             val hasSongs = albumWithSongs?.songs?.isNotEmpty() == true
             if (hasSongs) {
                 item(key = "header") {
-                    // Restore the original portrait album artwork and bold title.
-                    // Use the original portrait art with one unified album control capsule.
+                    // The cover sits lower, occupying the space freed by its old caption.
                     AlbumHeaderLayout(
+                        showTitle = false,
+                        artworkTopSpacing = AlbumArtworkTopSpacing,
                         artwork = {
                             AlbumArtwork(
                                 thumbnailUrl = albumWithSongs.album.thumbnailUrl,
                                 background = surfaceColor,
                                 artworkAlpha = titleMotion::artworkAlpha,
+                                artworkMotion = titleMotion,
                             )
                         },
-                        title = {
-                            Text(
-                                text = albumWithSongs.album.title,
-                                style = MaterialTheme.typography.headlineSmall.copy(fontSize = 26.sp),
-                                fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(horizontal = 32.dp)
-                                    .then(titleMotion.originalTitleModifier()),
-                            )
-                        },
+                        title = {},
                         metadata = {},
                         actions = {
                             CapsuleAlbumControls(
@@ -475,12 +472,16 @@ fun AlbumScreen(
     ) {
         // Exactly as in ArtistToolbar: draw the solid page backdrop only once
         // the artwork has dissolved. Never paint a translucent strip over it.
+        // The artist toolbar has a permanent name; only photo/surface and foreground
+        // colours change on scroll. Preserve the same policy here.
+        val toolbarForeground = if (selection) StandardChrome.text else
+            lerp(Color.White, StandardChrome.text, titleMotion.artworkFade())
         val topAppBarColors = TopAppBarDefaults.topAppBarColors(
             containerColor = Color.Transparent,
             scrolledContainerColor = Color.Transparent,
-            navigationIconContentColor = StandardChrome.text,
-            titleContentColor = StandardChrome.text,
-            actionIconContentColor = StandardChrome.text,
+            navigationIconContentColor = toolbarForeground,
+            titleContentColor = toolbarForeground,
+            actionIconContentColor = toolbarForeground,
         )
 
         TopAppBar(
@@ -488,6 +489,8 @@ fun AlbumScreen(
                 .onGloballyPositioned(titleMotion::measureToolbar)
                 .artistStyleDetailBackdrop(titleMotion, surfaceColor, forceOpaque = selection),
             colors = topAppBarColors,
+            windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
+            expandedHeight = ArtistToolbarCompactHeight,
             // Keep the bar pinned like ArtistToolbar; a collapsing scrollBehavior
             // forced a second upward tug before album controls became visible.
             title = {
@@ -503,7 +506,7 @@ fun AlbumScreen(
                         style = MaterialTheme.typography.titleLarge,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.graphicsLayer { alpha = if (selection) 1f else titleMotion.toolbarTitleAlpha() },
+                        // Always visible, exactly like the artist's pinned title.
                     )
                 }
             },

@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -64,7 +65,7 @@ internal fun CapsuleDetailHero(
         // Artist subtitles add a line not present on album pages; prevent
         // that extra line from shifting the action capsule beneath the mini-player.
         val heroTopGap = (playlistArtworkTopGap(albumCover, coverSide) -
-            if (subtitle != null) 22.dp else 0.dp).coerceAtLeast(22.dp)
+            if (subtitle != null) 22.dp else 0.dp).coerceAtLeast(22.dp) + 40.dp
         Column(
             Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -76,6 +77,7 @@ internal fun CapsuleDetailHero(
                 // Never squash square music art to a 1.06:1 rectangle.
                 .aspectRatio(1f)
                 .testTag("capsule:detail-artwork")
+                .then(if (titleMotion != null) Modifier.onGloballyPositioned(titleMotion::measureArtwork) else Modifier)
                 .graphicsLayer { alpha = artworkAlpha().coerceIn(0f, 1f) }
                 .clip(RoundedCornerShape(27.dp))
                 .background(StandardChrome.panel)
@@ -87,18 +89,7 @@ internal fun CapsuleDetailHero(
         ) {
             artwork()
         }
-        Spacer(Modifier.height(10.dp))
-        Text(
-            text = title,
-            color = StandardChrome.text,
-            style = MaterialTheme.typography.headlineSmall.copy(fontSize = 26.sp),
-            fontWeight = FontWeight.Normal,
-            textAlign = TextAlign.Center,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 26.dp)
-                .then(titleMotion?.originalTitleModifier() ?: Modifier),
-        )
+        // As on the artist card, there is no duplicate title underneath the cover.
         if (subtitle != null) {
             Spacer(Modifier.height(6.dp))
             subtitle()
@@ -110,11 +101,7 @@ internal fun CapsuleDetailHero(
     }
 }
 
-/**
- * For a one-line title this places the playlist's controls at approximately
- * the same Y as the album controls: both titles and metric rows have the same
- * baseline spacing. Clamp to keep the cover below the pinned top toolbar.
- */
+/** Align the controls with the album capsule; the playlist cover stays square. */
 internal fun playlistArtworkTopGap(albumCoverHeight: androidx.compose.ui.unit.Dp, playlistCoverSide: androidx.compose.ui.unit.Dp) =
     (albumCoverHeight - playlistCoverSide + 2.dp).coerceIn(32.dp, 98.dp)
 

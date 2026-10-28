@@ -88,10 +88,10 @@ class PlaylistHeroTest {
             val albumHeight = albumCoverHeight(availableWidth, height)
             val playlistSide = availableWidth - 48.dp
             val topGap = playlistArtworkTopGap(albumHeight, playlistSide)
-            // Album has 10 + title + 6 + 12, playlist has
-            // 10 + title + 16. Its gap compensates for this 2dp difference.
-            val albumControlsY = albumHeight + 10.dp + 30.dp + 6.dp + 12.dp
-            val playlistControlsY = topGap + playlistSide + 10.dp + 30.dp + 16.dp
+            // The caption now belongs to the pinned toolbar, not the hero.
+            // Album photo shifts 44dp down; both capsules retain their baseline.
+            val albumControlsY = 44.dp + albumHeight + 14.dp
+            val playlistControlsY = topGap + 40.dp + playlistSide + 16.dp
             assertEquals("Matching album/playlist control spacing at $height",
                 albumControlsY.value, playlistControlsY.value, 0.01f)
         }

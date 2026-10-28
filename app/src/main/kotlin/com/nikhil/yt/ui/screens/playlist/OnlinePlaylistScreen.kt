@@ -18,6 +18,7 @@ import com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator
 import com.nikhil.yt.LocalDownloadUtil
 import androidx.media3.exoplayer.offline.Download
 import com.nikhil.yt.ui.component.StandardChrome
+import com.nikhil.yt.ui.component.ArtistToolbarCompactHeight
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
 import com.nikhil.yt.ui.component.artistStyleDetailBackdrop
 import androidx.activity.compose.BackHandler
@@ -29,6 +30,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.asPaddingValues
@@ -574,15 +576,19 @@ fun OnlinePlaylistScreen(
         // Top App Bar
         // One measured title handoff. The bar stays transparent throughout.
         // Match AlbumScreen: the compact title is left-aligned beside the back button.
+        val toolbarForeground = if (selection || isSearching) StandardChrome.text else
+            lerp(Color.White, StandardChrome.text, titleMotion.artworkFade())
         TopAppBar(
             modifier = Modifier.onGloballyPositioned(titleMotion::measureToolbar)
                 .artistStyleDetailBackdrop(titleMotion, surfaceColor, forceOpaque = selection || isSearching),
+            windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
+            expandedHeight = ArtistToolbarCompactHeight,
             colors = TopAppBarDefaults.topAppBarColors(
                 containerColor = Color.Transparent,
                 scrolledContainerColor = Color.Transparent,
-                titleContentColor = StandardChrome.text,
-                navigationIconContentColor = StandardChrome.text,
-                actionIconContentColor = StandardChrome.text,
+                titleContentColor = toolbarForeground,
+                navigationIconContentColor = toolbarForeground,
+                actionIconContentColor = toolbarForeground,
             ),
             title = {
                 if (selection) {
@@ -615,7 +621,7 @@ fun OnlinePlaylistScreen(
                         modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
                     )
                 } else {
-                    Text(playlist?.title.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.graphicsLayer { alpha = if (selection || isSearching) 1f else titleMotion.toolbarTitleAlpha() })
+                    Text(playlist?.title.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier)
                 }
             },
             navigationIcon = {

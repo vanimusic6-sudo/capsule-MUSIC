@@ -1,86 +1,45 @@
 package com.nikhil.yt.ui.component
 
+import com.nikhil.yt.ui.screens.artist.artistArtworkFade
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DetailToolbarRevealTest {
-    @Test fun photoDissolvesAcrossLongEvenDistanceUntilTitleCrossesToolbar() {
-        assertEquals(0f, detailHeaderFractions(300f, 1f).photoDissolve, 0f)
-        assertEquals(0f, detailHeaderFractions(260f, 1f).photoDissolve, 0f)
-        assertTrue(detailHeaderFractions(180f, 1f).photoDissolve > 0f)
-        assertTrue(detailHeaderFractions(180f, 1f).photoDissolve < detailHeaderFractions(50f, 1f).photoDissolve)
-        assertEquals(1f, detailHeaderFractions(-26f, 1f).photoDissolve, 0f)
-        assertEquals(1f, detailHeaderFractions(-200f, 1f).photoDissolve, 0f)
-    }
+    private fun fade(index: Int, offset: Int, artBottom: Float = 600f, barBottom: Float = 100f) =
+        detailArtworkFadeLikeArtist(index, offset, artBottom, barBottom)
 
-    @Test fun samePhysicalTitleThresholdInDifferentDensities() {
-        for (density in listOf(1f, 1.75f, 2.75f, 3.5f)) {
-            val a = detailHeaderFractions(125f * density, density)
-            val b = detailHeaderFractions(125f, 1f)
-            assertEquals(b.photoDissolve, a.photoDissolve, 0.0001f)
-            assertEquals(b.sourceTitle, a.sourceTitle, 0.0001f)
-            assertEquals(b.pinnedTitle, a.pinnedTitle, 0.0001f)
-        }
-    }
-
-    @Test fun originalAndPinnedTitlesNeverVisibleTogether() {
-        for (offset in -220..340) {
-            val m = detailHeaderFractions(offset.toFloat(), 1f)
-            assertTrue("Double title at distance $offset: $m",
-                m.sourceTitle < 0.00001f || m.pinnedTitle < 0.00001f)
-            assertTrue(m.sourceTitle in 0f..1f && m.pinnedTitle in 0f..1f)
-            assertTrue(m.photoDissolve in 0f..1f)
-        }
-        assertEquals(1f, detailHeaderFractions(150f, 1f).sourceTitle, 0f)
-        assertEquals(0f, detailHeaderFractions(-34f, 1f).sourceTitle, 0f)
-        assertEquals(0f, detailHeaderFractions(-34f, 1f).pinnedTitle, 0f)
-        assertEquals(1f, detailHeaderFractions(-146f, 1f).pinnedTitle, 0f)
-    }
-
-    @Test fun toolbarBackdropUsesArtistPolicyAndNeverDoubleTintsArtwork() {
-        for (fraction in 0..999) {
-            val fade = fraction / 1000f
+    @Test fun albumAndPlaylistArtworkFollowTheExactArtistScrollCurve() {
+        for (offset in -200..800 step 4) {
             assertEquals(
-                "No tint over visible cover: $fade",
-                artistToolbarSurfaceAlpha(fade),
-                detailToolbarBackdropAlpha(fade),
-                0f,
+                "Artist parity at scroll=$offset",
+                artistArtworkFade(0, offset, 600, 100),
+                fade(0, offset),
+                0.0001f,
             )
-            assertEquals(0f, detailToolbarBackdropAlpha(fade), 0f)
+        }
+        assertEquals(0f, fade(0, 0), 0f)
+        assertEquals(1f, fade(1, 0), 0f)
+        assertEquals(1f, fade(0, 370), 0f)
+    }
+
+    @Test fun dissolveIsContinuousAndReversibleWithoutTitleHandoff() {
+        val values = (0..370 step 5).map { fade(0, it) }
+        assertTrue(values.zipWithNext().all { (a, b) -> b >= a && b - a < .04f })
+        assertEquals(0f, values.first(), 0f)
+        assertEquals(1f, values.last(), 0f)
+        for (offset in listOf(16, 84, 181, 329)) {
+            assertEquals(fade(0, offset), fade(0, offset), 0f)
+        }
+        assertEquals(0f, fade(0, 100, Float.NaN), 0f)
+    }
+
+    @Test fun toolbarPaintsSameSurfaceOnlyAfterPhotoDisappears() {
+        for (i in 0 until 1000) {
+            val a = i / 1000f
+            assertEquals(artistToolbarSurfaceAlpha(a), detailToolbarBackdropAlpha(a), 0f)
         }
         assertEquals(1f, detailToolbarBackdropAlpha(1f), 0f)
         assertEquals(1f, detailToolbarBackdropAlpha(0f, forceOpaque = true), 0f)
-        // Missing or scrolled-past header: a solid panel must protect the buttons.
-        assertEquals(1f, detailToolbarBackdropAlpha(detailHeaderFractions(
-            Float.NEGATIVE_INFINITY, 1f,
-        ).photoDissolve), 0f)
-    }
-
-    @Test fun bothTitlesUseGentleReversibleCrossingWithoutOverlap() {
-        val ascending = (-180..180).map { detailHeaderFractions(it.toFloat(), 1f) }
-        val maxSourceChange = ascending.zipWithNext().maxOf { (a, b) ->
-            kotlin.math.abs(a.sourceTitle - b.sourceTitle)
-        }
-        val maxPinnedChange = ascending.zipWithNext().maxOf { (a, b) ->
-            kotlin.math.abs(a.pinnedTitle - b.pinnedTitle)
-        }
-        assertTrue("Original title fades too abruptly: $maxSourceChange", maxSourceChange < .02f)
-        assertTrue("Pinned title appears too abruptly: $maxPinnedChange", maxPinnedChange < .02f)
-        for (d in -200..200) {
-            val f = detailHeaderFractions(d.toFloat(), 1f)
-            assertTrue("Two visible names at $d", f.sourceTitle == 0f || f.pinnedTitle == 0f)
-        }
-        assertEquals(0f, detailHeaderFractions(-34f, 1f).sourceTitle, 0f)
-        assertEquals(0f, detailHeaderFractions(-34f, 1f).pinnedTitle, 0f)
-    }
-
-    @Test fun noStepAtPhaseBoundariesOrFirstFrame() {
-        val before = detailHeaderFractions(-33.99f, 1f)
-        val after = detailHeaderFractions(-34.01f, 1f)
-        assertTrue(before.sourceTitle < 0.0001f)
-        assertTrue(after.pinnedTitle < 0.0001f)
-        assertEquals(0f, detailHeaderFractions(Float.POSITIVE_INFINITY, 1f).photoDissolve, 0f)
-        assertEquals(1f, detailHeaderFractions(Float.NEGATIVE_INFINITY, 1f).pinnedTitle, 0f)
     }
 }

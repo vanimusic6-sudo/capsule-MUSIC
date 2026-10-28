@@ -14,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
@@ -35,6 +36,7 @@ fun AlbumArtwork(
     background: Color,
     modifier: Modifier = Modifier,
     artworkAlpha: () -> Float = { 1f },
+    artworkMotion: DetailHeaderMotionState? = null,
 ) {
     val context = LocalContext.current
     val sizeResolver = rememberConstraintsSizeResolver()
@@ -53,6 +55,7 @@ fun AlbumArtwork(
         modifier = modifier,
         imageModifier = Modifier.then(sizeResolver),
         artworkAlpha = artworkAlpha,
+        artworkMotion = artworkMotion,
     )
 }
 
@@ -79,13 +82,16 @@ internal fun AlbumArtworkLayers(
     modifier: Modifier = Modifier,
     imageModifier: Modifier = Modifier,
     artworkAlpha: () -> Float = { 1f },
+    artworkMotion: DetailHeaderMotionState? = null,
 ) {
     val screenHeight = LocalConfiguration.current.screenHeightDp.dp
     BoxWithConstraints(
         modifier.widthIn(max = 560.dp).fillMaxWidth().background(background),
     ) {
         val artworkHeight = albumCoverHeight(maxWidth, screenHeight)
-        Box(Modifier.fillMaxWidth().height(artworkHeight)) {
+        Box(Modifier.fillMaxWidth().height(artworkHeight)
+            .then(if (artworkMotion != null) Modifier.onGloballyPositioned(artworkMotion::measureArtwork) else Modifier)
+        ) {
         Image(
             painter = painter,
             contentDescription = null,

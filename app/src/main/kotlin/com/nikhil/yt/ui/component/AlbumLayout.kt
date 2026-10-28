@@ -57,6 +57,9 @@ internal fun AlbumScreenLayout(
     }
 }
 
+/** Leave a small photo-only gap under the always-pinned title, without moving the action capsule below the mini-player. */
+internal val AlbumArtworkTopSpacing = 44.dp
+
 /** One bottom gap for albums and every playlist, including loading placeholders. */
 internal val DetailHeroBottomSpacing = 34.dp
 
@@ -69,16 +72,25 @@ internal fun AlbumHeaderLayout(
     actions: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     bottomSpacing: androidx.compose.ui.unit.Dp = DetailHeroBottomSpacing,
+    showTitle: Boolean = true,
+    artworkTopSpacing: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        if (artworkTopSpacing > 0.dp) Spacer(Modifier.height(artworkTopSpacing))
         artwork()
-        // Lift the title and both action rows as one group. The album photo
-        // remains at the top under the existing navigation overlay.
-        Spacer(Modifier.height(10.dp))
-        title()
-        Spacer(Modifier.height(6.dp))
-        metadata()
-        Spacer(Modifier.height(12.dp))
+        if (showTitle) {
+            Spacer(Modifier.height(10.dp))
+            title()
+            Spacer(Modifier.height(6.dp))
+            metadata()
+            Spacer(Modifier.height(12.dp))
+        } else {
+            // The actual album title lives in the pinned Artist-style toolbar.
+            // Move the photograph down by 44dp, using the former caption's
+            // space rather than pushing download/play controls below the player.
+            Spacer(Modifier.height(14.dp))
+            metadata()
+        }
         actions()
         Spacer(Modifier.height(bottomSpacing))
     }
@@ -95,6 +107,8 @@ internal fun AlbumHeaderPlaceholder(background: Color, modifier: Modifier = Modi
     val placeholder = StandardChrome.muted.copy(alpha = 0.18f)
     AlbumHeaderLayout(
         modifier = modifier.clearAndSetSemantics { contentDescription = loading },
+        showTitle = false,
+        artworkTopSpacing = AlbumArtworkTopSpacing,
         artwork = {
             AlbumArtworkLayers(
                 ColorPainter(StandardChrome.panel),
@@ -102,13 +116,7 @@ internal fun AlbumHeaderPlaceholder(background: Color, modifier: Modifier = Modi
                 background = background,
             )
         },
-        title = {
-            Box(
-                Modifier.fillMaxWidth(0.6f).height(32.dp)
-                    .padding(vertical = 6.dp).clip(RoundedCornerShape(8.dp))
-                    .background(placeholder),
-            )
-        },
+        title = {},
         metadata = {},
         actions = {
             CapsuleAlbumControls(
