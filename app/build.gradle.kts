@@ -207,6 +207,11 @@ ksp {
 }
 
 dependencies {
+    constraints {
+        implementation("com.squareup.wire:wire-runtime:6.4.5") {
+            because("Fix GHSA-9rm7-3qhh-h2mc: untrusted protobuf length overflow")
+        }
+    }
     implementation(libs.guava)
     implementation(libs.coroutines.guava)
     implementation(libs.concurrent.futures)
