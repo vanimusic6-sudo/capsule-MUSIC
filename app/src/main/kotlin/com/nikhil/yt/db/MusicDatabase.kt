@@ -752,7 +752,10 @@ class Migration5To6 : AutoMigrationSpec {
     override fun onPostMigrate(db: SupportSQLiteDatabase) {
         db.query("SELECT id FROM playlist WHERE id NOT LIKE 'LP%'").use { cursor ->
             while (cursor.moveToNext()) {
-                db.execSQL("UPDATE playlist SET browseId = '${cursor.getString(0)}' WHERE id = '${cursor.getString(0)}'")
+                // Bind the existing remote playlist id; interpolating it as SQL
+                // could corrupt a migrated library when it contains quotes.
+                val playlistId = cursor.getString(0)
+                db.execSQL("UPDATE playlist SET browseId = ? WHERE id = ?", arrayOf(playlistId, playlistId))
             }
         }
     }
@@ -762,7 +765,9 @@ class Migration6To7 : AutoMigrationSpec {
     override fun onPostMigrate(db: SupportSQLiteDatabase) {
         db.query("SELECT id, createDate FROM song").use { cursor ->
             while (cursor.moveToNext()) {
-                db.execSQL("UPDATE song SET inLibrary = ${cursor.getLong(1)} WHERE id = '${cursor.getString(0)}'")
+                val songId = cursor.getString(0)
+                val createDate = cursor.getLong(1)
+                db.execSQL("UPDATE song SET inLibrary = ? WHERE id = ?", arrayOf(createDate, songId))
             }
         }
     }

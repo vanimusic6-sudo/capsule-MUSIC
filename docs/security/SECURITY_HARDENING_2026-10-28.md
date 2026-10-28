@@ -97,3 +97,15 @@ dynamic proxies now fail closed. Keeps the 32 MiB cap. A fresh regression
 test exercises media artists/albums/date fields and player state.
 Legacy snapshots with obfuscated Kotlin EmptyList names may be discarded;
 a new versioned non-Java-serialization queue format remains recommended.
+
+## Additional audit: migration SQL injection eliminated
+
+A deeper inspection of 80 raw SQL/query sites in MusicDatabase.kt
+discovered **two** post-migration updates concatenating previously stored
+playlist and track IDs into SQL. Those strings can originate in untrusted
+music-service metadata; quotes in IDs could cause migration failure or
+malformed updates. Both statements now use positional bound arguments
+(`execSQL(..., arrayOf(...))`), preserving exactly the same migration
+semantics. Other dynamic migration SQL uses schema/table identifiers and
+requires a separate schema-integrity review rather than string interpolation
+of user-supplied values.
