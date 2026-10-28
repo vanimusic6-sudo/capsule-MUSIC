@@ -9,10 +9,18 @@ package com.nikhil.yt.ui.screens.playlist
 
 import androidx.compose.foundation.clickable
 import com.nikhil.yt.playback.queues.ListQueue
-import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.TopAppBar
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
+import com.nikhil.yt.ui.menu.CapsuleCollectionDownloadButton
+import com.nikhil.yt.ui.component.rememberCollectionDownloadState
+import com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator
+import com.nikhil.yt.LocalDownloadUtil
+import androidx.media3.exoplayer.offline.Download
 import com.nikhil.yt.ui.component.StandardChrome
+import com.nikhil.yt.ui.component.ArtistToolbarCompactHeight
+import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
+import com.nikhil.yt.ui.component.artistStyleDetailBackdrop
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -22,6 +30,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.asPaddingValues
@@ -68,6 +77,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -97,7 +109,6 @@ import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.WatchEndpoint
 import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.playback.queues.YouTubeQueue
-import com.nikhil.yt.ui.component.DraggableScrollbar
 import com.nikhil.yt.ui.component.IconButton
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.YouTubeListItem
@@ -135,6 +146,16 @@ fun OnlinePlaylistScreen(
     val isLoadingMore by viewModel.isLoadingMore.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
     val error by viewModel.error.collectAsState()
+    val downloadUtil = LocalDownloadUtil.current
+    val downloadIndex by downloadUtil.downloads.collectAsState()
+    val enqueuing by OnlinePlaylistDownloadCoordinator.enqueuing.collectAsState()
+    val onlinePlaylistId = playlist?.id.orEmpty()
+    val collectionIds = OnlinePlaylistDownloadCoordinator.memberIds(
+        onlinePlaylistId, context, songs.map { it.id },
+    )
+    val collectionState = rememberCollectionDownloadState(collectionIds)
+    val effectiveCollectionState =
+        if (onlinePlaylistId in enqueuing) Download.STATE_DOWNLOADING else collectionState
 
     var selection by remember { mutableStateOf(false) }
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
@@ -184,7 +205,7 @@ fun OnlinePlaylistScreen(
             .toMutableStateList()
 
 
-    val surfaceColor = if (StandardChrome.isDark) Color(0xFF090909) else StandardChrome.background
+    val surfaceColor = StandardChrome.background
 
 
 
@@ -220,6 +241,11 @@ fun OnlinePlaylistScreen(
     ) {
 
 
+        val titleMotion = rememberDetailHeaderMotion(
+            state = lazyListState,
+            hasHeader = playlist != null && !isSearching,
+        )
+
         LazyColumn(
             state = lazyListState,
             contentPadding =
@@ -232,6 +258,8 @@ fun OnlinePlaylistScreen(
                     item(key = "shimmer") {
                         ShimmerHost {
                         PlaylistHero(
+                                artworkAlpha = titleMotion::artworkAlpha,
+                                titleMotion = titleMotion,
                             title = playlist?.title.orEmpty(),
                             thumbnails = listOfNotNull(playlist?.thumbnail),
                             songCount = stringResource(R.string.loading),
@@ -248,9 +276,13 @@ fun OnlinePlaylistScreen(
                         // Hero Header
                         item(key = "header") {
                             PlaylistHero(
+                                artworkAlpha = titleMotion::artworkAlpha,
+                                titleMotion = titleMotion,
                                 title = playlist.title,
                                 thumbnails = listOfNotNull(playlist.thumbnail),
                                 songCount = playlist.songCountText ?: pluralStringResource(R.plurals.n_song, songs.size, songs.size),
+                                duration = songs.sumOf { it.toMediaMetadata().duration.coerceAtLeast(0) }
+                                    .takeIf { it > 0 }?.let { com.nikhil.yt.utils.makeTimeString(it * 1000L) },
                                 subtitle = {
                                     playlist.author?.let { artist ->
                                         Text(
@@ -321,26 +353,47 @@ fun OnlinePlaylistScreen(
                                     },
                                     enabled = playlist.playEndpoint != null || songs.isNotEmpty(),
                                 )
-                                playlist.shuffleEndpoint?.let { shuffleEndpoint ->
-                                    PlaylistAction(
-                                        icon = R.drawable.shuffle, label = stringResource(R.string.shuffle),
-                                        onClick = {
+                                PlaylistAction(
+                                    icon = R.drawable.shuffle,
+                                    label = stringResource(R.string.shuffle),
+                                    enabled = playlist.shuffleEndpoint != null || songs.isNotEmpty(),
+                                    onClick = {
+                                        val endpoint = playlist.shuffleEndpoint
+                                        if (endpoint != null) {
+                                            playerConnection.playQueue(YouTubeQueue(endpoint))
+                                        } else {
                                             playerConnection.playQueue(
-                                                YouTubeQueue(shuffleEndpoint)
+                                                ListQueue(title = playlist.title,
+                                                    items = songs.shuffled().map { it.toMediaItem() }),
                                             )
-                                        },
-                                    )
-                                }
-                                playlist.radioEndpoint?.let { radioEndpoint ->
-                                    PlaylistAction(
-                                        icon = R.drawable.radio, label = stringResource(R.string.radio),
-                                        onClick = {
-                                            playerConnection.playQueue(
-                                                YouTubeQueue(radioEndpoint)
-                                            )
-                                        },
-                                    )
-                                }
+                                        }
+                                    },
+                                )
+                                CapsuleCollectionDownloadButton(
+                                    actionKey = playlist.id,
+                                    collectionName = playlist.title,
+                                    state = effectiveCollectionState,
+                                    hasStoredItems = collectionIds.any { downloadIndex.containsKey(it) },
+                                    hasCompletedItems = collectionIds.any {
+                                        downloadIndex[it]?.state == Download.STATE_COMPLETED
+                                    },
+                                    onDownload = {
+                                        OnlinePlaylistDownloadCoordinator.start(
+                                            playlist.id, context, downloadUtil.downloadManager,
+                                            songs, downloadIndex,
+                                        )
+                                    },
+                                    onStop = {
+                                        OnlinePlaylistDownloadCoordinator.stop(
+                                            playlist.id, context, downloadUtil.downloadManager, collectionIds,
+                                        )
+                                    },
+                                    onRemove = {
+                                        OnlinePlaylistDownloadCoordinator.cancelAndRemove(
+                                            playlist.id, context, downloadUtil.downloadManager, collectionIds,
+                                        )
+                                    },
+                                )
                                 PlaylistAction(
                                     icon = R.drawable.more_vert, label = stringResource(R.string.more),
                                     onClick = {
@@ -519,29 +572,23 @@ fun OnlinePlaylistScreen(
             }
         }
 
-        DraggableScrollbar(
-            modifier =
-                Modifier.padding(
-                        LocalPlayerAwareWindowInsets.current
-                            .union(WindowInsets.ime)
-                            .asPaddingValues()
-                    )
-                    .align(Alignment.CenterEnd),
-            scrollState = lazyListState,
-            headerItems = headerItems
-        )
 
         // Top App Bar
-        // Same overlay behaviour as AlbumScreen: cover reaches the top and the toolbar
-        // becomes solid only after its header scrolls away (or while searching/selecting).
-        val showPlaylistHero = lazyListState.firstVisibleItemIndex == 0 && !selection && !isSearching
-        CenterAlignedTopAppBar(
+        // One measured title handoff. The bar stays transparent throughout.
+        // Match AlbumScreen: the compact title is left-aligned beside the back button.
+        val toolbarForeground = if (selection || isSearching) StandardChrome.text else
+            lerp(Color.White, StandardChrome.text, titleMotion.artworkFade())
+        TopAppBar(
+            modifier = Modifier.onGloballyPositioned(titleMotion::measureToolbar)
+                .artistStyleDetailBackdrop(titleMotion, surfaceColor, forceOpaque = selection || isSearching),
+            windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
+            expandedHeight = ArtistToolbarCompactHeight,
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = if (showPlaylistHero) Color.Transparent else surfaceColor,
-                scrolledContainerColor = if (showPlaylistHero) Color.Transparent else surfaceColor,
-                titleContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
-                navigationIconContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
-                actionIconContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent,
+                titleContentColor = toolbarForeground,
+                navigationIconContentColor = toolbarForeground,
+                actionIconContentColor = toolbarForeground,
             ),
             title = {
                 if (selection) {
@@ -574,7 +621,7 @@ fun OnlinePlaylistScreen(
                         modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
                     )
                 } else {
-                    if (!showPlaylistHero) Text(playlist?.title.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(playlist?.title.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier)
                 }
             },
             navigationIcon = {

@@ -38,13 +38,18 @@ class CapsuleReleaseUiCorrectionsTest {
     @Test fun downloadsShareLocalPlaylistSemanticsAndNeverCloseMoreOnTap() {
         val shared = source("ui/menu/CapsuleDownloadAction.kt")
         assertTrue(shared.contains("VeluneLoader(size = 24.dp"))
-        assertTrue(shared.contains("completed -> confirmRemoval = true"))
+        assertTrue(shared.contains("completed && !stopRequested -> confirmRemoval = true"))
         assertTrue(shared.contains("currentlyDownloading -> {"))
         assertTrue(shared.contains("capsule_download_stop_delete"))
+        assertTrue(shared.contains("CollectionDownloadStopUi.request(actionKey)"))
+        // A previously reported stuck spinner must never disable the resume row.
+        assertTrue(shared.contains("stopRequested -> idleDownloadTitle"))
+        assertTrue(shared.contains("isLoading = currentlyDownloading || deleting"))
+        assertFalse(shared.contains("isLoading = currentlyDownloading || deleting || stopRequested"))
         assertTrue(shared.contains("choiceOpenedDuringDownload"))
-        assertTrue(shared.contains("pendingStart = true\n                    onDownload()"))
+        assertTrue(shared.contains("pendingStart = true") && shared.contains("onDownload()"))
         assertTrue(shared.contains("DefaultDialog("))
-        assertTrue(shared.contains("confirmRemoval = false\n                    onRemove()"))
+        assertTrue(shared.contains("confirmRemoval = false\n                    requestRemoval()"))
         assertFalse("Delete cannot open a second nested dialog", source("ui/menu/PlaylistMenu.kt").contains("showRemoveDownloadDialog"))
         val local = source("ui/menu/PlaylistMenu.kt")
         val online = source("ui/menu/YouTubePlaylistMenu.kt")
@@ -62,6 +67,20 @@ class CapsuleReleaseUiCorrectionsTest {
             single.contains("onDismiss()"))
         assertTrue(player.contains("if (downloading) VeluneLoader(size = 24.dp)"))
         assertFalse(local.contains("playlist?.id?.let { clearPlaylist(it) }"))
+    }
+
+    @Test fun onlinePlaylistAndAlbumCanDownloadWithoutPreviewSongs() {
+        val playlist = source("ui/menu/YouTubePlaylistMenu.kt")
+        assertTrue(playlist.contains("enabled = true"))
+        assertFalse(playlist.contains("enabled = membershipReady"))
+        assertTrue(playlist.contains("OnlinePlaylistDownloadCoordinator.start("))
+        val album = source("ui/menu/YouTubeAlbumMenu.kt")
+        assertTrue(album.contains("enabled = true"))
+        assertTrue(album.contains("if (albumSongs.isEmpty())"))
+        assertTrue(album.contains("OnlinePlaylistDownloadCoordinator.start("))
+        val coordinator = source("playback/OnlinePlaylistDownloadCoordinator.kt")
+        assertTrue(coordinator.contains("YouTube.playlist(playlistId.removePrefix(\"VL\"))"))
+        assertTrue(coordinator.contains("YouTube.queue(playlistId = playlistId.removePrefix(\"VL\"))"))
     }
 
     @Test fun onlinePlaylistStopKeepsCacheAndRemovalRecoversFullMembership() {

@@ -60,6 +60,7 @@ import androidx.media3.exoplayer.offline.Download.STATE_COMPLETED
 import androidx.media3.exoplayer.offline.Download.STATE_DOWNLOADING
 import androidx.media3.exoplayer.offline.Download.STATE_QUEUED
 import androidx.media3.exoplayer.offline.Download.STATE_STOPPED
+import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
 import androidx.navigation.NavController
@@ -408,6 +409,7 @@ fun AlbumMenu(
                 actionKey = album.id,
                 state = downloadState,
                 hasStoredItems = songs.map { it.id }.any { downloadIndex.containsKey(it) },
+                hasCompletedItems = songs.map { it.id }.any { downloadIndex[it]?.state == Download.STATE_COMPLETED },
                 enabled = songs.isNotEmpty(),
                 onDownload = {
                     val requests = songs.map { song ->

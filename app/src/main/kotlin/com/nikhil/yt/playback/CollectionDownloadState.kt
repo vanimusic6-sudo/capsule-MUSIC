@@ -1,32 +1,160 @@
 package com.nikhil.yt.playback
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.offline.DownloadService
 
-/** A collection is complete only when every member is complete; empty is never downloaded. */
+/**
+ * A collection is complete only when every member is complete.
+ * Stop must actually transition all matching entries out of active states,
+ * rather than suppressing the active status in the UI.
+ */
 internal fun collectionDownloadState(songIds: Collection<String>, downloads: Map<String, Download>): Int {
     if (songIds.isEmpty()) return Download.STATE_STOPPED
-    val states = songIds.distinct().map { downloads[it]?.visibleState }
+    val entries = songIds.distinct().map(downloads::get)
     return when {
-        // A REMOVE is asynchronous. Don't expose "Download/Resume" mid-delete:
-        // it could re-add a track while its cached bytes are being purged.
-        states.any { it == Download.STATE_REMOVING } -> Download.STATE_REMOVING
-        states.all { it == Download.STATE_COMPLETED } -> Download.STATE_COMPLETED
-        states.any { it == Download.STATE_QUEUED || it == Download.STATE_DOWNLOADING || it == Download.STATE_RESTARTING } ->
-            Download.STATE_DOWNLOADING
+        // Keep deletion and completion based on the real Media3 index.
+        entries.any { it?.state == Download.STATE_REMOVING } -> Download.STATE_REMOVING
+        entries.all { it?.state == Download.STATE_COMPLETED } -> Download.STATE_COMPLETED
+
+        // All actual active members count. A playlist Stop targets every one
+        // of them, including an overlapping priority single. Merely hiding
+        // manually prioritized transfers here would mask an ongoing download.
+        entries.any { download ->
+            download != null &&
+                download.visibleState in listOf(
+                    Download.STATE_QUEUED, Download.STATE_DOWNLOADING, Download.STATE_RESTARTING,
+                )
+        } -> Download.STATE_DOWNLOADING
         else -> Download.STATE_STOPPED
     }
 }
 
-/** Stop preserves partial bytes for resume. Media3 leaves completed entries complete, even in a completion race. */
-internal fun stopCollectionDownloads(manager: androidx.media3.exoplayer.offline.DownloadManager, songIds: Collection<String>, preserveManual: Boolean = true) {
-    val independent = if (preserveManual) manager.currentDownloads.filter { it.request.isManualDownload() }.map { it.request.id }.toSet() else emptySet()
-    songIds.distinct().filterNot { it in independent }.forEach { manager.setStopReason(it, COLLECTION_STOP_REASON_USER) }
+internal const val COLLECTION_STOP_REASON_USER = 1
+
+/**
+ * Media3 posts the first collection ADD via DownloadService. When Stop is tapped
+ * before that ADD reaches the index, setStopReason(id) is a no-op.
+ *
+ * Retain only the user-requested stop until the corresponding ADD is admitted,
+ * then apply the stop on its first callback. One lightweight main-thread listener
+ * for the process, no polling, no delay on audio downloads.
+ */
+internal object CollectionDownloadStopAdmission {
+    private const val ADMISSION_GRACE_MS = 45_000L
+    private val handler = Handler(Looper.getMainLooper())
+    private var manager: androidx.media3.exoplayer.offline.DownloadManager? = null
+    private val pending = mutableMapOf<String, Long>()
+
+    private val expire = object : Runnable {
+        override fun run() {
+            val now = SystemClock.uptimeMillis()
+            pending.entries.removeAll { it.value <= now }
+            scheduleExpiry()
+        }
+    }
+
+    private val listener = object : androidx.media3.exoplayer.offline.DownloadManager.Listener {
+        override fun onDownloadChanged(
+            downloadManager: androidx.media3.exoplayer.offline.DownloadManager,
+            download: Download,
+            finalException: Exception?,
+        ) {
+            val id = download.request.id
+            if (id !in pending) return
+            when {
+                download.state == Download.STATE_COMPLETED ||
+                    download.state == Download.STATE_FAILED ||
+                    download.state == Download.STATE_REMOVING -> {
+                    pending.remove(id)
+                    if (pending.isEmpty()) handler.removeCallbacks(expire)
+                }
+                download.stopReason != COLLECTION_STOP_REASON_USER -> {
+                    // A late ADD (or stale scheduler callback) can transition
+                    // STOPPED(1) back to WAITING(2). Hold Stop during admission.
+                    downloadManager.setStopReason(id, COLLECTION_STOP_REASON_USER)
+                }
+                // STOPPED(1) is not proof that all service intents have drained.
+                else -> Unit
+            }
+        }
+
+        override fun onDownloadRemoved(
+            downloadManager: androidx.media3.exoplayer.offline.DownloadManager,
+            download: Download,
+        ) {
+            pending.remove(download.request.id)
+            if (pending.isEmpty()) handler.removeCallbacks(expire)
+        }
+    }
+
+    private fun scheduleExpiry() {
+        handler.removeCallbacks(expire)
+        val soonest = pending.values.minOrNull() ?: return
+        handler.postDelayed(expire, (soonest - SystemClock.uptimeMillis()).coerceAtLeast(1L))
+    }
+
+    fun request(target: androidx.media3.exoplayer.offline.DownloadManager, ids: Collection<String>) {
+        if (manager !== target) {
+            manager?.removeListener(listener)
+            pending.clear()
+            manager = target
+            target.addListener(listener)
+        }
+        val deadline = SystemClock.uptimeMillis() + ADMISSION_GRACE_MS
+        ids.forEach { pending[it] = deadline }
+        scheduleExpiry()
+    }
+
+    fun clear(target: androidx.media3.exoplayer.offline.DownloadManager, ids: Collection<String>) {
+        if (manager !== target) return
+        ids.forEach(pending::remove)
+        scheduleExpiry()
+    }
+
+    /**
+     * A NEW explicit one-track start after Stop overrides the stale Stop
+     * intent for that track. Starts queued before Stop are unaffected because
+     * request() then runs after the enqueue and recreates the pending entry.
+     */
+    fun clearForExplicitStart(id: String) {
+        if (pending.remove(id) != null) scheduleExpiry()
+    }
+
+    /** Guard all service and queue admissions until resume/delete or expiry. */
+    fun isUserStopped(id: String, target: androidx.media3.exoplayer.offline.DownloadManager): Boolean {
+        // A stop belongs to one Media3 manager; a restored/re-created manager
+        // must never inherit pending commands for overlapping video IDs.
+        if (manager !== target) return false
+        val deadline = pending[id] ?: return false
+        if (deadline > SystemClock.uptimeMillis()) return true
+        pending.remove(id)
+        scheduleExpiry()
+        return false
+    }
 }
 
-internal const val COLLECTION_STOP_REASON_USER = 1
+/**
+ * Stop every listed collection member by default, regardless of manual
+ * priority. Priority only affects scheduling, never whether Stop works.
+ * Explicit callers can opt into preserving manual transfers if needed.
+ * Preserve the actual cached bytes in both cases.
+ */
+internal fun stopCollectionDownloads(manager: androidx.media3.exoplayer.offline.DownloadManager, songIds: Collection<String>, preserveManual: Boolean = false) {
+    val independent = if (preserveManual) manager.currentDownloads
+        .filter { it.request.isManualDownload() }.map { it.request.id }.toSet() else emptySet()
+    val ids = songIds.distinct().filterNot { it in independent }
+    CollectionDownloadStopAdmission.request(manager, ids)
+    timber.log.Timber.tag("CollectionDownloadStop").i(
+        "stop requested members=%d indexed=%d", ids.size,
+        manager.currentDownloads.count { it.request.id in ids },
+    )
+    ids.forEach { manager.setStopReason(it, COLLECTION_STOP_REASON_USER) }
+}
 
 /**
  * Media3 getCurrentDownloads() excludes terminal completed entries: those
@@ -46,7 +174,10 @@ internal fun removeCollectionDownloads(
             .filter { it.request.isManualDownload() }
             .map { it.request.id }.toSet()
     } else emptySet()
-    songIds.distinct().filterNot { it in protected }.forEach(manager::removeDownload)
+    val ids = songIds.distinct().filterNot { it in protected }
+    // Deletion supersedes Stop and must not poison a subsequent fresh ADD.
+    CollectionDownloadStopAdmission.clear(manager, ids)
+    ids.forEach(manager::removeDownload)
 }
 
 /**
@@ -91,16 +222,28 @@ internal fun enqueueCollectionDownloads(
     indexed: Map<String, Download>,
     requests: List<DownloadRequest>,
 ) {
+    CollectionDownloadStopAdmission.clear(manager, requests.map { it.id })
     var serviceStarted = false
     val active = manager.currentDownloads.associateBy { it.request.id }
     requests.distinctBy { it.id }.forEach { request ->
-        val existing = indexed[request.id] ?: active[request.id]
+        val existing = active[request.id] ?: indexed[request.id]
         when (existing?.state) {
             Download.STATE_COMPLETED -> Unit
             Download.STATE_STOPPED -> {
-                // Never bypass the manual-first download admission queue.
+                // Stop(1) -> WAITING(2), followed by a queue wake, is required
+                // even when Media3 has already persisted WAITING(2).
                 if (existing.stopReason != DOWNLOAD_WAITING_FOR_SLOT) {
                     manager.setStopReason(request.id, DOWNLOAD_WAITING_FOR_SLOT)
+                }
+                if (!serviceStarted) {
+                    // Waking a stopped service must NOT enqueue a second
+                    // SET_STOP_REASON(2) command: it might arrive AFTER the
+                    // queue admits this member (reason 0), silently pausing it
+                    // again and leaving the UI spinning on "Downloading".
+                    // ACTION_INIT starts the service without mutating any
+                    // already-resumed per-track stop reasons.
+                    DownloadService.start(context, ExoDownloadService::class.java)
+                    serviceStarted = true
                 }
             }
             Download.STATE_QUEUED, Download.STATE_DOWNLOADING,
@@ -117,4 +260,5 @@ internal fun enqueueCollectionDownloads(
             }
         }
     }
+    AudioDownloadQueue.wake(manager)
 }

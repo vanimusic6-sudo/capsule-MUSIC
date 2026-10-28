@@ -38,6 +38,9 @@ import com.nikhil.yt.ui.component.AlbumArtworkLayers
 import com.nikhil.yt.ui.component.AlbumHeaderLayout
 import com.nikhil.yt.ui.component.AlbumHeaderPlaceholder
 import com.nikhil.yt.ui.component.AlbumScreenLayout
+import com.nikhil.yt.ui.component.albumCoverHeight
+import com.nikhil.yt.ui.component.CapsuleAlbumControls
+import com.nikhil.yt.ui.component.CapsuleHeroMetric
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -103,7 +106,17 @@ class AlbumLayoutTest {
         compose.runOnIdle { assertEquals(1, backClicks) }
     }
 
-    @Test fun loadingHeaderUsesTheSameFullWidthCoverAndDoesNotMoveTheSongListOnLoad() {
+    @Test fun albumCoverCompactsOnlyWhenScreenHeightRequiresIt() {
+        val narrow = albumCoverHeight(300.dp, 851.dp)
+        val normal = albumCoverHeight(393.dp, 851.dp)
+        val compact = albumCoverHeight(393.dp, 720.dp)
+        assertEquals("The 44dp upper gap is absorbed into the photo itself",
+            300.dp / 0.85f + 56.dp, narrow)
+        assertTrue("A short screen should lift the album controls", compact < normal)
+        assertTrue("A short screen still shows a substantial album cover", compact > 375.dp)
+    }
+
+    @Test fun loadingAlbumRetainsOriginalPortraitCoverAndUnifiedControlsOnLoad() {
         var loading by mutableStateOf(true)
         compose.setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
@@ -119,10 +132,30 @@ class AlbumLayoutTest {
                                         AlbumHeaderPlaceholder(Color.Black)
                                     } else {
                                         AlbumHeaderLayout(
-                                            artwork = { AlbumArtworkLayers(ColorPainter(Color.White), null, Color.Black, Modifier.testTag("cover")) },
-                                            title = { Box(Modifier.fillMaxWidth().height(32.dp)) },
-                                            metadata = { Box(Modifier.fillMaxWidth().height(28.dp)) },
-                                            actions = { Box(Modifier.fillMaxWidth().height(56.dp)) },
+                                            artwork = {
+                                                AlbumArtworkLayers(
+                                                    ColorPainter(Color.White), null, Color.Black,
+                                                    Modifier.testTag("cover"),
+                                                )
+                                            },
+                                            title = {},
+                                            showTitle = false,
+                                            artworkTopSpacing = com.nikhil.yt.ui.component.AlbumArtworkTopSpacing,
+                                            metadata = {},
+                                            actions = {
+                                                CapsuleAlbumControls(
+                                                    metrics = listOf(
+                                                        CapsuleHeroMetric(R.drawable.music_note, "—"),
+                                                        CapsuleHeroMetric(R.drawable.calendar_today, "—"),
+                                                        CapsuleHeroMetric(R.drawable.timer, "—"),
+                                                    ),
+                                                ) {
+                                                    repeat(5) {
+                                                        Box(Modifier.weight(1f).height(60.dp))
+                                                    }
+                                                }
+                                            },
+                                            bottomSpacing = 34.dp,
                                         )
                                     }
                                 }
@@ -141,10 +174,20 @@ class AlbumLayoutTest {
         val loadedHeader = compose.onNodeWithTag("header").fetchSemanticsNode().boundsInRoot
         val loadedSong = compose.onNodeWithTag("song").fetchSemanticsNode().boundsInRoot
         val cover = compose.onNodeWithTag("cover").fetchSemanticsNode().boundsInRoot
+        val capsule = compose.onNodeWithTag("capsule:album-controls").fetchSemanticsNode().boundsInRoot
+        val metrics = compose.onNodeWithTag("capsule:album-metrics").fetchSemanticsNode().boundsInRoot
+        val actions = compose.onNodeWithTag("capsule:album-actions").fetchSemanticsNode().boundsInRoot
         assertEquals(loadingHeader.top, loadedHeader.top, 1f)
-        assertEquals(loadingHeader.height, loadedHeader.height, 1f)
-        assertEquals("Loading must not show the old compact header", loadingSong.top, loadedSong.top, 1f)
-        assertEquals(loadedHeader.width, cover.width, 1f)
-        assertEquals(cover.width / 0.85f, cover.height, 1f)
+        assertEquals("No visible upper gap: portrait starts flush with the page",
+            loadedHeader.top, cover.top, 2f)
+        assertEquals(loadingHeader.height, loadedHeader.height, 2f)
+        assertEquals("Loading and content must share the original album layout", loadingSong.top, loadedSong.top, 2f)
+        assertEquals("Album cover should fill its width as before", loadedHeader.width, cover.width, 2f)
+        assertEquals("Former top-gap pixels must extend the portrait instead",
+            cover.width / 0.85f + with(compose.density) { 56.dp.toPx() }, cover.height, 2f)
+        assertTrue("Statistics are inside the same rounded capsule", metrics.top >= capsule.top)
+        assertTrue("Buttons are inside the same rounded capsule", actions.bottom <= capsule.bottom)
+        assertTrue("Stats sit above controls in one uninterrupted surface", metrics.bottom <= actions.top)
+        assertTrue("Album capsule surrounds its complete set of contents", capsule.left <= metrics.left && capsule.right >= actions.right)
     }
 }

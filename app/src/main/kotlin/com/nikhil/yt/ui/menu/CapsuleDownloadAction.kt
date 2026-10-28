@@ -8,6 +8,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,6 +25,43 @@ import com.nikhil.yt.R
 import com.nikhil.yt.ui.component.DefaultDialog
 import com.nikhil.yt.ui.component.VeluneLoader
 
+
+private val collectionParenthesisPattern = Regex("""\s*\(""")
+internal fun formatCollectionDownloadChoiceLabel(text: String): String =
+    text.replace(collectionParenthesisPattern, "\n(")
+
+/** Shared between a playlist's header and its More menu during asynchronous removal. */
+internal object CollectionDownloadRemovalUi {
+    private val deleting = mutableStateMapOf<String, Boolean>()
+    fun isRemoving(key: String): Boolean = deleting[key] == true
+    fun request(key: String) { deleting[key] = true }
+    fun finish(key: String) { deleting.remove(key) }
+}
+
+/**
+ * Optimistic stopped state shared between the collection header and More.
+ *
+ * The aggregate may remain DOWNLOADING while one independent manual track
+ * continues or a service ADD is still being indexed. Waiting for !active
+ * before allowing further interaction caused a permanent "Stopping…" loader.
+ * A stop intent immediately exposes the resumable state instead; Media3
+ * admission is independently protected in CollectionDownloadStopAdmission.
+ */
+internal object CollectionDownloadStopUi {
+    private val stopping = mutableStateMapOf<String, Boolean>()
+    fun isStopping(key: String): Boolean = stopping[key] == true
+    fun request(key: String) { stopping[key] = true }
+    fun finish(key: String) { stopping.remove(key) }
+}
+
+/** The same action status can be rendered as either a menu row or a header button. */
+internal data class CapsuleDownloadVisual(
+    val labelRes: Int,
+    val iconRes: Int,
+    val isLoading: Boolean,
+    val enabled: Boolean,
+)
+
 /**
  * Exactly one permanent row in all More menus. The row owns the ONLY
  * confirmation, so callers must provide a real delete operation in onRemove,
@@ -38,14 +76,34 @@ internal fun CapsuleDownloadAction(
     onRemove: () -> Unit,
     enabled: Boolean = true,
     hasStoredItems: Boolean = false,
+    hasCompletedItems: Boolean = false,
     collectionName: String? = null,
     isCollection: Boolean = true,
+    // Player's single-track download is an intentionally fast exception:
+    // second tap cancels + discards, completed tap removes immediately.
+    instantRemove: Boolean = false,
     actionKey: String = collectionName.orEmpty(),
+    renderAction: (@Composable (CapsuleDownloadVisual, () -> Unit) -> Unit)? = null,
 ) {
     val active = state == Download.STATE_DOWNLOADING ||
         state == Download.STATE_QUEUED || state == Download.STATE_RESTARTING
     val completed = state == Download.STATE_COMPLETED
     val removing = state == Download.STATE_REMOVING
+    val stopRequested = isCollection && CollectionDownloadStopUi.isStopping(actionKey)
+    LaunchedEffect(actionKey, stopRequested, active) {
+        if (stopRequested && !active) {
+            delay(120L)
+            CollectionDownloadStopUi.finish(actionKey)
+        }
+    }
+    val removalRequested = isCollection && CollectionDownloadRemovalUi.isRemoving(actionKey)
+    val deleting = removing || removalRequested
+    LaunchedEffect(actionKey, removalRequested, hasStoredItems, active, completed, removing) {
+        if (removalRequested && !hasStoredItems && !active && !completed && !removing) {
+            delay(120L)
+            CollectionDownloadRemovalUi.finish(actionKey)
+        }
+    }
     // Media3 does not update its index in the same frame as the first tap.
     // Keep a short local pending state so a quick second tap opens the
     // pause/delete menu rather than submitting the same ADD twice.
@@ -59,10 +117,22 @@ internal fun CapsuleDownloadAction(
             }
         }
     }
-    val currentlyDownloading = active || pendingStart
+    val currentlyDownloading = !deleting && !stopRequested && (active || pendingStart)
+    val idleDownloadTitle = when {
+        hasCompletedItems && !completed -> R.string.capsule_download_remaining
+        hasStoredItems && !completed -> R.string.capsule_download_resume_partial
+        else -> R.string.action_download
+    }
     var showChoices by remember(actionKey) { mutableStateOf(false) }
     var choiceOpenedDuringDownload by remember(actionKey) { mutableStateOf(false) }
     var confirmRemoval by remember(actionKey) { mutableStateOf(false) }
+
+    fun requestRemoval() {
+        pendingStart = false
+        if (isCollection) CollectionDownloadStopUi.finish(actionKey)
+        if (isCollection) CollectionDownloadRemovalUi.request(actionKey)
+        onRemove()
+    }
 
     // A stopped/partial collection needs a choice, not two stacked dialogs.
     if (showChoices) {
@@ -70,15 +140,17 @@ internal fun CapsuleDownloadAction(
             onDismiss = { showChoices = false },
             title = {
                 Text(stringResource(if (choiceOpenedDuringDownload) R.string.downloading
-                    else R.string.action_download))
+                    else idleDownloadTitle))
             },
             content = {
                 ListItem(
                     headlineContent = {
-                        Text(stringResource(
-                            if (choiceOpenedDuringDownload) R.string.capsule_download_pause_keep
-                            else R.string.action_download,
-                        ))
+                        Text(
+                            stringResource(
+                                if (choiceOpenedDuringDownload) R.string.capsule_download_pause_keep
+                                else idleDownloadTitle,
+                            ).let { if (isCollection) formatCollectionDownloadChoiceLabel(it) else it },
+                        )
                     },
                     leadingContent = {
                         Icon(painterResource(if (choiceOpenedDuringDownload) R.drawable.pause
@@ -88,8 +160,10 @@ internal fun CapsuleDownloadAction(
                         showChoices = false
                         if (choiceOpenedDuringDownload) {
                             pendingStart = false
+                            if (isCollection) CollectionDownloadStopUi.request(actionKey)
                             onStop()
                         } else {
+                            if (isCollection) CollectionDownloadStopUi.finish(actionKey)
                             pendingStart = true
                             onDownload()
                         }
@@ -101,8 +175,8 @@ internal fun CapsuleDownloadAction(
                         Text(
                             stringResource(
                                 if (choiceOpenedDuringDownload) R.string.capsule_download_stop_delete
-                                else R.string.remove_download,
-                            ),
+                                else R.string.delete,
+                            ).let { if (isCollection) formatCollectionDownloadChoiceLabel(it) else it },
                             color = MaterialTheme.colorScheme.error,
                         )
                     },
@@ -114,8 +188,7 @@ internal fun CapsuleDownloadAction(
                         // This *is* the requested second-tap confirmation.
                         // Do not open another nested dialog before deleting.
                         showChoices = false
-                        pendingStart = false
-                        onRemove()
+                        requestRemoval()
                     },
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                 )
@@ -130,7 +203,7 @@ internal fun CapsuleDownloadAction(
     if (confirmRemoval) {
         DefaultDialog(
             onDismiss = { confirmRemoval = false },
-            title = { Text(stringResource(R.string.remove_download)) },
+            title = { Text(stringResource(R.string.delete)) },
             content = {
                 Text(
                     if (collectionName.isNullOrBlank()) {
@@ -148,55 +221,74 @@ internal fun CapsuleDownloadAction(
                 }
                 TextButton(onClick = {
                     confirmRemoval = false
-                    onRemove()
-                }) { Text(stringResource(R.string.remove_download), color = MaterialTheme.colorScheme.error) }
+                    requestRemoval()
+                }) { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) }
             },
         )
     }
 
-    ListItem(
-        headlineContent = {
-            Text(
-                stringResource(
-                    when {
-                        completed || removing -> R.string.remove_download
-                        currentlyDownloading -> R.string.downloading
-                        else -> R.string.action_download
-                    }
-                ),
-                color = if (completed || removing) MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.onSurface,
-            )
+    val visual = CapsuleDownloadVisual(
+        labelRes = when {
+            deleting -> R.string.capsule_download_removing
+            // Stop has already been dispatched. Never wait for the aggregate
+            // Media3 state to leave DOWNLOADING while blocking the whole menu.
+            stopRequested -> idleDownloadTitle
+            completed -> R.string.delete
+            currentlyDownloading -> R.string.downloading
+            else -> idleDownloadTitle
         },
-        leadingContent = {
-            when {
-                currentlyDownloading || removing -> VeluneLoader(size = 24.dp,
-                    color = if (removing) MaterialTheme.colorScheme.error else null)
-                else -> Icon(
-                    painter = painterResource(if (completed) R.drawable.offline else R.drawable.download),
-                    contentDescription = null,
-                    tint = if (completed) MaterialTheme.colorScheme.error
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        },
-        modifier = Modifier.clickable(enabled = !removing && (enabled || currentlyDownloading || completed || hasStoredItems)) {
-            when {
-                completed -> confirmRemoval = true
-                currentlyDownloading -> {
-                    choiceOpenedDuringDownload = true
-                    showChoices = true
-                }
-                hasStoredItems -> {
-                    choiceOpenedDuringDownload = false
-                    showChoices = true
-                }
-                else -> {
-                    pendingStart = true
-                    onDownload()
-                }
-            }
-        },
-        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        iconRes = if (completed && !deleting) R.drawable.offline else R.drawable.download,
+        isLoading = currentlyDownloading || deleting,
+        enabled = !deleting &&
+            (enabled || currentlyDownloading || completed || hasStoredItems),
     )
+    val onActionClick: () -> Unit = {
+        when {
+            instantRemove && (completed || currentlyDownloading || hasStoredItems) -> {
+                requestRemoval()
+            }
+            completed && !stopRequested -> confirmRemoval = true
+            currentlyDownloading -> {
+                choiceOpenedDuringDownload = true
+                showChoices = true
+            }
+            hasStoredItems -> {
+                choiceOpenedDuringDownload = false
+                showChoices = true
+            }
+            else -> {
+                if (isCollection) CollectionDownloadStopUi.finish(actionKey)
+                pendingStart = true
+                onDownload()
+            }
+        }
+    }
+
+    if (renderAction != null) {
+        renderAction(visual, onActionClick)
+    } else {
+        ListItem(
+            headlineContent = {
+                Text(
+                    stringResource(visual.labelRes),
+                    color = if (completed && !deleting) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurface,
+                )
+            },
+            leadingContent = {
+                if (visual.isLoading) {
+                    VeluneLoader(size = 24.dp)
+                } else {
+                    Icon(
+                        painter = painterResource(visual.iconRes),
+                        contentDescription = null,
+                        tint = if (completed && !deleting) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            modifier = Modifier.clickable(enabled = visual.enabled, onClick = onActionClick),
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        )
+    }
 }

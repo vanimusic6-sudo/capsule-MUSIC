@@ -93,7 +93,7 @@ data class AlbumPage(
                 title = PageHelper.extractRuns(renderer.flexColumns, "MUSIC_VIDEO").firstOrNull()?.text
                     ?: renderer.flexColumns.firstOrNull()?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.firstOrNull()?.text ?: return null,
                 unavailable = renderer.unavailable,
-                artists = PageHelper.extractArtists(
+                artists = PageHelper.extractSongArtists(
                     renderer.flexColumns
                         .getOrNull(1)
                         ?.musicResponsiveListItemFlexColumnRenderer

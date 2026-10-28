@@ -3,6 +3,7 @@ package com.nikhil.yt.ui.component
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -16,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -24,15 +26,125 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
 import com.nikhil.yt.R
 
+/** The same caption and icon geometry for both playlists and albums. */
+internal data class CapsuleHeroMetric(@DrawableRes val icon: Int, val text: String)
+
 /**
- * Playlist and album use the SAME header geometry: edge-to-edge 0.85 portrait artwork,
- * the same matte fade, centred title, compact metadata and one 56dp action tray.
- * Only the playlist-specific actions supplied by the caller differ.
+ * Drawing-derived shared detail layout.
+ *
+ * Cover and controls use matching 24.dp margins; centred title; a unified
+ * controls capsule containing both stats and actions, matching album screens.
+ * Keep the home theme's surface instead of hardcoded black; no added gradients.
  */
-@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun CapsuleDetailHero(
+    title: String,
+    metrics: List<CapsuleHeroMetric>,
+    modifier: Modifier = Modifier,
+    subtitle: (@Composable () -> Unit)? = null,
+    artwork: @Composable () -> Unit,
+    actions: @Composable RowScope.() -> Unit,
+    artworkAlpha: () -> Float = { 1f },
+    titleMotion: DetailHeaderMotionState? = null,
+) {
+    val bodyBackground = StandardChrome.background
+    AlbumHeaderLayout(
+        modifier = modifier,
+        showTitle = false,
+        // The same 44dp portrait inset as albums. Keep online-playlist author
+        // text without pushing its action capsule under the mini-player.
+        artworkTopSpacing = AlbumArtworkTopSpacing -
+            if (subtitle != null) 22.dp else 0.dp,
+        artwork = {
+            AlbumPortraitFrame(
+                background = bodyBackground,
+                modifier = Modifier.testTag("capsule:detail-artwork"),
+                artworkAlpha = artworkAlpha,
+                artworkMotion = titleMotion,
+            ) {
+                artwork()
+            }
+        },
+        title = {},
+        metadata = {
+            if (subtitle != null) {
+                Spacer(Modifier.height(6.dp))
+                subtitle()
+                Spacer(Modifier.height(6.dp))
+            }
+        },
+        actions = { CapsuleAlbumControls(metrics = metrics, actions = actions) },
+    )
+}
+
+/**
+ * Shared playlist + album controls: metadata and actions live inside ONE
+ * outlined capsule, without an extra raised stats tab or a second border.
+ * Preserve the established actions and the collection-download controller.
+ */
+@Composable
+internal fun CapsuleAlbumControls(
+    metrics: List<CapsuleHeroMetric>,
+    actions: @Composable RowScope.() -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
+            .testTag("capsule:album-controls"),
+        color = StandardChrome.panel,
+        shape = RoundedCornerShape(27.dp),
+        border = BorderStroke(1.dp, StandardChrome.muted.copy(alpha = 0.32f)),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 5.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().height(35.dp)
+                    .padding(horizontal = 12.dp)
+                    .testTag("capsule:album-metrics"),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                metrics.forEach { metric ->
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            painter = painterResource(metric.icon),
+                            contentDescription = null,
+                            tint = StandardChrome.muted,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            text = metric.text,
+                            color = StandardChrome.muted,
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontSize = if (metrics.size > 2) 11.sp else 13.sp,
+                                fontWeight = FontWeight.Normal,
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().height(60.dp)
+                    .padding(horizontal = 7.dp)
+                    .testTag("capsule:album-actions"),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+                content = actions,
+            )
+        }
+    }
+}
+
 @Composable
 internal fun PlaylistHero(
     thumbnails: List<String>,
@@ -43,122 +155,58 @@ internal fun PlaylistHero(
     loading: Boolean = false,
     title: String = "",
     subtitle: (@Composable () -> Unit)? = null,
+    year: String? = null,
+    artworkAlpha: () -> Float = { 1f },
+    titleMotion: DetailHeaderMotionState? = null,
     actions: @Composable RowScope.() -> Unit,
 ) {
-    val background = if (StandardChrome.isDark) Color(0xFF090909) else StandardChrome.background
-    AlbumHeaderLayout(
+    val metrics = buildList {
+        add(CapsuleHeroMetric(R.drawable.music_note, songCount))
+        if (year != null) add(CapsuleHeroMetric(R.drawable.calendar_today, year))
+        if (duration != null) add(CapsuleHeroMetric(R.drawable.timer, duration))
+    }
+    CapsuleDetailHero(
+        title = title,
         modifier = modifier,
-        // No mix row below the actions: the track list should start promptly instead
-        // of keeping the old two-row header's empty vertical reservation.
-        bottomSpacing = 20.dp,
+        subtitle = subtitle,
+        metrics = metrics,
+        artworkAlpha = artworkAlpha,
+        titleMotion = titleMotion,
         artwork = {
-            Box(
-                Modifier.widthIn(max = 560.dp)
-                    .fillMaxWidth()
-                    .aspectRatio(0.85f)
-                    .background(background),
-            ) {
-                val covers = thumbnails.filter(String::isNotBlank).take(4)
-                Box(Modifier.fillMaxSize().background(StandardChrome.panel), contentAlignment = Alignment.Center) {
-                    when (covers.size) {
-                        0 -> if (loading) VeluneLoader(size = 30.dp) else
-                            Icon(painterResource(placeholderIcon), null, Modifier.size(72.dp), tint = StandardChrome.muted)
-                        1 -> AsyncImage(
-                            model = covers.first(),
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop,
-                        )
-                        else -> Column(Modifier.fillMaxSize()) {
-                            repeat(2) { row ->
-                                Row(Modifier.weight(1f)) {
-                                    repeat(2) { column ->
-                                        AsyncImage(
-                                            model = covers[(row * 2 + column) % covers.size],
-                                            contentDescription = null,
-                                            modifier = Modifier.weight(1f).fillMaxHeight(),
-                                            contentScale = ContentScale.Crop,
-                                        )
-                                    }
+            val covers = thumbnails.filter(String::isNotBlank).take(4)
+            Box(Modifier.fillMaxSize().background(StandardChrome.panel), contentAlignment = Alignment.Center) {
+                when (covers.size) {
+                    0 -> if (loading) VeluneLoader(size = 30.dp) else Icon(
+                        painter = painterResource(placeholderIcon),
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = StandardChrome.muted.copy(alpha = 0.7f),
+                    )
+                    1 -> DetailPortraitImage(
+                        thumbnailUrl = covers.first(),
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    else -> Column(Modifier.fillMaxSize()) {
+                        repeat(2) { row ->
+                            Row(Modifier.weight(1f)) {
+                                repeat(2) { column ->
+                                    DetailPortraitImage(
+                                        thumbnailUrl = covers[(row * 2 + column) % covers.size],
+                                        minimumPixels = 640,
+                                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                                    )
                                 }
                             }
                         }
                     }
                 }
-                // Identical artwork-to-surface fade as album artwork, including portrait sizing.
-                ArtworkSurfaceFade(background, Modifier.matchParentSize(), portrait = true, topScrim = false)
             }
         },
-        title = {
-            if (loading && title.isBlank()) {
-                Box(
-                    Modifier.fillMaxWidth(0.6f).height(32.dp)
-                        .padding(vertical = 6.dp).clip(RoundedCornerShape(8.dp))
-                        .background(StandardChrome.muted.copy(alpha = 0.18f)),
-                )
-            } else {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.headlineSmall.copy(fontSize = 26.sp),
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = 32.dp),
-                )
-            }
-        },
-        metadata = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                subtitle?.invoke()
-                if (subtitle != null) Spacer(Modifier.height(8.dp))
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    PlaylistMetadataChip(R.drawable.music_note, songCount)
-                    duration?.let { PlaylistMetadataChip(R.drawable.timer, it) }
-                }
-            }
-        },
-        actions = {
-            Surface(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                shape = RoundedCornerShape(16.dp),
-                color = StandardChrome.panel.copy(alpha = 0.92f),
-                border = BorderStroke(1.dp, StandardChrome.muted.copy(alpha = 0.22f)),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically,
-                    content = actions,
-                )
-            }
-        },
+        actions = actions,
     )
 }
 
-@Composable
-private fun PlaylistMetadataChip(@DrawableRes icon: Int, text: String) {
-    Surface(shape = RoundedCornerShape(20.dp), color = StandardChrome.panel) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(painterResource(icon), null, Modifier.size(16.dp), tint = StandardChrome.muted)
-            Text(text, color = StandardChrome.muted, style = MaterialTheme.typography.bodySmall,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-    }
-}
-
-/**
- * The same single-tray icon treatment as AlbumAction, while keeping playlist semantics,
- * enabled states and download spinner supplied by each existing playlist screen.
- */
+/** Keeps all existing playlist callbacks and download interactions untouched. */
 @Composable
 internal fun RowScope.PlaylistAction(
     @DrawableRes icon: Int,
@@ -171,18 +219,17 @@ internal fun RowScope.PlaylistAction(
     IconButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.weight(1f).height(56.dp).semantics { contentDescription = label },
+        modifier = Modifier.weight(1f).height(60.dp).semantics { contentDescription = label },
     ) {
         if (loading) {
             VeluneLoader(size = 22.dp)
         } else {
             Icon(
                 painter = painterResource(icon),
-                contentDescription = null, // Parent IconButton already announces the action once.
+                contentDescription = null,
                 modifier = Modifier.size(26.dp),
                 tint = if (enabled) tint else tint.copy(alpha = 0.35f),
             )
         }
     }
 }
-

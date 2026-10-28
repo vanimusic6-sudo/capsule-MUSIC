@@ -7,10 +7,14 @@
 
 package com.nikhil.yt.ui.screens.playlist
 
-import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.TopAppBar
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
+import com.nikhil.yt.ui.menu.CapsuleCollectionDownloadButton
 import com.nikhil.yt.ui.component.StandardChrome
+import com.nikhil.yt.ui.component.ArtistToolbarCompactHeight
+import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
+import com.nikhil.yt.ui.component.artistStyleDetailBackdrop
 import android.annotation.SuppressLint
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -19,6 +23,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.asPaddingValues
@@ -68,7 +73,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
@@ -115,7 +122,6 @@ import com.nikhil.yt.playback.ExoDownloadService
 import com.nikhil.yt.playback.queues.ListQueue
 import com.nikhil.yt.ui.component.DefaultDialog
 import com.nikhil.yt.ui.component.EditPlaylistDialog
-import com.nikhil.yt.ui.component.DraggableScrollbar
 import com.nikhil.yt.ui.component.EmptyPlaceholder
 import com.nikhil.yt.ui.component.AssignTagsDialog
 import com.nikhil.yt.ui.component.IconButton
@@ -227,6 +233,7 @@ fun LocalPlaylistScreen(
 
     val downloadUtil = LocalDownloadUtil.current
     val downloadState = rememberCollectionDownloadState(songs.map { it.song.id })
+    val downloadIndex by downloadUtil.downloads.collectAsState()
 
     val editable: Boolean = playlist?.playlist?.isEditable == true
 
@@ -263,47 +270,6 @@ fun LocalPlaylistScreen(
                 },
             )
         }
-    }
-
-    var showRemoveDownloadDialog by remember { mutableStateOf(false) }
-
-    if (showRemoveDownloadDialog) {
-        DefaultDialog(
-            onDismiss = { showRemoveDownloadDialog = false },
-            content = {
-                Text(
-                    text = if (downloadState == Download.STATE_DOWNLOADING)
-                        stringResource(R.string.capsule_stop_and_delete_download_message)
-                    else stringResource(R.string.remove_download_playlist_confirm, playlist?.playlist!!.name),
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(horizontal = 18.dp),
-                )
-            },
-            buttons = {
-                TextButton(
-                    onClick = { showRemoveDownloadDialog = false },
-                ) {
-                    Text(text = stringResource(android.R.string.cancel))
-                }
-
-                TextButton(
-                    onClick = {
-                        showRemoveDownloadDialog = false
-                        // Removal concerns audio files only, never playlist membership.
-                        songs.forEach { song ->
-                            DownloadService.sendRemoveDownload(
-                                context,
-                                ExoDownloadService::class.java,
-                                song.song.id,
-                                false
-                            )
-                        }
-                    }
-                ) {
-                    Text(text = stringResource(android.R.string.ok))
-                }
-            },
-        )
     }
 
     var showDeletePlaylistDialog by remember { mutableStateOf(false) }
@@ -397,7 +363,7 @@ fun LocalPlaylistScreen(
     }
 
 
-    val surfaceColor = if (StandardChrome.isDark) Color(0xFF090909) else StandardChrome.background
+    val surfaceColor = StandardChrome.background
 
 
 
@@ -413,6 +379,11 @@ fun LocalPlaylistScreen(
     ) {
 
 
+        val titleMotion = rememberDetailHeaderMotion(
+            state = lazyListState,
+            hasHeader = playlist != null && !isSearching,
+        )
+
         LazyColumn(
             state = lazyListState,
             contentPadding = LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime)
@@ -424,6 +395,8 @@ fun LocalPlaylistScreen(
                         item(key = "header") {
                             val count = if (playlist.songCount == 0) playlist.playlist.remoteSongCount ?: 0 else playlist.songCount
                             PlaylistHero(
+                                artworkAlpha = titleMotion::artworkAlpha,
+                                titleMotion = titleMotion,
                                 title = playlist.playlist.name,
                                 thumbnails = playlist.thumbnails.filterNotNull(),
                                 songCount = pluralStringResource(R.plurals.n_song, count, count),
@@ -472,34 +445,37 @@ fun LocalPlaylistScreen(
                                     },
                                     enabled = songs.isNotEmpty(),
                                 )
-                                PlaylistAction(
-                                    icon = if (downloadState == Download.STATE_COMPLETED) R.drawable.offline else R.drawable.download, label = stringResource(when (downloadState) { Download.STATE_COMPLETED -> R.string.remove_download; Download.STATE_DOWNLOADING -> R.string.capsule_stop_and_delete_download; else -> R.string.download }),
-                                    onClick = {
-                                        when (downloadState) {
-                                            Download.STATE_COMPLETED -> {
-                                                showRemoveDownloadDialog = true
-                                            }
-                                            Download.STATE_DOWNLOADING -> {
-                                                showRemoveDownloadDialog = true
-                                            }
-                                            else -> {
-                                                songs.forEach { song ->
-                                                    val downloadRequest = DownloadRequest
-                                                        .Builder(song.song.id, song.song.id.toUri())
-                                                        .setCustomCacheKey(song.song.id)
-                                                        .setData(song.song.song.title.toByteArray())
-                                                        .build()
-                                                    DownloadService.sendAddDownload(
-                                                        context,
-                                                        ExoDownloadService::class.java,
-                                                        downloadRequest,
-                                                        false,
-                                                    )
-                                                }
-                                            }
-                                        }
+                                CapsuleCollectionDownloadButton(
+                                    actionKey = playlist.id,
+                                    collectionName = playlist.playlist.name,
+                                    state = downloadState,
+                                    hasStoredItems = songs.any { downloadIndex.containsKey(it.song.id) },
+                                    hasCompletedItems = songs.any {
+                                        downloadIndex[it.song.id]?.state == Download.STATE_COMPLETED
                                     },
-                                    enabled = songs.isNotEmpty(), loading = downloadState == Download.STATE_DOWNLOADING,
+                                    enabled = songs.isNotEmpty(),
+                                    onDownload = {
+                                        val requests = songs.map { song ->
+                                            DownloadRequest.Builder(song.song.id, song.song.id.toUri())
+                                                .setCustomCacheKey(song.song.id)
+                                                .setData(song.song.song.title.toByteArray())
+                                                .build()
+                                        }
+                                        com.nikhil.yt.playback.enqueueCollectionDownloads(
+                                            context, downloadUtil.downloadManager, downloadIndex, requests,
+                                        )
+                                    },
+                                    onStop = {
+                                        com.nikhil.yt.playback.stopCollectionDownloads(
+                                            downloadUtil.downloadManager, songs.map { it.song.id },
+                                        )
+                                    },
+                                    onRemove = {
+                                        com.nikhil.yt.playback.removeCollectionDownloads(
+                                            downloadUtil.downloadManager, songs.map { it.song.id },
+                                            preserveManual = false,
+                                        )
+                                    },
                                 )
                                 PlaylistAction(
                                     icon = if (editable) R.drawable.edit else R.drawable.sync, label = stringResource(if (editable) R.string.edit else R.string.action_sync),
@@ -865,28 +841,23 @@ fun LocalPlaylistScreen(
 
         }
 
-        DraggableScrollbar(
-            modifier = Modifier
-                .padding(
-                    LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime)
-                        .asPaddingValues()
-                )
-                .align(Alignment.CenterEnd),
-            scrollState = lazyListState,
-            headerItems = headerItems
-        )
 
         // Top App Bar
-        // Same overlay behaviour as AlbumScreen: cover reaches the top and the toolbar
-        // becomes solid only after its header scrolls away (or while searching/selecting).
-        val showPlaylistHero = lazyListState.firstVisibleItemIndex == 0 && !selection && !isSearching
-        CenterAlignedTopAppBar(
+        // One measured title handoff. The bar stays transparent throughout.
+        // Match AlbumScreen: the compact title is left-aligned beside the back button.
+        val toolbarForeground = if (selection || isSearching) StandardChrome.text else
+            lerp(Color.White, StandardChrome.text, titleMotion.artworkFade())
+        TopAppBar(
+            modifier = Modifier.onGloballyPositioned(titleMotion::measureToolbar)
+                .artistStyleDetailBackdrop(titleMotion, surfaceColor, forceOpaque = selection || isSearching),
+            windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
+            expandedHeight = ArtistToolbarCompactHeight,
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = if (showPlaylistHero) Color.Transparent else surfaceColor,
-                scrolledContainerColor = if (showPlaylistHero) Color.Transparent else surfaceColor,
-                titleContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
-                navigationIconContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
-                actionIconContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent,
+                titleContentColor = toolbarForeground,
+                navigationIconContentColor = toolbarForeground,
+                actionIconContentColor = toolbarForeground,
             ),
             title = {
                 if (selection) {
@@ -920,7 +891,7 @@ fun LocalPlaylistScreen(
                             .focusRequester(focusRequester)
                     )
                 } else {
-                    if (!showPlaylistHero) Text(playlist?.playlist?.name.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, color = StandardChrome.text)
+                    Text(playlist?.playlist?.name.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, color = toolbarForeground, modifier = Modifier)
                 }
             },
             navigationIcon = {

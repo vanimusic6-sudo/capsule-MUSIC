@@ -74,7 +74,7 @@ data class ArtistPage(
                 title = renderer.flexColumns.firstOrNull()
                     ?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.firstOrNull()
                     ?.text ?: return null,
-                artists = PageHelper.extractArtists(
+                artists = PageHelper.extractSongArtists(
                     renderer.flexColumns
                         .getOrNull(1)
                         ?.musicResponsiveListItemFlexColumnRenderer
@@ -103,12 +103,7 @@ data class ArtistPage(
                     SongItem(
                         id = renderer.navigationEndpoint.watchEndpoint?.videoId ?: return null,
                         title = renderer.title.runs?.firstOrNull()?.text ?: return null,
-                        artists = listOfNotNull(renderer.subtitle?.runs?.firstOrNull()?.let {
-                            Artist(
-                                name = it.text,
-                                id = it.navigationEndpoint?.browseEndpoint?.browseId
-                            )
-                        }),
+                        artists = PageHelper.extractSongArtists(renderer.subtitle?.runs),
                         album = null,
                         duration = null,
                         endpoint = renderer.navigationEndpoint.watchEndpoint,

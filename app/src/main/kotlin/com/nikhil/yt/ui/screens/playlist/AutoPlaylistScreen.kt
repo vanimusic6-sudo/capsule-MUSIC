@@ -8,10 +8,14 @@
 package com.nikhil.yt.ui.screens.playlist
 
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.TopAppBar
 import com.nikhil.yt.ui.component.StandardChrome
+import com.nikhil.yt.ui.component.ArtistToolbarCompactHeight
+import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
+import com.nikhil.yt.ui.component.artistStyleDetailBackdrop
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
+import com.nikhil.yt.ui.menu.CapsuleCollectionDownloadButton
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -21,6 +25,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.asPaddingValues
@@ -62,6 +67,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -101,7 +109,6 @@ import com.nikhil.yt.playback.queues.ListQueue
 import com.nikhil.yt.discovery.ExperimentalDownload
 import com.nikhil.yt.discovery.OfflineAudioQueue
 import com.nikhil.yt.ui.component.DefaultDialog
-import com.nikhil.yt.ui.component.DraggableScrollbar
 import com.nikhil.yt.ui.component.EmptyPlaceholder
 import com.nikhil.yt.ui.component.IconButton
 import com.nikhil.yt.ui.component.LocalMenuState
@@ -198,6 +205,7 @@ fun AutoPlaylistScreen(
 
     val downloadUtil = LocalDownloadUtil.current
     val downloadState = rememberCollectionDownloadState(songs.orEmpty().map { it.song.id })
+    val downloadIndex by downloadUtil.downloads.collectAsState()
 
     LaunchedEffect(Unit) {
         if (ytmSync) {
@@ -215,44 +223,6 @@ fun AutoPlaylistScreen(
 
     }
 
-    var showRemoveDownloadDialog by remember { mutableStateOf(false) }
-
-    if (showRemoveDownloadDialog) {
-        DefaultDialog(
-            onDismiss = { showRemoveDownloadDialog = false },
-            content = {
-                Text(
-                    text = stringResource(R.string.remove_download_playlist_confirm, playlist),
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(horizontal = 18.dp),
-                )
-            },
-            buttons = {
-                TextButton(
-                    onClick = { showRemoveDownloadDialog = false },
-                ) {
-                    Text(text = stringResource(android.R.string.cancel))
-                }
-
-                TextButton(
-                    onClick = {
-                        showRemoveDownloadDialog = false
-                        songs!!.forEach { song ->
-                            DownloadService.sendRemoveDownload(
-                                context,
-                                ExoDownloadService::class.java,
-                                song.song.id,
-                                false,
-                            )
-                        }
-                    },
-                ) {
-                    Text(text = stringResource(android.R.string.ok))
-                }
-            },
-        )
-    }
-
     val filteredSongs = remember(wrappedSongs, query) {
         if (query.text.isEmpty()) wrappedSongs
         else wrappedSongs.filter { wrapper ->
@@ -264,7 +234,7 @@ fun AutoPlaylistScreen(
 
     val lazyListState = rememberLazyListState()
 
-    val surfaceColor = if (StandardChrome.isDark) Color(0xFF090909) else StandardChrome.background
+    val surfaceColor = StandardChrome.background
 
 
 
@@ -282,6 +252,11 @@ fun AutoPlaylistScreen(
             .background(surfaceColor),
     ) {
 
+
+        val titleMotion = rememberDetailHeaderMotion(
+            state = lazyListState,
+            hasHeader = (songs?.isNotEmpty() == true || externalSaved.isNotEmpty()) && !isSearching,
+        )
 
         LazyColumn(
             state = lazyListState,
@@ -308,6 +283,8 @@ fun AutoPlaylistScreen(
                     if (!isSearching && songs!!.isEmpty() && externalSaved.isNotEmpty()) {
                         item(key = "capsule:offline:hero") {
                             PlaylistHero(
+                                artworkAlpha = titleMotion::artworkAlpha,
+                                titleMotion = titleMotion,
                                 title = playlist,
                                 thumbnails = externalSaved.mapNotNull { it.artwork }.take(4),
                                 songCount = pluralStringResource(R.plurals.n_song, externalSaved.size, externalSaved.size),
@@ -337,6 +314,8 @@ fun AutoPlaylistScreen(
                         // Hero Header Item
                         item(key = "header") {
                             PlaylistHero(
+                                artworkAlpha = titleMotion::artworkAlpha,
+                                titleMotion = titleMotion,
                                 title = playlist,
                                 thumbnails = songs.orEmpty().mapNotNull { it.song.thumbnailUrl }.take(4),
                                 songCount = pluralStringResource(R.plurals.n_song, songs.orEmpty().size, songs.orEmpty().size),
@@ -364,38 +343,37 @@ fun AutoPlaylistScreen(
                                         )
                                     },
                                 )
-                                PlaylistAction(
-                                    icon = if (downloadState == Download.STATE_COMPLETED) R.drawable.offline else R.drawable.download, label = stringResource(when (downloadState) { Download.STATE_COMPLETED -> R.string.remove_download; Download.STATE_DOWNLOADING -> R.string.cancel_button; else -> R.string.download }),
-                                    onClick = {
-                                        when (downloadState) {
-                                            Download.STATE_COMPLETED -> {
-                                                showRemoveDownloadDialog = true
-                                            }
-                                            Download.STATE_DOWNLOADING -> {
-                                                com.nikhil.yt.playback.stopCollectionDownloads(downloadUtil.downloadManager, songs.orEmpty().map { it.song.id })
-                                            }
-                                            else -> {
-                                                songs!!.forEach { song ->
-                                                    val downloadRequest =
-                                                        DownloadRequest
-                                                            .Builder(
-                                                                song.song.id,
-                                                                song.song.id.toUri(),
-                                                            )
-                                                            .setCustomCacheKey(song.song.id)
-                                                            .setData(song.song.title.toByteArray())
-                                                            .build()
-                                                    DownloadService.sendAddDownload(
-                                                        context,
-                                                        ExoDownloadService::class.java,
-                                                        downloadRequest,
-                                                        false,
-                                                    )
-                                                }
-                                            }
-                                        }
+                                CapsuleCollectionDownloadButton(
+                                    actionKey = "auto:${playlistId}",
+                                    collectionName = playlist,
+                                    state = downloadState,
+                                    hasStoredItems = songs.orEmpty().any { downloadIndex.containsKey(it.song.id) },
+                                    hasCompletedItems = songs.orEmpty().any {
+                                        downloadIndex[it.song.id]?.state == Download.STATE_COMPLETED
                                     },
-                                    loading = downloadState == Download.STATE_DOWNLOADING,
+                                    enabled = songs.orEmpty().isNotEmpty(),
+                                    onDownload = {
+                                        val requests = songs.orEmpty().map { song ->
+                                            DownloadRequest.Builder(song.song.id, song.song.id.toUri())
+                                                .setCustomCacheKey(song.song.id)
+                                                .setData(song.song.title.toByteArray())
+                                                .build()
+                                        }
+                                        com.nikhil.yt.playback.enqueueCollectionDownloads(
+                                            context, downloadUtil.downloadManager, downloadIndex, requests,
+                                        )
+                                    },
+                                    onStop = {
+                                        com.nikhil.yt.playback.stopCollectionDownloads(
+                                            downloadUtil.downloadManager, songs.orEmpty().map { it.song.id },
+                                        )
+                                    },
+                                    onRemove = {
+                                        com.nikhil.yt.playback.removeCollectionDownloads(
+                                            downloadUtil.downloadManager, songs.orEmpty().map { it.song.id },
+                                            preserveManual = false,
+                                        )
+                                    },
                                 )
                                 PlaylistAction(
                                     icon = R.drawable.queue_music, label = stringResource(R.string.add_to_queue),
@@ -578,28 +556,22 @@ fun AutoPlaylistScreen(
             }
         }
 
-        DraggableScrollbar(
-            modifier = Modifier
-                .padding(
-                    LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime)
-                        .asPaddingValues()
-                )
-                .align(Alignment.CenterEnd),
-            scrollState = lazyListState,
-            headerItems = headerItems
-        )
 
-        // Same overlay behaviour as AlbumScreen: cover reaches the top and the toolbar
-        // becomes solid only after its header scrolls away (or while searching/selecting).
-        val showPlaylistHero = (songs?.isNotEmpty() == true || externalSaved.isNotEmpty()) &&
-            lazyListState.firstVisibleItemIndex == 0 && !selection && !isSearching
-        CenterAlignedTopAppBar(
+        // One measured title handoff. The bar stays transparent throughout.
+        // Match AlbumScreen: the compact title is left-aligned beside the back button.
+        val toolbarForeground = if (selection || isSearching) StandardChrome.text else
+            lerp(Color.White, StandardChrome.text, titleMotion.artworkFade())
+        TopAppBar(
+            modifier = Modifier.onGloballyPositioned(titleMotion::measureToolbar)
+                .artistStyleDetailBackdrop(titleMotion, surfaceColor, forceOpaque = selection || isSearching),
+            windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
+            expandedHeight = ArtistToolbarCompactHeight,
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = if (showPlaylistHero) Color.Transparent else surfaceColor,
-                scrolledContainerColor = if (showPlaylistHero) Color.Transparent else surfaceColor,
-                titleContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
-                navigationIconContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
-                actionIconContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent,
+                titleContentColor = toolbarForeground,
+                navigationIconContentColor = toolbarForeground,
+                actionIconContentColor = toolbarForeground,
             ),
             title = {
                 when {
@@ -636,10 +608,11 @@ fun AutoPlaylistScreen(
                         )
                     }
                     else -> {
-                        if (!showPlaylistHero) Text(
+                        Text(
                             text = playlist,
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.titleLarge
+                            style = MaterialTheme.typography.titleLarge,
+                            modifier = Modifier
                         )
                     }
                 }

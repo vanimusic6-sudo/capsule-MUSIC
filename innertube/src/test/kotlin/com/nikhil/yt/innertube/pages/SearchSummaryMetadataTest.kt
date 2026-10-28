@@ -1,6 +1,7 @@
 package com.nikhil.yt.innertube.pages
 
 import com.nikhil.yt.innertube.models.Artist
+import com.nikhil.yt.innertube.models.ArtistItem
 import com.nikhil.yt.innertube.models.BrowseEndpoint
 import com.nikhil.yt.innertube.models.BrowseEndpoint.BrowseEndpointContextSupportedConfigs
 import com.nikhil.yt.innertube.models.BrowseEndpoint.BrowseEndpointContextSupportedConfigs.BrowseEndpointContextMusicConfig
@@ -192,6 +193,112 @@ class SearchSummaryMetadataTest {
         val item = SearchSummaryPage.fromMusicResponsiveListItemRenderer(renderer) as SongItem
         assertEquals("podcast-video-id", item.id)
         assertEquals("podcast-video-id", item.endpoint?.videoId)
+    }
+
+    @Test
+    fun `Top result play count is not displayed as artist and Songs restores true credit`() {
+        val songCard = artistCard().copy(
+            title = Runs(listOf(Run("Duet", null))),
+            subtitle = Runs(listOf(
+                Run("Композиция", null), Run(" • ", null),
+                Run("3,4 млн прослушиваний", null),
+            )),
+            onTap = NavigationEndpoint(watchEndpoint = WatchEndpoint(videoId = "top-song")),
+        )
+        val top = SearchSummaryPage.fromMusicCardShelfRenderer(songCard) as SongItem
+        assertEquals(emptyList<Artist>(), top.artists)
+        val correct = Artist("Actual Performer", "UC_actual")
+        val enriched = SearchSummaryPage(
+            listOf(SearchSummary("Top result", listOf(top))),
+        ).withFilteredSongCredits(listOf(top.copy(artists = listOf(correct))))
+        assertEquals(
+            listOf(correct),
+            (enriched.summaries.single().items.single() as SongItem).artists,
+        )
+    }
+
+    @Test
+    fun `filtered songs and summary prefer linked copy without duplicated artist text`() {
+        val anonymous = Artist("Featured", null)
+        val linked = Artist("Featured", "UC_featured")
+        val summary = SearchSummaryPage(
+            listOf(SearchSummary("Top result", listOf(
+                SongItem(id = "same-track", title = "Title",
+                    artists = listOf(anonymous), duration = 140, thumbnail = "cover")
+            ))),
+        )
+        val matched = SongItem(id = "same-track", title = "Title",
+            artists = listOf(linked), duration = 140, thumbnail = "cover")
+        val enriched = summary.withFilteredSongCredits(listOf(matched))
+        assertEquals(
+            listOf(linked),
+            (enriched.summaries.single().items.single() as SongItem).artists,
+        )
+    }
+
+    @Test
+    fun `Top result row ignores metrics in additional columns`() {
+        val renderer = songRenderer("top-track", "Track", listOf(
+            Run("14M views", null), Run(" • ", null),
+            Run("Actual Performer", artistEndpoint("UC_actual")),
+        ))
+        val top = SearchSummaryPage.fromMusicResponsiveListItemRenderer(renderer) as SongItem
+        assertEquals(
+            listOf(Artist("Actual Performer", "UC_actual")),
+            top.artists,
+        )
+    }
+
+    @Test
+    fun `Top result artist card does not need optional play or shuffle actions`() {
+        val artist = SearchSummaryPage.fromMusicCardShelfRenderer(artistCard()) as ArtistItem
+        assertEquals("UC_oliver", artist.id)
+        assertEquals("Oliver Tree", artist.title)
+        assertEquals(null, artist.shuffleEndpoint)
+        assertEquals(null, artist.radioEndpoint)
+    }
+
+    @Test
+    fun `song search artist row stays visible without an optional action menu`() {
+        val row = songRenderer("unused", "Real Performer", emptyList()).copy(
+            playlistItemData = null,
+            navigationEndpoint = artistEndpoint("UC_real"),
+            menu = null,
+        )
+        val summaryArtist = SearchSummaryPage.fromMusicResponsiveListItemRenderer(row) as ArtistItem
+        val filteredArtist = SearchPage.toYTItem(row) as ArtistItem
+        assertEquals("UC_real", summaryArtist.id)
+        assertEquals("UC_real", filteredArtist.id)
+        assertEquals(null, summaryArtist.shuffleEndpoint)
+        assertEquals(null, filteredArtist.radioEndpoint)
+    }
+
+    @Test
+    fun `Top card and nested song row with the same video retain all artists`() {
+        val lead = Artist("Lead", "UC_lead")
+        val guest = Artist("Guest", "UC_guest")
+        val top = SongItem(id = "same-video", title = "Duet",
+            artists = listOf(lead), duration = null, thumbnail = "cover")
+        val inner = top.copy(artists = listOf(lead, guest), duration = 201)
+        val merged = mergeSearchSameVideoCredits(listOf(top, inner, top))
+        assertEquals(1, merged.size)
+        assertEquals(listOf(lead, guest), (merged.single() as SongItem).artists)
+        assertEquals(201, (merged.single() as SongItem).duration)
+    }
+
+    @Test
+    fun `Top result merges queue guest credits only for its exact video ID`() {
+        val lead = Artist("Lead", "UC_lead")
+        val guest = Artist("Guest", "UC_guest")
+        val top = SongItem(id = "one-video", title = "Same title",
+            artists = listOf(lead), duration = 180, thumbnail = "cover")
+        val unrelated = SongItem(id = "other-video", title = "Same title",
+            artists = listOf(Artist("Wrong", "UC_wrong")), duration = 180, thumbnail = "cover")
+        val queueTrack = top.copy(artists = listOf(lead, guest))
+        val enriched = SearchSummaryPage(listOf(SearchSummary("Top result", listOf(top))))
+            .withFilteredSongCredits(listOf(unrelated, queueTrack))
+        assertEquals(listOf(lead, guest),
+            (enriched.summaries.single().items.single() as SongItem).artists)
     }
 
     private fun artistCard() = MusicCardShelfRenderer(

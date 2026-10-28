@@ -78,6 +78,25 @@ class MediaMetadataArtistMergeTest {
     }
 
     @Test
+    fun `previously cached metrics are not shown as artists in the player`() {
+        val old = listOf(
+            MediaMetadata.Artist("UC_mzlff", "MZLFF"),
+            MediaMetadata.Artist("UC_sted", "STED.D"),
+            MediaMetadata.Artist(null, "1,3 млн прослушиваний"),
+        )
+        assertEquals(old.take(2), old.sanitizedArtistCredits())
+        assertEquals("MZLFF, STED.D", old.artistCreditLine())
+        assertEquals(old.take(2), mergeArtistCredits(old, old))
+    }
+
+    @Test
+    fun `a numeric artist with a real channel ID remains a legitimate artist`() {
+        val real = MediaMetadata.Artist("UC_numeric", "42M Views")
+        val junk = MediaMetadata.Artist(null, "42M Views")
+        assertEquals(listOf(real), mergeArtistCredits(listOf(real), listOf(junk)))
+    }
+
+    @Test
     fun `real browse id upgrades a name-only credit`() {
         val merged =
             mergeArtistCredits(

@@ -166,25 +166,10 @@ fun OnlineSearchScreen(
         }
 
         items(viewState.items.distinctBy { it.id }, key = { "item_${it.id}" }) { item ->
-            // Suggestions are a fast but sometimes incomplete metadata source.
-            // Prefer full credited artists already held in Capsule's library
-            // or the active player's metadata. Never issue an extra /player
-            // request for each row just to reconstruct an artist credit.
-            val cachedCredits = if (item is SongItem) {
-                val cached by database.song(item.id).collectAsState(initial = null)
-                cached?.artists?.map { it.name }.orEmpty()
-            } else emptyList()
-            val activeCredits = if (item is SongItem && mediaMetadata?.id == item.id) {
-                mediaMetadata?.artists?.map { it.name }.orEmpty()
-            } else emptyList()
-            val richerCredits = if (item is SongItem) {
-                mergeSearchArtistCredits(item.artists.map { it.name }, cachedCredits, activeCredits)
-                    .takeIf { it.size > item.artists.size }
-                    ?.joinToString(", ")
-            } else null
+            // The one canonical parser resolves credits when the item is
+            // created. Avoid a Room Flow per row and delayed text relayout.
             YouTubeListItem(
                 item = item,
-                artistSubtitleOverride = richerCredits,
                 isActive = when (item) {
                     is SongItem -> mediaMetadata?.id == item.id
                     is AlbumItem -> mediaMetadata?.album?.id == item.id

@@ -2,7 +2,7 @@ name: Core reliability
 
 on:
   push:
-    branches: [release/01-core-reliability, fix/posttest-ui-rework-20261026, fix/real-download-menu-repair-20261026, fix/download-actions-artist-credits-cover-20261026, fix/rebuild-download-artwork-search-20261026, fix/metrolist-search-active-download-20261026]
+    branches: [release/01-core-reliability, fix/posttest-ui-rework-20261026, fix/real-download-menu-repair-20261026, fix/download-actions-artist-credits-cover-20261026, fix/rebuild-download-artwork-search-20261026, fix/metrolist-search-active-download-20261026, fix/artist-atomic-player-download-efficiency-20261027]
   workflow_dispatch:
 
 permissions:
@@ -46,10 +46,12 @@ jobs:
           --tests 'com.nikhil.yt.CrashReportTest'
           --tests 'com.nikhil.yt.utils.BuildMarkerLogTest'
           --tests 'com.nikhil.yt.ui.menu.CapsuleDownloadActionInteractionTest'
-          --tests 'com.nikhil.yt.ui.screens.search.SearchArtistCreditsTest'
           --tests 'com.nikhil.yt.ui.player.PlayerArtworkReliabilityTest'
           --tests 'com.nikhil.yt.models.VideoPosterCropTest'
           --tests 'com.nikhil.yt.ui.ArtistHeroTest'
+          --tests 'com.nikhil.yt.ui.AlbumLayoutTest'
+          --tests 'com.nikhil.yt.ui.PlaylistHeroTest'
+          --tests 'com.nikhil.yt.ui.component.DetailToolbarRevealTest'
           --tests 'com.nikhil.yt.ui.component.ArtworkResolutionTest'
           --tests 'com.nikhil.yt.ui.CapsuleReleaseUiCorrectionsTest'
           --tests 'com.nikhil.yt.playback.video.CapsuleVideoDirectMediaSourceFactoryTest'

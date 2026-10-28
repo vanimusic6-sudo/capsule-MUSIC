@@ -8,8 +8,11 @@
 package com.nikhil.yt.ui.screens.playlist
 
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.TopAppBar
 import com.nikhil.yt.ui.component.StandardChrome
+import com.nikhil.yt.ui.component.ArtistToolbarCompactHeight
+import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
+import com.nikhil.yt.ui.component.artistStyleDetailBackdrop
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
 import androidx.activity.compose.BackHandler
@@ -19,6 +22,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.asPaddingValues
@@ -55,6 +59,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -77,7 +84,6 @@ import com.nikhil.yt.constants.SongSortTypeKey
 import com.nikhil.yt.extensions.toMediaItem
 import com.nikhil.yt.extensions.togglePlayPause
 import com.nikhil.yt.playback.queues.ListQueue
-import com.nikhil.yt.ui.component.DraggableScrollbar
 import com.nikhil.yt.ui.component.EmptyPlaceholder
 import com.nikhil.yt.ui.component.IconButton
 import com.nikhil.yt.ui.component.LocalMenuState
@@ -168,7 +174,7 @@ fun CachePlaylistScreen(
         }
     }
 
-    val surfaceColor = if (StandardChrome.isDark) Color(0xFF090909) else StandardChrome.background
+    val surfaceColor = StandardChrome.background
 
 
 
@@ -185,6 +191,11 @@ fun CachePlaylistScreen(
             .background(surfaceColor),
     ) {
 
+
+        val titleMotion = rememberDetailHeaderMotion(
+            state = lazyListState,
+            hasHeader = filteredSongs.isNotEmpty() && !isSearching,
+        )
 
         LazyColumn(
             state = lazyListState,
@@ -212,6 +223,8 @@ fun CachePlaylistScreen(
                     // Hero Header Item
                     item(key = "header") {
                         PlaylistHero(
+                                artworkAlpha = titleMotion::artworkAlpha,
+                                titleMotion = titleMotion,
                             title = playlistTitle,
                             thumbnails = filteredSongs.mapNotNull { it.item.thumbnailUrl }.take(4),
                             songCount = pluralStringResource(R.plurals.n_song, filteredSongs.size, filteredSongs.size),
@@ -337,27 +350,22 @@ fun CachePlaylistScreen(
             }
         }
 
-        DraggableScrollbar(
-            modifier = Modifier
-                .padding(
-                    LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime)
-                        .asPaddingValues()
-                )
-                .align(Alignment.CenterEnd),
-            scrollState = lazyListState,
-            headerItems = headerItems
-        )
 
-        // Same overlay behaviour as AlbumScreen: cover reaches the top and the toolbar
-        // becomes solid only after its header scrolls away (or while searching/selecting).
-        val showPlaylistHero = lazyListState.firstVisibleItemIndex == 0 && !selection && !isSearching
-        CenterAlignedTopAppBar(
+        // One measured title handoff. The bar stays transparent throughout.
+        // Match AlbumScreen: the compact title is left-aligned beside the back button.
+        val toolbarForeground = if (selection || isSearching) StandardChrome.text else
+            lerp(Color.White, StandardChrome.text, titleMotion.artworkFade())
+        TopAppBar(
+            modifier = Modifier.onGloballyPositioned(titleMotion::measureToolbar)
+                .artistStyleDetailBackdrop(titleMotion, surfaceColor, forceOpaque = selection || isSearching),
+            windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
+            expandedHeight = ArtistToolbarCompactHeight,
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = if (showPlaylistHero) Color.Transparent else surfaceColor,
-                scrolledContainerColor = if (showPlaylistHero) Color.Transparent else surfaceColor,
-                titleContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
-                navigationIconContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
-                actionIconContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent,
+                titleContentColor = toolbarForeground,
+                navigationIconContentColor = toolbarForeground,
+                actionIconContentColor = toolbarForeground,
             ),
             title = {
                 when {
@@ -394,10 +402,11 @@ fun CachePlaylistScreen(
                         )
                     }
                     else -> {
-                        if (!showPlaylistHero) Text(
+                        Text(
                             text = stringResource(R.string.cached_playlist),
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.titleLarge
+                            style = MaterialTheme.typography.titleLarge,
+                            modifier = Modifier
                         )
                     }
                 }

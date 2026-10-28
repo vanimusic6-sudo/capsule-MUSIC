@@ -25,7 +25,7 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28], application = Application::class, manifest = Config.NONE)
 class DownloadQueueTest {
-    @Test fun manualTrackImmediatelyPausesOneBackgroundTransferWithoutRemovingItOrExceedingTwoSlots() {
+    @Test fun manualPriorityPreemptsBackgroundButStopCollectionPausesAllMembersWithoutRemovingThem() {
         val provider = StandaloneDatabaseProvider(RuntimeEnvironment.getApplication())
         val started = Collections.synchronizedList(mutableListOf<String>())
         val gates = (1..102).associate { "track-$it" to CountDownLatch(1) }
@@ -61,16 +61,133 @@ class DownloadQueueTest {
             gates.getValue("track-1").countDown()
             await { index.getDownload("track-1")?.state == Download.STATE_COMPLETED }
             stopCollectionDownloads(manager, (1..101).map { "track-$it" })
-            await { manager.currentDownloads.none { !it.request.isManualDownload() && it.stopReason == 0 } }
+            await {
+                // Use DownloadManager's in-memory snapshot to observe the
+                // async transition rather than querying SQLite 100 times per
+                // 10ms Robolectric polling cycle (which starved the manager).
+                val members = manager.currentDownloads.filter { it.request.id != "track-1" }
+                members.size == 100 && members.all {
+                    it.state == Download.STATE_STOPPED &&
+                        it.stopReason == COLLECTION_STOP_REASON_USER
+                }
+            }
+            // Verify durable Media3 index after the operation has settled.
+            assertTrue((2..101).all { n ->
+                index.getDownload("track-$n")?.stopReason == COLLECTION_STOP_REASON_USER
+            })
             assertEquals(Download.STATE_COMPLETED, index.getDownload("track-1")?.state)
-            assertEquals(Download.STATE_DOWNLOADING, index.getDownload("track-101")?.state)
-            gates.getValue("track-101").countDown()
-            await { index.getDownload("track-101")?.state == Download.STATE_COMPLETED }
+            await {
+                index.getDownload("track-101")?.let {
+                    it.state == Download.STATE_STOPPED &&
+                        it.stopReason == COLLECTION_STOP_REASON_USER
+                } == true
+            }
+            // Stopped manually prioritized downloads retain their partial bytes
+            // and remain resumable; they must not continue transferring.
+            assertTrue(index.getDownload("track-101")!!.request.isManualDownload())
+            val collectionIndex = (1..101).mapNotNull { n ->
+                index.getDownload("track-$n")?.let { "track-$n" to it }
+            }.toMap()
+            assertEquals(
+                Download.STATE_STOPPED,
+                collectionDownloadState(
+                    (2..101).map { "track-$it" }, collectionIndex,
+                ),
+            )
             assertEquals(2, maximum.get())
         } finally {
             gates.values.forEach { it.countDown() }; queue.close(); manager.release(); provider.close()
         }
     }
+    @Test fun pausedCollectionCanResumeItsExistingMedia3Request() {
+        val context = RuntimeEnvironment.getApplication()
+        val provider = StandaloneDatabaseProvider(context)
+        val index = DefaultDownloadIndex(provider)
+        val attempts = AtomicInteger()
+        val gates = Collections.synchronizedList(mutableListOf<CountDownLatch>())
+        val manager = DownloadManager(context, index, DownloaderFactory { _ ->
+            object : Downloader {
+                private val stop = CountDownLatch(1)
+                override fun download(listener: Downloader.ProgressListener?) {
+                    gates.add(stop)
+                    attempts.incrementAndGet()
+                    stop.await()
+                }
+                override fun cancel() { stop.countDown() }
+                override fun remove() {}
+            }
+        })
+        val queue = AudioDownloadQueue(manager)
+        try {
+            manager.maxParallelDownloads = 2
+            manager.setRequirements(Requirements(0))
+            manager.resumeDownloads()
+            await { manager.isInitialized }
+            manager.addDownload(request(40), DOWNLOAD_WAITING_FOR_SLOT)
+            await { index.getDownload("track-40")?.state == Download.STATE_DOWNLOADING }
+            stopCollectionDownloads(manager, listOf("track-40"))
+            await {
+                index.getDownload("track-40")?.let {
+                    it.state == Download.STATE_STOPPED &&
+                        it.stopReason == COLLECTION_STOP_REASON_USER
+                } == true
+            }
+            CollectionDownloadStopAdmission.clear(manager, listOf("track-40"))
+            manager.setStopReason("track-40", DOWNLOAD_WAITING_FOR_SLOT)
+            AudioDownloadQueue.wake(manager)
+            await {
+                index.getDownload("track-40")?.state == Download.STATE_DOWNLOADING &&
+                    attempts.get() >= 2
+            }
+            assertEquals(Download.STOP_REASON_NONE, index.getDownload("track-40")!!.stopReason)
+        } finally {
+            gates.forEach { it.countDown() }
+            queue.close()
+            manager.release()
+            provider.close()
+        }
+    }
+
+    @Test fun immediatePlaylistStopCatchesLateManualServiceAdd() {
+        // Reproduces the first-tap race: download has not reached the Media3
+        // index when the user presses Stop. A manually prioritized same-ID ADD
+        // must not slip through as an endlessly active transfer.
+        val context = RuntimeEnvironment.getApplication()
+        val provider = StandaloneDatabaseProvider(context)
+        val index = DefaultDownloadIndex(provider)
+        val started = AtomicInteger()
+        val manager = DownloadManager(context, index, DownloaderFactory { _ ->
+            object : Downloader {
+                override fun download(listener: Downloader.ProgressListener?) {
+                    started.incrementAndGet()
+                }
+                override fun cancel() {}
+                override fun remove() {}
+            }
+        })
+        val queue = AudioDownloadQueue(manager)
+        try {
+            manager.setRequirements(Requirements(0))
+            manager.resumeDownloads()
+            await { manager.isInitialized }
+            val id = "track-77"
+            stopCollectionDownloads(manager, listOf(id))
+            // Simulate delayed DownloadService ADD after the Stop action.
+            manager.addDownload(request(77).withManualPriority(), DOWNLOAD_WAITING_FOR_SLOT)
+            await {
+                index.getDownload(id)?.let {
+                    it.state == Download.STATE_STOPPED &&
+                        it.stopReason == COLLECTION_STOP_REASON_USER
+                } == true
+            }
+            assertEquals("A late ADD must not start downloading", 0, started.get())
+        } finally {
+            queue.close()
+            manager.release()
+            provider.close()
+        }
+    }
+
     @Test fun buttonDistinguishesWaitingBackgroundFromActivePausedFailedAndCompleted() {
         val pending = entry(request(1), 1)
         assertTrue(pending.canPrioritize)

@@ -32,21 +32,12 @@ object SearchSuggestionPage {
                             ?.runs
                             ?.firstOrNull()
                             ?.text ?: return null,
-                    artists =
-                        renderer.flexColumns
-                            .getOrNull(1)
-                            ?.musicResponsiveListItemFlexColumnRenderer
-                            ?.text
-                            ?.runs
-                            ?.splitBySeparator()
-                            ?.getOrNull(1)
-                            ?.oddElements()
-                            ?.map {
-                                Artist(
-                                    name = it.text,
-                                    id = it.navigationEndpoint?.browseEndpoint?.browseId,
-                                )
-                            } ?: return null,
+                    // Same parser as Top result, Songs, albums and playlists.
+                    artists = PageHelper.extractSongArtists(
+                        renderer.flexColumns.drop(1).flatMap { column ->
+                            column.musicResponsiveListItemFlexColumnRenderer.text?.runs.orEmpty()
+                        }
+                    ),
                     album =
                         renderer.flexColumns
                             .getOrNull(

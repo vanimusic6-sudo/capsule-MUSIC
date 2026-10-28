@@ -37,7 +37,7 @@ data class RelatedPage(
                         ?.runs
                         ?.firstOrNull()
                         ?.text ?: return null,
-                artists = PageHelper.extractArtists(
+                artists = PageHelper.extractSongArtists(
                     renderer.flexColumns
                         .getOrNull(1)
                         ?.musicResponsiveListItemFlexColumnRenderer

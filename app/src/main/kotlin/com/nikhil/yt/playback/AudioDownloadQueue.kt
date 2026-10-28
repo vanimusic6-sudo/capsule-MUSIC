@@ -3,6 +3,7 @@ package com.nikhil.yt.playback
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import java.util.WeakHashMap
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadManager
 import androidx.media3.exoplayer.offline.DownloadRequest
@@ -31,6 +32,9 @@ internal fun DownloadRequest.withManualPriority(): DownloadRequest = run {
 
 /** Single-track actions opt in; collection callers use the same service with ordinary metadata. */
 internal fun enqueuePriorityAudioDownload(context: Context, service: Class<out DownloadService>, request: DownloadRequest, foreground: Boolean) {
+    // A direct single-track action is a fresh user intent. Do not let a
+    // previous playlist Stop intercept the new request during service startup.
+    CollectionDownloadStopAdmission.clearForExplicitStart(request.id)
     DownloadService.sendAddDownload(context, service, request.withManualPriority(), foreground)
 }
 
@@ -50,6 +54,21 @@ internal class AudioDownloadOrder {
 
 /** Main-looper admission, on top of the ONE existing Media3 manager. Manual requests can pause one collection transfer without deleting its cache. */
 internal class AudioDownloadQueue(private val manager: DownloadManager) : DownloadManager.Listener {
+    companion object {
+        // A resumed WAITING_FOR_SLOT request may not emit any new Media3
+        // callback. Explicitly nudge the existing one-per-manager scheduler.
+        private val installed = WeakHashMap<DownloadManager, AudioDownloadQueue>()
+        private val mainHandler = Handler(Looper.getMainLooper())
+        fun wake(manager: DownloadManager) {
+            // Online playlist producers resume from Dispatchers.IO. Media3
+            // queue ownership and registry access remain main-thread only.
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                installed[manager]?.schedule()
+            } else {
+                mainHandler.post { installed[manager]?.schedule() }
+            }
+        }
+    }
     private val handler = Handler(Looper.getMainLooper())
     private val order = AudioDownloadOrder()
     private val admitted = mutableSetOf<String>()
@@ -58,11 +77,18 @@ internal class AudioDownloadQueue(private val manager: DownloadManager) : Downlo
     private var scheduled = false
     private var closed = false
 
-    init { manager.addListener(this) }
+    init {
+        installed[manager] = this
+        manager.addListener(this)
+    }
     override fun onInitialized(downloadManager: DownloadManager) {
         // Upgrade old queued entries; already running transfers continue untouched.
         manager.currentDownloads.filter { it.state == Download.STATE_QUEUED }.forEach {
-            manager.setStopReason(it.request.id, DOWNLOAD_WAITING_FOR_SLOT)
+            manager.setStopReason(
+                it.request.id,
+                if (CollectionDownloadStopAdmission.isUserStopped(it.request.id, manager))
+                    COLLECTION_STOP_REASON_USER else DOWNLOAD_WAITING_FOR_SLOT,
+            )
         }
         schedule()
     }
@@ -88,6 +114,7 @@ internal class AudioDownloadQueue(private val manager: DownloadManager) : Downlo
     }
     fun close() {
         closed = true; handler.removeCallbacksAndMessages(null); manager.removeListener(this)
+        if (installed[manager] === this) installed.remove(manager)
         admitted.clear(); pausing.clear(); protectedBackground.clear()
     }
     private fun schedule() {
@@ -97,6 +124,17 @@ internal class AudioDownloadQueue(private val manager: DownloadManager) : Downlo
             scheduled = false
             if (!manager.isInitialized) return@post
             val entries = manager.currentDownloads
+            // If the service delivered an ADD after Stop, do not award it a slot.
+            val pendingStops = entries.filter {
+                CollectionDownloadStopAdmission.isUserStopped(it.request.id, manager) &&
+                    it.stopReason != COLLECTION_STOP_REASON_USER &&
+                    it.state != Download.STATE_COMPLETED &&
+                    it.state != Download.STATE_REMOVING
+            }
+            if (pendingStops.isNotEmpty()) {
+                pendingStops.forEach { manager.setStopReason(it.request.id, COLLECTION_STOP_REASON_USER) }
+                return@post
+            }
             val entryIds = entries.map { it.request.id }.toSet()
             admitted.retainAll(entryIds)
             protectedBackground.retainAll(entryIds)
@@ -105,7 +143,9 @@ internal class AudioDownloadQueue(private val manager: DownloadManager) : Downlo
                 .map { it.request.id }.toSet() + admitted
             val waiting = entries.filter {
                 it.stopReason == DOWNLOAD_WAITING_FOR_SLOT &&
-                    it.state == Download.STATE_STOPPED && it.request.id !in admitted
+                    it.state == Download.STATE_STOPPED &&
+                    !CollectionDownloadStopAdmission.isUserStopped(it.request.id, manager) &&
+                    it.request.id !in admitted
             }.toMutableList()
             // One pause per admission wave. Media3 cancels the worker and preserves partial cache;
             // the shared transfer semaphore also prevents overlap while that cancellation drains.

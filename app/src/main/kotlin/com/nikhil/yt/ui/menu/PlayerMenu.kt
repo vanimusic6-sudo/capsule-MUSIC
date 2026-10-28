@@ -124,6 +124,7 @@ import com.nikhil.yt.discovery.ExperimentalArtistRoute
 import com.nikhil.yt.discovery.ExperimentalCatalog
 import com.nikhil.yt.discovery.ExperimentalDownload
 import com.nikhil.yt.models.MediaMetadata
+import com.nikhil.yt.models.sanitizedArtistCredits
 import com.nikhil.yt.playback.EqCapabilities
 import com.nikhil.yt.playback.EqProfile
 import com.nikhil.yt.playback.EqProfilesPayload
@@ -176,22 +177,17 @@ fun PlayerMenu(
         ExperimentalCatalog.playingTrack(mediaMetadata.id)
     }
     val canDownloadAudius = isAudius && originalAudiusTrack?.downloadUrl != null
-    val externalDownloadStates by ExperimentalDownload.states.collectAsState()
-    val externalDownloadStatus = externalDownloadStates[mediaMetadata.id]
-    // Independent recordings live in MediaStore, not in the Media3 download
-    // index. WorkManager's transient status is not enough after process death.
-    val savedFilesRevision by ExperimentalDownload.savedFilesRevision.collectAsState()
-    var confirmAudiusCancellation by remember(mediaMetadata.id) { mutableStateOf(false) }
-    if (confirmAudiusCancellation) {
-        DownloadRemovalDialog(
-            onDismiss = { confirmAudiusCancellation = false },
-            onConfirm = {
-                confirmAudiusCancellation = false
-                ExperimentalDownload.cancelInProgress(context, mediaMetadata.id)
-                // Keep More visible while the worker updates its row state.
-            },
-        )
-    }
+    // Non-Audius tracks should not subscribe to global independent-download
+    // state updates: those would recompose the entire player More sheet whenever
+    // an unrelated background worker reports progress.
+    val externalDownloadStatus = if (isAudius) {
+        ExperimentalDownload.states.collectAsState().value[mediaMetadata.id]
+    } else null
+    // Observe MediaStore changes only for an Audius track. Other tracks have
+    // their own Media3 index and should not recompose on unrelated file writes.
+    val savedFilesRevision = if (isAudius) {
+        ExperimentalDownload.savedFilesRevision.collectAsState().value
+    } else 0L
     val savedAudiusFile by produceState<ExperimentalDownload.SavedAudio?>(
         initialValue = null, mediaMetadata.id, savedFilesRevision,
     ) {
@@ -201,9 +197,7 @@ fun PlayerMenu(
 
     val artists =
         remember(mediaMetadata.artists) {
-            mediaMetadata.artists.distinctBy { artist ->
-                artist.id ?: "name:${artist.name.trim().lowercase()}"
-            }
+            mediaMetadata.artists.sanitizedArtistCredits()
         }
 
     // Artist separators for splitting artist names
@@ -353,7 +347,7 @@ fun PlayerMenu(
 
     val nowPlayingSubtitle =
         remember(mediaMetadata.artists) {
-            mediaMetadata.artists.joinToString(separator = ", ") { it.name }
+            artists.joinToString(separator = ", ") { it.name }
         }
 
     Surface(
@@ -688,7 +682,7 @@ fun PlayerMenu(
                         modifier = Modifier.clickable(enabled = saved != null ||
                             downloading || canDownloadAudius) {
                             if (downloading) {
-                                confirmAudiusCancellation = true
+                                ExperimentalDownload.cancelInProgress(context, mediaMetadata.id)
                             } else if (saved != null) {
                                 coroutineScope.launch {
                                     if (ExperimentalDownload.deleteSaved(context, saved)) {
@@ -713,6 +707,7 @@ fun PlayerMenu(
                         download = download, mediaId = mediaMetadata.id, onDismiss = onDismiss,
                         trackTitle = mediaMetadata.title,
                         keepOpenOnDownload = true, showActiveStopAction = false,
+                        instantRemove = true,
                         onStart = {
                             database.transaction { insert(mediaMetadata) }
                             val request = DownloadRequest.Builder(mediaMetadata.id, mediaMetadata.id.toUri())

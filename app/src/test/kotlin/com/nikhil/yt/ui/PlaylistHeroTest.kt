@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.dp
 import com.nikhil.yt.R
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
+import com.nikhil.yt.ui.component.albumCoverHeight
+import com.nikhil.yt.ui.component.AlbumArtworkTopSpacing
 import java.io.File
 import kotlin.math.roundToInt
 import org.junit.Assert.*
@@ -55,6 +57,25 @@ class PlaylistHeroTest {
             }
         }
         val counter = compose.onNodeWithText("34 songs").fetchSemanticsNode().boundsInRoot
+        val cover = compose.onNodeWithTag("capsule:detail-artwork").fetchSemanticsNode().boundsInRoot
+        val capsule = compose.onNodeWithTag("capsule:album-controls").fetchSemanticsNode().boundsInRoot
+        val stats = compose.onNodeWithTag("capsule:album-metrics").fetchSemanticsNode().boundsInRoot
+        val tray = compose.onNodeWithTag("capsule:album-actions").fetchSemanticsNode().boundsInRoot
+        val outer = compose.onNodeWithTag("playlist").fetchSemanticsNode().boundsInRoot
+        assertEquals("Playlist uses album's full-bleed portrait width",
+            outer.width, cover.width, 2f)
+        assertEquals("Playlist portrait matches album ratio/height",
+            with(compose.density) { albumCoverHeight(393.dp, 851.dp).toPx() },
+            cover.height, 2f)
+        assertEquals("No blank upper strip on either album or playlist",
+            0f, cover.top - outer.top, 2f)
+        assertTrue("Unified capsule stays inside the portrait's width",
+            capsule.left >= cover.left && capsule.right <= cover.right)
+        assertTrue("Playlist stats are enclosed inside the same capsule", stats.top >= capsule.top)
+        assertTrue("Playlist actions are enclosed inside the same capsule", tray.bottom <= capsule.bottom)
+        assertTrue("Stats and buttons share one surface without overlap", stats.bottom <= tray.top)
+        assertTrue("One outer outline surrounds both rows",
+            stats.left >= capsule.left && tray.right <= capsule.right)
         val actions = labels.map { compose.onNodeWithContentDescription(it).assertIsDisplayed() }
         val bounds = actions.map { it.fetchSemanticsNode().boundsInRoot }
         assertTrue(bounds.all { it.top > counter.bottom })
@@ -62,6 +83,19 @@ class PlaylistHeroTest {
         actions.forEach { it.performClick() }
         assertEquals(labels, clicked)
         savePreview()
+    }
+
+    @Test fun albumAndPlaylistCapsulesShareBaselineAcrossScreenSizes() {
+        for (height in listOf(720.dp, 851.dp)) {
+            val availableWidth = 393.dp
+            val albumHeight = albumCoverHeight(availableWidth, height)
+            // Both use AlbumHeaderLayout(showTitle=false), the same portrait
+            // frame and identical action-capsule spacing.
+            val albumControlsY = AlbumArtworkTopSpacing + albumHeight + 14.dp
+            val playlistControlsY = AlbumArtworkTopSpacing + albumHeight + 14.dp
+            assertEquals("Matching album/playlist control spacing at $height",
+                albumControlsY.value, playlistControlsY.value, 0.01f)
+        }
     }
 
     @Test fun largerTextKeepsMetadataAndEveryActionReachableOnNarrowScreens() {

@@ -30,53 +30,10 @@ import com.nikhil.yt.innertube.utils.parseTime
 
 private val searchDurationPattern = Regex("""\d{1,2}:\d{2}(?::\d{2})?""")
 
-internal fun extractSearchSongArtists(runs: List<Run>): List<Artist> {
-    val groups = runs.splitBySeparator()
-
-    val credits = mutableListOf<Artist>()
-    for (group in groups) {
-        val linkedArtistIndexes =
-            group.indices.filter { index ->
-                val run = group[index]
-                val endpoint = run.navigationEndpoint?.browseEndpoint ?: return@filter false
-                val pageType =
-                    endpoint.browseEndpointContextSupportedConfigs
-                        ?.browseEndpointContextMusicConfig
-                        ?.pageType
-                endpoint.isArtistEndpoint ||
-                    pageType == MUSIC_PAGE_TYPE_USER_CHANNEL ||
-                    pageType == MUSIC_PAGE_TYPE_LIBRARY_ARTIST ||
-                    (pageType == null && endpoint.browseId.startsWith("UC"))
-            }
-
-        if (linkedArtistIndexes.isEmpty()) continue
-
-        val creditRuns =
-            group.filterIndexed { index, run ->
-                if (index in linkedArtistIndexes) {
-                    true
-                } else if (run.navigationEndpoint != null) {
-                    false
-                } else {
-                    val text = run.text.trim()
-                    text.isNotEmpty() &&
-                        !searchDurationPattern.matches(text) &&
-                        (group.getOrNull(index - 1)?.text?.isArtistJoiner() == true ||
-                            group.getOrNull(index + 1)?.text?.isArtistJoiner() == true)
-                }
-            }
-
-        credits += PageHelper.extractArtists(creditRuns)
-    }
-
-    return credits.distinctBy { it.id ?: "credit:${it.name.trim().lowercase()}" }
-}
-
-private fun String.isArtistJoiner(): Boolean {
-    val value = trim().lowercase()
-    return value in setOf(",", "&", "/", ";", "feat.", "ft.", "featuring", "и", "and") ||
-        (value.isNotEmpty() && value.all { it == ',' || it == '&' || it == '/' || it == ';' })
-}
+// Compatibility wrapper for historical tests. All extraction now comes from
+// the same canonical PageHelper routine used by playlists and album pages.
+internal fun extractSearchSongArtists(runs: List<Run>): List<Artist> =
+    PageHelper.extractSongArtists(runs)
 
 internal fun extractSearchSongDuration(runs: List<Run>): Int? =
     runs.firstNotNullOfOrNull { run ->
@@ -99,20 +56,43 @@ internal fun extractSearchCardArtists(renderer: MusicCardShelfRenderer): List<Ar
  * verified credits of the SAME video ID; never replace them with artists
  * returned by an unrelated artist search query.
  */
+/**
+ * Search can return the very same video twice: the Top card lists the lead,
+ * while its inner song row contains both performers. Keep the first item but
+ * merge all linked credits before deduplicating the results.
+ */
+internal fun mergeSearchSameVideoCredits(items: List<YTItem>): List<YTItem> {
+    val byId = linkedMapOf<String, YTItem>()
+    items.forEach { item ->
+        val previous = byId[item.id]
+        byId[item.id] = when {
+            previous is SongItem && item is SongItem -> previous.copy(
+                artists = PageHelper.deduplicateArtistCredits(previous.artists + item.artists),
+                album = previous.album ?: item.album,
+                duration = previous.duration ?: item.duration,
+                endpoint = previous.endpoint ?: item.endpoint,
+            )
+            previous == null -> item
+            else -> previous
+        }
+    }
+    return byId.values.toList()
+}
+
 internal fun enrichSearchSummaryArtists(summaries: List<SearchSummary>): List<SearchSummary> {
     val knownArtists = summaries.flatMap { it.items }
         .filterIsInstance<SongItem>()
         .groupBy { it.id }
         .mapValues { (_, occurrences) ->
-            occurrences.flatMap { it.artists }
-                .distinctBy { it.id ?: "credit:${it.name.trim().lowercase()}" }
+            PageHelper.deduplicateArtistCredits(occurrences.flatMap { it.artists })
         }
     return summaries.map { summary ->
         summary.copy(items = summary.items.map { item ->
             if (item is SongItem) {
-                val merged = (item.artists + knownArtists[item.id].orEmpty())
-                    .distinctBy { it.id ?: "credit:${it.name.trim().lowercase()}" }
-                if (merged.size > item.artists.size) item.copy(artists = merged) else item
+                val merged = PageHelper.deduplicateArtistCredits(
+                    item.artists + knownArtists[item.id].orEmpty()
+                )
+                if (merged != item.artists) item.copy(artists = merged) else item
             } else item
         })
     }
@@ -157,15 +137,15 @@ data class SearchSummaryPage(
     fun withFilteredSongCredits(filteredSongs: List<SongItem>): SearchSummaryPage {
         if (filteredSongs.isEmpty()) return this
         val creditsById = filteredSongs.groupBy { it.id }.mapValues { (_, songs) ->
-            songs.flatMap { it.artists }
-                .distinctBy { it.id ?: "credit:${it.name.trim().lowercase()}" }
+            PageHelper.deduplicateArtistCredits(songs.flatMap { it.artists })
         }
         return copy(summaries = summaries.map { summary ->
             summary.copy(items = summary.items.map { item ->
                 if (item !is SongItem) item else {
-                    val credited = (item.artists + creditsById[item.id].orEmpty())
-                        .distinctBy { it.id ?: "credit:${it.name.trim().lowercase()}" }
-                    if (credited.size > item.artists.size) item.copy(artists = credited) else item
+                    val credited = PageHelper.deduplicateArtistCredits(
+                        item.artists + creditsById[item.id].orEmpty()
+                    )
+                    if (credited != item.artists) item.copy(artists = credited) else item
                 }
             })
         })
@@ -246,13 +226,13 @@ data class SearchSummaryPage(
                                 .find { it.buttonRenderer.icon?.iconType == "MUSIC_SHUFFLE" }
                                 ?.buttonRenderer
                                 ?.command
-                                ?.watchPlaylistEndpoint ?: return null,
+                                ?.watchPlaylistEndpoint,
                         radioEndpoint =
                             renderer.buttons
                                 .find { it.buttonRenderer.icon?.iconType == "MIX" }
                                 ?.buttonRenderer
                                 ?.command
-                                ?.watchPlaylistEndpoint ?: return null,
+                                ?.watchPlaylistEndpoint,
                     )
                 }
 
@@ -400,13 +380,13 @@ data class SearchSummaryPage(
                                 ?.find { it.menuNavigationItemRenderer?.icon?.iconType == "MUSIC_SHUFFLE" }
                                 ?.menuNavigationItemRenderer
                                 ?.navigationEndpoint
-                                ?.watchPlaylistEndpoint ?: return null,
+                                ?.watchPlaylistEndpoint,
                         radioEndpoint =
-                            renderer.menu.menuRenderer.items
-                                .find { it.menuNavigationItemRenderer?.icon?.iconType == "MIX" }
+                            renderer.menu?.menuRenderer?.items
+                                ?.find { it.menuNavigationItemRenderer?.icon?.iconType == "MIX" }
                                 ?.menuNavigationItemRenderer
                                 ?.navigationEndpoint
-                                ?.watchPlaylistEndpoint ?: return null,
+                                ?.watchPlaylistEndpoint,
                     )
                 }
 

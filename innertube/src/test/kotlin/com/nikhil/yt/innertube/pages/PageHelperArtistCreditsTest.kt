@@ -82,6 +82,177 @@ class PageHelperArtistCreditsTest {
         assertEquals(1, PageHelper.extractArtists(runs).size)
     }
 
+    @Test
+    fun `single canonical parser finds all song credits but not duration or album`() {
+        val metadata = listOf(
+            Run("Main", artistEndpoint("UC_main")),
+            Run(" & ", null),
+            Run("Guest", null),
+            Run(" • ", null),
+            Run("3:12", null),
+            Run(" • ", null),
+            Run("Album title", albumEndpoint("MPRE_album")),
+            Run(" • ", null),
+            Run("Second Guest", artistEndpoint("UC_second")),
+        )
+        assertEquals(
+            listOf(
+                Artist("Main", "UC_main"),
+                Artist("Guest", null),
+                Artist("Second Guest", "UC_second"),
+            ),
+            PageHelper.extractSongArtists(metadata),
+        )
+    }
+
+    @Test
+    fun `unlinked and linked copies of one guest become one navigable credit`() {
+        val metadata = listOf(
+            Run("Primary", artistEndpoint("UC_primary")),
+            Run(" & ", null),
+            Run("Guest", null),
+            Run(" • ", null),
+            Run("Guest", artistEndpoint("UC_guest")),
+        )
+        assertEquals(
+            listOf(Artist("Primary", "UC_primary"), Artist("Guest", "UC_guest")),
+            PageHelper.extractSongArtists(metadata),
+        )
+    }
+
+    @Test
+    fun `title or duration before a linked artist never becomes an artist`() {
+        val metadata = listOf(
+            Run("Track title", null),
+            Run("2:42", null),
+            Run("Oliver Tree", artistEndpoint("UC_oliver")),
+        )
+        assertEquals(
+            listOf(Artist("Oliver Tree", "UC_oliver")),
+            PageHelper.extractSongArtists(metadata),
+        )
+    }
+
+    @Test
+    fun `a localized song type label is not an artist`() {
+        assertEquals(
+            emptyList<Artist>(),
+            PageHelper.extractSongArtists(listOf(Run("Композиция", null))),
+        )
+        assertEquals(
+            emptyList<Artist>(),
+            PageHelper.extractArtists(listOf(Run("Композиция", null))),
+        )
+        assertEquals(
+            listOf(Artist("Guest", null)),
+            PageHelper.extractSongArtists(
+                listOf(Run("Композиция", null), Run(" • ", null), Run("Guest", null)),
+            ),
+        )
+    }
+
+    @Test
+    fun `a real artist called Song remains valid when linked`() {
+        assertEquals(
+            listOf(Artist("Song", "UC_song_artist")),
+            PageHelper.extractSongArtists(
+                listOf(Run("Song", artistEndpoint("UC_song_artist"))),
+            ),
+        )
+    }
+
+    @Test
+    fun `russian play counts never become performer credits`() {
+        val stats = listOf(
+            "1,7 млн прослушиваний",
+            "12 тыс. просмотров",
+            "2,3 млн слушателей за месяц",
+            "14 млн подписчиков",
+            "1 250 000 прослушиваний",
+            "5.6M views",
+            "24K plays",
+            "2.1 million monthly listeners",
+        )
+        stats.forEach { stat ->
+            assertEquals("Unexpected performer from: $stat",
+                emptyList<Artist>(), PageHelper.extractArtists(listOf(Run(stat, null))))
+            assertEquals("Unexpected song performer from: $stat",
+                emptyList<Artist>(), PageHelper.extractSongArtists(listOf(Run(stat, null))))
+        }
+    }
+
+    @Test
+    fun `Russian plays label never becomes a third musician`() {
+        val artists = listOf(
+            Artist("MZLFF", "UC_mzlff"),
+            Artist("STED.D", "UC_sted"),
+            Artist("1,3 млн прослушиваний", null),
+        )
+        assertEquals(artists.take(2), PageHelper.deduplicateArtistCredits(artists))
+        assertEquals(true, PageHelper.isAudienceStatisticLabel("1,3 млн прослушиваний"))
+        assertEquals(true, PageHelper.isAudienceStatisticLabel("1,3\u00A0млн\u00A0прослушиваний"))
+        assertEquals(true, PageHelper.isAudienceStatisticLabel("1,3 млн прослушиваний\u200B"))
+        assertEquals(
+            artists.take(2),
+            PageHelper.extractSongArtists(listOf(
+                Run("MZLFF", artistEndpoint("UC_mzlff")),
+                Run(" & ", null),
+                Run("STED.D", artistEndpoint("UC_sted")),
+                Run(" • ", null),
+                Run("1,3 млн прослушиваний", null),
+            )),
+        )
+    }
+
+    @Test
+    fun `statistics and localized song labels before an unlinked artist do not block it`() {
+        val metadata = listOf(
+            Run("Композиция", null),
+            Run("·", null),
+            Run("18,3 млн прослушиваний", null),
+            Run(" • ", null),
+            Run("Real Artist", null),
+            Run(" • ", null),
+            Run("4:12", null),
+        )
+        assertEquals(
+            listOf(Artist("Real Artist", null)),
+            PageHelper.extractSongArtists(metadata),
+        )
+    }
+
+    @Test
+    fun `audience count after linked main credit is not a featured artist`() {
+        assertEquals(
+            listOf(Artist("Main", "UC_main"), Artist("Guest", null)),
+            PageHelper.extractSongArtists(listOf(
+                Run("Main", artistEndpoint("UC_main")),
+                Run(" & ", null),
+                Run("Guest", null),
+                Run(" & ", null),
+                Run("5M views", null),
+            )),
+        )
+    }
+
+    @Test
+    fun `unlinked artist named Million Views survives and linked names still win`() {
+        assertEquals(
+            listOf(Artist("Million Views", null)),
+            PageHelper.extractSongArtists(listOf(Run("Million Views", null))),
+        )
+        assertEquals(
+            listOf(Artist("42M Views", "UC_real_band")),
+            PageHelper.extractSongArtists(listOf(Run("42M Views", artistEndpoint("UC_real_band")))),
+        )
+        assertEquals(
+            listOf(Artist("Guest", "UC_guest")),
+            PageHelper.deduplicateArtistCredits(listOf(
+                Artist("Guest", null), Artist("Guest", "UC_guest"),
+            )),
+        )
+    }
+
     private fun artistEndpoint(id: String) =
         NavigationEndpoint(
             browseEndpoint =

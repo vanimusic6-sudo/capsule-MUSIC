@@ -57,6 +57,16 @@ internal fun AlbumScreenLayout(
     }
 }
 
+/**
+ * No empty ribbon above the portrait: artwork begins at the window's top edge
+ * underneath the pinned artist-style toolbar. The old 44dp external spacer
+ * is incorporated into the portrait height instead, so buttons keep their Y.
+ */
+internal val AlbumArtworkTopSpacing = 0.dp
+
+/** One bottom gap for albums and every playlist, including loading placeholders. */
+internal val DetailHeroBottomSpacing = 34.dp
+
 /** Loading and loaded headers use the same spacing and cover geometry. */
 @Composable
 internal fun AlbumHeaderLayout(
@@ -65,55 +75,73 @@ internal fun AlbumHeaderLayout(
     metadata: @Composable () -> Unit,
     actions: @Composable () -> Unit,
     modifier: Modifier = Modifier,
-    bottomSpacing: androidx.compose.ui.unit.Dp = 56.dp,
+    bottomSpacing: androidx.compose.ui.unit.Dp = DetailHeroBottomSpacing,
+    showTitle: Boolean = true,
+    artworkTopSpacing: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        if (artworkTopSpacing > 0.dp) Spacer(Modifier.height(artworkTopSpacing))
         artwork()
-        Spacer(Modifier.height(16.dp))
-        title()
-        Spacer(Modifier.height(8.dp))
-        metadata()
-        Spacer(Modifier.height(24.dp))
+        if (showTitle) {
+            Spacer(Modifier.height(10.dp))
+            title()
+            Spacer(Modifier.height(6.dp))
+            metadata()
+            Spacer(Modifier.height(12.dp))
+        } else {
+            // The actual album title lives in the pinned Artist-style toolbar.
+            // Move the photograph down by 44dp, using the former caption's
+            // space rather than pushing download/play controls below the player.
+            Spacer(Modifier.height(14.dp))
+            metadata()
+        }
         actions()
         Spacer(Modifier.height(bottomSpacing))
     }
 }
 
+/**
+ * Album skeleton keeps the ORIGINAL portrait 0.85 artwork, title position and
+ * matte fade. The metadata and action rows occupy the same single album capsule.
+ * Its height matches the loaded content to prevent jumping on first render.
+ */
 @Composable
 internal fun AlbumHeaderPlaceholder(background: Color, modifier: Modifier = Modifier) {
     val loading = stringResource(R.string.loading)
     val placeholder = StandardChrome.muted.copy(alpha = 0.18f)
     AlbumHeaderLayout(
         modifier = modifier.clearAndSetSemantics { contentDescription = loading },
+        showTitle = false,
+        artworkTopSpacing = AlbumArtworkTopSpacing,
         artwork = {
-            AlbumArtworkLayers(ColorPainter(StandardChrome.panel), blurred = null, background = background)
+            AlbumArtworkLayers(
+                ColorPainter(StandardChrome.panel),
+                blurred = null,
+                background = background,
+            )
         },
-        title = {
-            Box(Modifier.fillMaxWidth(0.6f).height(32.dp).padding(vertical = 6.dp)
-                .clip(RoundedCornerShape(8.dp)).background(placeholder))
-        },
-        metadata = {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                listOf(64.dp, 96.dp, 72.dp).forEach { width ->
-                    Box(Modifier.width(width).height(28.dp).clip(CircleShape).background(placeholder))
-                }
-            }
-        },
+        title = {},
+        metadata = {},
         actions = {
-            Surface(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                shape = RoundedCornerShape(16.dp),
-                color = StandardChrome.panel.copy(alpha = 0.92f),
-                border = BorderStroke(1.dp, StandardChrome.muted.copy(alpha = 0.22f)),
+            CapsuleAlbumControls(
+                metrics = listOf(
+                    CapsuleHeroMetric(R.drawable.music_note, "—"),
+                    CapsuleHeroMetric(R.drawable.calendar_today, "—"),
+                    CapsuleHeroMetric(R.drawable.timer, "—"),
+                ),
             ) {
-                Row(
-                    Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    repeat(5) { Box(Modifier.size(20.dp).clip(CircleShape).background(placeholder)) }
+                repeat(5) {
+                    Box(
+                        Modifier.weight(1f).height(60.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            Modifier.size(22.dp).clip(CircleShape).background(placeholder),
+                        )
+                    }
                 }
             }
         },
+        bottomSpacing = DetailHeroBottomSpacing,
     )
 }

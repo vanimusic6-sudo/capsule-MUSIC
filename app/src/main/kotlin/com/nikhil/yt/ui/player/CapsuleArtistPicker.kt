@@ -19,6 +19,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.R
 import com.nikhil.yt.models.MediaMetadata
+import com.nikhil.yt.models.sanitizedArtistCredits
 import com.nikhil.yt.ui.component.ArtistSelectionItem
 
 /**
@@ -28,9 +29,7 @@ import com.nikhil.yt.ui.component.ArtistSelectionItem
 @Composable
 internal fun rememberArtistCredits(artists: List<MediaMetadata.Artist>): List<MediaMetadata.Artist> =
     remember(artists) {
-        artists.distinctBy { artist ->
-            artist.id ?: "name:${artist.name.trim().lowercase()}"
-        }
+        artists.sanitizedArtistCredits()
     }
 
 @Composable
@@ -58,7 +57,7 @@ internal fun CapsuleArtistPickerDialog(
         text = {
             LazyColumn(Modifier.heightIn(max = 360.dp)) {
                 itemsIndexed(
-                    items = artists,
+                    items = artists.sanitizedArtistCredits(),
                     key = { index, artist ->
                         artist.id ?: "credit:${artist.name.trim().lowercase()}:$index"
                     },

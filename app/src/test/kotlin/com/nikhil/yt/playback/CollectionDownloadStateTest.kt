@@ -39,6 +39,51 @@ class CollectionDownloadStateTest {
         assertEquals(Download.STATE_STOPPED, collectionDownloadState(listOf("a", "b"), emptyMap()))
     }
 
+    @Test fun manuallyPrioritizedSingleDoesNotKeepStoppedPlaylistDownloading() {
+        val manual = DownloadRequest.Builder("manual", Uri.parse("manual"))
+            .setData("Track".toByteArray()).build().withManualPriority()
+        val manualTransfer = Download(
+            manual, Download.STATE_DOWNLOADING, 0, 0, 100, 0,
+            Download.FAILURE_REASON_NONE,
+        )
+        val saved = download("saved", Download.STATE_COMPLETED)
+        val member = download("batch", Download.STATE_STOPPED)
+
+        // A still-running manual single is a real active download. The
+        // collection must not hide it behind a false "stopped" status.
+        assertEquals(
+            Download.STATE_DOWNLOADING,
+            collectionDownloadState(
+                listOf("saved", "batch", "manual"),
+                mapOf("saved" to saved, "batch" to member, "manual" to manualTransfer),
+            ),
+        )
+
+        // A batch request downloading alongside the manual item stays active.
+        assertEquals(
+            Download.STATE_DOWNLOADING,
+            collectionDownloadState(
+                listOf("saved", "batch", "manual"),
+                mapOf("saved" to saved,
+                    "batch" to download("batch", Download.STATE_QUEUED),
+                    "manual" to manualTransfer),
+            ),
+        )
+
+        // Manual tracks count toward completion once actually downloaded.
+        assertEquals(
+            Download.STATE_COMPLETED,
+            collectionDownloadState(
+                listOf("saved", "manual"),
+                mapOf("saved" to saved,
+                    "manual" to Download(
+                        manual, Download.STATE_COMPLETED, 0, 0, 100, 0,
+                        Download.FAILURE_REASON_NONE,
+                    )),
+            ),
+        )
+    }
+
     @Test fun oneActiveTrackKeepsABatchVisibleEvenWhenAnotherFailed() {
         for (active in listOf(Download.STATE_QUEUED, Download.STATE_DOWNLOADING, Download.STATE_RESTARTING)) {
             val downloads = mapOf("a" to download("a", active), "b" to download("b", Download.STATE_FAILED))

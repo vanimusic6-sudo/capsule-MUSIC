@@ -32,9 +32,12 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 @HiltViewModel
@@ -68,34 +71,51 @@ constructor(
                             .searchSummary(query)
                             .onSuccess { result ->
                                 val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-                                summaryPage = result.filterExplicit(hideExplicit)
-                                // As in Metrolist, filtered Songs often exposes
-                                // linked collaborators absent from the Top card.
-                                // Fetch once off the critical summary/UI path.
-                                // Only SAME video IDs can enrich those credits.
-                                val needsCompleteCredits = result.summaries
-                                    .flatMap { it.items }
-                                    .any { it is SongItem && it.artists.size <= 1 }
-                                if (needsCompleteCredits) {
-                                    launch {
-                                        val key = YouTube.SearchFilter.FILTER_SONG.value
-                                        val known = viewStateMap[key]
-                                        val matchingSongs =
-                                            if (known != null) known.items.filterIsInstance<SongItem>()
-                                            else {
+                                val filteredSummary = result.filterExplicit(hideExplicit)
+                                // Atomic metadata publication. Previously we rendered one
+                                // artist, then updated the row ~500ms later when another
+                                // async Songs response arrived. Waiting (bounded) here
+                                // makes the title+credits appear in one stable frame.
+                                val needsFullCredits = filteredSummary.summaries
+                                    .flatMap { it.items }.filterIsInstance<SongItem>()
+                                    .any { it.artists.size < 2 }
+                                // Resolve only Top result videos that have incomplete credits.
+                                // Metrolist also uses the queue endpoint for track-specific
+                                // metadata, rather than guessing from a matching song title.
+                                val topIds = filteredSummary.summaries.firstOrNull()
+                                    ?.items?.filterIsInstance<SongItem>()
+                                    ?.filter { it.artists.size < 2 }
+                                    ?.map { it.id }?.distinct()?.take(3).orEmpty()
+                                val completedSummary = if (needsFullCredits) {
+                                    val key = YouTube.SearchFilter.FILTER_SONG.value
+                                    val existing = viewStateMap[key]
+                                    val (songPage, queueSongs) = coroutineScope {
+                                        val songsJob = async {
+                                            existing ?: withTimeoutOrNull(1_800L) {
                                                 YouTube.search(query, YouTube.SearchFilter.FILTER_SONG)
-                                                    .getOrNull()?.let { page ->
-                                                        val filtered = page.items.distinctBy { it.id }
-                                                            .filterExplicit(hideExplicit)
-                                                        viewStateMap[key] = ItemsPage(filtered, page.continuation)
-                                                        filtered.filterIsInstance<SongItem>()
-                                                    }.orEmpty()
+                                                    .getOrNull()?.let { response ->
+                                                        val items = response.items.filterExplicit(hideExplicit)
+                                                        ItemsPage(items, response.continuation).also { page ->
+                                                            viewStateMap[key] = page
+                                                        }
+                                                    }
                                             }
-                                        if (matchingSongs.isNotEmpty()) {
-                                            summaryPage = summaryPage?.withFilteredSongCredits(matchingSongs)
                                         }
+                                        val queueJob = async {
+                                            if (topIds.isEmpty()) emptyList<SongItem>()
+                                            else withTimeoutOrNull(1_800L) {
+                                                YouTube.queue(videoIds = topIds).getOrNull().orEmpty()
+                                            }.orEmpty()
+                                        }
+                                        songsJob.await() to queueJob.await()
                                     }
-                                }
+                                    // Resolve before the sole summary publication: no text jump.
+                                    filteredSummary.withFilteredSongCredits(
+                                        songPage?.items?.filterIsInstance<SongItem>().orEmpty() + queueSongs
+                                    )
+                                } else filteredSummary
+                                // One Compose state mutation, never a late second-credit jump.
+                                summaryPage = completedSummary
                             }.onFailure {
                                 reportException(it)
                             }

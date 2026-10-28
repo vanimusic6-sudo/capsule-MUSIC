@@ -1,6 +1,8 @@
 package com.nikhil.yt.playback
 
 import android.content.Context
+import android.widget.Toast
+import com.nikhil.yt.R
 import androidx.core.net.toUri
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadManager
@@ -19,6 +21,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
 
 /**
@@ -83,7 +86,36 @@ internal object OnlinePlaylistDownloadCoordinator {
         // Record current IDs immediately so Stop/Remove is valid even before
         // the network resolves further continuation pages.
         val previouslyKnown = rememberedIds(context, playlistId)
+        // A resume after immediate Stop must clear pending stop intents even
+        // when the playlist card has no preview songs yet.
+        CollectionDownloadStopAdmission.clear(
+            downloadManager, (previouslyKnown + session.ids).distinct(),
+        )
         knownMembership[playlistId] = (previouslyKnown + session.ids).distinct()
+        // Resume persisted Media3 requests immediately, BEFORE the remote
+        // continuation-page lookup. Remote playlist metadata may take up to 25s
+        // or be offline; existing cached partial audio must never wait for it.
+        // This runs on the UI/main looper (same owner as AudioDownloadQueue).
+        val resumableIds = knownMembership[playlistId].orEmpty().toSet()
+        val live = downloadManager.currentDownloads.associateBy { it.request.id }
+        var foundPausedDownload = false
+        resumableIds.forEach { id ->
+            val saved = live[id] ?: knownDownloads[id]
+            if (saved?.state == Download.STATE_STOPPED) {
+                foundPausedDownload = true
+                if (saved.stopReason != DOWNLOAD_WAITING_FOR_SLOT) {
+                    downloadManager.setStopReason(id, DOWNLOAD_WAITING_FOR_SLOT)
+                }
+            }
+        }
+        if (foundPausedDownload) {
+            // An all-paused collection allows Android to stop DownloadService.
+            // Restart it immediately, independently of remote metadata. Do
+            // not send SET_STOP_REASON(2): a delayed command could overwrite
+            // the queue's already-admitted reason 0 and stall the spinner.
+            DownloadService.start(context.applicationContext, ExoDownloadService::class.java)
+        }
+        AudioDownloadQueue.wake(downloadManager)
         appSaveMembership(context, playlistId, knownMembership[playlistId].orEmpty())
         sessions[playlistId] = session
         _enqueuing.value = _enqueuing.value + playlistId
@@ -94,16 +126,37 @@ internal object OnlinePlaylistDownloadCoordinator {
                 // Resolve the FULL collection in this process-owned producer
                 // BEFORE enqueuing. The More sheet can close or be cancelled
                 // without leaving a producer that re-adds deleted tracks.
-                val remote = withContext(Dispatchers.IO) {
-                    YouTube.playlist(playlistId).completed().getOrNull()?.songs.orEmpty()
-                }
+                val remote = withTimeoutOrNull(25_000L) {
+                    withContext(Dispatchers.IO) {
+                        // Some public radio/mix lists have no browsable
+                        // playlist shelf but do expose a playable queue.
+                        // One fallback request only, and only after explicit
+                        // Download; opening More performs zero requests.
+                        val fromBrowse = YouTube.playlist(playlistId.removePrefix("VL"))
+                            .completed().getOrNull()?.songs.orEmpty()
+                        fromBrowse.ifEmpty {
+                            YouTube.queue(playlistId = playlistId.removePrefix("VL"))
+                                .getOrNull().orEmpty()
+                        }
+                    }
+                }.orEmpty()
                 currentCoroutineContext().ensureActive()
                 val uniqueSongs = remote.ifEmpty { firstPage }.distinctBy { it.id }
+                if (uniqueSongs.isEmpty() && previouslyKnown.none(knownDownloads::containsKey)) {
+                    // User/online playlist menus normally supply an empty first
+                    // page. Give a real failure explanation instead of showing
+                    // a dead, disabled button or silently doing nothing.
+                    Toast.makeText(
+                        appContext, R.string.capsule_online_playlist_download_unavailable,
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
                 session.ids = uniqueSongs.map { it.id }
                 val allIds = (previouslyKnown + session.ids).distinct()
                 knownMembership[playlistId] = allIds
                 appSaveMembership(context, playlistId, allIds)
                 var serviceStarted = false
+                var resumedInProducer = false
                 // One snapshot, not a linear scan of all downloaded tracks
                 // for every playlist member (which would be quadratic).
                 val indexed = knownDownloads +
@@ -112,9 +165,11 @@ internal object OnlinePlaylistDownloadCoordinator {
                     currentCoroutineContext().ensureActive()
                     val existing = indexed[song.id]
                     if (existing != null && existing.state != Download.STATE_FAILED) {
-                        if (existing.state == Download.STATE_STOPPED &&
-                            existing.stopReason != DOWNLOAD_WAITING_FOR_SLOT) {
-                            downloadManager.setStopReason(song.id, DOWNLOAD_WAITING_FOR_SLOT)
+                        if (existing.state == Download.STATE_STOPPED) {
+                            resumedInProducer = true
+                            if (existing.stopReason != DOWNLOAD_WAITING_FOR_SLOT) {
+                                downloadManager.setStopReason(song.id, DOWNLOAD_WAITING_FOR_SLOT)
+                            }
                         }
                         // Already queued, running or completed entries must not
                         // be restarted: preserve independent manual priority.
@@ -138,6 +193,13 @@ internal object OnlinePlaylistDownloadCoordinator {
                     }
                     if (index % 32 == 31) yield()
                 }
+                // A fresh continuation page can expose stopped requests that
+                // were not yet in the saved membership from the initial page.
+                if (resumedInProducer && !serviceStarted && !foundPausedDownload) {
+                    DownloadService.start(appContext, ExoDownloadService::class.java)
+                }
+                // Media3 won't emit a change for entries already waiting(2).
+                AudioDownloadQueue.wake(downloadManager)
                 if (remote.isEmpty()) {
                     // Offline/public metadata failure: the persistent index still
                     // knows the requests for continuation-page tracks. Resume
@@ -155,6 +217,9 @@ internal object OnlinePlaylistDownloadCoordinator {
                             }
                         }
                 }
+                // The queue can be idle when the metadata request completes
+                // without an ADD/change callback; wake it after admission.
+                AudioDownloadQueue.wake(downloadManager)
             } finally {
                 if (sessions[playlistId] === session) {
                     sessions.remove(playlistId)

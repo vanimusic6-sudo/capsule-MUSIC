@@ -10,6 +10,7 @@ package com.nikhil.yt.models
 
 import androidx.compose.runtime.Immutable
 import com.nikhil.yt.innertube.models.SongItem
+import com.nikhil.yt.innertube.pages.PageHelper
 import com.nikhil.yt.db.entities.Song
 import com.nikhil.yt.db.entities.SongEntity
 import com.nikhil.yt.ui.utils.resize
@@ -106,7 +107,9 @@ fun mergeArtistCredits(
 
     fun addOrEnrich(candidate: MediaMetadata.Artist) {
         val name = candidate.name.trim()
-        if (name.isEmpty() || name.isArtistCreditJoiner()) return
+        if (name.isEmpty() || name.isArtistCreditJoiner() ||
+            (candidate.id.isNullOrBlank() && PageHelper.isAudienceStatisticLabel(name))
+        ) return
 
         val index =
             merged.indexOfFirst { current ->
@@ -152,7 +155,7 @@ fun Song.toMediaMetadata() =
                 name = it.name,
                 thumbnailUrl = it.thumbnailUrl,
             )
-        },
+        }.sanitizedArtistCredits(),
         duration = song.duration,
         thumbnailUrl = song.thumbnailUrl,
         album =
