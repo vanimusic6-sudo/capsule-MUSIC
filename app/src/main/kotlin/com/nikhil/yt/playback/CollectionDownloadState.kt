@@ -236,12 +236,13 @@ internal fun enqueueCollectionDownloads(
                     manager.setStopReason(request.id, DOWNLOAD_WAITING_FOR_SLOT)
                 }
                 if (!serviceStarted) {
-                    // DownloadService may have exited while the entire
-                    // collection was paused. Wake it once, not for every item.
-                    DownloadService.sendSetStopReason(
-                        context, ExoDownloadService::class.java,
-                        request.id, DOWNLOAD_WAITING_FOR_SLOT, false,
-                    )
+                    // Waking a stopped service must NOT enqueue a second
+                    // SET_STOP_REASON(2) command: it might arrive AFTER the
+                    // queue admits this member (reason 0), silently pausing it
+                    // again and leaving the UI spinning on "Downloading".
+                    // ACTION_INIT starts the service without mutating any
+                    // already-resumed per-track stop reasons.
+                    DownloadService.start(context, ExoDownloadService::class.java)
                     serviceStarted = true
                 }
             }

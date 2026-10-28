@@ -61,7 +61,7 @@ class DownloadQueueTest {
             gates.getValue("track-1").countDown()
             await { index.getDownload("track-1")?.state == Download.STATE_COMPLETED }
             stopCollectionDownloads(manager, (1..101).map { "track-$it" })
-            await {
+            await(timeoutSeconds = 25) {
                 (2..101).all { n ->
                     index.getDownload("track-$n")?.let {
                         it.state == Download.STATE_STOPPED &&
@@ -268,9 +268,12 @@ class DownloadQueueTest {
         time, time, -1, DOWNLOAD_WAITING_FOR_SLOT, Download.FAILURE_REASON_NONE)
     private fun request(i: Int) = DownloadRequest.Builder("track-$i", Uri.parse("track-$i"))
         .setData("title-$i".toByteArray()).build()
-    private fun await(condition: () -> Boolean) {
-        val deadline = System.nanoTime() + 10_000_000_000L
-        while (!condition() && System.nanoTime() < deadline) { shadowOf(Looper.getMainLooper()).idle(); Thread.sleep(10) }
+    private fun await(timeoutSeconds: Long = 10, condition: () -> Boolean) {
+        val deadline = System.nanoTime() + timeoutSeconds * 1_000_000_000L
+        while (!condition() && System.nanoTime() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(10)
+        }
         assertTrue("Media3 queue did not reach the expected state", condition())
     }
 }

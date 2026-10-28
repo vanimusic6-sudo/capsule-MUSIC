@@ -50,6 +50,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -173,6 +176,11 @@ fun AlbumScreen(
             !selection && !showTopBarTitle
         }
     }
+    val toolbarOpacity by animateFloatAsState(
+        targetValue = if (transparentAppBar) 0f else 1f,
+        animationSpec = tween(durationMillis = 280),
+        label = "albumTopBarFade",
+    )
 
     AlbumScreenLayout(
         background = surfaceColor,
@@ -473,20 +481,13 @@ fun AlbumScreen(
         },
     ) {
         // The transparent toolbar sits over the artwork, below the status-bar inset.
-        val topAppBarColors = if (transparentAppBar) {
-            TopAppBarDefaults.topAppBarColors(
-                containerColor = Color.Transparent,
-                scrolledContainerColor = Color.Transparent,
-                navigationIconContentColor = MaterialTheme.colorScheme.onBackground,
-                titleContentColor = MaterialTheme.colorScheme.onBackground,
-                actionIconContentColor = MaterialTheme.colorScheme.onBackground
-            )
-        } else {
-            TopAppBarDefaults.topAppBarColors(
-                containerColor = surfaceColor,
-                scrolledContainerColor = surfaceColor
-            )
-        }
+        val topAppBarColors = TopAppBarDefaults.topAppBarColors(
+            containerColor = surfaceColor.copy(alpha = toolbarOpacity),
+            scrolledContainerColor = surfaceColor.copy(alpha = toolbarOpacity),
+            navigationIconContentColor = MaterialTheme.colorScheme.onBackground,
+            titleContentColor = MaterialTheme.colorScheme.onBackground,
+            actionIconContentColor = MaterialTheme.colorScheme.onBackground,
+        )
 
         TopAppBar(
             modifier = Modifier.align(Alignment.TopCenter),
@@ -499,12 +500,13 @@ fun AlbumScreen(
                         text = pluralStringResource(R.plurals.n_song, count, count),
                         style = MaterialTheme.typography.titleLarge
                     )
-                } else if (showTopBarTitle) {
+                } else {
                     Text(
                         text = albumWithSongs?.album?.title.orEmpty(),
                         style = MaterialTheme.typography.titleLarge,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.graphicsLayer { alpha = toolbarOpacity },
                     )
                 }
             },
