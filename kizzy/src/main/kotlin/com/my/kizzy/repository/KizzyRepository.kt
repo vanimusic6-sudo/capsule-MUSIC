@@ -12,12 +12,8 @@
 
 package com.my.kizzy.repository
 
-import com.my.kizzy.remote.ApiService
-import com.my.kizzy.utils.toImageAsset
 
 class KizzyRepository {
-    private val api = ApiService()
-
     // Simple in-memory cache for resolved image ids to speed up repeated resolves.
     // Keep it very small to avoid memory pressure.
     private val imageCache = object {
@@ -70,9 +66,8 @@ class KizzyRepository {
 
     suspend fun getImage(url: String): String? {
         imageCache.get(url)?.let { return it }
-        val result = api.getImage(url).getOrNull()?.toImageAsset()
-        if (result != null) imageCache.put(url, result)
-        return result
+        // Do not disclose cover URLs/listening activity to third-party proxies.
+        return null
     }
 
     // Prefetch image in background; returns resolved id or null

@@ -75,6 +75,7 @@ class TogetherServer(
         val clientId: String,
         val name: String,
         val session: WebSocketSession,
+        val cipher: TogetherLanCipher,
         var pending: Boolean,
     )
 
@@ -93,7 +94,7 @@ class TogetherServer(
                 embeddedServer(CIO, port = port, host = "0.0.0.0") {
                     install(WebSockets) {
                         // Never accept unlimited remote frames into app memory.
-                        maxFrameSize = 64L * 1024L
+                        maxFrameSize = 256L * 1024L
                     }
                     routing {
                         webSocket("/together") {
@@ -133,9 +134,7 @@ class TogetherServer(
         if (!approved) {
             runCatching {
                 client.session.send(
-                    TogetherJson.json.encodeToString(
-                        TogetherMessage.serializer(),
-                        JoinDecision(sessionId = sessionId, participantId = participantId, approved = false),
+                    client.cipher.encode(JoinDecision(sessionId = sessionId, participantId = participantId, approved = false),
                     ),
                 )
             }
@@ -148,9 +147,7 @@ class TogetherServer(
         client.pending = false
         runCatching {
             client.session.send(
-                TogetherJson.json.encodeToString(
-                    TogetherMessage.serializer(),
-                    JoinDecision(sessionId = sessionId, participantId = participantId, approved = true),
+                client.cipher.encode(JoinDecision(sessionId = sessionId, participantId = participantId, approved = true),
                 ),
             )
         }
@@ -219,9 +216,7 @@ class TogetherServer(
 
             runCatching {
                 client.session.send(
-                    TogetherJson.json.encodeToString(
-                        TogetherMessage.serializer(),
-                        RoomStateMessage(safeState),
+                    client.cipher.encode(RoomStateMessage(safeState),
                     ),
                 )
             }
@@ -229,6 +224,7 @@ class TogetherServer(
     }
 
     private suspend fun WebSocketSession.handleClient() {
+        val cipher = TogetherLanCipher(sessionKey)
         val helloText =
             try {
                 withTimeoutOrNull(5_000L) { incoming.receive() as? Frame.Text }
@@ -239,7 +235,7 @@ class TogetherServer(
         val hello =
             runCatching {
                 val txt = helloText?.readText().orEmpty()
-                val decoded = TogetherJson.json.decodeFromString(TogetherMessage.serializer(), txt)
+                val decoded = cipher.decode(txt)
                 decoded as? ClientHello
             }.getOrNull()
 
@@ -250,9 +246,7 @@ class TogetherServer(
 
         if (hello.protocolVersion != TogetherProtocolVersion) {
             send(
-                TogetherJson.json.encodeToString(
-                    TogetherMessage.serializer(),
-                    ServerError(sessionId = hello.sessionId, message = "Unsupported protocol version"),
+                cipher.encode(ServerError(sessionId = hello.sessionId, message = "Unsupported protocol version"),
                 ),
             )
             close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "Unsupported protocol"))
@@ -264,9 +258,7 @@ class TogetherServer(
                 sessionKey.toByteArray(StandardCharsets.UTF_8)
             )) {
             send(
-                TogetherJson.json.encodeToString(
-                    TogetherMessage.serializer(),
-                    ServerError(sessionId = hello.sessionId, message = "Invalid session"),
+                cipher.encode(ServerError(sessionId = hello.sessionId, message = "Invalid session"),
                 ),
             )
             close(CloseReason(CloseReason.Codes.CANNOT_ACCEPT, "Invalid session"))
@@ -286,6 +278,7 @@ class TogetherServer(
                 clientId = hello.clientId,
                 name = hello.displayName.trim().take(64).ifBlank { "Guest" },
                 session = this,
+                cipher = cipher,
                 pending = isPending,
             )
 
@@ -301,7 +294,7 @@ class TogetherServer(
                 settings = mutex.withLock { settings },
             )
 
-        send(TogetherJson.json.encodeToString(TogetherMessage.serializer(), welcome))
+        send(cipher.encode(welcome))
 
         val participant =
             TogetherParticipant(
@@ -320,7 +313,7 @@ class TogetherServer(
             for (frame in incoming) {
                 val text = (frame as? Frame.Text)?.readText() ?: continue
                 val message =
-                    runCatching { TogetherJson.json.decodeFromString(TogetherMessage.serializer(), text) }
+                    runCatching { cipher.decode(text) }
                         .getOrElse {
                             onEvent?.invoke(TogetherServerEvent.Error("Failed to decode message", it))
                             continue
@@ -329,9 +322,7 @@ class TogetherServer(
                 when (message) {
                     is HeartbeatPing -> {
                         send(
-                            TogetherJson.json.encodeToString(
-                                TogetherMessage.serializer(),
-                                HeartbeatPong(
+                            cipher.encode(HeartbeatPong(
                                     sessionId = sessionId,
                                     pingId = message.pingId,
                                     clientElapsedRealtimeMs = message.clientElapsedRealtimeMs,

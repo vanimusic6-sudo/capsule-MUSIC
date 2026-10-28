@@ -98,7 +98,11 @@ class TogetherOnlineHost(
         lastParticipants = emptyList()
 
         val trimmed = wsUrl.trim()
-        val urls = listOfNotNull(trimmed, alternateWebSocketSchemeOrNull(trimmed)).distinct()
+        if (!trimmed.startsWith("wss://", ignoreCase = true)) {
+            onEvent?.invoke(TogetherServerEvent.Error("Remote rooms require WSS"))
+            return
+        }
+        val urls = listOf(trimmed)
 
         val token = normalizedBearerToken
         if (token == null) {
@@ -134,15 +138,6 @@ class TogetherOnlineHost(
         }
 
         onEvent?.invoke(TogetherServerEvent.Error(connectionFailureMessage(lastError), lastError))
-    }
-
-    private fun alternateWebSocketSchemeOrNull(url: String): String? {
-        val trimmed = url.trim()
-        return when {
-            trimmed.startsWith("ws://") -> "wss://${trimmed.removePrefix("ws://")}"
-            trimmed.startsWith("wss://") -> "ws://${trimmed.removePrefix("wss://")}"
-            else -> null
-        }
     }
 
     private fun connectionFailureMessage(t: Throwable?): String {

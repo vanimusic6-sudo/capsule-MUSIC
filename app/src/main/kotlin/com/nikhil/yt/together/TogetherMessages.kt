@@ -10,7 +10,7 @@ import androidx.compose.runtime.Immutable
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-const val TogetherProtocolVersion: Int = 1
+const val TogetherProtocolVersion: Int = 2
 
 @Serializable
 sealed interface TogetherMessage

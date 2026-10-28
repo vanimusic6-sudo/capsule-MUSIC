@@ -29,7 +29,8 @@ sealed class RpcImage {
             if (image.startsWith("mp:") || image.startsWith("external/") || image.startsWith("attachments/")) {
                 return if (image.startsWith("mp:")) image else "mp:$image"
             }
-            return repository.getImage(image)
+            // Direct HTTPS assets only; no third-party image conversion API.
+            return image.takeIf { it.startsWith("https://", ignoreCase = true) }
         }
     }
 }

@@ -108,6 +108,7 @@ class TogetherClient(
     val events = _events.asSharedFlow()
 
     private var session: WebSocketSession? = null
+    private var sessionCipher: TogetherLanCipher? = null
     private var loopJob: Job? = null
     private var selfParticipantId: String? = null
     private val clientId = clientId.trim().ifBlank { UUID.randomUUID().toString() }.take(64)
@@ -119,7 +120,8 @@ class TogetherClient(
             _state.value = TogetherClientState.Connecting(joinInfo)
 
             val wsUrl = joinInfo.toWebSocketUrl()
-            val urls = listOfNotNull(wsUrl, alternateWebSocketSchemeOrNull(wsUrl)).distinct()
+            val urls = listOf(wsUrl)
+            val cipher = TogetherLanCipher(joinInfo.sessionKey)
 
             val token = normalizedBearerToken
 
@@ -133,6 +135,7 @@ class TogetherClient(
                         },
                     ) {
                         session = this
+                        sessionCipher = cipher
                         val hello =
                             ClientHello(
                                 protocolVersion = TogetherProtocolVersion,
@@ -141,7 +144,7 @@ class TogetherClient(
                                 clientId = clientId,
                                 displayName = displayName.trim(),
                             )
-                        send(TogetherJson.json.encodeToString(TogetherMessage.serializer(), hello))
+                        send(cipher.encode(hello))
                         _state.value = TogetherClientState.Connected(joinInfo)
                         runLoop(this, joinInfo.sessionId)
                     }
@@ -166,7 +169,12 @@ class TogetherClient(
             disconnect()
             _state.value = TogetherClientState.ConnectingRemote(wsUrl = wsUrl, sessionId = sessionId)
 
-            val urls = listOfNotNull(wsUrl.trim(), alternateWebSocketSchemeOrNull(wsUrl.trim())).distinct()
+            val remoteUrl = wsUrl.trim()
+            if (!remoteUrl.startsWith("wss://", ignoreCase = true)) {
+                _events.tryEmit(TogetherClientEvent.Error("Remote rooms require WSS"))
+                return@launch
+            }
+            val urls = listOf(remoteUrl)
 
             val token = normalizedBearerToken
 
@@ -203,15 +211,6 @@ class TogetherClient(
         }
     }
 
-    private fun alternateWebSocketSchemeOrNull(url: String): String? {
-        val trimmed = url.trim()
-        return when {
-            trimmed.startsWith("ws://") -> "wss://${trimmed.removePrefix("ws://")}"
-            trimmed.startsWith("wss://") -> "ws://${trimmed.removePrefix("wss://")}"
-            else -> null
-        }
-    }
-
     private fun connectionFailureMessage(t: Throwable?): String {
         val root = generateSequence(t) { it.cause }.lastOrNull()
         val raw = root?.message?.trim().orEmpty()
@@ -230,6 +229,14 @@ class TogetherClient(
         return if (detail == null) "Connection failed" else "Connection failed: $detail"
     }
 
+    private fun encodeOutgoing(message: TogetherMessage): String =
+        sessionCipher?.encode(message)
+            ?: TogetherJson.json.encodeToString(TogetherMessage.serializer(), message)
+
+    private fun decodeIncoming(packet: String): TogetherMessage =
+        sessionCipher?.decode(packet)
+            ?: TogetherJson.json.decodeFromString(TogetherMessage.serializer(), packet)
+
     suspend fun disconnect() {
         loopJob?.cancel()
         loopJob?.cancelAndJoin()
@@ -237,6 +244,7 @@ class TogetherClient(
         runCatching { session?.close(CloseReason(CloseReason.Codes.NORMAL, "Disconnect")) }
         session = null
         selfParticipantId = null
+        sessionCipher = null
         _state.value = TogetherClientState.Idle
     }
 
@@ -244,8 +252,7 @@ class TogetherClient(
         val pid = selfParticipantId ?: return
         scope.launch {
             session?.send(
-                TogetherJson.json.encodeToString(
-                    TogetherMessage.serializer(),
+                encodeOutgoing(
                     ControlRequest(sessionId = sessionId, participantId = pid, action = action),
                 ),
             )
@@ -256,8 +263,7 @@ class TogetherClient(
         val pid = selfParticipantId ?: return
         scope.launch {
             session?.send(
-                TogetherJson.json.encodeToString(
-                    TogetherMessage.serializer(),
+                encodeOutgoing(
                     AddTrackRequest(sessionId = sessionId, participantId = pid, track = track, mode = mode),
                 ),
             )
@@ -267,8 +273,7 @@ class TogetherClient(
     fun sendHeartbeat(sessionId: String, pingId: Long, clientElapsedRealtimeMs: Long) {
         scope.launch {
             session?.send(
-                TogetherJson.json.encodeToString(
-                    TogetherMessage.serializer(),
+                encodeOutgoing(
                     HeartbeatPing(
                         sessionId = sessionId,
                         pingId = pingId,
@@ -293,7 +298,7 @@ class TogetherClient(
 
                         val text = (frame as? Frame.Text)?.readText() ?: continue
                         val message =
-                            runCatching { TogetherJson.json.decodeFromString(TogetherMessage.serializer(), text) }
+                            runCatching { decodeIncoming(text) }
                                 .getOrElse {
                                     _events.tryEmit(TogetherClientEvent.Error("Failed to decode message", it))
                                     continue
@@ -356,6 +361,7 @@ class TogetherClient(
                 } catch (t: Throwable) {
                     _events.tryEmit(TogetherClientEvent.Error("Connection loop failed", t))
                 } finally {
+                    sessionCipher = null
                     _events.tryEmit(TogetherClientEvent.Disconnected)
                     _state.value = TogetherClientState.Idle
                 }
