@@ -194,6 +194,9 @@ fun AlbumScreen(
                         artwork = {
                             AlbumArtwork(
                                 thumbnailUrl = albumWithSongs.album.thumbnailUrl,
+                                fallbackThumbnailUrl = albumWithSongs.songs.firstOrNull {
+                                    !it.song.thumbnailUrl.isNullOrBlank()
+                                }?.song?.thumbnailUrl,
                                 background = surfaceColor,
                                 artworkAlpha = titleMotion::artworkAlpha,
                                 artworkMotion = titleMotion,

@@ -182,8 +182,8 @@ class AlbumLayoutTest {
         assertEquals(loadingHeader.height, loadedHeader.height, 2f)
         assertEquals("Loading and content must share the original album layout", loadingSong.top, loadedSong.top, 2f)
         assertEquals("Album cover should fill its width as before", loadedHeader.width, cover.width, 2f)
-        assertEquals("Original portrait ratio remains on roomy album layouts",
-            cover.width / 0.85f, cover.height, 2f)
+        assertEquals("Roomy album portrait keeps the shared 12dp cover-height adjustment",
+            cover.width / 0.85f + with(compose.density) { 12.dp.toPx() }, cover.height, 2f)
         assertTrue("Statistics are inside the same rounded capsule", metrics.top >= capsule.top)
         assertTrue("Buttons are inside the same rounded capsule", actions.bottom <= capsule.bottom)
         assertTrue("Stats sit above controls in one uninterrupted surface", metrics.bottom <= actions.top)

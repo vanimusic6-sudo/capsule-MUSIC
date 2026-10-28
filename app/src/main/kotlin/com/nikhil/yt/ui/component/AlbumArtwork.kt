@@ -3,6 +3,8 @@ package com.nikhil.yt.ui.component
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,7 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -19,6 +21,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.material3.Icon
+import androidx.compose.ui.res.painterResource
+import com.nikhil.yt.R
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
@@ -64,11 +69,52 @@ internal fun AlbumPortraitFrame(
 }
 
 /**
- * A direct Coil AsyncImage uses actual layout constraints. The previous
- * separate painter/size-resolver could leave a black portrait while metadata
- * and audio already loaded. Retry the original thumbnail if its optional
- * public Google CDN resolution upgrade fails.
+ * A direct Coil AsyncImage uses actual layout constraints. Try the original
+ * URL if a Google CDN resize fails, then a track cover if the collection
+ * thumbnail is missing or broken. This avoids a blank black hero.
  */
+@Composable
+internal fun DetailPortraitImage(
+    thumbnailUrl: String?,
+    modifier: Modifier = Modifier,
+    fallbackThumbnailUrl: String? = null,
+    minimumPixels: Int = 960,
+) {
+    val candidates = remember(thumbnailUrl, fallbackThumbnailUrl, minimumPixels) {
+        listOf(
+            capsuleArtworkUrl(thumbnailUrl, minimumPixels),
+            thumbnailUrl,
+            capsuleArtworkUrl(fallbackThumbnailUrl, minimumPixels),
+            fallbackThumbnailUrl,
+        ).filterNotNull().filter(String::isNotBlank).distinct()
+    }
+    var candidateIndex by remember(thumbnailUrl, fallbackThumbnailUrl, minimumPixels) {
+        mutableIntStateOf(0)
+    }
+    Box(
+        modifier.background(StandardChrome.panel),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.music_note),
+            contentDescription = null,
+            tint = StandardChrome.muted.copy(alpha = 0.38f),
+            modifier = Modifier.size(56.dp),
+        )
+        if (candidates.isNotEmpty()) {
+            AsyncImage(
+                model = candidates[candidateIndex.coerceAtMost(candidates.lastIndex)],
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                onError = {
+                    if (candidateIndex < candidates.lastIndex) candidateIndex++
+                },
+            )
+        }
+    }
+}
+
 @Composable
 internal fun AlbumArtwork(
     thumbnailUrl: String?,
@@ -76,22 +122,18 @@ internal fun AlbumArtwork(
     modifier: Modifier = Modifier,
     artworkAlpha: () -> Float = { 1f },
     artworkMotion: DetailHeaderMotionState? = null,
+    fallbackThumbnailUrl: String? = null,
 ) {
-    val highResolution = remember(thumbnailUrl) { capsuleArtworkUrl(thumbnailUrl, 960) }
-    var useOriginal by remember(thumbnailUrl) { mutableStateOf(false) }
     AlbumPortraitFrame(
         background = background,
         modifier = modifier,
         artworkAlpha = artworkAlpha,
         artworkMotion = artworkMotion,
     ) {
-        Box(Modifier.fillMaxSize().background(StandardChrome.panel))
-        AsyncImage(
-            model = if (useOriginal) thumbnailUrl else highResolution,
-            contentDescription = null,
+        DetailPortraitImage(
+            thumbnailUrl = thumbnailUrl,
+            fallbackThumbnailUrl = fallbackThumbnailUrl,
             modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
-            onError = { if (!useOriginal && highResolution != thumbnailUrl) useOriginal = true },
         )
     }
 }

@@ -26,7 +26,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
 import com.nikhil.yt.R
 
 /** The same caption and icon geometry for both playlists and albums. */
@@ -183,21 +182,18 @@ internal fun PlaylistHero(
                         modifier = Modifier.size(64.dp),
                         tint = StandardChrome.muted.copy(alpha = 0.7f),
                     )
-                    1 -> AsyncImage(
-                        model = capsuleArtworkUrl(covers.first(), 960),
-                        contentDescription = null,
+                    1 -> DetailPortraitImage(
+                        thumbnailUrl = covers.first(),
                         modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
                     )
                     else -> Column(Modifier.fillMaxSize()) {
                         repeat(2) { row ->
                             Row(Modifier.weight(1f)) {
                                 repeat(2) { column ->
-                                    AsyncImage(
-                                        model = capsuleArtworkUrl(covers[(row * 2 + column) % covers.size], 640),
-                                        contentDescription = null,
+                                    DetailPortraitImage(
+                                        thumbnailUrl = covers[(row * 2 + column) % covers.size],
+                                        minimumPixels = 640,
                                         modifier = Modifier.weight(1f).fillMaxHeight(),
-                                        contentScale = ContentScale.Crop,
                                     )
                                 }
                             }
