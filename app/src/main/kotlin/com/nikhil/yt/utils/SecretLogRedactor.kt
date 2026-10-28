@@ -12,9 +12,12 @@ internal object SecretLogRedactor {
     private val bearer = Regex("""(?i)(\bBearer\s+)[A-Za-z0-9._~+/-]{12,}""")
     private val sessionInUri = Regex("""(?i)([?&](?:key|token|access_token|refresh_token|sid)=)[^&#\s]+""")
 
-    fun redact(message: String): String =
-        bearer.replace(
-            sessionInUri.replace(assignments.replace(message, "$1[REDACTED]"), "$1[REDACTED]"),
-            "$1[REDACTED]"
-        )
+    fun redact(message: String): String {
+        // Redact the complete bearer value FIRST: running the generic
+        // Authorization assignment matcher first would remove only the word
+        // "Bearer" and accidentally leave the actual token in the log.
+        val safeBearer = bearer.replace(message, "$1[REDACTED]")
+        val safeAssignments = assignments.replace(safeBearer, "$1[REDACTED]")
+        return sessionInUri.replace(safeAssignments, "$1[REDACTED]")
+    }
 }
