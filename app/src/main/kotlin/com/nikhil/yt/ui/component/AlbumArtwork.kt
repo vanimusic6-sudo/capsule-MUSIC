@@ -61,7 +61,10 @@ internal fun AlbumPortraitFrame(
                 background = background,
                 modifier = Modifier.matchParentSize(),
                 portrait = true,
-                topScrim = true,
+                // Same uninterrupted full-bleed top edge as ArtistHero:
+                // the old opaque top scrim disguised the removed spacer as
+                // yet another grey band for the first ~14% of the photo.
+                topScrim = false,
                 softPortrait = true,
             )
         }
