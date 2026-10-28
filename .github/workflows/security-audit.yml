@@ -116,3 +116,52 @@ jobs:
           path: security-results/
           retention-days: 30
           if-no-files-found: warn
+
+  semgrep:
+    name: Independent Semgrep Kotlin/Java source scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install Semgrep
+        run: python3 -m pip install --disable-pip-version-check semgrep
+      - name: Run community SAST rules (static Kotlin/Java/XML)
+        shell: bash
+        run: |
+          mkdir -p security-results
+          semgrep scan --config p/security-audit \
+            --metrics off --timeout 10 \
+            --exclude docs --exclude scripts --exclude '**/build/**' \
+            --json --output security-results/semgrep.json .
+      - name: Summarize findings without printing secrets
+        shell: bash
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from collections import Counter
+          from pathlib import Path
+          p=Path('security-results/semgrep.json')
+          if not p.exists():
+              print('INCOMPLETE: no semgrep JSON was produced')
+              raise SystemExit(1)
+          data=json.loads(p.read_text())
+          findings=data.get('results',[])
+          summary={'status':'complete','count':len(findings),
+                   'severity':dict(Counter(x.get('extra',{}).get('severity','UNKNOWN') for x in findings)),
+                   'rules':dict(Counter(x.get('check_id','unknown') for x in findings))}
+          Path('security-results/semgrep-summary.json').write_text(json.dumps(summary,indent=2))
+          print('Semgrep findings:',len(findings),'errors:',len(data.get('errors',[])))
+          if data.get('errors'):
+              raise SystemExit('Semgrep reported analyzer errors; audit not complete')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capsule-semgrep-evidence
+          path: security-results/
+          retention-days: 30
+          if-no-files-found: warn
