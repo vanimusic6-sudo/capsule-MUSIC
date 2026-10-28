@@ -58,8 +58,15 @@ internal class AudioDownloadQueue(private val manager: DownloadManager) : Downlo
         // A resumed WAITING_FOR_SLOT request may not emit any new Media3
         // callback. Explicitly nudge the existing one-per-manager scheduler.
         private val installed = WeakHashMap<DownloadManager, AudioDownloadQueue>()
+        private val mainHandler = Handler(Looper.getMainLooper())
         fun wake(manager: DownloadManager) {
-            installed[manager]?.schedule()
+            // Online playlist producers resume from Dispatchers.IO. Media3
+            // queue ownership and registry access remain main-thread only.
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                installed[manager]?.schedule()
+            } else {
+                mainHandler.post { installed[manager]?.schedule() }
+            }
         }
     }
     private val handler = Handler(Looper.getMainLooper())
