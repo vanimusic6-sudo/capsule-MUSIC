@@ -26,10 +26,9 @@ internal fun decideDiscordPresenceReconcileAction(
     managerRunning: Boolean,
     activeToken: String?,
 ): DiscordPresenceReconcileAction {
-    val token = configuredToken.trim()
-    if (!enabled || token.isBlank()) return DiscordPresenceReconcileAction.STOP
-    if (managerRunning && activeToken == token) return DiscordPresenceReconcileAction.KEEP
-    return DiscordPresenceReconcileAction.RESTART
+    // User tokens are not an approved substitute for OAuth2. Disable the legacy
+    // gateway RPC until a first-party supported integration is available.
+    return DiscordPresenceReconcileAction.STOP
 }
 
 /**

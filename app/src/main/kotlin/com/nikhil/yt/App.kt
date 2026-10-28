@@ -159,6 +159,11 @@ class App : Application(), SingletonImageLoader.Factory {
                         preferences[DiscordActivityButton2CustomUrlKey] =
                             CapsuleBrand.REPOSITORY_URL
                     }
+                    // Revoke the locally retained legacy Discord user-token credential.
+                    preferences.remove(DiscordTokenKey)
+                    preferences.remove(DiscordUsernameKey)
+                    preferences.remove(DiscordNameKey)
+                    preferences[EnableDiscordRPCKey] = false
                 }
             } catch (error: Exception) {
                 reportRecoverableException("App", "migrate legacy Discord branding", error)

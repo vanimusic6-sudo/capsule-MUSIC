@@ -100,6 +100,8 @@ object DiscordPresenceManager {
         positionMs: Long,
         isPaused: Boolean,
     ): Boolean = withContext(Dispatchers.IO) {
+        // Strict fail-closed guard for callers bypassing DiscordPresenceOwner.
+        return@withContext false
         rpcMutex.withLock {
             try {
                 if (token.isBlank()) {
@@ -164,6 +166,9 @@ object DiscordPresenceManager {
         isPausedProvider: () -> Boolean,
         intervalProvider: () -> Long
     ) {
+        // A user-account Discord token must never be used for gateway RPC.
+        stop()
+        return
         if (token.isBlank()) {
             Timber.tag(logTag).w("start skipped (token missing)")
             stop()
