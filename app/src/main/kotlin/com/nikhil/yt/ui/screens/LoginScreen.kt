@@ -10,9 +10,10 @@ package com.nikhil.yt.ui.screens
 
 import android.annotation.SuppressLint
 import android.webkit.CookieManager
-import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebResourceRequest
+import org.json.JSONTokener
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -76,9 +77,32 @@ fun LoginScreen(
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, url: String?) {
                         if (isYouTubeMusicLoginPage(url)) {
-                            loadUrl("javascript:Android.onRetrieveVisitorData(window.yt.config_.VISITOR_DATA)")
-                            loadUrl("javascript:Android.onRetrieveDataSyncId(window.yt.config_.DATASYNC_ID)")
-                            loadUrl("javascript:void((function(){try{var c=window.ytcfg;if(c&&c.get){var t=c.get('PO_TOKEN');if(t){Android.onRetrievePoToken(t);return}}var s=document.querySelectorAll('script');for(var i=0;i<s.length;i++){var m=s[i].textContent.match(/\"PO_TOKEN\":\"([^\"]+)\"/);if(m){Android.onRetrievePoToken(m[1]);return}}}catch(e){}})())")
+                            // Read values from the trusted TOP-LEVEL music.youtube.com
+                            // document. Do not expose Java methods to all WebView frames.
+                            fun capture(script: String, receiver: (String) -> Unit) {
+                                view.evaluateJavascript(script) { raw ->
+                                    if (!isYouTubeMusicLoginPage(view.url)) return@evaluateJavascript
+                                    val value = runCatching {
+                                        JSONTokener(raw.orEmpty()).nextValue() as? String
+                                    }.getOrNull().orEmpty()
+                                    if (value.isNotBlank()) receiver(value)
+                                }
+                            }
+                            capture("(function(){try{return window.yt.config_.VISITOR_DATA||''}catch(e){return ''}})()") {
+                                visitorData = it
+                            }
+                            capture("(function(){try{return window.yt.config_.DATASYNC_ID||''}catch(e){return ''}})()") {
+                                dataSyncId = it.substringBefore("||")
+                            }
+                            capture("""(function(){try{
+                                var c=window.ytcfg;
+                                if(c&&c.get){var t=c.get('PO_TOKEN');if(t)return t;}
+                                var nodes=document.querySelectorAll('script');
+                                for(var i=0;i<nodes.length;i++){
+                                    var m=nodes[i].textContent.match(/"PO_TOKEN":"([^"]+)"/);
+                                    if(m)return m[1];
+                                }
+                            }catch(e){} return '';})()""") { poToken = it }
 
                             val loginCookie = CookieManager.getInstance().getCookie(url).orEmpty()
                             if (loginCookie.isBlank()) return
@@ -122,30 +146,12 @@ fun LoginScreen(
                 }
                 settings.apply {
                     javaScriptEnabled = true
+                    allowFileAccess = false
+                    allowContentAccess = false
                     setSupportZoom(true)
                     builtInZoomControls = true
                     displayZoomControls = false
                 }
-                addJavascriptInterface(object {
-                    @JavascriptInterface
-                    fun onRetrieveVisitorData(newVisitorData: String?) {
-                        if (newVisitorData != null) {
-                            visitorData = newVisitorData
-                        }
-                    }
-                    @JavascriptInterface
-                    fun onRetrieveDataSyncId(newDataSyncId: String?) {
-                        if (newDataSyncId != null) {
-                            dataSyncId = newDataSyncId.substringBefore("||")
-                        }
-                    }
-                    @JavascriptInterface
-                    fun onRetrievePoToken(newPoToken: String?) {
-                        if (!newPoToken.isNullOrBlank()) {
-                            poToken = newPoToken
-                        }
-                    }
-                }, "Android")
                 webView = this
                 loadUrl("https://accounts.google.com/ServiceLogin?continue=https%3A%2F%2Fmusic.youtube.com")
             }
