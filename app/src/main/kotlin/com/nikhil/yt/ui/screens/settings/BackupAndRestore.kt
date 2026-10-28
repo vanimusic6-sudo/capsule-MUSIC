@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -91,6 +93,7 @@ fun BackupAndRestore(
     viewModel: BackupRestoreViewModel = hiltViewModel(),
 ) {
     var importedTitle by remember { mutableStateOf("") }
+    var showUnencryptedBackupWarning by rememberSaveable { mutableStateOf(false) }
     val importedSongs = remember { mutableStateListOf<Song>() }
     var showChoosePlaylistDialogOnline by rememberSaveable { mutableStateOf(false) }
     var isProgressStarted by rememberSaveable { mutableStateOf(false) }
@@ -185,14 +188,7 @@ fun BackupAndRestore(
                 BackupSettingsItemStyle(
                     icon = painterResource(R.drawable.backup),
                     title = "Backup",
-                    onClick = {
-                        val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
-                        backupLauncher.launch(
-                            "${resources.getString(R.string.app_name)}_${
-                                LocalDateTime.now().format(formatter)
-                            }.backup"
-                        )
-                    }
+                    onClick = { showUnencryptedBackupWarning = true }
                 )
             }
             
@@ -220,6 +216,32 @@ fun BackupAndRestore(
                 )
             }
         }
+    }
+
+    if (showUnencryptedBackupWarning) {
+        AlertDialog(
+            onDismissRequest = { showUnencryptedBackupWarning = false },
+            title = { Text(stringResource(R.string.capsule_backup_privacy_warning_title)) },
+            text = { Text(stringResource(R.string.capsule_backup_privacy_warning_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showUnencryptedBackupWarning = false
+                    val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
+                    backupLauncher.launch(
+                        "${resources.getString(R.string.app_name)}_${
+                            LocalDateTime.now().format(formatter)
+                        }.backup"
+                    )
+                }) {
+                    Text(stringResource(R.string.capsule_backup_privacy_warning_continue))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showUnencryptedBackupWarning = false }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+            },
+        )
     }
 
     AddToPlaylistDialogOnline(
