@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   security:
@@ -28,7 +29,8 @@ jobs:
           if [[ -x "$SDKMANAGER" ]]; then
             "$SDKMANAGER" 'platforms;android-37.1'
           fi
-      - name: Source audit (flags live risks; fails on leaked tokens)
+      - name: Source audit (record blockers and continue other checks)
+        continue-on-error: true
         run: python3 scripts/capsule_security_audit.py
       - name: Resolved dependency inventory
         shell: bash
@@ -58,6 +60,53 @@ jobs:
                     "dex_count":sum(n.endswith('.dex') for n in names),
                     "asset_count":sum(n.startswith('assets/') for n in names)}
           Path("security-results/debug-apk-inventory.json").write_text(json.dumps(data,indent=2))
+          PY
+      - name: Inspect exact signed pre-audit release APK
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/capsule-release-audit security-results
+          gh run download 40650413220 --repo "$GITHUB_REPOSITORY" \
+            -n Capsule-MUSIC-Universal-Release \
+            -D /tmp/capsule-release-audit
+          APK="$(find /tmp/capsule-release-audit -name '*.apk' | head -n 1)"
+          test -s "$APK"
+          sha256sum "$APK" | cut -d ' ' -f1 > security-results/signed-release-sha256.txt
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" \
+            > security-results/signed-release-signature.txt
+          AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt | sort -V | tail -n 1)"
+          "$AAPT" dump permissions "$APK" > security-results/signed-release-permissions.txt
+          "$AAPT" dump badging "$APK" > security-results/signed-release-package.txt
+          python3 - "$APK" <<'PY'
+          import json,sys,zipfile
+          from pathlib import Path
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              names=z.namelist()
+              dex=b"".join(z.read(n) for n in names if n.endswith('.dex'))
+              evidence={"entry_count":len(names), "dex_count":sum(n.endswith('.dex') for n in names),
+                        "native_libs":[n for n in names if n.endswith('.so')],
+                        "contains_discord_token_log_marker":b"Token: " in dex,
+                        "contains_google_api_key_pattern":b"AIza" in dex,
+                        "network_config_resource":any("network_security_config" in n for n in names)}
+          Path("security-results/signed-release-byte-signals.json").write_text(json.dumps(evidence,indent=2))
+          PY
+      - name: Final security gate
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report=Path('security-results/source-and-dependency.json')
+          if not report.exists(): raise SystemExit('No audit report: incomplete')
+          data=json.loads(report.read_text())
+          if data['blockers']:
+              raise SystemExit('Candidate secrets / regressions: '+str(len(data['blockers'])))
+          if data['osv']['status']!='completed':
+              raise SystemExit('OSV dependency check incomplete')
+          print('Automated checks complete; manual security findings remain open.')
           PY
       - name: Persist complete evidence, including incomplete scans
         if: always()
