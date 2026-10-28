@@ -19,7 +19,6 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.preferencesDataStore
 import com.nikhil.yt.extensions.toEnum
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,7 +34,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 import kotlin.properties.ReadOnlyProperty
 
-val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
+val Context.dataStore: DataStore<Preferences>
+    get() = SecurePreferencesDataStore.forContext(this)
 
 object PreferenceStore {
     private const val INITIAL_LOAD_TIMEOUT_MS = 1500L

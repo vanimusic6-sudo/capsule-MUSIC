@@ -101,6 +101,9 @@ class App : Application(), SingletonImageLoader.Factory {
         }
 
         PreferenceStore.start(this)
+        // Convert legacy plaintext credentials to Keystore-encrypted values.
+        // The secure DataStore wrapper avoids disk writes if already migrated.
+        launchLifecycleCleanup { dataStore.edit { } }
         migrateLegacyBrandPreferences()
 
 
