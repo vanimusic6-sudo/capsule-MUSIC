@@ -31,7 +31,7 @@ import coil3.request.ImageRequest
  * matte surface veil used by the artist hero. No blurred duplicate layer is rendered underneath.
  */
 @Composable
-fun AlbumArtwork(
+internal fun AlbumArtwork(
     thumbnailUrl: String?,
     background: Color,
     modifier: Modifier = Modifier,
