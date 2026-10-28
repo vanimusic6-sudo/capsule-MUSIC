@@ -5,7 +5,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -17,8 +16,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -53,57 +50,34 @@ internal fun CapsuleDetailHero(
     artworkAlpha: () -> Float = { 1f },
     titleMotion: DetailHeaderMotionState? = null,
 ) {
-    BoxWithConstraints(modifier.fillMaxWidth().background(StandardChrome.background)) {
-        val availableWidth = maxWidth
-        val coverSide = (availableWidth - 48.dp).coerceAtLeast(1.dp)
-        // Match the album's capsule baseline on each screen size, not a fixed
-        // 100.dp spacer which pushed the playlist controls under the mini-player.
-        val albumCover = albumCoverHeight(
-            availableWidth.coerceAtMost(560.dp),
-            LocalConfiguration.current.screenHeightDp.dp,
-        )
-        // Artist subtitles add a line not present on album pages; prevent
-        // that extra line from shifting the action capsule beneath the mini-player.
-        val heroTopGap = (playlistArtworkTopGap(albumCover, coverSide) -
-            if (subtitle != null) 22.dp else 0.dp).coerceAtLeast(22.dp) + 40.dp
-        Column(
-            Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Spacer(Modifier.height(heroTopGap))
-            Box(
-            Modifier.fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                // Never squash square music art to a 1.06:1 rectangle.
-                .aspectRatio(1f)
-                .testTag("capsule:detail-artwork")
-                .then(if (titleMotion != null) Modifier.onGloballyPositioned(titleMotion::measureArtwork) else Modifier)
-                .graphicsLayer { alpha = artworkAlpha().coerceIn(0f, 1f) }
-                .clip(RoundedCornerShape(27.dp))
-                .background(StandardChrome.panel)
-                .border(
-                    1.dp,
-                    StandardChrome.muted.copy(alpha = 0.2f),
-                    RoundedCornerShape(27.dp),
-                ),
-        ) {
-            artwork()
-        }
-        // As on the artist card, there is no duplicate title underneath the cover.
-        if (subtitle != null) {
-            Spacer(Modifier.height(6.dp))
-            subtitle()
-        }
-        Spacer(Modifier.height(16.dp))
-        CapsuleAlbumControls(metrics = metrics, actions = actions)
-        Spacer(Modifier.height(DetailHeroBottomSpacing))
-        }
-    }
+    val bodyBackground = StandardChrome.background
+    AlbumHeaderLayout(
+        modifier = modifier,
+        showTitle = false,
+        // The same 44dp portrait inset as albums. Keep online-playlist author
+        // text without pushing its action capsule under the mini-player.
+        artworkTopSpacing = AlbumArtworkTopSpacing -
+            if (subtitle != null) 22.dp else 0.dp,
+        artwork = {
+            AlbumPortraitFrame(
+                background = bodyBackground,
+                artworkAlpha = artworkAlpha,
+                artworkMotion = titleMotion,
+            ) {
+                artwork()
+            }
+        },
+        title = {},
+        metadata = {
+            if (subtitle != null) {
+                Spacer(Modifier.height(6.dp))
+                subtitle()
+                Spacer(Modifier.height(6.dp))
+            }
+        },
+        actions = { CapsuleAlbumControls(metrics = metrics, actions = actions) },
+    )
 }
-
-/** Align the controls with the album capsule; the playlist cover stays square. */
-internal fun playlistArtworkTopGap(albumCoverHeight: androidx.compose.ui.unit.Dp, playlistCoverSide: androidx.compose.ui.unit.Dp) =
-    (albumCoverHeight - playlistCoverSide + 2.dp).coerceIn(32.dp, 98.dp)
 
 /**
  * Shared playlist + album controls: metadata and actions live inside ONE
@@ -200,7 +174,7 @@ internal fun PlaylistHero(
         titleMotion = titleMotion,
         artwork = {
             val covers = thumbnails.filter(String::isNotBlank).take(4)
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxSize().background(StandardChrome.panel), contentAlignment = Alignment.Center) {
                 when (covers.size) {
                     0 -> if (loading) VeluneLoader(size = 30.dp) else Icon(
                         painter = painterResource(placeholderIcon),
@@ -209,7 +183,7 @@ internal fun PlaylistHero(
                         tint = StandardChrome.muted.copy(alpha = 0.7f),
                     )
                     1 -> AsyncImage(
-                        model = covers.first(),
+                        model = capsuleArtworkUrl(covers.first(), 960),
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop,
@@ -219,7 +193,7 @@ internal fun PlaylistHero(
                             Row(Modifier.weight(1f)) {
                                 repeat(2) { column ->
                                     AsyncImage(
-                                        model = covers[(row * 2 + column) % covers.size],
+                                        model = capsuleArtworkUrl(covers[(row * 2 + column) % covers.size], 640),
                                         contentDescription = null,
                                         modifier = Modifier.weight(1f).fillMaxHeight(),
                                         contentScale = ContentScale.Crop,

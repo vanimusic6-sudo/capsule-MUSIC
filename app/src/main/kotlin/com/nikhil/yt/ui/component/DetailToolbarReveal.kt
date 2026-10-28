@@ -65,9 +65,10 @@ internal class DetailHeaderMotionState(
 }
 
 /**
- * Identical scroll curve and .74 fade-distance threshold to artistArtworkFade.
- * The only difference is that albums/playlists measure their real artwork
- * bottom from layout, including the new vertical offset of the album cover.
+ * A longer, later dissolve than the former 74%-distance transition.
+ * Both detail layouts use the SAME measured photo bottom, not an estimated
+ * title or hero height. It starts at 12% and finishes at 98% of the distance
+ * between the photo's lower edge and the pinned toolbar's lower edge.
  */
 internal fun detailArtworkFadeLikeArtist(
     firstVisibleItemIndex: Int,
@@ -78,8 +79,12 @@ internal fun detailArtworkFadeLikeArtist(
     if (firstVisibleItemIndex > 0) return 1f
     if (!artworkBottomPx.isFinite() || !toolbarBottomPx.isFinite()) return 0f
     val distance = (artworkBottomPx - toolbarBottomPx).coerceAtLeast(1f)
-    val fraction = (offsetPx / (distance * 0.74f)).coerceIn(0f, 1f)
-    return fraction * fraction * (3f - 2f * fraction)
+    val start = distance * 0.12f
+    val end = distance * 0.98f
+    val fraction = ((offsetPx - start) / (end - start)).coerceIn(0f, 1f)
+    // Fifth-order easing keeps both the acceleration and velocity near zero
+    // on entry/exit; photo, toolbar surface and icon tint share this value.
+    return fraction * fraction * fraction * (fraction * (fraction * 6f - 15f) + 10f)
 }
 
 @Composable

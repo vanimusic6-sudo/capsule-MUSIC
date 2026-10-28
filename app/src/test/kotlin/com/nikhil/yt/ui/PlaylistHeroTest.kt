@@ -27,7 +27,7 @@ import com.nikhil.yt.R
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
 import com.nikhil.yt.ui.component.albumCoverHeight
-import com.nikhil.yt.ui.component.playlistArtworkTopGap
+import com.nikhil.yt.ui.component.AlbumArtworkTopSpacing
 import java.io.File
 import kotlin.math.roundToInt
 import org.junit.Assert.*
@@ -62,12 +62,16 @@ class PlaylistHeroTest {
         val stats = compose.onNodeWithTag("capsule:album-metrics").fetchSemanticsNode().boundsInRoot
         val tray = compose.onNodeWithTag("capsule:album-actions").fetchSemanticsNode().boundsInRoot
         val outer = compose.onNodeWithTag("playlist").fetchSemanticsNode().boundsInRoot
-        assertEquals("Playlist artwork stays square; no horizontal stretching",
-            cover.width, cover.height, 2f)
-        assertTrue("Playlist cover clears the overlaid toolbar",
-            cover.top >= with(compose.density) { 32.dp.toPx() })
-        assertEquals("Artwork shares the capsule's exact width", capsule.width, cover.width, 2f)
-        assertEquals("Artwork and capsule have the same left edge", capsule.left, cover.left, 2f)
+        assertEquals("Playlist uses album's full-bleed portrait width",
+            outer.width, cover.width, 2f)
+        assertEquals("Playlist portrait matches album ratio/height",
+            with(compose.density) { albumCoverHeight(393.dp, 851.dp).toPx() },
+            cover.height, 2f)
+        assertEquals("Playlist and album start artwork at the same offset",
+            with(compose.density) { AlbumArtworkTopSpacing.toPx() },
+            cover.top - outer.top, 2f)
+        assertTrue("Unified capsule stays inside the portrait's width",
+            capsule.left >= cover.left && capsule.right <= cover.right)
         assertTrue("Playlist stats are enclosed inside the same capsule", stats.top >= capsule.top)
         assertTrue("Playlist actions are enclosed inside the same capsule", tray.bottom <= capsule.bottom)
         assertTrue("Stats and buttons share one surface without overlap", stats.bottom <= tray.top)
@@ -86,12 +90,10 @@ class PlaylistHeroTest {
         for (height in listOf(720.dp, 851.dp)) {
             val availableWidth = 393.dp
             val albumHeight = albumCoverHeight(availableWidth, height)
-            val playlistSide = availableWidth - 48.dp
-            val topGap = playlistArtworkTopGap(albumHeight, playlistSide)
-            // The caption now belongs to the pinned toolbar, not the hero.
-            // Album photo shifts 44dp down; both capsules retain their baseline.
-            val albumControlsY = 44.dp + albumHeight + 14.dp
-            val playlistControlsY = topGap + 40.dp + playlistSide + 16.dp
+            // Both use AlbumHeaderLayout(showTitle=false), the same portrait
+            // frame and identical action-capsule spacing.
+            val albumControlsY = AlbumArtworkTopSpacing + albumHeight + 14.dp
+            val playlistControlsY = AlbumArtworkTopSpacing + albumHeight + 14.dp
             assertEquals("Matching album/playlist control spacing at $height",
                 albumControlsY.value, playlistControlsY.value, 0.01f)
         }
