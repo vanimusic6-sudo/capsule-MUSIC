@@ -127,7 +127,7 @@ internal class PlaybackPersistence(
         return synchronized(stateLock) {
             runCatching {
                 persistentFile.inputStream().use { fileInput ->
-                    ObjectInputStream(fileInput).use { input ->
+                    SafeQueueObjectInputStream(fileInput).use { input ->
                         type.cast(input.readObject())
                     }
                 }

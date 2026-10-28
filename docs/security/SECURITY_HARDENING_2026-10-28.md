@@ -88,3 +88,12 @@ key rotation or adding sensitive permission is an explicit owner-reviewed
 change, not something CI silently accepts. This does not detect all
 malware; runtime network / device and dependency checks remain essential.
 
+
+## Legacy queue deserialization allowlist
+
+Replaced unrestricted ObjectInputStream with SafeQueueObjectInputStream for
+the three fixed filenames. Unknown classes, arrays of unknown types and
+dynamic proxies now fail closed. Keeps the 32 MiB cap. A fresh regression
+test exercises media artists/albums/date fields and player state.
+Legacy snapshots with obfuscated Kotlin EmptyList names may be discarded;
+a new versioned non-Java-serialization queue format remains recommended.
