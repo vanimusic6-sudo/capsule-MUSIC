@@ -34,16 +34,35 @@ class DetailToolbarRevealTest {
         assertEquals(0f, detailToolbarRevealFraction(0, 0, 0, 200, 100, false), 0f)
     }
 
-    @Test fun coverFadesSmoothlyAndToolbarWaitsUntilItReachesPageColour() {
+    @Test fun artworkWaitsForTitleApproachAndFadesAcrossFullThreeHundredPixels() {
         fun cover(offset: Int, index: Int = 0) =
             detailArtworkFadeFraction(index, offset, artworkBottomPx = 600, toolbarBottomPx = 100)
+        // Title crossing: 600 + 10 - 100 = 510 px.
+        // The 300px dissolve begins at 306px and ends at 606px.
         assertEquals(0f, cover(0), 0f)
-        assertEquals(0.5f, cover(185), 0.0001f)
-        assertEquals(1f, cover(370), 0f)
+        assertEquals(0f, cover(305), 0f)
+        assertEquals(0f, cover(306), 0f)
+        assertEquals(0.5f, cover(456), 0.0001f)
+        assertEquals(1f, cover(606), 0f)
+        assertTrue(cover(400) < cover(500))
         assertEquals(1f, cover(0, index = 1), 0f)
-        assertEquals(0f, detailToolbarSurfaceAlpha(cover(184)), 0f)
-        assertEquals(1f, detailToolbarSurfaceAlpha(cover(370)), 0f)
         assertEquals(0f, detailArtworkFadeFraction(0, 0, 0, 100), 0f)
+    }
+
+    @Test fun toolbarIsContinuousAndItsTitleDoesNotPrecedeOriginalHeaderTitle() {
+        val earlier = detailArtworkFadeFraction(0, 400, 600, 100)
+        val crossing = detailArtworkFadeFraction(0, 510, 600, 100)
+        val finalFade = detailArtworkFadeFraction(0, 606, 600, 100)
+        assertEquals(0f, detailToolbarSurfaceAlpha(0f), 0f)
+        assertEquals(1f, detailToolbarSurfaceAlpha(1f), 0f)
+        assertTrue(detailToolbarSurfaceAlpha(earlier) > 0f)
+        assertTrue(detailToolbarSurfaceAlpha(earlier) < detailToolbarSurfaceAlpha(crossing))
+        assertEquals(0f, detailToolbarTitleAlpha(earlier), 0f)
+        assertTrue(detailToolbarTitleAlpha(crossing) > 0f)
+        assertTrue(detailToolbarTitleAlpha(crossing) < 1f)
+        assertEquals(1f, detailToolbarTitleAlpha(finalFade), 0f)
+        val before = detailToolbarSurfaceAlpha(detailArtworkFadeFraction(0, 605, 600, 100))
+        assertTrue("No one-frame opaque toolbar switch", 1f - before < 0.001f)
     }
 
     @Test fun forcedToolbarAndAbsentHeroAreAlwaysVisible() {

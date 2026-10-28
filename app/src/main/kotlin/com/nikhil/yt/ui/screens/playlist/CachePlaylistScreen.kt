@@ -12,6 +12,7 @@ import androidx.compose.material3.CenterAlignedTopAppBar
 import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.rememberDetailArtworkFade
 import com.nikhil.yt.ui.component.detailToolbarSurfaceAlpha
+import com.nikhil.yt.ui.component.detailToolbarTitleAlpha
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
 import androidx.activity.compose.BackHandler
@@ -350,10 +351,12 @@ fun CachePlaylistScreen(
 
         // Same overlay behaviour as AlbumScreen: cover reaches the top and the toolbar
         // becomes solid only after its header scrolls away (or while searching/selecting).
-        val titleOpacity = if (selection || isSearching) 1f else artworkFade()
+        val coverFade = artworkFade()
+        val titleOpacity = if (selection || isSearching) 1f else detailToolbarTitleAlpha(coverFade)
+        val surfaceOpacity = if (selection || isSearching) 1f else detailToolbarSurfaceAlpha(coverFade)
         CenterAlignedTopAppBar(
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = surfaceColor.copy(alpha = detailToolbarSurfaceAlpha(titleOpacity)),
+                containerColor = surfaceColor.copy(alpha = surfaceOpacity),
                 scrolledContainerColor = surfaceColor.copy(alpha = detailToolbarSurfaceAlpha(titleOpacity)),
                 titleContentColor = lerp(Color.White, StandardChrome.text, titleOpacity),
                 navigationIconContentColor = lerp(Color.White, StandardChrome.text, titleOpacity),

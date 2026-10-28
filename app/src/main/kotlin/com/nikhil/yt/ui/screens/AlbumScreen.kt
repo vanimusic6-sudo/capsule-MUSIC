@@ -16,6 +16,7 @@ import com.nikhil.yt.ui.component.AlbumArtwork
 import com.nikhil.yt.ui.component.DetailHeroBottomSpacing
 import com.nikhil.yt.ui.component.rememberDetailArtworkFade
 import com.nikhil.yt.ui.component.detailToolbarSurfaceAlpha
+import com.nikhil.yt.ui.component.detailToolbarTitleAlpha
 import com.nikhil.yt.ui.component.AlbumHeaderLayout
 import com.nikhil.yt.ui.component.AlbumHeaderPlaceholder
 import com.nikhil.yt.ui.component.AlbumScreenLayout
@@ -173,7 +174,9 @@ fun AlbumScreen(
         isPlaylist = false,
         hasHeader = albumWithSongs?.songs?.isNotEmpty() == true,
     )
-    val toolbarOpacity = if (selection) 1f else artworkFade()
+    val coverFade = artworkFade()
+    val toolbarOpacity = if (selection) 1f else detailToolbarTitleAlpha(coverFade)
+    val surfaceOpacity = if (selection) 1f else detailToolbarSurfaceAlpha(coverFade)
 
     AlbumScreenLayout(
         background = surfaceColor,
@@ -476,7 +479,7 @@ fun AlbumScreen(
     ) {
         // The transparent toolbar sits over the artwork, below the status-bar inset.
         val topAppBarColors = TopAppBarDefaults.topAppBarColors(
-            containerColor = surfaceColor.copy(alpha = detailToolbarSurfaceAlpha(toolbarOpacity)),
+            containerColor = surfaceColor.copy(alpha = surfaceOpacity),
             scrolledContainerColor = surfaceColor.copy(alpha = detailToolbarSurfaceAlpha(toolbarOpacity)),
             navigationIconContentColor = lerp(Color.White, StandardChrome.text, toolbarOpacity),
             titleContentColor = StandardChrome.text,
@@ -486,7 +489,8 @@ fun AlbumScreen(
         TopAppBar(
             modifier = Modifier.align(Alignment.TopCenter),
             colors = topAppBarColors,
-            scrollBehavior = scrollBehavior,
+            // Keep the bar pinned like ArtistToolbar; a collapsing scrollBehavior
+            // forced a second upward tug before album controls became visible.
             title = {
                 if (selection) {
                     val count = wrappedSongs.count { it.isSelected }

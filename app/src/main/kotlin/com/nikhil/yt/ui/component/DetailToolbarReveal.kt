@@ -70,11 +70,17 @@ internal fun detailArtworkFadeFraction(
     firstVisibleItemScrollOffset: Int,
     artworkBottomPx: Int,
     toolbarBottomPx: Int,
+    fadeDistancePx: Int = 300,
 ): Float {
     if (firstVisibleItemIndex > 0) return 1f
     if (artworkBottomPx <= 0) return 0f
-    val distance = (artworkBottomPx - toolbarBottomPx).coerceAtLeast(1) * 0.74f
-    val t = (firstVisibleItemScrollOffset / distance).coerceIn(0f, 1f)
+    // Wait until the visible title APPROACHES the toolbar. The previous
+    // implementation faded the photo from scroll=0 and finished long before
+    // the title reached the pinned bar.
+    val titleCrossingPx = artworkBottomPx + (fadeDistancePx / 30f) - toolbarBottomPx
+    val distance = fadeDistancePx.coerceAtLeast(1)
+    val startPx = (titleCrossingPx - distance * 0.68f).coerceAtLeast(0f)
+    val t = ((firstVisibleItemScrollOffset - startPx) / distance).coerceIn(0f, 1f)
     return t * t * (3f - 2f * t)
 }
 
@@ -110,6 +116,7 @@ internal fun rememberDetailArtworkFade(
                         state.firstVisibleItemScrollOffset,
                         with(density) { artworkBottom.roundToPx() },
                         with(density) { (statusHeight + 64.dp).roundToPx() },
+                        with(density) { 300.dp.roundToPx() },
                     )
                 }
             }
@@ -117,5 +124,18 @@ internal fun rememberDetailArtworkFade(
     }
 }
 
-/** Artist-style one-time surface handoff, after the cover has fully dissolved. */
-internal fun detailToolbarSurfaceAlpha(fade: Float): Float = if (fade >= 1f) 1f else 0f
+/** Fade the themed surface continuously rather than snapping from 0 to 1. */
+internal fun detailToolbarSurfaceAlpha(fade: Float): Float {
+    val x = fade.coerceIn(0f, 1f)
+    return x * x * (3f - 2f * x)
+}
+
+/**
+ * The toolbar text starts only as the ORIGINAL header title approaches it.
+ * Its fade is deliberately later than the photo's: the same title must not
+ * be strongly visible in two places at once.
+ */
+internal fun detailToolbarTitleAlpha(coverFade: Float): Float {
+    val x = ((coverFade - 0.68f) / 0.32f).coerceIn(0f, 1f)
+    return x * x * (3f - 2f * x)
+}
