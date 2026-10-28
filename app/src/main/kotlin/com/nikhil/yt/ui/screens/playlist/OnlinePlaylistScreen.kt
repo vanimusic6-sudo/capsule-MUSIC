@@ -9,8 +9,6 @@ package com.nikhil.yt.ui.screens.playlist
 
 import androidx.compose.foundation.clickable
 import com.nikhil.yt.playback.queues.ListQueue
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.material3.CenterAlignedTopAppBar
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
@@ -20,6 +18,7 @@ import com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator
 import com.nikhil.yt.LocalDownloadUtil
 import androidx.media3.exoplayer.offline.Download
 import com.nikhil.yt.ui.component.StandardChrome
+import com.nikhil.yt.ui.component.detailToolbarReveal
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -75,6 +74,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -563,20 +563,18 @@ fun OnlinePlaylistScreen(
         // Top App Bar
         // Same overlay behaviour as AlbumScreen: cover reaches the top and the toolbar
         // becomes solid only after its header scrolls away (or while searching/selecting).
-        val showPlaylistHero = lazyListState.firstVisibleItemIndex == 0 && !selection && !isSearching
-        // Fade toolbar title/surface instead of snapping at the first item.
-        val titleOpacity by animateFloatAsState(
-            targetValue = if (showPlaylistHero) 0f else 1f,
-            animationSpec = tween(durationMillis = 280),
-            label = "playlistTopBarTitleFade",
+        val titleOpacity = detailToolbarReveal(
+            state = lazyListState,
+            forceVisible = selection || isSearching,
+            hasHeader = playlist != null,
         )
         CenterAlignedTopAppBar(
             colors = TopAppBarDefaults.topAppBarColors(
                 containerColor = surfaceColor.copy(alpha = titleOpacity),
                 scrolledContainerColor = surfaceColor.copy(alpha = titleOpacity),
-                titleContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
-                navigationIconContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
-                actionIconContentColor = if (showPlaylistHero) Color.White else StandardChrome.text,
+                titleContentColor = lerp(Color.White, StandardChrome.text, titleOpacity),
+                navigationIconContentColor = lerp(Color.White, StandardChrome.text, titleOpacity),
+                actionIconContentColor = lerp(Color.White, StandardChrome.text, titleOpacity),
             ),
             title = {
                 if (selection) {

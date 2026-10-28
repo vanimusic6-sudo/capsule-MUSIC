@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.dp
 import com.nikhil.yt.R
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
+import com.nikhil.yt.ui.component.albumCoverHeight
+import com.nikhil.yt.ui.component.playlistArtworkTopGap
 import java.io.File
 import kotlin.math.roundToInt
 import org.junit.Assert.*
@@ -60,10 +62,10 @@ class PlaylistHeroTest {
         val stats = compose.onNodeWithTag("capsule:album-metrics").fetchSemanticsNode().boundsInRoot
         val tray = compose.onNodeWithTag("capsule:album-actions").fetchSemanticsNode().boundsInRoot
         val outer = compose.onNodeWithTag("playlist").fetchSemanticsNode().boundsInRoot
-        assertEquals("Playlist artwork is slightly shorter, but remains near-square",
-            cover.width / 1.06f, cover.height, 2f)
-        assertTrue("Playlist cover and controls are lowered below the toolbar",
-            cover.top >= with(compose.density) { 95.dp.toPx() })
+        assertEquals("Playlist artwork stays square; no horizontal stretching",
+            cover.width, cover.height, 2f)
+        assertTrue("Playlist cover clears the overlaid toolbar",
+            cover.top >= with(compose.density) { 32.dp.toPx() })
         assertEquals("Artwork shares the capsule's exact width", capsule.width, cover.width, 2f)
         assertEquals("Artwork and capsule have the same left edge", capsule.left, cover.left, 2f)
         assertTrue("Playlist stats are enclosed inside the same capsule", stats.top >= capsule.top)
@@ -78,6 +80,21 @@ class PlaylistHeroTest {
         actions.forEach { it.performClick() }
         assertEquals(labels, clicked)
         savePreview()
+    }
+
+    @Test fun albumAndPlaylistCapsulesShareBaselineAcrossScreenSizes() {
+        for (height in listOf(720.dp, 851.dp)) {
+            val availableWidth = 393.dp
+            val albumHeight = albumCoverHeight(availableWidth, height)
+            val playlistSide = availableWidth - 48.dp
+            val topGap = playlistArtworkTopGap(albumHeight, playlistSide)
+            // Album has 10 + title + 6 + 12, playlist has
+            // 10 + title + 16. Its gap compensates for this 2dp difference.
+            val albumControlsY = albumHeight + 10.dp + 30.dp + 6.dp + 12.dp
+            val playlistControlsY = topGap + playlistSide + 10.dp + 30.dp + 16.dp
+            assertEquals("Matching album/playlist control spacing at $height",
+                albumControlsY, playlistControlsY)
+        }
     }
 
     @Test fun largerTextKeepsMetadataAndEveryActionReachableOnNarrowScreens() {

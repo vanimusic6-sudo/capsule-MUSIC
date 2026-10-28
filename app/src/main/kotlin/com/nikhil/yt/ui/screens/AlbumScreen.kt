@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.ui.unit.sp
 import com.nikhil.yt.ui.component.AlbumArtwork
 import com.nikhil.yt.ui.component.DetailHeroBottomSpacing
+import com.nikhil.yt.ui.component.detailToolbarReveal
 import com.nikhil.yt.ui.component.AlbumHeaderLayout
 import com.nikhil.yt.ui.component.AlbumHeaderPlaceholder
 import com.nikhil.yt.ui.component.AlbumScreenLayout
@@ -50,8 +51,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -165,21 +164,12 @@ fun AlbumScreen(
     // State for LazyColumn to track scroll
     val lazyListState = rememberLazyListState()
 
-    val showTopBarTitle by remember {
-        derivedStateOf {
-            lazyListState.firstVisibleItemIndex > 0
-        }
-    }
-
-    val transparentAppBar by remember {
-        derivedStateOf {
-            !selection && !showTopBarTitle
-        }
-    }
-    val toolbarOpacity by animateFloatAsState(
-        targetValue = if (transparentAppBar) 0f else 1f,
-        animationSpec = tween(durationMillis = 280),
-        label = "albumTopBarFade",
+    // Artwork, album title and toolbar are tied to one scroll fraction.
+    // Fade BEFORE the first song replaces the hero; no index-change flash.
+    val toolbarOpacity = detailToolbarReveal(
+        state = lazyListState,
+        forceVisible = selection,
+        hasHeader = albumWithSongs?.songs?.isNotEmpty() == true,
     )
 
     AlbumScreenLayout(

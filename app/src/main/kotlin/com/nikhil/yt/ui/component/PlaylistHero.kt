@@ -5,6 +5,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -48,16 +49,29 @@ internal fun CapsuleDetailHero(
     artwork: @Composable () -> Unit,
     actions: @Composable RowScope.() -> Unit,
 ) {
-    Column(
-        modifier.fillMaxWidth().background(StandardChrome.background),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        // The app toolbar sits over the top of the scrolling detail hero.
-        Spacer(Modifier.height(100.dp))
-        Box(
+    BoxWithConstraints(modifier.fillMaxWidth().background(StandardChrome.background)) {
+        val availableWidth = maxWidth
+        val coverSide = (availableWidth - 48.dp).coerceAtLeast(1.dp)
+        // Match the album's capsule baseline on each screen size, not a fixed
+        // 100.dp spacer which pushed the playlist controls under the mini-player.
+        val albumCover = albumCoverHeight(
+            availableWidth.coerceAtMost(560.dp),
+            LocalConfiguration.current.screenHeightDp.dp,
+        )
+        // Artist subtitles add a line not present on album pages; prevent
+        // that extra line from shifting the action capsule beneath the mini-player.
+        val heroTopGap = (playlistArtworkTopGap(albumCover, coverSide) -
+            if (subtitle != null) 22.dp else 0.dp).coerceAtLeast(22.dp)
+        Column(
+            Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Spacer(Modifier.height(heroTopGap))
+            Box(
             Modifier.fillMaxWidth()
                 .padding(horizontal = 24.dp)
-                .aspectRatio(1.06f)
+                // Never squash square music art to a 1.06:1 rectangle.
+                .aspectRatio(1f)
                 .testTag("capsule:detail-artwork")
                 .clip(RoundedCornerShape(27.dp))
                 .background(StandardChrome.panel)
@@ -87,8 +101,17 @@ internal fun CapsuleDetailHero(
         Spacer(Modifier.height(16.dp))
         CapsuleAlbumControls(metrics = metrics, actions = actions)
         Spacer(Modifier.height(DetailHeroBottomSpacing))
+        }
     }
 }
+
+/**
+ * For a one-line title this places the playlist's controls at approximately
+ * the same Y as the album controls: both titles and metric rows have the same
+ * baseline spacing. Clamp to keep the cover below the pinned top toolbar.
+ */
+internal fun playlistArtworkTopGap(albumCoverHeight: androidx.compose.ui.unit.Dp, playlistCoverSide: androidx.compose.ui.unit.Dp) =
+    (albumCoverHeight - playlistCoverSide + 2.dp).coerceIn(32.dp, 98.dp)
 
 /**
  * Shared playlist + album controls: metadata and actions live inside ONE
