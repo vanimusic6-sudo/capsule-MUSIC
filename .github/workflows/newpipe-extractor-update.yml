@@ -14,6 +14,9 @@ concurrency:
 jobs:
   update:
     name: Build signed VIDEO-engine candidate
+    # Share release-key approval policy with regular Capsule signing jobs.
+    # OWNER ACTION: require maintainer approval in capsule-signing environment.
+    environment: capsule-signing
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
