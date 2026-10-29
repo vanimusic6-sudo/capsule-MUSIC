@@ -235,6 +235,10 @@ class PoTokenExtractionActivity : ComponentActivity() {
                         settings.javaScriptEnabled = true
                         settings.allowFileAccess = false
                         settings.allowContentAccess = false
+                        settings.allowFileAccessFromFileURLs = false
+                        settings.allowUniversalAccessFromFileURLs = false
+                        settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                        settings.setGeolocationEnabled(false)
                         settings.domStorageEnabled = true
                         settings.setSupportZoom(true)
                         settings.builtInZoomControls = true
