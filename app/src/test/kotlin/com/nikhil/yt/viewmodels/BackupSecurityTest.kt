@@ -9,7 +9,8 @@ import org.junit.Test
 class BackupSecurityTest {
     @Test fun credentialsNeverEnterManualBackupOrRestore() {
         for (key in listOf("InnerTubeCookie", "DiscordToken", "PoTokenGvs", "AccountEmail",
-            "VisitorData", "OAuthRefresh", "API_KEY", "DataSyncId")) {
+            "VisitorData", "OAuthRefresh", "API_KEY", "DataSyncId",
+            "ProxyUrl", "proxyPassword", "AuthorizationBearer", "PrivateKey")) {
             assertFalse(key, BackupSecurity.exportablePreference(key))
         }
         for (key in listOf("darkMode", "playerBackground", "shuffle", "volumeNormalization")) {
