@@ -1,60 +1,9 @@
 name: Release APK
 
+# Official developer-signed APKs are NEVER built on every code push.
+# Run manually from Actions, select the vetted main or release/* branch.
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - release/01-core-reliability
-      - fix/posttest-ui-rework-20261026
-      - fix/real-download-menu-repair-20261026
-      - fix/download-actions-artist-credits-cover-20261026
-      - fix/rebuild-download-artwork-search-20261026
-      - fix/metrolist-search-active-download-20261026
-      - fix/artist-atomic-player-download-efficiency-20261027
-      - audit/security-deep-20261028
-      - experimental/discovery-open-catalogs-20261022
-      - next/capsule-clay
-      - perf/thermal-audit-20261005
-      - feature/video-isolated-thermal-20261010-v2
-      - fix/video-stable-incremental-20261011
-      - refactor/video-session-rebuild-20261011
-      - fix/video-state-audio-maintenance-20261014
-      - polish/video-immersion-jelly-audio-cdn-20261014
-      - polish/velocity-sticky-video-20261014
-      - fix/video-consistent-width-soft-corners-20261014
-      - fix/immersion-close-artwork-energy-20261014
-      - fix/video-cover-stability-independent-size-20261014
-      - fix/video-dissolve-opaque-cover-20261015
-      - polish/lyrics-menu-motion-20261015
-      - polish/lyrics-jelly-menu-gestures-immersion-seam-20261015
-      - fix/original-more-jelly-smooth-lyrics-20261015
-      - fix/predictive-back-and-lyrics-transition-20261015
-      - polish/motion-sheet-lyrics-60hz-20261015
-      - polish/lyrics-aperture-morph-20261015
-      - polish/lyrics-ink-immersion-true-edge-20261015
-      - fix/immersive-smoked-gradient-lyrics-fog-20261016
-      - fix/immersion-soft-staged-shading-static-ink-20261016
-      - fix/immersion-clean-photo-to-ink-20261016
-      - fix/immersion-continuous-photo-to-floor-20261016
-      - fix/immersion-return-sampled-muted-colour-20261016
-      - fix/immersion-restore-original-white-soft-only-20261016
-      - audit/global-motion-physics-energy-20261017
-      - feature/settings-motion-physics-20261017
-      - feature/settings-motion-v2-20261017
-      - fix/settings-motion-recording-9467-20261017
-      - fix/settings-header-motion-smooth-energy-20261017
-      - fix/settings-motion-header-standalone-20261017
-      - fix/motion-9481-nav-dialogs-priorities-20261018
-      - fix/archive-settings-nav-dialog-exit-20261018
-      - polish/settings-section-modal-switch-motion-20261018
-      - polish/soft-motion-thermal-header-9496-20261018
-      - fix/header-reveal-soft-nav-together-toggle-20261018
-      - fix/inline-scroll-header-together-no-ripple-20261018
-      - fix/feed-header-status-inset-20261018
-      - refactor/spotify-pinned-header-20261018
-      - fix/pinned-header-color-settings-transition-20261018
-      - feature/home-feed-airy-discovery-20261019
-      - fix/video-timeline-morph-20261014
 
 permissions:
   contents: read
@@ -66,6 +15,9 @@ concurrency:
 jobs:
   release:
     name: Build signed Universal APK
+    # Treat the signed certificate as a production identity, never a CI test
+    # artifact from an arbitrary feature/fix/audit branch.
+    if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/') }}
     # OWNER ACTION: protect this environment with required reviewer and
     # allowed protected branches. An unprotected environment gives NO extra safety.
     environment: capsule-signing
@@ -102,6 +54,18 @@ jobs:
             echo 'SDK CLI unavailable; Android Gradle Plugin will install compile SDK 37.1.'
           fi
 
+      - name: Validate official signing credentials
+        shell: bash
+        env:
+          CAPSULE_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          for value in "$CAPSULE_KEYSTORE" "$STORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD"; do
+            if [[ -z "$value" ]]; then
+              echo "::error::Official signing secrets are missing. Configure capsule-signing Environment secrets."
+              exit 1
+            fi
+          done
       - name: Restore release keystore
         shell: bash
         run: |
