@@ -264,6 +264,11 @@ class BackupRestoreViewModel @Inject constructor(
     fun restore(context: Context, uri: Uri, password: String? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             val title = context.getString(R.string.restore_in_progress)
+            // Archive data must be fully authenticated and extracted into a
+            // disposable private directory before touching live databases.
+            val stage = java.nio.file.Files.createTempDirectory(
+                context.cacheDir.toPath(), "capsule-import-"
+            ).toFile()
             try {
                 emitProgress(
                     title = title,
@@ -271,103 +276,46 @@ class BackupRestoreViewModel @Inject constructor(
                     percent = 0,
                     indeterminate = true,
                 )
-
-                val entryNames = ArrayList<String>()
-                var hasDb = false
-                var totalUncompressedBytes = 0L
-                openBackupInput(context, uri, password).use { stream ->
-                    stream.zipInputStream().use { zip ->
-                        var entry = zip.nextEntry
-                        while (entry != null) {
-                            if (entryNames.size >= 16 || entry.name.length > 160 || entry.name in entryNames) {
-                                throw java.io.IOException("Invalid or repeated backup entry")
-                            }
-                            entryNames.add(entry.name)
-                            if (entry.name == InternalDatabase.DB_NAME) hasDb = true
-                            val entryLimit = when (entry.name) {
-                                SETTINGS_XML_FILENAME, SETTINGS_FILENAME -> BackupSecurity.MAX_SETTINGS_BYTES
-                                InternalDatabase.DB_NAME,
-                                "${InternalDatabase.DB_NAME}-wal",
-                                "${InternalDatabase.DB_NAME}-shm",
-                                "${InternalDatabase.DB_NAME}-journal" -> BackupSecurity.MAX_DATABASE_BYTES
-                                else -> BackupSecurity.MAX_SETTINGS_BYTES
-                            }
-                            totalUncompressedBytes += BackupSecurity.drainEntry(zip, entryLimit)
-                            if (totalUncompressedBytes > BackupSecurity.MAX_ARCHIVE_BYTES)
-                                throw java.io.IOException("Archive exceeds safe extracted limit")
-                            entry = zip.nextEntry
-                        }
-                    }
+                val entries = openBackupInput(context, uri, password).use { stream ->
+                    BackupRestoreStaging.stage(
+                        authenticatedInput = stream,
+                        stageDir = stage,
+                        databaseName = InternalDatabase.DB_NAME,
+                        settingsXmlName = SETTINGS_XML_FILENAME,
+                        legacySettingsName = SETTINGS_FILENAME,
+                    )
                 }
-                if (!hasDb) throw IllegalStateException("Backup missing database")
+                // Reject XML entity expansion and corrupted XML before closing
+                // the music database. Plain preferences_pb is never imported.
+                val stagedSettings = java.io.File(stage, SETTINGS_XML_FILENAME)
+                if (SETTINGS_XML_FILENAME in entries) validateRestoreXml(stagedSettings)
 
-                val restoreEntries =
-                    entryNames.filter { name ->
-                        name == SETTINGS_XML_FILENAME ||
-                            // Never import the raw legacy DataStore file: may contain login credentials.
-                            name == InternalDatabase.DB_NAME ||
-                            name == "${InternalDatabase.DB_NAME}-wal" ||
-                            name == "${InternalDatabase.DB_NAME}-shm" ||
-                            name == "${InternalDatabase.DB_NAME}-journal"
-                    }
+                emitProgress(
+                    title = title,
+                    step = context.getString(R.string.restore_step_stopping_playback),
+                    percent = 65,
+                    indeterminate = true,
+                )
+                context.stopService(Intent(context, MusicService::class.java))
+                database.awaitIdle()
+                database.checkpoint()
+                database.close()
 
-                val totalUnits = 1 + 1 + restoreEntries.size
-                val unitSpan = 100f / totalUnits.coerceAtLeast(1)
-                var completedUnits = 0
+                // One private staging pass; never reopen an attacker-controlled
+                // ContentProvider URI after checking its previous contents.
+                BackupRestoreStaging.installDatabase(
+                    stage, context.getDatabasePath(InternalDatabase.DB_NAME).parentFile!!,
+                    InternalDatabase.DB_NAME,
+                )
 
-                fun emit(step: String, indeterminate: Boolean) {
-                    val p = (completedUnits * unitSpan).roundToInt().coerceIn(0, 100)
-                    emitProgress(title = title, step = step, percent = p, indeterminate = indeterminate)
-                }
-
-                completedUnits++
-                emit(context.getString(R.string.restore_step_stopping_playback), indeterminate = true)
-                runCatching { context.stopService(Intent(context, MusicService::class.java)) }
-                runCatching { database.awaitIdle() }
-                runCatching { database.checkpoint() }
-                runCatching { database.close() }
-                completedUnits++
-
-                openBackupInput(context, uri, password).use { stream ->
-                    stream.zipInputStream().use { zip ->
-                        var entry = zip.nextEntry
-                        while (entry != null) {
-                            val name = entry.name
-                            if (name !in restoreEntries) {
-                                entry = zip.nextEntry
-                                continue
-                            }
-                            when (name) {
-                                SETTINGS_XML_FILENAME -> {
-                                    emit(context.getString(R.string.restore_step_restoring_settings), indeterminate = true)
-                                    restoreSettingsFromXml(context, zip)
-                                }
-                                SETTINGS_FILENAME -> {
-                                    emit(context.getString(R.string.restore_step_restoring_settings), indeterminate = true)
-                                    val settingsDir = context.filesDir / "datastore"
-                                    if (!settingsDir.exists()) settingsDir.mkdirs()
-                                    (settingsDir / SETTINGS_FILENAME).outputStream().use { out ->
-                                        BackupSecurity.copyBounded(zip, out, BackupSecurity.MAX_SETTINGS_BYTES)
-                                    }
-                                }
-                                InternalDatabase.DB_NAME,
-                                "${InternalDatabase.DB_NAME}-wal",
-                                "${InternalDatabase.DB_NAME}-shm",
-                                "${InternalDatabase.DB_NAME}-journal" -> {
-                                    emit(context.getString(R.string.restore_step_restoring_file, name), indeterminate = true)
-                                    val dbFile = context.getDatabasePath(name)
-                                    if (dbFile.exists()) {
-                                        dbFile.delete()
-                                    }
-                                    FileOutputStream(dbFile).use { out ->
-                                        BackupSecurity.copyBounded(zip, out, BackupSecurity.MAX_DATABASE_BYTES)
-                                    }
-                                }
-                            }
-                            completedUnits++
-                            entry = zip.nextEntry
-                        }
-                    }
+                if (stagedSettings.exists()) {
+                    emitProgress(
+                        title = title,
+                        step = context.getString(R.string.restore_step_restoring_settings),
+                        percent = 90,
+                        indeterminate = true,
+                    )
+                    stagedSettings.inputStream().use { restoreSettingsFromXml(context, it) }
                 }
 
                 emitProgress(
@@ -376,17 +324,14 @@ class BackupRestoreViewModel @Inject constructor(
                     percent = 100,
                     indeterminate = true,
                 )
-
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, R.string.restore_success, Toast.LENGTH_SHORT).show()
                 }
-
                 try {
                     context.filesDir.resolve(PERSISTENT_QUEUE_FILE).delete()
                 } catch (error: Exception) {
                     reportRecoverableException("BackupRestore", "delete stale persistent queue", error)
                 }
-
                 _backupRestoreProgress.value = null
                 context.startActivity(Intent(context, MainActivity::class.java))
                 exitProcess(0)
@@ -396,8 +341,42 @@ class BackupRestoreViewModel @Inject constructor(
                     Toast.makeText(context, e.message ?: context.getString(R.string.restore_failed), Toast.LENGTH_LONG).show()
                 }
             } finally {
+                stage.deleteRecursively()
                 _backupRestoreProgress.value = null
             }
+        }
+    }
+
+    private fun validateRestoreXml(file: java.io.File) {
+        val xml = file.inputStream().use {
+            BackupSecurity.readBounded(it, BackupSecurity.MAX_SETTINGS_BYTES).toString(Charsets.UTF_8)
+        }
+        if (xml.contains("<!DOCTYPE", ignoreCase = true) ||
+            xml.contains("<!ENTITY", ignoreCase = true)
+        ) throw java.io.IOException("Backup XML document declarations are not allowed")
+        val parser = android.util.Xml.newPullParser()
+        parser.setInput(StringReader(xml))
+        var elements = 0
+        var event = parser.eventType
+        while (event != XmlPullParser.END_DOCUMENT) {
+            if (event == XmlPullParser.DOCDECL) {
+                throw java.io.IOException("Backup XML DTD is not permitted")
+            }
+            if (event == XmlPullParser.START_TAG) {
+                elements++
+                if (elements > 25_000 || parser.depth > 8) {
+                    throw java.io.IOException("Backup XML complexity limit exceeded")
+                }
+                val key = parser.getAttributeValue(null, "name")
+                if (key != null && key.length > 128) {
+                    throw java.io.IOException("Backup setting key too long")
+                }
+                val value = parser.getAttributeValue(null, "value")
+                if (value != null && value.length > 32_768) {
+                    throw java.io.IOException("Backup setting value too long")
+                }
+            }
+            event = parser.next()
         }
     }
 
