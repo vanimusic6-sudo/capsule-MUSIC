@@ -148,6 +148,10 @@ fun LoginScreen(
                     javaScriptEnabled = true
                     allowFileAccess = false
                     allowContentAccess = false
+                    allowFileAccessFromFileURLs = false
+                    allowUniversalAccessFromFileURLs = false
+                    mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                    setGeolocationEnabled(false)
                     setSupportZoom(true)
                     builtInZoomControls = true
                     displayZoomControls = false
