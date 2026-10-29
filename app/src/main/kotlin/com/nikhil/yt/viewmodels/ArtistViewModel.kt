@@ -108,7 +108,11 @@ class ArtistViewModel @Inject constructor(
                             artistPage = page.copy(sections = filteredSections)
                             memorialJob?.cancel()
                             memorialJob = viewModelScope.launch {
-                                val info = ArtistMemorialLookup.find(page.artist.title)
+                                val info = ArtistMemorialLookup.find(
+                                    name = page.artist.title,
+                                    channelId = page.artist.channelId,
+                                    artistId = page.artist.id,
+                                )
                                 if (generation == loadGeneration) memorialInfo = info
                             }
                         }
