@@ -245,6 +245,11 @@ class App : Application(), SingletonImageLoader.Factory {
             }
         }
 
+        // The visitor bootstrap is a real network request. Robolectric runs
+        // on a desktop JVM (no AndroidKeyStore) and must never launch this
+        // background network/write side effect during unrelated unit tests.
+        // Production initialization and credential encryption stay unchanged.
+        if (!Build.FINGERPRINT.startsWith("robolectric", ignoreCase = true)) {
         applicationScope.launch(Dispatchers.IO) {
             dataStore.data
                 .map { it[VisitorDataKey] }
@@ -266,6 +271,7 @@ class App : Application(), SingletonImageLoader.Factory {
                     // regardless of the currently selected playback client.
 
                 }
+        }
         }
 
         // Robolectric JVM tests must report background exceptions to Gradle.
