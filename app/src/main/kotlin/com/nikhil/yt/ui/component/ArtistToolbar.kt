@@ -30,10 +30,10 @@ internal val ArtistToolbarCompactHeight = 64.dp
  * The underlying surface is already exactly StandardChrome.background.
  */
 internal fun artistToolbarSurfaceAlpha(artworkFade: Float): Float {
-    // Give the pinned bar a smooth, fully opaque surface before it covers
-    // the action row; keep the fade concentrated in the portrait's final phase.
-    val progress = ((artworkFade - 0.72f) / 0.28f).coerceIn(0f, 1f)
-    return progress * progress * (3f - 2f * progress)
+    // The portrait now completes its dissolve sooner, before buttons reach
+    // this bar. A second partial scrim would double-darken the photo and
+    // leave a visible horizontal stripe, so only seal once it is gone.
+    return if (artworkFade >= 1f) 1f else 0f
 }
 
 /** Bare artwork controls at the reference height; their 48 dp touch targets are retained. */
