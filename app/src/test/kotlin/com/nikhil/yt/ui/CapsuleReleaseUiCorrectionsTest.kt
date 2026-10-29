@@ -35,6 +35,17 @@ class CapsuleReleaseUiCorrectionsTest {
         assertFalse(toolbar.contains("((fade - 0.98f) / 0.02f)"))
     }
 
+    @Test fun artistActionsAndLatestReleaseShareOneHorizontalGrid() {
+        val hero = source("ui/component/ArtistHero.kt")
+        val screen = source("ui/screens/artist/ArtistScreen.kt")
+        assertTrue(hero.contains(".padding(horizontal = 22.dp)"))
+        assertTrue(screen.contains(".padding(start = 22.dp, top = 8.dp, end = 22.dp"))
+        assertTrue(hero.contains("showCandle"))
+        assertTrue(screen.contains("viewModel.memorialInfo != null"))
+        assertFalse(hero.contains("showRadio"))
+        assertFalse(screen.contains("onRadio ="))
+    }
+
     @Test fun downloadsShareLocalPlaylistSemanticsAndNeverCloseMoreOnTap() {
         val shared = source("ui/menu/CapsuleDownloadAction.kt")
         assertTrue(shared.contains("VeluneLoader(size = 24.dp"))
