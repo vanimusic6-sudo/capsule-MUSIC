@@ -92,11 +92,10 @@ internal fun ArtistHero(
     subscribed: Boolean,
     canSubscribe: Boolean,
     canShuffle: Boolean,
-    showRadio: Boolean,
-    canRadio: Boolean,
+    showCandle: Boolean,
     onSubscribe: () -> Unit,
     onShuffle: () -> Unit,
-    onRadio: () -> Unit,
+    onCandle: () -> Unit,
     modifier: Modifier = Modifier,
     loading: Boolean = false,
     topSafePadding: Dp = 0.dp,
@@ -182,14 +181,14 @@ internal fun ArtistHero(
                     )
                 }
             }
-            if (showRadio) {
+            if (showCandle) {
                 Spacer(Modifier.height(14.dp))
                 CapsuleArtistAction(
-                    R.drawable.radio,
-                    stringResource(R.string.radio),
-                    onRadio,
+                    R.drawable.capsule_candle,
+                    stringResource(R.string.artist_light_candle),
+                    onCandle,
                     Modifier.fillMaxWidth(),
-                    !loading && canRadio,
+                    !loading,
                 )
             }
         },
