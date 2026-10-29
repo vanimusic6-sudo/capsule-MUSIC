@@ -41,6 +41,13 @@ class ArtistMemorialLookupTest {
     }
 
     @Test
+    fun livingGroupWithSameNameAlsoPreventsCandle() {
+        val person = artist("Example", "Person", true, "2010", "12345678-1234-1234-1234-123456789012")
+        val group = artist("Example", "Group", false, "", "12345678-1234-1234-1234-123456789013")
+        assertNull(ArtistMemorialLookup.parseDeath("""{"artists":[$person,$group]}""", "Example"))
+    }
+
+    @Test
     fun partialOrLowConfidenceResultsCannotClaimDeath() {
         val json = """{"artists":[{"name":"Example Tribute","type":"Person","score":99,
             "id":"12345678-1234-1234-1234-123456789012",
