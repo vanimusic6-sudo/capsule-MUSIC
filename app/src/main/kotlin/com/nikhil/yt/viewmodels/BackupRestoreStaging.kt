@@ -55,7 +55,10 @@ internal object BackupRestoreStaging {
                 // Legacy settings.preferences_pb can contain old auth tokens;
                 // never restore them, but still validate their uncompressed size.
                 val target = if (name == legacySettingsName) null else File(stageDir, name)
-                val sink = target?.outputStream() ?: java.io.OutputStream.nullOutputStream()
+                val sink = target?.outputStream() ?: object : java.io.OutputStream() {
+                    override fun write(b: Int) = Unit
+                    override fun write(b: ByteArray, off: Int, len: Int) = Unit
+                }
                 sink.use { out ->
                     val buffer = ByteArray(16 * 1024)
                     var fileBytes = 0L
