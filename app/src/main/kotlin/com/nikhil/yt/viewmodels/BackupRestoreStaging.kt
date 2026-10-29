@@ -80,7 +80,15 @@ internal object BackupRestoreStaging {
         if (databaseName !in staged) throw IOException("Backup missing its database")
         val db = File(stageDir, databaseName)
         val header = ByteArray(SQLITE_MAGIC.size)
-        val count = FileInputStream(db).use { it.read(header) }
+        val count = FileInputStream(db).use { input ->
+            var read = 0
+            while (read < header.size) {
+                val next = input.read(header, read, header.size - read)
+                if (next < 0) break
+                read += next
+            }
+            read
+        }
         if (count != header.size || !header.contentEquals(SQLITE_MAGIC)) {
             throw IOException("Backup does not contain a valid SQLite database header")
         }
