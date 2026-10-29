@@ -456,7 +456,9 @@ class BackupRestoreViewModel @Inject constructor(
                 val name = parser.name
                 val keyName = parser.getAttributeValue(null, "name")
 
-                if (keyName != null && BackupSecurity.exportablePreference(keyName)) {
+                if (keyName != null && BackupSettingsSchema.isAllowed(
+                        keyName, name, parser.getAttributeValue(null, "value")
+                    )) {
                     when (name) {
                         "boolean" -> {
                             val value = parser.getAttributeValue(null, "value")?.toBoolean()
