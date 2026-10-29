@@ -99,9 +99,19 @@ internal object ArtistMemorialLookup {
                 "CapsuleMusic/1.1.2 (https://github.com/vanimusic6-sudo/capsule-MUSIC)",
             )
             if (connection.responseCode != HttpURLConnection.HTTP_OK) return null
-            val response = connection.inputStream.bufferedReader(Charsets.UTF_8).use {
-                // A fixed, small response limit prevents unexpected RAM allocation.
-                it.readText().take(96_000)
+            val response = connection.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+                // Bound bytes before allocating a JSON string: a malicious server
+                // must not be able to supply an arbitrarily large response.
+                val chars = CharArray(96_001)
+                var count = 0
+                while (count < chars.size) {
+                    val read = reader.read(chars, count, chars.size - count)
+                    if (read == -1) break
+                    if (read == 0) break
+                    count += read
+                }
+                if (count > 96_000) return null
+                String(chars, 0, count)
             }
             parseDeath(response, name)
         } finally {
