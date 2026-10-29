@@ -29,6 +29,8 @@ jobs:
           if [[ -x "$SDKMANAGER" ]]; then
             "$SDKMANAGER" 'platforms;android-37.1'
           fi
+      - name: Code integrity and hostile-input boundary invariants
+        run: python3 scripts/capsule_integrity_gate.py
       - name: Source audit (record blockers and continue other checks)
         continue-on-error: true
         run: python3 scripts/capsule_security_audit.py
