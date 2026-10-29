@@ -48,7 +48,10 @@ internal object SecurePreferencesDataStore {
     private val sensitiveKeyParts = listOf(
         "cookie", "token", "password", "secret", "sessionkey", "session_key",
         "visitor", "datasync", "data_sync", "oauth", "authorization",
-        "sapisid", "accountemail", "account_email"
+        "sapisid", "accountemail", "account_email", "accountname", "account_name",
+        "credential", "apikey", "api_key", "refresh", "bearer", "accesskey",
+        "privatekey", "private_key", "channelhandle", "channel_handle",
+        "proxyurl", "proxy_url", "proxypassword", "proxy_password"
     )
 
     internal fun isSensitivePreference(name: String): Boolean {
