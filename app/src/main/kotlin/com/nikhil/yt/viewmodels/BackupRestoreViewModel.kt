@@ -48,6 +48,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.InputStream
 import java.io.InputStreamReader
 import java.io.PushbackReader
 import java.io.Reader
@@ -164,7 +165,7 @@ class BackupRestoreViewModel @Inject constructor(
             )
     }
 
-    fun backup(context: Context, uri: Uri) {
+    fun backup(context: Context, uri: Uri, password: String? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             val title = context.getString(R.string.backup_in_progress)
             try {
@@ -201,7 +202,10 @@ class BackupRestoreViewModel @Inject constructor(
                 }
 
                 context.applicationContext.contentResolver.openOutputStream(uri)?.use { outputStream ->
-                    outputStream.buffered().zipOutputStream().use { zipStream ->
+                    val payload = if (!password.isNullOrEmpty()) {
+                        BackupEncryption.encryptingStream(outputStream, password)
+                    } else outputStream
+                    payload.buffered().zipOutputStream().use { zipStream ->
                         emit(context.getString(R.string.backup_step_export_settings), indeterminate = true)
                         zipStream.putNextEntry(ZipEntry(SETTINGS_XML_FILENAME))
                         writeSettingsToXml(context, zipStream)
@@ -257,7 +261,7 @@ class BackupRestoreViewModel @Inject constructor(
         }
     }
 
-    fun restore(context: Context, uri: Uri) {
+    fun restore(context: Context, uri: Uri, password: String? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             val title = context.getString(R.string.restore_in_progress)
             try {
@@ -271,7 +275,7 @@ class BackupRestoreViewModel @Inject constructor(
                 val entryNames = ArrayList<String>()
                 var hasDb = false
                 var totalUncompressedBytes = 0L
-                context.applicationContext.contentResolver.openInputStream(uri)?.use { stream ->
+                openBackupInput(context, uri, password).use { stream ->
                     stream.zipInputStream().use { zip ->
                         var entry = zip.nextEntry
                         while (entry != null) {
@@ -324,7 +328,7 @@ class BackupRestoreViewModel @Inject constructor(
                 runCatching { database.close() }
                 completedUnits++
 
-                context.applicationContext.contentResolver.openInputStream(uri)?.use { stream ->
+                openBackupInput(context, uri, password).use { stream ->
                     stream.zipInputStream().use { zip ->
                         var entry = zip.nextEntry
                         while (entry != null) {
@@ -394,6 +398,21 @@ class BackupRestoreViewModel @Inject constructor(
             } finally {
                 _backupRestoreProgress.value = null
             }
+        }
+    }
+
+    /**
+     * Stream and authenticate portable backups without buffering database files.
+     * The initial validation pass verifies all records before replacing data.
+     */
+    private fun openBackupInput(context: Context, uri: Uri, password: String?): InputStream {
+        val stream = context.applicationContext.contentResolver.openInputStream(uri)
+            ?: throw java.io.IOException("Could not open backup")
+        return try {
+            BackupEncryption.openBackup(stream, password)
+        } catch (error: Exception) {
+            stream.close()
+            throw error
         }
     }
 
