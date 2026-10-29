@@ -13,7 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import java.util.Locale
+import androidx.compose.ui.platform.LocalConfiguration
 
 /**
  * Fail closed. Legacy WebView login scraped a Discord user authorization token.
@@ -22,6 +22,7 @@ import java.util.Locale
  */
 @Composable
 fun DiscordLoginScreen(navController: NavController) {
+    val isRussian = LocalConfiguration.current.locales[0].language == "ru"
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.Center,
@@ -29,14 +30,14 @@ fun DiscordLoginScreen(navController: NavController) {
         Text("Discord", style = MaterialTheme.typography.headlineMedium)
         Spacer(Modifier.height(16.dp))
         Text(
-            if (Locale.getDefault().language == "ru")
+            if (isRussian)
                 "Интеграция временно отключена ради безопасности. Старый вход получал приватный токен Discord. Мы не будем запрашивать его снова. Для восстановления нужен официальный поддерживаемый способ."
             else "This integration is temporarily disabled for security. The old login extracted a private Discord account token. Capsule will not request one again; a supported official integration is needed.",
             style = MaterialTheme.typography.bodyLarge,
         )
         Spacer(Modifier.height(20.dp))
         Button(onClick = { navController.navigateUp() }) {
-            Text(if (Locale.getDefault().language == "ru") "Назад" else "Back")
+            Text(if (isRussian) "Назад" else "Back")
         }
     }
 }
