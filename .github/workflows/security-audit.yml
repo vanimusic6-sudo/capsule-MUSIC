@@ -150,6 +150,7 @@ jobs:
           gradle :app:testUniversalDebugUnitTest \
             --tests 'com.nikhil.yt.viewmodels.BackupSecurityTest' \
             --tests 'com.nikhil.yt.viewmodels.BackupEncryptionTest' \
+            --tests 'com.nikhil.yt.viewmodels.BackupRestoreStagingTest' \
             --tests 'com.nikhil.yt.utils.SecurePreferencesDataStoreTest' \
             --tests 'com.nikhil.yt.together.TogetherLanCipherTest' \
             --tests 'com.nikhil.yt.together.TogetherCoreTest' \
