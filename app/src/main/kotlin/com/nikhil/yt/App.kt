@@ -100,6 +100,13 @@ class App : Application(), SingletonImageLoader.Factory {
             return
         }
 
+        // Recover a DB interrupted by process death during backup restore
+        // before Hilt/Room can open it. Never start with half-replaced files.
+        com.nikhil.yt.viewmodels.BackupRestoreStaging.recoverInterrupted(
+            getDatabasePath(com.nikhil.yt.db.InternalDatabase.DB_NAME).parentFile!!,
+            com.nikhil.yt.db.InternalDatabase.DB_NAME,
+        )
+
         PreferenceStore.start(this)
         // Convert legacy plaintext credentials to Keystore-encrypted values.
         // The secure DataStore wrapper avoids disk writes if already migrated.
