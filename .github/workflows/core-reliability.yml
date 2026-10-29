@@ -56,6 +56,7 @@ jobs:
           --tests 'com.nikhil.yt.ui.CapsuleReleaseUiCorrectionsTest'
           --tests 'com.nikhil.yt.playback.video.CapsuleVideoDirectMediaSourceFactoryTest'
           --tests 'com.nikhil.yt.ui.ArtistScreenDesignTest'
+          --tests 'com.nikhil.yt.ui.screens.artist.ArtistMemorialLookupTest'
           --tests 'com.nikhil.yt.ui.ArtistMotionTest'
           --tests 'com.nikhil.yt.ui.ListStabilityTest'
           --tests 'com.nikhil.yt.ui.CapsuleMenuMotionTest'
