@@ -46,7 +46,7 @@ require("<external-path" not in file_paths and "<root-path" not in file_paths,
 # Future dynamic code loading must be reviewed explicitly, never enabled
 # silently by a dependency/module upgrade.
 dangerous_loader = re.compile(
-    r"\\b(?:DexClassLoader|InMemoryDexClassLoader|PathClassLoader)\\s*\\("
+    r"\b(?:DexClassLoader|InMemoryDexClassLoader|PathClassLoader)\s*\("
 )
 for root in (app / "kotlin", ROOT / "innertube/src/main/kotlin"):
     for file in root.rglob("*.kt"):
