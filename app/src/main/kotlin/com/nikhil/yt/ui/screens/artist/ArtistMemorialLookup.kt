@@ -85,7 +85,7 @@ internal object ArtistMemorialLookup {
     }
 
     private fun request(name: String): ArtistMemorialInfo? {
-        val query = "artist:\\"\${name.replace("\\", "\\\\").replace("\\"", "\\\\"")}\\" AND type:person"
+        val query = "artist:" + '"' + name.replace('"', ' ').trim() + '"' + " AND type:person"
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
         val url = URL("https://musicbrainz.org/ws/2/artist/?query=$encodedQuery&fmt=json&limit=8")
         val connection = url.openConnection() as HttpURLConnection
