@@ -19,6 +19,14 @@ EXPECTED_PACKAGE = "com.nikhil.yt"
 # Pinned to the previously verified GitHub-signed release certificate.
 # If rotating signing keys, update only after an explicit owner decision.
 EXPECTED_SIGNER_SHA256 = "c044579fd886ee7f6ae919d705fb3345f7417957d8cd49fd110d596f864ddd7d"
+
+# The in-app verifier and CI signing gate must agree on the trusted signer.
+pin_file = Path(__file__).resolve().parent.parent / "app/src/main/kotlin/com/nikhil/yt/utils/ReleaseApkVerifier.kt"
+if pin_file.is_file():
+    embedded = re.search(r'OFFICIAL_CERT_SHA256\\s*=\\s*"([0-9a-f]{64})"', pin_file.read_text(encoding="utf-8"))
+    if embedded is None or embedded.group(1) != EXPECTED_SIGNER_SHA256:
+        raise SystemExit("APK verifier pin differs from CI trusted release certificate")
+
 FORBIDDEN_PERMISSIONS = {
     "android.permission.READ_CONTACTS",
     "android.permission.WRITE_CONTACTS",
