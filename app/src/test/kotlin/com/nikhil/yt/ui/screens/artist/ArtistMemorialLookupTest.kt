@@ -2,6 +2,7 @@ package com.nikhil.yt.ui.screens.artist
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import kotlinx.coroutines.runBlocking
 import org.junit.Test
 
 class ArtistMemorialLookupTest {
@@ -9,6 +10,14 @@ class ArtistMemorialLookupTest {
         {"name":"$name","type":"$type","score":100,
          "id":"$id","life-span":{"ended":$ended,"end":"$end"}}
     """.trimIndent()
+
+    @Test
+    fun knownMemorialIsAvailableOfflineByOfficialChannelId() = runBlocking {
+        val result = ArtistMemorialLookup.find(
+            name = "Oliver Tree", channelId = "UCHcb3FQivl6xCRcHC2zjdkQ"
+        )
+        assertEquals("2026-06-14", result?.deathDate)
+    }
 
     @Test
     fun verifiedDeceasedIndividualShowsCandle() {
