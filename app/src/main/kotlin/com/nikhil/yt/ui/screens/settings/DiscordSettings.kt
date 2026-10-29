@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -89,6 +90,7 @@ fun DiscordSettings(
     val lastRpcEndTime = DiscordPresenceManager.lastRpcEndTime
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
+    val isRussian = LocalConfiguration.current.locales[0].language == "ru"
     val snackbarHostState = remember { SnackbarHostState() }
 
     var discordToken by rememberPreference(DiscordTokenKey, "")
@@ -216,7 +218,7 @@ fun DiscordSettings(
             }
 
         Text(
-            text = if (java.util.Locale.getDefault().language == "ru")
+            text = if (isRussian)
                 "Discord отключён: прежний вход извлекал токен аккаунта. Нужна официальная интеграция без пользовательского токена."
             else "Discord is disabled: legacy sign-in extracted account tokens. A supported token-free integration is required.",
             style = MaterialTheme.typography.bodyMedium,
