@@ -118,14 +118,16 @@ internal object ArtistMemorialLookup {
         val root = runCatching { Json.parseToJsonElement(json) as? JsonObject }.getOrNull()
             ?: return null
         val artists = runCatching { root["artists"]?.jsonArray }.getOrNull() ?: return null
+        // Include groups in the ambiguity check: a living group and deceased
+        // namesake must never be mistaken for one another.
         val matches = artists.mapNotNull { it as? JsonObject }.filter { candidate ->
             candidate["name"]?.jsonPrimitive?.contentOrNull?.trim()
                 ?.equals(requestedName.trim(), ignoreCase = true) == true &&
-                candidate["type"]?.jsonPrimitive?.contentOrNull == "Person" &&
                 (candidate["score"]?.jsonPrimitive?.intOrNull ?: 0) >= 95
         }
         if (matches.size != 1) return null
         val candidate = matches.single()
+        if (candidate["type"]?.jsonPrimitive?.contentOrNull != "Person") return null
         val life = candidate["life-span"] as? JsonObject ?: return null
         if (life["ended"]?.jsonPrimitive?.booleanOrNull != true) return null
         val endDate = life["end"]?.jsonPrimitive?.contentOrNull ?: return null
