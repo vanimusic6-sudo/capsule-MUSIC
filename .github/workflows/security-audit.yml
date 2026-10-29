@@ -9,6 +9,12 @@ permissions:
   contents: read
   actions: read
 
+# A single source change used to launch five overlapping, costly scanners;
+# obsolete runs were clogging runners. Only HEAD is releasable.
+concurrency:
+  group: capsule-security-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   security:
     runs-on: ubuntu-latest
