@@ -72,6 +72,14 @@ internal class PoTokenWebView private constructor(
         webView.settings.apply {
             javaScriptEnabled = true
             userAgentString = USER_AGENT
+            // BotGuard needs JS, but it does not need device files, content
+            // providers, cross-origin file URL access or mixed content.
+            allowFileAccess = false
+            allowContentAccess = false
+            allowFileAccessFromFileURLs = false
+            allowUniversalAccessFromFileURLs = false
+            mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            setGeolocationEnabled(false)
             blockNetworkLoads = true
         }
         webView.addJavascriptInterface(this, JS_INTERFACE)
