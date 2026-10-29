@@ -66,6 +66,9 @@ concurrency:
 jobs:
   release:
     name: Build signed Universal APK
+    # OWNER ACTION: protect this environment with required reviewer and
+    # allowed protected branches. An unprotected environment gives NO extra safety.
+    environment: capsule-signing
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
