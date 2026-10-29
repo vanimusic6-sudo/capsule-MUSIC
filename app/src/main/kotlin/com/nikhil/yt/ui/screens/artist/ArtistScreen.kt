@@ -139,9 +139,10 @@ private val ArtistLatestReleaseArtworkSize = 112.dp
 internal fun artistArtworkFade(firstVisibleItemIndex: Int, offsetPx: Int, artworkHeightPx: Int, toolbarBottomPx: Int): Float {
     if (firstVisibleItemIndex > 0) return 1f
     val distance = (artworkHeightPx - toolbarBottomPx).coerceAtLeast(1)
-    // Same long, late, five-degree smootherstep used by album and playlist.
-    // Finish at the very last safe point before photo edge meets toolbar.
-    return portraitDissolveFraction(offsetPx.toFloat(), distance.toFloat())
+    // Leave room for the action row before it passes behind the pinned toolbar.
+    // A shorter dissolve allows the toolbar to turn opaque before overlap.
+    val earlyCompletionPx = (artworkHeightPx * 0.14f).toInt()
+    return portraitDissolveFraction(offsetPx.toFloat(), (distance - earlyCompletionPx).coerceAtLeast(1).toFloat())
 }
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
@@ -265,8 +266,7 @@ fun ArtistScreen(
                     subscribed = libraryArtist?.artist?.bookmarkedAt != null,
                     canSubscribe = libraryArtist != null || artistPage != null,
                     canShuffle = if (showLocal) librarySongs.isNotEmpty() else artistPage?.artist?.shuffleEndpoint != null,
-                    showRadio = !showLocal,
-                    canRadio = artistPage?.artist?.radioEndpoint != null,
+                    showCandle = !showLocal && viewModel.memorialInfo != null,
                     loading = remoteLoading && libraryArtist == null,
                     topSafePadding = systemBarsTopPadding,
                     artworkAlpha = { 1f - artworkFade },
@@ -295,11 +295,7 @@ fun ArtistScreen(
                             }
                         }
                     },
-                    onRadio = {
-                        artistPage?.artist?.radioEndpoint?.let {
-                            playerConnection.playQueue(YouTubeQueue(it))
-                        }
-                    },
+                    onCandle = { memorialDialogVisible = true },
                 )
             }
             if (remoteLoading) {
@@ -735,7 +731,7 @@ private fun ArtistLatestReleaseCard(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 8.dp),
+                .padding(start = 22.dp, top = 8.dp, end = 22.dp, bottom = 8.dp),
     ) {
         Row(
             modifier =
