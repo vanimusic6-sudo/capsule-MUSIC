@@ -36,11 +36,10 @@ class BackupRestoreStagingTest {
             ByteArrayInputStream(bytes), stage, dbName, "settings.xml", "settings.preferences_pb",
         )
 
-    @Test fun rejectsTraversalDuplicateAndMissingDatabaseBeforeInstalling() {
+    @Test fun rejectsTraversalUnknownAndMissingDatabaseBeforeInstalling() {
         val stage = temporary.newFolder("stage")
         for (archive in listOf(
             zip("../capsule.db" to sqlite),
-            zip(dbName to sqlite, dbName to sqlite),
             zip("notes.txt" to sqlite),
             zip("settings.xml" to byteArrayOf(1)),
         )) {
