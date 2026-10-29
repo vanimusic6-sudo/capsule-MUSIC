@@ -944,4 +944,17 @@
     <string name="capsule_backup_privacy_warning_title">Резервная копия не зашифрована</string>
     <string name="capsule_backup_privacy_warning_body">Архив содержит историю прослушивания, библиотеку и плейлисты. Cookies и токены авторизации исключены, но любой, кто получит архив, сможет прочитать музыкальные данные. Храни его в защищённом месте и не публикуй.</string>
     <string name="capsule_backup_privacy_warning_continue">Создать копию</string>
+
+    <string name="artist_light_candle">Оставить свечу</string>
+    <string name="artist_candle_title">Свеча памяти</string>
+    <string name="artist_candle_for">В память о %1$s</string>
+    <string name="artist_candle_minute">Минута молчания</string>
+    <string name="artist_candle_thanks">Спасибо за творчество</string>
+    <string name="artist_candle_message">Спасибо, %1$s, за музыку, которая остаётся с нами. 🕯️</string>
+    <string name="artist_candle_share">Поделиться благодарностью</string>
+    <string name="artist_candle_paused">Музыка приостановлена. Возобновите воспроизведение, когда будете готовы.</string>
+    <string name="artist_candle_timer_done">Минута молчания завершена.</string>
+    <string name="artist_candle_source">По данным MusicBrainz: %1$s</string>
+    <string name="artist_candle_local">Свеча останется личной. Словами благодарности можно поделиться с другими.</string>
+    <string name="artist_candle_close">Закрыть</string>
 </resources>
