@@ -91,7 +91,8 @@ open class KizzyRPC(private val token: String, private val injectedLogger: Kizzy
         val resolvedSmall = smallImage?.resolveImage(kizzyRepository)
 
         try {
-            logger.info("Resolved assets: large=$resolvedLarge small=$resolvedSmall")
+            // Image URLs may contain ephemeral CDN signatures. Never log them.
+            logger.fine("Resolved Discord artwork presence: large=${resolvedLarge != null} small=${resolvedSmall != null}")
         } catch (_: Exception) {}
         val finalApplicationId = applicationId
 
