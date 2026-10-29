@@ -21,7 +21,9 @@ internal object BackupSecurity {
         "cookie", "token", "password", "secret", "authorization", "credential",
         "sessionkey", "session_key", "apikey", "api_key", "visitor",
         "datasync", "data_sync", "oauth", "refresh", "sapisid", "accountemail",
-        "account_email", "accountname", "account_name", "channelhandle"
+        "account_email", "accountname", "account_name", "channelhandle",
+        "channel_handle", "bearer", "accesskey", "access_key", "privatekey",
+        "private_key", "proxy"
     )
 
     fun exportablePreference(name: String): Boolean {
