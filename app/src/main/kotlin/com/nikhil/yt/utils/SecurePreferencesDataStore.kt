@@ -60,6 +60,11 @@ internal object SecurePreferencesDataStore {
         DataStore<Preferences> {
         private val cipher = KeystoreCipher()
 
+        // Must be initialized BEFORE the eager background reader starts.
+        private val decodeLock = Any()
+        private var priorRaw: Preferences? = null
+        private var priorClear: Preferences? = null
+
         // A typical screen has dozens of rememberPreference collectors. Previously
         // EVERY collector ran Keystore AES-GCM decryption for EVERY secret on each
         // settings emission, sometimes on the Compose main thread. On hardware-
@@ -75,10 +80,6 @@ internal object SecurePreferencesDataStore {
         // Cache the last encrypted snapshot and its plain counterpart. When a
         // non-secret preference changes, reuse plaintext for unchanged encrypted
         // values instead of repeatedly calling the hardware security module.
-        private val decodeLock = Any()
-        private var priorRaw: Preferences? = null
-        private var priorClear: Preferences? = null
-
         override suspend fun updateData(
             transform: suspend (t: Preferences) -> Preferences,
         ): Preferences {
