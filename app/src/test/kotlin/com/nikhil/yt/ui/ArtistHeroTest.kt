@@ -119,6 +119,21 @@ class ArtistHeroTest {
         savePreview("artist-capsule-header")
     }
 
+    @Test fun livingArtistHasNoRadioAndNoMemorialAction() {
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                ArtistHero(
+                    name = "Living artist", thumbnailUrl = null,
+                    background = Color.Black, subscribed = false,
+                    canSubscribe = true, canShuffle = true, showCandle = false,
+                    onSubscribe = {}, onShuffle = {}, onCandle = {},
+                )
+            }
+        }
+        compose.onNodeWithText(compose.activity.getString(R.string.radio)).assertDoesNotExist()
+        compose.onNodeWithText(compose.activity.getString(R.string.artist_light_candle)).assertDoesNotExist()
+    }
+
     @Test fun largeTextKeepsAllActionsReachableWithoutOverlap() {
         compose.setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
