@@ -38,6 +38,9 @@ import com.nikhil.yt.R
 import com.nikhil.yt.ui.component.StandardChrome
 import kotlinx.coroutines.delay
 import java.util.Locale
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 /**
  * No remote memorial service and no public posting on the user's behalf.
@@ -54,6 +57,14 @@ internal fun ArtistMemorialDialog(
     var mode by remember(name) { mutableIntStateOf(0) }
     var seconds by remember(name) { mutableIntStateOf(60) }
     val gratitude = stringResource(R.string.artist_candle_message, name)
+    val displayedDate = remember(memorial.deathDate) {
+        runCatching {
+            LocalDate.parse(memorial.deathDate).format(
+                DateTimeFormatter.ofLocalizedDate(FormatStyle.LONG)
+                    .withLocale(Locale.getDefault())
+            )
+        }.getOrDefault(memorial.deathDate)
+    }
 
     LaunchedEffect(mode) {
         if (mode == 1) {
@@ -100,7 +111,7 @@ internal fun ArtistMemorialDialog(
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    text = stringResource(R.string.artist_candle_source, memorial.deathDate),
+                    text = stringResource(R.string.artist_candle_source, displayedDate),
                     color = StandardChrome.muted,
                     style = MaterialTheme.typography.bodySmall,
                 )
