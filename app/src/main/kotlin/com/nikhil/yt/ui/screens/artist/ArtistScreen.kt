@@ -172,6 +172,7 @@ fun ArtistScreen(
         LazyListState()
     }
     var descriptionMoving by remember(viewModel.artistId) { mutableStateOf(false) }
+    var memorialDialogVisible by remember(viewModel.artistId) { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     var showLocal by rememberSaveable(viewModel.artistId) { mutableStateOf(false) }
     val systemBarsTopPadding = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
@@ -715,6 +716,19 @@ fun ArtistScreen(
             context.startActivity(Intent.createChooser(shareIntent, null))
         },
     )
+
+    if (memorialDialogVisible) {
+        val memorial = viewModel.memorialInfo
+        if (memorial != null) {
+            ArtistMemorialDialog(
+                name = artistName.orEmpty(),
+                memorial = memorial,
+                onDismiss = { memorialDialogVisible = false },
+                // Playback does not silently restart at the end of the minute.
+                onMinuteBegin = { playerConnection.player.pause() },
+            )
+        }
+    }
 }
 
 @Composable
