@@ -1,6 +1,9 @@
 package com.nikhil.yt.ui.component
 
 import androidx.annotation.DrawableRes
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -79,7 +82,18 @@ internal fun ArtistHeroLayout(
         ) {
             Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp)) { title() }
             Spacer(Modifier.height(24.dp))
-            Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp)) { actions() }
+            // Remote memorial metadata may arrive after the artist page.
+            // Reveal its extra action without shifting the upper row in one frame.
+            Column(
+                Modifier.fillMaxWidth()
+                    .padding(horizontal = 22.dp)
+                    .animateContentSize(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMedium,
+                        ),
+                    ),
+            ) { actions() }
         }
     }
 }
