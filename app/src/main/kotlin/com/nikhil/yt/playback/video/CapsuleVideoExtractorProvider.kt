@@ -83,8 +83,9 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
                     onAttempt = { route, elapsed, success -> routeTimings += "$route:${elapsed}ms:${if (success) "ok" else "fallback"}" },
                     onRouteFailure = { route, failure ->
                         val kind = CapsuleNewPipeExtractor.classify(failure)
-                        routeTimings += "$route:$kind:${CapsuleNewPipeExtractor.routeDiagnostic(failure)}"
-                        timber.log.Timber.tag("CapsuleVideo").w(failure, "VIDEO route=%s failed kind=%s", route, kind)
+                        // External extractor errors may contain signed media URLs.
+                        routeTimings += "$route:$kind"
+                        timber.log.Timber.tag("CapsuleVideo").w("VIDEO route=%s failed kind=%s", route, kind)
                     },
                 )
             }
@@ -119,7 +120,7 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
                         CapsuleNewPipeFailure.BOT_BLOCKED -> CapsuleVideoFailure.BOT_BLOCKED
                         CapsuleNewPipeFailure.UNKNOWN -> CapsuleVideoFailure.UNKNOWN
                     },
-                    throwable.message ?: throwable::class.java.simpleName,
+                    throwable::class.java.simpleName,
                 )
             },
         ).also { it.putString(CapsuleVideoIpc.EXTRA_ROUTE_TIMINGS, routeTimings.joinToString(" ")) }
