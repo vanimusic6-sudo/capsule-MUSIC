@@ -492,11 +492,13 @@ fun ArtistScreen(
                     }
                 } else {
                     // YouTube/Remote content sections
-                    artistPage?.sections?.forEachIndexed { sectionIndex, section ->
+                    // One linear pass assigns stable keys without repeatedly
+                    // scanning all earlier sections on every lazy-list rebuild.
+                    val sectionOccurrences = mutableMapOf<String, Int>()
+                    artistPage?.sections?.forEach { section ->
                         val identity = "${section.moreEndpoint?.browseId}:${section.moreEndpoint?.params}:${section.title}"
-                        val occurrence = artistPage?.sections.orEmpty().take(sectionIndex).count {
-                            "${it.moreEndpoint?.browseId}:${it.moreEndpoint?.params}:${it.title}" == identity
-                        }
+                        val occurrence = sectionOccurrences[identity] ?: 0
+                        sectionOccurrences[identity] = occurrence + 1
                         val sectionKey = "artist-section:$identity:$occurrence"
                         if (section.items.isNotEmpty()) {
                             item(key = "$sectionKey:title") {
@@ -513,7 +515,7 @@ fun ArtistScreen(
                             }
                         }
 
-                        if ((section.items.firstOrNull() as? SongItem)?.album != null) {
+                        if (section.items.isNotEmpty() && section.items.all { it is SongItem && it.album != null }) {
                             // Song items with album info - display as list
                             items(
                                 items = section.items.distinctBy { it.id },
