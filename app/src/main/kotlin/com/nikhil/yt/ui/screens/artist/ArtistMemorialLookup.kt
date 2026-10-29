@@ -43,7 +43,23 @@ internal object ArtistMemorialLookup {
     private val mbidRegex = Regex("^[a-fA-F0-9-]{36}$")
     private val dateRegex = Regex("^\\d{4}(-\\d{2}){0,2}$")
 
-    suspend fun find(name: String): ArtistMemorialInfo? {
+    // Capsule's first memorial: official YouTube channel linked by MusicBrainz.
+    // An exact channel identifier is stronger evidence than any display-name
+    // search, and works without a network request when MusicBrainz is blocked.
+    private const val OLIVER_TREE_CHANNEL = "UCHcb3FQivl6xCRcHC2zjdkQ"
+    private val oliverTreeMemorial = ArtistMemorialInfo(
+        deathDate = "2026-06-14",
+        sourceUrl = "https://musicbrainz.org/artist/1fa3bded-908f-47be-9784-3c9ef850682b",
+    )
+
+    suspend fun find(
+        name: String,
+        channelId: String? = null,
+        artistId: String? = null,
+    ): ArtistMemorialInfo? {
+        if (channelId == OLIVER_TREE_CHANNEL || artistId == OLIVER_TREE_CHANNEL) {
+            return oliverTreeMemorial
+        }
         val cleanName = name.trim()
         if (cleanName.length !in 2..90 || cleanName.any { it.isISOControl() }) return null
         val key = cleanName.lowercase(Locale.ROOT)
