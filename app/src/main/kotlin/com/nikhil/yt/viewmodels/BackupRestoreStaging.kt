@@ -17,6 +17,7 @@ import java.util.zip.ZipInputStream
 internal object BackupRestoreStaging {
     private const val ROLLBACK_DIR = ".capsule-restore-rollback"
     private const val INSTALL_MARKER = ".installing"
+    private const val COMPLETE_MARKER = ".complete"
     private const val MAX_ENTRIES = 8
     private val SQLITE_MAGIC = "SQLite format 3\u0000".toByteArray(Charsets.US_ASCII)
 
@@ -121,6 +122,9 @@ internal object BackupRestoreStaging {
                 val candidate = File(stageDir, name)
                 if (candidate.exists()) move(candidate, File(databaseDir, name))
             }
+            // After commit, a process crash during rollback cleanup must
+            // never cause the next startup to discard the new valid database.
+            File(rollback, COMPLETE_MARKER).writeText("committed")
             rollback.deleteRecursively()
         } catch (error: Exception) {
             runCatching { recoverInterrupted(databaseDir, dbName) }
@@ -133,6 +137,10 @@ internal object BackupRestoreStaging {
         val rollback = File(databaseDir, ROLLBACK_DIR)
         if (!rollback.exists()) return
         val names = databaseFiles(dbName)
+        if (File(rollback, COMPLETE_MARKER).exists()) {
+            rollback.deleteRecursively()
+            return
+        }
         // Delete new DB files only AFTER the marker was written. Before it
         // exists, files not yet moved to rollback still belong to the old DB.
         if (File(rollback, INSTALL_MARKER).exists()) {
