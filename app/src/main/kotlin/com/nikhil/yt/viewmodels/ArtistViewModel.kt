@@ -14,6 +14,8 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.nikhil.yt.ui.screens.artist.ArtistMemorialInfo
+import com.nikhil.yt.ui.screens.artist.ArtistMemorialLookup
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.filterExplicit
 import com.nikhil.yt.innertube.pages.ArtistPage
@@ -51,6 +53,9 @@ class ArtistViewModel @Inject constructor(
     var isLoading by mutableStateOf(true)
         private set
     private var loadJob: Job? = null
+    private var memorialJob: Job? = null
+    var memorialInfo by mutableStateOf<ArtistMemorialInfo?>(null)
+        private set
     private var loadGeneration = 0L
     val libraryArtist = database.artist(artistId)
         .stateIn(viewModelScope, SharingStarted.Lazily, null)
@@ -101,6 +106,11 @@ class ArtistViewModel @Inject constructor(
 
                         if (generation == loadGeneration) {
                             artistPage = page.copy(sections = filteredSections)
+                            memorialJob?.cancel()
+                            memorialJob = viewModelScope.launch {
+                                val info = ArtistMemorialLookup.find(page.artist.title)
+                                if (generation == loadGeneration) memorialInfo = info
+                            }
                         }
                     }.getOrThrow()
             } catch (cancelled: CancellationException) {
