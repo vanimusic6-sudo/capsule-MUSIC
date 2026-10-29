@@ -268,6 +268,11 @@ class App : Application(), SingletonImageLoader.Factory {
                 }
         }
 
+        // Robolectric JVM tests must report background exceptions to Gradle.
+        // Installing our production crash handler inside the test worker would
+        // kill the entire executor with exitProcess(2), hiding the actual error
+        // and aborting every remaining test.
+        if (!Build.FINGERPRINT.startsWith("robolectric", ignoreCase = true)) {
         try {
             Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
                 try {
@@ -310,6 +315,7 @@ class App : Application(), SingletonImageLoader.Factory {
             }
         } catch (e: Exception) {
             reportException(e)
+        }
         }
         applicationScope.launch(Dispatchers.IO) {
             dataStore.data
