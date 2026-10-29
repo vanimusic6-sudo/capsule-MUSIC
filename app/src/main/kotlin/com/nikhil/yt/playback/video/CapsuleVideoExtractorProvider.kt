@@ -61,10 +61,10 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
             )
         val muxedOnly = extras?.getBoolean(CapsuleVideoIpc.EXTRA_MUXED_ONLY, false) ?: false
 
-        if (videoId.isBlank()) {
+        if (!videoId.matches(Regex("[A-Za-z0-9_-]{11}"))) {
             return CapsuleVideoIpc.failureBundle(
                 CapsuleVideoFailure.UNAVAILABLE,
-                "Missing YouTube video id",
+                "Invalid YouTube video id",
             )
         }
 
