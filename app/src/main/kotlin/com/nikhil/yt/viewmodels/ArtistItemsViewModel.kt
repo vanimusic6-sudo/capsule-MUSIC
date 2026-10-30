@@ -78,9 +78,10 @@ constructor(
                         itemsPage.update { current ->
                             // Drop stale responses when navigation or a refresh changed
                             // the continuation while the request was in flight.
-                            if (current?.continuation != token) return@update current
+                            val snapshot = current ?: return@update current
+                            if (snapshot.continuation != token) return@update current
                             ItemsPage(
-                                items = (current.items + page.items)
+                                items = (snapshot.items + page.items)
                                     .distinctBy { it.id }
                                     .filterExplicit(context.dataStore.get(HideExplicitKey, false)),
                                 continuation = if (page.continuation == token) null else page.continuation,
