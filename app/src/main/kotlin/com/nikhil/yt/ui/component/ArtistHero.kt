@@ -67,14 +67,15 @@ internal fun ArtistHeroLayout(
     artworkAlpha: () -> Float = { 1f },
 ) {
     BoxWithConstraints(modifier.fillMaxWidth().background(background)) {
-        // Shorter portrait keeps both action rows above the player/navigation on phones.
-        // Artwork itself reaches the physical top edge; only overlay content respects safe insets.
-        val referenceWidth = maxWidth.coerceAtMost(ArtistHeroMaxWidth)
-        // The former 1.48x reserve left a large empty strip between the pinned
-        // toolbar and actions. The toolbar fades while the portrait is still
-        // behind it; keeping another ~47dp of empty hero is unnecessary.
-        val heroHeight = referenceWidth * 1.35f + 16.dp
-        Box(Modifier.fillMaxWidth().height(artistHeroArtworkHeight(maxWidth))) {
+        // Photo and actions have independent geometry. Shrinking the hero while
+        // keeping the full portrait previously moved the buttons ON TOP of the
+        // photograph; on scroll the pinned toolbar then became opaque over them.
+        // Preserve the full 1.25x photograph and anchor the first action row
+        // just AFTER the actual image edge, not at a guessed height multiplier.
+        val artworkHeight = artistHeroArtworkHeight(maxWidth)
+        val actionRailHeight = if (LocalDensity.current.fontScale > 1.3f) 172.dp else 110.dp
+        val heroHeight = artworkHeight + 12.dp + actionRailHeight + 14.dp
+        Box(Modifier.fillMaxWidth().height(artworkHeight)) {
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = artworkAlpha().coerceIn(0f, 1f) }) { artwork() }
             // No dark veil across the forehead of the artist image. The toolbar remains
             // inset for touch safety; only the photo itself reaches the physical top edge.
@@ -92,7 +93,6 @@ internal fun ArtistHeroLayout(
             // Reserve the second action slot from frame one. The first row
             // has a fixed anchor whether the memorial lookup returns now, late,
             // or never; the candle can appear without moving other elements.
-            val actionRailHeight = if (LocalDensity.current.fontScale > 1.3f) 172.dp else 110.dp
             Column(
                 Modifier.fillMaxWidth()
                     .padding(horizontal = 22.dp)
