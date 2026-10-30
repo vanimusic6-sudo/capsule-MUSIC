@@ -57,7 +57,11 @@ internal fun ArtworkSurfaceFade(
             0.81f to background.copy(alpha = 0.46f),
             0.88f to background.copy(alpha = 0.67f),
             0.94f to background.copy(alpha = 0.87f),
-            0.985f to background.copy(alpha = 0.985f),
+            // Remove the one-pixel portrait/surface seam caused by sampling
+            // the former 98.5%-opacity stop at the image boundary. The last
+            // ~1.5% is the EXACT page colour; no extra full-black band is added.
+            0.978f to background.copy(alpha = 0.995f),
+            0.985f to background,
             1f to background,
         ) else Brush.verticalGradient(
             0f to background.copy(alpha = 0f),
