@@ -57,10 +57,20 @@ class CapsuleReleaseUiCorrectionsTest {
         assertTrue(dialog.contains("R.drawable.close"))
         assertTrue(dialog.contains("R.drawable.favorite_border"))
         assertTrue(dialog.contains("CircularProgressIndicator("))
-        assertTrue(dialog.contains("Crossfade("))
         assertTrue(dialog.contains("onMinuteBegin()"))
-        assertTrue(dialog.contains("Intent.ACTION_SEND"))
+        assertTrue(dialog.contains("dismissOnClickOutside = false"))
+        assertTrue(dialog.contains("memorial-wish-canvas"))
+        assertTrue(dialog.contains("BasicTextField("))
+        assertTrue(dialog.contains("getSharedPreferences("))
+        assertTrue(dialog.contains("artist_candle_note_hint"))
+        assertFalse("No stacked content when changing candle modes", dialog.contains("Crossfade("))
+        assertFalse("The dialog must never animate its own height", dialog.contains(".animateContentSize("))
+        assertFalse("Memorial notes are never posted to other apps", dialog.contains("Intent.ACTION_SEND"))
         assertFalse("Avoid the old oversized footer button", dialog.contains("MemorialActionButton("))
+        val hero = source("ui/component/ArtistHero.kt")
+        assertTrue(hero.contains(".height(heroHeight)"))
+        assertTrue(hero.contains(".heightIn(min = actionRailHeight)"))
+        assertFalse(hero.contains(".animateContentSize("))
     }
 
     @Test fun downloadsShareLocalPlaylistSemanticsAndNeverCloseMoreOnTap() {
