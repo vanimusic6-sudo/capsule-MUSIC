@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.SystemClock
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,7 +20,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -40,8 +42,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -54,6 +58,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.nikhil.yt.R
+import com.nikhil.yt.ui.component.CapsuleCandleIcon
+import com.nikhil.yt.ui.component.CapsuleFlame
+import com.nikhil.yt.ui.component.CapsuleFlameCore
 import com.nikhil.yt.ui.component.StandardChrome
 import kotlinx.coroutines.delay
 import java.time.LocalDate
@@ -62,12 +69,12 @@ import java.time.format.FormatStyle
 import java.util.Locale
 
 /**
- * Capsule memorial: two quiet actions, no calls to external sharing services.
- * The dialog never dismisses on an outside touch. The artist's wishes are
- * stored only in the app's private preferences (allowBackup=false).
+ * Compact memorial with two actions and no external posting. The user may
+ * save a personal tribute locally; submission is never represented as a
+ * network send. Dismissal outside the dialog remains disabled.
  *
- * No Crossfade or animateContentSize: switching states must not interpolate
- * the dialog's height or paint both menus on top of each other.
+ * No Crossfade or animateContentSize: mode changes cannot paint two layouts
+ * simultaneously, and the minute of silence remains on a single timer.
  */
 @Composable
 internal fun ArtistMemorialDialog(
@@ -84,6 +91,12 @@ internal fun ArtistMemorialDialog(
     var note by rememberSaveable(noteKey) {
         mutableStateOf(prefs.getString(noteKey, "").orEmpty())
     }
+    // "Send" deliberately completes a local candle tribute rather than
+    // pretending to post text to a server that Capsule does not operate.
+    var sentNote by rememberSaveable(noteKey) {
+        mutableStateOf(prefs.getString("submitted:$noteKey", "").orEmpty())
+    }
+    val isSubmitted = note.isNotBlank() && sentNote == note.trim()
     val latestNote by rememberUpdatedState(note)
     // Persist after a short idle period, and flush the final input on dismissal.
     LaunchedEffect(noteKey, note) {
@@ -149,12 +162,7 @@ internal fun ArtistMemorialDialog(
                         border = BorderStroke(1.dp, StandardChrome.muted.copy(alpha = 0.16f)),
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                painter = painterResource(R.drawable.capsule_candle),
-                                contentDescription = null,
-                                tint = StandardChrome.text,
-                                modifier = Modifier.size(22.dp),
-                            )
+                            CapsuleCandleIcon(size = 22.dp)
                         }
                     }
                     Column(modifier = Modifier.weight(1f)) {
@@ -187,13 +195,16 @@ internal fun ArtistMemorialDialog(
                     color = StandardChrome.muted,
                 )
 
-                // The content has one stable measured height in every mode.
-                // In particular, no asynchronous crossfade can compress the
-                // entire dialog or briefly stack old and new content.
+                // Size each mode for its actual contents instead of leaving a
+                // giant empty well beneath the two actions. No crossfade or
+                // animateContentSize: menu changes remain deterministic.
+                val contentHeight = when (mode) {
+                    0 -> if (LocalDensity.current.fontScale > 1.3f) 176.dp else 132.dp
+                    1 -> 164.dp
+                    else -> if (LocalDensity.current.fontScale > 1.3f) 240.dp else 190.dp
+                }
                 Box(
-                    modifier = Modifier.fillMaxWidth().height(
-                        if (LocalDensity.current.fontScale > 1.3f) 260.dp else 212.dp,
-                    ),
+                    modifier = Modifier.fillMaxWidth().height(contentHeight),
                     contentAlignment = Alignment.Center,
                 ) {
                     when (mode) {
@@ -220,30 +231,48 @@ internal fun ArtistMemorialDialog(
                             }
                         }
                         1 -> {
-                            // No "music paused" caption or back action during
-                            // the minute. Only a restrained timer is visible.
+                            // The warm circular sweep is drawn only on second
+                            // ticks. No ambient shimmer, CPU polling or glow.
                             Box(
-                                modifier = Modifier.fillMaxWidth().height(164.dp),
+                                modifier = Modifier.fillMaxWidth().height(160.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                CircularProgressIndicator(
-                                    progress = { seconds / 60f },
-                                    modifier = Modifier.size(152.dp),
-                                    color = StandardChrome.text,
-                                    trackColor = StandardChrome.muted.copy(alpha = 0.18f),
-                                    strokeWidth = 3.dp,
-                                    strokeCap = StrokeCap.Round,
-                                )
-                                Text(
-                                    text = String.format(
-                                        Locale.ROOT, "%d:%02d",
-                                        seconds / 60, seconds % 60,
-                                    ),
-                                    color = StandardChrome.text,
-                                    style = MaterialTheme.typography.headlineLarge,
-                                    fontWeight = FontWeight.Light,
-                                    textAlign = TextAlign.Center,
-                                )
+                                val remaining = (seconds / 60f).coerceIn(0f, 1f)
+                                Canvas(Modifier.size(150.dp)) {
+                                    val stroke = 3.5.dp.toPx()
+                                    drawCircle(
+                                        color = CapsuleFlame.copy(alpha = 0.15f),
+                                        style = Stroke(width = stroke),
+                                    )
+                                    if (remaining > 0f) {
+                                        drawArc(
+                                            brush = Brush.sweepGradient(
+                                                0f to CapsuleFlameCore,
+                                                0.35f to CapsuleFlame,
+                                                0.75f to androidx.compose.ui.graphics.Color(0xFFE78843),
+                                                1f to CapsuleFlameCore,
+                                            ),
+                                            startAngle = -90f,
+                                            sweepAngle = remaining * 360f,
+                                            useCenter = false,
+                                            style = Stroke(width = stroke, cap = StrokeCap.Round),
+                                        )
+                                    }
+                                }
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    CapsuleCandleIcon(size = 20.dp)
+                                    Spacer(Modifier.height(8.dp))
+                                    Text(
+                                        text = String.format(
+                                            Locale.ROOT, "%d:%02d",
+                                            seconds / 60, seconds % 60,
+                                        ),
+                                        color = StandardChrome.text,
+                                        style = MaterialTheme.typography.headlineLarge,
+                                        fontWeight = FontWeight.Light,
+                                        textAlign = TextAlign.Center,
+                                    )
+                                }
                             }
                         }
                         2 -> {
@@ -286,14 +315,43 @@ internal fun ArtistMemorialDialog(
                                         },
                                     )
                                 }
-                                TextButton(
-                                    onClick = { mode = 0 },
-                                    modifier = Modifier.align(Alignment.End).heightIn(min = 42.dp),
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    Text(
-                                        text = stringResource(R.string.artist_candle_back),
-                                        color = StandardChrome.muted,
-                                    )
+                                    TextButton(onClick = { mode = 0 }) {
+                                        Text(
+                                            text = stringResource(R.string.artist_candle_back),
+                                            color = StandardChrome.muted,
+                                        )
+                                    }
+                                    Button(
+                                        onClick = {
+                                            val clean = note.trim()
+                                            if (clean.isNotEmpty()) {
+                                                note = clean
+                                                sentNote = clean
+                                                prefs.edit()
+                                                    .putString(noteKey, clean)
+                                                    .putString("submitted:$noteKey", clean)
+                                                    .apply()
+                                            }
+                                        },
+                                        enabled = note.isNotBlank() && !isSubmitted,
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = StandardChrome.text,
+                                            contentColor = StandardChrome.background,
+                                            disabledContainerColor = StandardChrome.selected,
+                                            disabledContentColor = StandardChrome.muted,
+                                        ),
+                                    ) {
+                                        Text(stringResource(
+                                            if (isSubmitted) R.string.artist_candle_sent
+                                            else R.string.artist_candle_send,
+                                        ))
+                                    }
                                 }
                             }
                         }
@@ -322,12 +380,16 @@ private fun MemorialAction(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Icon(
-                painter = painterResource(icon),
-                contentDescription = null,
-                tint = StandardChrome.text,
-                modifier = Modifier.size(19.dp),
-            )
+            if (icon == R.drawable.capsule_candle) {
+                CapsuleCandleIcon(size = 19.dp)
+            } else {
+                Icon(
+                    painter = painterResource(icon),
+                    contentDescription = null,
+                    tint = StandardChrome.text,
+                    modifier = Modifier.size(19.dp),
+                )
+            }
             Text(
                 text = text,
                 color = StandardChrome.text,
