@@ -429,49 +429,49 @@ object YouTube {
                 ?.firstNotNullOfOrNull { it?.tabRenderer?.content?.sectionListRenderer?.contents }
             ?: response.contents?.sectionListRenderer?.contents
             ?: emptyList()
-        val grid = sections.firstNotNullOfOrNull { it.gridRenderer }
-            ?: sections.firstNotNullOfOrNull { section ->
-                section.itemSectionRenderer?.contents?.firstNotNullOfOrNull { it.gridRenderer }
+        // Full-discography browse responses can contain several grids/shelves:
+        // taking the FIRST matching renderer drops all subsequent official
+        // releases (and reproduces the notorious 3-out-of-7 album problem).
+        // Keep the whole requested catalog, not a single preview shelf.
+        val allSections = sections.flatMap { section ->
+            listOf(section) + section.itemSectionRenderer?.contents.orEmpty().map { nested ->
+                section.copy(
+                    gridRenderer = nested.gridRenderer,
+                    musicShelfRenderer = nested.musicShelfRenderer,
+                    musicCarouselShelfRenderer = null,
+                    musicPlaylistShelfRenderer = null,
+                )
             }
-        val carousel = sections.firstNotNullOfOrNull { it.musicCarouselShelfRenderer }
-        val playlistShelf = sections.firstNotNullOfOrNull { it.musicPlaylistShelfRenderer }
-        val musicShelf = sections.firstNotNullOfOrNull { it.musicShelfRenderer }
-            ?: sections.firstNotNullOfOrNull { section ->
-                section.itemSectionRenderer?.contents?.firstNotNullOfOrNull { it.musicShelfRenderer }
-            }
-        val title = grid?.header?.gridHeaderRenderer?.title?.runs?.firstOrNull()?.text
-            ?: carousel?.header?.musicCarouselShelfBasicHeaderRenderer?.title?.runs?.firstOrNull()?.text
+        }
+        val grids = allSections.mapNotNull { it.gridRenderer }
+        val carousels = allSections.mapNotNull { it.musicCarouselShelfRenderer }
+        val playlistShelves = allSections.mapNotNull { it.musicPlaylistShelfRenderer }
+        val musicShelves = allSections.mapNotNull { it.musicShelfRenderer }
+        val title = grids.firstNotNullOfOrNull { it.header?.gridHeaderRenderer?.title?.runs?.firstOrNull()?.text }
+            ?: carousels.firstNotNullOfOrNull { it.header?.musicCarouselShelfBasicHeaderRenderer?.title?.runs?.firstOrNull()?.text }
             ?: response.header?.musicHeaderRenderer?.title?.runs?.firstOrNull()?.text
-            ?: musicShelf?.title?.runs?.firstOrNull()?.text
+            ?: musicShelves.firstNotNullOfOrNull { it.title?.runs?.firstOrNull()?.text }
             ?: ""
-        when {
-            grid != null -> ArtistItemsPage(
-                title = title,
-                items = grid.items.mapNotNull {
-                    it.musicTwoRowItemRenderer?.let(ArtistItemsPage::fromMusicTwoRowItemRenderer)
-                },
-                continuation = grid.continuations?.getContinuation(),
-            )
-            carousel != null -> ArtistItemsPage(
-                title = title,
-                items = carousel.contents.mapNotNull {
+        val items = when {
+            grids.isNotEmpty() -> grids.flatMap { grid ->
+                grid.items.mapNotNull { it.musicTwoRowItemRenderer?.let(ArtistItemsPage::fromMusicTwoRowItemRenderer) }
+            }
+            carousels.isNotEmpty() -> carousels.flatMap { carousel ->
+                carousel.contents.mapNotNull {
                     it.musicTwoRowItemRenderer?.let(ArtistItemsPage::fromMusicTwoRowItemRenderer)
                         ?: it.musicResponsiveListItemRenderer?.let(ArtistItemsPage::fromMusicResponsiveListItemRenderer)
-                },
-                continuation = null,
-            )
-            else -> ArtistItemsPage(
-                title = title,
-                items = (playlistShelf?.contents ?: musicShelf?.contents)
-                    ?.getItems()?.mapNotNull {
-                        ArtistItemsPage.fromMusicResponsiveListItemRenderer(it)
-                    }.orEmpty(),
-                continuation = playlistShelf?.continuations?.getContinuation()
-                    ?: playlistShelf?.contents?.getContinuation()
-                    ?: musicShelf?.continuations?.getContinuation()
-                    ?: musicShelf?.contents?.getContinuation(),
-            )
+                }
+            }
+            else -> (playlistShelves.flatMap { it.contents } + musicShelves.flatMap { it.contents })
+                .getItems().mapNotNull(ArtistItemsPage::fromMusicResponsiveListItemRenderer)
         }
+        ArtistItemsPage(
+            title = title,
+            items = items.distinctBy { item -> "${item::class.simpleName}:${item.id}" },
+            continuation = grids.firstNotNullOfOrNull { it.continuations?.getContinuation() }
+                ?: playlistShelves.firstNotNullOfOrNull { it.continuations?.getContinuation() ?: it.contents.getContinuation() }
+                ?: musicShelves.firstNotNullOfOrNull { it.continuations?.getContinuation() ?: it.contents?.getContinuation() },
+        )
     }
 
     suspend fun artistItemsContinuation(continuation: String): Result<ArtistItemsContinuationPage> = runCatchingCancellable {
