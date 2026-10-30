@@ -10,16 +10,16 @@ class ArtistScreenDesignTest {
         org.junit.Assert.assertEquals(1f, values.last(), 0f)
         assertTrue("Artist portrait should remain visible at 75% travel", values[15] < 1f)
         assertTrue("Shorter dissolve still starts after the initial scroll", values[1] == 0f)
-        assertTrue("The dissolve begins before the second scroll step", values[2] > 0f)
+        assertTrue("The dissolve begins as the artwork starts approaching the bar", values[3] > 0f)
         assertTrue("Fade completes before the portrait crosses the bar", values[20] >= 1f)
         assertTrue(values.zipWithNext().all { (a, b) -> b >= a && b - a < 0.14f })
         org.junit.Assert.assertEquals(0f, com.nikhil.yt.ui.screens.artist.artistArtworkFade(0, -20, 1000, 200), 0f)
         org.junit.Assert.assertEquals(1f, com.nikhil.yt.ui.screens.artist.artistArtworkFade(1, 0, 1000, 200), 0f)
     }
 
-    @Test fun toolbarSealsBeforeActionButtonsCanReachIt() {
-        // Regression: shortening only the hero moved the subscription buttons
-        // into the photo and the pinned bar flashed opaque on top of them.
+    @Test fun toolbarSealsCloseToActionsWithoutCoveringThem() {
+        // The old 14%-of-photo safety band made the bar solid 50-80dp too
+        // soon, leaving an empty black strip. The photo itself is unchanged.
         for (widthDp in listOf(320, 360, 393, 450)) {
             val portraitBottom = (widthDp * 1.25f).toInt()
             val firstActionTop = portraitBottom + 12 // photo ends, then 12dp gap
@@ -29,8 +29,9 @@ class ArtistScreenDesignTest {
                     0, it, portraitBottom, toolbarBottom,
                 ) >= 1f
             }
-            assertTrue("Buttons cannot be under the toolbar as its surface appears",
-                firstActionTop - sealedAt >= toolbarBottom + 48)
+            val gap = firstActionTop - sealedAt - toolbarBottom
+            assertTrue("Toolbar must seal before the action rail enters: gap=$gap", gap >= 12)
+            assertTrue("No oversized empty black strip before buttons: gap=$gap", gap <= 22)
         }
     }
 
