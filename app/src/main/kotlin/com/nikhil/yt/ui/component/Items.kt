@@ -23,6 +23,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -165,13 +167,17 @@ inline fun ListItem(
     trailingContent: @Composable RowScope.() -> Unit = {},
     isActive: Boolean = false,
     itemHeight: Dp = ListItemHeight,
+    pressInteractionSource: MutableInteractionSource? = null,
 ) {
+    // The pressed row uses the EXACT same inset, shape and color as the
+    // currently playing row. Avoid a second rectangle/ripple drawing over it.
+    val pressed = pressInteractionSource?.collectIsPressedAsState()?.value == true
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .height(itemHeight)
             .padding(horizontal = 8.dp)
-            .then(if (isActive) Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.secondaryContainer) else Modifier)
+             .then(if (isActive || pressed) Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.secondaryContainer) else Modifier)
     ) {
         Box(Modifier.padding(6.dp), contentAlignment = Alignment.Center) { thumbnailContent() }
         Column(Modifier.weight(1f).padding(horizontal = 6.dp)) {
@@ -331,6 +337,7 @@ fun SongListItem(
     showSourceIcon: Boolean = false,
     trailingContent: @Composable RowScope.() -> Unit = {},
     showActiveBackground: Boolean = true,
+    pressInteractionSource: MutableInteractionSource? = null,
 ) {
     val swipeEnabled by rememberPreference(SwipeToSongKey, defaultValue = false)
     val visuals = LocalSongListVisuals.current
@@ -360,6 +367,7 @@ fun SongListItem(
             modifier = if (isSwipeable && swipeEnabled) Modifier else modifier,
             isActive = isActive && showActiveBackground,
             itemHeight = visuals.rowHeight,
+            pressInteractionSource = pressInteractionSource,
         )
     }
 
@@ -954,6 +962,7 @@ fun YouTubeListItem(
     // display a richer already-known credit without touching other callers.
     artistSubtitleOverride: String? = null,
     artworkRequestPixels: Int? = null,
+    pressInteractionSource: MutableInteractionSource? = null,
     trailingContent: @Composable RowScope.() -> Unit = {},
     badges: @Composable RowScope.() -> Unit = {
         DefaultYouTubeItemBadges(item)
@@ -1036,6 +1045,7 @@ fun YouTubeListItem(
             modifier = if (item is SongItem && isSwipeable && swipeEnabled) Modifier else modifier,
             isActive = isActive,
             itemHeight = visuals.rowHeight,
+            pressInteractionSource = pressInteractionSource,
         )
     }
 
