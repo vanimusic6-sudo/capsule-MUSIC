@@ -195,19 +195,20 @@ fun ArtistScreen(
     // Coil shares the app's existing loader/cache; no whole-discography preload.
     LaunchedEffect(artistPage?.artist?.id) {
         val sections = artistPage?.sections ?: return@LaunchedEffect
-        delay(170)
+        delay(420)
         val loader = SingletonImageLoader.get(context)
+        // Only the next two off-screen release covers. The previous warmup
+        // launched six large requests (including already visible song art),
+        // competing with visible images and doing unnecessary radio/CPU work.
         val requests = sections.asSequence()
+            .filter { it.items.any { item -> item is AlbumItem || item is PlaylistItem } }
             .flatMap { it.items.asSequence().drop(2).take(2) }
-            .mapNotNull { item ->
-                item.thumbnail?.takeIf { it.isNotBlank() }?.let { url ->
-                    capsuleArtworkUrl(url, if (item is SongItem) 192 else 384)
-                }
-            }
-            .distinct().take(6)
+            .mapNotNull { item -> item.thumbnail?.takeIf(String::isNotBlank) }
+            .map { url -> capsuleArtworkUrl(url, 320) }
+            .distinct().take(2)
             .map { url ->
                 loader.enqueue(ImageRequest.Builder(context)
-                    .data(url).size(384, 384).allowHardware(true).build())
+                    .data(url).size(320, 320).allowHardware(true).build())
             }.toList()
         try {
             awaitCancellation()
@@ -413,6 +414,8 @@ fun ArtistScreen(
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .padding(horizontal = 8.dp)
+                                    .clip(RoundedCornerShape(14.dp))
                                     .combinedClickable(
                                         onClick = {
                                             if (song.id == mediaMetadata?.id) {
@@ -501,6 +504,7 @@ fun ArtistScreen(
                                         isPlaying = isPlaying,
                                         coroutineScope = coroutineScope,
                                         modifier = Modifier
+                                            .clip(RoundedCornerShape(18.dp))
                                             .combinedClickable(
                                                 onClick = {
                                                     navController.navigate("album/${album.id}")
@@ -578,6 +582,9 @@ fun ArtistScreen(
                                         }
                                     },
                                     modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 8.dp)
+                                        .clip(RoundedCornerShape(14.dp))
                                         .combinedClickable(
                                             onClick = {
                                                 if (song.id == mediaMetadata?.id) {
@@ -627,7 +634,7 @@ fun ArtistScreen(
                                     ) { item ->
                                         YouTubeGridItem(
                                             item = item,
-                                            artworkRequestPixels = 384,
+                                            artworkRequestPixels = 320,
                                             isActive = when (item) {
                                                 is SongItem -> mediaMetadata?.id == item.id
                                                 is AlbumItem -> mediaMetadata?.album?.id == item.id
@@ -636,6 +643,7 @@ fun ArtistScreen(
                                             isPlaying = isPlaying,
                                             coroutineScope = coroutineScope,
                                             modifier = Modifier
+                                                .clip(RoundedCornerShape(18.dp))
                                                 .combinedClickable(
                                                     onClick = {
                                                         when (item) {
