@@ -8,14 +8,16 @@ class DetailToolbarRevealTest {
     private fun fade(index: Int, offset: Int, bottom: Float = 600f, bar: Float = 100f) =
         detailArtworkFadeLikeArtist(index, offset, bottom, bar)
 
-    @Test fun fadeCompletesEarlyEnoughForScrollingActionButtons() {
+    @Test fun fadeCompletesAtPortraitToolbarBoundaryWithoutEmptyGap() {
         assertEquals(0f, fade(0, 0), 0f)
         assertEquals(0f, fade(0, 40), 0f)
         assertEquals(0f, fade(0, 49), 0f)
+        assertEquals(0f, fade(0, 60), 0f)
         assertTrue(fade(0, 90) > 0f)
         assertTrue(fade(0, 370) < 1f)
-        assertTrue("Photo must ease out before the action safety gap", fade(0, 405) < 1f)
-        assertEquals(1f, fade(0, 412), 0f)
+        assertTrue("Photo should remain until the portrait approaches the toolbar", fade(0, 450) < 1f)
+        assertTrue("Avoid the old premature 14%-of-photo black area", fade(0, 480) < 1f)
+        assertEquals(1f, fade(0, 495), 0f)
         assertEquals(1f, fade(1, 0), 0f)
         assertEquals(0f, fade(0, 100, Float.NaN), 0f)
     }
@@ -25,12 +27,10 @@ class DetailToolbarRevealTest {
         assertTrue(values.zipWithNext().all { (a, b) ->
             b >= a && b - a < .025f
         })
-        val mid = fade(0, 231)
+        val mid = fade(0, 278)
         assertTrue(mid in .45f.. .55f)
-        // The old assertion compared two *different* scroll positions as if
-        // they were identical; the shortened safety fade is correctly monotonic.
-        assertEquals(mid, fade(0, 231), 0f)
-        assertTrue(fade(0, 270) > mid)
+        assertEquals(mid, fade(0, 278), 0f)
+        assertTrue(fade(0, 340) > mid)
         assertEquals(1f, detailToolbarBackdropAlpha(1f), 0f)
     }
 
