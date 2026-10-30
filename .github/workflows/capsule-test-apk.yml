@@ -1,0 +1,103 @@
+name: Capsule Test APK (no release key)
+
+# Development builds are safe to produce without any production signing secret
+# or a review gate. A new push supersedes outdated builds on the same branch.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - '**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: capsule-test-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-apk:
+    name: Build separate Capsule TEST app
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout source branch
+        uses: actions/checkout@v6
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle 9.5
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.5.0'
+
+      - name: Install Android compile SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [[ -x "$SDKMANAGER" ]]; then
+            "$SDKMANAGER" 'platforms;android-37.1'
+          fi
+
+      - name: Set default Android resource locale
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > app/src/main/res/resources.properties <<'EOF'
+          unqualifiedResLocale=en-US
+          EOF
+
+      - name: Ensure production signing key is not present
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -e app/keystore/release.keystore ]]; then
+            echo "::error::Production release keystore must not enter test builds"
+            exit 1
+          fi
+          echo "No official signing credentials or approval environment used"
+
+      - name: Build Universal Test APK (Android debug key)
+        run: |
+          gradle :app:assembleUniversalDebug --stacktrace --no-daemon
+
+      - name: Verify TEST package and non-production signer
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/universal/debug -type f -name '*.apk' | head -n 1)"
+          test -n "$APK"
+          test -s "$APK"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          test -x "$AAPT"
+
+          # This is NOT an update for com.nikhil.yt: Android installs it
+          # separately as com.nikhil.yt.debug (existing Gradle build-type suffix).
+          "$AAPT" dump badging "$APK" | grep -Fq "package: name='com.nikhil.yt.debug'"
+          "$APKSIGNER" verify --verbose "$APK"
+          "$APKSIGNER" verify --print-certs "$APK" > "$RUNNER_TEMP/test-apk-signer.txt"
+          if grep -Fqi "c044579fd886ee7f6ae919d705fb3345f7417957d8cd49fd110d596f864ddd7d" "$RUNNER_TEMP/test-apk-signer.txt"; then
+            echo "::error::Test APK must NEVER use the official Capsule release signer"
+            exit 1
+          fi
+
+          sha256sum "$APK"
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+          echo "test_package=com.nikhil.yt.debug" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Capsule TEST APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Capsule-TEST-Universal-${{ github.run_number }}
+          path: ${{ steps.package.outputs.path }}
+          if-no-files-found: error
+          retention-days: 14

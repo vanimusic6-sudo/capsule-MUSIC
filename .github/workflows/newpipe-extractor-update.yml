@@ -2,10 +2,7 @@ name: NewPipeExtractor auto VIDEO build
 
 on:
   workflow_dispatch:
-  schedule:
-    # Check four times per day. A build only runs when a NEW stable
-    # NewPipeExtractor release exists.
-    - cron: "17 */6 * * *"
+  # No unattended signing/release of upstream binaries. Developer reviews manually.
 
 permissions:
   contents: write
@@ -17,6 +14,9 @@ concurrency:
 jobs:
   update:
     name: Build signed VIDEO-engine candidate
+    # Share release-key approval policy with regular Capsule signing jobs.
+    # OWNER ACTION: require maintainer approval in capsule-signing environment.
+    environment: capsule-signing
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -290,8 +290,9 @@ jobs:
           set -euo pipefail
 
           tag="video-engine-$LATEST"
-          git tag -f "$tag" "${{ steps.source.outputs.commit }}"
-          git push --force origin "refs/tags/$tag"
+          # Immutable release provenance: never replace a published tag.
+          git tag "$tag" "${{ steps.source.outputs.commit }}"
+          git push origin "refs/tags/$tag"
 
       - name: Publish signed VIDEO-engine prerelease
         if: steps.version.outputs.changed == 'true' && steps.existing.outputs.exists != 'true'

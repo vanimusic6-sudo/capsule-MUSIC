@@ -139,9 +139,10 @@ private val ArtistLatestReleaseArtworkSize = 112.dp
 internal fun artistArtworkFade(firstVisibleItemIndex: Int, offsetPx: Int, artworkHeightPx: Int, toolbarBottomPx: Int): Float {
     if (firstVisibleItemIndex > 0) return 1f
     val distance = (artworkHeightPx - toolbarBottomPx).coerceAtLeast(1)
-    // Same long, late, five-degree smootherstep used by album and playlist.
-    // Finish at the very last safe point before photo edge meets toolbar.
-    return portraitDissolveFraction(offsetPx.toFloat(), distance.toFloat())
+    // Leave room for the action row before it passes behind the pinned toolbar.
+    // A shorter dissolve allows the toolbar to turn opaque before overlap.
+    val earlyCompletionPx = (artworkHeightPx * 0.14f).toInt()
+    return portraitDissolveFraction(offsetPx.toFloat(), (distance - earlyCompletionPx).coerceAtLeast(1).toFloat())
 }
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
@@ -171,6 +172,7 @@ fun ArtistScreen(
         LazyListState()
     }
     var descriptionMoving by remember(viewModel.artistId) { mutableStateOf(false) }
+    var memorialDialogVisible by remember(viewModel.artistId) { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     var showLocal by rememberSaveable(viewModel.artistId) { mutableStateOf(false) }
     val systemBarsTopPadding = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
@@ -265,8 +267,7 @@ fun ArtistScreen(
                     subscribed = libraryArtist?.artist?.bookmarkedAt != null,
                     canSubscribe = libraryArtist != null || artistPage != null,
                     canShuffle = if (showLocal) librarySongs.isNotEmpty() else artistPage?.artist?.shuffleEndpoint != null,
-                    showRadio = !showLocal,
-                    canRadio = artistPage?.artist?.radioEndpoint != null,
+                    showCandle = !showLocal && viewModel.memorialInfo != null,
                     loading = remoteLoading && libraryArtist == null,
                     topSafePadding = systemBarsTopPadding,
                     artworkAlpha = { 1f - artworkFade },
@@ -295,11 +296,7 @@ fun ArtistScreen(
                             }
                         }
                     },
-                    onRadio = {
-                        artistPage?.artist?.radioEndpoint?.let {
-                            playerConnection.playQueue(YouTubeQueue(it))
-                        }
-                    },
+                    onCandle = { memorialDialogVisible = true },
                 )
             }
             if (remoteLoading) {
@@ -316,12 +313,6 @@ fun ArtistScreen(
                     }
                 }
             } else {
-                val description = artistPage?.description
-                if (!showLocal && !description.isNullOrBlank()) {
-                    item(key = "description") {
-                        ArtistDescription(viewModel.artistId, description, onGeometryAnimationChanged = { descriptionMoving = it })
-                    }
-                }
                 latestRelease?.let { release ->
                     item(
                         key = "latest_release_${release.id}",
@@ -332,6 +323,13 @@ fun ArtistScreen(
                                 navController.navigate("album/${release.id}")
                             },
                         )
+                    }
+                }
+
+                val description = artistPage?.description
+                if (!showLocal && !description.isNullOrBlank()) {
+                    item(key = "description") {
+                        ArtistDescription(viewModel.artistId, description, onGeometryAnimationChanged = { descriptionMoving = it })
                     }
                 }
 
@@ -495,11 +493,13 @@ fun ArtistScreen(
                     }
                 } else {
                     // YouTube/Remote content sections
-                    artistPage?.sections?.forEachIndexed { sectionIndex, section ->
+                    // One linear pass assigns stable keys without repeatedly
+                    // scanning all earlier sections on every lazy-list rebuild.
+                    val sectionOccurrences = mutableMapOf<String, Int>()
+                    artistPage?.sections?.forEach { section ->
                         val identity = "${section.moreEndpoint?.browseId}:${section.moreEndpoint?.params}:${section.title}"
-                        val occurrence = artistPage?.sections.orEmpty().take(sectionIndex).count {
-                            "${it.moreEndpoint?.browseId}:${it.moreEndpoint?.params}:${it.title}" == identity
-                        }
+                        val occurrence = sectionOccurrences[identity] ?: 0
+                        sectionOccurrences[identity] = occurrence + 1
                         val sectionKey = "artist-section:$identity:$occurrence"
                         if (section.items.isNotEmpty()) {
                             item(key = "$sectionKey:title") {
@@ -516,7 +516,7 @@ fun ArtistScreen(
                             }
                         }
 
-                        if ((section.items.firstOrNull() as? SongItem)?.album != null) {
+                        if (section.items.isNotEmpty() && section.items.all { it is SongItem && it.album != null }) {
                             // Song items with album info - display as list
                             items(
                                 items = section.items.distinctBy { it.id },
@@ -719,6 +719,19 @@ fun ArtistScreen(
             context.startActivity(Intent.createChooser(shareIntent, null))
         },
     )
+
+    if (memorialDialogVisible) {
+        val memorial = viewModel.memorialInfo
+        if (memorial != null) {
+            ArtistMemorialDialog(
+                name = artistName.orEmpty(),
+                memorial = memorial,
+                onDismiss = { memorialDialogVisible = false },
+                // Playback does not silently restart at the end of the minute.
+                onMinuteBegin = { playerConnection.player.pause() },
+            )
+        }
+    }
 }
 
 @Composable
@@ -735,7 +748,7 @@ private fun ArtistLatestReleaseCard(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 8.dp),
+                .padding(start = 22.dp, top = 8.dp, end = 22.dp, bottom = 8.dp),
     ) {
         Row(
             modifier =

@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.PaddingValues
@@ -24,6 +25,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -53,6 +57,7 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -64,6 +69,7 @@ import com.nikhil.yt.ui.menu.AddToPlaylistDialogOnline
 import com.nikhil.yt.ui.menu.LoadingScreen
 import com.nikhil.yt.ui.utils.backToMain
 import com.nikhil.yt.viewmodels.BackupRestoreViewModel
+import com.nikhil.yt.viewmodels.BackupEncryption
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDateTime
@@ -91,6 +97,17 @@ fun BackupAndRestore(
     viewModel: BackupRestoreViewModel = hiltViewModel(),
 ) {
     var importedTitle by remember { mutableStateOf("") }
+    var showUnencryptedBackupWarning by rememberSaveable { mutableStateOf(false) }
+    var showEncryptedBackupDialog by remember { mutableStateOf(false) }
+    var showRestorePasswordDialog by remember { mutableStateOf(false) }
+    var backupPassword by remember { mutableStateOf("") }
+    var backupConfirmation by remember { mutableStateOf("") }
+    var restorePassword by remember { mutableStateOf("") }
+    // Never retain backup passwords in saved instance state or DataStore.
+    // Null means the request was lost (e.g. activity recreated); fail CLOSED
+    // instead of accidentally falling back to exporting a plaintext ZIP.
+    var pendingBackupPassword by remember { mutableStateOf<String?>(null) }
+    var pendingRestorePassword by remember { mutableStateOf<String?>(null) }
     val importedSongs = remember { mutableStateListOf<Song>() }
     var showChoosePlaylistDialogOnline by rememberSaveable { mutableStateOf(false) }
     var isProgressStarted by rememberSaveable { mutableStateOf(false) }
@@ -104,15 +121,19 @@ fun BackupAndRestore(
     
     val backupLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-            if (uri != null) {
-                viewModel.backup(context, uri)
+            val password = pendingBackupPassword
+            pendingBackupPassword = null
+            if (uri != null && password != null) {
+                viewModel.backup(context, uri, password.ifEmpty { null })
             }
         }
         
     val restoreLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            if (uri != null) {
-                viewModel.restore(context, uri)
+            val password = pendingRestorePassword
+            pendingRestorePassword = null
+            if (uri != null && password != null) {
+                viewModel.restore(context, uri, password.ifEmpty { null })
             }
         }
         
@@ -185,14 +206,7 @@ fun BackupAndRestore(
                 BackupSettingsItemStyle(
                     icon = painterResource(R.drawable.backup),
                     title = "Backup",
-                    onClick = {
-                        val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
-                        backupLauncher.launch(
-                            "${resources.getString(R.string.app_name)}_${
-                                LocalDateTime.now().format(formatter)
-                            }.backup"
-                        )
-                    }
+                    onClick = { showEncryptedBackupDialog = true }
                 )
             }
             
@@ -200,7 +214,7 @@ fun BackupAndRestore(
                 BackupSettingsItemStyle(
                     icon = painterResource(R.drawable.restore),
                     title = "Restore",
-                    onClick = { restoreLauncher.launch(arrayOf("application/octet-stream")) }
+                    onClick = { showRestorePasswordDialog = true }
                 )
             }
             
@@ -220,6 +234,126 @@ fun BackupAndRestore(
                 )
             }
         }
+    }
+
+    if (showEncryptedBackupDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showEncryptedBackupDialog = false
+                backupPassword = ""
+                backupConfirmation = ""
+            },
+            title = { Text("Зашифрованная резервная копия") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "AES-256-GCM защитит историю и библиотеку. " +
+                            "Пароль потребуется и на другом устройстве; восстановить забытый пароль нельзя."
+                    )
+                    OutlinedTextField(
+                        value = backupPassword,
+                        onValueChange = { backupPassword = it.take(200) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        label = { Text("Пароль (не менее 10 символов)") },
+                    )
+                    OutlinedTextField(
+                        value = backupConfirmation,
+                        onValueChange = { backupConfirmation = it.take(200) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        label = { Text("Повторите пароль") },
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = BackupEncryption.isValidPassword(backupPassword) &&
+                        backupPassword == backupConfirmation,
+                    onClick = {
+                        pendingBackupPassword = backupPassword
+                        backupPassword = ""
+                        backupConfirmation = ""
+                        showEncryptedBackupDialog = false
+                        val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
+                        backupLauncher.launch(
+                            "${resources.getString(R.string.app_name)}_${LocalDateTime.now().format(formatter)}.cbackup"
+                        )
+                    },
+                ) { Text("Создать защищённую копию") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showEncryptedBackupDialog = false
+                    backupPassword = ""
+                    backupConfirmation = ""
+                    showUnencryptedBackupWarning = true
+                }) { Text("Без шифрования") }
+            },
+        )
+    }
+
+    if (showRestorePasswordDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showRestorePasswordDialog = false
+                restorePassword = ""
+            },
+            title = { Text("Восстановление резервной копии") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Для защищённой копии введите пароль. Для старого ZIP оставьте поле пустым.")
+                    OutlinedTextField(
+                        value = restorePassword,
+                        onValueChange = { restorePassword = it.take(200) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        label = { Text("Пароль (если есть)") },
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingRestorePassword = restorePassword
+                    restorePassword = ""
+                    showRestorePasswordDialog = false
+                    restoreLauncher.launch(arrayOf("application/octet-stream", "application/zip"))
+                }) { Text("Выбрать архив") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showRestorePasswordDialog = false
+                    restorePassword = ""
+                }) { Text("Отмена") }
+            },
+        )
+    }
+
+    if (showUnencryptedBackupWarning) {
+        AlertDialog(
+            onDismissRequest = { showUnencryptedBackupWarning = false },
+            title = { Text(stringResource(R.string.capsule_backup_privacy_warning_title)) },
+            text = { Text(stringResource(R.string.capsule_backup_privacy_warning_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showUnencryptedBackupWarning = false
+                    pendingBackupPassword = "" // Explicit legacy plaintext choice only.
+                    val formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
+                    backupLauncher.launch(
+                        "${resources.getString(R.string.app_name)}_${
+                            LocalDateTime.now().format(formatter)
+                        }.backup"
+                    )
+                }) {
+                    Text(stringResource(R.string.capsule_backup_privacy_warning_continue))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showUnencryptedBackupWarning = false }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+            },
+        )
     }
 
     AddToPlaylistDialogOnline(

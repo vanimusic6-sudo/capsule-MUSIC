@@ -18,7 +18,7 @@ data class TogetherJoinInfo(
     val sessionKey: String,
 ) {
     fun toWebSocketUrl(): String =
-        "ws://$host:$port/together"
+        "ws://${if (':' in host && !host.startsWith("[")) "[$host]" else host}:$port/together"
 
     fun toDeepLink(): String {
         val charset = StandardCharsets.UTF_8.name()
@@ -40,7 +40,7 @@ object TogetherLink {
 
     fun decode(raw: String): TogetherJoinInfo? {
         val trimmed = raw.trim()
-        if (trimmed.isBlank()) return null
+        if (trimmed.isBlank() || trimmed.length > 4096) return null
 
         val asUri = runCatching { URI(trimmed) }.getOrNull()
         if (asUri != null) {
@@ -50,6 +50,20 @@ object TogetherLink {
 
         decodeCompact(trimmed)?.let { return it }
         return null
+    }
+
+    private fun safeHost(value: String): Boolean {
+        if (value.length !in 1..253) return false
+        // Invitation URLs are untrusted input. Never permit user-info, path,
+        // control characters, query delimiters or an embedded port in host.
+        if (value.any { it.isWhitespace() || it in "/\\?#@%|" }) return false
+        val bare = value.removePrefix("[").removeSuffix("]")
+        if (bare.contains(':')) {
+            if (!bare.matches(Regex("[0-9A-Fa-f:.]+"))) return false
+            return runCatching { URI("ws://[$bare]:80/together").host != null }.getOrDefault(false)
+        }
+        return value.matches(Regex("[A-Za-z0-9][A-Za-z0-9.-]*")) &&
+            !value.contains("..") && !value.endsWith('.')
     }
 
     private fun decodeDeepLink(uri: URI): TogetherJoinInfo? {
@@ -63,8 +77,8 @@ object TogetherLink {
         val sid = params["sid"]?.trim().orEmpty()
         val key = params["key"]?.trim().orEmpty()
 
-        if (host.isBlank() || port == null || sid.isBlank() || key.isBlank()) return null
-        if (port !in 1..65535) return null
+        if (!safeHost(host) || port == null || sid.isBlank() || key.isBlank()) return null
+        if (port !in 1..65535 || sid.length !in 1..128 || key.length !in 1..256) return null
 
         return TogetherJoinInfo(host = host, port = port, sessionId = sid, sessionKey = key)
     }
@@ -84,8 +98,8 @@ object TogetherLink {
         val sid = params["sid"]?.trim().orEmpty()
         val key = params["key"]?.trim().orEmpty()
 
-        if (host.isBlank() || sid.isBlank() || key.isBlank()) return null
-        if (port !in 1..65535) return null
+        if (!safeHost(host) || uri.userInfo != null || sid.isBlank() || key.isBlank()) return null
+        if (port !in 1..65535 || sid.length !in 1..128 || key.length !in 1..256) return null
 
         return TogetherJoinInfo(host = host, port = port, sessionId = sid, sessionKey = key)
     }
@@ -98,8 +112,8 @@ object TogetherLink {
         val port = parts[1].toIntOrNull() ?: return null
         val sid = parts[2].trim()
         val key = parts[3].trim()
-        if (host.isBlank() || sid.isBlank() || key.isBlank()) return null
-        if (port !in 1..65535) return null
+        if (!safeHost(host) || sid.isBlank() || key.isBlank()) return null
+        if (port !in 1..65535 || sid.length !in 1..128 || key.length !in 1..256) return null
         return TogetherJoinInfo(host = host, port = port, sessionId = sid, sessionKey = key)
     }
 

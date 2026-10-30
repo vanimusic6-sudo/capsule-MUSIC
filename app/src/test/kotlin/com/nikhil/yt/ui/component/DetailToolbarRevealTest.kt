@@ -8,15 +8,14 @@ class DetailToolbarRevealTest {
     private fun fade(index: Int, offset: Int, bottom: Float = 600f, bar: Float = 100f) =
         detailArtworkFadeLikeArtist(index, offset, bottom, bar)
 
-    @Test fun fadeStartsLaterAndFinishesJustBeforePhotoReachesToolbar() {
+    @Test fun fadeCompletesEarlyEnoughForScrollingActionButtons() {
         assertEquals(0f, fade(0, 0), 0f)
-        assertEquals(0f, fade(0, 60), 0f) // 12% of 500px
-        assertEquals(0f, fade(0, 59), 0f)
+        assertEquals(0f, fade(0, 40), 0f)
+        assertEquals(0f, fade(0, 49), 0f)
         assertTrue(fade(0, 90) > 0f)
-        assertTrue(fade(0, 370) < 1f) // Former 74% threshold was too early
-        assertTrue(fade(0, 450) < 1f)
-        assertTrue("Photo remains visible near its lower boundary", fade(0, 490) < 1f)
-        assertEquals(1f, fade(0, 495), 0f)
+        assertTrue(fade(0, 370) < 1f)
+        assertTrue("Photo must ease out before the action safety gap", fade(0, 405) < 1f)
+        assertEquals(1f, fade(0, 412), 0f)
         assertEquals(1f, fade(1, 0), 0f)
         assertEquals(0f, fade(0, 100, Float.NaN), 0f)
     }
@@ -26,9 +25,12 @@ class DetailToolbarRevealTest {
         assertTrue(values.zipWithNext().all { (a, b) ->
             b >= a && b - a < .025f
         })
-        val mid = fade(0, 270)
+        val mid = fade(0, 231)
         assertTrue(mid in .45f.. .55f)
-        assertEquals(mid, fade(0, 270), 0f)
+        // The old assertion compared two *different* scroll positions as if
+        // they were identical; the shortened safety fade is correctly monotonic.
+        assertEquals(mid, fade(0, 231), 0f)
+        assertTrue(fade(0, 270) > mid)
         assertEquals(1f, detailToolbarBackdropAlpha(1f), 0f)
     }
 

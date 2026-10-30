@@ -8,6 +8,7 @@ package com.nikhil.yt.together
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -38,6 +39,26 @@ class TogetherCoreTest {
         assertEquals(42117, decoded.port)
         assertEquals("sid123", decoded.sessionId)
         assertEquals("key456", decoded.sessionKey)
+    }
+
+    @Test
+    fun unsafeInvitationsAreRejectedWithoutConnecting() {
+        for (link in listOf(
+            "example.com/path|42117|sid|key",
+            "evil@example.com|42117|sid|key",
+            "ws://user@example.com:42117/together?sid=sid&key=key",
+            "capsule://together?host=192.168.1.1%2Fadmin&port=42117&sid=sid&key=key",
+            "capsule://together?host=192.168.1.1&port=42117&sid=sid&key=",
+            "a".repeat(5000),
+        )) {
+            assertNull(link, TogetherLink.decode(link))
+        }
+    }
+
+    @Test
+    fun ipv6JoinAddressIsBracketed() {
+        val join = TogetherJoinInfo("::1", 42117, "sid", "key")
+        assertEquals("ws://[::1]:42117/together", join.toWebSocketUrl())
     }
 
     @Test

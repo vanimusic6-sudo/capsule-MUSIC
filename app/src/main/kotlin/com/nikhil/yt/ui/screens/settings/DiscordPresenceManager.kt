@@ -24,6 +24,9 @@ import timber.log.Timber
 import java.util.concurrent.atomic.AtomicBoolean
 
 object DiscordPresenceManager {
+    // Disabled until Discord offers an officially supported user-free RPC flow.
+    private fun legacyUserTokenGatewayDisabled(): Boolean = true
+
     private val started = AtomicBoolean(false)
     private var scope: CoroutineScope? = null
     private var job: Job? = null
@@ -100,6 +103,8 @@ object DiscordPresenceManager {
         positionMs: Long,
         isPaused: Boolean,
     ): Boolean = withContext(Dispatchers.IO) {
+        // Strict fail-closed guard for callers bypassing DiscordPresenceOwner.
+        if (legacyUserTokenGatewayDisabled()) return@withContext false
         rpcMutex.withLock {
             try {
                 if (token.isBlank()) {
@@ -164,6 +169,12 @@ object DiscordPresenceManager {
         isPausedProvider: () -> Boolean,
         intervalProvider: () -> Long
     ) {
+        // Do not make user-token RPC calls; keep the legacy implementation
+        // non-reachable unless a safe, supported replacement is implemented.
+        if (legacyUserTokenGatewayDisabled()) {
+            stop()
+            return
+        }
         if (token.isBlank()) {
             Timber.tag(logTag).w("start skipped (token missing)")
             stop()

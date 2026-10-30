@@ -1020,4 +1020,27 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="prefer_aac_audio_description">Prefer AAC/M4A for new streams and downloads if Opus playback is unreliable. When off, the audio format is chosen automatically.</string>
     <string name="no_offline_audio_in_queue">No complete local audio is available in this queue</string>
     <string name="download_now">Download now</string>
+    <string name="capsule_backup_privacy_warning_title">Your backup is not encrypted</string>
+    <string name="capsule_backup_privacy_warning_body">The backup includes your listening history, music library and playlists. Login cookies and authorization tokens are excluded, but anyone who receives the file can read your music data. Save it privately and do not upload it publicly.</string>
+    <string name="capsule_backup_privacy_warning_continue">Create backup</string>
+
+    <string name="artist_light_candle">Light a candle</string>
+    <string name="artist_candle_title">Candle of remembrance</string>
+    <string name="artist_candle_for">In memory of %1$s</string>
+    <string name="artist_candle_minute">One minute of silence</string>
+    <string name="artist_candle_minute_desc">Pause the music for sixty seconds</string>
+    <string name="artist_candle_thanks">Thank you for the music</string>
+    <string name="artist_candle_thanks_desc">Share a few words of gratitude</string>
+    <string name="artist_candle_message">Thank you, %1$s, for the music you left with us. 🕯️</string>
+    <string name="artist_candle_share">Share your gratitude</string>
+    <string name="artist_candle_share_desc">Choose an app to share your message</string>
+    <string name="artist_candle_back">Back to choices</string>
+    <string name="artist_candle_note_hint">Write your wishes here…</string>
+    <string name="artist_candle_send">Send</string>
+    <string name="artist_candle_sent">Candle saved</string>
+    <string name="artist_candle_paused">Music is paused. Resume it when you are ready.</string>
+    <string name="artist_candle_timer_done">The minute of silence has ended.</string>
+    <string name="artist_candle_source">%1$s · MusicBrainz</string>
+    <string name="artist_candle_local">Your candle is private. You can share these words with others.</string>
+    <string name="artist_candle_close">Close</string>
 </resources>

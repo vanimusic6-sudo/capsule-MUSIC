@@ -2,7 +2,7 @@ name: Core reliability
 
 on:
   push:
-    branches: [release/01-core-reliability, fix/posttest-ui-rework-20261026, fix/real-download-menu-repair-20261026, fix/download-actions-artist-credits-cover-20261026, fix/rebuild-download-artwork-search-20261026, fix/metrolist-search-active-download-20261026, fix/artist-atomic-player-download-efficiency-20261027]
+    branches: [release/01-core-reliability, fix/posttest-ui-rework-20261026, fix/real-download-menu-repair-20261026, fix/download-actions-artist-credits-cover-20261026, fix/rebuild-download-artwork-search-20261026, fix/metrolist-search-active-download-20261026, fix/artist-atomic-player-download-efficiency-20261027, audit/security-deep-20261028]
   workflow_dispatch:
 
 permissions:
@@ -56,6 +56,7 @@ jobs:
           --tests 'com.nikhil.yt.ui.CapsuleReleaseUiCorrectionsTest'
           --tests 'com.nikhil.yt.playback.video.CapsuleVideoDirectMediaSourceFactoryTest'
           --tests 'com.nikhil.yt.ui.ArtistScreenDesignTest'
+          --tests 'com.nikhil.yt.ui.screens.artist.ArtistMemorialLookupTest'
           --tests 'com.nikhil.yt.ui.ArtistMotionTest'
           --tests 'com.nikhil.yt.ui.ListStabilityTest'
           --tests 'com.nikhil.yt.ui.CapsuleMenuMotionTest'

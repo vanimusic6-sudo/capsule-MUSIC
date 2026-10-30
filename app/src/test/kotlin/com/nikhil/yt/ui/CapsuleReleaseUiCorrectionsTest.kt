@@ -35,6 +35,50 @@ class CapsuleReleaseUiCorrectionsTest {
         assertFalse(toolbar.contains("((fade - 0.98f) / 0.02f)"))
     }
 
+    @Test fun artistActionsAndLatestReleaseShareOneHorizontalGrid() {
+        val hero = source("ui/component/ArtistHero.kt")
+        val screen = source("ui/screens/artist/ArtistScreen.kt")
+        assertTrue(hero.contains(".padding(horizontal = 22.dp)"))
+        assertTrue(screen.contains(".padding(start = 22.dp, top = 8.dp, end = 22.dp"))
+        assertTrue(hero.contains("showCandle"))
+        assertTrue(screen.contains("viewModel.memorialInfo != null"))
+        assertFalse(hero.contains("showRadio"))
+        assertFalse(screen.contains("onRadio ="))
+    }
+
+    @Test fun artistBiographyFollowsReleaseAndCandleDialogIsACompactRitual() {
+        val artist = source("ui/screens/artist/ArtistScreen.kt")
+        val release = artist.indexOf("latestRelease?.let { release ->")
+        val description = artist.indexOf("""item(key = "description")""")
+        assertTrue("Latest release must appear before biography", release >= 0 && description > release)
+
+        val dialog = source("ui/screens/artist/ArtistMemorialDialog.kt")
+        assertTrue(dialog.contains("R.drawable.capsule_candle"))
+        assertTrue(dialog.contains("R.drawable.close"))
+        assertTrue(dialog.contains("R.drawable.favorite_border"))
+        assertTrue(dialog.contains("Brush.sweepGradient("))
+        assertTrue(dialog.contains("drawArc("))
+        assertTrue(dialog.contains("R.string.artist_candle_send"))
+        assertTrue(dialog.contains("R.string.artist_candle_sent"))
+        assertTrue(dialog.contains("submitted:"))
+        assertTrue(dialog.contains("0 -> if (LocalDensity.current.fontScale > 1.3f) 176.dp else 132.dp"))
+        assertTrue(source("ui/component/CapsuleCandleIcon.kt").contains("R.drawable.capsule_candle_flame"))
+        assertTrue(dialog.contains("onMinuteBegin()"))
+        assertTrue(dialog.contains("dismissOnClickOutside = false"))
+        assertTrue(dialog.contains("memorial-wish-canvas"))
+        assertTrue(dialog.contains("BasicTextField("))
+        assertTrue(dialog.contains("getSharedPreferences("))
+        assertTrue(dialog.contains("artist_candle_note_hint"))
+        assertFalse("No stacked content when changing candle modes", dialog.contains("Crossfade("))
+        assertFalse("The dialog must never animate its own height", dialog.contains(".animateContentSize("))
+        assertFalse("Memorial notes are never posted to other apps", dialog.contains("Intent.ACTION_SEND"))
+        assertFalse("Avoid the old oversized footer button", dialog.contains("MemorialActionButton("))
+        val hero = source("ui/component/ArtistHero.kt")
+        assertTrue(hero.contains(".height(heroHeight)"))
+        assertTrue(hero.contains(".heightIn(min = actionRailHeight)"))
+        assertFalse(hero.contains(".animateContentSize("))
+    }
+
     @Test fun downloadsShareLocalPlaylistSemanticsAndNeverCloseMoreOnTap() {
         val shared = source("ui/menu/CapsuleDownloadAction.kt")
         assertTrue(shared.contains("VeluneLoader(size = 24.dp"))

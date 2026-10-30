@@ -1,225 +1,43 @@
-/*
- * Velune - by Nikhil
- * Nikhil
- * Licensed Under GPL-3.0
- */
-
-
-
 package com.nikhil.yt.ui.screens.settings
 
-import android.annotation.SuppressLint
-import android.util.Log
-import android.view.View
-import android.view.ViewGroup
-import android.webkit.*
-import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material3.*
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import com.nikhil.yt.LocalPlayerAwareWindowInsets
-import com.nikhil.yt.R
-import com.nikhil.yt.constants.DiscordTokenKey
-import com.nikhil.yt.ui.component.IconButton
-import com.nikhil.yt.ui.utils.backToMain
-import com.nikhil.yt.utils.rememberPreference
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.LocalConfiguration
 
-@SuppressLint("SetJavaScriptEnabled")
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Fail closed. Legacy WebView login scraped a Discord user authorization token.
+ * OAuth2 does not authorize the user-token gateway RPC, therefore enabling a
+ * cosmetic OAuth login would be misleading and unsafe.
+ */
 @Composable
 fun DiscordLoginScreen(navController: NavController) {
-    val scope = rememberCoroutineScope()
-    var discordToken by rememberPreference(DiscordTokenKey, "")
-    var webView by remember { mutableStateOf<WebView?>(null) }
-    var isCompleting by remember { mutableStateOf(false) }
-
-    fun completeLogin(token: String) {
-        if (isCompleting) return
-        val trimmed = token.trim()
-        if (trimmed.isEmpty() || trimmed == "null" || trimmed == "error") return
-        isCompleting = true
-        discordToken = trimmed
-        webView?.stopLoading()
-        webView?.loadUrl("about:blank")
-        navController.navigateUp()
-    }
-
-    AndroidView(
-        modifier = Modifier
-            .windowInsetsPadding(
-                LocalPlayerAwareWindowInsets.current.only(
-                    WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
-                ),
-            )
-            .fillMaxSize(),
-        factory = { context ->
-            WebView(context).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-
-                WebView.setWebContentsDebuggingEnabled(true)
-
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.setSupportZoom(true)
-                settings.builtInZoomControls = true
-
-                CookieManager.getInstance().apply {
-                    removeAllCookies(null)
-                    flush()
-                }
-
-                WebStorage.getInstance().deleteAllData()
-
-                addJavascriptInterface(object {
-                    @JavascriptInterface
-                    fun onRetrieveToken(token: String) {
-                        Log.d("DiscordWebView", "Token: $token")
-                        scope.launch(Dispatchers.Main) { completeLogin(token) }
-                    }
-                }, "Android")
-
-                webViewClient = object : WebViewClient() {
-                    override fun onPageFinished(view: WebView, url: String) {
-                        if (isCompleting) return
-                        if (!url.contains("discord.com")) return
-                        if (url.contains("/login")) return
-
-                        val js = """
-                            (function() {
-                                function cleanToken(t) {
-                                    if (!t) return null;
-                                    try {
-                                        var s = String(t);
-                                        if (s.length >= 2 && s[0] === '"' && s[s.length - 1] === '"') {
-                                            s = s.slice(1, -1);
-                                        }
-                                        return s;
-                                    } catch (e) { return null; }
-                                }
-
-                                function send(t) {
-                                    var s = cleanToken(t);
-                                    if (s && s !== "null" && s !== "error") {
-                                        Android.onRetrieveToken(s);
-                                        return true;
-                                    }
-                                    return false;
-                                }
-
-                                function tryLocalStorage() {
-                                    try {
-                                        return send(window.localStorage.getItem("token") || window.localStorage.token);
-                                    } catch (e) { return false; }
-                                }
-
-                                function tryIframe() {
-                                    try {
-                                        var i = document.createElement('iframe');
-                                        i.style.display = 'none';
-                                        document.body.appendChild(i);
-                                        var alt = i.contentWindow.localStorage.token || i.contentWindow.localStorage.getItem("token");
-                                        return send(alt);
-                                    } catch (e) { return false; }
-                                }
-
-                                function tryWebpack() {
-                                    try {
-                                        var w = window.webpackChunkdiscord_app;
-                                        if (!w || !w.push) return false;
-                                        var token = null;
-                                        w.push([[Math.random()], {}, function(req) {
-                                            try {
-                                                for (var k in req.c) {
-                                                    var m = req.c[k];
-                                                    var exp = m && m.exports && m.exports.default;
-                                                    if (exp && typeof exp.getToken === "function") {
-                                                        token = exp.getToken();
-                                                        break;
-                                                    }
-                                                }
-                                            } catch (e) {}
-                                        }]);
-                                        return send(token);
-                                    } catch (e) { return false; }
-                                }
-
-                                function run() {
-                                    if (tryLocalStorage()) return;
-                                    if (tryWebpack()) return;
-                                    tryIframe();
-                                }
-
-                                run();
-                                setTimeout(run, 1200);
-                                setTimeout(run, 3000);
-                            })();
-                        """.trimIndent()
-
-                        view.evaluateJavascript(js, null)
-                    }
-
-                    override fun shouldOverrideUrlLoading(
-                        view: WebView,
-                        request: WebResourceRequest
-                    ): Boolean {
-                        if (isCompleting) return true
-                        return false
-                    }
-                }
-
-                webChromeClient = object : WebChromeClient() {
-                    override fun onJsAlert(
-                        view: WebView,
-                        url: String,
-                        message: String,
-                        result: JsResult
-                    ): Boolean {
-                        scope.launch(Dispatchers.Main) { completeLogin(message) }
-                        result.confirm()
-                        return true
-                    }
-                }
-
-                webView = this
-                loadUrl("https://discord.com/login")
-            }
+    val isRussian = LocalConfiguration.current.locales[0].language == "ru"
+    Column(
+        modifier = Modifier.fillMaxSize().padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text("Discord", style = MaterialTheme.typography.headlineMedium)
+        Spacer(Modifier.height(16.dp))
+        Text(
+            if (isRussian)
+                "Интеграция временно отключена ради безопасности. Старый вход получал приватный токен Discord. Мы не будем запрашивать его снова. Для восстановления нужен официальный поддерживаемый способ."
+            else "This integration is temporarily disabled for security. The old login extracted a private Discord account token. Capsule will not request one again; a supported official integration is needed.",
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        Spacer(Modifier.height(20.dp))
+        Button(onClick = { navController.navigateUp() }) {
+            Text(if (isRussian) "Назад" else "Back")
         }
-    )
-
-    TopAppBar(
-        title = { Text(stringResource(R.string.action_login)) },
-        navigationIcon = {
-            IconButton(
-                onClick = navController::navigateUp,
-                onLongClick = navController::backToMain
-            ) {
-                Icon(
-                    painterResource(R.drawable.arrow_back),
-                    contentDescription = null
-                )
-            }
-        }
-    )
-
-    BackHandler(enabled = webView?.canGoBack() == true) {
-        webView?.goBack()
     }
 }

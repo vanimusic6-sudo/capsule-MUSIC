@@ -30,9 +30,9 @@ internal val ArtistToolbarCompactHeight = 64.dp
  * The underlying surface is already exactly StandardChrome.background.
  */
 internal fun artistToolbarSurfaceAlpha(artworkFade: Float): Float {
-    // No second fade over the pinned name: the portrait already dissolves
-    // into this exact colour. One near-invisible final switch avoids a strip
-    // that continues changing tone after the text has settled.
+    // The portrait now completes its dissolve sooner, before buttons reach
+    // this bar. A second partial scrim would double-darken the photo and
+    // leave a visible horizontal stripe, so only seal once it is gone.
     return if (artworkFade >= 1f) 1f else 0f
 }
 

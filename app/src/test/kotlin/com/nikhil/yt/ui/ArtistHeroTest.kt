@@ -98,11 +98,11 @@ class ArtistHeroTest {
                     subscribed = false,
                     canSubscribe = true,
                     canShuffle = true,
-                    showRadio = true,
-                    canRadio = true,
+                    showCandle = true,
+                    
                     onSubscribe = { clicks++ },
                     onShuffle = { clicks++ },
-                    onRadio = { clicks++ },
+                    onCandle = { clicks++ },
                     loading = loading,
                     modifier = Modifier.width(360.dp).testTag("hero"),
                 )
@@ -112,11 +112,83 @@ class ArtistHeroTest {
         compose.runOnIdle { loading = false }
         val after = compose.onNodeWithTag("hero").fetchSemanticsNode().boundsInRoot
         assertEquals(before.height, after.height, 1f)
-        listOf(R.string.subscribe, R.string.shuffle, R.string.radio).forEach {
+        listOf(R.string.subscribe, R.string.shuffle, R.string.artist_light_candle).forEach {
             compose.onNodeWithText(compose.activity.getString(it)).assertIsDisplayed().performClick()
         }
         assertEquals(3, clicks)
         savePreview("artist-capsule-header")
+    }
+
+    @Test fun livingArtistHasNoBlankMemorialSlotBelowButtons() {
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                ArtistHero(
+                    name = "Living artist",
+                    thumbnailUrl = null,
+                    background = Color(0xFF141414),
+                    subscribed = false,
+                    canSubscribe = true,
+                    canShuffle = true,
+                    showCandle = false,
+                    onSubscribe = {}, onShuffle = {}, onCandle = {},
+                    modifier = Modifier.width(360.dp).testTag("hero"),
+                )
+            }
+        }
+        val hero = compose.onNodeWithTag("hero").fetchSemanticsNode().boundsInRoot
+        val subscribe = compose.onNodeWithText(compose.activity.getString(R.string.subscribe))
+            .fetchSemanticsNode().boundsInRoot
+        // Buttons should sit just above the hero's normal 14dp bottom inset,
+        // not leave a 62dp empty candle placeholder beneath them.
+        val dp = hero.width / 360f
+        assertTrue("Unexpected blank candle slot: ${hero.bottom - subscribe.bottom}",
+            hero.bottom - subscribe.bottom <= 35f * dp)
+    }
+
+    @Test fun lateMemorialButtonOnlyMovesActionsInsideFixedHeader() {
+        var hasMemorial by mutableStateOf(false)
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                ArtistHero(
+                    name = "Late memorial",
+                    thumbnailUrl = null,
+                    background = Color(0xFF141414),
+                    subscribed = false,
+                    canSubscribe = true,
+                    canShuffle = true,
+                    showCandle = hasMemorial,
+                    onSubscribe = {}, onShuffle = {}, onCandle = {},
+                    modifier = Modifier.width(360.dp).testTag("hero"),
+                )
+            }
+        }
+        val beforeHeader = compose.onNodeWithTag("hero").fetchSemanticsNode().boundsInRoot
+        val beforeSubscribe = compose.onNodeWithText(compose.activity.getString(R.string.subscribe))
+            .fetchSemanticsNode().boundsInRoot
+        compose.runOnIdle { hasMemorial = true }
+        compose.waitForIdle()
+        val afterHeader = compose.onNodeWithTag("hero").fetchSemanticsNode().boundsInRoot
+        val afterSubscribe = compose.onNodeWithText(compose.activity.getString(R.string.subscribe))
+            .fetchSemanticsNode().boundsInRoot
+        assertEquals(beforeHeader.height, afterHeader.height, 0.1f)
+        assertTrue("Subscription should slide upward within the stable header",
+            afterSubscribe.top < beforeSubscribe.top)
+        compose.onNodeWithText(compose.activity.getString(R.string.artist_light_candle)).assertIsDisplayed()
+    }
+
+    @Test fun livingArtistHasNoRadioAndNoMemorialAction() {
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                ArtistHero(
+                    name = "Living artist", thumbnailUrl = null,
+                    background = Color.Black, subscribed = false,
+                    canSubscribe = true, canShuffle = true, showCandle = false,
+                    onSubscribe = {}, onShuffle = {}, onCandle = {},
+                )
+            }
+        }
+        compose.onNodeWithText(compose.activity.getString(R.string.radio)).assertDoesNotExist()
+        compose.onNodeWithText(compose.activity.getString(R.string.artist_light_candle)).assertDoesNotExist()
     }
 
     @Test fun largeTextKeepsAllActionsReachableWithoutOverlap() {
@@ -131,15 +203,15 @@ class ArtistHeroTest {
                         subscribed = false,
                         canSubscribe = true,
                         canShuffle = true,
-                        showRadio = true,
-                        canRadio = true,
-                        onSubscribe = {}, onShuffle = {}, onRadio = {},
+                        showCandle = true,
+                        
+                        onSubscribe = {}, onShuffle = {}, onCandle = {},
                         modifier = Modifier.width(320.dp).testTag("hero"),
                     )
                 }
             }
         }
-        val buttons = listOf(R.string.subscribe, R.string.shuffle, R.string.radio).map {
+        val buttons = listOf(R.string.subscribe, R.string.shuffle, R.string.artist_light_candle).map {
             compose.onNodeWithText(compose.activity.getString(it)).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
         }
         assertTrue(buttons[0].bottom <= buttons[1].top)
@@ -172,8 +244,8 @@ class ArtistHeroTest {
                         ArtistHero(
                             name = "Pyrokinesis", thumbnailUrl = "test://wide-artist-artwork",
                             background = Color(0xFF090909), subscribed = false,
-                            canSubscribe = true, canShuffle = true, showRadio = true, canRadio = true,
-                            onSubscribe = {}, onShuffle = {}, onRadio = {},
+                            canSubscribe = true, canShuffle = true, showCandle = true, 
+                            onSubscribe = {}, onShuffle = {}, onCandle = {},
                         )
                         ArtistToolbar("", true, true, {}, {}, {}, {})
                     }

@@ -91,7 +91,8 @@ open class KizzyRPC(private val token: String, private val injectedLogger: Kizzy
         val resolvedSmall = smallImage?.resolveImage(kizzyRepository)
 
         try {
-            logger.info("Resolved assets: large=$resolvedLarge small=$resolvedSmall")
+            // Image URLs may contain ephemeral CDN signatures. Never log them.
+            logger.fine("Resolved Discord artwork presence: large=${resolvedLarge != null} small=${resolvedSmall != null}")
         } catch (_: Exception) {}
         val finalApplicationId = applicationId
 
@@ -146,8 +147,9 @@ open class KizzyRPC(private val token: String, private val injectedLogger: Kizzy
         since: Long? = null,
     ) {
         if (!isRpcRunning()) {
-            val shortToken = try { token.take(8) + "…" } catch (_: Exception) { "(token)" }
-            logger.fine("trying to connect WebSocket with token=$shortToken")
+            // Never log even a prefix of authentication tokens. The legacy
+            // Discord gateway is disabled, but this library may be reused.
+            logger.fine("trying to connect Discord WebSocket")
             try {
                 discordWebSocket.connect()
                 val connected = discordWebSocket.waitForConnection(15000L)

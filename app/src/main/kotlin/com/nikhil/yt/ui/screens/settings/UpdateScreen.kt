@@ -69,6 +69,7 @@ import com.nikhil.yt.ui.component.IconButton
 import com.nikhil.yt.ui.component.SwitchPreference
 import com.nikhil.yt.ui.utils.backToMain
 import com.nikhil.yt.utils.GitCommit
+import com.nikhil.yt.utils.ReleaseApkVerifier
 import com.nikhil.yt.utils.UpdateNotificationManager
 import com.nikhil.yt.utils.Updater
 import com.nikhil.yt.utils.rememberPreference
@@ -100,6 +101,8 @@ fun UpdateScreen(
     var commits by remember { mutableStateOf<List<GitCommit>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var signatureStatus by remember { mutableStateOf<String?>(null) }
+    var signatureCheckRunning by remember { mutableStateOf(false) }
 
     var hasNotificationPermission by remember {
         mutableStateOf(
@@ -118,6 +121,30 @@ fun UpdateScreen(
         if (isGranted) {
             onEnableUpdateNotificationChange(true)
             UpdateNotificationManager.schedulePeriodicUpdateCheck(context)
+        }
+    }
+
+    val apkVerifierLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            signatureCheckRunning = true
+            signatureStatus = "Проверяю сертификат издателя…"
+            coroutineScope.launch {
+                val outcome = ReleaseApkVerifier.inspect(context, uri)
+                signatureStatus = outcome.fold(
+                    onSuccess = { result ->
+                        "✅ Сертификат Capsule совпадает с официальным. " +
+                            "Версия: ${result.version}. Android дополнительно проверит " +
+                            "целостность APK при установке. SHA-256: ${result.sha256}"
+                    },
+                    onFailure = { error ->
+                        "⛔ APK не подтверждён: ${error.message ?: "ошибка проверки"}. " +
+                            "Не устанавливайте неизвестные сборки."
+                    },
+                )
+                signatureCheckRunning = false
+            }
         }
     }
 
@@ -296,6 +323,25 @@ fun UpdateScreen(
                         Spacer(Modifier.width(8.dp))
                         Text(if (hasUpdate) "Download" else "Release APK")
                     }
+                }
+            }
+
+            item {
+                Button(
+                    onClick = { apkVerifierLauncher.launch(arrayOf("application/vnd.android.package-archive", "application/octet-stream", "*/*")) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !signatureCheckRunning,
+                ) {
+                    Text("Проверить подпись скачанного APK")
+                }
+                Text(
+                    "Проверяется сертификат официального разработчика, а не имя файла или ссылка GitHub. " +
+                        "Это предварительная проверка; финальную криптографическую проверку делает Android.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                signatureStatus?.let { status ->
+                    Text(status, style = MaterialTheme.typography.bodySmall)
                 }
             }
 

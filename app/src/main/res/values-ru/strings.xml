@@ -941,4 +941,27 @@
     <string name="prefer_aac_audio_description">Предпочитать AAC/M4A для новых потоков и загрузок, если Opus воспроизводится некорректно. Если выключено, формат выбирается автоматически.</string>
     <string name="no_offline_audio_in_queue">В этой очереди нет доступных локальных аудиофайлов</string>
     <string name="download_now">Скачать сейчас</string>
+    <string name="capsule_backup_privacy_warning_title">Резервная копия не зашифрована</string>
+    <string name="capsule_backup_privacy_warning_body">Архив содержит историю прослушивания, библиотеку и плейлисты. Cookies и токены авторизации исключены, но любой, кто получит архив, сможет прочитать музыкальные данные. Храни его в защищённом месте и не публикуй.</string>
+    <string name="capsule_backup_privacy_warning_continue">Создать копию</string>
+
+    <string name="artist_light_candle">Оставить свечу</string>
+    <string name="artist_candle_title">Свеча памяти</string>
+    <string name="artist_candle_for">В память о %1$s</string>
+    <string name="artist_candle_minute">Минута молчания</string>
+    <string name="artist_candle_minute_desc">Остановить музыку на 60 секунд</string>
+    <string name="artist_candle_thanks">Спасибо за творчество</string>
+    <string name="artist_candle_thanks_desc">Поделиться словами благодарности</string>
+    <string name="artist_candle_message">Спасибо, %1$s, за музыку, которая остаётся с нами. 🕯️</string>
+    <string name="artist_candle_share">Поделиться благодарностью</string>
+    <string name="artist_candle_share_desc">Выбрать приложение для отправки</string>
+    <string name="artist_candle_back">Назад к выбору</string>
+    <string name="artist_candle_note_hint">Напишите свои пожелания…</string>
+    <string name="artist_candle_send">Отправить</string>
+    <string name="artist_candle_sent">Свеча оставлена</string>
+    <string name="artist_candle_paused">Музыка на паузе. Возобновите её, когда будете готовы.</string>
+    <string name="artist_candle_timer_done">Минута молчания завершена.</string>
+    <string name="artist_candle_source">%1$s · MusicBrainz</string>
+    <string name="artist_candle_local">Свеча останется личной. Словами благодарности можно поделиться с другими.</string>
+    <string name="artist_candle_close">Закрыть</string>
 </resources>

@@ -1,6 +1,11 @@
 package com.nikhil.yt.ui.component
 
 import androidx.annotation.DrawableRes
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.draw.clipToBounds
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -73,13 +78,24 @@ internal fun ArtistHeroLayout(
             ArtworkSurfaceFade(background, Modifier.matchParentSize(), portrait = true, topScrim = false)
         }
         Column(
-            Modifier.fillMaxWidth().heightIn(min = heroHeight)
+            // Never let an asynchronously detected memorial action alter the
+            // header height or push the latest release and list under a finger.
+            Modifier.fillMaxWidth().height(heroHeight)
                 .padding(top = topSafePadding + 72.dp, bottom = 14.dp),
             verticalArrangement = Arrangement.Bottom,
         ) {
             Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp)) { title() }
             Spacer(Modifier.height(24.dp))
-            Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp)) { actions() }
+            // Reserve the second action slot from frame one. The first row
+            // has a fixed anchor whether the memorial lookup returns now, late,
+            // or never; the candle can appear without moving other elements.
+            val actionRailHeight = if (LocalDensity.current.fontScale > 1.3f) 172.dp else 110.dp
+            Column(
+                Modifier.fillMaxWidth()
+                    .padding(horizontal = 22.dp)
+                    .heightIn(min = actionRailHeight)
+                    .clipToBounds(),
+            ) { actions() }
         }
     }
 }
@@ -92,11 +108,10 @@ internal fun ArtistHero(
     subscribed: Boolean,
     canSubscribe: Boolean,
     canShuffle: Boolean,
-    showRadio: Boolean,
-    canRadio: Boolean,
+    showCandle: Boolean,
     onSubscribe: () -> Unit,
     onShuffle: () -> Unit,
-    onRadio: () -> Unit,
+    onCandle: () -> Unit,
     modifier: Modifier = Modifier,
     loading: Boolean = false,
     topSafePadding: Dp = 0.dp,
@@ -142,6 +157,16 @@ internal fun ArtistHero(
         // persistent.
         title = {},
         actions = {
+            // Keep the hero and the latest-release card fixed in place.
+            // Only the action buttons move within the already reserved slot.
+            // Living artists use the LOWER part of that slot, so there is no
+            // empty hole underneath Subscribe / Shuffle.
+            val candleSlide by animateDpAsState(
+                targetValue = if (showCandle) 0.dp else 62.dp,
+                animationSpec = tween(durationMillis = 260, easing = CapsuleStandardEasing),
+                label = "artist-memorial-action-slide",
+            )
+            Column(Modifier.offset(y = candleSlide)) {
             val stackActions = LocalDensity.current.fontScale > 1.3f
             val subscribeLabel = stringResource(if (displayedSubscribed) R.string.capsule_artist_subscribed else R.string.subscribe)
             if (stackActions) {
@@ -182,15 +207,18 @@ internal fun ArtistHero(
                     )
                 }
             }
-            if (showRadio) {
+            // Show the memorial action only once the existing buttons have
+            // gracefully reached their new anchor, never over the next card.
+            if (showCandle && candleSlide < 1.dp) {
                 Spacer(Modifier.height(14.dp))
                 CapsuleArtistAction(
-                    R.drawable.radio,
-                    stringResource(R.string.radio),
-                    onRadio,
+                    R.drawable.capsule_candle,
+                    stringResource(R.string.artist_light_candle),
+                    onCandle,
                     Modifier.fillMaxWidth(),
-                    !loading && canRadio,
+                    !loading,
                 )
+            }
             }
         },
     )
@@ -225,7 +253,11 @@ private fun CapsuleArtistAction(
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
     ) {
         if (subscribeState == null) {
-            Icon(painterResource(icon), null, Modifier.size(19.dp))
+            if (icon == R.drawable.capsule_candle) {
+                CapsuleCandleIcon(size = 19.dp)
+            } else {
+                Icon(painterResource(icon), null, Modifier.size(19.dp))
+            }
             Spacer(Modifier.width(8.dp))
         }
         Text(label, style = MaterialTheme.typography.labelLarge,

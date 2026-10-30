@@ -109,7 +109,10 @@ internal fun detailArtworkFadeLikeArtist(
 ): Float {
     if (firstVisibleItemIndex > 0) return 1f
     if (!artworkBottomPx.isFinite() || !toolbarBottomPx.isFinite()) return 0f
-    val distance = (artworkBottomPx - toolbarBottomPx).coerceAtLeast(1f)
+    // Keep the historical artist/album/playlist shared distance: finish
+    // before scrolling action buttons would reach the pinned toolbar.
+    val safetyGap = (artworkBottomPx * 0.14f).toInt()
+    val distance = (artworkBottomPx - toolbarBottomPx - safetyGap).coerceAtLeast(1f)
     return portraitDissolveFraction(offsetPx.toFloat(), distance)
 }
 

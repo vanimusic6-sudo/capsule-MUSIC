@@ -5,6 +5,8 @@
 -->
 <data-extraction-rules>
     <cloud-backup>
+        <exclude domain="file" path="datastore/" />
+        <exclude domain="sharedpref" path="." />
         <exclude
             domain="file"
             path="./exoplayer" />
@@ -19,6 +21,8 @@
         <exclude domain="file" path="./external-artwork/" />
     </cloud-backup>
     <device-transfer>
+        <exclude domain="file" path="datastore/" />
+        <exclude domain="sharedpref" path="." />
         <exclude
             domain="file"
             path="./exoplayer" />

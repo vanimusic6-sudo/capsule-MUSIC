@@ -100,7 +100,17 @@ class App : Application(), SingletonImageLoader.Factory {
             return
         }
 
+        // Recover a DB interrupted by process death during backup restore
+        // before Hilt/Room can open it. Never start with half-replaced files.
+        com.nikhil.yt.viewmodels.BackupRestoreStaging.recoverInterrupted(
+            getDatabasePath(com.nikhil.yt.db.InternalDatabase.DB_NAME).parentFile!!,
+            com.nikhil.yt.db.InternalDatabase.DB_NAME,
+        )
+
         PreferenceStore.start(this)
+        // Convert legacy plaintext credentials to Keystore-encrypted values.
+        // The secure DataStore wrapper avoids disk writes if already migrated.
+        launchLifecycleCleanup { dataStore.edit { } }
         migrateLegacyBrandPreferences()
 
 
@@ -159,6 +169,11 @@ class App : Application(), SingletonImageLoader.Factory {
                         preferences[DiscordActivityButton2CustomUrlKey] =
                             CapsuleBrand.REPOSITORY_URL
                     }
+                    // Revoke the locally retained legacy Discord user-token credential.
+                    preferences.remove(DiscordTokenKey)
+                    preferences.remove(DiscordUsernameKey)
+                    preferences.remove(DiscordNameKey)
+                    preferences[EnableDiscordRPCKey] = false
                 }
             } catch (error: Exception) {
                 reportRecoverableException("App", "migrate legacy Discord branding", error)
@@ -237,6 +252,11 @@ class App : Application(), SingletonImageLoader.Factory {
             }
         }
 
+        // The visitor bootstrap is a real network request. Robolectric runs
+        // on a desktop JVM (no AndroidKeyStore) and must never launch this
+        // background network/write side effect during unrelated unit tests.
+        // Production initialization and credential encryption stay unchanged.
+        if (!Build.FINGERPRINT.startsWith("robolectric", ignoreCase = true)) {
         applicationScope.launch(Dispatchers.IO) {
             dataStore.data
                 .map { it[VisitorDataKey] }
@@ -259,7 +279,13 @@ class App : Application(), SingletonImageLoader.Factory {
 
                 }
         }
+        }
 
+        // Robolectric JVM tests must report background exceptions to Gradle.
+        // Installing our production crash handler inside the test worker would
+        // kill the entire executor with exitProcess(2), hiding the actual error
+        // and aborting every remaining test.
+        if (!Build.FINGERPRINT.startsWith("robolectric", ignoreCase = true)) {
         try {
             Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
                 try {
@@ -302,6 +328,7 @@ class App : Application(), SingletonImageLoader.Factory {
             }
         } catch (e: Exception) {
             reportException(e)
+        }
         }
         applicationScope.launch(Dispatchers.IO) {
             dataStore.data

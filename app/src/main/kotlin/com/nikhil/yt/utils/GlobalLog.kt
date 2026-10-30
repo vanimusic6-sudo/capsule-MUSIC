@@ -76,7 +76,7 @@ object GlobalLog {
         if (!enabled) return
 
         val now = System.currentTimeMillis()
-        val entry = LogEntry(now, level, tag, message)
+        val entry = LogEntry(now, level, tag, SecretLogRedactor.redact(message))
 
         synchronized(lock) {
             if (!enabled) return

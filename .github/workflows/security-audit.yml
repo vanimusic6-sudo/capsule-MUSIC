@@ -1,0 +1,286 @@
+name: Capsule Security Audit
+
+on:
+  push:
+    branches: [audit/security-deep-20261028]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+# A single source change used to launch five overlapping, costly scanners;
+# obsolete runs were clogging runners. Only HEAD is releasable.
+concurrency:
+  group: capsule-security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.5.0'
+      - name: Install Android SDK
+        shell: bash
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [[ -x "$SDKMANAGER" ]]; then
+            "$SDKMANAGER" 'platforms;android-37.1'
+          fi
+      - name: Code integrity and hostile-input boundary invariants
+        run: python3 scripts/capsule_integrity_gate.py
+      - name: Source audit (record blockers and continue other checks)
+        continue-on-error: true
+        run: python3 scripts/capsule_security_audit.py
+      - name: Resolved dependency inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p security-results
+          gradle :app:dependencies --configuration universalReleaseRuntimeClasspath             --no-daemon > security-results/gradle-runtime-dependencies.txt
+      - name: OSV public vulnerability lookup
+        shell: bash
+        run: |
+          python3 scripts/capsule_security_audit.py             --dependencies security-results/gradle-runtime-dependencies.txt
+      - name: Build inspectable debug APK
+        shell: bash
+        run: |
+          echo 'unqualifiedResLocale=en-US' > app/src/main/res/resources.properties
+          gradle :app:assembleUniversalDebug --no-daemon --max-workers=2
+          mkdir -p security-results
+          APK="$(find app/build/outputs/apk/universal/debug -name '*.apk' | head -n 1)"
+          test -s "$APK"
+          sha256sum "$APK" > security-results/debug-apk-sha256.txt
+          python3 - "$APK" <<'PY'
+          import json, sys, zipfile
+          from pathlib import Path
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              names=z.namelist()
+              data={"entries":len(names),"native_libraries":sorted(n for n in names if n.endswith('.so')),
+                    "dex_count":sum(n.endswith('.dex') for n in names),
+                    "asset_count":sum(n.startswith('assets/') for n in names)}
+          Path("security-results/debug-apk-inventory.json").write_text(json.dumps(data,indent=2))
+          PY
+      - name: Inspect exact signed pre-audit release APK
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/capsule-release-audit security-results
+          gh run download 40650413220 --repo "$GITHUB_REPOSITORY" \
+            -n Capsule-MUSIC-Universal-Release \
+            -D /tmp/capsule-release-audit
+          APK="$(find /tmp/capsule-release-audit -name '*.apk' | head -n 1)"
+          test -s "$APK"
+          sha256sum "$APK" | cut -d ' ' -f1 > security-results/signed-release-sha256.txt
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" \
+            > security-results/signed-release-signature.txt
+          AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt | sort -V | tail -n 1)"
+          "$AAPT" dump permissions "$APK" > security-results/signed-release-permissions.txt
+          "$AAPT" dump badging "$APK" > security-results/signed-release-package.txt
+          python3 - "$APK" <<'PY'
+          import json,sys,zipfile
+          from pathlib import Path
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              names=z.namelist()
+              dex=b"".join(z.read(n) for n in names if n.endswith('.dex'))
+              evidence={"entry_count":len(names), "dex_count":sum(n.endswith('.dex') for n in names),
+                        "native_libs":[n for n in names if n.endswith('.so')],
+                        "contains_discord_token_log_marker":b"Token: " in dex,
+                        "contains_google_api_key_pattern":b"AIza" in dex,
+                        "network_config_resource":any("network_security_config" in n for n in names)}
+          Path("security-results/signed-release-byte-signals.json").write_text(json.dumps(evidence,indent=2))
+          PY
+      - name: Final security gate
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report=Path('security-results/source-and-dependency.json')
+          if not report.exists(): raise SystemExit('No audit report: incomplete')
+          data=json.loads(report.read_text())
+          if data['blockers']:
+              raise SystemExit('Candidate secrets / regressions: '+str(len(data['blockers'])))
+          if data['osv']['status']!='completed':
+              raise SystemExit('OSV dependency check incomplete')
+          # Fail closed: previously this gate passed even if an advisory was found.
+          # Review and explicitly remediate any new advisory before shipping.
+          if data['osv'].get('findings'):
+              raise SystemExit('Known vulnerable runtime dependencies: ' +
+                               str(len(data['osv']['findings'])))
+          print('Automated checks complete; manual security findings remain open.')
+          PY
+      - name: Persist complete evidence, including incomplete scans
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capsule-security-evidence
+          path: security-results/
+          retention-days: 30
+          if-no-files-found: warn
+
+  regression:
+    name: Android/Extractor/security regression suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.5.0'
+      - name: Prepare locale + Android SDK
+        shell: bash
+        run: |
+          mkdir -p app/src/main/res
+          echo 'unqualifiedResLocale=en-US' > app/src/main/res/resources.properties
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [[ -x "$SDKMANAGER" ]]; then "$SDKMANAGER" 'platforms;android-37.1'; fi
+      - name: Verify auth, backups, Android runtime and extraction behavior
+        run: |
+          # Gate SECURITY-specific regressions separately; the pre-existing broad
+          # UI suite currently has 13 unrelated failures from the legacy home/
+          # lyrics/navigation tests. Keep those visible in old full-suite runs.
+          gradle :app:testUniversalDebugUnitTest \
+            --tests 'com.nikhil.yt.viewmodels.BackupSecurityTest' \
+            --tests 'com.nikhil.yt.viewmodels.BackupEncryptionTest' \
+            --tests 'com.nikhil.yt.viewmodels.BackupRestoreStagingTest' \
+            --tests 'com.nikhil.yt.viewmodels.BackupSettingsSchemaTest' \
+            --tests 'com.nikhil.yt.utils.SecurePreferencesDataStoreTest' \
+            --tests 'com.nikhil.yt.together.TogetherLanCipherTest' \
+            --tests 'com.nikhil.yt.together.TogetherCoreTest' \
+            --tests 'com.nikhil.yt.ui.screens.settings.DiscordLoginOriginTest' \
+            --tests 'com.nikhil.yt.utils.SecretLogRedactorTest' \
+            --tests 'com.nikhil.yt.playback.SafeQueueObjectInputStreamTest' \
+            --stacktrace --no-daemon --max-workers=2
+          gradle :innertube:test :app:verifyAndroidJsonRuntime :app:lintUniversalDebug \
+            --stacktrace --no-daemon --max-workers=2
+
+  semgrep:
+    name: Independent Semgrep Kotlin/Java source scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install Semgrep
+        run: python3 -m pip install --disable-pip-version-check semgrep
+      - name: Run community SAST rules (static Kotlin/Java/XML)
+        shell: bash
+        run: |
+          mkdir -p security-results
+          semgrep scan --config p/security-audit \
+            --metrics off --timeout 10 \
+            --exclude docs --exclude scripts --exclude '**/build/**' \
+            --json --output security-results/semgrep.json .
+      - name: Summarize findings without printing secrets
+        shell: bash
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from collections import Counter
+          from pathlib import Path
+          p=Path('security-results/semgrep.json')
+          if not p.exists():
+              print('INCOMPLETE: no semgrep JSON was produced')
+              raise SystemExit(1)
+          data=json.loads(p.read_text())
+          findings=data.get('results',[])
+          summary={'status':'complete','count':len(findings),
+                   'severity':dict(Counter(x.get('extra',{}).get('severity','UNKNOWN') for x in findings)),
+                   'rules':dict(Counter(x.get('check_id','unknown') for x in findings))}
+          Path('security-results/semgrep-summary.json').write_text(json.dumps(summary,indent=2))
+          print('Semgrep findings:',len(findings),'errors:',len(data.get('errors',[])))
+          if data.get('errors'):
+              raise SystemExit('Semgrep reported analyzer errors; audit not complete')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capsule-semgrep-evidence
+          path: security-results/
+          retention-days: 30
+          if-no-files-found: warn
+
+
+  mobsf-source:
+    name: MobSF Kotlin and Android XML static rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install standalone MobSF source scanner
+        run: python -m pip install mobsfscan
+      - name: Scan Android source with MobSF rules
+        shell: bash
+        run: |
+          mkdir -p security-results
+          mobsfscan --type android --json --no-fail \
+            -o security-results/mobsfscan.json \
+            app/src/main/ innertube/src/main/ || true
+          test -s security-results/mobsfscan.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          data=json.loads(Path('security-results/mobsfscan.json').read_text())
+          findings=data.get('results', data.get('findings', {}))
+          if isinstance(findings, dict):
+              count=sum(len(v.get('files',[])) if isinstance(v,dict) else 1 for v in findings.values())
+          else:
+              count=len(findings)
+          result={'scanner':'mobsfscan', 'status':'completed', 'finding_count':count}
+          Path('security-results/mobsfscan-summary.json').write_text(json.dumps(result,indent=2))
+          print('MobSF source scan completed; findings:',count)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capsule-mobsf-source-evidence
+          path: security-results/
+          retention-days: 30
+          if-no-files-found: warn
+
+  history-secrets:
+    name: Historical credential exposure (redacted patterns)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Scan complete reachable git history without outputting secret contents
+        run: |
+          python3 scripts/capsule_git_history_secrets.py
+      - name: Upload only secret-free metadata
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capsule-git-history-security
+          path: security-results/git-history-credential-patterns.json
+          if-no-files-found: error
+          retention-days: 30

@@ -82,8 +82,31 @@ internal object CapsuleVideoIpc {
         runCatching { CapsuleVideoQuality.valueOf(raw.orEmpty()) }
             .getOrDefault(CapsuleVideoQuality.AUTO)
 
-    fun successBundle(resolved: CapsuleResolvedVideo): Bundle =
-        Bundle().apply {
+    // Extractors work on third-party metadata. Never let a malformed
+    // URL/manifest or oversized parcel escape to the main player process.
+    // This guards Binder/Media3, not third-party code executing in our UID.
+    fun isSafeStreamUrl(raw: String?): Boolean {
+        if (raw.isNullOrBlank() || raw.length > 16_384) return false
+        val uri = runCatching { java.net.URI(raw) }.getOrNull() ?: return false
+        if (!uri.scheme.equals("https", ignoreCase = true) ||
+            uri.userInfo != null || (uri.port != -1 && uri.port != 443)) return false
+        val host = uri.host?.lowercase(java.util.Locale.ROOT) ?: return false
+        if (host == "localhost" || host.endsWith(".localhost") ||
+            host == "0.0.0.0" || host == "::1" ||
+            host.matches(Regex("(?i)127\\.[0-9.]+")) ||
+            host.matches(Regex("(?i)10\\.[0-9.]+")) ||
+            host.matches(Regex("(?i)192\\.168\\.[0-9.]+")) ||
+            host.matches(Regex("(?i)169\\.254\\.[0-9.]+"))) return false
+        return host.isNotBlank() && !host.contains("..")
+    }
+
+    fun successBundle(resolved: CapsuleResolvedVideo): Bundle {
+        if (!isSafeStreamUrl(resolved.videoUrl) ||
+            (resolved.audioUrl != null && !isSafeStreamUrl(resolved.audioUrl)) ||
+            (resolved.dashManifest?.length ?: 0) > 512 * 1024 ||
+            (resolved.userAgent?.length ?: 0) > 1024
+        ) return failureBundle(CapsuleVideoFailure.UNAVAILABLE, "Unsafe VIDEO extractor response")
+        return Bundle().apply {
             putBoolean(EXTRA_SUCCESS, true)
             putString(EXTRA_VIDEO_ID, resolved.videoId)
             putString(EXTRA_VIDEO_URL, resolved.videoUrl)
@@ -100,6 +123,7 @@ internal object CapsuleVideoIpc {
             putString(EXTRA_DASH_MANIFEST, resolved.dashManifest)
             putString(EXTRA_USER_AGENT, resolved.userAgent)
         }
+    }
 
     fun failureBundle(
         failure: CapsuleVideoFailure,

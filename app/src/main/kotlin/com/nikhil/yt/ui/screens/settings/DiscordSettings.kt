@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -89,6 +90,7 @@ fun DiscordSettings(
     val lastRpcEndTime = DiscordPresenceManager.lastRpcEndTime
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
+    val isRussian = LocalConfiguration.current.locales[0].language == "ru"
     val snackbarHostState = remember { SnackbarHostState() }
 
     var discordToken by rememberPreference(DiscordTokenKey, "")
@@ -96,55 +98,25 @@ fun DiscordSettings(
     var discordName by rememberPreference(DiscordNameKey, "")
     var infoDismissed by rememberPreference(DiscordInfoDismissedKey, false)
 
+    // Erase any token left from old releases, even if this settings page is opened
+    // before the application-level migration completes.
     LaunchedEffect(discordToken) {
-        val token = discordToken
-        if (token.isNotEmpty()) {
-            // Run the network call inside this LaunchedEffect coroutine so it is
-            // cancelled automatically if the composable leaves the composition.
-            try {
-                withContext(Dispatchers.IO) {
-                    // KizzyRPC.getUserInfo may throw network/socket exceptions when the
-                    // app is backgrounded or network drops; catch them to avoid crashing.
-                    KizzyRPC.getUserInfo(token)
-                }.onSuccess {
-                    discordUsername = it.username
-                    discordName = it.name
-                }
-            } catch (e: Exception) {
-                // Log and ignore network errors (e.g. SocketException on resume).
-                Timber.tag("DiscordSettings").w(e, "getUserInfo failed")
-            }
+        if (discordToken.isNotBlank()) {
+            discordToken = ""
+            discordUsername = ""
+            discordName = ""
         }
     }
 
     val (discordRPC, onDiscordRPCChange) = rememberPreference(
         key = EnableDiscordRPCKey,
-        defaultValue = true
+        defaultValue = false
     )
 
     LaunchedEffect(discordToken, discordRPC) {
-        if (discordRPC && discordToken.isNotBlank()) {
-            Timber.tag("DiscordSettings").d("RPC enabled with token, MusicService will handle start")
-            // DiscordPresenceManager.start(
-            //     context = context,
-            //     token = discordToken,
-            //     songProvider = { song },
-            //     positionProvider = { playerConnection.player.currentPosition },
-            //     isPausedProvider = {
-            //         val isPlaying = playerConnection.player.playWhenReady &&
-            //                 playerConnection.player.playbackState == STATE_READY
-            //         !isPlaying
-            //     },
-            //     intervalProvider = { getPresenceIntervalMillis(context) }
-            // )
-        } else {
-            // user disabled RPC or cleared token -> ensure manager is stopped
-            Timber.tag("DiscordSettings").d("RPC disabled or no token, stopping manager")
-            DiscordPresenceManager.stop()
-        }
+        DiscordPresenceManager.stop()
     }
-
-    val isLoggedIn = remember(discordToken) { discordToken.isNotEmpty() }
+    val isLoggedIn = false // OAuth2-based presence has not been implemented.
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -218,9 +190,10 @@ fun DiscordSettings(
                 if (isLoggedIn) {
                         OutlinedButton(onClick = { showLogoutConfirm = true }) { Text(stringResource(R.string.action_logout)) }
                     } else {
-                    OutlinedButton(onClick = {
-                        navController.navigate("settings/discord/login")
-                    }) { Text(stringResource(R.string.action_login)) }
+                    OutlinedButton(
+                        onClick = { navController.navigate("settings/discord/login") },
+                        enabled = false,
+                    ) { Text(stringResource(R.string.action_login)) }
                 }
             },
         )
@@ -245,6 +218,14 @@ fun DiscordSettings(
             }
 
         Text(
+            text = if (isRussian)
+                "Discord отключён: прежний вход извлекал токен аккаунта. Нужна официальная интеграция без пользовательского токена."
+            else "Discord is disabled: legacy sign-in extracted account tokens. A supported token-free integration is required.",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
+
+        Text(
             text = stringResource(R.string.options),
             style = MaterialTheme.typography.headlineSmall,
             modifier = Modifier
@@ -254,9 +235,9 @@ fun DiscordSettings(
 
         SwitchPreference(
             title = { Text(stringResource(R.string.enable_discord_rpc)) },
-            checked = discordRPC,
+            checked = false,
             onCheckedChange = onDiscordRPCChange,
-            isEnabled = isLoggedIn,
+            isEnabled = false,
         )
 
         // Add a refresh action to manually re-update Discord RPC
