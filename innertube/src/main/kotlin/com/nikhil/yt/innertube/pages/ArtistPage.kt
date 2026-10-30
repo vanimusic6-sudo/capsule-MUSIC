@@ -71,6 +71,9 @@ data class ArtistPage(
                     header.moreContentButton?.buttonRenderer?.navigationEndpoint?.browseEndpoint
                         ?: header.moreContentButton?.buttonRenderer?.command?.browseEndpoint
                         ?: header.title.runs?.firstNotNullOfOrNull { it.navigationEndpoint?.browseEndpoint }
+                        ?: renderer.contents.firstNotNullOfOrNull {
+                            it.musicNavigationButtonRenderer?.clickCommand?.browseEndpoint
+                        }
                 }
             )
         }
