@@ -131,8 +131,9 @@ class ArtistViewModel @Inject constructor(
                                         val endpoint = section.moreEndpoint ?: return@forEach
                                         val first = YouTube.artistItems(endpoint).getOrNull() ?: return@forEach
                                         val extra = first.items.toMutableList()
-                                        if (extra.size < 25 && first.continuation != null) {
-                                            YouTube.artistItemsContinuation(first.continuation)
+                                        val continuationToken = first.continuation
+                                        if (extra.size < 25 && continuationToken != null) {
+                                            YouTube.artistItemsContinuation(continuationToken)
                                                 .getOrNull()?.let { extra += it.items }
                                         }
                                         val merged = (section.items + extra).distinctBy { it.id }
