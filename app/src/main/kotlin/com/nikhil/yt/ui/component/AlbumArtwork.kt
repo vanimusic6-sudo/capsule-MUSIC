@@ -151,7 +151,10 @@ internal fun AlbumArtwork(
  */
 internal fun albumCoverHeight(width: Dp, screenHeight: Dp): Dp {
     val natural = width / 0.85f
-    return minOf(natural, maxOf(natural * 0.83f, screenHeight * 0.50f)) + 12.dp + 44.dp
+    // Keep the portrait under the pinned bar, but no longer reserve the
+    // historical 44dp phantom top ribbon: it pushed album and playlist
+    // controls down long after the artwork was already opaque.
+    return minOf(natural, maxOf(natural * 0.83f, screenHeight * 0.50f)) + 12.dp + 8.dp
 }
 
 @Suppress("UNUSED_PARAMETER")
