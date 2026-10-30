@@ -75,7 +75,8 @@ class CapsuleReleaseUiCorrectionsTest {
         assertFalse("Avoid the old oversized footer button", dialog.contains("MemorialActionButton("))
         val hero = source("ui/component/ArtistHero.kt")
         assertTrue(hero.contains(".height(heroHeight)"))
-        assertTrue(hero.contains(".heightIn(min = actionRailHeight)"))
+        assertTrue("Memorial slot height is now exact: no invisible second row",
+            hero.contains(".height(actionRailHeight)"))
         assertFalse(hero.contains(".animateContentSize("))
     }
 
