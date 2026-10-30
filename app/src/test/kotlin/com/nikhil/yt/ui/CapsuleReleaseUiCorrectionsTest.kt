@@ -49,7 +49,7 @@ class CapsuleReleaseUiCorrectionsTest {
     @Test fun artistBiographyFollowsReleaseAndCandleDialogIsACompactRitual() {
         val artist = source("ui/screens/artist/ArtistScreen.kt")
         val release = artist.indexOf("latestRelease?.let { release ->")
-        val description = artist.indexOf("item(key = \\"description\\")")
+        val description = artist.indexOf("""item(key = "description")""")
         assertTrue("Latest release must appear before biography", release >= 0 && description > release)
 
         val dialog = source("ui/screens/artist/ArtistMemorialDialog.kt")
