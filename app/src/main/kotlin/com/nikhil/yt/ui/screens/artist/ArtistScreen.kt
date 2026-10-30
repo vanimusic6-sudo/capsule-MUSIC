@@ -149,12 +149,12 @@ private val ArtistLatestReleaseArtworkSize = 112.dp
 internal fun artistArtworkFade(firstVisibleItemIndex: Int, offsetPx: Int, artworkHeightPx: Int, toolbarBottomPx: Int): Float {
     if (firstVisibleItemIndex > 0) return 1f
     val distance = (artworkHeightPx - toolbarBottomPx).coerceAtLeast(1)
-    // Complete the dissolve at the REAL portrait-to-toolbar boundary.
-    // An extra 14% early stop used to turn the bar black while the buttons
-    // were still far below it, leaving an obvious empty strip on scroll.
-    // The action rail starts 12dp after the photo, so at the moment the
-    // toolbar seals its first row is still safely below the pinned bar.
-    return portraitDissolveFraction(offsetPx.toFloat(), distance.toFloat())
+    // The only fully dark region before the buttons is the measured toolbar
+    // crossing itself. Keep the photo visible during earlier scroll travel,
+    // and seal the toolbar one raster pixel before the photo leaves its edge.
+    return portraitDissolveFraction(
+        offsetPx.toFloat(), distance.toFloat(), toolbarBottomPx.toFloat(),
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
