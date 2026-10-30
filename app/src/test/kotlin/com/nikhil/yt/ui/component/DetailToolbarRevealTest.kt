@@ -8,16 +8,17 @@ class DetailToolbarRevealTest {
     private fun fade(index: Int, offset: Int, bottom: Float = 600f, bar: Float = 100f) =
         detailArtworkFadeLikeArtist(index, offset, bottom, bar)
 
-    @Test fun fadeCompletesAtPortraitToolbarBoundaryWithoutEmptyGap() {
+    @Test fun fadeCompletesExactlyWhenPhotoCrossesMeasuredToolbar() {
+        // Photo edge = 600px; pinned toolbar occupies 0..100px.
+        // Transition length equals 100px, not 12..99% of the photo travel.
+        // It starts at 399px and is fully opaque at 499px, when the photo
+        // bottom is 1px below the bar. Buttons begin 12px later.
         assertEquals(0f, fade(0, 0), 0f)
-        assertEquals(0f, fade(0, 40), 0f)
-        assertEquals(0f, fade(0, 49), 0f)
-        assertEquals(0f, fade(0, 60), 0f)
-        assertTrue(fade(0, 90) > 0f)
-        assertTrue(fade(0, 370) < 1f)
-        assertTrue("Photo should remain until the portrait approaches the toolbar", fade(0, 450) < 1f)
-        assertTrue("Avoid the old premature 14%-of-photo black area", fade(0, 480) < 1f)
-        assertEquals(1f, fade(0, 495), 0f)
+        assertEquals(0f, fade(0, 350), 0f)
+        assertEquals(0f, fade(0, 399), 0f)
+        assertTrue("Fade should begin when the photo is one bar-height away", fade(0, 425) > 0f)
+        assertTrue("Must not blacken the page too early", fade(0, 480) < 1f)
+        assertEquals(1f, fade(0, 499), 0f)
         assertEquals(1f, fade(1, 0), 0f)
         assertEquals(0f, fade(0, 100, Float.NaN), 0f)
     }
@@ -25,12 +26,12 @@ class DetailToolbarRevealTest {
     @Test fun scrollFadeIsSmoothMonotonicAndReversible() {
         val values = (0..500 step 2).map { fade(0, it) }
         assertTrue(values.zipWithNext().all { (a, b) ->
-            b >= a && b - a < .025f
+            b >= a && b - a < .040f
         })
-        val mid = fade(0, 278)
+        val mid = fade(0, 449)
         assertTrue(mid in .45f.. .55f)
-        assertEquals(mid, fade(0, 278), 0f)
-        assertTrue(fade(0, 340) > mid)
+        assertEquals(mid, fade(0, 449), 0f)
+        assertTrue(fade(0, 465) > mid)
         assertEquals(1f, detailToolbarBackdropAlpha(1f), 0f)
     }
 
@@ -47,11 +48,8 @@ class DetailToolbarRevealTest {
         }
     }
 
-    @Test fun albumsAndPlaylistsUseArtistScrollDistanceInsteadOfTallerCover() {
-        for (offset in 0..550 step 5) {
-            val artist = com.nikhil.yt.ui.screens.artist.artistArtworkFade(
-                0, offset, 600, 100,
-            )
+    @Test fun albumsAndPlaylistsUseRealArtworkHeightNotArtistsShorterPhoto() {
+        for (offset in 0..610 step 5) {
             val detail = detailArtistLengthArtworkFade(
                 firstVisibleItemIndex = 0,
                 offsetPx = offset,
@@ -59,11 +57,19 @@ class DetailToolbarRevealTest {
                 detailArtworkBottomPx = 680f,
                 toolbarBottomPx = 100f,
             )
-            assertEquals("Same fade at offset=$offset despite larger album photo",
-                artist, detail, 0f)
+            val realArtwork = detailArtworkFadeLikeArtist(0, offset, 680f, 100f)
+            assertEquals("Use actual album/playlist bottom at offset=$offset",
+                realArtwork, detail, 0f)
         }
-        // On narrow / short screens never let the cover pass behind an
-        // unpainted bar while the longer artist-distance fade is unfinished.
+        assertEquals("Taller cover must still be visible at artist's old fade end",
+            0f, detailArtistLengthArtworkFade(0, 470, 600f, 680f, 100f), 0f)
+        assertTrue("Collection fades after its own measured edge approaches bar",
+            detailArtistLengthArtworkFade(0, 530, 600f, 680f, 100f) > 0f)
+        assertEquals(1f, detailArtistLengthArtworkFade(0, 579, 600f, 680f, 100f), 0f)
+        // Before layout coordinates arrive, keep the artist-height fallback.
+        assertEquals(detailArtworkFadeLikeArtist(0, 450, 600f, 100f),
+            detailArtistLengthArtworkFade(0, 450, 600f, Float.NaN, 100f), 0f)
+        // Narrow screens still seal as soon as their real photo crosses.
         assertEquals(1f, detailArtistLengthArtworkFade(0, 440, 600f, 540f, 100f), 0f)
         assertEquals(1f, detailArtistLengthArtworkFade(1, 0, 600f, 680f, 100f), 0f)
     }
