@@ -1,28 +1,24 @@
 package com.nikhil.yt.ui.screens.artist
 
-import android.content.Intent
+import android.content.Context
 import android.os.SystemClock
 import androidx.annotation.DrawableRes
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -32,19 +28,27 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -57,15 +61,13 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
 
-// Warmth belongs to the candle, never to the artist photo or the app theme.
-private val CandleLight = Color(0xFFD7AC74)
-
 /**
- * A quiet, compact memorial ritual. No network posting or imaginary "send to
- * the artist" action: gratitude is shared only via the user's Android chooser.
+ * Capsule memorial: two quiet actions, no calls to external sharing services.
+ * The dialog never dismisses on an outside touch. The artist's wishes are
+ * stored only in the app's private preferences (allowBackup=false).
  *
- * Closing the dialog cancels an active countdown. Playback stays paused until
- * the user explicitly resumes it, including after the full minute has passed.
+ * No Crossfade or animateContentSize: switching states must not interpolate
+ * the dialog's height or paint both menus on top of each other.
  */
 @Composable
 internal fun ArtistMemorialDialog(
@@ -75,9 +77,26 @@ internal fun ArtistMemorialDialog(
     onMinuteBegin: () -> Unit,
 ) {
     val context = LocalContext.current
-    var mode by remember(name) { mutableIntStateOf(0) }
-    var seconds by remember(name) { mutableIntStateOf(60) }
-    val gratitude = stringResource(R.string.artist_candle_message, name)
+    val prefs = remember(context) {
+        context.getSharedPreferences("capsule_artist_memorial_notes", Context.MODE_PRIVATE)
+    }
+    val noteKey = remember(memorial.sourceUrl) { "artist:" + memorial.sourceUrl }
+    var note by rememberSaveable(noteKey) {
+        mutableStateOf(prefs.getString(noteKey, "").orEmpty())
+    }
+    val latestNote by rememberUpdatedState(note)
+    // Persist after a short idle period, and flush the final input on dismissal.
+    LaunchedEffect(noteKey, note) {
+        delay(500L)
+        prefs.edit().putString(noteKey, note).apply()
+    }
+    DisposableEffect(noteKey, prefs) {
+        onDispose { prefs.edit().putString(noteKey, latestNote).apply() }
+    }
+
+    var mode by rememberSaveable(name) { mutableIntStateOf(0) }
+    var seconds by rememberSaveable(name) { mutableIntStateOf(60) }
+    var endsAt by rememberSaveable(name) { mutableLongStateOf(0L) }
     val displayedDate = remember(memorial.deathDate) {
         runCatching {
             LocalDate.parse(memorial.deathDate).format(
@@ -87,78 +106,72 @@ internal fun ArtistMemorialDialog(
         }.getOrDefault(memorial.deathDate)
     }
 
-    LaunchedEffect(mode) {
-        if (mode == 1) {
-            val endsAt = SystemClock.elapsedRealtime() + 60_000L
-            while (seconds > 0) {
-                delay(1_000L)
+    LaunchedEffect(mode, endsAt) {
+        if (mode == 1 && endsAt > 0L) {
+            while (true) {
                 seconds = ((endsAt - SystemClock.elapsedRealtime() + 999L) / 1_000L)
                     .toInt().coerceIn(0, 60)
+                if (seconds == 0) break
+                delay(1_000L)
             }
         }
     }
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnClickOutside = false,
+        ),
     ) {
         Surface(
             modifier = Modifier
-                .padding(horizontal = 22.dp)
+                .padding(horizontal = 24.dp)
                 .widthIn(max = 420.dp)
                 .fillMaxWidth(),
-            shape = RoundedCornerShape(28.dp),
+            shape = RoundedCornerShape(24.dp),
             color = StandardChrome.panel,
             border = BorderStroke(1.dp, StandardChrome.muted.copy(alpha = 0.20f)),
-            shadowElevation = 18.dp,
         ) {
             Column(
-                modifier = Modifier
-                    .animateContentSize(
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioNoBouncy,
-                            stiffness = Spring.StiffnessMedium,
-                        ),
-                    )
-                    .padding(horizontal = 22.dp, vertical = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(46.dp)
-                            .background(CandleLight.copy(alpha = 0.12f), RoundedCornerShape(16.dp)),
-                        contentAlignment = Alignment.Center,
+                    Surface(
+                        modifier = Modifier.size(46.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        color = StandardChrome.panel,
+                        border = BorderStroke(1.dp, StandardChrome.muted.copy(alpha = 0.16f)),
                     ) {
-                        Icon(
-                            painter = painterResource(R.drawable.capsule_candle),
-                            contentDescription = null,
-                            tint = CandleLight,
-                            modifier = Modifier.size(24.dp),
-                        )
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                painter = painterResource(R.drawable.capsule_candle),
+                                contentDescription = null,
+                                tint = StandardChrome.text,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
                     }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = stringResource(R.string.artist_candle_title),
+                            color = StandardChrome.text,
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.SemiBold,
-                            color = StandardChrome.text,
                         )
                         Text(
                             text = name,
                             color = StandardChrome.muted,
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.bodySmall,
                             maxLines = 2,
                         )
                     }
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.size(40.dp),
-                    ) {
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(40.dp)) {
                         Icon(
                             painter = painterResource(R.drawable.close),
                             contentDescription = stringResource(R.string.artist_candle_close),
@@ -167,122 +180,121 @@ internal fun ArtistMemorialDialog(
                         )
                     }
                 }
-
-                HorizontalDivider(
-                    color = StandardChrome.muted.copy(alpha = 0.14f),
-                    thickness = 1.dp,
-                )
+                HorizontalDivider(color = StandardChrome.muted.copy(alpha = 0.12f))
                 Text(
                     text = stringResource(R.string.artist_candle_source, displayedDate),
-                    color = StandardChrome.muted,
                     style = MaterialTheme.typography.bodySmall,
+                    color = StandardChrome.muted,
                 )
 
-                Crossfade(
-                    targetState = mode,
-                    animationSpec = tween(durationMillis = 180),
-                    label = "artist-candle-content",
-                ) { activeMode ->
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        when (activeMode) {
-                            0 -> {
-                                MemorialActionRow(
+                // The content has one stable measured height in every mode.
+                // In particular, no asynchronous crossfade can compress the
+                // entire dialog or briefly stack old and new content.
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(
+                        if (LocalDensity.current.fontScale > 1.3f) 260.dp else 212.dp,
+                    ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    when (mode) {
+                        0 -> {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                MemorialAction(
                                     icon = R.drawable.capsule_candle,
-                                    title = stringResource(R.string.artist_candle_minute),
-                                    subtitle = stringResource(R.string.artist_candle_minute_desc),
-                                    highlight = true,
+                                    text = stringResource(R.string.artist_candle_minute),
                                 ) {
                                     onMinuteBegin()
                                     seconds = 60
+                                    endsAt = SystemClock.elapsedRealtime() + 60_000L
                                     mode = 1
                                 }
-                                MemorialActionRow(
+                                MemorialAction(
                                     icon = R.drawable.favorite_border,
-                                    title = stringResource(R.string.artist_candle_thanks),
-                                    subtitle = stringResource(R.string.artist_candle_thanks_desc),
+                                    text = stringResource(R.string.artist_candle_thanks),
                                 ) {
                                     mode = 2
                                 }
                             }
-                            1 -> {
-                                Box(
-                                    modifier = Modifier.fillMaxWidth().height(182.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    CircularProgressIndicator(
-                                        progress = { seconds / 60f },
-                                        modifier = Modifier.size(156.dp),
-                                        color = CandleLight,
-                                        trackColor = StandardChrome.muted.copy(alpha = 0.18f),
-                                        strokeWidth = 3.dp,
-                                        strokeCap = StrokeCap.Round,
-                                    )
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Icon(
-                                            painter = painterResource(R.drawable.capsule_candle),
-                                            contentDescription = null,
-                                            tint = CandleLight,
-                                            modifier = Modifier.size(22.dp),
-                                        )
-                                        Spacer(Modifier.height(8.dp))
-                                        Text(
-                                            text = String.format(
-                                                Locale.ROOT, "%d:%02d",
-                                                seconds / 60, seconds % 60,
-                                            ),
-                                            color = StandardChrome.text,
-                                            style = MaterialTheme.typography.headlineLarge,
-                                            fontWeight = FontWeight.Light,
-                                            textAlign = TextAlign.Center,
-                                        )
-                                    }
-                                }
+                        }
+                        1 -> {
+                            // No "music paused" caption or back action during
+                            // the minute. Only a restrained timer is visible.
+                            Box(
+                                modifier = Modifier.fillMaxWidth().height(164.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                CircularProgressIndicator(
+                                    progress = { seconds / 60f },
+                                    modifier = Modifier.size(152.dp),
+                                    color = StandardChrome.text,
+                                    trackColor = StandardChrome.muted.copy(alpha = 0.18f),
+                                    strokeWidth = 3.dp,
+                                    strokeCap = StrokeCap.Round,
+                                )
                                 Text(
-                                    text = stringResource(
-                                        if (seconds == 0) R.string.artist_candle_timer_done
-                                        else R.string.artist_candle_paused,
+                                    text = String.format(
+                                        Locale.ROOT, "%d:%02d",
+                                        seconds / 60, seconds % 60,
                                     ),
-                                    modifier = Modifier.fillMaxWidth(),
-                                    color = StandardChrome.muted,
-                                    style = MaterialTheme.typography.bodySmall,
+                                    color = StandardChrome.text,
+                                    style = MaterialTheme.typography.headlineLarge,
+                                    fontWeight = FontWeight.Light,
                                     textAlign = TextAlign.Center,
                                 )
-                                MemorialBackAction { mode = 0 }
                             }
-                            2 -> {
+                        }
+                        2 -> {
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                // The entire card is an editable canvas. Nothing
+                                // is sent or shared. The draft survives a revisit.
                                 Surface(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(18.dp),
+                                    modifier = Modifier.fillMaxWidth().weight(1f),
+                                    shape = RoundedCornerShape(16.dp),
                                     color = StandardChrome.selected,
                                 ) {
-                                    Text(
-                                        text = gratitude,
-                                        modifier = Modifier.padding(18.dp),
-                                        color = StandardChrome.text,
-                                        style = MaterialTheme.typography.bodyLarge,
+                                    BasicTextField(
+                                        value = note,
+                                        onValueChange = { note = it.take(800) },
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(16.dp)
+                                            .testTag("memorial-wish-canvas"),
+                                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                            color = StandardChrome.text,
+                                        ),
+                                        cursorBrush = SolidColor(StandardChrome.text),
+                                        keyboardOptions = KeyboardOptions(
+                                            capitalization = KeyboardCapitalization.Sentences,
+                                        ),
+                                        decorationBox = { innerTextField ->
+                                            Box(Modifier.fillMaxSize()) {
+                                                if (note.isEmpty()) {
+                                                    Text(
+                                                        text = stringResource(R.string.artist_candle_note_hint),
+                                                        color = StandardChrome.muted,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                    )
+                                                }
+                                                innerTextField()
+                                            }
+                                        },
                                     )
                                 }
-                                Text(
-                                    text = stringResource(R.string.artist_candle_local),
-                                    color = StandardChrome.muted,
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                                MemorialActionRow(
-                                    icon = R.drawable.share,
-                                    title = stringResource(R.string.artist_candle_share),
-                                    subtitle = stringResource(R.string.artist_candle_share_desc),
-                                    highlight = true,
+                                TextButton(
+                                    onClick = { mode = 0 },
+                                    modifier = Modifier.align(Alignment.End).heightIn(min = 42.dp),
                                 ) {
-                                    val intent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "text/plain"
-                                        putExtra(Intent.EXTRA_TEXT, gratitude)
-                                    }
-                                    context.startActivity(Intent.createChooser(intent, null))
+                                    Text(
+                                        text = stringResource(R.string.artist_candle_back),
+                                        color = StandardChrome.muted,
+                                    )
                                 }
-                                MemorialBackAction { mode = 0 }
                             }
                         }
                     }
@@ -293,68 +305,34 @@ internal fun ArtistMemorialDialog(
 }
 
 @Composable
-private fun MemorialBackAction(onClick: () -> Unit) {
-    TextButton(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text(
-            text = stringResource(R.string.artist_candle_back),
-            color = StandardChrome.muted,
-            style = MaterialTheme.typography.labelLarge,
-        )
-    }
-}
-
-@Composable
-private fun MemorialActionRow(
+private fun MemorialAction(
     @DrawableRes icon: Int,
-    title: String,
-    subtitle: String,
-    highlight: Boolean = false,
+    text: String,
     onClick: () -> Unit,
 ) {
     Surface(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp),
-        shape = RoundedCornerShape(18.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+        shape = RoundedCornerShape(16.dp),
         color = StandardChrome.selected,
-        border = BorderStroke(
-            1.dp,
-            if (highlight) CandleLight.copy(alpha = 0.25f)
-            else StandardChrome.muted.copy(alpha = 0.16f),
-        ),
+        // No strokes on action buttons: match Capsule's quiet filled surfaces.
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Icon(
                 painter = painterResource(icon),
                 contentDescription = null,
-                tint = if (highlight) CandleLight else StandardChrome.text,
-                modifier = Modifier.size(22.dp),
+                tint = StandardChrome.text,
+                modifier = Modifier.size(19.dp),
             )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    color = StandardChrome.text,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    text = subtitle,
-                    color = StandardChrome.muted,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            Icon(
-                painter = painterResource(R.drawable.arrow_forward),
-                contentDescription = null,
-                tint = StandardChrome.muted,
-                modifier = Modifier.size(18.dp),
+            Text(
+                text = text,
+                color = StandardChrome.text,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
             )
         }
     }
