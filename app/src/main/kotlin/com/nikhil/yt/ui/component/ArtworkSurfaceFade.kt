@@ -15,7 +15,6 @@ internal fun ArtworkSurfaceFade(
     portrait: Boolean = false,
     topScrim: Boolean = true,
     softPortrait: Boolean = false,
-    artistPortrait: Boolean = false,
 ) {
     Box(modifier.drawWithCache {
         val navigationScrim = if (!topScrim) null else if (portrait) Brush.verticalGradient(
@@ -31,7 +30,7 @@ internal fun ArtworkSurfaceFade(
         )
         // Albums gently surrender colour over most of the portrait instead
         // of holding the image at full contrast until its last third.
-        // This is opt-in: artist heroes keep their existing gradient.
+        // This is opt-in: artists retain the common, longer portrait gradient.
         val surfaceFade = if (portrait && softPortrait) Brush.verticalGradient(
             0f to Color.Transparent,
             0.14f to Color.Transparent,
@@ -43,23 +42,6 @@ internal fun ArtworkSurfaceFade(
             0.75f to background.copy(alpha = 0.74f),
             0.85f to background.copy(alpha = 0.89f),
             0.93f to background.copy(alpha = 0.97f),
-            1f to background,
-        ) else if (portrait && artistPortrait) Brush.verticalGradient(
-            // Spread the transition across the last third of the ACTUAL
-            // artwork (including the living-artist extension). The former
-            // gradient was nearly invisible until the last few pixels, which
-            // looked like a hard-cut edge despite ending in the page colour.
-            // Crucially this affects only the drawing, not the hero height,
-            // buttons, candle position, scroll fade, or album/playlist styles.
-            0f to Color.Transparent,
-            0.63f to Color.Transparent,
-            0.72f to background.copy(alpha = 0.05f),
-            0.79f to background.copy(alpha = 0.16f),
-            0.85f to background.copy(alpha = 0.33f),
-            0.90f to background.copy(alpha = 0.54f),
-            0.94f to background.copy(alpha = 0.74f),
-            0.97f to background.copy(alpha = 0.90f),
-            0.99f to background,
             1f to background,
         ) else if (portrait) Brush.verticalGradient(
             // A matte veil in the page colour, like the upper scrim: retain photo detail
