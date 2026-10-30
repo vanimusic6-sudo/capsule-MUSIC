@@ -44,18 +44,20 @@ internal fun ArtworkSurfaceFade(
             0.93f to background.copy(alpha = 0.97f),
             1f to background,
         ) else if (portrait) Brush.verticalGradient(
-            // A matte veil in the page colour, like the upper scrim: retain photo detail
-            // while progressively replacing it with the surface, without filtering pixels.
-            0f to background.copy(alpha = 0f),
-            0.40f to background.copy(alpha = 0f),
-            0.48f to background.copy(alpha = 0.025f),
-            0.56f to background.copy(alpha = 0.075f),
-            0.64f to background.copy(alpha = 0.16f),
-            0.72f to background.copy(alpha = 0.30f),
-            0.80f to background.copy(alpha = 0.49f),
-            0.87f to background.copy(alpha = 0.70f),
-            0.93f to background.copy(alpha = 0.88f),
-            0.97f to background.copy(alpha = 0.97f),
+            // Shared artist, album and playlist matte. Compared with the
+            // original 40%-start portrait: a slightly longer, gentler falloff
+            // that keeps photo colour for longer instead of darkening most of
+            // the image. Only the very last pixels become fully opaque.
+            0f to Color.Transparent,
+            0.37f to Color.Transparent,
+            0.48f to background.copy(alpha = 0.02f),
+            0.58f to background.copy(alpha = 0.065f),
+            0.66f to background.copy(alpha = 0.14f),
+            0.74f to background.copy(alpha = 0.28f),
+            0.81f to background.copy(alpha = 0.46f),
+            0.88f to background.copy(alpha = 0.67f),
+            0.94f to background.copy(alpha = 0.87f),
+            0.985f to background.copy(alpha = 0.985f),
             1f to background,
         ) else Brush.verticalGradient(
             0f to background.copy(alpha = 0f),
