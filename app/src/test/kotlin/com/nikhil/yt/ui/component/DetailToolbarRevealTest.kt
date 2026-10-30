@@ -27,7 +27,10 @@ class DetailToolbarRevealTest {
         })
         val mid = fade(0, 231)
         assertTrue(mid in .45f.. .55f)
-        assertEquals(mid, fade(0, 270), 0f)
+        // The old assertion compared two *different* scroll positions as if
+        // they were identical; the shortened safety fade is correctly monotonic.
+        assertEquals(mid, fade(0, 231), 0f)
+        assertTrue(fade(0, 270) > mid)
         assertEquals(1f, detailToolbarBackdropAlpha(1f), 0f)
     }
 
