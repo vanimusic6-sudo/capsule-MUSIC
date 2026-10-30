@@ -1,9 +1,6 @@
 package com.nikhil.yt.ui.component
 
 import androidx.annotation.DrawableRes
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -76,23 +73,22 @@ internal fun ArtistHeroLayout(
             ArtworkSurfaceFade(background, Modifier.matchParentSize(), portrait = true, topScrim = false)
         }
         Column(
-            Modifier.fillMaxWidth().heightIn(min = heroHeight)
+            // Never let an asynchronously detected memorial action alter the
+            // header height or push the latest release and list under a finger.
+            Modifier.fillMaxWidth().height(heroHeight)
                 .padding(top = topSafePadding + 72.dp, bottom = 14.dp),
             verticalArrangement = Arrangement.Bottom,
         ) {
             Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp)) { title() }
             Spacer(Modifier.height(24.dp))
-            // Remote memorial metadata may arrive after the artist page.
-            // Reveal its extra action without shifting the upper row in one frame.
+            // Reserve the second action slot from frame one. The first row
+            // has a fixed anchor whether the memorial lookup returns now, late,
+            // or never; the candle can appear without moving other elements.
+            val actionRailHeight = if (LocalDensity.current.fontScale > 1.3f) 172.dp else 110.dp
             Column(
                 Modifier.fillMaxWidth()
                     .padding(horizontal = 22.dp)
-                    .animateContentSize(
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioNoBouncy,
-                            stiffness = Spring.StiffnessMedium,
-                        ),
-                    ),
+                    .heightIn(min = actionRailHeight),
             ) { actions() }
         }
     }
