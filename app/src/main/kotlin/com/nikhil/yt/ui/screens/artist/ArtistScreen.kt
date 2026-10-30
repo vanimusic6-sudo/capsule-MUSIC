@@ -91,6 +91,8 @@ import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.HideExplicitKey
+import com.nikhil.yt.constants.CropThumbnailToSquareKey
+import com.nikhil.yt.constants.ReleaseAppearanceDefaults
 import com.nikhil.yt.db.entities.ArtistEntity
 import com.nikhil.yt.extensions.togglePlayPause
 import com.nikhil.yt.extensions.toMediaItem
@@ -113,6 +115,7 @@ import com.nikhil.yt.ui.component.HideOnScrollFAB
 import com.nikhil.yt.ui.component.IconButton
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.LocalSongListVisuals
+import com.nikhil.yt.ui.component.LocalArtistThumbnailCrop
 import com.nikhil.yt.ui.component.NavigationTitle
 import com.nikhil.yt.ui.component.SongListItem
 import com.nikhil.yt.ui.component.SongListVisuals
@@ -171,6 +174,7 @@ fun ArtistScreen(
     val librarySongs by viewModel.librarySongs.collectAsState()
     val libraryAlbums by viewModel.libraryAlbums.collectAsState()
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
+    val cropArtistArtwork by rememberPreference(CropThumbnailToSquareKey, ReleaseAppearanceDefaults.cropThumbnail)
     // Anchor scrolling to the actual artist, not a reused destination
     // composition. Remembered index/offset survives a toolbar/hero recompose
     // without leaking the previous artist's scroll position to this one.
@@ -278,6 +282,7 @@ fun ArtistScreen(
                     thumbnailSize = ArtistTrackArtworkSize,
                     thumbnailCornerRadius = ArtistTrackArtworkCornerRadius,
                 ),
+            LocalArtistThumbnailCrop provides cropArtistArtwork,
         ) {
             LazyColumn(
                 state = lazyListState,
