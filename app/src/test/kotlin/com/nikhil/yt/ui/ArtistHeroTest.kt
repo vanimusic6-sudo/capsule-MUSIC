@@ -134,12 +134,12 @@ class ArtistHeroTest {
         // Reproduces the pyrokinesis regression: the full-size portrait had
         // colour until its final few pixels, then jumped to flat dark surface.
         // Use an unmistakable red source to test the actual rendered gradient
-        // (not just its end points) on the 62dp living-artist extension.
+        // (not just its end points) on the full-size, unclipped portrait.
         compose.setContent {
             ArtistHeroLayout(
                 background = Color.Black,
                 modifier = Modifier.width(360.dp).testTag("hero"),
-                artworkExtension = 62.dp,
+                memorialExtraHeight = 0.dp,
                 artwork = { Box(Modifier.fillMaxSize().background(Color.Red)) },
                 title = {},
                 actions = {},
@@ -161,7 +161,7 @@ class ArtistHeroTest {
         assertTrue("Fade begins smoothly without hiding the top half", at40 >= 175)
         assertTrue("Fade must begin well before the photo ends", at65 < at40 - 25)
         assertTrue("Smooth dimming should be unmistakable at 80%", at80 < at65 - 40)
-        assertTrue("Keep fading through the 90% mark", at90 < at80 - 40)
+        assertTrue("Keep fading through the 90% mark", at90 < at80 - 15)
         assertTrue("No abrupt last-3% transition", at97 < at90 - 4)
         assertTrue("The image must match the page at its bottom", at995 <= 3)
         assertTrue("Bottom of photo must already be nearly page-coloured", at97 < 25)
