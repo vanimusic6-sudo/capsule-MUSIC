@@ -19,6 +19,9 @@ import com.nikhil.yt.ui.screens.artist.ArtistMemorialLookup
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.filterExplicit
 import com.nikhil.yt.innertube.pages.ArtistPage
+import com.nikhil.yt.innertube.models.AlbumItem
+import com.nikhil.yt.innertube.models.PlaylistItem
+import kotlinx.coroutines.delay
 import com.nikhil.yt.db.MusicDatabase
 import com.nikhil.yt.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -106,6 +109,44 @@ class ArtistViewModel @Inject constructor(
 
                         if (generation == loadGeneration) {
                             artistPage = page.copy(sections = filteredSections)
+
+                            // YT Music's artist landing page only previews a few
+                            // albums/playlists/episodes even when the "More" catalog has
+                            // additional entries. Enrich only those small preview shelves.
+                            // Keep the first paint fast and do not search the global catalog.
+                            launch {
+                                delay(240)
+                                filteredSections.withIndex()
+                                    .filter { (_, section) ->
+                                        section.items.size in 1..4 &&
+                                            section.moreEndpoint?.browseId != null &&
+                                            (section.items.any { it is AlbumItem || it is PlaylistItem } ||
+                                                section.title.contains("episode", true) ||
+                                                section.title.contains("выпуск", true) ||
+                                                section.title.contains("эпизод", true))
+                                    }
+                                    .take(4)
+                                    .forEach { (sectionIndex, section) ->
+                                        if (generation != loadGeneration) return@launch
+                                        val endpoint = section.moreEndpoint ?: return@forEach
+                                        val first = YouTube.artistItems(endpoint).getOrNull() ?: return@forEach
+                                        val extra = first.items.toMutableList()
+                                        if (extra.size < 25 && first.continuation != null) {
+                                            YouTube.artistItemsContinuation(first.continuation)
+                                                .getOrNull()?.let { extra += it.items }
+                                        }
+                                        val merged = (section.items + extra).distinctBy { it.id }
+                                            .filterExplicit(hideExplicit).take(25)
+                                        if (merged.size > section.items.size && generation == loadGeneration) {
+                                            artistPage = artistPage?.copy(sections =
+                                                artistPage?.sections?.mapIndexed { index, current ->
+                                                    if (index == sectionIndex) current.copy(items = merged)
+                                                    else current
+                                                }.orEmpty()
+                                            )
+                                        }
+                                    }
+                            }
                             memorialJob?.cancel()
                             memorialJob = viewModelScope.launch {
                                 val info = ArtistMemorialLookup.find(
