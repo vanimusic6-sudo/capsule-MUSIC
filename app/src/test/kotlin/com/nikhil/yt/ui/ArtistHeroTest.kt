@@ -130,6 +130,31 @@ class ArtistHeroTest {
         assertEquals(62f * dp, bounds("hero").bottom - livingBottom, 2f)
     }
 
+    @Test fun sharedPortraitMatteHasSmoothSlopeThroughTheWholeTransition() {
+        assertEquals(0f, com.nikhil.yt.ui.component.capsulePortraitMatteAlpha(0.24f), 0.00001f)
+        assertEquals(1f, com.nikhil.yt.ui.component.capsulePortraitMatteAlpha(0.985f), 0.00001f)
+        // Previous image overlay was barely visible at 60%, then rushed
+        // through most of its opacity in the final quarter. Enforce a
+        // measured, continuously changing transition rather than ad-hoc
+        // fixed stops that bring back the abrupt dark shelf.
+        assertTrue("Fade must already be perceptible by 55%",
+            com.nikhil.yt.ui.component.capsulePortraitMatteAlpha(0.55f) > 0.10f)
+        assertTrue("Image should remain visible at 70%",
+            com.nikhil.yt.ui.component.capsulePortraitMatteAlpha(0.70f) < 0.55f)
+        assertTrue("The 80% transition should not be a late sudden cut",
+            com.nikhil.yt.ui.component.capsulePortraitMatteAlpha(0.80f) in 0.60f..0.80f)
+        val samples = (0..1000).map {
+            com.nikhil.yt.ui.component.capsulePortraitMatteAlpha(it / 1000f)
+        }
+        assertTrue("No alpha discontinuities or reversed fading",
+            samples.zipWithNext().all { (a, b) -> b >= a && b - a < 0.004f })
+        val stops = com.nikhil.yt.ui.component.capsulePortraitMatteStops(Color.Black)
+        assertTrue("Cached gradient stops must begin fully transparent",
+            stops.first().first == 0f && stops.first().second.alpha == 0f)
+        assertTrue("No boundary seam: gradient ends in exact surface colour",
+            stops.last().first == 1f && stops.last().second == Color.Black)
+    }
+
     @Test fun artistGradientSoftlyReachesPageInsteadOfHardCuttingAtPhotoEdge() {
         // Reproduces the pyrokinesis regression: the full-size portrait had
         // colour until its final few pixels, then jumped to flat dark surface.
