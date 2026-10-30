@@ -109,10 +109,11 @@ internal fun detailArtworkFadeLikeArtist(
 ): Float {
     if (firstVisibleItemIndex > 0) return 1f
     if (!artworkBottomPx.isFinite() || !toolbarBottomPx.isFinite()) return 0f
-    // Keep the historical artist/album/playlist shared distance: finish
-    // before scrolling action buttons would reach the pinned toolbar.
-    val safetyGap = (artworkBottomPx * 0.14f).toInt()
-    val distance = (artworkBottomPx - toolbarBottomPx - safetyGap).coerceAtLeast(1f)
+    // Seal only as the bottom of the portrait approaches the pinned toolbar.
+    // Removing the old 14%-of-photo reserve avoids a long black gap between
+    // the toolbar and action capsule on albums and playlists, without moving
+    // or shrinking their covers.
+    val distance = (artworkBottomPx - toolbarBottomPx).coerceAtLeast(1f)
     return portraitDissolveFraction(offsetPx.toFloat(), distance)
 }
 
