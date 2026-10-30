@@ -37,6 +37,9 @@ captures/
 # --- CRITICAL SECURITY ---
 *.jks
 *.keystore
+*.p12
+*.pfx
+*.pkcs12
 *.properties
 !gradle.properties
 # The blanket *.properties rule above is a keystore/secret guard, but it also
