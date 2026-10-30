@@ -313,12 +313,6 @@ fun ArtistScreen(
                     }
                 }
             } else {
-                val description = artistPage?.description
-                if (!showLocal && !description.isNullOrBlank()) {
-                    item(key = "description") {
-                        ArtistDescription(viewModel.artistId, description, onGeometryAnimationChanged = { descriptionMoving = it })
-                    }
-                }
                 latestRelease?.let { release ->
                     item(
                         key = "latest_release_${release.id}",
@@ -329,6 +323,13 @@ fun ArtistScreen(
                                 navController.navigate("album/${release.id}")
                             },
                         )
+                    }
+                }
+
+                val description = artistPage?.description
+                if (!showLocal && !description.isNullOrBlank()) {
+                    item(key = "description") {
+                        ArtistDescription(viewModel.artistId, description, onGeometryAnimationChanged = { descriptionMoving = it })
                     }
                 }
 
