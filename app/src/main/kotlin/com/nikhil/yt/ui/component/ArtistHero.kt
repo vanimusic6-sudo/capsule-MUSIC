@@ -1,6 +1,11 @@
 package com.nikhil.yt.ui.component
 
 import androidx.annotation.DrawableRes
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.draw.clipToBounds
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -88,7 +93,8 @@ internal fun ArtistHeroLayout(
             Column(
                 Modifier.fillMaxWidth()
                     .padding(horizontal = 22.dp)
-                    .heightIn(min = actionRailHeight),
+                    .heightIn(min = actionRailHeight)
+                    .clipToBounds(),
             ) { actions() }
         }
     }
@@ -151,6 +157,16 @@ internal fun ArtistHero(
         // persistent.
         title = {},
         actions = {
+            // Keep the hero and the latest-release card fixed in place.
+            // Only the action buttons move within the already reserved slot.
+            // Living artists use the LOWER part of that slot, so there is no
+            // empty hole underneath Subscribe / Shuffle.
+            val candleSlide by animateDpAsState(
+                targetValue = if (showCandle) 0.dp else 62.dp,
+                animationSpec = tween(durationMillis = 260, easing = CapsuleStandardEasing),
+                label = "artist-memorial-action-slide",
+            )
+            Column(Modifier.offset(y = candleSlide)) {
             val stackActions = LocalDensity.current.fontScale > 1.3f
             val subscribeLabel = stringResource(if (displayedSubscribed) R.string.capsule_artist_subscribed else R.string.subscribe)
             if (stackActions) {
@@ -191,7 +207,9 @@ internal fun ArtistHero(
                     )
                 }
             }
-            if (showCandle) {
+            // Show the memorial action only once the existing buttons have
+            // gracefully reached their new anchor, never over the next card.
+            if (showCandle && candleSlide < 1.dp) {
                 Spacer(Modifier.height(14.dp))
                 CapsuleArtistAction(
                     R.drawable.capsule_candle,
@@ -200,6 +218,7 @@ internal fun ArtistHero(
                     Modifier.fillMaxWidth(),
                     !loading,
                 )
+            }
             }
         },
     )
