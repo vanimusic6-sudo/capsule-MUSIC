@@ -15,7 +15,6 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
-import kotlin.math.min
 
 /**
  * One scroll-driven photo / pinned-toolbar transition for albums and all
@@ -34,6 +33,7 @@ internal class DetailHeaderMotionState(
 
     private var restArtworkBottomPx by mutableFloatStateOf(Float.NaN)
     private var toolbarBottomPx by mutableFloatStateOf(Float.NaN)
+    private var toolbarHeightPx by mutableFloatStateOf(Float.NaN)
 
     fun measureArtwork(coordinates: LayoutCoordinates) {
         if (scroll.firstVisibleItemIndex != 0) return
@@ -47,11 +47,17 @@ internal class DetailHeaderMotionState(
     }
 
     fun measureToolbar(coordinates: LayoutCoordinates) {
-        val bottom = coordinates.positionInRoot().y + coordinates.size.height
+        val height = coordinates.size.height.toFloat()
+        val bottom = coordinates.positionInRoot().y + height
         if (bottom.isFinite() &&
             (toolbarBottomPx.isNaN() || kotlin.math.abs(bottom - toolbarBottomPx) > 0.5f)
         ) {
             toolbarBottomPx = bottom
+        }
+        if (height > 0f && (toolbarHeightPx.isNaN() ||
+            kotlin.math.abs(height - toolbarHeightPx) > 0.5f)
+        ) {
+            toolbarHeightPx = height
         }
     }
 
@@ -59,18 +65,21 @@ internal class DetailHeaderMotionState(
         if (!hasHeader) return 1f
         val viewportWidth = scroll.layoutInfo.viewportSize.width
         if (viewportWidth <= 0) return 0f
-        // The artist portrait uses a 1.25 * min(viewport width, 450.dp)
-        // reference height, not the album's separate 0.85-ratio portrait.
-        // Previously matching percentages still meant different scroll lengths.
-        val artistBottomPx = with(density) {
+        // Use actual measured photo + toolbar edges. Only before the first
+        // measure, use the artist's reference size as a conservative fallback.
+        // Album and playlist photographs may be taller, and using that artist
+        // height after measurement used to leave a large black gap above
+        // the collection controls while the photo was still offscreen.
+        val fallbackArtistBottomPx = with(density) {
             artistHeroArtworkHeight(viewportWidth.toDp()).roundToPx().toFloat()
         }
         return detailArtistLengthArtworkFade(
             firstVisibleItemIndex = scroll.firstVisibleItemIndex,
             offsetPx = scroll.firstVisibleItemScrollOffset,
-            artistArtworkBottomPx = artistBottomPx,
+            artistArtworkBottomPx = fallbackArtistBottomPx,
             detailArtworkBottomPx = restArtworkBottomPx,
             toolbarBottomPx = toolbarBottomPx,
+            toolbarHeightPx = toolbarHeightPx,
         )
     }
 
@@ -78,10 +87,10 @@ internal class DetailHeaderMotionState(
 }
 
 /**
- * Use the ARTIST'S actual scroll distance as the source of truth, rather than
- * the larger album/playlist portrait dimensions. On compact screens where the
- * portrait physically ends earlier, cap the distance to its real lower edge so
- * the pinned toolbar never exposes content through a transparent background.
+ * Compute the transition from the real bottom edge of THIS album or playlist
+ * photograph, not an artist portrait with a different height. In the first
+ * layout frame (before onGloballyPositioned), use the artist size as fallback.
+ * This avoids a premature fully black strip with taller collection covers.
  */
 internal fun detailArtistLengthArtworkFade(
     firstVisibleItemIndex: Int,
@@ -89,14 +98,14 @@ internal fun detailArtistLengthArtworkFade(
     artistArtworkBottomPx: Float,
     detailArtworkBottomPx: Float,
     toolbarBottomPx: Float,
+    toolbarHeightPx: Float = toolbarBottomPx,
 ): Float {
     if (firstVisibleItemIndex > 0) return 1f
-    if (!artistArtworkBottomPx.isFinite() || !toolbarBottomPx.isFinite()) return 0f
-    val safeBottom = if (detailArtworkBottomPx.isFinite())
-        min(artistArtworkBottomPx, detailArtworkBottomPx)
-    else artistArtworkBottomPx
+    if (!toolbarBottomPx.isFinite()) return 0f
+    val actualBottom = if (detailArtworkBottomPx.isFinite())
+        detailArtworkBottomPx else artistArtworkBottomPx
     return detailArtworkFadeLikeArtist(
-        firstVisibleItemIndex, offsetPx, safeBottom, toolbarBottomPx,
+        firstVisibleItemIndex, offsetPx, actualBottom, toolbarBottomPx, toolbarHeightPx,
     )
 }
 
@@ -106,30 +115,35 @@ internal fun detailArtworkFadeLikeArtist(
     offsetPx: Int,
     artworkBottomPx: Float,
     toolbarBottomPx: Float,
+    toolbarHeightPx: Float = toolbarBottomPx,
 ): Float {
     if (firstVisibleItemIndex > 0) return 1f
     if (!artworkBottomPx.isFinite() || !toolbarBottomPx.isFinite()) return 0f
-    // Seal only as the bottom of the portrait approaches the pinned toolbar.
-    // Removing the old 14%-of-photo reserve avoids a long black gap between
-    // the toolbar and action capsule on albums and playlists, without moving
-    // or shrinking their covers.
     val distance = (artworkBottomPx - toolbarBottomPx).coerceAtLeast(1f)
-    return portraitDissolveFraction(offsetPx.toFloat(), distance)
+    return portraitDissolveFraction(offsetPx.toFloat(), distance, toolbarHeightPx)
 }
 
 /**
- * Unified motion for artist portrait / album cover / playlist artwork.
- * Begin after the initial 12% of scrolling and dissolve through 99% of
- * the image-to-toolbar travel, versus the old artist's 0..74%.
+ * Precisely fit the last photo-to-toolbar transition into the measured height
+ * of the *pinned top bar*, including system insets. At its start the photo's
+ * bottom is one toolbar-height away; at the end it is one pixel below the
+ * bar's lower edge. The toolbar acquires its solid surface on that exact
+ * finished frame, without a percentage-based early black canvas.
  *
- * Finishing AFTER the image's edge crosses the bar creates a sharp seam and
- * translucent controls; 99% is the latest safe full-dissolve threshold.
+ * The smoothstep stays scroll-driven, with no running background animator.
  */
-internal fun portraitDissolveFraction(offsetPx: Float, distancePx: Float): Float {
+internal fun portraitDissolveFraction(
+    offsetPx: Float,
+    distancePx: Float,
+    toolbarHeightPx: Float,
+): Float {
     val distance = distancePx.coerceAtLeast(1f)
-    val start = distance * 0.12f
-    val end = distance * 0.99f
-    val fraction = ((offsetPx - start) / (end - start)).coerceIn(0f, 1f)
+    // The final photo pixel must be outside the pinned bar before it seals.
+    // One pixel accounts for rasterization, not a guessed % of the portrait.
+    val end = (distance - 1f).coerceAtLeast(1f)
+    val barHeight = toolbarHeightPx.takeIf { it.isFinite() && it > 0f } ?: end
+    val start = (end - barHeight).coerceAtLeast(0f)
+    val fraction = ((offsetPx - start) / (end - start).coerceAtLeast(1f)).coerceIn(0f, 1f)
     // Evaluate the polynomial in Double: Float32 cancellation near t=1
     // caused the last frames to wiggle backward (and fail monotonic tests).
     // The returned draw alpha is still Float and stays strictly in [0, 1].
