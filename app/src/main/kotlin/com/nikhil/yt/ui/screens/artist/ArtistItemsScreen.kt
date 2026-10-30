@@ -98,21 +98,24 @@ fun ArtistItemsScreen(
     val itemsPage by viewModel.itemsPage.collectAsState()
     val cropArtwork by rememberPreference(CropThumbnailToSquareKey, ReleaseAppearanceDefaults.cropThumbnail)
 
+    // Include the token in the observed state. A loading cell can remain
+    // visible after a page append, so observing only its visibility (true ->
+    // true) never emitted the next request and silently truncated catalogs.
     LaunchedEffect(lazyListState) {
         snapshotFlow {
-            lazyListState.layoutInfo.visibleItemsInfo.any { it.key == "loading" }
-        }.collect { shouldLoadMore ->
-            if (!shouldLoadMore) return@collect
-            viewModel.loadMore()
+            itemsPage?.continuation to
+                lazyListState.layoutInfo.visibleItemsInfo.any { it.key == "loading" }
+        }.collect { (token, visible) ->
+            if (token != null && visible) viewModel.loadMore()
         }
     }
 
     LaunchedEffect(lazyGridState) {
         snapshotFlow {
-            lazyGridState.layoutInfo.visibleItemsInfo.any { it.key == "loading" }
-        }.collect { shouldLoadMore ->
-            if (!shouldLoadMore) return@collect
-            viewModel.loadMore()
+            itemsPage?.continuation to
+                lazyGridState.layoutInfo.visibleItemsInfo.any { it.key == "loading" }
+        }.collect { (token, visible) ->
+            if (token != null && visible) viewModel.loadMore()
         }
     }
 
