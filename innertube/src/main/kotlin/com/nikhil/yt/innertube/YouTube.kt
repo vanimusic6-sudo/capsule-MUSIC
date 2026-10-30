@@ -452,18 +452,17 @@ object YouTube {
             ?: response.header?.musicHeaderRenderer?.title?.runs?.firstOrNull()?.text
             ?: musicShelves.firstNotNullOfOrNull { it.title?.runs?.firstOrNull()?.text }
             ?: ""
-        val items = when {
-            grids.isNotEmpty() -> grids.flatMap { grid ->
-                grid.items.mapNotNull { it.musicTwoRowItemRenderer?.let(ArtistItemsPage::fromMusicTwoRowItemRenderer) }
-            }
-            carousels.isNotEmpty() -> carousels.flatMap { carousel ->
-                carousel.contents.mapNotNull {
+        val items = allSections.flatMap { block ->
+            block.gridRenderer?.items?.mapNotNull {
+                it.musicTwoRowItemRenderer?.let(ArtistItemsPage::fromMusicTwoRowItemRenderer)
+            }.orEmpty() +
+                block.musicCarouselShelfRenderer?.contents?.mapNotNull {
                     it.musicTwoRowItemRenderer?.let(ArtistItemsPage::fromMusicTwoRowItemRenderer)
                         ?: it.musicResponsiveListItemRenderer?.let(ArtistItemsPage::fromMusicResponsiveListItemRenderer)
-                }
-            }
-            else -> (playlistShelves.flatMap { it.contents } + musicShelves.flatMap { it.contents.orEmpty() })
-                .getItems().mapNotNull(ArtistItemsPage::fromMusicResponsiveListItemRenderer)
+                }.orEmpty() +
+                (block.musicPlaylistShelfRenderer?.contents.orEmpty() +
+                    block.musicShelfRenderer?.contents.orEmpty())
+                    .getItems().mapNotNull(ArtistItemsPage::fromMusicResponsiveListItemRenderer)
         }
         ArtistItemsPage(
             title = title,
