@@ -8,12 +8,13 @@ class ArtistScreenDesignTest {
         val values = (0..80).map { com.nikhil.yt.ui.screens.artist.artistArtworkFade(0, it * 10, 1000, 200) }
         org.junit.Assert.assertEquals(0f, values.first(), 0f)
         org.junit.Assert.assertEquals(1f, values.last(), 0f)
-        // The pinned bar takes up 200px: its exact transition band is
-        // scroll 599..799, not a guessed 12..99% of the 800px distance.
-        assertTrue("Keep the original portrait visible before toolbar crossing", values[59] == 0f)
-        assertTrue("Dissolve only in the measured bar-height window", values[65] > 0f)
+        // Photo bottom 1000px, toolbar bottom 200px, scroll span 800px:
+        // start = 96px as in the earlier design; terminal point stays
+        // unchanged at 799px (one raster pixel before crossing).
+        assertTrue("Keep upper photo fully visible before original scroll start", values[9] == 0f)
+        assertTrue("Dissolve should start early, not only near the toolbar", values[12] > 0f)
         assertTrue("Near the edge, photo must still be fading", values[78] < 1f)
-        assertTrue("Seal as last photo pixel approaches bar", values[80] == 1f)
+        assertTrue("Seal at exactly the same measured terminal point", values[80] == 1f)
         assertTrue(values.zipWithNext().all { (a, b) -> b >= a && b - a < 0.10f })
         org.junit.Assert.assertEquals(0f, com.nikhil.yt.ui.screens.artist.artistArtworkFade(0, -20, 1000, 200), 0f)
         org.junit.Assert.assertEquals(1f, com.nikhil.yt.ui.screens.artist.artistArtworkFade(1, 0, 1000, 200), 0f)
