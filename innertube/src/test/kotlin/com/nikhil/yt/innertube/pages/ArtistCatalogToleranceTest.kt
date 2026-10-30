@@ -1,6 +1,9 @@
 package com.nikhil.yt.innertube.pages
 
 import com.nikhil.yt.innertube.models.AlbumItem
+import com.nikhil.yt.innertube.models.BrowseEndpoint
+import com.nikhil.yt.innertube.models.NavigationEndpoint
+import com.nikhil.yt.innertube.models.MusicResponsiveListItemRenderer
 import com.nikhil.yt.innertube.models.MusicTwoRowItemRenderer
 import com.nikhil.yt.innertube.models.PlaylistItem
 import com.nikhil.yt.innertube.models.SongItem
@@ -50,6 +53,41 @@ class ArtistCatalogToleranceTest {
         assertNull(catalog.playEndpoint)
         assertNull(catalog.shuffleEndpoint)
         assertNull(catalog.radioEndpoint)
+    }
+
+    @Test fun sevenOfficialAlbumsWithoutPageTypeAreAllPreserved() {
+        // YouTube returns both annotated and unannotated MPRE browse cards.
+        // Before the fix an unannotated release did not match isAlbum/isPlaylist.
+        val releases = (1..7).map { number ->
+            card("MUSIC_PAGE_TYPE_ALBUM", "MPREbAlbum$number").copy(
+                navigationEndpoint = NavigationEndpoint(
+                    browseEndpoint = BrowseEndpoint("MPREbAlbum$number"),
+                ),
+            )
+        }
+        val parsed = releases.mapNotNull(ArtistItemsPage::fromMusicTwoRowItemRenderer)
+        assertEquals(7, parsed.size)
+        assertEquals(7, parsed.filterIsInstance<AlbumItem>().size)
+        assertEquals(7, parsed.distinctBy { it.id }.size)
+    }
+
+    @Test fun responsiveAlbumWithoutTypeOrWatchButtonIsNotDiscarded() {
+        val renderer = json.decodeFromString<MusicResponsiveListItemRenderer>(
+            """{
+                "badges": null, "fixedColumns": null,
+                "flexColumns": [{
+                    "musicResponsiveListItemFlexColumnRenderer": {
+                        "text": {"runs": [{"text": "Forgotten album", "navigationEndpoint": null}]}
+                    }
+                }],
+                "thumbnail": null, "menu": null, "playlistItemData": null,
+                "overlay": null,
+                "navigationEndpoint": {"browseEndpoint": {"browseId": "MPREbOther"}}
+            }""",
+        )
+        val parsed = ArtistItemsPage.fromMusicResponsiveListItemRenderer(renderer) as AlbumItem
+        assertEquals("MPREbOther", parsed.id)
+        assertEquals("MPREbOther", parsed.playlistId)
     }
 
     @Test fun videoWithoutThumbnailIsRetainedAsEpisode() {
