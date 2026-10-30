@@ -17,6 +17,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -393,11 +394,13 @@ fun ArtistScreen(
                             items = filteredLibrarySongs.distinctBy { it.id }.take(5),
                             key = { _, item -> "local_song_${item.id}" }
                         ) { index, song ->
+                            val press = remember { MutableInteractionSource() }
                             SongListItem(
                                 song = song,
                                 showInLibraryIcon = true,
                                 isActive = song.id == mediaMetadata?.id,
                                 isPlaying = isPlaying,
+                                pressInteractionSource = press,
                                 trailingContent = {
                                     IconButton(
                                         onClick = {
@@ -419,9 +422,9 @@ fun ArtistScreen(
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 8.dp)
-                                    .clip(RoundedCornerShape(14.dp))
                                     .combinedClickable(
+                                        interactionSource = press,
+                                        indication = null,
                                         onClick = {
                                             if (song.id == mediaMetadata?.id) {
                                                 playerConnection.player.togglePlayPause()
@@ -562,11 +565,13 @@ fun ArtistScreen(
                                 items = section.items.distinctBy { it.id },
                                 key = { "$sectionKey:song:${it.id}" },
                             ) { song ->
+                                val press = remember { MutableInteractionSource() }
                                 YouTubeListItem(
                                     item = song as SongItem,
                                     artworkRequestPixels = 192,
                                     isActive = mediaMetadata?.id == song.id,
                                     isPlaying = isPlaying,
+                                    pressInteractionSource = press,
                                     trailingContent = {
                                         IconButton(
                                             onClick = {
@@ -588,9 +593,9 @@ fun ArtistScreen(
                                     },
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 8.dp)
-                                        .clip(RoundedCornerShape(14.dp))
                                         .combinedClickable(
+                                            interactionSource = press,
+                                            indication = null,
                                             onClick = {
                                                 if (song.id == mediaMetadata?.id) {
                                                     playerConnection.player.togglePlayPause()
