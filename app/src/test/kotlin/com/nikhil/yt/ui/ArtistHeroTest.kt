@@ -119,7 +119,33 @@ class ArtistHeroTest {
         savePreview("artist-capsule-header")
     }
 
-    @Test fun lateMemorialButtonNeverPushesHeaderOrSubscriptionAction() {
+    @Test fun livingArtistHasNoBlankMemorialSlotBelowButtons() {
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                ArtistHero(
+                    name = "Living artist",
+                    thumbnailUrl = null,
+                    background = Color(0xFF141414),
+                    subscribed = false,
+                    canSubscribe = true,
+                    canShuffle = true,
+                    showCandle = false,
+                    onSubscribe = {}, onShuffle = {}, onCandle = {},
+                    modifier = Modifier.width(360.dp).testTag("hero"),
+                )
+            }
+        }
+        val hero = compose.onNodeWithTag("hero").fetchSemanticsNode().boundsInRoot
+        val subscribe = compose.onNodeWithText(compose.activity.getString(R.string.subscribe))
+            .fetchSemanticsNode().boundsInRoot
+        // Buttons should sit just above the hero's normal 14dp bottom inset,
+        // not leave a 62dp empty candle placeholder beneath them.
+        val dp = hero.width / 360f
+        assertTrue("Unexpected blank candle slot: ${hero.bottom - subscribe.bottom}",
+            hero.bottom - subscribe.bottom <= 35f * dp)
+    }
+
+    @Test fun lateMemorialButtonOnlyMovesActionsInsideFixedHeader() {
         var hasMemorial by mutableStateOf(false)
         compose.setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
@@ -140,12 +166,13 @@ class ArtistHeroTest {
         val beforeSubscribe = compose.onNodeWithText(compose.activity.getString(R.string.subscribe))
             .fetchSemanticsNode().boundsInRoot
         compose.runOnIdle { hasMemorial = true }
+        compose.waitForIdle()
         val afterHeader = compose.onNodeWithTag("hero").fetchSemanticsNode().boundsInRoot
         val afterSubscribe = compose.onNodeWithText(compose.activity.getString(R.string.subscribe))
             .fetchSemanticsNode().boundsInRoot
         assertEquals(beforeHeader.height, afterHeader.height, 0.1f)
-        assertEquals(beforeSubscribe.top, afterSubscribe.top, 0.1f)
-        assertEquals(beforeSubscribe.bottom, afterSubscribe.bottom, 0.1f)
+        assertTrue("Subscription should slide upward within the stable header",
+            afterSubscribe.top < beforeSubscribe.top)
         compose.onNodeWithText(compose.activity.getString(R.string.artist_light_candle)).assertIsDisplayed()
     }
 
