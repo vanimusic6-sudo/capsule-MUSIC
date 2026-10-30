@@ -52,7 +52,8 @@ data class ArtistPage(
                 items = renderer.contents?.getItems()?.mapNotNull {
                     fromMusicResponsiveListItemRenderer(it)
                 }?.ifEmpty { null } ?: return null,
-                moreEndpoint = renderer.title?.runs?.firstOrNull()?.navigationEndpoint?.browseEndpoint
+                moreEndpoint = renderer.moreContentButton?.buttonRenderer?.navigationEndpoint?.browseEndpoint
+                    ?: renderer.title?.runs?.firstNotNullOfOrNull { it.navigationEndpoint?.browseEndpoint }
             )
         }
 
@@ -64,7 +65,11 @@ data class ArtistPage(
                         fromMusicTwoRowItemRenderer(renderer)
                     }
                 }.ifEmpty { null } ?: return null,
-                moreEndpoint = renderer.header.musicCarouselShelfBasicHeaderRenderer.moreContentButton?.buttonRenderer?.navigationEndpoint?.browseEndpoint
+                moreEndpoint = renderer.header.musicCarouselShelfBasicHeaderRenderer.let { header ->
+                    header.moreContentButton?.buttonRenderer?.navigationEndpoint?.browseEndpoint
+                        ?: header.moreContentButton?.buttonRenderer?.command?.browseEndpoint
+                        ?: header.title.runs?.firstNotNullOfOrNull { it.navigationEndpoint?.browseEndpoint }
+                }
             )
         }
 
