@@ -89,7 +89,6 @@ internal fun ArtistHeroLayout(
                 Modifier.matchParentSize(),
                 portrait = true,
                 topScrim = false,
-                artistPortrait = true,
             )
         }
         Column(
