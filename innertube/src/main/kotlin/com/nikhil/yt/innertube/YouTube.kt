@@ -434,14 +434,15 @@ object YouTube {
                 section.itemSectionRenderer?.contents?.firstNotNullOfOrNull { it.gridRenderer }
             }
         val carousel = sections.firstNotNullOfOrNull { it.musicCarouselShelfRenderer }
-        val shelf = sections.firstNotNullOfOrNull { it.musicPlaylistShelfRenderer ?: it.musicShelfRenderer }
+        val playlistShelf = sections.firstNotNullOfOrNull { it.musicPlaylistShelfRenderer }
+        val musicShelf = sections.firstNotNullOfOrNull { it.musicShelfRenderer }
             ?: sections.firstNotNullOfOrNull { section ->
                 section.itemSectionRenderer?.contents?.firstNotNullOfOrNull { it.musicShelfRenderer }
             }
         val title = grid?.header?.gridHeaderRenderer?.title?.runs?.firstOrNull()?.text
             ?: carousel?.header?.musicCarouselShelfBasicHeaderRenderer?.title?.runs?.firstOrNull()?.text
             ?: response.header?.musicHeaderRenderer?.title?.runs?.firstOrNull()?.text
-            ?: shelf?.title?.runs?.firstOrNull()?.text
+            ?: musicShelf?.title?.runs?.firstOrNull()?.text
             ?: ""
         when {
             grid != null -> ArtistItemsPage(
@@ -461,11 +462,14 @@ object YouTube {
             )
             else -> ArtistItemsPage(
                 title = title,
-                items = shelf?.contents?.getItems()?.mapNotNull {
-                    ArtistItemsPage.fromMusicResponsiveListItemRenderer(it)
-                }.orEmpty(),
-                continuation = shelf?.continuations?.getContinuation()
-                    ?: shelf?.contents?.getContinuation(),
+                items = (playlistShelf?.contents ?: musicShelf?.contents)
+                    ?.getItems()?.mapNotNull {
+                        ArtistItemsPage.fromMusicResponsiveListItemRenderer(it)
+                    }.orEmpty(),
+                continuation = playlistShelf?.continuations?.getContinuation()
+                    ?: playlistShelf?.contents?.getContinuation()
+                    ?: musicShelf?.continuations?.getContinuation()
+                    ?: musicShelf?.contents?.getContinuation(),
             )
         }
     }
@@ -482,8 +486,8 @@ object YouTube {
                     } ?: block.musicCarouselShelfRenderer?.contents?.mapNotNull {
                         it.musicTwoRowItemRenderer?.let(ArtistItemsPage::fromMusicTwoRowItemRenderer)
                             ?: it.musicResponsiveListItemRenderer?.let(ArtistItemsPage::fromMusicResponsiveListItemRenderer)
-                    } ?: (block.musicShelfRenderer ?: block.musicPlaylistShelfRenderer)
-                        ?.contents?.getItems()?.mapNotNull {
+                    } ?: (block.musicShelfRenderer?.contents ?: block.musicPlaylistShelfRenderer?.contents)
+                        ?.getItems()?.mapNotNull {
                             ArtistItemsPage.fromMusicResponsiveListItemRenderer(it)
                         }.orEmpty()
                 }
