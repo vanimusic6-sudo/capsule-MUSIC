@@ -2,7 +2,7 @@ name: Core reliability
 
 on:
   push:
-    branches: [release/01-core-reliability, fix/posttest-ui-rework-20261026, fix/real-download-menu-repair-20261026, fix/download-actions-artist-credits-cover-20261026, fix/rebuild-download-artwork-search-20261026, fix/metrolist-search-active-download-20261026, fix/artist-atomic-player-download-efficiency-20261027, audit/security-deep-20261028]
+    branches: [release/01-core-reliability, fix/posttest-ui-rework-20261026, fix/real-download-menu-repair-20261026, fix/download-actions-artist-credits-cover-20261026, fix/rebuild-download-artwork-search-20261026, fix/metrolist-search-active-download-20261026, fix/artist-atomic-player-download-efficiency-20261027, audit/security-deep-20261028, fix/artist-card-motion-catalog-20261030]
   workflow_dispatch:
 
 permissions:
