@@ -46,6 +46,23 @@ class CapsuleReleaseUiCorrectionsTest {
         assertFalse(screen.contains("onRadio ="))
     }
 
+    @Test fun artistBiographyFollowsReleaseAndCandleDialogIsACompactRitual() {
+        val artist = source("ui/screens/artist/ArtistScreen.kt")
+        val release = artist.indexOf("latestRelease?.let { release ->")
+        val description = artist.indexOf("item(key = \\"description\\")")
+        assertTrue("Latest release must appear before biography", release >= 0 && description > release)
+
+        val dialog = source("ui/screens/artist/ArtistMemorialDialog.kt")
+        assertTrue(dialog.contains("R.drawable.capsule_candle"))
+        assertTrue(dialog.contains("R.drawable.close"))
+        assertTrue(dialog.contains("R.drawable.favorite_border"))
+        assertTrue(dialog.contains("CircularProgressIndicator("))
+        assertTrue(dialog.contains("Crossfade("))
+        assertTrue(dialog.contains("onMinuteBegin()"))
+        assertTrue(dialog.contains("Intent.ACTION_SEND"))
+        assertFalse("Avoid the old oversized footer button", dialog.contains("MemorialActionButton("))
+    }
+
     @Test fun downloadsShareLocalPlaylistSemanticsAndNeverCloseMoreOnTap() {
         val shared = source("ui/menu/CapsuleDownloadAction.kt")
         assertTrue(shared.contains("VeluneLoader(size = 24.dp"))
