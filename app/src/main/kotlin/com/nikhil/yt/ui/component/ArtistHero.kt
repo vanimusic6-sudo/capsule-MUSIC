@@ -70,7 +70,10 @@ internal fun ArtistHeroLayout(
         // Shorter portrait keeps both action rows above the player/navigation on phones.
         // Artwork itself reaches the physical top edge; only overlay content respects safe insets.
         val referenceWidth = maxWidth.coerceAtMost(ArtistHeroMaxWidth)
-        val heroHeight = referenceWidth * 1.48f + 16.dp
+        // The former 1.48x reserve left a large empty strip between the pinned
+        // toolbar and actions. The toolbar fades while the portrait is still
+        // behind it; keeping another ~47dp of empty hero is unnecessary.
+        val heroHeight = referenceWidth * 1.35f + 16.dp
         Box(Modifier.fillMaxWidth().height(artistHeroArtworkHeight(maxWidth))) {
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = artworkAlpha().coerceIn(0f, 1f) }) { artwork() }
             // No dark veil across the forehead of the artist image. The toolbar remains
