@@ -52,7 +52,7 @@ import com.nikhil.yt.R
 
 internal val ArtistHeroMaxWidth = 450.dp
 internal const val ArtistHeroArtworkHeightFactor = 1.25f
-internal val ArtistNoMemorialActionOffset = 62.dp
+internal val ArtistNoMemorialActionOffset = 36.dp
 
 internal fun artistHeroArtworkHeight(availableWidth: Dp): Dp =
     availableWidth.coerceAtMost(ArtistHeroMaxWidth) * ArtistHeroArtworkHeightFactor
@@ -78,7 +78,7 @@ internal fun ArtistHeroLayout(
         val artworkHeight = artistHeroArtworkHeight(maxWidth)
         val actionRailHeight = if (LocalDensity.current.fontScale > 1.3f) 172.dp else 110.dp
         val heroHeight = artworkHeight + 12.dp + actionRailHeight + 14.dp
-        // Living artists place their actions 62dp lower in the fixed rail.
+        // Living artists place their actions 36dp lower in the fixed rail.
         // Extend the rendered photo by that SAME distance; no list item moves.
         // The first button always remains 12dp below the actual image field.
         Box(Modifier.fillMaxWidth().height(artworkHeight + artworkExtension)
@@ -89,6 +89,7 @@ internal fun ArtistHeroLayout(
                 Modifier.matchParentSize(),
                 portrait = true,
                 topScrim = false,
+                softPortrait = true,
             )
         }
         Column(
