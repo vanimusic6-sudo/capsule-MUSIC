@@ -119,6 +119,36 @@ class ArtistHeroTest {
         savePreview("artist-capsule-header")
     }
 
+    @Test fun lateMemorialButtonNeverPushesHeaderOrSubscriptionAction() {
+        var hasMemorial by mutableStateOf(false)
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                ArtistHero(
+                    name = "Late memorial",
+                    thumbnailUrl = null,
+                    background = Color(0xFF141414),
+                    subscribed = false,
+                    canSubscribe = true,
+                    canShuffle = true,
+                    showCandle = hasMemorial,
+                    onSubscribe = {}, onShuffle = {}, onCandle = {},
+                    modifier = Modifier.width(360.dp).testTag("hero"),
+                )
+            }
+        }
+        val beforeHeader = compose.onNodeWithTag("hero").fetchSemanticsNode().boundsInRoot
+        val beforeSubscribe = compose.onNodeWithText(compose.activity.getString(R.string.subscribe))
+            .fetchSemanticsNode().boundsInRoot
+        compose.runOnIdle { hasMemorial = true }
+        val afterHeader = compose.onNodeWithTag("hero").fetchSemanticsNode().boundsInRoot
+        val afterSubscribe = compose.onNodeWithText(compose.activity.getString(R.string.subscribe))
+            .fetchSemanticsNode().boundsInRoot
+        assertEquals(beforeHeader.height, afterHeader.height, 0.1f)
+        assertEquals(beforeSubscribe.top, afterSubscribe.top, 0.1f)
+        assertEquals(beforeSubscribe.bottom, afterSubscribe.bottom, 0.1f)
+        compose.onNodeWithText(compose.activity.getString(R.string.artist_light_candle)).assertIsDisplayed()
+    }
+
     @Test fun livingArtistHasNoRadioAndNoMemorialAction() {
         compose.setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
