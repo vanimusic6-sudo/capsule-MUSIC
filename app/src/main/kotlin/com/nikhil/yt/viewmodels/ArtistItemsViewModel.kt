@@ -37,6 +37,8 @@ constructor(
     private val browseId = savedStateHandle.get<String>("browseId")!!
     private val params = savedStateHandle.get<String>("params")
 
+    private var loadingContinuation = false
+
     val title = MutableStateFlow("")
     val itemsPage = MutableStateFlow<ItemsPage?>(null)
 
@@ -65,24 +67,30 @@ constructor(
     }
 
     fun loadMore() {
+        if (loadingContinuation) return
+        val initial = itemsPage.value ?: return
+        val token = initial.continuation ?: return
+        loadingContinuation = true
         viewModelScope.launch {
-            val oldItemsPage = itemsPage.value ?: return@launch
-            val continuation = oldItemsPage.continuation ?: return@launch
-            YouTube
-                .artistItemsContinuation(continuation)
-                .onSuccess { artistItemsContinuationPage ->
-                    itemsPage.update {
-                        ItemsPage(
-                            items =
-                            (oldItemsPage.items + artistItemsContinuationPage.items)
-                                .distinctBy { it.id }
-                                .filterExplicit(context.dataStore.get(HideExplicitKey, false)),
-                            continuation = artistItemsContinuationPage.continuation,
-                        )
-                    }
-                }.onFailure {
-                    reportException(it)
-                }
+            try {
+                YouTube.artistItemsContinuation(token)
+                    .onSuccess { page ->
+                        itemsPage.update { current ->
+                            // Drop stale responses when navigation or a refresh changed
+                            // the continuation while the request was in flight.
+                            if (current?.continuation != token) return@update current
+                            ItemsPage(
+                                items = (current.items + page.items)
+                                    .distinctBy { it.id }
+                                    .filterExplicit(context.dataStore.get(HideExplicitKey, false)),
+                                continuation = if (page.continuation == token) null else page.continuation,
+                            )
+                        }
+                    }.onFailure { reportException(it) }
+            } finally {
+                loadingContinuation = false
+            }
         }
     }
+
 }
