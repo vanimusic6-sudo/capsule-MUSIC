@@ -949,12 +949,16 @@
     <string name="artist_candle_title">Свеча памяти</string>
     <string name="artist_candle_for">В память о %1$s</string>
     <string name="artist_candle_minute">Минута молчания</string>
+    <string name="artist_candle_minute_desc">Остановить музыку на 60 секунд</string>
     <string name="artist_candle_thanks">Спасибо за творчество</string>
+    <string name="artist_candle_thanks_desc">Поделиться словами благодарности</string>
     <string name="artist_candle_message">Спасибо, %1$s, за музыку, которая остаётся с нами. 🕯️</string>
     <string name="artist_candle_share">Поделиться благодарностью</string>
-    <string name="artist_candle_paused">Музыка приостановлена. Возобновите воспроизведение, когда будете готовы.</string>
+    <string name="artist_candle_share_desc">Выбрать приложение для отправки</string>
+    <string name="artist_candle_back">Назад к выбору</string>
+    <string name="artist_candle_paused">Музыка на паузе. Возобновите её, когда будете готовы.</string>
     <string name="artist_candle_timer_done">Минута молчания завершена.</string>
-    <string name="artist_candle_source">По данным MusicBrainz: %1$s</string>
+    <string name="artist_candle_source">%1$s · MusicBrainz</string>
     <string name="artist_candle_local">Свеча останется личной. Словами благодарности можно поделиться с другими.</string>
     <string name="artist_candle_close">Закрыть</string>
 </resources>
