@@ -44,6 +44,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
@@ -51,6 +52,7 @@ import com.nikhil.yt.R
 
 internal val ArtistHeroMaxWidth = 450.dp
 internal const val ArtistHeroArtworkHeightFactor = 1.25f
+internal val ArtistNoMemorialActionOffset = 62.dp
 
 internal fun artistHeroArtworkHeight(availableWidth: Dp): Dp =
     availableWidth.coerceAtMost(ArtistHeroMaxWidth) * ArtistHeroArtworkHeightFactor
@@ -65,6 +67,7 @@ internal fun ArtistHeroLayout(
     modifier: Modifier = Modifier,
     topSafePadding: Dp = 0.dp,
     artworkAlpha: () -> Float = { 1f },
+    artworkExtension: Dp = 0.dp,
 ) {
     BoxWithConstraints(modifier.fillMaxWidth().background(background)) {
         // Photo and actions have independent geometry. Shrinking the hero while
@@ -75,11 +78,19 @@ internal fun ArtistHeroLayout(
         val artworkHeight = artistHeroArtworkHeight(maxWidth)
         val actionRailHeight = if (LocalDensity.current.fontScale > 1.3f) 172.dp else 110.dp
         val heroHeight = artworkHeight + 12.dp + actionRailHeight + 14.dp
-        Box(Modifier.fillMaxWidth().height(artworkHeight)) {
+        // Living artists place their actions 62dp lower in the fixed rail.
+        // Extend the rendered photo by that SAME distance; no list item moves.
+        // The first button always remains 12dp below the actual image field.
+        Box(Modifier.fillMaxWidth().height(artworkHeight + artworkExtension)
+            .testTag("artist-artwork-field")) {
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = artworkAlpha().coerceIn(0f, 1f) }) { artwork() }
-            // No dark veil across the forehead of the artist image. The toolbar remains
-            // inset for touch safety; only the photo itself reaches the physical top edge.
-            ArtworkSurfaceFade(background, Modifier.matchParentSize(), portrait = true, topScrim = false)
+            ArtworkSurfaceFade(
+                background,
+                Modifier.matchParentSize(),
+                portrait = true,
+                topScrim = false,
+                artistPortrait = true,
+            )
         }
         Column(
             // Never let an asynchronously detected memorial action alter the
@@ -119,7 +130,16 @@ internal fun ArtistHero(
     loading: Boolean = false,
     topSafePadding: Dp = 0.dp,
     artworkAlpha: () -> Float = { 1f },
+    actionOffsetOverride: Dp? = null,
 ) {
+    // The host screen can supply the exact animated offset used by its toolbar
+    // fade; standalone ArtistHero callers get the same animation here.
+    val defaultActionOffset by animateDpAsState(
+        targetValue = if (showCandle) 0.dp else ArtistNoMemorialActionOffset,
+        animationSpec = tween(durationMillis = 260, easing = CapsuleStandardEasing),
+        label = "artist-memorial-action-slide",
+    )
+    val actionOffset = actionOffsetOverride ?: defaultActionOffset
     val loadingLabel = stringResource(R.string.loading)
 
     val displayedSubscribed = subscribed
@@ -130,6 +150,7 @@ internal fun ArtistHero(
         background = background,
         topSafePadding = topSafePadding,
         artworkAlpha = artworkAlpha,
+        artworkExtension = actionOffset,
         artwork = {
             /*
              * No figure stands in for a portrait that has not arrived yet.
@@ -164,12 +185,7 @@ internal fun ArtistHero(
             // Only the action buttons move within the already reserved slot.
             // Living artists use the LOWER part of that slot, so there is no
             // empty hole underneath Subscribe / Shuffle.
-            val candleSlide by animateDpAsState(
-                targetValue = if (showCandle) 0.dp else 62.dp,
-                animationSpec = tween(durationMillis = 260, easing = CapsuleStandardEasing),
-                label = "artist-memorial-action-slide",
-            )
-            Column(Modifier.offset(y = candleSlide)) {
+            Column(Modifier.offset(y = actionOffset)) {
             val stackActions = LocalDensity.current.fontScale > 1.3f
             val subscribeLabel = stringResource(if (displayedSubscribed) R.string.capsule_artist_subscribed else R.string.subscribe)
             if (stackActions) {
@@ -212,7 +228,7 @@ internal fun ArtistHero(
             }
             // Show the memorial action only once the existing buttons have
             // gracefully reached their new anchor, never over the next card.
-            if (showCandle && candleSlide < 1.dp) {
+            if (showCandle && actionOffset < 1.dp) {
                 Spacer(Modifier.height(14.dp))
                 CapsuleArtistAction(
                     R.drawable.capsule_candle,
