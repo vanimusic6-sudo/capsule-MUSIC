@@ -13,9 +13,6 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
-import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -111,7 +108,6 @@ import com.nikhil.yt.playback.queues.YouTubeQueue
 import com.nikhil.yt.ui.component.ArtistHero
 import com.nikhil.yt.ui.component.ArtistToolbarCompactHeight
 import com.nikhil.yt.ui.component.artistHeroArtworkHeight
-import com.nikhil.yt.ui.component.ArtistNoMemorialActionOffset
 import com.nikhil.yt.ui.component.ArtistToolbar
 import com.nikhil.yt.ui.component.portraitDissolveFraction
 import com.nikhil.yt.ui.component.StandardChrome
@@ -202,14 +198,6 @@ fun ArtistScreen(
     else artistPage?.artist?.title ?: libraryArtist?.artist?.name
     val remoteLoading = artistPage == null && viewModel.isLoading && !showLocal
     val showMemorialCandle = !showLocal && viewModel.memorialInfo != null
-    // One animation drives BOTH the photo's lower edge and the action offset.
-    // This prevents the visual fade from finishing on the old (shorter) photo
-    // while the buttons are still 62dp below it.
-    val actionSlide by animateDpAsState(
-        targetValue = if (showMemorialCandle) 0.dp else ArtistNoMemorialActionOffset,
-        animationSpec = tween(durationMillis = 260, easing = CapsuleStandardEasing),
-        label = "artist-action-photo-slide",
-    )
 
     // Warm a few off-screen covers only after the visible artwork has started.
     // Coil shares the app's existing loader/cache; no whole-discography preload.
@@ -270,13 +258,13 @@ fun ArtistScreen(
             }
         }
 
-    val artworkFade by remember(lazyListState, density, systemBarsTopPadding, actionSlide) {
+    val artworkFade by remember(lazyListState, density, systemBarsTopPadding) {
         derivedStateOf {
             val width = lazyListState.layoutInfo.viewportSize.width
             if (width <= 0) 0f else artistArtworkFade(
                 lazyListState.firstVisibleItemIndex,
                 lazyListState.firstVisibleItemScrollOffset,
-                with(density) { (artistHeroArtworkHeight(width.toDp()) + actionSlide).roundToPx() },
+                with(density) { artistHeroArtworkHeight(width.toDp()).roundToPx() },
                 with(density) { (systemBarsTopPadding + ArtistToolbarCompactHeight).roundToPx() },
             )
         }
@@ -321,7 +309,6 @@ fun ArtistScreen(
                     canSubscribe = libraryArtist != null || artistPage != null,
                     canShuffle = if (showLocal) librarySongs.isNotEmpty() else artistPage?.artist?.shuffleEndpoint != null,
                     showCandle = showMemorialCandle,
-                    actionOffsetOverride = actionSlide,
                     loading = remoteLoading && libraryArtist == null,
                     topSafePadding = systemBarsTopPadding,
                     artworkAlpha = { 1f - artworkFade },
