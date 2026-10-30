@@ -201,6 +201,7 @@ fun ListItem(
     trailingContent: @Composable RowScope.() -> Unit = {},
     isActive: Boolean = false,
     itemHeight: Dp = ListItemHeight,
+    pressInteractionSource: MutableInteractionSource? = null,
 ) = ListItem(
     title = title,
     modifier = modifier,
@@ -214,6 +215,7 @@ fun ListItem(
     thumbnailContent = thumbnailContent,
     trailingContent = trailingContent,
     itemHeight = itemHeight,
+    pressInteractionSource = pressInteractionSource,
 )
 
 @Composable
