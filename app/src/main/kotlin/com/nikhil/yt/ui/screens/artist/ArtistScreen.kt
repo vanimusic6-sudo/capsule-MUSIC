@@ -77,6 +77,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.allowHardware
+import coil3.SingletonImageLoader
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.awaitCancellation
+import com.nikhil.yt.ui.component.capsuleArtworkUrl
 import androidx.compose.ui.util.fastForEach
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -184,6 +190,31 @@ fun ArtistScreen(
         libraryArtist?.artist?.isLocal != true) null
     else artistPage?.artist?.title ?: libraryArtist?.artist?.name
     val remoteLoading = artistPage == null && viewModel.isLoading && !showLocal
+
+    // Warm a few off-screen covers only after the visible artwork has started.
+    // Coil shares the app's existing loader/cache; no whole-discography preload.
+    LaunchedEffect(artistPage?.artist?.id) {
+        val sections = artistPage?.sections ?: return@LaunchedEffect
+        delay(170)
+        val loader = SingletonImageLoader.get(context)
+        val requests = sections.asSequence()
+            .flatMap { it.items.asSequence().drop(2).take(2) }
+            .mapNotNull { item ->
+                item.thumbnail?.takeIf { it.isNotBlank() }?.let { url ->
+                    capsuleArtworkUrl(url, if (item is SongItem) 192 else 384)
+                }
+            }
+            .distinct().take(6)
+            .map { url ->
+                loader.enqueue(ImageRequest.Builder(context)
+                    .data(url).size(384, 384).allowHardware(true).build())
+            }.toList()
+        try {
+            awaitCancellation()
+        } finally {
+            requests.forEach { it.dispose() }
+        }
+    }
     val density = LocalDensity.current
 
     val latestRelease =
@@ -524,6 +555,7 @@ fun ArtistScreen(
                             ) { song ->
                                 YouTubeListItem(
                                     item = song as SongItem,
+                                    artworkRequestPixels = 192,
                                     isActive = mediaMetadata?.id == song.id,
                                     isPlaying = isPlaying,
                                     trailingContent = {
@@ -595,6 +627,7 @@ fun ArtistScreen(
                                     ) { item ->
                                         YouTubeGridItem(
                                             item = item,
+                                            artworkRequestPixels = 384,
                                             isActive = when (item) {
                                                 is SongItem -> mediaMetadata?.id == item.id
                                                 is AlbumItem -> mediaMetadata?.album?.id == item.id
@@ -760,7 +793,7 @@ private fun ArtistLatestReleaseCard(
         ) {
             if (!release.thumbnailUrl.isNullOrBlank()) {
                 AsyncImage(
-                    model = release.thumbnailUrl,
+                    model = capsuleArtworkUrl(release.thumbnailUrl, 320),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier =
