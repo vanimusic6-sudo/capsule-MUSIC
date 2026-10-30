@@ -4,6 +4,10 @@ import com.nikhil.yt.innertube.models.AlbumItem
 import com.nikhil.yt.innertube.models.BrowseEndpoint
 import com.nikhil.yt.innertube.models.NavigationEndpoint
 import com.nikhil.yt.innertube.models.MusicResponsiveListItemRenderer
+import com.nikhil.yt.innertube.models.MusicCarouselShelfRenderer
+import com.nikhil.yt.innertube.models.SectionListRenderer
+import com.nikhil.yt.innertube.models.Runs
+import com.nikhil.yt.innertube.models.Run
 import com.nikhil.yt.innertube.models.MusicTwoRowItemRenderer
 import com.nikhil.yt.innertube.models.PlaylistItem
 import com.nikhil.yt.innertube.models.SongItem
@@ -69,6 +73,49 @@ class ArtistCatalogToleranceTest {
         assertEquals(7, parsed.size)
         assertEquals(7, parsed.filterIsInstance<AlbumItem>().size)
         assertEquals(7, parsed.distinctBy { it.id }.size)
+    }
+
+    @Test fun artistLandingCarouselKeepsSevenAlbumsAndItsMoreEndpoint() {
+        val releaseCards = (1..7).map { n ->
+            MusicCarouselShelfRenderer.Content(
+                musicTwoRowItemRenderer = card("MUSIC_PAGE_TYPE_ALBUM", "MPREbAlbum$n")
+                    .copy(navigationEndpoint = NavigationEndpoint(
+                        browseEndpoint = BrowseEndpoint("MPREbAlbum$n")
+                    )),
+                musicResponsiveListItemRenderer = null,
+                musicNavigationButtonRenderer = null,
+            )
+        }
+        val carousel = MusicCarouselShelfRenderer(
+            header = MusicCarouselShelfRenderer.Header(
+                MusicCarouselShelfRenderer.Header.MusicCarouselShelfBasicHeaderRenderer(
+                    strapline = null,
+                    title = Runs(listOf(Run("Albums", NavigationEndpoint(
+                        browseEndpoint = BrowseEndpoint("UCArtist", params = "album-selection")
+                    )))),
+                    thumbnail = null,
+                    moreContentButton = null,
+                )
+            ),
+            contents = releaseCards,
+            itemSize = "COLLECTION_STYLE_ITEM_SIZE_MEDIUM",
+            numItemsPerColumn = null,
+        )
+        val section = SectionListRenderer.Content(
+            musicCarouselShelfRenderer = carousel,
+            musicShelfRenderer = null,
+            musicCardShelfRenderer = null,
+            musicPlaylistShelfRenderer = null,
+            musicDescriptionShelfRenderer = null,
+            musicResponsiveHeaderRenderer = null,
+            musicEditablePlaylistDetailHeaderRenderer = null,
+            gridRenderer = null,
+            itemSectionRenderer = null,
+        )
+        val parsed = ArtistPage.fromSectionListRendererContent(section)
+        assertEquals(7, parsed?.items?.size)
+        assertEquals("UCArtist", parsed?.moreEndpoint?.browseId)
+        assertEquals("album-selection", parsed?.moreEndpoint?.params)
     }
 
     @Test fun responsiveAlbumWithoutTypeOrWatchButtonIsNotDiscarded() {
