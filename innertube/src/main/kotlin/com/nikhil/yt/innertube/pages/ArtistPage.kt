@@ -51,6 +51,7 @@ data class ArtistPage(
                 title = renderer.title?.runs?.firstOrNull()?.text ?: "",
                 items = renderer.contents?.getItems()?.mapNotNull {
                     fromMusicResponsiveListItemRenderer(it)
+                        ?: ArtistItemsPage.fromMusicResponsiveListItemRenderer(it)
                 }?.ifEmpty { null } ?: return null,
                 moreEndpoint = renderer.moreContentButton?.buttonRenderer?.navigationEndpoint?.browseEndpoint
                     ?: renderer.title?.runs?.firstNotNullOfOrNull { it.navigationEndpoint?.browseEndpoint }
@@ -61,9 +62,10 @@ data class ArtistPage(
             return ArtistSection(
                 title = renderer.header?.musicCarouselShelfBasicHeaderRenderer?.title?.runs?.firstOrNull()?.text ?: return null,
                 items = renderer.contents.mapNotNull {
-                    it.musicTwoRowItemRenderer?.let { renderer ->
-                        fromMusicTwoRowItemRenderer(renderer)
-                    }
+                    it.musicTwoRowItemRenderer?.let(::fromMusicTwoRowItemRenderer)
+                        ?: it.musicResponsiveListItemRenderer?.let(
+                            ArtistItemsPage::fromMusicResponsiveListItemRenderer
+                        )
                 }.ifEmpty { null } ?: return null,
                 moreEndpoint = renderer.header.musicCarouselShelfBasicHeaderRenderer.let { header ->
                     header.moreContentButton?.buttonRenderer?.navigationEndpoint?.browseEndpoint
