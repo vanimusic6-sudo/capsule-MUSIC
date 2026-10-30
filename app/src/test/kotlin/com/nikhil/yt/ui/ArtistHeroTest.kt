@@ -123,6 +123,41 @@ class ArtistHeroTest {
         assertEquals(62f * dp, longerPhoto.height - memorialPhoto.height, 2f)
     }
 
+    @Test fun artistGradientSoftlyReachesPageInsteadOfHardCuttingAtPhotoEdge() {
+        // Reproduces the pyrokinesis regression: the full-size portrait had
+        // colour until its final few pixels, then jumped to flat dark surface.
+        // Use an unmistakable red source to test the actual rendered gradient
+        // (not just its end points) on the 62dp living-artist extension.
+        compose.setContent {
+            ArtistHeroLayout(
+                background = Color.Black,
+                modifier = Modifier.width(360.dp).testTag("hero"),
+                artworkExtension = 62.dp,
+                artwork = { Box(Modifier.fillMaxSize().background(Color.Red)) },
+                title = {},
+                actions = {},
+            )
+        }
+        val photoHeight = compose.onNodeWithTag("artist-artwork-field")
+            .fetchSemanticsNode().boundsInRoot.height
+        val bitmap = capture("hero")
+        fun redAt(fraction: Float): Int = android.graphics.Color.red(bitmap.getPixel(
+            bitmap.width / 4,
+            (photoHeight * fraction).roundToInt().coerceIn(0, bitmap.height - 1),
+        ))
+        val at65 = redAt(0.65f)
+        val at80 = redAt(0.80f)
+        val at90 = redAt(0.90f)
+        val at97 = redAt(0.97f)
+        val at995 = redAt(0.995f)
+        assertTrue("Photo should still be visible well before the fade", at65 > 240)
+        assertTrue("Gradient should already be visible by 80%: $at80", at80 < at65 - 25)
+        assertTrue("The photo must fade gradually from 80 to 90%", at90 < at80 - 35)
+        assertTrue("The photo must keep fading from 90 to 97%", at97 < at90 - 35)
+        assertTrue("The last 3% must reach the exact page surface", at995 <= 3)
+        assertTrue("The final 3% should not be an abrupt jump", at97 < 35)
+    }
+
     @Test fun loadingUsesTheSameHeaderAndActionsWorkAfterLoading() {
         var loading by mutableStateOf(true)
         var clicks = 0
