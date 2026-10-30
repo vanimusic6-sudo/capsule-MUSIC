@@ -31,25 +31,26 @@ data class MusicTwoRowItemRenderer(
 ) {
     val isSong: Boolean
         get() = navigationEndpoint.endpoint is WatchEndpoint
+    // Some official artist carousel/grid entries provide only a browseId, without
+    // browseEndpointContextSupportedConfigs. Dropping those silently was hiding
+    // albums and playlist releases even though they were valid navigable entries.
     val isPlaylist: Boolean
-        get() =
-            navigationEndpoint.browseEndpoint
-                ?.browseEndpointContextSupportedConfigs
-                ?.browseEndpointContextMusicConfig
-                ?.pageType ==
-                MUSIC_PAGE_TYPE_PLAYLIST
+        get() {
+            val browse = navigationEndpoint.browseEndpoint ?: return false
+            val pageType = browse.browseEndpointContextSupportedConfigs
+                ?.browseEndpointContextMusicConfig?.pageType
+            return pageType == MUSIC_PAGE_TYPE_PLAYLIST ||
+                (pageType == null && browse.browseId.startsWith("VL"))
+        }
     val isAlbum: Boolean
-        get() =
-            navigationEndpoint.browseEndpoint
-                ?.browseEndpointContextSupportedConfigs
-                ?.browseEndpointContextMusicConfig
-                ?.pageType ==
-                MUSIC_PAGE_TYPE_ALBUM ||
-                navigationEndpoint.browseEndpoint
-                    ?.browseEndpointContextSupportedConfigs
-                    ?.browseEndpointContextMusicConfig
-                    ?.pageType ==
-                MUSIC_PAGE_TYPE_AUDIOBOOK
+        get() {
+            val browse = navigationEndpoint.browseEndpoint ?: return false
+            val pageType = browse.browseEndpointContextSupportedConfigs
+                ?.browseEndpointContextMusicConfig?.pageType
+            return pageType == MUSIC_PAGE_TYPE_ALBUM ||
+                pageType == MUSIC_PAGE_TYPE_AUDIOBOOK ||
+                (pageType == null && browse.browseId.startsWith("MPRE"))
+        }
     val isArtist: Boolean
         get() =
             navigationEndpoint.browseEndpoint
