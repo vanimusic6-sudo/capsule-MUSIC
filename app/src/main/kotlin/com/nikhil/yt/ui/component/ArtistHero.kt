@@ -234,7 +234,11 @@ private fun CapsuleArtistAction(
         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
     ) {
         if (subscribeState == null) {
-            Icon(painterResource(icon), null, Modifier.size(19.dp))
+            if (icon == R.drawable.capsule_candle) {
+                CapsuleCandleIcon(size = 19.dp)
+            } else {
+                Icon(painterResource(icon), null, Modifier.size(19.dp))
+            }
             Spacer(Modifier.width(8.dp))
         }
         Text(label, style = MaterialTheme.typography.labelLarge,
