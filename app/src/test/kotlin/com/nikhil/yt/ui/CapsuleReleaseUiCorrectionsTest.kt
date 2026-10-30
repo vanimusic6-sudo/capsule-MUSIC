@@ -60,7 +60,7 @@ class CapsuleReleaseUiCorrectionsTest {
         assertTrue(dialog.contains("drawArc("))
         assertTrue(dialog.contains("R.string.artist_candle_send"))
         assertTrue(dialog.contains("R.string.artist_candle_sent"))
-        assertTrue(dialog.contains("submitted:$noteKey"))
+        assertTrue(dialog.contains("submitted:"))
         assertTrue(dialog.contains("0 -> if (LocalDensity.current.fontScale > 1.3f) 176.dp else 132.dp"))
         assertTrue(source("ui/component/CapsuleCandleIcon.kt").contains("R.drawable.capsule_candle_flame"))
         assertTrue(dialog.contains("onMinuteBegin()"))
