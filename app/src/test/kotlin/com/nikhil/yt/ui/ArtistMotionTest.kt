@@ -120,6 +120,12 @@ class ArtistMotionTest {
             compose.onNodeWithText(biography).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
             assertEquals("Collapse must clip full-size text", fullTextHeight, layouts.single().size.height)
         }
+        compose.mainClock.advanceTimeBy(520)
+        compose.waitForIdle()
+        layouts.clear()
+        compose.onNodeWithText(biography).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        assertEquals("Collapse must not reflow or shift any word in the first two lines",
+            fullTextHeight, layouts.single().size.height)
         compose.mainClock.autoAdvance = true
     }
 
