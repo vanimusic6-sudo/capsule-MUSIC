@@ -123,6 +123,18 @@ android {
                 keyPassword = System.getenv("KEY_PASSWORD")
             }
         }
+        // Never reuse the official keystore for ordinary development builds.
+        // CI provisions a disposable key until the owner configures separate
+        // CAPSULE_DEV_* secrets for seamless upgrades of the DEV app.
+        create("developmentRelease") {
+            val keystoreFile = file("keystore/development-release.keystore")
+            if (keystoreFile.exists()) {
+                storeFile = keystoreFile
+                storePassword = System.getenv("DEV_STORE_PASSWORD")
+                keyAlias = System.getenv("DEV_KEY_ALIAS")
+                keyPassword = System.getenv("DEV_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -134,6 +146,16 @@ android {
                 "proguard-rules.pro"
             )
             signingConfig = signingConfigs.getByName("release")
+        }
+        create("devRelease") {
+            // Identical R8/resource shrinking to the real release, but
+            // installable side-by-side with the locally signed official app.
+            initWith(getByName("release"))
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            isDebuggable = false
+            matchingFallbacks += listOf("release")
+            signingConfig = signingConfigs.getByName("developmentRelease")
         }
         debug {
             applicationIdSuffix = ".debug"
