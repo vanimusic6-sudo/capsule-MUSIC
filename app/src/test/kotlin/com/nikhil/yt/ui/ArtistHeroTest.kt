@@ -145,17 +145,19 @@ class ArtistHeroTest {
             bitmap.width / 4,
             (photoHeight * fraction).roundToInt().coerceIn(0, bitmap.height - 1),
         ))
+        val at40 = redAt(0.40f)
         val at65 = redAt(0.65f)
         val at80 = redAt(0.80f)
         val at90 = redAt(0.90f)
         val at97 = redAt(0.97f)
         val at995 = redAt(0.995f)
-        assertTrue("Photo should still be visible well before the fade", at65 > 240)
-        assertTrue("Gradient should already be visible by 80%: $at80", at80 < at65 - 25)
-        assertTrue("The photo must fade gradually from 80 to 90%", at90 < at80 - 35)
-        assertTrue("The photo must keep fading from 90 to 97%", at97 < at90 - 35)
-        assertTrue("The last 3% must reach the exact page surface", at995 <= 3)
-        assertTrue("The final 3% should not be an abrupt jump", at97 < 35)
+        assertTrue("Upper portrait must retain full detail", at40 >= 240)
+        assertTrue("Fade must begin well before the photo ends", at65 < at40 - 25)
+        assertTrue("Smooth dimming should be unmistakable at 80%", at80 < at65 - 40)
+        assertTrue("Keep fading through the 90% mark", at90 < at80 - 40)
+        assertTrue("No abrupt last-3% transition", at97 < at90 - 25)
+        assertTrue("The image must match the page at its bottom", at995 <= 3)
+        assertTrue("Bottom of photo must already be nearly page-coloured", at97 < 25)
     }
 
     @Test fun loadingUsesTheSameHeaderAndActionsWorkAfterLoading() {
