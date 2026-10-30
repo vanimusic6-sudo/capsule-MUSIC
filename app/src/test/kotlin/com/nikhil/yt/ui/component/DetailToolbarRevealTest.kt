@@ -8,16 +8,15 @@ class DetailToolbarRevealTest {
     private fun fade(index: Int, offset: Int, bottom: Float = 600f, bar: Float = 100f) =
         detailArtworkFadeLikeArtist(index, offset, bottom, bar)
 
-    @Test fun fadeCompletesExactlyWhenPhotoCrossesMeasuredToolbar() {
-        // Photo edge = 600px; pinned toolbar occupies 0..100px.
-        // Transition length equals 100px, not 12..99% of the photo travel.
-        // It starts at 399px and is fully opaque at 499px, when the photo
-        // bottom is 1px below the bar. Buttons begin 12px later.
+    @Test fun fadeBeginsAtOldScrollPointButCompletesAtSameMeasuredToolbarEdge() {
+        // Photo edge = 600px; bar bottom = 100px: 500px scroll travel.
+        // Earlier start = 12% (60px), fixed end = 499px. We must not
+        // move that terminal point or create a new solid-black interval.
         assertEquals(0f, fade(0, 0), 0f)
-        assertEquals(0f, fade(0, 350), 0f)
-        assertEquals(0f, fade(0, 399), 0f)
-        assertTrue("Fade should begin when the photo is one bar-height away", fade(0, 425) > 0f)
-        assertTrue("Must not blacken the page too early", fade(0, 480) < 1f)
+        assertEquals(0f, fade(0, 40), 0f)
+        assertEquals(0f, fade(0, 60), 0f)
+        assertTrue("Begin gradually shortly after the original 12% scroll start", fade(0, 90) > 0f)
+        assertTrue("The photo must still be fading near the current endpoint", fade(0, 480) < 1f)
         assertEquals(1f, fade(0, 499), 0f)
         assertEquals(1f, fade(1, 0), 0f)
         assertEquals(0f, fade(0, 100, Float.NaN), 0f)
@@ -28,10 +27,10 @@ class DetailToolbarRevealTest {
         assertTrue(values.zipWithNext().all { (a, b) ->
             b >= a && b - a < .040f
         })
-        val mid = fade(0, 449)
+        val mid = fade(0, 279)
         assertTrue(mid in .45f.. .55f)
-        assertEquals(mid, fade(0, 449), 0f)
-        assertTrue(fade(0, 465) > mid)
+        assertEquals(mid, fade(0, 279), 0f)
+        assertTrue(fade(0, 340) > mid)
         assertEquals(1f, detailToolbarBackdropAlpha(1f), 0f)
     }
 
@@ -61,8 +60,8 @@ class DetailToolbarRevealTest {
             assertEquals("Use actual album/playlist bottom at offset=$offset",
                 realArtwork, detail, 0f)
         }
-        assertEquals("Taller cover must still be visible at artist's old fade end",
-            0f, detailArtistLengthArtworkFade(0, 470, 600f, 680f, 100f), 0f)
+        assertTrue("The taller cover should remain in transition at artist's old fade end",
+            detailArtistLengthArtworkFade(0, 470, 600f, 680f, 100f) < 1f)
         assertTrue("Collection fades after its own measured edge approaches bar",
             detailArtistLengthArtworkFade(0, 530, 600f, 680f, 100f) > 0f)
         assertEquals(1f, detailArtistLengthArtworkFade(0, 579, 600f, 680f, 100f), 0f)
