@@ -416,29 +416,36 @@ object YouTube {
 
     suspend fun artistItems(endpoint: BrowseEndpoint): Result<ArtistItemsPage> = runCatchingCancellable {
         val response = innerTube.browse(WEB_REMIX, endpoint.browseId, endpoint.params).body<BrowseResponse>()
-        val gridRenderer = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
-            ?.tabRenderer?.content?.sectionListRenderer?.contents?.firstOrNull()
-            ?.gridRenderer
-        if (gridRenderer != null) {
-            ArtistItemsPage(
-                title = gridRenderer.header?.gridHeaderRenderer?.title?.runs?.firstOrNull()?.text.orEmpty(),
+        val sections = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
+            ?.tabRenderer?.content?.sectionListRenderer?.contents.orEmpty()
+        // Artist "More" pages may put a decorative header before the actual
+        // grid or use a carousel instead. Looking only at contents[0] hid albums.
+        val gridRenderer = sections.firstNotNullOfOrNull { it.gridRenderer }
+        val carouselRenderer = sections.firstNotNullOfOrNull { it.musicCarouselShelfRenderer }
+        val playlistShelf = sections.firstNotNullOfOrNull { it.musicPlaylistShelfRenderer }
+        when {
+            gridRenderer != null -> ArtistItemsPage(
+                title = gridRenderer.header?.gridHeaderRenderer?.title?.runs?.firstOrNull()?.text
+                    ?: response.header?.musicHeaderRenderer?.title?.runs?.firstOrNull()?.text.orEmpty(),
                 items = gridRenderer.items.mapNotNull {
-                    it.musicTwoRowItemRenderer?.let { renderer ->
-                        ArtistItemsPage.fromMusicTwoRowItemRenderer(renderer)
-                    }
+                    it.musicTwoRowItemRenderer?.let(ArtistItemsPage::fromMusicTwoRowItemRenderer)
                 },
                 continuation = gridRenderer.continuations?.getContinuation()
             )
-        } else {
-            val musicPlaylistShelfRenderer = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
-                ?.tabRenderer?.content?.sectionListRenderer?.contents?.firstOrNull()
-                ?.musicPlaylistShelfRenderer
-            ArtistItemsPage(
-                title = response.header?.musicHeaderRenderer?.title?.runs?.firstOrNull()?.text!!,
-                items = musicPlaylistShelfRenderer?.contents?.getItems()?.mapNotNull {
-                        ArtistItemsPage.fromMusicResponsiveListItemRenderer(it)
-                    } ?: emptyList(),
-                continuation = musicPlaylistShelfRenderer?.contents?.getContinuation()
+            carouselRenderer != null -> ArtistItemsPage(
+                title = carouselRenderer.header?.musicCarouselShelfBasicHeaderRenderer?.title
+                    ?.runs?.firstOrNull()?.text.orEmpty(),
+                items = carouselRenderer.contents.mapNotNull {
+                    it.musicTwoRowItemRenderer?.let(ArtistItemsPage::fromMusicTwoRowItemRenderer)
+                },
+                continuation = null,
+            )
+            else -> ArtistItemsPage(
+                title = response.header?.musicHeaderRenderer?.title?.runs?.firstOrNull()?.text.orEmpty(),
+                items = playlistShelf?.contents?.getItems()?.mapNotNull {
+                    ArtistItemsPage.fromMusicResponsiveListItemRenderer(it)
+                }.orEmpty(),
+                continuation = playlistShelf?.contents?.getContinuation()
             )
         }
     }
