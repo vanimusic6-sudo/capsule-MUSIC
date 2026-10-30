@@ -11,6 +11,11 @@ package com.nikhil.yt.ui.screens.artist
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.asPaddingValues
@@ -51,6 +56,10 @@ import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.constants.AppBarHeight
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.GridThumbnailHeight
+import com.nikhil.yt.constants.CropThumbnailToSquareKey
+import com.nikhil.yt.constants.ReleaseAppearanceDefaults
+import com.nikhil.yt.ui.component.LocalArtistThumbnailCrop
+import com.nikhil.yt.utils.rememberPreference
 import com.nikhil.yt.extensions.togglePlayPause
 import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.playback.queues.YouTubeQueue
@@ -87,6 +96,7 @@ fun ArtistItemsScreen(
 
     val title by viewModel.title.collectAsState()
     val itemsPage by viewModel.itemsPage.collectAsState()
+    val cropArtwork by rememberPreference(CropThumbnailToSquareKey, ReleaseAppearanceDefaults.cropThumbnail)
 
     LaunchedEffect(lazyListState) {
         snapshotFlow {
@@ -106,6 +116,7 @@ fun ArtistItemsScreen(
         }
     }
 
+    CompositionLocalProvider(LocalArtistThumbnailCrop provides cropArtwork) {
     if (itemsPage == null) {
         ShimmerHost(
             modifier = Modifier.windowInsetsPadding(LocalPlayerAwareWindowInsets.current.add(WindowInsets(top = AppBarHeight))),
@@ -179,6 +190,9 @@ fun ArtistItemsScreen(
                     },
                     modifier =
                     Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp)
+                        .clip(RoundedCornerShape(14.dp))
                         .clickable {
                             when (item) {
                                 is SongItem -> {
@@ -235,6 +249,7 @@ fun ArtistItemsScreen(
                     fillMaxWidth = true,
                     coroutineScope = coroutineScope,
                     modifier = Modifier
+                        .clip(RoundedCornerShape(18.dp))
                         .combinedClickable(
                             onClick = {
                                 when (item) {
@@ -294,6 +309,7 @@ fun ArtistItemsScreen(
         }
     }
 
+    }
     TopAppBar(
         title = { Text(title) },
         navigationIcon = {
