@@ -1028,12 +1028,16 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="artist_candle_title">Candle of remembrance</string>
     <string name="artist_candle_for">In memory of %1$s</string>
     <string name="artist_candle_minute">One minute of silence</string>
+    <string name="artist_candle_minute_desc">Pause the music for sixty seconds</string>
     <string name="artist_candle_thanks">Thank you for the music</string>
+    <string name="artist_candle_thanks_desc">Share a few words of gratitude</string>
     <string name="artist_candle_message">Thank you, %1$s, for the music you left with us. 🕯️</string>
     <string name="artist_candle_share">Share your gratitude</string>
-    <string name="artist_candle_paused">Playback was paused. Resume it whenever you feel ready.</string>
+    <string name="artist_candle_share_desc">Choose an app to share your message</string>
+    <string name="artist_candle_back">Back to choices</string>
+    <string name="artist_candle_paused">Music is paused. Resume it when you are ready.</string>
     <string name="artist_candle_timer_done">The minute of silence has ended.</string>
-    <string name="artist_candle_source">Recorded by MusicBrainz: %1$s</string>
+    <string name="artist_candle_source">%1$s · MusicBrainz</string>
     <string name="artist_candle_local">Your candle is private. You can share these words with others.</string>
     <string name="artist_candle_close">Close</string>
 </resources>
