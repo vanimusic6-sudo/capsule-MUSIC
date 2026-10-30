@@ -1035,6 +1035,7 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="artist_candle_share">Share your gratitude</string>
     <string name="artist_candle_share_desc">Choose an app to share your message</string>
     <string name="artist_candle_back">Back to choices</string>
+    <string name="artist_candle_note_hint">Write your wishes here…</string>
     <string name="artist_candle_paused">Music is paused. Resume it when you are ready.</string>
     <string name="artist_candle_timer_done">The minute of silence has ended.</string>
     <string name="artist_candle_source">%1$s · MusicBrainz</string>
