@@ -45,21 +45,21 @@ internal fun ArtworkSurfaceFade(
             0.93f to background.copy(alpha = 0.97f),
             1f to background,
         ) else if (portrait && artistPortrait) Brush.verticalGradient(
-            // The action row can be 62dp lower on living artists. Keep real
-            // colour in the extended photo almost to the button instead of
-            // turning the lower third into a wide flat grey/black strip.
+            // Spread the transition across the last third of the ACTUAL
+            // artwork (including the living-artist extension). The former
+            // gradient was nearly invisible until the last few pixels, which
+            // looked like a hard-cut edge despite ending in the page colour.
+            // Crucially this affects only the drawing, not the hero height,
+            // buttons, candle position, scroll fade, or album/playlist styles.
             0f to Color.Transparent,
-            0.66f to Color.Transparent,
-            0.74f to background.copy(alpha = 0.015f),
-            0.80f to background.copy(alpha = 0.05f),
-            0.86f to background.copy(alpha = 0.12f),
-            0.90f to background.copy(alpha = 0.23f),
-            0.94f to background.copy(alpha = 0.43f),
-            0.97f to background.copy(alpha = 0.72f),
-            0.985f to background.copy(alpha = 0.90f),
-            // The photo must meet the actual page colour BEFORE its final
-            // pixel, otherwise the 1%-tail creates a thin visible cut-off.
-            0.993f to background,
+            0.63f to Color.Transparent,
+            0.72f to background.copy(alpha = 0.05f),
+            0.79f to background.copy(alpha = 0.16f),
+            0.85f to background.copy(alpha = 0.33f),
+            0.90f to background.copy(alpha = 0.54f),
+            0.94f to background.copy(alpha = 0.74f),
+            0.97f to background.copy(alpha = 0.90f),
+            0.99f to background,
             1f to background,
         ) else if (portrait) Brush.verticalGradient(
             // A matte veil in the page colour, like the upper scrim: retain photo detail
