@@ -124,13 +124,14 @@ internal fun detailArtworkFadeLikeArtist(
 }
 
 /**
- * Precisely fit the last photo-to-toolbar transition into the measured height
- * of the *pinned top bar*, including system insets. At its start the photo's
- * bottom is one toolbar-height away; at the end it is one pixel below the
- * bar's lower edge. The toolbar acquires its solid surface on that exact
- * finished frame, without a percentage-based early black canvas.
+ * A long, low-contrast photo dissolve with a precisely measured endpoint.
+ * Start at the original 12% point of photo-to-toolbar travel so the artwork
+ * gradually loses contrast while scrolling; finish at the SAME physical
+ * bottom-edge crossing as before (one raster pixel inside the pinned bar).
+ * This avoids both the late sudden fade and a prematurely solid black strip.
  *
- * The smoothstep stays scroll-driven, with no running background animator.
+ * Album/playlist geometry still uses its own measured image bottom and real
+ * toolbar size. No frame timers or new animations are scheduled.
  */
 internal fun portraitDissolveFraction(
     offsetPx: Float,
@@ -138,11 +139,13 @@ internal fun portraitDissolveFraction(
     toolbarHeightPx: Float,
 ): Float {
     val distance = distancePx.coerceAtLeast(1f)
-    // The final photo pixel must be outside the pinned bar before it seals.
-    // One pixel accounts for rasterization, not a guessed % of the portrait.
+    // End remains tied to the actual edge of the pinned bar, not a
+    // percentage, so the toolbar never fills over the buttons.
     val end = (distance - 1f).coerceAtLeast(1f)
-    val barHeight = toolbarHeightPx.takeIf { it.isFinite() && it > 0f } ?: end
-    val start = (end - barHeight).coerceAtLeast(0f)
+    // The toolbar is measured by the caller and determines the end position.
+    // Keep the legacy start at 12% of travel, instead of delaying the whole
+    // fade until the *last* toolbar height of scrolling.
+    val start = (distance * 0.12f).coerceIn(0f, (end - 1f).coerceAtLeast(0f))
     val fraction = ((offsetPx - start) / (end - start).coerceAtLeast(1f)).coerceIn(0f, 1f)
     // Evaluate the polynomial in Double: Float32 cancellation near t=1
     // caused the last frames to wiggle backward (and fail monotonic tests).
