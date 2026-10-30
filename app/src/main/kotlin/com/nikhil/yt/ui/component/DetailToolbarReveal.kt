@@ -142,10 +142,13 @@ internal fun portraitDissolveFraction(
     // End remains tied to the actual edge of the pinned bar, not a
     // percentage, so the toolbar never fills over the buttons.
     val end = (distance - 1f).coerceAtLeast(1f)
-    // The toolbar is measured by the caller and determines the end position.
-    // Keep the legacy start at 12% of travel, instead of delaying the whole
-    // fade until the *last* toolbar height of scrolling.
-    val start = (distance * 0.12f).coerceIn(0f, (end - 1f).coerceAtLeast(0f))
+    // Start at the old 12% point; on exceptionally short pages, never
+    // start later than one actual measured toolbar height from the edge.
+    // This keeps the measured bar inside the already-started fade window.
+    val measuredBar = toolbarHeightPx.takeIf { it.isFinite() && it > 0f } ?: end
+    val latestStart = (end - measuredBar).coerceAtLeast(0f)
+    val start = minOf(distance * 0.12f, latestStart)
+        .coerceIn(0f, (end - 1f).coerceAtLeast(0f))
     val fraction = ((offsetPx - start) / (end - start).coerceAtLeast(1f)).coerceIn(0f, 1f)
     // Evaluate the polynomial in Double: Float32 cancellation near t=1
     // caused the last frames to wiggle backward (and fail monotonic tests).
