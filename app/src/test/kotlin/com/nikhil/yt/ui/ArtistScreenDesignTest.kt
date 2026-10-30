@@ -17,6 +17,23 @@ class ArtistScreenDesignTest {
         org.junit.Assert.assertEquals(1f, com.nikhil.yt.ui.screens.artist.artistArtworkFade(1, 0, 1000, 200), 0f)
     }
 
+    @Test fun toolbarSealsBeforeActionButtonsCanReachIt() {
+        // Regression: shortening only the hero moved the subscription buttons
+        // into the photo and the pinned bar flashed opaque on top of them.
+        for (widthDp in listOf(320, 360, 393, 450)) {
+            val portraitBottom = (widthDp * 1.25f).toInt()
+            val firstActionTop = portraitBottom + 12 // photo ends, then 12dp gap
+            val toolbarBottom = 88 // common 24dp safe top + 64dp bar
+            val sealedAt = (0..portraitBottom).first {
+                com.nikhil.yt.ui.screens.artist.artistArtworkFade(
+                    0, it, portraitBottom, toolbarBottom,
+                ) >= 1f
+            }
+            assertTrue("Buttons cannot be under the toolbar as its surface appears",
+                firstActionTop - sealedAt >= toolbarBottom + 48)
+        }
+    }
+
     @Test fun artistToolbarFadeNeverDoubleTintsTheVisiblePortrait() {
         // The hero already fades into the same background. Blending a second
         // 50%-opaque toolbar over it produces a much darker strip (alpha
