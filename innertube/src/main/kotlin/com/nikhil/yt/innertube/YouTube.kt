@@ -462,7 +462,7 @@ object YouTube {
                         ?: it.musicResponsiveListItemRenderer?.let(ArtistItemsPage::fromMusicResponsiveListItemRenderer)
                 }
             }
-            else -> (playlistShelves.flatMap { it.contents } + musicShelves.flatMap { it.contents })
+            else -> (playlistShelves.flatMap { it.contents } + musicShelves.flatMap { it.contents.orEmpty() })
                 .getItems().mapNotNull(ArtistItemsPage::fromMusicResponsiveListItemRenderer)
         }
         ArtistItemsPage(
