@@ -11,6 +11,7 @@ import android.graphics.Canvas
 import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
@@ -86,6 +87,40 @@ class ArtistHeroTest {
             portrait.bottom + 12f * dp, actions.top, 2f)
         assertEquals(hero.left + 22f * dp, actions.left, 1f)
         assertTrue(title.bottom < actions.top)
+    }
+
+    @Test fun livingArtistPortraitExtendsToButtonsWithoutMovingNextContent() {
+        var extension by mutableStateOf(62.dp)
+        compose.setContent {
+            ArtistHeroLayout(
+                background = Color.Black,
+                modifier = Modifier.width(360.dp).testTag("hero"),
+                artworkExtension = extension,
+                artwork = { Box(Modifier.fillMaxSize().background(Color.Red)) },
+                title = {},
+                actions = {
+                    Box(
+                        Modifier.offset(y = extension).fillMaxWidth()
+                            .height(48.dp).testTag("first-action")
+                    )
+                },
+            )
+        }
+        fun bounds(tag: String) = compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+        val dp = bounds("hero").width / 360f
+        val baselineHeroHeight = bounds("hero").height
+        val firstAction = bounds("first-action")
+        val longerPhoto = bounds("artist-artwork-field")
+        assertEquals("Living artist photo must end just 12dp above actions",
+            longerPhoto.bottom + 12f * dp, firstAction.top, 2f)
+        compose.runOnIdle { extension = 0.dp }
+        val memorialPhoto = bounds("artist-artwork-field")
+        val memorialAction = bounds("first-action")
+        assertEquals("Memorial photo must also stop 12dp before actions",
+            memorialPhoto.bottom + 12f * dp, memorialAction.top, 2f)
+        assertEquals("The hero and following items must not jump as the candle appears",
+            baselineHeroHeight, bounds("hero").height, 1f)
+        assertEquals(62f * dp, longerPhoto.height - memorialPhoto.height, 2f)
     }
 
     @Test fun loadingUsesTheSameHeaderAndActionsWorkAfterLoading() {
