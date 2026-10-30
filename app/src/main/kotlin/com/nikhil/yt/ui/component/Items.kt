@@ -150,6 +150,12 @@ internal data class SongListVisuals(
 internal val LocalSongListVisuals =
     staticCompositionLocalOf { SongListVisuals() }
 
+/** Artist screens share one crop preference observer across their entire lazy list.
+ * Without this, every visible thumbnail starts its own DataStore collector.
+ * Other screens preserve their existing standalone behavior.
+ */
+internal val LocalArtistThumbnailCrop = staticCompositionLocalOf<Boolean?> { null }
+
 @Composable
 inline fun ListItem(
     modifier: Modifier = Modifier,
@@ -1249,8 +1255,9 @@ fun ItemThumbnail(
             .clip(shape)
             .semantics { if (unavailableReason != null) contentDescription = unavailableReason }
     ) {
-        val (cropThumbnailToSquare, _) =
-            rememberPreference(CropThumbnailToSquareKey, ReleaseAppearanceDefaults.cropThumbnail)
+        val sharedCrop = LocalArtistThumbnailCrop.current
+        val cropThumbnailToSquare = sharedCrop
+            ?: rememberPreference(CropThumbnailToSquareKey, ReleaseAppearanceDefaults.cropThumbnail).value
         // Square cards crop the ORIGINAL decoded image, including wide video art and
         // non-ytimg CDN URLs. The source request is not cropped/transformed/cached again.
         val shouldApplySquareCrop = shouldCropSquareThumbnail(cropThumbnailToSquare, thumbnailRatio)
