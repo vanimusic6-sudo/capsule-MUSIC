@@ -947,6 +947,7 @@ fun YouTubeListItem(
     // Search suggestions sometimes expose just a primary credited artist;
     // display a richer already-known credit without touching other callers.
     artistSubtitleOverride: String? = null,
+    artworkRequestPixels: Int? = null,
     trailingContent: @Composable RowScope.() -> Unit = {},
     badges: @Composable RowScope.() -> Unit = {
         DefaultYouTubeItemBadges(item)
@@ -1011,6 +1012,7 @@ fun YouTubeListItem(
                 ItemThumbnail(
                     unavailableReason = if (item is SongItem) trackUnavailableReason(item.id, item.unavailable) else null,
                     thumbnailUrl = item.thumbnail,
+                    artworkRequestPixels = artworkRequestPixels,
                     albumIndex = albumIndex,
                     isSelected = isSelected,
                     isActive = isActive,
@@ -1056,6 +1058,7 @@ fun YouTubeGridItem(
     isPlaying: Boolean = false,
     fillMaxWidth: Boolean = false,
     animateTitle: Boolean = true,
+    artworkRequestPixels: Int? = null,
 ) = GridItem(
     title = {
         Text(
@@ -1088,6 +1091,7 @@ fun YouTubeGridItem(
         ItemThumbnail(
             unavailableReason = if (item is SongItem) trackUnavailableReason(item.id, item.unavailable) else null,
             thumbnailUrl = item.thumbnail,
+            artworkRequestPixels = artworkRequestPixels,
             isActive = isActive,
             isPlaying = isPlaying,
             shape = shape,
@@ -1231,6 +1235,7 @@ fun ItemThumbnail(
     isSelected: Boolean = false,
     shouldLoadImage: Boolean = true,
     thumbnailRatio: Float = 1f,
+    artworkRequestPixels: Int? = null,
     unavailableReason: String? = null,
 ) {
     val context = LocalContext.current
@@ -1256,7 +1261,7 @@ fun ItemThumbnail(
             if (shouldLoadImage) {
                 val request = remember(thumbnailUrl, widthPx, heightPx, thumbnailRatio) {
                     ImageRequest.Builder(context)
-                        .data(capsuleArtworkUrl(thumbnailUrl, if (thumbnailRatio == 1f) 512 else 480))
+                        .data(capsuleArtworkUrl(thumbnailUrl, artworkRequestPixels ?: if (thumbnailRatio == 1f) 512 else 480))
                         .allowHardware(true)
                         .apply {
                             if (widthPx != null && heightPx != null) {
