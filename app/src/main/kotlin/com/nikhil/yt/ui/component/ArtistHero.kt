@@ -86,7 +86,9 @@ internal fun ArtistHeroLayout(
                 Modifier.matchParentSize(),
                 portrait = true,
                 topScrim = false,
-                softPortrait = true,
+                // Match album/playlist: the restrained long matte preserves
+                // portrait colour rather than washing it out halfway down.
+                softPortrait = false,
             )
         }
         Column(
