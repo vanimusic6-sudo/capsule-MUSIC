@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
@@ -56,6 +57,7 @@ fun DiscordExperimental(
             )
 
             LazyColumn(
+            overscrollEffect = null,
                 flingBehavior = rememberSettingsFlingBehavior(),
                 modifier = Modifier,
                 contentPadding = PaddingValues(bottom = settingsBottomContentPadding()),
@@ -121,7 +123,8 @@ fun DiscordExperimental(
                                     onDismissRequest = { showLangDialog = false },
                                     title = { Text(stringResource(R.string.select_language)) },
                                     text = {
-                                        LazyColumn(modifier = Modifier.fillMaxWidth(), flingBehavior = rememberSettingsFlingBehavior()) {
+                                        LazyColumn(
+            overscrollEffect = null,modifier = Modifier.fillMaxWidth(), flingBehavior = rememberSettingsFlingBehavior()) {
                                             items(languages) { lang ->
                                                 ListItem(
                                                     title = lang.name,

@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import android.annotation.TargetApi
 import android.content.Context
@@ -109,7 +110,8 @@ fun ContentSettings(
                     WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
                 ),
             )
-            .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior())
+            .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior(),
+            overscrollEffect = null)
             .padding(bottom = settingsBottomContentPadding()),
     ) {
         PreferenceGroupTitle(title = stringResource(R.string.general))

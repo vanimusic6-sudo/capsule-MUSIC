@@ -5,6 +5,7 @@
  */
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import android.content.ClipData
 import android.content.Intent
@@ -312,7 +313,8 @@ fun CapsuleCustomizeSettings(
             .verticalScroll(
                 rememberScrollState(),
                 flingBehavior = rememberSettingsFlingBehavior(),
-            )
+            
+            overscrollEffect = null)
             .padding(bottom = settingsBottomContentPadding()),
     ) {
         Spacer(

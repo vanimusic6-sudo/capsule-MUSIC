@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.VeluneLoader
 import androidx.compose.foundation.layout.*
@@ -131,6 +132,7 @@ fun ChangelogScreen(
                 }
                 else -> {
                     LazyColumn(
+            overscrollEffect = null,
             flingBehavior = rememberSettingsFlingBehavior(),
                         modifier = Modifier
                             .fillMaxSize()

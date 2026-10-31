@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.VeluneLoader
 import android.content.Intent
@@ -128,7 +129,8 @@ fun DiscordSettings(
             Modifier
                 .padding(innerPadding)
                 .consumeWindowInsets(innerPadding)
-                .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior())
+                .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior(),
+            overscrollEffect = null)
                 .padding(bottom = settingsBottomContentPadding())
         ) {
         Spacer(

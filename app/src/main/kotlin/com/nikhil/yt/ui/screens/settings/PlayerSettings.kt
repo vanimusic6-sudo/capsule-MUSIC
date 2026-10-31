@@ -5,6 +5,7 @@
  */
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import android.widget.Toast
 import androidx.compose.foundation.clickable
@@ -320,7 +321,8 @@ fun PlayerSettings(
             .windowInsetsPadding(
                 LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal),
             )
-            .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior())
+            .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior(),
+            overscrollEffect = null)
             .padding(bottom = settingsBottomContentPadding()),
     ) {
         Spacer(

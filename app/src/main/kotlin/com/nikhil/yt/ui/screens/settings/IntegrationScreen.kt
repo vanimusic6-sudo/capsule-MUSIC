@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -58,7 +59,8 @@ fun IntegrationScreen(
     Column(
         Modifier
             .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
-            .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior())
+            .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior(),
+            overscrollEffect = null)
             .padding(bottom = settingsBottomContentPadding())
     ) {
         Spacer(
