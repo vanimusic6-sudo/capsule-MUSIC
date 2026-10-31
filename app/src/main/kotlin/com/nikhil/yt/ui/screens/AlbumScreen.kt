@@ -233,16 +233,14 @@ fun AlbumScreen(
                             icon = R.drawable.play_outline,
                             label = stringResource(R.string.play),
                             onClick = {
-                                playerConnection.service.getAutomix(playlistId)
-                                playerConnection.playQueue(LocalAlbumRadio(albumWithSongs))
+                                                                playerConnection.playQueue(LocalAlbumRadio(albumWithSongs))
                             },
                         )
                         PlaylistAction(
                             icon = R.drawable.shuffle,
                             label = stringResource(R.string.shuffle),
                             onClick = {
-                                playerConnection.service.getAutomix(playlistId)
-                                playerConnection.playQueue(
+                                                                playerConnection.playQueue(
                                     LocalAlbumRadio(albumWithSongs.copy(
                                         songs = albumWithSongs.songs.shuffled(),
                                     )),
@@ -338,8 +336,7 @@ fun AlbumScreen(
                                         if (songWrapper.item.id == mediaMetadata?.id) {
                                             playerConnection.player.togglePlayPause()
                                         } else {
-                                            playerConnection.service.getAutomix(playlistId)
-                                            playerConnection.playQueue(
+                                                                                        playerConnection.playQueue(
                                                 LocalAlbumRadio(albumWithSongs, startIndex = index),
                                             )
                                         }
