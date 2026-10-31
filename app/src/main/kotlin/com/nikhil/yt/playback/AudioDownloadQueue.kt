@@ -18,6 +18,19 @@ internal object AudioDownloadSlots {
     suspend fun <T> withSlot(block: suspend () -> T): T = permits.withPermit { block() }
 }
 
+/**
+ * A server-imposed wait must not reserve either of the process-wide file-transfer
+ * permits. In particular, a throttled YouTube download must not keep an unrelated
+ * Audius/local-source worker from transferring while the YouTube circuit is open.
+ */
+internal suspend fun <T> withAudioDownloadSlotAfterAdmission(
+    awaitAdmission: suspend () -> Unit,
+    block: suspend () -> T,
+): T {
+    awaitAdmission()
+    return AudioDownloadSlots.withSlot(block)
+}
+
 // Persist scheduling intent in Media3's existing request/index, without another queue database.
 // Old title-only data remains valid and is treated as a background request.
 private const val MANUAL_PREFIX = "capsule-manual-v1\u0000"
