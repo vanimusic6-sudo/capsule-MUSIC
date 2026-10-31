@@ -6,9 +6,9 @@ Uploaded field log: `capsule-logs-2026-10-31_16-10-47.txt`, 1,545 app log entrie
 
 Download states recorded from `I/AudioDownload: state` lines:
 - **62 distinct download IDs** appear in the log.
-- **30 reach Media3 `STATE_COMPLETED=3`** with nonzero byte counts (many 2–3 MB). So the statement `no files download at all` is **not supported by the export**; the UI/list/notification may nevertheless misleadingly show no progress or a stopped queue.
+- **31 reach Media3 `STATE_COMPLETED=3`** with nonzero byte counts (many 2–3 MB). So the statement `no files download at all` is **not supported by the export**; the UI/list/notification may nevertheless misleadingly show no progress or a stopped queue.
 - **1 reaches `STATE_FAILED=4`, 0 bytes**, reason `PlayerClientDirector$PlayerRequestTimeoutException`. It first tries VISIONOS and then WEB_EMBEDDED_PLAYER, both time out. This is an **upstream /player resolve timeout**, not a download cache or filesystem write exception and not a 403/429 response.
-- **30 remain `STATE_STOPPED=1`, `stopReason=2`** at export: `2` is Capsule's *internal waiting-for-slot reason*; these are pending queue members, NOT Media3 error code 2. One additional item remains downloading at export. Only two simultaneous download transfers are admitted by design.
+- **30 remain `STATE_STOPPED=1`, `stopReason=2`** at export: `2` is Capsule's *internal waiting-for-slot reason*; these are pending queue members, NOT Media3 error code 2. The last item transitions from `STATE_DOWNLOADING=2` to `STATE_COMPLETED=3` on the **final exported line (1554)**. Only two simultaneous download transfers are admitted by design.
 - **15 `STATE_REMOVING=5` intermediate callbacks** occurred; these are not terminal failures.
 - One `DownloadArtwork: Cover unavailable; audio retained` warning proves a thumbnail failed but **must not** be conflated with a missing audio file.
 - No `music-underrun` or `AudioTrack` event appears in **this** 16:02–16:10 export. The *earlier* 15:52 field log included one AudioTrack underrun at 15:48:02 with large buffered audio ahead and elapsedSinceLastFeedMs > 13 s. Neither log proves CPU heating comes from Android session/notification handling.
