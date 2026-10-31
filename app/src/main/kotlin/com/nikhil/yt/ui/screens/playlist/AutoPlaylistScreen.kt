@@ -7,6 +7,7 @@
 
 package com.nikhil.yt.ui.screens.playlist
 
+import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.ui.text.style.TextOverflow
 import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.DetailTopAppBar
@@ -413,7 +414,7 @@ fun AutoPlaylistScreen(
                                         )
                                     }
                                 },
-                                modifier = Modifier.fillMaxWidth().combinedClickable(
+                                modifier = Modifier.fillMaxWidth().capsulePressCombinedClickable(
                                     onClick = {
                                         if (mediaMetadata?.id == OfflineAudioQueue.PREFIX + file.id) {
                                             playerConnection.player.togglePlayPause()
@@ -501,7 +502,7 @@ fun AutoPlaylistScreen(
                             isSelected = songWrapper.isSelected && selection,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .combinedClickable(
+                                .capsulePressCombinedClickable(
                                     onClick = {
                                         if (!selection) {
                                             if (songWrapper.item.song.id == mediaMetadata?.id) {
