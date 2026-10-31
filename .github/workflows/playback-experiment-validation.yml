@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - 'experimental/playback-reliability-20261031'
+      - 'experimental/quic-sabr-evaluation-20261031'
   workflow_dispatch:
 
 permissions:
