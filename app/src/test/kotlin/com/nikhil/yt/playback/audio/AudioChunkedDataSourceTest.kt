@@ -67,6 +67,111 @@ class AudioChunkedDataSourceTest {
         override fun close() = Unit
     }
 
+    @Test
+    fun smallOrCachedTailOpusReadsAreCoalescedWithoutNetworkRequestFragmentation() {
+        val bytes = ByteArray(5120) { (it % 251).toByte() }
+        val upstream = FakeUpstream(bytes, maxBytesPerRead = 8192)
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 16384)
+        val tail = DataSpec.Builder()
+            .setUri("https://rr1---sn-test.googlevideo.com/videoplayback")
+            .setKey("capsule:audio:abcdefghijk:251:5120")
+            .setPosition(1024L)
+            .setLength(4096L)
+            .build()
+        source.open(tail)
+        val output = ByteArray(4096)
+        for (i in output.indices) {
+            assertEquals(1, source.read(output, i, 1))
+        }
+        assertArrayEquals(bytes.copyOfRange(1024, 5120), output)
+        assertEquals(C.RESULT_END_OF_INPUT, source.read(ByteArray(1), 0, 1))
+        assertEquals(listOf(1024L to 4096L), upstream.opens)
+        assertTrue("cached Opus tail must not perform thousands of TLS reads", upstream.readCalls <= 2)
+        source.close()
+    }
+
+    @Test
+    fun resetAfterPartialHttp206ContinuesExactMissingBytesWithoutPlayerReResolve() {
+        val bytes = ByteArray(500) { (it % 251).toByte() }
+        val inner = FakeUpstream(bytes)
+        var supplied = 0
+        var resetOnce = false
+        val upstream = object : DataSource {
+            override fun addTransferListener(transferListener: TransferListener) = Unit
+            override fun open(dataSpec: DataSpec): Long = inner.open(dataSpec)
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                if (!resetOnce && supplied >= 35) {
+                    resetOnce = true
+                    throw java.net.SocketException("Connection reset")
+                }
+                val result = inner.read(buffer, offset, length)
+                if (result > 0) supplied += result
+                return result
+            }
+            override fun getUri(): Uri? = inner.uri
+            override fun close() = inner.close()
+        }
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
+        source.open(spec(bytes.size.toLong()))
+        assertArrayEquals(bytes, drain(source))
+        assertTrue(resetOnce)
+        assertEquals(0L to 128L, inner.opens[0])
+        assertEquals(35L to 93L, inner.opens[1])
+        assertEquals(128L to 128L, inner.opens[2])
+        assertEquals(5, inner.opens.size) // one exact same-URL partial retry, four regular chunks
+        source.close()
+    }
+
+    @Test
+    fun aSecondResetWithinTheSameChunkEscapesToTheNormalRecoveryBudget() {
+        val bytes = ByteArray(500) { it.toByte() }
+        val inner = FakeUpstream(bytes)
+        var supplied = 0
+        var failures = 0
+        val upstream = object : DataSource {
+            override fun addTransferListener(transferListener: TransferListener) = Unit
+            override fun open(dataSpec: DataSpec): Long = inner.open(dataSpec)
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                if (supplied >= 35 && failures < 2) {
+                    failures++
+                    throw java.net.SocketException("Connection reset")
+                }
+                val read = inner.read(buffer, offset, length)
+                if (read > 0) supplied += read
+                return read
+            }
+            override fun getUri(): Uri? = inner.uri
+            override fun close() = inner.close()
+        }
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
+        source.open(spec(bytes.size.toLong()))
+        assertTrue(runCatching { drain(source) }.exceptionOrNull() is java.net.SocketException)
+        assertEquals(2, inner.opens.size)
+        source.close()
+    }
+
+    @Test
+    fun aServerRefusalOnReadIsNeverClassifiedAsResetOrRetried() {
+        val bytes = ByteArray(500) { it.toByte() }
+        val inner = FakeUpstream(bytes)
+        val upstream = object : DataSource {
+            override fun addTransferListener(transferListener: TransferListener) = Unit
+            override fun open(dataSpec: DataSpec): Long = inner.open(dataSpec)
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                throw InvalidResponseCodeException(429, "rate limit", null, emptyMap(), spec(500), ByteArray(0))
+            }
+            override fun getUri(): Uri? = inner.uri
+            override fun close() = inner.close()
+        }
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
+        source.open(spec(bytes.size.toLong()))
+        assertEquals(429, org.junit.Assert.assertThrows(InvalidResponseCodeException::class.java) {
+            source.read(ByteArray(8), 0, 8)
+        }.responseCode)
+        assertEquals(1, inner.opens.size)
+        source.close()
+    }
+
     private fun content(size: Int) = ByteArray(size) { (it % 251).toByte() }
 
     private fun drain(source: DataSource): ByteArray {
