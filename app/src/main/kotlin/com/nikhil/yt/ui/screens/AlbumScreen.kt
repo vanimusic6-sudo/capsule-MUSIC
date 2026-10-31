@@ -8,6 +8,7 @@
 
 package com.nikhil.yt.ui.screens
 
+import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.material3.Button
 import com.nikhil.yt.ui.component.AlbumArtwork
 import com.nikhil.yt.ui.component.DetailHeroBottomSpacing
@@ -329,7 +330,7 @@ fun AlbumScreen(
                         isSelected = songWrapper.isSelected && selection,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .combinedClickable(
+                            .capsulePressCombinedClickable(
                                 onClick = {
                                     if (!selection) {
                                         if (songWrapper.item.id == mediaMetadata?.id) {
@@ -374,7 +375,7 @@ fun AlbumScreen(
                                     isPlaying = isPlaying,
                                     coroutineScope = scope,
                                     modifier = Modifier
-                                        .combinedClickable(
+                                        .capsulePressCombinedClickable(inset = 0.dp, radius = 18.dp, 
                                             onClick = { navController.navigate("album/${item.id}") },
                                             onLongClick = {
                                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
