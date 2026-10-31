@@ -1,5 +1,7 @@
 package com.nikhil.yt.ui.component
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
@@ -30,6 +32,24 @@ internal class DetailHeaderMotionState(
     private val density: Density,
 ) {
     var hasHeader: Boolean = true
+
+    // Cover readiness comes from the *real* Coil success callback, not from
+    // having a non-empty metadata URL. Both the artwork and pinned bar use
+    // the same short reveal. No independent toolbar colour flash on load.
+    var isArtworkReady by mutableFloatStateOf(0f)
+        private set
+    var artworkReveal by mutableFloatStateOf(0f)
+        private set
+
+    fun setArtworkReady(ready: Boolean) {
+        val value = if (ready) 1f else 0f
+        if (isArtworkReady != value) isArtworkReady = value
+    }
+
+    fun setArtworkReveal(value: Float) {
+        val bounded = value.coerceIn(0f, 1f)
+        if (artworkReveal != bounded) artworkReveal = bounded
+    }
 
     private var restArtworkBottomPx by mutableFloatStateOf(Float.NaN)
     private var toolbarBottomPx by mutableFloatStateOf(Float.NaN)
@@ -83,7 +103,7 @@ internal class DetailHeaderMotionState(
         )
     }
 
-    fun artworkAlpha(): Float = 1f - artworkFade()
+    fun artworkAlpha(): Float = (1f - artworkFade()) * artworkReveal
 }
 
 /**
@@ -164,7 +184,18 @@ internal fun rememberDetailHeaderMotion(
 ): DetailHeaderMotionState {
     val density = LocalDensity.current
     val motion = remember(state, density) { DetailHeaderMotionState(state, density) }
-    SideEffect { motion.hasHeader = hasHeader }
+    // Load completion is a one-off transition; it does not run while scrolling
+    // or poll the image provider. The page and toolbar acquire their colour
+    // from the same alpha to avoid different-looking placeholders.
+    val reveal by animateFloatAsState(
+        targetValue = motion.isArtworkReady,
+        animationSpec = tween(durationMillis = 240),
+        label = "detail-cover-arrival",
+    )
+    SideEffect {
+        motion.hasHeader = hasHeader
+        motion.setArtworkReveal(reveal)
+    }
     return motion
 }
 
@@ -180,8 +211,11 @@ internal fun Modifier.artistStyleDetailBackdrop(
     surfaceColor: Color,
     forceOpaque: Boolean = false,
 ): Modifier = drawBehind {
-    drawRect(surfaceColor.copy(alpha = detailToolbarBackdropAlpha(
-        photoDissolve = motion.artworkFade(),
-        forceOpaque = forceOpaque,
+    drawRect(surfaceColor.copy(alpha = maxOf(
+        detailToolbarBackdropAlpha(
+            photoDissolve = motion.artworkFade(),
+            forceOpaque = forceOpaque,
+        ),
+        1f - motion.artworkReveal,
     )))
 }
