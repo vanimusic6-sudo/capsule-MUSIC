@@ -124,7 +124,6 @@ fun AlbumScreen(
     val isPlaying by playerConnection.isPlaying.collectAsState()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
 
-    val playlistId by viewModel.playlistId.collectAsState()
     val albumWithSongs by viewModel.albumWithSongs.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     val otherVersions by viewModel.otherVersions.collectAsState()
