@@ -6,6 +6,7 @@
 
 
 package com.nikhil.yt.ui.menu
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import androidx.compose.material3.LocalContentColor
 import com.nikhil.yt.ui.component.StandardChrome
@@ -140,6 +141,8 @@ fun SelectionSongMenu(
     Spacer(modifier = Modifier.height(12.dp))
 
     LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
         state = androidx.compose.foundation.lazy.rememberLazyListState(),
         modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(
@@ -475,6 +478,8 @@ fun SelectionMediaMetadataMenu(
     
 
     LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
         contentPadding = PaddingValues(
             start = 0.dp,
             top = 0.dp,

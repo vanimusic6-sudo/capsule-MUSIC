@@ -6,6 +6,7 @@
 
 
 package com.nikhil.yt.ui.menu
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.VeluneLoader
@@ -227,6 +228,8 @@ fun PlaylistMenu(
     Spacer(modifier = Modifier.height(12.dp))
 
     LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
         state = androidx.compose.foundation.lazy.rememberLazyListState(),
         modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(

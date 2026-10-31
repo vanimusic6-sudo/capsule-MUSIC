@@ -6,6 +6,7 @@
 
 
 package com.nikhil.yt.ui.menu
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.playback.canPrioritize
 import com.nikhil.yt.playback.visibleState
@@ -512,6 +513,8 @@ fun SongMenu(
     }
 
     LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
         state = androidx.compose.foundation.lazy.rememberLazyListState(),
         modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(

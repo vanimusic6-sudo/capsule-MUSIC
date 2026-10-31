@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.menu
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.playback.canPrioritize
 import com.nikhil.yt.playback.visibleState
@@ -536,6 +537,8 @@ fun PlayerMenu(
     Spacer(modifier = Modifier.height(12.dp))
 
     LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
         state = androidx.compose.foundation.lazy.rememberLazyListState(),
         modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(
@@ -1012,7 +1015,9 @@ fun TempoPitchDialog(onDismiss: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
+                        .horizontalScroll(rememberScrollState(),
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null),
                 ) {
                     val presets = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
                     presets.forEach { preset ->
@@ -1067,7 +1072,9 @@ fun TempoPitchDialog(onDismiss: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
+                        .horizontalScroll(rememberScrollState(),
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null),
                 ) {
                     FilterChip(
                         selected = pitchMode == PitchMode.Semitones,
@@ -1105,7 +1112,9 @@ fun TempoPitchDialog(onDismiss: () -> Unit) {
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
+                                .horizontalScroll(rememberScrollState(),
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null),
                         ) {
                             val presets = listOf(-12, -7, -5, 0, 5, 7, 12)
                             presets.forEach { preset ->
@@ -1174,7 +1183,9 @@ fun TempoPitchDialog(onDismiss: () -> Unit) {
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
+                                .horizontalScroll(rememberScrollState(),
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null),
                         ) {
                             val presets = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
                             presets.forEach { preset ->
@@ -1531,7 +1542,9 @@ fun EqualizerDialog(
                     modifier =
                         Modifier
                             .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
+                            .verticalScroll(rememberScrollState(),
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null)
                             .padding(horizontal = 16.dp)
                             .padding(bottom = 24.dp),
                 ) {
@@ -1578,7 +1591,9 @@ fun EqualizerDialog(
                                 Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 8.dp)
-                                    .horizontalScroll(rememberScrollState()),
+                                    .horizontalScroll(rememberScrollState(),
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null),
                         ) {
                             FilterChip(
                                 selected = selectedProfileId == "flat",

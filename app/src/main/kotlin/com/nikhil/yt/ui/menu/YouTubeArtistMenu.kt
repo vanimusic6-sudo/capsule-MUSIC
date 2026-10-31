@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.menu
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import android.content.Intent
 import androidx.compose.foundation.background
@@ -77,6 +78,8 @@ fun YouTubeArtistMenu(
 
     Spacer(modifier = Modifier.height(12.dp))
     LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
         state = androidx.compose.foundation.lazy.rememberLazyListState(),
         modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(

@@ -1,4 +1,5 @@
 package com.nikhil.yt.ui.menu
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import android.content.Intent
 import android.widget.Toast
@@ -107,7 +108,9 @@ fun OfflineDownloadMenu(
 
     Column(
         Modifier.fillMaxWidth()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(rememberScrollState(),
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null)
             .padding(bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding())
     ) {
         Row(

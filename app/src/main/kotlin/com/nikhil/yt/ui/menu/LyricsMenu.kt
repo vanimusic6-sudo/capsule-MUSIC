@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.menu
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.VeluneLoader
 import android.app.SearchManager
@@ -133,7 +134,9 @@ fun LyricsMenu(
 
     if (showSearchDialog) {
         DefaultDialog(
-            modifier = Modifier.verticalScroll(rememberScrollState()),
+            modifier = Modifier.verticalScroll(rememberScrollState(),
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null),
             onDismiss = { showSearchDialog = false },
             icon = {
                 Icon(
@@ -326,6 +329,8 @@ fun LyricsMenu(
     // an apparent 3fps/stuttering scroll as the *whole panel* changed anchors.
     // Let nested scrolling consume the content first on every orientation.
     LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
         state = androidx.compose.foundation.lazy.rememberLazyListState(),
         contentPadding = PaddingValues(
             start = 0.dp,

@@ -6,6 +6,7 @@
 
 
 package com.nikhil.yt.ui.menu
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.StandardChrome
 import androidx.compose.foundation.Image
@@ -317,6 +318,8 @@ fun AddToPlaylistDialogOnline(
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                     Text("Failed Items:", style = MaterialTheme.typography.labelLarge)
                     LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(150.dp)
