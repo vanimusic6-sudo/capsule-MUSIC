@@ -7,6 +7,7 @@
 
 package com.nikhil.yt.ui.screens.playlist
 
+import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.foundation.clickable
 import com.nikhil.yt.playback.queues.ListQueue
 import com.nikhil.yt.ui.component.PlaylistAction
@@ -465,7 +466,7 @@ fun OnlinePlaylistScreen(
                                 }
                             },
                             modifier =
-                                Modifier.combinedClickable(
+                                Modifier.capsulePressCombinedClickable(
                                         enabled = !hideExplicit || !song.item.second.explicit,
                                         onClick = {
                                             if (!selection) {
