@@ -115,7 +115,9 @@ internal fun AlbumHeaderPlaceholder(background: Color, modifier: Modifier = Modi
         artworkTopSpacing = AlbumArtworkTopSpacing,
         artwork = {
             AlbumArtworkLayers(
-                ColorPainter(StandardChrome.panel),
+                // While metadata is loading the photo slot must be exactly
+                // the same page colour as the pinned toolbar, not panel grey.
+                ColorPainter(background),
                 blurred = null,
                 background = background,
             )
