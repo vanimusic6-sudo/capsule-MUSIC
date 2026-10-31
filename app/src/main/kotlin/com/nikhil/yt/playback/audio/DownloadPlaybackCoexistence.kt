@@ -116,12 +116,13 @@ internal class DownloadYieldingDataSource(
 internal class DownloadYieldingInputStream(
     input: InputStream,
     private val shouldYield: () -> Boolean = DownloadPlaybackCoexistence.priority::shouldYield,
+    private val checkActive: () -> Unit = {},
 ) : FilterInputStream(input) {
     private var readSinceCheck = 0
 
     override fun read(): Int {
         if (readSinceCheck >= CHECK_BYTES) {
-            waitForForegroundDownload(shouldYield)
+            waitForForegroundDownload(shouldYield, checkActive)
             readSinceCheck = 0
         }
         val result = super.read()
@@ -132,7 +133,7 @@ internal class DownloadYieldingInputStream(
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
         if (length == 0) return 0
         if (readSinceCheck >= CHECK_BYTES) {
-            waitForForegroundDownload(shouldYield)
+            waitForForegroundDownload(shouldYield, checkActive)
             readSinceCheck = 0
         }
         val result = super.read(buffer, offset, length)
@@ -144,8 +145,9 @@ internal class DownloadYieldingInputStream(
 }
 
 /** Called strictly from download IO workers. Sleep is bounded to avoid wakeup-heavy busy polling. */
-private fun waitForForegroundDownload(shouldYield: () -> Boolean) {
+private fun waitForForegroundDownload(shouldYield: () -> Boolean, checkActive: () -> Unit = {}) {
     while (shouldYield()) {
+        checkActive()
         if (Thread.currentThread().isInterrupted) {
             throw InterruptedIOException("Download cancelled while yielding to foreground playback")
         }
