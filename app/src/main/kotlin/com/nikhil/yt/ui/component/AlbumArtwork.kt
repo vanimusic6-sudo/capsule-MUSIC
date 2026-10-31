@@ -100,7 +100,7 @@ internal fun BoxScope.CapsuleDetailCoverTitle(
     Text(
         text = title,
         modifier = Modifier.align(Alignment.BottomCenter)
-            .padding(horizontal = 28.dp, bottom = 16.dp)
+            .padding(horizontal = 28.dp).padding(bottom = 16.dp)
             .graphicsLayer {
                 // The title belongs to the scroll transition, but must not
                 // disappear while Coil is still decoding the background photo.
