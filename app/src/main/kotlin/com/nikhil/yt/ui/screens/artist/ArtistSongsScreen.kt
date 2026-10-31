@@ -8,6 +8,7 @@
 
 package com.nikhil.yt.ui.screens.artist
 
+import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -166,7 +167,7 @@ fun ArtistSongsScreen(
                     modifier =
                     Modifier
                         .fillMaxWidth()
-                        .combinedClickable(
+                        .capsulePressCombinedClickable(
                             onClick = {
                                 if (song.id == mediaMetadata?.id) {
                                     playerConnection.player.togglePlayPause()
