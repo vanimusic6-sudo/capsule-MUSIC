@@ -22,7 +22,6 @@ internal class ResolvingAudioDownloader(
     private val mediaId: String,
     private val cache: Cache,
     private val resolve: suspend () -> CapsuleAudioEngine.PlaybackData,
-    private val awaitAdmission: suspend () -> Unit = {},
     private val dataSource: (CapsuleAudioEngine.PlaybackData) -> CacheDataSource.Factory,
     private val saveArtwork: suspend () -> Unit = {},
     private val recover: (CapsuleAudioEngine.PlaybackData, IOException) -> Boolean = { _, _ -> false },
@@ -32,6 +31,7 @@ internal class ResolvingAudioDownloader(
             dataSource(playback),
         )
     },
+    private val awaitAdmission: suspend () -> Unit = {},
 ) : Downloader {
     private val cancellation = SupervisorJob()
     @Volatile private var delegate: Downloader? = null
