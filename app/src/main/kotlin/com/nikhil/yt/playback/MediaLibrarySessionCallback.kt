@@ -153,7 +153,10 @@ constructor(
         query: String,
         params: MediaLibraryService.LibraryParams?,
     ): ListenableFuture<LibraryResult<Void>> =
-        Futures.immediateFuture(LibraryResult.ofVoid(params))
+        Futures.immediateFuture(
+            if (browser.isTrusted) LibraryResult.ofVoid(params)
+            else LibraryResult.ofError(SessionError.ERROR_PERMISSION_DENIED),
+        )
 
     override fun onGetSearchResult(
         session: MediaLibrarySession,
@@ -164,6 +167,9 @@ constructor(
         params: MediaLibraryService.LibraryParams?,
     ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> =
         scope.future(Dispatchers.IO) {
+            if (!browser.isTrusted) {
+                return@future LibraryResult.ofError(SessionError.ERROR_PERMISSION_DENIED)
+            }
             val q = query.trim()
             if (q.isBlank() || pageSize <= 0 || page < 0) {
                 return@future LibraryResult.ofItemList(emptyList(), params)
