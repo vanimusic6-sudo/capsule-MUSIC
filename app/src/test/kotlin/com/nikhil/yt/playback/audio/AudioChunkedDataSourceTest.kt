@@ -108,7 +108,7 @@ class AudioChunkedDataSourceTest {
                 if (result > 0) supplied += result
                 return result
             }
-            override fun getUri(): Uri? = inner.uri
+            override fun getUri(): Uri? = inner.getUri()
             override fun close() = inner.close()
         }
         val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
@@ -140,7 +140,7 @@ class AudioChunkedDataSourceTest {
                 if (read > 0) supplied += read
                 return read
             }
-            override fun getUri(): Uri? = inner.uri
+            override fun getUri(): Uri? = inner.getUri()
             override fun close() = inner.close()
         }
         val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
@@ -160,7 +160,7 @@ class AudioChunkedDataSourceTest {
             override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
                 throw InvalidResponseCodeException(429, "rate limit", null, emptyMap(), spec(500), ByteArray(0))
             }
-            override fun getUri(): Uri? = inner.uri
+            override fun getUri(): Uri? = inner.getUri()
             override fun close() = inner.close()
         }
         val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
