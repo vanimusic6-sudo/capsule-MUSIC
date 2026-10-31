@@ -9,6 +9,7 @@
 package com.nikhil.yt.ui.screens.library
 
 
+import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -348,7 +349,7 @@ fun LibrarySongsScreen(
                                 )
                             }
                         },
-                        modifier = Modifier.fillMaxWidth().combinedClickable(
+                        modifier = Modifier.fillMaxWidth().capsulePressCombinedClickable(
                             onClick = {
                                 if (!selection) {
                                     if (mediaMetadata?.id == OfflineAudioQueue.PREFIX + file.id) {
@@ -420,7 +421,7 @@ fun LibrarySongsScreen(
                     modifier =
                     Modifier
                         .fillMaxWidth()
-                        .combinedClickable(
+                        .capsulePressCombinedClickable(
                             onClick = {
                                 if (!selection) {
                                     if (songWrapper.item.id == mediaMetadata?.id) {
