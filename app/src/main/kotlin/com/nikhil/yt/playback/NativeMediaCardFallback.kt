@@ -18,17 +18,11 @@ import com.nikhil.yt.utils.GlobalLog
 import timber.log.Timber
 
 /**
- * Last-resort Android PLATFORM MediaStyle publication.
+ * Keep Android's system media card alive if Media3's notification controller
+ * cannot publish one. Reuses the existing session token, channel and ID.
  *
- * The physical HONOR field log showed no notification at all, although Media3
- * reported isPlaying=true, an added MediaLibrarySession and channel importance=2.
- * Media3's internal notification manager returns without calling the provider
- * if its notification controller is disconnected or sees an empty timeline.
- *
- * Only after giving Media3 the first chance do we publish this using THE SAME
- * real platform MediaSession.Token, channel and ID. This is not an OEM-specific
- * fabricated island or a second fake MediaSession. It is the documented Android
- * MediaStyle contract consumed by the lock screen, Bluetooth and SystemUI.
+ * This is required for HONOR's system media island; do not replace it with
+ * a generic foreground service notification.
  */
 @RequiresApi(Build.VERSION_CODES.O)
 internal class NativeMediaCardFallback(private val service: MusicService) {
@@ -110,12 +104,8 @@ internal class NativeMediaCardFallback(private val service: MusicService) {
         if (!rescueActive) return
         rescueActive = false
         runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                service.stopForeground(android.app.Service.STOP_FOREGROUND_REMOVE)
-            } else {
-                @Suppress("DEPRECATION")
-                service.stopForeground(true)
-            }
+            // minSdk=26: the legacy stopForeground(Boolean) path is unreachable.
+            service.stopForeground(android.app.Service.STOP_FOREGROUND_REMOVE)
             manager.cancel(MusicService.NOTIFICATION_ID)
         }
     }
