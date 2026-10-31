@@ -7,6 +7,7 @@
 
 package com.nikhil.yt.ui.screens.playlist
 
+import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
 import com.nikhil.yt.ui.menu.CapsuleCollectionDownloadButton
@@ -654,7 +655,7 @@ fun LocalPlaylistScreen(
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .combinedClickable(
+                                    .capsulePressCombinedClickable(
                                         onClick = {
                                             if (song.song.id == mediaMetadata?.id) {
                                                 playerConnection.player.togglePlayPause()
@@ -780,7 +781,7 @@ fun LocalPlaylistScreen(
                                 isSelected = songWrapper.isSelected && selection,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .combinedClickable(
+                                    .capsulePressCombinedClickable(
                                         onClick = {
                                             if (!selection) {
                                                 if (songWrapper.item.song.id == mediaMetadata?.id) {
