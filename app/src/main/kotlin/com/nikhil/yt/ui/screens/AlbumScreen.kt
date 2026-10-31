@@ -197,6 +197,12 @@ fun AlbumScreen(
                                 fallbackThumbnailUrl = albumWithSongs.songs.firstOrNull {
                                     !it.song.thumbnailUrl.isNullOrBlank()
                                 }?.song?.thumbnailUrl,
+                                // A valid track cover is preferable to a permanent
+                                // grey page if the album's CDN thumbnail is stale.
+                                fallbackThumbnailUrls = albumWithSongs.songs.asSequence()
+                                    .mapNotNull { it.song.thumbnailUrl }
+                                    .filter(String::isNotBlank)
+                                    .distinct().take(4).toList(),
                                 background = surfaceColor,
                                 artworkAlpha = titleMotion::artworkAlpha,
                                 artworkMotion = titleMotion,
