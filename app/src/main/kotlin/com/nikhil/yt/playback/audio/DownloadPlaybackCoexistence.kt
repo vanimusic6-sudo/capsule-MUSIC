@@ -118,7 +118,10 @@ internal class DownloadYieldingInputStream(
     private val shouldYield: () -> Boolean = DownloadPlaybackCoexistence.priority::shouldYield,
     private val checkActive: () -> Unit = {},
 ) : FilterInputStream(input) {
-    private var readSinceCheck = 0
+    // Unlike the player's network, Audius downloads may begin after a long
+    // resolver/cache warmup. Honor an already-buffering player before the
+    // FIRST network body read, not only after downloading 64 KiB.
+    private var readSinceCheck = 64 * 1024
 
     override fun read(): Int {
         if (readSinceCheck >= CHECK_BYTES) {
