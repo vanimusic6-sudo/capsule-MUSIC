@@ -1712,6 +1712,33 @@ class MusicService :
     val maxSafeGainFactor = 1.414f // +3 dB
     private lateinit var mediaNotificationProvider: CapsuleMediaNotificationProvider
 
+    // ArchiveTune's important second half: Activity only BINDS, but the
+    // playback service explicitly becomes STARTED once audio is requested.
+    // Without this step a bound-only service could be destroyed as soon as
+    // MainActivity.onStop() unbinds on the way to the launcher.
+    private var playbackServiceStartIssued = false
+
+    private fun ensurePlaybackServiceStarted() {
+        if (playbackServiceStartIssued ||
+            !::player.isInitialized ||
+            player.currentMediaItem == null ||
+            !player.playWhenReady ||
+            player.playbackState !in setOf(Player.STATE_BUFFERING, Player.STATE_READY)
+        ) return
+
+        try {
+            // Normal started service, NOT a generic notification/FGS.
+            // Media3 owns promotion with the actual MediaStyle notification.
+            playbackServiceStartIssued = startService(
+                Intent(this, MusicService::class.java),
+            ) != null
+        } catch (error: Exception) {
+            reportRecoverableException(
+                "MusicService", "start persistent media playback service", error,
+            )
+        }
+    }
+
     private val togetherRuntime =
         TogetherSessionRuntime { operation, error ->
             reportRecoverableException("MusicService", operation, error)
@@ -4114,7 +4141,10 @@ class MusicService :
                 Player.EVENT_MEDIA_ITEM_TRANSITION,
                 Player.EVENT_PLAYBACK_STATE_CHANGED,
             )
-        ) updateDownloadNetworkPriority()
+        ) {
+            updateDownloadNetworkPriority()
+            ensurePlaybackServiceStarted()
+        }
         if (events.containsAny(Player.EVENT_PLAY_WHEN_READY_CHANGED, Player.EVENT_MEDIA_ITEM_TRANSITION)) {
             updateVideoPauseCollapse()
         }
@@ -6202,6 +6232,7 @@ class MusicService :
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = mediaSession
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        playbackServiceStartIssued = true
         // Media3 owns foreground handover and its native media notification.
         // Do not post a CATEGORY_SERVICE placeholder with the media ID.
 
