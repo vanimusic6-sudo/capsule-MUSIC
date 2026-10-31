@@ -46,7 +46,7 @@ internal class DetailHeaderMotionState(
         if (isArtworkReady != value) isArtworkReady = value
     }
 
-    fun setArtworkReveal(value: Float) {
+    fun updateArtworkReveal(value: Float) {
         val bounded = value.coerceIn(0f, 1f)
         if (artworkReveal != bounded) artworkReveal = bounded
     }
@@ -194,7 +194,7 @@ internal fun rememberDetailHeaderMotion(
     )
     SideEffect {
         motion.hasHeader = hasHeader
-        motion.setArtworkReveal(reveal)
+        motion.updateArtworkReveal(reveal)
     }
     return motion
 }
