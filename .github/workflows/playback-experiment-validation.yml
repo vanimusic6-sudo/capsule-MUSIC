@@ -12,6 +12,7 @@ on:
       - 'fix/playback-download-fairness-sabr-harness-20261031'
       - 'fix/honor-native-media-transition-20261031'
       - 'fix/archivetune-media-session-parity-20261031'
+      - 'fix/honor-notification-controller-20261031'
   workflow_dispatch:
 
 permissions:
