@@ -103,7 +103,6 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 import java.text.Collator
 import java.time.LocalDateTime
 import androidx.compose.ui.platform.LocalLocale
-import java.util.UUID
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -134,50 +133,47 @@ fun LibraryMixScreen(
         selectedTagsFilter.split(",").filter { it.isNotBlank() }.toSet()
     }
     val database = LocalDatabase.current
-    val filteredPlaylistIds by database.playlistIdsByTags(
-        if (selectedTagIds.isEmpty()) emptyList() else selectedTagIds.toList()
-    ).collectAsState(initial = emptyList())
+    // Keep the Room Flow stable across playback/status recompositions.
+    val taggedPlaylistIds = remember(database, selectedTagIds) {
+        database.playlistIdsByTags(selectedTagIds.toList())
+    }
+    val filteredPlaylistIds by taggedPlaylistIds.collectAsState(initial = emptyList())
 
     val topSize by viewModel.topValue.collectAsState(initial = 50)
-    val likedPlaylist =
+    // Stable synthetic identities prevent every progress / playback update from
+    // invalidating the four library tiles and their image/palette work.
+    val likedName = stringResource(R.string.liked)
+    val likedPlaylist = remember(likedName) {
         Playlist(
-            playlist = PlaylistEntity(
-                id = UUID.randomUUID().toString(),
-                name = stringResource(R.string.liked)
-            ),
+            playlist = PlaylistEntity(id = "capsule:library:liked", name = likedName),
             songCount = 0,
             songThumbnails = emptyList(),
         )
-
-    val downloadPlaylist =
+    }
+    val downloadName = stringResource(R.string.offline)
+    val downloadPlaylist = remember(downloadName) {
         Playlist(
-            playlist = PlaylistEntity(
-                id = UUID.randomUUID().toString(),
-                name = stringResource(R.string.offline)
-            ),
+            playlist = PlaylistEntity(id = "capsule:library:downloaded", name = downloadName),
             songCount = 0,
             songThumbnails = emptyList(),
         )
-
-    val topPlaylist =
+    }
+    val topName = stringResource(R.string.my_top) + " $topSize"
+    val topPlaylist = remember(topName) {
         Playlist(
-            playlist = PlaylistEntity(
-                id = UUID.randomUUID().toString(),
-                name = stringResource(R.string.my_top) + " $topSize"
-            ),
+            playlist = PlaylistEntity(id = "capsule:library:top", name = topName),
             songCount = 0,
             songThumbnails = emptyList(),
         )
-
-    val cachePlaylist =
+    }
+    val cacheName = stringResource(R.string.cached_playlist)
+    val cachePlaylist = remember(cacheName) {
         Playlist(
-            playlist = PlaylistEntity(
-                id = UUID.randomUUID().toString(),
-                name = stringResource(R.string.cached_playlist)
-            ),
+            playlist = PlaylistEntity(id = "capsule:library:cached", name = cacheName),
             songCount = 0,
             songThumbnails = emptyList(),
         )
+    }
 
     val (showLiked) = rememberPreference(ShowLikedPlaylistKey, true)
     val (showDownloaded) = rememberPreference(ShowDownloadedPlaylistKey, true)
@@ -195,13 +191,13 @@ fun LibraryMixScreen(
 
     val lazyListState = rememberLazyListState()
     val lazyGridState = rememberLazyGridState()
-    val visiblePlaylists =
+    val visiblePlaylists = remember(playlist.value, selectedTagIds, filteredPlaylistIds) {
         playlist.value.let { playlists ->
             if (selectedTagIds.isEmpty()) playlists else playlists.filter { it.id in filteredPlaylistIds }
         }
-    val otherItems =
-        albums.value + artist.value
-    val sortedOtherItems =
+    }
+    val sortedOtherItems = remember(albums.value, artist.value, sortType, sortDescending, collator) {
+        val otherItems = albums.value + artist.value
         when (sortType) {
             MixSortType.CREATE_DATE ->
                 otherItems.sortedBy { item ->
@@ -234,6 +230,7 @@ fun LibraryMixScreen(
         }.let { list ->
             if (sortDescending) list.asReversed() else list
         }
+    }
 
     val customPlaylistMode = playlistSortType == PlaylistSortType.CUSTOM
     val canEnterReorderMode = customPlaylistMode && selectedTagIds.isEmpty()
@@ -298,7 +295,10 @@ fun LibraryMixScreen(
         if (!canEnterReorderMode) reorderEnabled = false
     }
 
-    val allItems =
+    val allItems = remember(
+        customPlaylistMode, visiblePlaylists, sortedOtherItems,
+        albums.value, artist.value, sortType, sortDescending, collator,
+    ) {
         if (customPlaylistMode) {
             (visiblePlaylists + sortedOtherItems).distinctBy { it.id }
         } else {
@@ -339,6 +339,7 @@ fun LibraryMixScreen(
                 if (sortDescending) list.asReversed() else list
             }
         }
+    }
 
     // This screen's own entry: it cannot be destroyed while this composition is alive,
     // and observing it does not recompose the screen on unrelated navigation.
