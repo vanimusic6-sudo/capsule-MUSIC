@@ -417,6 +417,19 @@ internal class AudioNetworkDiagnosticDataSource(
                     bytesRead,
                     elapsedMs(startedAtNs, now),
                 )
+            } else if (failure.isTransientAudioCdnSocketReset()) {
+                // A recoverable peer reset used to export 40+ Media3/OkHttp stack frames
+                // even when the chunk layer resumed the exact missing bytes. The
+                // status/byte count carries the useful evidence without amplifying
+                // logging costs during a long playback test.
+                Timber.tag(TAG).w(
+                    "cdn-read-socket-reset id=%s host=%s readMs=%d bytes=%d elapsedMs=%d",
+                    mediaKey ?: "none",
+                    host ?: "unknown",
+                    elapsedMs(readStartedAtNs, now),
+                    bytesRead,
+                    elapsedMs(startedAtNs, now),
+                )
             } else {
                 Timber.tag(TAG).w(
                     failure,
