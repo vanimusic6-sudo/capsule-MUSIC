@@ -17,6 +17,7 @@ import java.io.FileOutputStream
 import android.widget.Toast
 import com.nikhil.yt.R
 import com.nikhil.yt.innertube.YouTube
+import com.nikhil.yt.playback.audio.DownloadYieldingInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.CancellationException
@@ -351,7 +352,11 @@ object ExperimentalDownload {
                     val output = provider.openOutputStream(safeUri, "w")
                         ?: throw IllegalStateException("Cannot open downloaded file")
                     output.use { out ->
-                        conn.inputStream.use { input ->
+                        DownloadYieldingInputStream(conn.inputStream).use { input ->
+                            // WorkManager's independent Audius copy must not saturate
+                            // the same network while a foreground YouTube/Audius
+                            // player is buffering. This yields reads only and keeps
+                            // the original file/MediaStore cancellation contract.
                             val coroutine = currentCoroutineContext()
                             VerifiedAudioCopy.copy(input, out, size, MAX_BYTES) { coroutine.ensureActive() }
                         }
