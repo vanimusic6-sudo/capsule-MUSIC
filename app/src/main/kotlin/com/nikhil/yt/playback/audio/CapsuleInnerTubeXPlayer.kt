@@ -12,6 +12,8 @@ package com.nikhil.yt.playback.audio
 
 import android.content.Context
 import android.net.ConnectivityManager
+import com.metrolist.innertubex.sabr.ExperimentalSabrApi
+import com.nikhil.yt.BuildConfig
 import com.metrolist.innertubex.InnerTube
 import com.metrolist.innertubex.InnerTubeLogLevel
 import com.metrolist.innertubex.InnerTubeLogger
@@ -93,6 +95,66 @@ object CapsuleInnerTubeXPlayer {
     private val bundleMutex = Mutex()
     private val resolveMutex = Mutex()
     private val scheduler = AudioResolveScheduler()
+
+    /**
+     * Developer-only, explicit one-shot SABR proof. It does not change playback
+     * or download resolution, does not claim SABR is seekable in Media3, and
+     * never sends a duplicate /player request for a normal play action.
+     *
+     * A SABR-only extractor result is usable here but is still not passed to
+     * the production ProgressiveMediaSource/ProgressiveDownloader.
+     */
+    @OptIn(ExperimentalSabrApi::class)
+    internal suspend fun debugProbeSabrAudio(
+        videoId: String,
+        profileId: String = "WEB_REMIX",
+    ): Result<SabrAudioProbeSummary> {
+        if (!BuildConfig.DEBUG) {
+            return Result.failure(IllegalStateException("SABR probe is disabled outside debug builds"))
+        }
+        if (!videoId.matches(Regex("[A-Za-z0-9_-]{11}"))) {
+            return Result.failure(IllegalArgumentException("SABR probe expects one YouTube video ID"))
+        }
+        return try {
+            CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
+            val (client, bootstrap) = scheduler.run(videoId, AudioResolvePriority.PREFETCH) {
+                resolveMutex.withLock {
+                    withTimeout(ENGINE_RESOLVE_TIMEOUT_MS) {
+                        val snapshot = bundle()
+                        val hints = ContentHints(
+                            wantVideo = false,
+                            playbackClientOverrideId = profileId,
+                        ).withStreamCapabilities(
+                            allowHls = false,
+                            allowSabr = true,
+                            allowBoundedRange = true,
+                        )
+                        val extracted = requireNotNull(
+                            snapshot.extractor.extract(
+                                videoId = videoId,
+                                hints = hints,
+                                excludedClients = emptySet(),
+                                audioQuality = InnerTubeXAudioQuality.HIGH,
+                                clientPlaybackNonce = generateClientPlaybackNonce(),
+                            ),
+                        ) { "SABR probe could not extract a playback response" }
+                        val sabr = requireNotNull(extracted.sabrBootstrap) {
+                            "This profile returned direct media rather than a SABR bootstrap"
+                        }
+                        snapshot.httpClient to sabr
+                    }
+                }
+            }
+            Result.success(probeSabrAudioWire(client, bootstrap))
+        } catch (timeout: TimeoutCancellationException) {
+            currentCoroutineContext().ensureActive()
+            Result.failure(SocketTimeoutException("SABR debug probe timed out"))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            Result.failure(failure)
+        }
+    }
 
     fun prioritizePlayback(mediaId: String) = scheduler.promote(mediaId)
 

@@ -68,6 +68,35 @@ class AudioChunkedDataSourceTest {
     }
 
     @Test
+    fun shortDirectResponseCannotSilentlyEndABoundedAudioStream() {
+        val upstream = object : DataSource {
+            var offset = 0
+            override fun addTransferListener(transferListener: TransferListener) = Unit
+            override fun open(dataSpec: DataSpec): Long {
+                offset = 0
+                return dataSpec.length
+            }
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                if (this.offset >= 3) return C.RESULT_END_OF_INPUT
+                val count = minOf(length, 3 - this.offset)
+                repeat(count) { buffer[offset + it] = (this.offset + it).toByte() }
+                this.offset += count
+                return count
+            }
+            override fun getUri(): Uri? = Uri.EMPTY
+            override fun close() = Unit
+        }
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
+        source.open(spec(8L))
+        val output = ByteArray(8)
+        assertEquals(3, source.read(output, 0, output.size))
+        org.junit.Assert.assertThrows(java.io.EOFException::class.java) {
+            source.read(output, 3, 5)
+        }
+        source.close()
+    }
+
+    @Test
     fun smallOrCachedTailOpusReadsAreCoalescedWithoutNetworkRequestFragmentation() {
         val bytes = ByteArray(5120) { (it % 251).toByte() }
         val upstream = FakeUpstream(bytes, maxBytesPerRead = 8192)

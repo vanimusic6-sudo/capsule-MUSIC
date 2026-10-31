@@ -209,6 +209,7 @@ import com.nikhil.yt.playback.audio.AudioCacheDataSource
 import com.nikhil.yt.discovery.ExperimentalCatalog.EXPERIMENTAL_MEDIA_PREFIX
 import com.nikhil.yt.constants.ExperimentalSourcesEnabledKey
 import com.nikhil.yt.playback.audio.AudioChunkedDataSource
+import com.nikhil.yt.playback.audio.DownloadPlaybackCoexistence
 import com.nikhil.yt.playback.audio.AudioCacheSource
 import com.nikhil.yt.playback.audio.AudioNetworkDiagnosticDataSource
 import com.nikhil.yt.playback.audio.AudioCdnConnectionDiagnosticInterceptor
@@ -4027,7 +4028,23 @@ class MusicService :
     // VIDEO starts only from an explicit user action on the AUDIO/VIDEO toggle.
 }
 
+    /**
+     * The downloader is a separate Media3 worker. Give this foreground media
+     * session temporary network priority without cancelling partial files,
+     * touching shared URLs, or waiting on the playback application looper.
+     */
+    private fun updateDownloadNetworkPriority() {
+        if (!::player.isInitialized) return
+        DownloadPlaybackCoexistence.priority.observe(
+            mediaId = player.currentMediaItem?.mediaId,
+            playWhenReady = player.playWhenReady,
+            buffering = player.playbackState == Player.STATE_BUFFERING,
+            ready = player.playbackState == Player.STATE_READY,
+        )
+    }
+
     override fun onPlaybackStateChanged(@Player.State playbackState: Int) {
+    updateDownloadNetworkPriority()
     super.onPlaybackStateChanged(playbackState)
     if (player.currentMediaItem?.mediaId?.startsWith(EXPERIMENTAL_MEDIA_PREFIX) == true) {
         // Neither YouTube CDN readiness nor YouTube automix applies.
@@ -4137,6 +4154,7 @@ class MusicService :
 
     override fun onIsPlayingChanged(isPlaying: Boolean) {
         super.onIsPlayingChanged(isPlaying)
+        updateDownloadNetworkPriority()
         refreshIslandClock()
         updateVideoPauseCollapse()
         val activeMediaId = player.currentMediaItem?.mediaId
@@ -4151,6 +4169,12 @@ class MusicService :
 
 
     override fun onEvents(player: Player, events: Player.Events) {
+        if (events.containsAny(
+                Player.EVENT_PLAY_WHEN_READY_CHANGED,
+                Player.EVENT_MEDIA_ITEM_TRANSITION,
+                Player.EVENT_PLAYBACK_STATE_CHANGED,
+            )
+        ) updateDownloadNetworkPriority()
         if (events.containsAny(Player.EVENT_PLAY_WHEN_READY_CHANGED, Player.EVENT_MEDIA_ITEM_TRANSITION)) {
             updateVideoPauseCollapse()
         }
@@ -6101,6 +6125,7 @@ class MusicService :
     }
 
     override fun onDestroy() {
+        DownloadPlaybackCoexistence.priority.clear()
         videoPauseCollapseJob?.cancel()
         videoModeSwitchJob?.cancel()
         videoReturnGapJob?.cancel()

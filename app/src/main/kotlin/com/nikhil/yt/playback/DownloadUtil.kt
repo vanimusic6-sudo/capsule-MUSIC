@@ -23,6 +23,7 @@ import androidx.media3.exoplayer.offline.DownloaderFactory
 import com.nikhil.yt.playback.audio.CapsuleAudioRequestInterceptor
 import com.nikhil.yt.playback.audio.AudioCacheIdentity
 import com.nikhil.yt.playback.audio.AudioChunkedDataSource
+import com.nikhil.yt.playback.audio.DownloadYieldingDataSource
 import com.nikhil.yt.playback.audio.AudioDownloadUrlPolicy
 import com.nikhil.yt.playback.audio.AUDIO_CHUNK_BYTES
 import com.nikhil.yt.playback.audio.AudioPlaybackContext
@@ -240,12 +241,17 @@ constructor(
                                 CacheDataSource.Factory().setCache(playerCache)
                                     .setCacheWriteDataSinkFactory(null)
                                     .setUpstreamDataSourceFactory(DataSource.Factory {
-                                        AudioChunkedDataSource(
-                                            OkHttpDataSource.Factory(
-                                                mediaOkHttpClient.newBuilder().proxy(YouTube.streamProxy).build(),
-                                            ).createDataSource(),
-                                            chunkBytes = playback.rangeChunkSizeBytes.takeIf { it > 0L }
-                                                ?: AUDIO_CHUNK_BYTES,
+                                        // Stop consuming download bandwidth between bounded reads
+                                        // when the foreground player is buffering or just became
+                                        // READY. Do not pause/cancel Media3 or re-resolve URLs.
+                                        DownloadYieldingDataSource(
+                                            AudioChunkedDataSource(
+                                                OkHttpDataSource.Factory(
+                                                    mediaOkHttpClient.newBuilder().proxy(YouTube.streamProxy).build(),
+                                                ).createDataSource(),
+                                                chunkBytes = playback.rangeChunkSizeBytes.takeIf { it > 0L }
+                                                    ?: AUDIO_CHUNK_BYTES,
+                                            ),
                                         )
                                     })
                                     .setFlags(FLAG_IGNORE_CACHE_ON_ERROR),
