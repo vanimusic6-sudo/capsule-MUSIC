@@ -193,11 +193,15 @@
             android:multiprocess="false"
             android:process=":capsule_video" />
 
+        <!-- Media3's platform + MediaLibraryService must be discoverable by
+             legitimate external media controllers (including HONOR/SystemUI).
+             Do NOT gate this exported service behind the system-only
+             BIND_MEDIA_BROWSER_SERVICE permission. Session callback guards
+             library data and custom commands using ControllerInfo.isTrusted. -->
         <service
             android:name=".playback.MusicService"
             android:exported="true"
             android:foregroundServiceType="mediaPlayback"
-            android:permission="android.permission.BIND_MEDIA_BROWSER_SERVICE"
             tools:ignore="ExportedService">
             <intent-filter>
                 <action android:name="androidx.media3.session.MediaSessionService" />
