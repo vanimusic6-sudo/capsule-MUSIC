@@ -11,8 +11,6 @@
 package com.nikhil.yt.playback
 
 import android.app.Notification
-import android.graphics.Bitmap
-import java.io.ByteArrayOutputStream
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.KeyguardManager
@@ -551,10 +549,12 @@ class MusicService :
     private val sessionArtworkLoader by lazy(LazyThreadSafetyMode.NONE) {
         CacheBitmapLoader(CoilBitmapLoader(this, scope))
     }
-    private var systemArtworkJob: Job? = null
-    // HONOR/Huawei's island may keep an old system playback timestamp even
-    // though Media3's in-app clock has moved. Never poll on other OEMs.
-    private var islandClockJob: Job? = null
+    // Android's media session publishes a timestamped PlaybackState. HONOR's
+    // Magic Capsule should consume the same native session as Quick Settings
+    // and lock screen. A 3-second forced notification rebuild neither advances
+    // Android's playback clock nor makes unsupported OEM integrations appear;
+    // it does, however, wake the main thread and notification manager forever.
+    // Keep only one-shot refreshes when the actual session position/state changes.
     private var lastIslandRefreshMs = 0L
     private val hasHonorIsland: Boolean
         get() = Build.MANUFACTURER.equals("HONOR", ignoreCase = true) ||
@@ -565,24 +565,10 @@ class MusicService :
         val now = android.os.SystemClock.elapsedRealtime()
         if (now - lastIslandRefreshMs < 650L) return
         lastIslandRefreshMs = now
-        // Ask Media3 to publish a fresh, timestamped media notification, without
-        // mutating the queue, seeking, recreating the player or downloading art.
+        // Media3 publishes media-style notification / platform MediaSession:
+        // explicitly notify on actual track/seek/play state changes only.
         runCatching { super.onUpdateNotification(mediaSession, player.isPlaying) }
             .onFailure { Timber.tag("CapsuleIsland").w("System media refresh failed: %s", it.javaClass.simpleName) }
-    }
-
-    private fun scheduleIslandClock() {
-        if (!hasHonorIsland) return
-        islandClockJob?.cancel()
-        islandClockJob = null
-        if (!::mediaSession.isInitialized || !screenInteractive ||
-            player.currentMediaItem == null || !player.playWhenReady) return
-        islandClockJob = scope.launch {
-            while (screenInteractive && player.currentMediaItem != null && player.playWhenReady) {
-                delay(3_000L)
-                if (screenInteractive && player.currentMediaItem != null && player.playWhenReady) refreshIslandClock()
-            }
-        }
     }
 
     private val songMutationMutex = Mutex()
@@ -1356,20 +1342,17 @@ class MusicService :
                 when (intent?.action) {
                     Intent.ACTION_SCREEN_OFF -> {
                         screenInteractive = false
-                        scheduleIslandClock()
-                        suspendCapsuleVideoForScreenOff()
+                                        suspendCapsuleVideoForScreenOff()
                     }
 
                     Intent.ACTION_SCREEN_ON -> {
                         screenInteractive = true
-                        scheduleIslandClock()
-                        resumeCapsuleVideoAfterUnlockIfAllowed()
+                                        resumeCapsuleVideoAfterUnlockIfAllowed()
                     }
 
                     Intent.ACTION_USER_PRESENT -> {
                         screenInteractive = true
-                        scheduleIslandClock()
-                        resumeCapsuleVideoAfterUnlockIfAllowed()
+                                        resumeCapsuleVideoAfterUnlockIfAllowed()
                     }
                 }
             }
@@ -2598,63 +2581,12 @@ class MusicService :
      * The replacement has exactly the same media ID, URI and cache key. Never
      * reset playback, seek, prepare or rebuild the audio/video source here.
      */
-    private fun publishSystemArtwork(item: MediaItem?) {
-        // Media3 already supplies the URI to most Android skins. Only HONOR/
-        // Huawei need the explicit compressed cover workaround for their island.
-        if (!Build.MANUFACTURER.equals("HONOR", ignoreCase = true) &&
-            !Build.MANUFACTURER.equals("HUAWEI", ignoreCase = true)
-        ) return
-        systemArtworkJob?.cancel()
-        systemArtworkJob = null
-        val requested = item ?: return
-        val uri = requested.mediaMetadata.artworkUri ?: return
-        if (requested.mediaMetadata.artworkData != null) return
-
-        systemArtworkJob = scope.launch {
-            val encoded = try {
-                withContext(Dispatchers.IO) {
-                    val bitmap = sessionArtworkLoader.loadBitmap(uri)
-                        .get(8, TimeUnit.SECONDS)
-                    ByteArrayOutputStream().use { stream ->
-                        if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 82, stream)) {
-                            throw IllegalStateException("Artwork compression failed")
-                        }
-                        stream.toByteArray().takeIf { it.isNotEmpty() && it.size < 400_000 }
-                    }
-                }
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                throw cancelled
-            } catch (failure: Exception) {
-                reportRecoverableException("MusicService", "system media artwork", failure)
-                null
-            } ?: return@launch
-
-            val current = player.currentMediaItem ?: return@launch
-            if (current.mediaId != requested.mediaId ||
-                current.mediaMetadata.artworkUri != uri ||
-                current.mediaMetadata.artworkData != null
-            ) return@launch
-            val index = player.currentMediaItemIndex
-            if (index < 0 || index >= player.mediaItemCount) return@launch
-            if (!player.isCommandAvailable(Player.COMMAND_CHANGE_MEDIA_ITEMS)) return@launch
-
-            runCatching {
-                player.replaceMediaItem(
-                    index,
-                    current.buildUpon()
-                        .setMediaMetadata(
-                            current.mediaMetadata.buildUpon()
-                                .setArtworkData(
-                                    encoded,
-                                    androidx.media3.common.MediaMetadata.PICTURE_TYPE_FRONT_COVER,
-                                ).build(),
-                        ).build(),
-                )
-            }.onFailure {
-                reportRecoverableException("MusicService", "publish media artwork bytes", it)
-            }
-        }
-    }
+    // The platform notification and HONOR Magic Capsule read Media3's
+    // current MediaItem metadata (title, artist, artworkUri) through the real
+    // MediaLibrarySession. Don't asynchronously encode 400 KiB of JPEG and
+    // replace the *playing* MediaItem just to publish cover bytes: replacing
+    // its timeline can invalidate a running source on some Media3/OEM builds.
+    // CacheBitmapLoader already supplies bitmap data to system controllers.
 
     private fun updateNotification() {
         try {
@@ -3821,8 +3753,6 @@ class MusicService :
 
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         super.onMediaItemTransition(mediaItem, reason)
-        publishSystemArtwork(mediaItem)
-        scheduleIslandClock()
         refreshIslandClock()
         if (::offlinePlaybackQueue.isInitialized) offlinePlaybackQueue.checkCurrent()
 
@@ -4194,7 +4124,6 @@ class MusicService :
 
     override fun onIsPlayingChanged(isPlaying: Boolean) {
         super.onIsPlayingChanged(isPlaying)
-        scheduleIslandClock()
         refreshIslandClock()
         updateVideoPauseCollapse()
         val activeMediaId = player.currentMediaItem?.mediaId
@@ -6159,8 +6088,6 @@ class MusicService :
     }
 
     override fun onDestroy() {
-        islandClockJob?.cancel()
-        islandClockJob = null
         videoPauseCollapseJob?.cancel()
         videoModeSwitchJob?.cancel()
         videoReturnGapJob?.cancel()
