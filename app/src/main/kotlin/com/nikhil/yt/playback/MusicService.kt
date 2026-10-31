@@ -12,6 +12,7 @@ package com.nikhil.yt.playback
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.Notification
 import android.app.KeyguardManager
 import android.app.PendingIntent
 import android.bluetooth.BluetoothClass
@@ -6286,6 +6287,59 @@ class MusicService :
         }
         runCatching { super.onUpdateNotification(session, startInForegroundRequired) }
             .onFailure { reportException(it) }
+    }
+
+    /**
+     * A single bounded device-side proof of what Android actually received.
+     * When the user goes Home, distinguish a native MediaStyle with a platform
+     * session token from a generic service notification. No title, track ID,
+     * URLs, artwork bytes or account identifiers are logged.
+     */
+    fun auditPublishedAndroidMediaCard(origin: String) {
+        if (!GlobalLog.isEnabled) return
+        fun capture(phase: String) {
+            val manager = getSystemService(NotificationManager::class.java)
+            val active = runCatching { manager?.activeNotifications.orEmpty() }
+                .getOrElse { emptyArray() }
+            val native = active.filter { status ->
+                status.notification.extras?.containsKey(Notification.EXTRA_MEDIA_SESSION) == true
+            }
+            val ownedId = active.firstOrNull { it.id == NOTIFICATION_ID }
+            val category = ownedId?.notification?.category ?: "missing"
+            val template = ownedId?.notification?.extras
+                ?.getString(Notification.EXTRA_TEMPLATE)
+                ?.substringAfterLast('.')
+                ?: "missing"
+            Timber.tag("CapsuleSystemMedia").i(
+                "audit phase=%s origin=%s playing=%s playWhenReady=%s state=%d " +
+                    "sessionAdded=%s notificationAllowed=%s channelImportance=%d " +
+                    "notificationCount=%d ownMediaIdPresent=%s ownCategory=%s ownTemplate=%s " +
+                    "mediaSessionTokenCount=%d mediaTokenOnOwnId=%s",
+                phase,
+                origin,
+                player.isPlaying,
+                player.playWhenReady,
+                player.playbackState,
+                ::mediaSession.isInitialized && isSessionAdded(mediaSession),
+                manager?.areNotificationsEnabled() == true,
+                manager?.getNotificationChannel(CHANNEL_ID)?.importance ?: -1,
+                active.size,
+                ownedId != null,
+                category,
+                template,
+                native.size,
+                ownedId?.notification?.extras
+                    ?.containsKey(Notification.EXTRA_MEDIA_SESSION) == true,
+            )
+        }
+        capture("immediate")
+        // DefaultMediaNotificationProvider can finish loading artwork
+        // asynchronously. One delayed sample detects the actual posted style,
+        // without a periodic observer or persistent wakeups.
+        scope.launch {
+            delay(700L)
+            capture("settled")
+        }
     }
 
     inner class MusicBinder : Binder() {
