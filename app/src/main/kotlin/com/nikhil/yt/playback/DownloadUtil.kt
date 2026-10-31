@@ -474,12 +474,11 @@ constructor(
             .distinctUntilChanged()
 
     private fun registerThrottleSignal(exception: Throwable?) {
-        val nextStrikeCount =
-            if (exception == null || isProbablyThrottleSignal(exception)) {
-                consecutiveThrottleSignals.incrementAndGet()
-            } else {
-                consecutiveThrottleSignals.updateAndGet { strikes -> maxOf(1, strikes) }
-            }
+        // The Media3 terminal exception may be null and a /player timeout
+        // only proves connectivity failure. Neither is a new rate-limit strike.
+        // Shared global HTTP 429 safety gates are awaited independently above.
+        if (exception == null || !isProbablyThrottleSignal(exception)) return
+        val nextStrikeCount = consecutiveThrottleSignals.incrementAndGet()
 
         val cooldownMs =
             when {
