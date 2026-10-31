@@ -21,8 +21,6 @@ import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.FluidSlidingNavigationBar
 import android.annotation.SuppressLint
 import android.Manifest
-import android.app.ActivityManager
-import android.app.ForegroundServiceStartNotAllowedException
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -345,7 +343,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        startMusicServiceSafely()
+        // ArchiveTune parity: bind for the UI; let Media3 publish the real
+        // media foreground service only when playback is active.
         isMusicServiceBound =
             bindService(
                 Intent(this, MusicService::class.java),
@@ -367,51 +366,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun isAppInForeground(): Boolean {
-        val activityManager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
-        val appProcesses = activityManager.runningAppProcesses ?: return false
-        val packageName = packageName
-        return appProcesses.any { processInfo ->
-            processInfo.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND &&
-                    processInfo.processName == packageName
-        }
-    }
-
-    private fun startMusicServiceSafely() {
-        val startIntent = Intent(this, MusicService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            try {
-                if (isAppInForeground()) {
-                    startService(startIntent)
-                }
-            } catch (e: ForegroundServiceStartNotAllowedException) {
-                reportException(e)
-            } catch (e: IllegalStateException) {
-                reportException(e)
-            } catch (e: SecurityException) {
-                reportException(e)
-            } catch (e: Exception) {
-                reportException(e)
-            }
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            try {
-                startService(startIntent)
-            } catch (e: IllegalStateException) {
-                reportException(e)
-            } catch (e: SecurityException) {
-                reportException(e)
-            } catch (e: Exception) {
-                reportException(e)
-            }
-        } else {
-            try {
-                startService(startIntent)
-            } catch (e: Exception) {
-                reportException(e)
-            }
-        }
-    }
-
     override fun onSaveInstanceState(outState: Bundle) {
         lastTopLevelRoute?.let { outState.putString(STATE_TOP_LEVEL_ROUTE, it) }
         super.onSaveInstanceState(outState)
@@ -423,6 +377,9 @@ class MainActivity : ComponentActivity() {
         // Configuration changes (e.g. rotation) are not a background exit.
         if (!isChangingConfigurations) {
             playerConnection?.service?.suspendCapsuleVideoForAppBackground()
+            // One-shot diagnostic of Android's *posted* notification after
+            // leaving for Home. Logs only style/token/channel, not media data.
+            playerConnection?.service?.auditPublishedAndroidMediaCard("activity_onStop")
         }
         safeUnbindMusicService()
         super.onStop()
@@ -1884,7 +1841,7 @@ class MainActivity : ComponentActivity() {
                     return@launch
                 }
                 pendingDeepLinkSong = PendingDeepLinkSong(song.toMediaItem())
-                startMusicServiceSafely()
+
                 playPendingDeepLinkSongIfReady()
             }
 
@@ -1928,7 +1885,11 @@ class MainActivity : ComponentActivity() {
         }
         if ((uri.scheme.equals("capsule", ignoreCase = true) || uri.scheme.equals("velune", ignoreCase = true)) && authority == "together") {
             pendingTogetherJoinLink = uri.toString()
-            startMusicServiceSafely()
+            // Hosting/joining Together is an explicit long-lived task even
+            // without audio. Preserve its started-service lifetime; only
+            // routine Activity.onStart() must be bound-only.
+            runCatching { startService(Intent(this, MusicService::class.java)) }
+                .onFailure { reportException(it) }
             joinPendingTogetherIfReady()
             return
         }
@@ -1993,7 +1954,7 @@ class MainActivity : ComponentActivity() {
                                 PendingDeepLinkSong(
                                     mediaItem = mediaItem,
                                 )
-                            startMusicServiceSafely()
+
                             playPendingDeepLinkSongIfReady()
                         }.onFailure {
                             reportException(it)

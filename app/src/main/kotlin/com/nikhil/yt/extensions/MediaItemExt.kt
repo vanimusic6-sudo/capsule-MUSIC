@@ -58,6 +58,7 @@ fun Song.toMediaItem(): MediaItem {
                 .setArtist(metadata.artists.artistCreditLine())
                 .setArtworkUri(song.thumbnailUrl?.toUri())
                 .setAlbumTitle(song.albumName)
+                .setIsPlayable(true)
                 .setMediaType(MEDIA_TYPE_MUSIC)
                 .setExtras(Bundle().apply { putBoolean(ExtraIsMusicVideo, false) })
                 .build(),
@@ -80,6 +81,7 @@ fun SongItem.toMediaItem(): MediaItem {
                 .setArtist(metadata.artists.artistCreditLine())
                 .setArtworkUri(thumbnail.toUri())
                 .setAlbumTitle(album?.name)
+                .setIsPlayable(true)
                 .setMediaType(MEDIA_TYPE_MUSIC)
                 .setExtras(Bundle().apply { putBoolean(ExtraIsMusicVideo, isOriginalVideo) })
                 .build(),
@@ -112,6 +114,7 @@ fun MediaMetadata.toMediaItem(): MediaItem {
                 .setArtist(metadata.artists.artistCreditLine())
                 .setArtworkUri(thumbnailUrl?.toUri())
                 .setAlbumTitle(album?.title)
+                .setIsPlayable(true)
                 .setMediaType(MEDIA_TYPE_MUSIC)
                 .setExtras(Bundle().apply { putBoolean(ExtraIsMusicVideo, metadata.isOriginalVideo) })
                 .build(),
