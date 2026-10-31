@@ -45,17 +45,41 @@ class CoilBitmapLoader(
 ) : BitmapLoader {
     override fun supportsMimeType(mimeType: String): Boolean = mimeType.startsWith("image/")
 
+    // ArchiveTune also bounds the *decoded* bitmap. The old path decoded
+    // original pixels with no sample size, potentially parceling a multi-MB
+    // bitmap to platform SystemUI. Keep system artwork compact and CPU-cheap.
+    private val maxIconSizePx =
+        (context.resources.displayMetrics.density * 128f).roundToInt().coerceIn(128, 512)
+
     override fun decodeBitmap(data: ByteArray): ListenableFuture<Bitmap> =
-        scope.future(Dispatchers.IO) {
+        scope.future(Dispatchers.Default) {
             require(data.isNotEmpty()) { "Empty image data" }
-            BitmapFactory.decodeByteArray(data, 0, data.size)
-                ?: throw IllegalStateException("Could not decode image data")
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
+            require(bounds.outWidth > 0 && bounds.outHeight > 0) {
+                "Image header did not contain a valid size"
+            }
+            val longest = maxOf(bounds.outWidth, bounds.outHeight)
+            var sampleSize = 1
+            while (longest / sampleSize / 2 >= maxIconSizePx) {
+                sampleSize *= 2
+            }
+            val bitmap = checkNotNull(
+                BitmapFactory.decodeByteArray(
+                    data,
+                    0,
+                    data.size,
+                    BitmapFactory.Options().apply {
+                        inSampleSize = sampleSize
+                        inPreferredConfig = Bitmap.Config.ARGB_8888
+                    },
+                ),
+            ) { "Could not decode image data" }
+            bitmap.fitTo(maxIconSizePx)
         }
 
     override fun loadBitmap(uri: Uri): ListenableFuture<Bitmap> =
         scope.future(Dispatchers.IO) {
-            val density = context.resources.displayMetrics.density
-            val maxIconSizePx = (density * 128f).roundToInt().coerceIn(128, 512)
             var lastFailure: Throwable? = null
 
             for (attempt in 0 until ATTEMPTS) {
