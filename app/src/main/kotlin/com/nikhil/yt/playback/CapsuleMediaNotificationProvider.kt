@@ -10,17 +10,7 @@ import androidx.media3.session.MediaSession
 import com.google.common.collect.ImmutableList
 import com.nikhil.yt.R
 
-/**
- * Keep the actual Media3 MediaStyle notification available when Android
- * restarts/binds MusicService while a song is playing.
- *
- * HONOR's media capsule recognizes the platform media session/notification,
- * not a generic CATEGORY_SERVICE foreground notification. Never replace an
- * active MediaStyle notification with a placeholder during onStartCommand.
- *
- * Unlike a custom notification implementation, this delegates every button,
- * metadata, playback state, style and refresh to Media3.
- */
+/** Standard Media3 notification provider with cached publication state for fallback arbitration. */
 @UnstableApi
 internal class CapsuleMediaNotificationProvider(
     context: Context,
@@ -44,13 +34,6 @@ internal class CapsuleMediaNotificationProvider(
         actionFactory: MediaNotification.ActionFactory,
         onNotificationChangedCallback: MediaNotification.Provider.Callback,
     ): MediaNotification {
-        if (com.nikhil.yt.utils.GlobalLog.isEnabled) {
-            timber.log.Timber.tag("CapsuleSystemMedia").i(
-                "media3-provider-create sessionAdded=true mediaItems=%d playing=%s",
-                mediaSession.player.mediaItemCount,
-                mediaSession.player.isPlaying,
-            )
-        }
         val result = delegate.createNotification(
             mediaSession,
             mediaButtonPreferences,

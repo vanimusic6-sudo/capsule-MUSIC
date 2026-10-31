@@ -81,11 +81,8 @@ constructor(
         session: MediaSession,
         controller: MediaSession.ControllerInfo,
     ): MediaSession.ConnectionResult {
-        // Mirror ArchiveTune's AcceptedResultBuilder(session, controller), NOT
-        // ConnectionResult.accept(super.onConnect(...)). Media3's notification
-        // controller must receive a normal, fully configured connection result
-        // including GET_TIMELINE; without it MediaNotificationManager silently
-        // suppresses the native MediaStyle notification even while playing.
+        // Preserve Media3's default controller commands and playback timeline:
+        // its internal notification controller needs these to publish MediaStyle.
         val isNotificationController = session.isMediaNotificationController(controller)
         val builder = MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
         val defaults = builder.build()
@@ -100,35 +97,7 @@ constructor(
                     .build(),
             )
         }
-        val result = builder.build()
-        if (com.nikhil.yt.utils.GlobalLog.isEnabled) {
-            timber.log.Timber.tag("CapsuleSystemMedia").i(
-                "controller-connect notification=%s trusted=%s timelineGranted=%s accepted=%s",
-                isNotificationController,
-                controller.isTrusted,
-                result.availablePlayerCommands.contains(
-                    androidx.media3.common.Player.COMMAND_GET_TIMELINE,
-                ),
-                result.isAccepted,
-            )
-        }
-        return result
-    }
-
-    override fun onPostConnect(
-        session: MediaSession,
-        controller: MediaSession.ControllerInfo,
-    ) {
-        super.onPostConnect(session, controller)
-        if (session.isMediaNotificationController(controller) &&
-            com.nikhil.yt.utils.GlobalLog.isEnabled
-        ) {
-            timber.log.Timber.tag("CapsuleSystemMedia").i(
-                "notification-controller-connected mediaItems=%d isPlaying=%s",
-                session.player.mediaItemCount,
-                session.player.isPlaying,
-            )
-        }
+        return builder.build()
     }
 
     override fun onCustomCommand(

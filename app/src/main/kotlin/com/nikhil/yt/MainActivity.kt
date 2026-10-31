@@ -377,9 +377,6 @@ class MainActivity : ComponentActivity() {
         // Configuration changes (e.g. rotation) are not a background exit.
         if (!isChangingConfigurations) {
             playerConnection?.service?.suspendCapsuleVideoForAppBackground()
-            // One-shot diagnostic of Android's *posted* notification after
-            // leaving for Home. Logs only style/token/channel, not media data.
-            playerConnection?.service?.auditPublishedAndroidMediaCard("activity_onStop")
         }
         safeUnbindMusicService()
         super.onStop()
