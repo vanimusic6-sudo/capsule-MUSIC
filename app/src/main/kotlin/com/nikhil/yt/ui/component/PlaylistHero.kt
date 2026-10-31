@@ -178,13 +178,13 @@ internal fun PlaylistHero(
             // The full-bleed photo placeholder is a continuation of the
             // page, NOT a raised card. Otherwise it clashes with the pinned
             // toolbar until the image arrives (especially under shimmer).
-            Box(Modifier.fillMaxSize().background(bodyBackground), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxSize().background(StandardChrome.background), contentAlignment = Alignment.Center) {
                 when (covers.size) {
                     0 -> if (loading) VeluneLoader(size = 30.dp) else if (fallbackThumbnails.any(String::isNotBlank)) {
                         DetailPortraitImage(
                             thumbnailUrl = fallbackThumbnails.firstOrNull { it.isNotBlank() },
                             fallbackThumbnailUrls = fallbackThumbnails.drop(1),
-                            background = bodyBackground,
+                            background = StandardChrome.background,
                             modifier = Modifier.fillMaxSize(),
                         )
                     } else Icon(
@@ -196,7 +196,7 @@ internal fun PlaylistHero(
                     1 -> DetailPortraitImage(
                         thumbnailUrl = covers.first(),
                         fallbackThumbnailUrls = fallbackThumbnails,
-                        background = bodyBackground,
+                        background = StandardChrome.background,
                         modifier = Modifier.fillMaxSize(),
                     )
                     else -> Column(Modifier.fillMaxSize()) {
@@ -205,7 +205,7 @@ internal fun PlaylistHero(
                                 repeat(2) { column ->
                                     DetailPortraitImage(
                                         thumbnailUrl = covers[(row * 2 + column) % covers.size],
-                                        background = bodyBackground,
+                                        background = StandardChrome.background,
                                         minimumPixels = 640,
                                         modifier = Modifier.weight(1f).fillMaxHeight(),
                                     )
