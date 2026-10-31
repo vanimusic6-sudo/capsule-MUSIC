@@ -2013,15 +2013,18 @@ class MusicService :
                     sessionArtworkLoader,
                 )
                 .build()
-        // Proactively register the single session so Media3 can publish
-        // system controls even before its first asynchronous controller binds.
-        // onGetSession continues returning this exact session.
-        if (!isSessionAdded(mediaSession)) addSession(mediaSession)
+        // Register the real native provider BEFORE exposing the session.
+        // Otherwise eager session registration can publish its first media
+        // notification through an unrelated default provider, and HONOR sees
+        // a different notification on the first app-to-launcher transition.
         mediaNotificationProvider = CapsuleMediaNotificationProvider(
             context = this,
             smallIconRes = R.drawable.ic_capsule_monochrome,
         )
         setMediaNotificationProvider(mediaNotificationProvider)
+        // One registered session, even before our asynchronous controller binds.
+        // onGetSession continues returning the same session.
+        if (!isSessionAdded(mediaSession)) addSession(mediaSession)
         
         updateNotification()
         player.repeatMode = REPEAT_MODE_OFF
