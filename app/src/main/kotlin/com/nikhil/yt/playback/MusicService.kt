@@ -1921,10 +1921,19 @@ class MusicService :
                             eventTime: AnalyticsListener.EventTime, bufferSize: Int,
                             bufferSizeMs: Long, elapsedSinceLastFeedMs: Long,
                         ) {
+                            // A system AudioTrack underrun with tens of seconds of
+                            // *Media3 source* buffer is a renderer/scheduler or
+                            // audio-route event, not proof of network starvation.
                             Timber.tag("CapsuleCodec").w(
-                                "music-underrun id=%s bufferMs=%s timeSinceFeedMs=%s",
+                                "music-underrun id=%s bufferMs=%s timeSinceFeedMs=%s " +
+                                    "bufferedAheadMs=%d loading=%s state=%d playing=%s " +
+                                    "playWhenReady=%s audioFocus=%s routeConnected=%s",
                                 currentMediaItem?.mediaId ?: "unknown",
                                 bufferSizeMs, elapsedSinceLastFeedMs,
+                                totalBufferedDuration,
+                                isLoading, playbackState, isPlaying,
+                                playWhenReady, playbackFocusController.hasFocus,
+                                connectivityManager.activeNetwork != null,
                             )
                         }
                     })
@@ -6268,8 +6277,39 @@ class MusicService :
     }
 
 
+    // Log exactly one entry per native media state change. This lets a phone
+    // field report distinguish missing metadata / disabled notification channel
+    // from OEM Magic Capsule refusing a perfectly valid media session.
+    private var lastSystemMediaPublication: String? = null
+
     override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
         if (startInForegroundRequired) ensureStartedAsForeground()
+        if (GlobalLog.isEnabled && ::player.isInitialized) {
+            val item = player.currentMediaItem
+            val now = buildString {
+                append(item?.mediaId ?: "none")
+                append(':').append(player.playbackState)
+                append(':').append(player.isPlaying)
+                append(':').append(startInForegroundRequired)
+                append(':').append(item?.mediaMetadata?.title != null)
+                append(':').append(item?.mediaMetadata?.artist != null)
+                append(':').append(item?.mediaMetadata?.artworkUri != null)
+            }
+            if (lastSystemMediaPublication != now) {
+                lastSystemMediaPublication = now
+                val manager = getSystemService(NotificationManager::class.java)
+                Timber.tag("CapsuleSystemMedia").i(
+                    "platform-session mediaPresent=%s playing=%s state=%d foreground=%s " +
+                        "hasTitle=%s hasArtist=%s hasArtwork=%s notifyEnabled=%s channelImportance=%s",
+                    item != null, player.isPlaying, player.playbackState,
+                    startInForegroundRequired, item?.mediaMetadata?.title != null,
+                    item?.mediaMetadata?.artist != null,
+                    item?.mediaMetadata?.artworkUri != null,
+                    manager?.areNotificationsEnabled() ?: false,
+                    manager?.getNotificationChannel(CHANNEL_ID)?.importance ?: -1,
+                )
+            }
+        }
         runCatching { super.onUpdateNotification(session, startInForegroundRequired) }
             .onFailure { reportException(it) }
     }
