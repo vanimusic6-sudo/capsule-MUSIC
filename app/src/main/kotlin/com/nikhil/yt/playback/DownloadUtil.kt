@@ -126,10 +126,24 @@ constructor(
         )
     }
 
+    /**
+     * An Innertube player client timing out is a transient connectivity issue,
+     * not YouTube's HTTP 429/bot-check. Retry just once inside this download's
+     * existing resolve budget, without cycling arbitrary client identities.
+     */
+    internal fun shouldRetryDownloadResolve(failure: Throwable): Boolean {
+        val chain = generateSequence(failure as Throwable?) { it.cause }.take(8).toList()
+        if (chain.any { it is CancellationException || it is InvalidResponseCodeException }) return false
+        return chain.any {
+            it is java.net.SocketTimeoutException ||
+                it.javaClass.simpleName.endsWith("PlayerRequestTimeoutException")
+        }
+    }
+
     private suspend fun resolveDownloadPlayback(
         mediaId: String,
     ): CapsuleAudioEngine.PlaybackData {
-        repeat(MAX_DOWNLOAD_RESOLVE_ATTEMPTS) {
+        repeat(MAX_DOWNLOAD_RESOLVE_ATTEMPTS) { attempt ->
             awaitDownloadResolveWindow()
             val selection = playbackContext()
             val resumeContext = selection to connectivityManager.activeNetwork
@@ -167,6 +181,16 @@ constructor(
                 return@repeat
             }
 
+            if (attempt + 1 < MAX_DOWNLOAD_RESOLVE_ATTEMPTS && shouldRetryDownloadResolve(failure)) {
+                timber.log.Timber.tag("AudioDownload").w(
+                    "resolve-timeout-retry id=%s attempt=%d budget=%d (no client ban)",
+                    mediaId, attempt + 1, MAX_DOWNLOAD_RESOLVE_ATTEMPTS,
+                )
+                // Cancellable, off the playback thread; only the one affected
+                // download waits. A timeout never implies a server rate limit.
+                delay(650L)
+                return@repeat
+            }
             throw failure
         }
         throw IOException("Download resolve retry budget exhausted")
@@ -476,13 +500,10 @@ constructor(
             "rate",
             "too many",
             "temporarily unavailable",
-            "timed out",
-            "timeout",
-            "unavailable",
-            "reset by peer",
+            // Generic socket/client timeouts are not HTTP throttling. Treating
+            // every failure as a server cooldown multiplied queue delays.
             "no playable clients",
             "no playable audio stream",
-            "client response unavailable",
         ).any(message::contains)
     }
 
