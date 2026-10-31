@@ -1,4 +1,5 @@
 package com.nikhil.yt.ui.screens
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import android.content.Intent
 import android.net.Uri
@@ -193,6 +194,8 @@ internal fun CatalogHomeRow(
             )
         }
         LazyRow(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(horizontal = 20.dp),

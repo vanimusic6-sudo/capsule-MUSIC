@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.screens
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.material3.Button
@@ -364,7 +365,7 @@ fun AlbumScreen(
                         )
                     }
                     item(key = "other_versions_list") {
-                        LazyRow {
+                        LazyRow(flingBehavior = rememberCapsuleFlingBehavior(), overscrollEffect = null) {
                             items(
                                 items = otherVersions.distinctBy { it.id },
                                 key = { it.id },
