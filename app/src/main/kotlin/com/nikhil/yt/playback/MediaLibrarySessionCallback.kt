@@ -124,10 +124,9 @@ constructor(
             com.nikhil.yt.utils.GlobalLog.isEnabled
         ) {
             timber.log.Timber.tag("CapsuleSystemMedia").i(
-                "notification-controller-connected timelineGranted=%s mediaItems=%d",
-                session.getAvailablePlayerCommands(controller)
-                    .contains(androidx.media3.common.Player.COMMAND_GET_TIMELINE),
+                "notification-controller-connected mediaItems=%d isPlaying=%s",
                 session.player.mediaItemCount,
+                session.player.isPlaying,
             )
         }
     }
