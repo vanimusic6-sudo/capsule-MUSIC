@@ -6285,8 +6285,11 @@ class MusicService :
                 )
             }
         }
-        runCatching { super.onUpdateNotification(session, startInForegroundRequired) }
-            .onFailure { reportException(it) }
+        // Do NOT swallow Android's ForegroundServiceStartNotAllowedException:
+        // MediaSessionService.onUpdateNotificationInternal has dedicated handling
+        // and must observe the exception to keep its state machine consistent.
+        // ArchiveTune uses Media3's default implementation, without this catch.
+        super.onUpdateNotification(session, startInForegroundRequired)
     }
 
     /**
