@@ -160,10 +160,30 @@ internal fun DetailPortraitImage(
     val candidates = remember(thumbnailUrl, fallbackThumbnailUrl, fallbackThumbnailUrls, minimumPixels) {
         detailArtworkCandidates(thumbnailUrl, fallbackThumbnailUrl, fallbackThumbnailUrls, minimumPixels)
     }
-    var candidateIndex by remember(candidates) { mutableIntStateOf(0) }
-    var retryRound by remember(candidates) { mutableIntStateOf(0) }
-    var loaded by remember(candidates) { mutableStateOf(false) }
-    var exhausted by remember(candidates) { mutableStateOf(false) }
+    // Track the *primary image identity*, not the changing collection of
+    // fallback track covers. Track pagination can append candidates after the
+    // primary has already decoded; resetting `loaded` would start a 7-second
+    // retry timer over the visible photo and eventually replace it.
+    val coverIdentity = thumbnailUrl?.takeIf(String::isNotBlank)
+        ?: fallbackThumbnailUrl?.takeIf(String::isNotBlank)
+        ?: fallbackThumbnailUrls.firstOrNull(String::isNotBlank)
+    var candidateIndex by remember(coverIdentity, minimumPixels) { mutableIntStateOf(0) }
+    var retryRound by remember(coverIdentity, minimumPixels) { mutableIntStateOf(0) }
+    var loaded by remember(coverIdentity, minimumPixels) { mutableStateOf(false) }
+    var exhausted by remember(coverIdentity, minimumPixels) { mutableStateOf(false) }
+    var knownCandidateCount by remember(coverIdentity, minimumPixels) {
+        mutableIntStateOf(candidates.size)
+    }
+    // If there was nothing playable, allow newly discovered track fallbacks
+    // to restart the bounded retry chain. This never resets a loaded image.
+    LaunchedEffect(candidates) {
+        if (!loaded && exhausted && candidates.size > knownCandidateCount) {
+            exhausted = false
+            candidateIndex = 0
+            retryRound = 0
+        }
+        knownCandidateCount = maxOf(knownCandidateCount, candidates.size)
+    }
     // Coil may already have resolved a cached cover before a refreshed motion
     // controller is attached. Re-publish SUCCESS only; reset belongs to the
     // parent album/playlist identity, not each individual fallback tile.
