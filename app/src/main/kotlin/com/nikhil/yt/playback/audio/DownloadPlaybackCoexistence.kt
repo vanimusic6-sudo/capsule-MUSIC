@@ -123,6 +123,11 @@ internal class DownloadYieldingInputStream(
     // FIRST network body read, not only after downloading 64 KiB.
     private var readSinceCheck = 64 * 1024
 
+    // java.io.FilterInputStream.read(byte[]) delegates directly to the
+    // underlying stream on some JVM/Android implementations. Override it
+    // explicitly so 32 KiB buffer reads cannot bypass foreground priority.
+    override fun read(buffer: ByteArray): Int = read(buffer, 0, buffer.size)
+
     override fun read(): Int {
         if (readSinceCheck >= CHECK_BYTES) {
             waitForForegroundDownload(shouldYield, checkActive)
