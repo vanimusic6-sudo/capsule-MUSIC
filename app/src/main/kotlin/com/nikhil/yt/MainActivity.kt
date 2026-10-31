@@ -1885,7 +1885,11 @@ class MainActivity : ComponentActivity() {
         }
         if ((uri.scheme.equals("capsule", ignoreCase = true) || uri.scheme.equals("velune", ignoreCase = true)) && authority == "together") {
             pendingTogetherJoinLink = uri.toString()
-
+            // Hosting/joining Together is an explicit long-lived task even
+            // without audio. Preserve its started-service lifetime; only
+            // routine Activity.onStart() must be bound-only.
+            runCatching { startService(Intent(this, MusicService::class.java)) }
+                .onFailure { reportException(it) }
             joinPendingTogetherIfReady()
             return
         }
