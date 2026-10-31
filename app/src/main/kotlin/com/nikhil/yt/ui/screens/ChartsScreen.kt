@@ -8,6 +8,7 @@
 
 package com.nikhil.yt.ui.screens
 
+import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -249,7 +250,7 @@ fun ChartsScreen(
                                             },
                                             modifier = Modifier
                                                 .width(horizontalLazyGridItemWidth)
-                                                .combinedClickable(
+                                                .capsulePressCombinedClickable(
                                                     onClick = {
                                                         if (song.id == mediaMetadata?.id) {
                                                             playerConnection.player.togglePlayPause()
@@ -304,7 +305,7 @@ fun ChartsScreen(
                                         isPlaying = isPlaying,
                                         coroutineScope = coroutineScope,
                                         modifier = Modifier
-                                            .combinedClickable(
+                                            .capsulePressCombinedClickable(inset = 0.dp, radius = 18.dp, 
                                                 onClick = {
                                                     if (video.id == mediaMetadata?.id) {
                                                         playerConnection.player.togglePlayPause()
