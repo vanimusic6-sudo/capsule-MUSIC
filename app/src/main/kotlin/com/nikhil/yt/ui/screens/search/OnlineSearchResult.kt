@@ -1,5 +1,7 @@
 package com.nikhil.yt.ui.screens.search
 
+import com.nikhil.yt.ui.component.capsulePressClickable
+import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -94,7 +96,7 @@ private fun RareTrackRow(
     onMenuClick: () -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+        modifier = Modifier.fillMaxWidth().capsulePressClickable(onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -214,7 +216,7 @@ fun OnlineSearchResult(
                     Icon(painterResource(R.drawable.more_vert), contentDescription = null)
                 }
             },
-            modifier = Modifier.combinedClickable(
+            modifier = Modifier.capsulePressCombinedClickable(
                 onLongClick = openMenu,
                 onClick = {
                     when(item) {
