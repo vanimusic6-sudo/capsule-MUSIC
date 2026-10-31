@@ -63,6 +63,34 @@ import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * A genuine timed-out /player request can briefly fail at a bad network edge.
+ * Never repeat an HTTP refusal, bot-check, explicit cancellation, or client
+ * entitlement failure. A single retry is allowed within the same budget.
+ */
+internal fun shouldRetryDownloadResolve(failure: Throwable): Boolean {
+    val chain = generateSequence(failure as Throwable?) { it.cause }.take(8).toList()
+    if (chain.any { it is CancellationException || it is InvalidResponseCodeException }) return false
+    return chain.any {
+        it is java.net.SocketTimeoutException ||
+            it.javaClass.simpleName.endsWith("PlayerRequestTimeoutException")
+    }
+}
+
+internal fun isLikelyDownloadThrottleSignal(exception: Throwable): Boolean {
+    val message = buildString {
+        append(exception.message.orEmpty())
+        exception.cause?.message?.let {
+            if (isNotBlank()) append(' ')
+            append(it)
+        }
+    }.lowercase()
+    // A socket/client timeout, reset or unavailable network is a transport
+    // failure; only explicit server throttling/quota/refusal belongs here.
+    return listOf("429", "403", "quota", "rate limit", "too many requests")
+        .any(message::contains)
+}
+
 @Singleton
 class DownloadUtil
 @Inject
@@ -124,20 +152,6 @@ constructor(
             localCooldownUntilMs = { cooldownUntilMs },
             sliceMs = DOWNLOAD_WAIT_SLICE_MS,
         )
-    }
-
-    /**
-     * An Innertube player client timing out is a transient connectivity issue,
-     * not YouTube's HTTP 429/bot-check. Retry just once inside this download's
-     * existing resolve budget, without cycling arbitrary client identities.
-     */
-    internal fun shouldRetryDownloadResolve(failure: Throwable): Boolean {
-        val chain = generateSequence(failure as Throwable?) { it.cause }.take(8).toList()
-        if (chain.any { it is CancellationException || it is InvalidResponseCodeException }) return false
-        return chain.any {
-            it is java.net.SocketTimeoutException ||
-                it.javaClass.simpleName.endsWith("PlayerRequestTimeoutException")
-        }
     }
 
     private suspend fun resolveDownloadPlayback(
@@ -483,29 +497,8 @@ constructor(
         consecutiveThrottleSignals.updateAndGet { strikes -> (strikes - 1).coerceAtLeast(0) }
     }
 
-    private fun isProbablyThrottleSignal(exception: Throwable): Boolean {
-        val message =
-            buildString {
-                append(exception.message.orEmpty())
-                exception.cause?.message?.let {
-                    if (isNotBlank()) append(' ')
-                    append(it)
-                }
-            }.lowercase()
-
-        return listOf(
-            "429",
-            "403",
-            "quota",
-            "rate",
-            "too many",
-            "temporarily unavailable",
-            // Generic socket/client timeouts are not HTTP throttling. Treating
-            // every failure as a server cooldown multiplied queue delays.
-            "no playable clients",
-            "no playable audio stream",
-        ).any(message::contains)
-    }
+    private fun isProbablyThrottleSignal(exception: Throwable): Boolean =
+        isLikelyDownloadThrottleSignal(exception)
 
     companion object {
         internal const val MAX_PARALLEL_DOWNLOADS = AudioDownloadSlots.LIMIT
