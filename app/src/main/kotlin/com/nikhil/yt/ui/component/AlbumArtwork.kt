@@ -29,6 +29,8 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.hideFromAccessibility
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.painterResource
@@ -96,6 +98,7 @@ internal fun BoxScope.CapsuleDetailCoverTitle(
     if (title.isBlank()) return
     val foreground = StandardChrome.text
     val alpha = motion?.coverTitleAlpha() ?: 1f
+    val hidden = alpha <= .5f
     Box(Modifier.align(Alignment.BottomCenter).padding(horizontal = 28.dp).padding(bottom = 16.dp)) {
         // This parent owns the untransformed anchor. The moving child never
         // changes the caption slot or the control capsule's measured geometry.
@@ -103,7 +106,8 @@ internal fun BoxScope.CapsuleDetailCoverTitle(
             Modifier.onGloballyPositioned(motion::measureCoverTitle))) {
             Text(
                 text = title,
-                modifier = Modifier.detailCoverTitleMotion(motion).testTag("capsule:detail-title"),
+                modifier = Modifier.detailCoverTitleMotion(motion).testTag("capsule:detail-title")
+                    .semantics { if (hidden) hideFromAccessibility() },
                 color = foreground.copy(alpha = foreground.alpha * alpha),
                 style = MaterialTheme.typography.headlineLarge.copy(
                     fontSize = 25.sp,

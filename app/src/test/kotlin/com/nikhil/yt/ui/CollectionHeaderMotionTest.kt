@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -216,6 +217,9 @@ class CollectionHeaderMotionTest {
             return count
         }
         assertEquals("Pinned glyphs start hidden", 0, glyphPixels("start"))
+        assertTrue("The invisible compact copy must not be read by TalkBack",
+            compose.onNodeWithTag("capsule:detail-toolbar-title").fetchSemanticsNode().config
+                .contains(SemanticsProperties.HideFromAccessibility))
         val midOffset = with(compose.density) { 180.dp.roundToPx() }
         compose.runOnIdle { runBlocking { state.scrollToItem(0, midOffset) } }
         val mid = compose.onNodeWithTag("capsule:detail-title").fetchSemanticsNode().boundsInRoot
@@ -226,6 +230,12 @@ class CollectionHeaderMotionTest {
         val endOffset = with(compose.density) { 340.dp.roundToPx() }
         compose.runOnIdle { runBlocking { state.scrollToItem(0, endOffset) } }
         assertTrue("Actual pinned glyphs must be painted before any app restart", glyphPixels("pinned") > 30)
+        assertFalse("The visible compact caption must be accessible",
+            compose.onNodeWithTag("capsule:detail-toolbar-title").fetchSemanticsNode().config
+                .contains(SemanticsProperties.HideFromAccessibility))
+        assertTrue("The retired cover copy must not be announced twice",
+            compose.onNodeWithTag("capsule:detail-title").fetchSemanticsNode().config
+                .contains(SemanticsProperties.HideFromAccessibility))
         // Simulate an asynchronously refreshed title while the same screen/controller is alive.
         compose.runOnIdle { title = "Новое название" }
         assertTrue("Updated metadata must redraw the same toolbar", glyphPixels("metadata") > 30)

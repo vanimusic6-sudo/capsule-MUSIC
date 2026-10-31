@@ -29,6 +29,8 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.GraphicsLayerScope
+import androidx.compose.ui.semantics.hideFromAccessibility
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.lerp
@@ -271,11 +273,14 @@ internal fun DetailToolbarTitle(title: String, motion: DetailHeaderMotionState) 
         ?.coerceIn(.5f, 1f) ?: (22f / 25f)
     SideEffect { motion.compactTitleScale = compactScale }
     val foreground = LocalContentColor.current
+    val alpha = motion.compactTitleAlpha()
+    val hidden = alpha < .5f
     Text(
         text = title,
         modifier = Modifier.onGloballyPositioned(motion::measureToolbarTitle)
-            .testTag("capsule:detail-toolbar-title"),
-        color = foreground.copy(alpha = foreground.alpha * motion.compactTitleAlpha()),
+            .testTag("capsule:detail-toolbar-title")
+            .semantics { if (hidden) hideFromAccessibility() },
+        color = foreground.copy(alpha = foreground.alpha * alpha),
         style = style,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
