@@ -8,6 +8,7 @@ on:
       - 'experimental/playback-reliability-20261031'
       - 'experimental/quic-sabr-evaluation-20261031'
       - 'fix/audio-socket-resume-opus-heat-20261031'
+      - 'fix/android-media-downloads-20261031'
   workflow_dispatch:
 
 permissions:

@@ -6,6 +6,8 @@
 
 
 
+@file:Suppress("UnsafeOptInUsageError")
+
 package com.nikhil.yt.playback
 
 import android.content.ContentResolver
@@ -80,6 +82,11 @@ constructor(
         controller: MediaSession.ControllerInfo,
     ): MediaSession.ConnectionResult {
         val connectionResult = super.onConnect(session, controller)
+        // Media3 1.11 restricts untrusted controllers by default. Never
+        // unconditionally replace that result with accept(), which exposed
+        // the entire local library + mutation commands to every app once
+        // the system-only manifest BIND permission is removed.
+        if (!controller.isTrusted) return connectionResult
         return MediaSession.ConnectionResult.accept(
             connectionResult.availableSessionCommands
                 .buildUpon()
@@ -99,6 +106,9 @@ constructor(
         customCommand: SessionCommand,
         args: Bundle,
     ): ListenableFuture<SessionResult> {
+        if (!controller.isTrusted) {
+            return Futures.immediateFuture(SessionResult(SessionError.ERROR_PERMISSION_DENIED))
+        }
         when (customCommand.customAction) {
             MediaSessionConstants.ACTION_TOGGLE_LIKE ->
                 toggleLike("media_session:${controller.packageName}")
@@ -117,7 +127,9 @@ constructor(
         browser: MediaSession.ControllerInfo,
         params: MediaLibraryService.LibraryParams?,
     ): ListenableFuture<LibraryResult<MediaItem>> =
-        Futures.immediateFuture(
+        if (!browser.isTrusted) {
+            Futures.immediateFuture(LibraryResult.ofError(SessionError.ERROR_PERMISSION_DENIED))
+        } else Futures.immediateFuture(
             LibraryResult.ofItem(
                 MediaItem
                     .Builder()
@@ -141,7 +153,10 @@ constructor(
         query: String,
         params: MediaLibraryService.LibraryParams?,
     ): ListenableFuture<LibraryResult<Void>> =
-        Futures.immediateFuture(LibraryResult.ofVoid(params))
+        Futures.immediateFuture(
+            if (browser.isTrusted) LibraryResult.ofVoid(params)
+            else LibraryResult.ofError(SessionError.ERROR_PERMISSION_DENIED),
+        )
 
     override fun onGetSearchResult(
         session: MediaLibrarySession,
@@ -152,6 +167,9 @@ constructor(
         params: MediaLibraryService.LibraryParams?,
     ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> =
         scope.future(Dispatchers.IO) {
+            if (!browser.isTrusted) {
+                return@future LibraryResult.ofError(SessionError.ERROR_PERMISSION_DENIED)
+            }
             val q = query.trim()
             if (q.isBlank() || pageSize <= 0 || page < 0) {
                 return@future LibraryResult.ofItemList(emptyList(), params)
@@ -235,6 +253,9 @@ constructor(
         params: MediaLibraryService.LibraryParams?,
     ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> =
         scope.future(Dispatchers.IO) {
+            if (!browser.isTrusted) {
+                return@future LibraryResult.ofError(SessionError.ERROR_PERMISSION_DENIED)
+            }
             LibraryResult.ofItemList(
                 when (parentId) {
                     MusicService.ROOT ->
@@ -402,6 +423,9 @@ constructor(
         mediaId: String,
     ): ListenableFuture<LibraryResult<MediaItem>> =
         scope.future(Dispatchers.IO) {
+            if (!browser.isTrusted) {
+                return@future LibraryResult.ofError(SessionError.ERROR_PERMISSION_DENIED)
+            }
             when {
                 mediaId == MusicService.ROOT ->
                     LibraryResult.ofItem(

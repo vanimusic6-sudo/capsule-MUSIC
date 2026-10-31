@@ -63,6 +63,34 @@ import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * A genuine timed-out /player request can briefly fail at a bad network edge.
+ * Never repeat an HTTP refusal, bot-check, explicit cancellation, or client
+ * entitlement failure. A single retry is allowed within the same budget.
+ */
+internal fun shouldRetryDownloadResolve(failure: Throwable): Boolean {
+    val chain = generateSequence(failure as Throwable?) { it.cause }.take(8).toList()
+    if (chain.any { it is CancellationException || it is InvalidResponseCodeException }) return false
+    return chain.any {
+        it is java.net.SocketTimeoutException ||
+            it.javaClass.simpleName.endsWith("PlayerRequestTimeoutException")
+    }
+}
+
+internal fun isLikelyDownloadThrottleSignal(exception: Throwable): Boolean {
+    val message = buildString {
+        append(exception.message.orEmpty())
+        exception.cause?.message?.let {
+            if (isNotBlank()) append(' ')
+            append(it)
+        }
+    }.lowercase()
+    // A socket/client timeout, reset or unavailable network is a transport
+    // failure; only explicit server throttling/quota/refusal belongs here.
+    return listOf("429", "403", "quota", "rate limit", "too many requests")
+        .any(message::contains)
+}
+
 @Singleton
 class DownloadUtil
 @Inject
@@ -129,7 +157,7 @@ constructor(
     private suspend fun resolveDownloadPlayback(
         mediaId: String,
     ): CapsuleAudioEngine.PlaybackData {
-        repeat(MAX_DOWNLOAD_RESOLVE_ATTEMPTS) {
+        repeat(MAX_DOWNLOAD_RESOLVE_ATTEMPTS) { attempt ->
             awaitDownloadResolveWindow()
             val selection = playbackContext()
             val resumeContext = selection to connectivityManager.activeNetwork
@@ -167,6 +195,16 @@ constructor(
                 return@repeat
             }
 
+            if (attempt + 1 < MAX_DOWNLOAD_RESOLVE_ATTEMPTS && shouldRetryDownloadResolve(failure)) {
+                timber.log.Timber.tag("AudioDownload").w(
+                    "resolve-timeout-retry id=%s attempt=%d budget=%d (no client ban)",
+                    mediaId, attempt + 1, MAX_DOWNLOAD_RESOLVE_ATTEMPTS,
+                )
+                // Cancellable, off the playback thread; only the one affected
+                // download waits. A timeout never implies a server rate limit.
+                delay(650L)
+                return@repeat
+            }
             throw failure
         }
         throw IOException("Download resolve retry budget exhausted")
@@ -436,12 +474,11 @@ constructor(
             .distinctUntilChanged()
 
     private fun registerThrottleSignal(exception: Throwable?) {
-        val nextStrikeCount =
-            if (exception == null || isProbablyThrottleSignal(exception)) {
-                consecutiveThrottleSignals.incrementAndGet()
-            } else {
-                consecutiveThrottleSignals.updateAndGet { strikes -> maxOf(1, strikes) }
-            }
+        // The Media3 terminal exception may be null and a /player timeout
+        // only proves connectivity failure. Neither is a new rate-limit strike.
+        // Shared global HTTP 429 safety gates are awaited independently above.
+        if (exception == null || !isProbablyThrottleSignal(exception)) return
+        val nextStrikeCount = consecutiveThrottleSignals.incrementAndGet()
 
         val cooldownMs =
             when {
@@ -459,32 +496,8 @@ constructor(
         consecutiveThrottleSignals.updateAndGet { strikes -> (strikes - 1).coerceAtLeast(0) }
     }
 
-    private fun isProbablyThrottleSignal(exception: Throwable): Boolean {
-        val message =
-            buildString {
-                append(exception.message.orEmpty())
-                exception.cause?.message?.let {
-                    if (isNotBlank()) append(' ')
-                    append(it)
-                }
-            }.lowercase()
-
-        return listOf(
-            "429",
-            "403",
-            "quota",
-            "rate",
-            "too many",
-            "temporarily unavailable",
-            "timed out",
-            "timeout",
-            "unavailable",
-            "reset by peer",
-            "no playable clients",
-            "no playable audio stream",
-            "client response unavailable",
-        ).any(message::contains)
-    }
+    private fun isProbablyThrottleSignal(exception: Throwable): Boolean =
+        isLikelyDownloadThrottleSignal(exception)
 
     companion object {
         internal const val MAX_PARALLEL_DOWNLOADS = AudioDownloadSlots.LIMIT
