@@ -256,7 +256,9 @@ fun OnlinePlaylistScreen(
                 if (isLoading) {
                     // Shimmer Loading State
                     item(key = "shimmer") {
-                        ShimmerHost {
+                        // Never shimmer the full-bleed portrait: shimmer
+                        // brightened its placeholder while the separately
+                        // pinned toolbar stayed the ordinary page colour.
                         PlaylistHero(
                                 artworkAlpha = titleMotion::artworkAlpha,
                                 titleMotion = titleMotion,
@@ -267,9 +269,7 @@ fun OnlinePlaylistScreen(
                         ) {
                             repeat(5) { PlaylistAction(R.drawable.play, stringResource(R.string.loading), {}, enabled = false) }
                         }
-                        repeat(6) { ListItemPlaceHolder() }
-                    
-                        }
+                        ShimmerHost { repeat(6) { ListItemPlaceHolder() } }
                     }
                 } else if (playlist != null) {
                     if (!isSearching) {
@@ -280,6 +280,13 @@ fun OnlinePlaylistScreen(
                                 titleMotion = titleMotion,
                                 title = playlist.title,
                                 thumbnails = listOfNotNull(playlist.thumbnail),
+                                // Preserve the official playlist cover when it
+                                // works; only use track artwork if all variants
+                                // of that cover are unavailable or stalled.
+                                fallbackThumbnails = songs.asSequence()
+                                    .map { it.thumbnail }
+                                    .filter(String::isNotBlank)
+                                    .distinct().take(4).toList(),
                                 songCount = playlist.songCountText ?: pluralStringResource(R.plurals.n_song, songs.size, songs.size),
                                 duration = songs.sumOf { it.toMediaMetadata().duration.coerceAtLeast(0) }
                                     .takeIf { it > 0 }?.let { com.nikhil.yt.utils.makeTimeString(it * 1000L) },
