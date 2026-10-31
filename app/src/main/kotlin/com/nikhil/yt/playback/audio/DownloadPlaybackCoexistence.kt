@@ -5,6 +5,8 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
 import java.io.InterruptedIOException
+import java.io.FilterInputStream
+import java.io.InputStream
 
 /**
  * File transfers must not consume network bandwidth while the user is waiting
@@ -103,24 +105,57 @@ internal class DownloadYieldingDataSource(
 
     override fun close() = upstream.close()
 
-    private fun waitForForeground() {
-        while (shouldYield()) {
-            if (Thread.currentThread().isInterrupted) {
-                throw InterruptedIOException("Download cancelled while yielding to foreground playback")
-            }
-            try {
-                Thread.sleep(YIELD_POLL_MS)
-            } catch (interrupted: InterruptedException) {
-                Thread.currentThread().interrupt()
-                throw InterruptedIOException("Download interrupted while yielding to playback").apply {
-                    initCause(interrupted)
-                }
-            }
-        }
-    }
+    private fun waitForForeground() = waitForForegroundDownload(shouldYield)
 
     private companion object {
         const val CHECK_BYTES = 64 * 1024
-        const val YIELD_POLL_MS = 80L
+    }
+}
+
+/** Audius uses HttpURLConnection rather than Media3, but must obey the same network priority. */
+internal class DownloadYieldingInputStream(
+    input: InputStream,
+    private val shouldYield: () -> Boolean = DownloadPlaybackCoexistence.priority::shouldYield,
+) : FilterInputStream(input) {
+    private var readSinceCheck = 0
+
+    override fun read(): Int {
+        if (readSinceCheck >= CHECK_BYTES) {
+            waitForForegroundDownload(shouldYield)
+            readSinceCheck = 0
+        }
+        val result = super.read()
+        if (result >= 0) readSinceCheck++
+        return result
+    }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        if (length == 0) return 0
+        if (readSinceCheck >= CHECK_BYTES) {
+            waitForForegroundDownload(shouldYield)
+            readSinceCheck = 0
+        }
+        val result = super.read(buffer, offset, length)
+        if (result > 0) readSinceCheck += result
+        return result
+    }
+
+    private companion object { const val CHECK_BYTES = 64 * 1024 }
+}
+
+/** Called strictly from download IO workers. Sleep is bounded to avoid wakeup-heavy busy polling. */
+private fun waitForForegroundDownload(shouldYield: () -> Boolean) {
+    while (shouldYield()) {
+        if (Thread.currentThread().isInterrupted) {
+            throw InterruptedIOException("Download cancelled while yielding to foreground playback")
+        }
+        try {
+            Thread.sleep(200L)
+        } catch (interrupted: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw InterruptedIOException("Download interrupted while yielding to playback").apply {
+                initCause(interrupted)
+            }
+        }
     }
 }
