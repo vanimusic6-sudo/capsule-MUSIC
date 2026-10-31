@@ -15,10 +15,10 @@ class DetailToolbarRevealTest {
         assertEquals("Unknown artwork is not ready", 0f, motion.isArtworkReady, 0f)
         assertEquals(0f, motion.artworkAlpha(), 0f)
         motion.setArtworkReady(true)
-        motion.setArtworkReveal(1f)
+        motion.updateArtworkReveal(1f)
         assertEquals("OnSuccess must make the full bitmap visible", 1f, motion.artworkAlpha(), 0f)
         motion.setArtworkReady(false)
-        motion.setArtworkReveal(0f)
+        motion.updateArtworkReveal(0f)
         assertEquals("New collection resets the photo and the toolbar as one surface",
             0f, motion.artworkAlpha(), 0f)
     }
