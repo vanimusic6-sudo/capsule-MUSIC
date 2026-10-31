@@ -7,6 +7,7 @@
 
 package com.nikhil.yt.ui.screens.artist
 
+import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import com.nikhil.yt.ui.utils.artistPortraitUrl
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -516,7 +517,7 @@ fun ArtistScreen(
                                         coroutineScope = coroutineScope,
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(18.dp))
-                                            .combinedClickable(
+                                            .capsulePressCombinedClickable(inset = 0.dp, radius = 18.dp, 
                                                 onClick = {
                                                     navController.navigate("album/${album.id}")
                                                 },
@@ -657,7 +658,7 @@ fun ArtistScreen(
                                             coroutineScope = coroutineScope,
                                             modifier = Modifier
                                                 .clip(RoundedCornerShape(18.dp))
-                                                .combinedClickable(
+                                                .capsulePressCombinedClickable(inset = 0.dp, radius = 18.dp, 
                                                     onClick = {
                                                         when (item) {
                                                             is SongItem ->
