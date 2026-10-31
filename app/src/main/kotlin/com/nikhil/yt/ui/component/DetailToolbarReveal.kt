@@ -23,10 +23,15 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.Text
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.GraphicsLayerScope
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Density
 
 /** Shared, measured scroll progress. Image loading never controls drawing opacity. */
@@ -40,6 +45,52 @@ internal class DetailHeaderMotionState(
     private var restArtworkBottomPx by mutableFloatStateOf(Float.NaN)
     private var toolbarBottomPx by mutableFloatStateOf(Float.NaN)
     private var toolbarHeightPx by mutableFloatStateOf(Float.NaN)
+    private var restTitleX by mutableFloatStateOf(Float.NaN)
+    private var restTitleY by mutableFloatStateOf(Float.NaN)
+    private var compactTitleX by mutableFloatStateOf(Float.NaN)
+    private var compactTitleY by mutableFloatStateOf(Float.NaN)
+    var compactTitleScale by mutableFloatStateOf(22f / 25f)
+
+    // Measure the stationary parent, never the translated text itself. Adding
+    // scroll back gives an invariant source anchor and avoids feedback drift.
+    fun measureCoverTitle(coordinates: LayoutCoordinates) {
+        if (scroll.firstVisibleItemIndex != 0) return
+        val position = coordinates.positionInRoot()
+        val x = position.x + coordinates.size.width / 2f
+        val y = position.y + coordinates.size.height / 2f + scroll.firstVisibleItemScrollOffset
+        if (x.isFinite() && restTitleX != x) restTitleX = x
+        if (y.isFinite() && (!restTitleY.isFinite() || kotlin.math.abs(y - restTitleY) > .5f)) restTitleY = y
+    }
+
+    fun measureToolbarTitle(coordinates: LayoutCoordinates) {
+        val position = coordinates.positionInRoot()
+        val x = position.x + coordinates.size.width / 2f
+        val y = position.y + coordinates.size.height / 2f
+        if (x.isFinite() && compactTitleX != x) compactTitleX = x
+        if (y.isFinite() && compactTitleY != y) compactTitleY = y
+    }
+
+    private fun hasTitleAnchors(): Boolean = restTitleX.isFinite() && restTitleY.isFinite() &&
+        compactTitleX.isFinite() && compactTitleY.isFinite()
+
+    fun compactTitleAlpha(): Float = if (hasHeader && hasTitleAnchors())
+        detailTitleHandoff(progress) else progress
+
+    fun moveCoverTitle(layer: GraphicsLayerScope) {
+        val p = progress
+        if (!hasTitleAnchors()) {
+            layer.alpha = 1f - p
+            return
+        }
+        // Follow the current source position into the fixed toolbar anchor.
+        // Geometry remains scroll-driven and reverses immediately with the finger.
+        layer.translationX = (compactTitleX - restTitleX) * p
+        layer.translationY = (compactTitleY - restTitleY + scroll.firstVisibleItemScrollOffset) * p
+        val scale = 1f + (compactTitleScale - 1f) * p
+        layer.scaleX = scale
+        layer.scaleY = scale
+        layer.alpha = 1f - detailTitleHandoff(p)
+    }
 
     fun measureArtwork(coordinates: LayoutCoordinates) {
         if (scroll.firstVisibleItemIndex != 0) return
@@ -198,14 +249,39 @@ internal fun Modifier.artistStyleDetailBackdrop(
     if (alpha > 0f) drawRect(surfaceColor.copy(alpha = alpha))
 }
 
-/** The same progress moves both captions; graphics-layer reads avoid text re-layout. */
-internal fun Modifier.detailTitleMotion(
-    motion: DetailHeaderMotionState?,
-    compact: Boolean = false,
-): Modifier = graphicsLayer {
-    val progress = motion?.toolbarTitleAlpha() ?: 0f
-    alpha = if (compact) progress else 1f - progress
-    translationY = if (compact) 8.dp.toPx() * (1f - progress) else -12.dp.toPx() * progress
+/** Crossfade glyph layouts only once the moving caption reaches the toolbar. */
+internal fun detailTitleHandoff(progress: Float): Float {
+    if (progress <= .88f) return 0f
+    if (progress >= 1f) return 1f
+    val t = ((progress - .88f) / .12f).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
+}
+
+internal fun Modifier.detailCoverTitleMotion(motion: DetailHeaderMotionState?): Modifier =
+    graphicsLayer { motion?.moveCoverTitle(this) }
+
+/**
+ * Keep the compact text laid out from the first frame. Colour invalidation
+ * redraws actual glyphs when scrolling. Do not rely on reviving an initially
+ * empty zero-alpha layer after cached-cover or navigation state changes.
+ * Only this small text scope observes progress; the collection stays skippable.
+ */
+@Composable
+internal fun DetailToolbarTitle(title: String, motion: DetailHeaderMotionState) {
+    val style = MaterialTheme.typography.titleLarge
+    val compactScale = (style.fontSize.value / 25f).takeIf { it.isFinite() && it > 0f }
+        ?.coerceIn(.5f, 1f) ?: (22f / 25f)
+    SideEffect { motion.compactTitleScale = compactScale }
+    val foreground = LocalContentColor.current
+    Text(
+        text = title,
+        modifier = Modifier.onGloballyPositioned(motion::measureToolbarTitle)
+            .testTag("capsule:detail-toolbar-title"),
+        color = foreground.copy(alpha = foreground.alpha * motion.compactTitleAlpha()),
+        style = style,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
 }
 
 /** Isolate scroll-driven foreground recomposition from the collection and song list. */

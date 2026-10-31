@@ -13,8 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
@@ -96,22 +94,26 @@ internal fun BoxScope.CapsuleDetailCoverTitle(
     motion: DetailHeaderMotionState?,
 ) {
     if (title.isBlank()) return
-    Text(
-        text = title,
-        modifier = Modifier.align(Alignment.BottomCenter)
-            .padding(horizontal = 28.dp).padding(bottom = 16.dp)
-            .detailTitleMotion(motion)
-            .testTag("capsule:detail-title"),
-        color = StandardChrome.text,
-        style = MaterialTheme.typography.headlineLarge.copy(
-            fontSize = 25.sp,
-            lineHeight = 29.sp,
-            fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.Center,
-        ),
-        maxLines = 2,
-        overflow = TextOverflow.Ellipsis,
-    )
+    Box(Modifier.align(Alignment.BottomCenter).padding(horizontal = 28.dp).padding(bottom = 16.dp)) {
+        // This parent owns the untransformed anchor. The moving child never
+        // changes the caption slot or the control capsule's measured geometry.
+        Box(Modifier.then(if (motion == null) Modifier else
+            Modifier.onGloballyPositioned(motion::measureCoverTitle))) {
+            Text(
+                text = title,
+                modifier = Modifier.detailCoverTitleMotion(motion).testTag("capsule:detail-title"),
+                color = StandardChrome.text,
+                style = MaterialTheme.typography.headlineLarge.copy(
+                    fontSize = 25.sp,
+                    lineHeight = 29.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                ),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
 }
 
 /**

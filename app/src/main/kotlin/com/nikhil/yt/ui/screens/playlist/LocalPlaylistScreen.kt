@@ -12,7 +12,7 @@ import com.nikhil.yt.ui.component.PlaylistHero
 import com.nikhil.yt.ui.menu.CapsuleCollectionDownloadButton
 import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.DetailTopAppBar
-import com.nikhil.yt.ui.component.detailTitleMotion
+import com.nikhil.yt.ui.component.DetailToolbarTitle
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
 import android.annotation.SuppressLint
 import androidx.activity.compose.BackHandler
@@ -874,7 +874,7 @@ fun LocalPlaylistScreen(
                             .focusRequester(focusRequester)
                     )
                 } else {
-                    Text(playlist?.playlist?.name.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.detailTitleMotion(titleMotion, compact = true))
+                    DetailToolbarTitle(playlist?.playlist?.name.orEmpty(), titleMotion)
                 }
             },
             navigationIcon = {

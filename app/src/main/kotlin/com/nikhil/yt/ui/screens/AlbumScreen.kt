@@ -12,7 +12,7 @@ import androidx.compose.material3.Button
 import com.nikhil.yt.ui.component.AlbumArtwork
 import com.nikhil.yt.ui.component.DetailHeroBottomSpacing
 import com.nikhil.yt.ui.component.DetailTopAppBar
-import com.nikhil.yt.ui.component.detailTitleMotion
+import com.nikhil.yt.ui.component.DetailToolbarTitle
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
 import com.nikhil.yt.ui.component.AlbumArtworkTopSpacing
 import com.nikhil.yt.ui.component.AlbumHeaderLayout
@@ -478,13 +478,7 @@ fun AlbumScreen(
                         style = MaterialTheme.typography.titleLarge
                     )
                 } else {
-                    Text(
-                        text = albumWithSongs?.album?.title.orEmpty(),
-                        style = MaterialTheme.typography.titleLarge,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.detailTitleMotion(titleMotion, compact = true),
-                    )
+                    DetailToolbarTitle(albumWithSongs?.album?.title.orEmpty(), titleMotion)
                 }
             },
             navigationIcon = {

@@ -22,6 +22,19 @@ class DetailToolbarRevealTest {
         assertEquals(0f, empty.toolbarTitleAlpha(), 0f)
     }
 
+    @Test fun titleLayoutsHandOffOnlyAtTheSameMeasuredDestination() {
+        assertEquals(0f, detailTitleHandoff(0f), 0f)
+        assertEquals(0f, detailTitleHandoff(.88f), 0f)
+        assertEquals(1f, detailTitleHandoff(1f), 0f)
+        val values = (0..1000).map { detailTitleHandoff(it / 1000f) }
+        assertTrue(values.zipWithNext().all { (a, b) -> b >= a && b - a < .02f })
+        for (i in 0..1000) {
+            val progress = i / 1000f
+            assertEquals(1f, detailTitleHandoff(progress) + (1f - detailTitleHandoff(progress)), .00001f)
+            assertEquals(values[i], detailTitleHandoff(progress), 0f)
+        }
+    }
+
     @Test fun fadeBeginsAtOldScrollPointButCompletesAtSameMeasuredToolbarEdge() {
         // Photo edge = 600px; bar bottom = 100px: 500px scroll travel.
         // Earlier start = 12% (60px), fixed end = 499px. We must not

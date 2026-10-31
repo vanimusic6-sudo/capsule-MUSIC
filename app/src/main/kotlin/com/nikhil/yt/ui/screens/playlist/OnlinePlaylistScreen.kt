@@ -18,7 +18,7 @@ import com.nikhil.yt.LocalDownloadUtil
 import androidx.media3.exoplayer.offline.Download
 import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.DetailTopAppBar
-import com.nikhil.yt.ui.component.detailTitleMotion
+import com.nikhil.yt.ui.component.DetailToolbarTitle
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -610,7 +610,7 @@ fun OnlinePlaylistScreen(
                         modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
                     )
                 } else {
-                    Text(playlist?.title.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.detailTitleMotion(titleMotion, compact = true))
+                    DetailToolbarTitle(playlist?.title.orEmpty(), titleMotion)
                 }
             },
             navigationIcon = {

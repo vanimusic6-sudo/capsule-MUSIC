@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.ui.component.*
 import kotlinx.coroutines.runBlocking
+import java.io.File
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -153,6 +154,87 @@ class CollectionHeaderMotionTest {
             assertEquals("Foreground scroll reads must stay inside DetailTopAppBar", initialCompositions, bodyCompositions)
             assertEquals(0f, motion.toolbarTitleAlpha(), 0f)
         }
+    }
+
+    @Test fun actualToolbarGlyphsAppearWithoutRestartAndCaptionMovesIntoTheirAnchor() {
+        lateinit var state: LazyListState
+        lateinit var motion: DetailHeaderMotionState
+        var title by mutableStateOf("Обломки чувств")
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                CompositionLocalProvider(LocalPlayerAwareWindowInsets provides WindowInsets()) {
+                    state = rememberLazyListState()
+                    motion = rememberDetailHeaderMotion(state, true, "same-open-screen")
+                    AlbumScreenLayout(
+                        background = Color.Black,
+                        state = state,
+                        modifier = Modifier.size(320.dp, 700.dp),
+                        content = {
+                            item(key = "header") {
+                                CapsuleDetailHero(
+                                    title = title,
+                                    metrics = emptyList(),
+                                    artworkAlpha = motion::artworkAlpha,
+                                    titleMotion = motion,
+                                    artwork = { Box(Modifier.fillMaxSize().background(Color.Red)) },
+                                    actions = {},
+                                )
+                            }
+                            item { Spacer(Modifier.height(1000.dp)) }
+                        },
+                        topBar = {
+                            DetailTopAppBar(
+                                motion, Color.Black, false,
+                                title = { DetailToolbarTitle(title, motion) },
+                                navigationIcon = { Box(Modifier.size(48.dp)) },
+                            )
+                        },
+                    )
+                }
+            }
+        }
+        val start = compose.onNodeWithTag("capsule:detail-title").fetchSemanticsNode().boundsInRoot
+        fun glyphPixels(name: String): Int {
+            val bounds = compose.onNodeWithTag("capsule:detail-toolbar-title").fetchSemanticsNode().boundsInRoot
+            var count = 0
+            compose.runOnIdle {
+                val bitmap = Bitmap.createBitmap(800, 1800, Bitmap.Config.ARGB_8888)
+                compose.activity.findViewById<View>(android.R.id.content).draw(Canvas(bitmap))
+                for (y in bounds.top.toInt().coerceAtLeast(0) until bounds.bottom.toInt().coerceAtMost(bitmap.height)) {
+                    for (x in bounds.left.toInt().coerceAtLeast(0) until bounds.right.toInt().coerceAtMost(bitmap.width)) {
+                        val pixel = bitmap.getPixel(x, y)
+                        if (android.graphics.Color.red(pixel) > 150 &&
+                            android.graphics.Color.green(pixel) > 150 &&
+                            android.graphics.Color.blue(pixel) > 150) count++
+                    }
+                }
+                val file = File("build/reports/ui-previews/title-handoff-$name.png")
+                file.parentFile.mkdirs()
+                file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                bitmap.recycle()
+            }
+            return count
+        }
+        assertEquals("Pinned glyphs start hidden", 0, glyphPixels("start"))
+        val midOffset = with(compose.density) { 180.dp.roundToPx() }
+        compose.runOnIdle { runBlocking { state.scrollToItem(0, midOffset) } }
+        val mid = compose.onNodeWithTag("capsule:detail-title").fetchSemanticsNode().boundsInRoot
+        assertTrue("Caption travels toward the toolbar in addition to normal scrolling",
+            mid.center.y < start.center.y - midOffset - 8f)
+        assertTrue("Caption shrinks into the compact title", mid.width < start.width)
+        glyphPixels("moving")
+        val endOffset = with(compose.density) { 340.dp.roundToPx() }
+        compose.runOnIdle { runBlocking { state.scrollToItem(0, endOffset) } }
+        assertTrue("Actual pinned glyphs must be painted before any app restart", glyphPixels("pinned") > 30)
+        // Simulate an asynchronously refreshed title while the same screen/controller is alive.
+        compose.runOnIdle { title = "Новое название" }
+        assertTrue("Updated metadata must redraw the same toolbar", glyphPixels("metadata") > 30)
+        compose.runOnIdle { runBlocking { state.scrollToItem(0, 0) } }
+        assertEquals(0, glyphPixels("reversed"))
+        val restored = compose.onNodeWithTag("capsule:detail-title").fetchSemanticsNode().boundsInRoot
+        assertEquals(start.top, restored.top, 1f)
+        compose.runOnIdle { runBlocking { state.scrollToItem(0, endOffset) } }
+        assertTrue("A second scroll must show the title again without recreation", glyphPixels("second") > 30)
     }
 
     @Test fun twoLineLargeFontCaptionDoesNotChangeCapsuleBaseline() {

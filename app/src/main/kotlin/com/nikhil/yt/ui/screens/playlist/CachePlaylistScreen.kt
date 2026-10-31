@@ -10,7 +10,7 @@ package com.nikhil.yt.ui.screens.playlist
 import androidx.compose.ui.text.style.TextOverflow
 import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.DetailTopAppBar
-import com.nikhil.yt.ui.component.detailTitleMotion
+import com.nikhil.yt.ui.component.DetailToolbarTitle
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
@@ -376,12 +376,7 @@ fun CachePlaylistScreen(
                         )
                     }
                     else -> {
-                        Text(
-                            text = stringResource(R.string.cached_playlist),
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.titleLarge,
-                            modifier = Modifier.detailTitleMotion(titleMotion, compact = true)
-                        )
+                        DetailToolbarTitle(stringResource(R.string.cached_playlist), titleMotion)
                     }
                 }
             },
