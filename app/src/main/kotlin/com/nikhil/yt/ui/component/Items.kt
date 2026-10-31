@@ -177,7 +177,14 @@ inline fun ListItem(
         modifier = modifier
             .height(itemHeight)
             .padding(horizontal = 8.dp)
-             .then(if (isActive || pressed) Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.secondaryContainer) else Modifier)
+            .then(
+                if (isActive || pressed) Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.secondaryContainer.copy(
+                        alpha = if (isActive) 1f else ActiveBoxAlpha,
+                    ))
+                else Modifier
+            )
     ) {
         Box(Modifier.padding(6.dp), contentAlignment = Alignment.Center) { thumbnailContent() }
         Column(Modifier.weight(1f).padding(horizontal = 6.dp)) {
@@ -445,6 +452,7 @@ fun SongGridItem(
 fun ArtistListItem(
     artist: Artist,
     modifier: Modifier = Modifier,
+    pressInteractionSource: MutableInteractionSource? = null,
     badges: @Composable RowScope.() -> Unit = {
         if (artist.artist.bookmarkedAt != null) {
             Icon(
@@ -473,6 +481,7 @@ fun ArtistListItem(
     },
     trailingContent = trailingContent,
     modifier = modifier,
+    pressInteractionSource = pressInteractionSource,
 )
 
 @Composable
@@ -507,6 +516,7 @@ fun ArtistGridItem(
 fun AlbumListItem(
     album: Album,
     modifier: Modifier = Modifier,
+    pressInteractionSource: MutableInteractionSource? = null,
     showLikedIcon: Boolean = true,
     badges: @Composable RowScope.() -> Unit = {
         val database = LocalDatabase.current
@@ -551,7 +561,8 @@ fun AlbumListItem(
         )
     },
     trailingContent = trailingContent,
-    modifier = modifier
+    modifier = modifier,
+    pressInteractionSource = pressInteractionSource,
 )
 
 @Composable
@@ -625,6 +636,7 @@ fun AlbumGridItem(
 fun PlaylistListItem(
     playlist: Playlist,
     modifier: Modifier = Modifier,
+    pressInteractionSource: MutableInteractionSource? = null,
     autoPlaylist: Boolean = false,
     badges: @Composable RowScope.() -> Unit = { if (!autoPlaylist) PlaylistDownloadBadge(playlist.id) },
     trailingContent: @Composable RowScope.() -> Unit = {}
@@ -670,7 +682,8 @@ fun PlaylistListItem(
         )
     },
     trailingContent = trailingContent,
-    modifier = modifier
+    modifier = modifier,
+    pressInteractionSource = pressInteractionSource,
 )
 
 @Composable
