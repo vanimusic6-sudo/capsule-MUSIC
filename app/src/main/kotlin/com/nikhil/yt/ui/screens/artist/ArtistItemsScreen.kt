@@ -8,6 +8,7 @@
 
 package com.nikhil.yt.ui.screens.artist
 
+import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -253,7 +254,7 @@ fun ArtistItemsScreen(
                     coroutineScope = coroutineScope,
                     modifier = Modifier
                         .clip(RoundedCornerShape(18.dp))
-                        .combinedClickable(
+                        .capsulePressCombinedClickable(inset = 0.dp, radius = 18.dp, 
                             onClick = {
                                 when (item) {
                                     is SongItem -> playerConnection.playQueue(
