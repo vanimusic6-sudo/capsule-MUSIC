@@ -19,6 +19,9 @@ import com.nikhil.yt.ui.screens.artist.ArtistMemorialLookup
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.filterExplicit
 import com.nikhil.yt.innertube.pages.ArtistPage
+import com.nikhil.yt.innertube.models.AlbumItem
+import com.nikhil.yt.innertube.models.PlaylistItem
+import kotlinx.coroutines.delay
 import com.nikhil.yt.db.MusicDatabase
 import com.nikhil.yt.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -96,16 +99,65 @@ class ArtistViewModel @Inject constructor(
                 val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                 YouTube.artist(artistId)
                     .onSuccess { page ->
-                        val filteredSections = page.sections
-                            .filterNot { section ->
-                                section.moreEndpoint?.browseId?.startsWith("MPLAUC") == true
-                            }
-                            .map { section ->
-                                section.copy(items = section.items.filterExplicit(hideExplicit))
-                            }
+                        // MPLAUC identifies legitimate artist browse pages too. Filtering
+                        // those sections removed official releases from the discography.
+                        val filteredSections = page.sections.map { section ->
+                            section.copy(items = section.items.filterExplicit(hideExplicit))
+                        }
 
                         if (generation == loadGeneration) {
                             artistPage = page.copy(sections = filteredSections)
+
+                            // Only album/playlist/episode previews are expanded. The first
+                            // paint uses YouTube's fast preview; the full artist catalog is
+                            // retrieved from the section's official browse endpoint without a
+                            // broad search, aggressive parallel requests or artificial 3-item cap.
+                            launch {
+                                delay(260)
+                                val candidates = filteredSections.withIndex().filter { (_, section) ->
+                                    section.items.size in 1..6 &&
+                                        section.moreEndpoint != null &&
+                                        (section.items.any { it is AlbumItem || it is PlaylistItem } ||
+                                            section.title.contains("episode", true) ||
+                                            section.title.contains("выпуск", true) ||
+                                            section.title.contains("эпизод", true) ||
+                                            section.title.contains("single", true) ||
+                                            section.title.contains("сингл", true))
+                                }.take(4)
+
+                                for ((sectionIndex, section) in candidates) {
+                                    if (generation != loadGeneration) return@launch
+                                    val endpoint = section.moreEndpoint ?: continue
+                                    val firstPage = YouTube.artistItems(endpoint).getOrNull() ?: continue
+                                    val found = firstPage.items.toMutableList()
+                                    var token = firstPage.continuation
+                                    val usedTokens = mutableSetOf<String>()
+                                    // A handful of YTM pages is enough for typical artists;
+                                    // cap work for very large catalogues and leave "More"
+                                    // paginated instead of heating the phone in the background.
+                                    var pages = 0
+                                    while (token != null && found.size < 60 && pages < 2 &&
+                                        generation == loadGeneration && usedTokens.add(token)
+                                    ) {
+                                        val next = YouTube.artistItemsContinuation(token).getOrNull()
+                                            ?: break
+                                        found += next.items
+                                        token = next.continuation
+                                        pages++
+                                    }
+                                    val merged = (section.items + found).distinctBy { it.id }
+                                        .filterExplicit(hideExplicit)
+                                    if (merged.size > section.items.size && generation == loadGeneration) {
+                                        val current = artistPage ?: continue
+                                        artistPage = current.copy(sections =
+                                            current.sections.mapIndexed { index, existing ->
+                                                if (index == sectionIndex) existing.copy(items = merged)
+                                                else existing
+                                            }
+                                        )
+                                    }
+                                }
+                            }
                             memorialJob?.cancel()
                             memorialJob = viewModelScope.launch {
                                 val info = ArtistMemorialLookup.find(

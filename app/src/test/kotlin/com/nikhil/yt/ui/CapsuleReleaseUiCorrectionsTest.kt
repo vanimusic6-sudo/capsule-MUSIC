@@ -74,8 +74,12 @@ class CapsuleReleaseUiCorrectionsTest {
         assertFalse("Memorial notes are never posted to other apps", dialog.contains("Intent.ACTION_SEND"))
         assertFalse("Avoid the old oversized footer button", dialog.contains("MemorialActionButton("))
         val hero = source("ui/component/ArtistHero.kt")
-        assertTrue(hero.contains(".height(heroHeight)"))
-        assertTrue(hero.contains(".heightIn(min = actionRailHeight)"))
+        // Exact positions and matching bottom margins are verified by the
+        // rendering/geometry tests in ArtistHeroTest. This static guard should
+        // verify the dynamic memorial row concept rather than fragile source
+        // snippets such as a particular .height(...) call.
+        assertTrue("The memorial row must be optional, not always reserved",
+            hero.contains("memorialExtraHeight"))
         assertFalse(hero.contains(".animateContentSize("))
     }
 

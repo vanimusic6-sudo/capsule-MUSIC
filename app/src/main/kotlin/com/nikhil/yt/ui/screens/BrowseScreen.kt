@@ -11,6 +11,7 @@ package com.nikhil.yt.ui.screens
  import androidx.compose.foundation.ExperimentalFoundationApi
  import androidx.compose.foundation.combinedClickable
  import androidx.compose.foundation.layout.WindowInsets
+import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.asPaddingValues
  import androidx.compose.foundation.lazy.grid.GridCells
@@ -84,7 +85,7 @@ import androidx.compose.foundation.layout.asPaddingValues
                      fillMaxWidth = true,
                      coroutineScope = coroutineScope,
                      modifier = Modifier
-                         .combinedClickable(
+                         .capsulePressCombinedClickable(inset = 0.dp, radius = 18.dp, 
                              onClick = {
                                  when (item) {
                                      is AlbumItem -> navController.navigate("album/${item.id}")

@@ -6,6 +6,49 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import kotlin.math.pow
+
+/**
+ * Static matte for artist/album/playlist portraits.
+ *
+ * The old 37%-start hand-tuned stops kept almost all of the photograph until
+ * its last quarter, then rapidly dropped it into the page colour. Bright
+ * clothing showed a visible dark shelf even though the last pixels matched.
+ *
+ * Start the transition gently at 24%; apply ONE continuous eased curve from
+ * there to the precise existing 98.5%-full-colour endpoint. It preserves the
+ * readable upper portrait, distributes the fade through the middle, and has
+ * zero slope at both ends (no kink or hard final band).
+ *
+ * Called only in drawWithCache: 24 gradient intervals are allocated on cache
+ * rebuild, never during scrolling or at each frame.
+ */
+internal const val CapsulePortraitFadeStart = 0.24f
+internal const val CapsulePortraitFadeEnd = 0.985f
+
+internal fun capsulePortraitMatteAlpha(heightFraction: Float): Float {
+    if (!heightFraction.isFinite()) return 0f
+    val t = ((heightFraction - CapsulePortraitFadeStart) /
+        (CapsulePortraitFadeEnd - CapsulePortraitFadeStart)).coerceIn(0f, 1f)
+    val ease = t * t * (3f - 2f * t)
+    return ease.pow(1.95f)
+}
+
+internal fun capsulePortraitMatteStops(background: Color): Array<Pair<Float, Color>> {
+    val steps = 24
+    return Array(steps + 3) { index ->
+        when (index) {
+            0 -> 0f to Color.Transparent
+            steps + 2 -> 1f to background
+            else -> {
+                val y = CapsulePortraitFadeStart +
+                    (CapsulePortraitFadeEnd - CapsulePortraitFadeStart) *
+                    ((index - 1).toFloat() / steps)
+                y to background.copy(alpha = capsulePortraitMatteAlpha(y))
+            }
+        }
+    }
+}
 
 /** The photograph supplies the colour; both headers dissolve into the exact page surface. */
 @Composable
@@ -30,7 +73,7 @@ internal fun ArtworkSurfaceFade(
         )
         // Albums gently surrender colour over most of the portrait instead
         // of holding the image at full contrast until its last third.
-        // This is opt-in: artist heroes keep their existing gradient.
+        // This is opt-in: artists retain the common, longer portrait gradient.
         val surfaceFade = if (portrait && softPortrait) Brush.verticalGradient(
             0f to Color.Transparent,
             0.14f to Color.Transparent,
@@ -44,19 +87,7 @@ internal fun ArtworkSurfaceFade(
             0.93f to background.copy(alpha = 0.97f),
             1f to background,
         ) else if (portrait) Brush.verticalGradient(
-            // A matte veil in the page colour, like the upper scrim: retain photo detail
-            // while progressively replacing it with the surface, without filtering pixels.
-            0f to background.copy(alpha = 0f),
-            0.40f to background.copy(alpha = 0f),
-            0.48f to background.copy(alpha = 0.025f),
-            0.56f to background.copy(alpha = 0.075f),
-            0.64f to background.copy(alpha = 0.16f),
-            0.72f to background.copy(alpha = 0.30f),
-            0.80f to background.copy(alpha = 0.49f),
-            0.87f to background.copy(alpha = 0.70f),
-            0.93f to background.copy(alpha = 0.88f),
-            0.97f to background.copy(alpha = 0.97f),
-            1f to background,
+            *capsulePortraitMatteStops(background),
         ) else Brush.verticalGradient(
             0f to background.copy(alpha = 0f),
             0.28f to background.copy(alpha = 0f),

@@ -8,6 +8,7 @@
 
 package com.nikhil.yt.ui.screens
 
+import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -105,7 +106,7 @@ fun NewReleaseScreen(
                     coroutineScope = coroutineScope,
                     modifier =
                         Modifier
-                            .combinedClickable(
+                            .capsulePressCombinedClickable(inset = 0.dp, radius = 18.dp, 
                                 onClick = {
                                     navController.navigate("album/${album.id}")
                                 },

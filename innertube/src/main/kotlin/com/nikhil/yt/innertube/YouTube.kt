@@ -407,46 +407,95 @@ object YouTube {
                         ?.contents?.firstOrNull()?.musicShelfRenderer?.contents?.firstOrNull()?.musicResponsiveListItemRenderer?.navigationEndpoint?.watchPlaylistEndpoint,
                 radioEndpoint = response.header?.musicImmersiveHeaderRenderer?.startRadioButton?.buttonRenderer?.navigationEndpoint?.watchEndpoint
             ),
-            sections = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
-                ?.tabRenderer?.content?.sectionListRenderer?.contents
-                ?.mapNotNull(ArtistPage::fromSectionListRendererContent)!!,
+            sections = (
+                response.contents?.singleColumnBrowseResultsRenderer?.tabs
+                    ?.firstNotNullOfOrNull { it.tabRenderer.content?.sectionListRenderer?.contents }
+                    ?: response.contents?.twoColumnBrowseResultsRenderer?.tabs
+                        ?.firstNotNullOfOrNull { it?.tabRenderer?.content?.sectionListRenderer?.contents }
+                    ?: response.contents?.sectionListRenderer?.contents
+                ).orEmpty().mapNotNull(ArtistPage::fromSectionListRendererContent),
             description = response.header?.musicImmersiveHeaderRenderer?.description?.runs?.firstOrNull()?.text
         )
     }
 
     suspend fun artistItems(endpoint: BrowseEndpoint): Result<ArtistItemsPage> = runCatchingCancellable {
         val response = innerTube.browse(WEB_REMIX, endpoint.browseId, endpoint.params).body<BrowseResponse>()
-        val gridRenderer = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
-            ?.tabRenderer?.content?.sectionListRenderer?.contents?.firstOrNull()
-            ?.gridRenderer
-        if (gridRenderer != null) {
-            ArtistItemsPage(
-                title = gridRenderer.header?.gridHeaderRenderer?.title?.runs?.firstOrNull()?.text.orEmpty(),
-                items = gridRenderer.items.mapNotNull {
-                    it.musicTwoRowItemRenderer?.let { renderer ->
-                        ArtistItemsPage.fromMusicTwoRowItemRenderer(renderer)
-                    }
-                },
-                continuation = gridRenderer.continuations?.getContinuation()
-            )
-        } else {
-            val musicPlaylistShelfRenderer = response.contents?.singleColumnBrowseResultsRenderer?.tabs?.firstOrNull()
-                ?.tabRenderer?.content?.sectionListRenderer?.contents?.firstOrNull()
-                ?.musicPlaylistShelfRenderer
-            ArtistItemsPage(
-                title = response.header?.musicHeaderRenderer?.title?.runs?.firstOrNull()?.text!!,
-                items = musicPlaylistShelfRenderer?.contents?.getItems()?.mapNotNull {
-                        ArtistItemsPage.fromMusicResponsiveListItemRenderer(it)
-                    } ?: emptyList(),
-                continuation = musicPlaylistShelfRenderer?.contents?.getContinuation()
-            )
+        // The catalog renderer is not guaranteed to be the first content block.
+        // Artist release pages can use the two-column layout, a nested itemSection,
+        // a carousel, a grid, or a responsive-list shelf.
+        val sections = response.contents?.singleColumnBrowseResultsRenderer?.tabs
+            ?.firstNotNullOfOrNull { it.tabRenderer.content?.sectionListRenderer?.contents }
+            ?: response.contents?.twoColumnBrowseResultsRenderer?.tabs
+                ?.firstNotNullOfOrNull { it?.tabRenderer?.content?.sectionListRenderer?.contents }
+            ?: response.contents?.sectionListRenderer?.contents
+            ?: emptyList()
+        // Full-discography browse responses can contain several grids/shelves:
+        // taking the FIRST matching renderer drops all subsequent official
+        // releases (and reproduces the notorious 3-out-of-7 album problem).
+        // Keep the whole requested catalog, not a single preview shelf.
+        val allSections = sections.flatMap { section ->
+            listOf(section) + section.itemSectionRenderer?.contents.orEmpty().map { nested ->
+                section.copy(
+                    gridRenderer = nested.gridRenderer,
+                    musicShelfRenderer = nested.musicShelfRenderer,
+                    musicCarouselShelfRenderer = null,
+                    musicPlaylistShelfRenderer = null,
+                )
+            }
         }
+        val grids = allSections.mapNotNull { it.gridRenderer }
+        val carousels = allSections.mapNotNull { it.musicCarouselShelfRenderer }
+        val playlistShelves = allSections.mapNotNull { it.musicPlaylistShelfRenderer }
+        val musicShelves = allSections.mapNotNull { it.musicShelfRenderer }
+        val title = grids.firstNotNullOfOrNull { it.header?.gridHeaderRenderer?.title?.runs?.firstOrNull()?.text }
+            ?: carousels.firstNotNullOfOrNull { it.header?.musicCarouselShelfBasicHeaderRenderer?.title?.runs?.firstOrNull()?.text }
+            ?: response.header?.musicHeaderRenderer?.title?.runs?.firstOrNull()?.text
+            ?: musicShelves.firstNotNullOfOrNull { it.title?.runs?.firstOrNull()?.text }
+            ?: ""
+        val items = allSections.flatMap { block ->
+            block.gridRenderer?.items?.mapNotNull {
+                it.musicTwoRowItemRenderer?.let(ArtistItemsPage::fromMusicTwoRowItemRenderer)
+            }.orEmpty() +
+                block.musicCarouselShelfRenderer?.contents?.mapNotNull {
+                    it.musicTwoRowItemRenderer?.let(ArtistItemsPage::fromMusicTwoRowItemRenderer)
+                        ?: it.musicResponsiveListItemRenderer?.let(ArtistItemsPage::fromMusicResponsiveListItemRenderer)
+                }.orEmpty() +
+                (block.musicPlaylistShelfRenderer?.contents.orEmpty() +
+                    block.musicShelfRenderer?.contents.orEmpty())
+                    .getItems().mapNotNull(ArtistItemsPage::fromMusicResponsiveListItemRenderer)
+        }
+        ArtistItemsPage(
+            title = title,
+            items = items.distinctBy { item -> "${item::class.simpleName}:${item.id}" },
+            continuation = grids.firstNotNullOfOrNull { it.continuations?.getContinuation() }
+                ?: playlistShelves.firstNotNullOfOrNull { it.continuations?.getContinuation() ?: it.contents.getContinuation() }
+                ?: musicShelves.firstNotNullOfOrNull { it.continuations?.getContinuation() ?: it.contents?.getContinuation() },
+        )
     }
 
     suspend fun artistItemsContinuation(continuation: String): Result<ArtistItemsContinuationPage> = runCatchingCancellable {
         val response = innerTube.browse(WEB_REMIX, continuation = continuation).body<BrowseResponse>()
 
         when {
+            response.continuationContents?.sectionListContinuation != null -> {
+                val section = response.continuationContents.sectionListContinuation
+                val items = section.contents.flatMap { block ->
+                    block.gridRenderer?.items?.mapNotNull {
+                        it.musicTwoRowItemRenderer?.let(ArtistItemsPage::fromMusicTwoRowItemRenderer)
+                    } ?: block.musicCarouselShelfRenderer?.contents?.mapNotNull {
+                        it.musicTwoRowItemRenderer?.let(ArtistItemsPage::fromMusicTwoRowItemRenderer)
+                            ?: it.musicResponsiveListItemRenderer?.let(ArtistItemsPage::fromMusicResponsiveListItemRenderer)
+                    } ?: (block.musicShelfRenderer?.contents ?: block.musicPlaylistShelfRenderer?.contents)
+                        ?.getItems()?.mapNotNull {
+                            ArtistItemsPage.fromMusicResponsiveListItemRenderer(it)
+                        }.orEmpty()
+                }
+                ArtistItemsContinuationPage(
+                    items = items,
+                    continuation = section.continuations?.getContinuation(),
+                )
+            }
+
             response.continuationContents?.gridContinuation != null -> {
                 val gridContinuation = response.continuationContents.gridContinuation
                 val items = gridContinuation.items.mapNotNull {

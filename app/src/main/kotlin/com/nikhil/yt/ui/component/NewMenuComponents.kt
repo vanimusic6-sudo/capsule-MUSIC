@@ -13,6 +13,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +38,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -73,20 +76,29 @@ fun NewActionButton(
     // never be mistaken for a request to move the whole sheet. The real
     // ModalBottomSheet (including handle swipes and scroll) remains native.
     val pressGuard = LocalCapsuleMenuPressGuard.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
     val actionModifier =
         if (pressGuard) {
             modifier.combinedClickable(
                 enabled = enabled,
+                interactionSource = interactionSource,
+                indication = null,
                 onClick = onClick,
                 onLongClick = {},
             )
         } else {
-            modifier.clickable(enabled = enabled, onClick = onClick)
+            modifier.clickable(
+                enabled = enabled,
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+            )
         }
     Card(
         modifier = actionModifier,
         colors = CardDefaults.cardColors(
-            containerColor = animatedBackground
+            containerColor = if (pressed) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = ActiveBoxAlpha) else animatedBackground
         ),
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.cardElevation(
@@ -143,8 +155,9 @@ fun NewMenuItem(
         trailingContent = trailingContent,
         supportingContent = supportingContent,
         modifier = modifier
-            .clickable(enabled = enabled) { onClick?.invoke() }
+            .capsulePressClickable(enabled = enabled) { onClick?.invoke() }
             .padding(horizontal = 4.dp),
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         tonalElevation = 0.dp
     )
 }
@@ -271,20 +284,29 @@ fun NewIconButton(
     // never be mistaken for a request to move the whole sheet. The real
     // ModalBottomSheet (including handle swipes and scroll) remains native.
     val pressGuard = LocalCapsuleMenuPressGuard.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
     val actionModifier =
         if (pressGuard) {
             modifier.combinedClickable(
                 enabled = enabled,
+                interactionSource = interactionSource,
+                indication = null,
                 onClick = onClick,
                 onLongClick = {},
             )
         } else {
-            modifier.clickable(enabled = enabled, onClick = onClick)
+            modifier.clickable(
+                enabled = enabled,
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+            )
         }
     Card(
         modifier = actionModifier,
         colors = CardDefaults.cardColors(
-            containerColor = animatedBackground
+            containerColor = if (pressed) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = ActiveBoxAlpha) else animatedBackground
         ),
         shape = CircleShape,
         elevation = CardDefaults.cardElevation(

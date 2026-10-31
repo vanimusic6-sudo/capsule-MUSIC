@@ -1,12 +1,16 @@
 package com.nikhil.yt.ui.component
 
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.runtime.State
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
@@ -14,26 +18,101 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.Text
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.GraphicsLayerScope
+import androidx.compose.ui.semantics.hideFromAccessibility
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
-import kotlin.math.min
 
-/**
- * One scroll-driven photo / pinned-toolbar transition for albums and all
- * playlists. Titles live ONLY in the pinned top bar, as on ArtistScreen.
- *
- * Measure the actual artwork's resting bottom edge, including any artwork
- * inset, rather than guessing the title/caption height or assuming one
- * device size. Drawing samples scroll state without a per-frame animation.
- * Artist, album and playlist pages share the same fade function.
- */
+/** Shared, measured scroll progress. Image loading never controls drawing opacity. */
 internal class DetailHeaderMotionState(
     private val scroll: LazyListState,
     private val density: Density,
+    private val headerPresence: State<Boolean> = mutableStateOf(true),
 ) {
-    var hasHeader: Boolean = true
 
     private var restArtworkBottomPx by mutableFloatStateOf(Float.NaN)
     private var toolbarBottomPx by mutableFloatStateOf(Float.NaN)
+    private var toolbarHeightPx by mutableFloatStateOf(Float.NaN)
+    private var restTitleX by mutableFloatStateOf(Float.NaN)
+    private var restTitleY by mutableFloatStateOf(Float.NaN)
+    private var compactTitleX by mutableFloatStateOf(Float.NaN)
+    private var compactTitleY by mutableFloatStateOf(Float.NaN)
+    private var coverTitleHeight by mutableFloatStateOf(Float.NaN)
+    private var compactTitleHeight by mutableFloatStateOf(Float.NaN)
+    private var coverFirstBaseline by mutableFloatStateOf(Float.NaN)
+    private var compactFirstBaseline by mutableFloatStateOf(Float.NaN)
+    var compactTitleScale by mutableFloatStateOf(22f / 25f)
+
+    // Measure the stationary parent, never the translated text itself. Adding
+    // scroll back gives an invariant source anchor and avoids feedback drift.
+    fun measureCoverTitle(coordinates: LayoutCoordinates) {
+        if (scroll.firstVisibleItemIndex != 0) return
+        val position = coordinates.positionInRoot()
+        val x = position.x + coordinates.size.width / 2f
+        val y = position.y + coordinates.size.height / 2f + scroll.firstVisibleItemScrollOffset
+        if (x.isFinite() && restTitleX != x) restTitleX = x
+        if (y.isFinite() && (!restTitleY.isFinite() || kotlin.math.abs(y - restTitleY) > .5f)) restTitleY = y
+    }
+
+    fun measureToolbarTitle(coordinates: LayoutCoordinates) {
+        val position = coordinates.positionInRoot()
+        val x = position.x + coordinates.size.width / 2f
+        val y = position.y + coordinates.size.height / 2f
+        if (x.isFinite() && compactTitleX != x) compactTitleX = x
+        if (y.isFinite() && compactTitleY != y) compactTitleY = y
+    }
+
+    fun measureCoverTitleText(layout: TextLayoutResult) {
+        coverTitleHeight = layout.size.height.toFloat()
+        coverFirstBaseline = layout.firstBaseline
+    }
+
+    fun measureCompactTitleText(layout: TextLayoutResult) {
+        compactTitleHeight = layout.size.height.toFloat()
+        compactFirstBaseline = layout.firstBaseline
+    }
+
+    private fun hasTitleAnchors(): Boolean = restTitleX.isFinite() && restTitleY.isFinite() &&
+        compactTitleX.isFinite() && compactTitleY.isFinite()
+
+    fun compactTitleAlpha(): Float = detailTitleHandoff(progress)
+
+    fun coverTitleAlpha(): Float = 1f - compactTitleAlpha()
+
+    fun moveCoverTitle(layer: GraphicsLayerScope) {
+        val p = progress
+        if (!hasTitleAnchors()) return
+        // Follow the current source position into the fixed toolbar anchor.
+        // Geometry remains scroll-driven and reverses immediately with the finger.
+        layer.translationX = (compactTitleX - restTitleX) * p
+        val scale = 1f + (compactTitleScale - 1f) * p
+        val sourceCenterY = restTitleY - scroll.firstVisibleItemScrollOffset
+        val sourceBaselineOffset = coverFirstBaseline - coverTitleHeight / 2f
+        val targetBaselineY = compactTitleY - compactTitleHeight / 2f + compactFirstBaseline
+        layer.translationY = if (sourceBaselineOffset.isFinite() && targetBaselineY.isFinite()) {
+            detailTitleBaselineTranslation(p, scale, sourceCenterY, sourceBaselineOffset, targetBaselineY)
+        } else (compactTitleY - sourceCenterY) * p
+        layer.scaleX = scale
+        layer.scaleY = scale
+    }
 
     fun measureArtwork(coordinates: LayoutCoordinates) {
         if (scroll.firstVisibleItemIndex != 0) return
@@ -47,41 +126,55 @@ internal class DetailHeaderMotionState(
     }
 
     fun measureToolbar(coordinates: LayoutCoordinates) {
-        val bottom = coordinates.positionInRoot().y + coordinates.size.height
+        val height = coordinates.size.height.toFloat()
+        val bottom = coordinates.positionInRoot().y + height
         if (bottom.isFinite() &&
             (toolbarBottomPx.isNaN() || kotlin.math.abs(bottom - toolbarBottomPx) > 0.5f)
         ) {
             toolbarBottomPx = bottom
         }
-    }
-
-    fun artworkFade(): Float {
-        if (!hasHeader) return 1f
-        val viewportWidth = scroll.layoutInfo.viewportSize.width
-        if (viewportWidth <= 0) return 0f
-        // The artist portrait uses a 1.25 * min(viewport width, 450.dp)
-        // reference height, not the album's separate 0.85-ratio portrait.
-        // Previously matching percentages still meant different scroll lengths.
-        val artistBottomPx = with(density) {
-            artistHeroArtworkHeight(viewportWidth.toDp()).roundToPx().toFloat()
+        if (height > 0f && (toolbarHeightPx.isNaN() ||
+            kotlin.math.abs(height - toolbarHeightPx) > 0.5f)
+        ) {
+            toolbarHeightPx = height
         }
-        return detailArtistLengthArtworkFade(
-            firstVisibleItemIndex = scroll.firstVisibleItemIndex,
-            offsetPx = scroll.firstVisibleItemScrollOffset,
-            artistArtworkBottomPx = artistBottomPx,
-            detailArtworkBottomPx = restArtworkBottomPx,
-            toolbarBottomPx = toolbarBottomPx,
-        )
     }
 
-    fun artworkAlpha(): Float = 1f - artworkFade()
+    // All layers read this cached value. At rest there is no clock or scheduled work.
+    private val progress by derivedStateOf {
+        if (!headerPresence.value || scroll.firstVisibleItemIndex > 0) 1f else {
+            val fallbackBottom = if (restArtworkBottomPx.isFinite()) 0f else {
+                val viewportWidth = scroll.layoutInfo.viewportSize.width
+                with(density) { artistHeroArtworkHeight(viewportWidth.toDp()).toPx() }
+            }
+            detailArtistLengthArtworkFade(
+                firstVisibleItemIndex = scroll.firstVisibleItemIndex,
+                offsetPx = scroll.firstVisibleItemScrollOffset,
+                artistArtworkBottomPx = fallbackBottom,
+                detailArtworkBottomPx = restArtworkBottomPx,
+                toolbarBottomPx = toolbarBottomPx,
+                toolbarHeightPx = toolbarHeightPx,
+            )
+        }
+    }
+
+    fun artworkFade(): Float = progress
+
+    // Cover pixels must never depend on asynchronous readiness. Coil paints a
+    // placeholder until decoding finishes, then the real bitmap. A late
+    // readiness reset previously multiplied a loaded image by zero forever.
+    // Scroll fade is exclusively controlled by the measured scroll geometry.
+    fun artworkAlpha(): Float = 1f - progress
+
+    // Once the hero name has scrolled away, the pinned compact title takes over.
+    fun toolbarTitleAlpha(): Float = progress
 }
 
 /**
- * Use the ARTIST'S actual scroll distance as the source of truth, rather than
- * the larger album/playlist portrait dimensions. On compact screens where the
- * portrait physically ends earlier, cap the distance to its real lower edge so
- * the pinned toolbar never exposes content through a transparent background.
+ * Compute the transition from the real bottom edge of THIS album or playlist
+ * photograph, not an artist portrait with a different height. In the first
+ * layout frame (before onGloballyPositioned), use the artist size as fallback.
+ * This avoids a premature fully black strip with taller collection covers.
  */
 internal fun detailArtistLengthArtworkFade(
     firstVisibleItemIndex: Int,
@@ -89,14 +182,14 @@ internal fun detailArtistLengthArtworkFade(
     artistArtworkBottomPx: Float,
     detailArtworkBottomPx: Float,
     toolbarBottomPx: Float,
+    toolbarHeightPx: Float = toolbarBottomPx,
 ): Float {
     if (firstVisibleItemIndex > 0) return 1f
-    if (!artistArtworkBottomPx.isFinite() || !toolbarBottomPx.isFinite()) return 0f
-    val safeBottom = if (detailArtworkBottomPx.isFinite())
-        min(artistArtworkBottomPx, detailArtworkBottomPx)
-    else artistArtworkBottomPx
+    if (!toolbarBottomPx.isFinite()) return 0f
+    val actualBottom = if (detailArtworkBottomPx.isFinite())
+        detailArtworkBottomPx else artistArtworkBottomPx
     return detailArtworkFadeLikeArtist(
-        firstVisibleItemIndex, offsetPx, safeBottom, toolbarBottomPx,
+        firstVisibleItemIndex, offsetPx, actualBottom, toolbarBottomPx, toolbarHeightPx,
     )
 }
 
@@ -106,29 +199,41 @@ internal fun detailArtworkFadeLikeArtist(
     offsetPx: Int,
     artworkBottomPx: Float,
     toolbarBottomPx: Float,
+    toolbarHeightPx: Float = toolbarBottomPx,
 ): Float {
     if (firstVisibleItemIndex > 0) return 1f
     if (!artworkBottomPx.isFinite() || !toolbarBottomPx.isFinite()) return 0f
-    // Keep the historical artist/album/playlist shared distance: finish
-    // before scrolling action buttons would reach the pinned toolbar.
-    val safetyGap = (artworkBottomPx * 0.14f).toInt()
-    val distance = (artworkBottomPx - toolbarBottomPx - safetyGap).coerceAtLeast(1f)
-    return portraitDissolveFraction(offsetPx.toFloat(), distance)
+    val distance = (artworkBottomPx - toolbarBottomPx).coerceAtLeast(1f)
+    return portraitDissolveFraction(offsetPx.toFloat(), distance, toolbarHeightPx)
 }
 
 /**
- * Unified motion for artist portrait / album cover / playlist artwork.
- * Begin after the initial 12% of scrolling and dissolve through 99% of
- * the image-to-toolbar travel, versus the old artist's 0..74%.
+ * A long, low-contrast photo dissolve with a precisely measured endpoint.
+ * Start at the original 12% point of photo-to-toolbar travel so the artwork
+ * gradually loses contrast while scrolling; finish at the SAME physical
+ * bottom-edge crossing as before (one raster pixel inside the pinned bar).
+ * This avoids both the late sudden fade and a prematurely solid black strip.
  *
- * Finishing AFTER the image's edge crosses the bar creates a sharp seam and
- * translucent controls; 99% is the latest safe full-dissolve threshold.
+ * Album/playlist geometry still uses its own measured image bottom and real
+ * toolbar size. No frame timers or new animations are scheduled.
  */
-internal fun portraitDissolveFraction(offsetPx: Float, distancePx: Float): Float {
+internal fun portraitDissolveFraction(
+    offsetPx: Float,
+    distancePx: Float,
+    toolbarHeightPx: Float,
+): Float {
     val distance = distancePx.coerceAtLeast(1f)
-    val start = distance * 0.12f
-    val end = distance * 0.99f
-    val fraction = ((offsetPx - start) / (end - start)).coerceIn(0f, 1f)
+    // End remains tied to the actual edge of the pinned bar, not a
+    // percentage, so the toolbar never fills over the buttons.
+    val end = (distance - 1f).coerceAtLeast(1f)
+    // Start at the old 12% point; on exceptionally short pages, never
+    // start later than one actual measured toolbar height from the edge.
+    // This keeps the measured bar inside the already-started fade window.
+    val measuredBar = toolbarHeightPx.takeIf { it.isFinite() && it > 0f } ?: end
+    val latestStart = (end - measuredBar).coerceAtLeast(0f)
+    val start = minOf(distance * 0.12f, latestStart)
+        .coerceIn(0f, (end - 1f).coerceAtLeast(0f))
+    val fraction = ((offsetPx - start) / (end - start).coerceAtLeast(1f)).coerceIn(0f, 1f)
     // Evaluate the polynomial in Double: Float32 cancellation near t=1
     // caused the last frames to wiggle backward (and fail monotonic tests).
     // The returned draw alpha is still Float and stays strictly in [0, 1].
@@ -140,11 +245,15 @@ internal fun portraitDissolveFraction(offsetPx: Float, distancePx: Float): Float
 internal fun rememberDetailHeaderMotion(
     state: LazyListState,
     hasHeader: Boolean,
+    contentIdentity: Any? = null,
 ): DetailHeaderMotionState {
     val density = LocalDensity.current
-    val motion = remember(state, density) { DetailHeaderMotionState(state, density) }
-    SideEffect { motion.hasHeader = hasHeader }
-    return motion
+    // Read the current caller state in the same composition. A post-compose
+    // SideEffect left one frame using "no header" and flashed the pinned name.
+    val headerPresence = rememberUpdatedState(hasHeader)
+    return remember(state, density, contentIdentity) {
+        DetailHeaderMotionState(state, density, headerPresence)
+    }
 }
 
 /** Reuse the EXACT artist toolbar surface policy: never double-tint the photo. */
@@ -159,8 +268,89 @@ internal fun Modifier.artistStyleDetailBackdrop(
     surfaceColor: Color,
     forceOpaque: Boolean = false,
 ): Modifier = drawBehind {
-    drawRect(surfaceColor.copy(alpha = detailToolbarBackdropAlpha(
-        photoDissolve = motion.artworkFade(),
-        forceOpaque = forceOpaque,
-    )))
+    val alpha = detailToolbarBackdropAlpha(motion.artworkFade(), forceOpaque)
+    if (alpha > 0f) drawRect(surfaceColor.copy(alpha = alpha))
+}
+
+/** Transfer drawing at the shared endpoint; never blend two glyph layouts. */
+internal fun detailTitleHandoff(progress: Float): Float = if (progress >= 1f) 1f else 0f
+
+/** Align actual baselines, including a two-line source and a one-line destination. */
+internal fun detailTitleBaselineTranslation(
+    progress: Float,
+    scale: Float,
+    sourceCenterY: Float,
+    sourceBaselineOffset: Float,
+    targetBaselineY: Float,
+): Float = (targetBaselineY - sourceCenterY - sourceBaselineOffset) * progress +
+    (1f - scale) * sourceBaselineOffset
+
+internal fun Modifier.detailCoverTitleMotion(motion: DetailHeaderMotionState?): Modifier =
+    graphicsLayer { motion?.moveCoverTitle(this) }
+
+/**
+ * Keep the compact text laid out from the first frame. Colour invalidation
+ * redraws actual glyphs when scrolling. Do not rely on reviving an initially
+ * empty zero-alpha layer after cached-cover or navigation state changes.
+ * Only this small text scope observes progress; the collection stays skippable.
+ */
+@Composable
+internal fun DetailToolbarTitle(title: String, motion: DetailHeaderMotionState) {
+    // Match the moving caption's typeface, weight and scaled line height.
+    // The terminal ownership change must not look like another font animation.
+    val style = MaterialTheme.typography.headlineLarge.copy(
+        fontSize = 22.sp,
+        lineHeight = (29f * 22f / 25f).sp,
+        fontWeight = FontWeight.SemiBold,
+    )
+    val density = LocalDensity.current
+    val compactScale = with(density) { style.fontSize.toPx() / 25.sp.toPx() }
+        .takeIf { it.isFinite() && it > 0f }?.coerceIn(.5f, 1f) ?: (22f / 25f)
+    SideEffect { motion.compactTitleScale = compactScale }
+    val foreground = LocalContentColor.current
+    val alpha = motion.compactTitleAlpha()
+    val hidden = alpha < .5f
+    Text(
+        text = title,
+        modifier = Modifier.onGloballyPositioned(motion::measureToolbarTitle)
+            .testTag("capsule:detail-toolbar-title")
+            .semantics { if (hidden) hideFromAccessibility() },
+        color = foreground.copy(alpha = foreground.alpha * alpha),
+        style = style,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        onTextLayout = motion::measureCompactTitleText,
+    )
+}
+
+/** Isolate scroll-driven foreground recomposition from the collection and song list. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun DetailTopAppBar(
+    motion: DetailHeaderMotionState,
+    surfaceColor: Color,
+    forceOpaque: Boolean,
+    modifier: Modifier = Modifier,
+    title: @Composable () -> Unit,
+    navigationIcon: @Composable () -> Unit,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
+    val foreground = if (forceOpaque) StandardChrome.text else
+        lerp(Color.White, StandardChrome.text, motion.artworkFade())
+    TopAppBar(
+        modifier = modifier.onGloballyPositioned(motion::measureToolbar)
+            .artistStyleDetailBackdrop(motion, surfaceColor, forceOpaque),
+        windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
+        expandedHeight = ArtistToolbarCompactHeight,
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = Color.Transparent,
+            scrolledContainerColor = Color.Transparent,
+            titleContentColor = foreground,
+            navigationIconContentColor = foreground,
+            actionIconContentColor = foreground,
+        ),
+        title = title,
+        navigationIcon = navigationIcon,
+        actions = actions,
+    )
 }

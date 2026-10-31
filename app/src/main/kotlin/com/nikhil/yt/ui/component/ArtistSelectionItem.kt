@@ -240,6 +240,6 @@ internal fun ArtistSelectionRow(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .clickable(enabled = !artistId.isNullOrBlank(), onClick = onClick),
+                .capsulePressClickable(enabled = !artistId.isNullOrBlank(), onClick = onClick),
     )
 }

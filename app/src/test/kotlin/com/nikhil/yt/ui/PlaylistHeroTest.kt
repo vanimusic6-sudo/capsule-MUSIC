@@ -85,6 +85,29 @@ class PlaylistHeroTest {
         savePreview()
     }
 
+    @Test fun titleIsCentredInsidePortraitAboveControlsAndDoesNotDisplaceCapsule() {
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                PlaylistHero(
+                    thumbnails = emptyList(),
+                    songCount = "13 songs",
+                    title = "Cowboy Tears",
+                    modifier = Modifier.width(393.dp),
+                ) {
+                    PlaylistAction(R.drawable.play, "Play", {})
+                }
+            }
+        }
+        val title = compose.onNodeWithTag("capsule:detail-title").fetchSemanticsNode().boundsInRoot
+        val portrait = compose.onNodeWithTag("capsule:detail-artwork").fetchSemanticsNode().boundsInRoot
+        val controls = compose.onNodeWithTag("capsule:album-controls").fetchSemanticsNode().boundsInRoot
+        assertTrue("Title should be inside the bottom part of the photo", title.top > portrait.center.y)
+        assertTrue("Title must finish above the controls", title.bottom <= portrait.bottom && controls.top > title.bottom)
+        assertEquals("Title is horizontally centered", portrait.center.x, title.center.x, 3f)
+        assertEquals("Moving the name must not push the capsule down",
+            portrait.bottom + with(compose.density) { 14.dp.toPx() }, controls.top, 2f)
+    }
+
     @Test fun albumAndPlaylistCapsulesShareBaselineAcrossScreenSizes() {
         for (height in listOf(720.dp, 851.dp)) {
             val availableWidth = 393.dp

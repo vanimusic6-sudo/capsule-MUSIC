@@ -2,8 +2,12 @@ package com.nikhil.yt.ui.menu
 
 import android.content.Intent
 import android.widget.Toast
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -37,6 +41,7 @@ import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
 import com.nikhil.yt.discovery.ExperimentalDownload
 import com.nikhil.yt.discovery.OfflineAudioQueue
+import com.nikhil.yt.ui.component.capsulePressClickable
 import com.nikhil.yt.ui.component.ItemThumbnail
 import com.nikhil.yt.ui.component.MenuSurfaceSection
 import java.time.LocalDateTime
@@ -95,12 +100,16 @@ fun OfflineDownloadMenu(
                     contentDescription = null,
                 )
             },
-            modifier = Modifier.clickable(onClick = action),
+            modifier = Modifier.capsulePressClickable(onClick = action),
             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         )
     }
 
-    Column(Modifier.fillMaxWidth()) {
+    Column(
+        Modifier.fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding())
+    ) {
         Row(
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,

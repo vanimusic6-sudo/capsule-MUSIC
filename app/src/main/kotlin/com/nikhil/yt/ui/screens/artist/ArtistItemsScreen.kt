@@ -8,9 +8,15 @@
 
 package com.nikhil.yt.ui.screens.artist
 
+import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.asPaddingValues
@@ -51,6 +57,10 @@ import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.constants.AppBarHeight
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.GridThumbnailHeight
+import com.nikhil.yt.constants.CropThumbnailToSquareKey
+import com.nikhil.yt.constants.ReleaseAppearanceDefaults
+import com.nikhil.yt.ui.component.LocalArtistThumbnailCrop
+import com.nikhil.yt.utils.rememberPreference
 import com.nikhil.yt.extensions.togglePlayPause
 import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.playback.queues.YouTubeQueue
@@ -87,25 +97,30 @@ fun ArtistItemsScreen(
 
     val title by viewModel.title.collectAsState()
     val itemsPage by viewModel.itemsPage.collectAsState()
+    val cropArtwork by rememberPreference(CropThumbnailToSquareKey, ReleaseAppearanceDefaults.cropThumbnail)
 
+    // Include the token in the observed state. A loading cell can remain
+    // visible after a page append, so observing only its visibility (true ->
+    // true) never emitted the next request and silently truncated catalogs.
     LaunchedEffect(lazyListState) {
         snapshotFlow {
-            lazyListState.layoutInfo.visibleItemsInfo.any { it.key == "loading" }
-        }.collect { shouldLoadMore ->
-            if (!shouldLoadMore) return@collect
-            viewModel.loadMore()
+            itemsPage?.continuation to
+                lazyListState.layoutInfo.visibleItemsInfo.any { it.key == "loading" }
+        }.collect { (token, visible) ->
+            if (token != null && visible) viewModel.loadMore()
         }
     }
 
     LaunchedEffect(lazyGridState) {
         snapshotFlow {
-            lazyGridState.layoutInfo.visibleItemsInfo.any { it.key == "loading" }
-        }.collect { shouldLoadMore ->
-            if (!shouldLoadMore) return@collect
-            viewModel.loadMore()
+            itemsPage?.continuation to
+                lazyGridState.layoutInfo.visibleItemsInfo.any { it.key == "loading" }
+        }.collect { (token, visible) ->
+            if (token != null && visible) viewModel.loadMore()
         }
     }
 
+    CompositionLocalProvider(LocalArtistThumbnailCrop provides cropArtwork) {
     if (itemsPage == null) {
         ShimmerHost(
             modifier = Modifier.windowInsetsPadding(LocalPlayerAwareWindowInsets.current.add(WindowInsets(top = AppBarHeight))),
@@ -179,6 +194,9 @@ fun ArtistItemsScreen(
                     },
                     modifier =
                     Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp)
+                        .clip(RoundedCornerShape(14.dp))
                         .clickable {
                             when (item) {
                                 is SongItem -> {
@@ -235,7 +253,8 @@ fun ArtistItemsScreen(
                     fillMaxWidth = true,
                     coroutineScope = coroutineScope,
                     modifier = Modifier
-                        .combinedClickable(
+                        .clip(RoundedCornerShape(18.dp))
+                        .capsulePressCombinedClickable(inset = 0.dp, radius = 18.dp, 
                             onClick = {
                                 when (item) {
                                     is SongItem -> playerConnection.playQueue(
@@ -294,6 +313,7 @@ fun ArtistItemsScreen(
         }
     }
 
+    }
     TopAppBar(
         title = { Text(title) },
         navigationIcon = {

@@ -22,7 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -117,14 +117,13 @@ fun LibraryScreen(navController: NavController) {
                     .fillMaxSize(0.7f) // Cover top 70% of screen
                     .align(Alignment.TopCenter)
                     .zIndex(-1f) // Place behind all content
-                .drawBehind {
+                .drawWithCache {
                     val width = size.width
                     val height = size.height
-                    
-                    // Create mesh gradient with 5 color blobs for more variation
-                    // First color blob - top left
-                    drawRect(
-                        brush = Brush.radialGradient(
+                    // Calculating six gradient shaders in drawBehind allocated
+                    // temporary Lists/Brushes every redraw. Cache by bounds and
+                    // theme inputs; scrolling only reuses the prepared brushes.
+                    val meshBrush1 = Brush.radialGradient(
                             colors = listOf(
                                 color1.copy(alpha = 0.38f),
                                 color1.copy(alpha = 0.24f),
@@ -135,11 +134,7 @@ fun LibraryScreen(navController: NavController) {
                             center = Offset(width * 0.15f, height * 0.1f),
                             radius = width * 0.55f
                         )
-                    )
-                    
-                    // Second color blob - top right
-                    drawRect(
-                        brush = Brush.radialGradient(
+                    val meshBrush2 = Brush.radialGradient(
                             colors = listOf(
                                 color2.copy(alpha = 0.34f),
                                 color2.copy(alpha = 0.2f),
@@ -150,11 +145,7 @@ fun LibraryScreen(navController: NavController) {
                             center = Offset(width * 0.85f, height * 0.2f),
                             radius = width * 0.65f
                         )
-                    )
-                    
-                    // Third color blob - middle left
-                    drawRect(
-                        brush = Brush.radialGradient(
+                    val meshBrush3 = Brush.radialGradient(
                             colors = listOf(
                                 color3.copy(alpha = 0.3f),
                                 color3.copy(alpha = 0.17f),
@@ -165,11 +156,7 @@ fun LibraryScreen(navController: NavController) {
                             center = Offset(width * 0.3f, height * 0.45f),
                             radius = width * 0.6f
                         )
-                    )
-                    
-                    // Fourth color blob - middle right
-                    drawRect(
-                        brush = Brush.radialGradient(
+                    val meshBrush4 = Brush.radialGradient(
                             colors = listOf(
                                 color4.copy(alpha = 0.26f),
                                 color4.copy(alpha = 0.14f),
@@ -180,11 +167,7 @@ fun LibraryScreen(navController: NavController) {
                             center = Offset(width * 0.7f, height * 0.5f),
                             radius = width * 0.7f
                         )
-                    )
-                    
-                    // Fifth color blob - bottom center (helps with smooth fade)
-                    drawRect(
-                        brush = Brush.radialGradient(
+                    val meshBrush5 = Brush.radialGradient(
                             colors = listOf(
                                 color5.copy(alpha = 0.22f),
                                 color5.copy(alpha = 0.12f),
@@ -195,11 +178,7 @@ fun LibraryScreen(navController: NavController) {
                             center = Offset(width * 0.5f, height * 0.75f),
                             radius = width * 0.8f
                         )
-                    )
-                    
-                    // Add a final vertical gradient overlay to ensure smooth bottom fade
-                    drawRect(
-                        brush = Brush.verticalGradient(
+                    val meshBrush6 = Brush.verticalGradient(
                             colors = listOf(
                                 Color.Transparent,
                                 Color.Transparent,
@@ -210,7 +189,15 @@ fun LibraryScreen(navController: NavController) {
                             startY = height * 0.4f,
                             endY = height
                         )
-                    )
+                    onDrawBehind {
+                        drawRect(brush = meshBrush1)
+                        drawRect(brush = meshBrush2)
+                        drawRect(brush = meshBrush3)
+                        drawRect(brush = meshBrush4)
+                        drawRect(brush = meshBrush5)
+                        drawRect(brush = meshBrush6)
+                    }
+
                 }
         ) {}
         }

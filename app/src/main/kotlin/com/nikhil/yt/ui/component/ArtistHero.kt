@@ -3,7 +3,6 @@ package com.nikhil.yt.ui.component
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.draw.clipToBounds
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 import androidx.compose.foundation.BorderStroke
@@ -44,6 +43,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
@@ -51,6 +51,7 @@ import com.nikhil.yt.R
 
 internal val ArtistHeroMaxWidth = 450.dp
 internal const val ArtistHeroArtworkHeightFactor = 1.25f
+internal val ArtistMemorialActionExtraHeight = 62.dp
 
 internal fun artistHeroArtworkHeight(availableWidth: Dp): Dp =
     availableWidth.coerceAtMost(ArtistHeroMaxWidth) * ArtistHeroArtworkHeightFactor
@@ -65,36 +66,50 @@ internal fun ArtistHeroLayout(
     modifier: Modifier = Modifier,
     topSafePadding: Dp = 0.dp,
     artworkAlpha: () -> Float = { 1f },
+    memorialExtraHeight: Dp = ArtistMemorialActionExtraHeight,
 ) {
     BoxWithConstraints(modifier.fillMaxWidth().background(background)) {
-        // Shorter portrait keeps both action rows above the player/navigation on phones.
-        // Artwork itself reaches the physical top edge; only overlay content respects safe insets.
-        val referenceWidth = maxWidth.coerceAtMost(ArtistHeroMaxWidth)
-        val heroHeight = referenceWidth * 1.48f + 16.dp
-        Box(Modifier.fillMaxWidth().height(artistHeroArtworkHeight(maxWidth))) {
+        // Preserve the full-size portrait. The action rail begins exactly 12dp
+        // below it in BOTH layouts; no photograph/button overlap.
+        // The old rail always reserved the second 62dp memorial row, even for
+        // living artists. Coupled with a visual action offset it created a
+        // large hole above AND below their only row of buttons.
+        val artworkHeight = artistHeroArtworkHeight(maxWidth)
+        val firstRowHeight = if (LocalDensity.current.fontScale > 1.3f) 110.dp else 48.dp
+        val actionRailHeight = firstRowHeight + memorialExtraHeight
+        val heroHeight = artworkHeight + 12.dp + actionRailHeight + 14.dp
+        Box(Modifier.fillMaxWidth().height(artworkHeight)
+            .testTag("artist-artwork-field")) {
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = artworkAlpha().coerceIn(0f, 1f) }) { artwork() }
-            // No dark veil across the forehead of the artist image. The toolbar remains
-            // inset for touch safety; only the photo itself reaches the physical top edge.
-            ArtworkSurfaceFade(background, Modifier.matchParentSize(), portrait = true, topScrim = false)
+            ArtworkSurfaceFade(
+                background,
+                Modifier.matchParentSize(),
+                portrait = true,
+                topScrim = false,
+                // Match album/playlist: the restrained long matte preserves
+                // portrait colour rather than washing it out halfway down.
+                softPortrait = false,
+            )
         }
         Column(
-            // Never let an asynchronously detected memorial action alter the
-            // header height or push the latest release and list under a finger.
+            // Only the optional memorial row animates in height. The photo and
+            // Subscribe/Shuffle retain fixed anchors, while subsequent content
+            // moves smoothly instead of jumping after the lookup finishes.
             Modifier.fillMaxWidth().height(heroHeight)
                 .padding(top = topSafePadding + 72.dp, bottom = 14.dp),
             verticalArrangement = Arrangement.Bottom,
         ) {
             Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp)) { title() }
             Spacer(Modifier.height(24.dp))
-            // Reserve the second action slot from frame one. The first row
-            // has a fixed anchor whether the memorial lookup returns now, late,
-            // or never; the candle can appear without moving other elements.
-            val actionRailHeight = if (LocalDensity.current.fontScale > 1.3f) 172.dp else 110.dp
+            // A single compact row for living artists, two for memorials.
+            // Clipping the animated extra slot gives a soft candle reveal
+            // without leaving an invisible 62dp placeholder.
             Column(
                 Modifier.fillMaxWidth()
                     .padding(horizontal = 22.dp)
-                    .heightIn(min = actionRailHeight)
-                    .clipToBounds(),
+                    .height(actionRailHeight)
+                    .clipToBounds()
+                    .testTag("artist-action-rail"),
             ) { actions() }
         }
     }
@@ -117,6 +132,13 @@ internal fun ArtistHero(
     topSafePadding: Dp = 0.dp,
     artworkAlpha: () -> Float = { 1f },
 ) {
+    // The first row never moves. Late memorial detection only grows/shrinks
+    // the second row and its list space with a small eased transition.
+    val memorialExtraHeight by animateDpAsState(
+        targetValue = if (showCandle) ArtistMemorialActionExtraHeight else 0.dp,
+        animationSpec = tween(durationMillis = 260, easing = CapsuleStandardEasing),
+        label = "artist-memorial-row-height",
+    )
     val loadingLabel = stringResource(R.string.loading)
 
     val displayedSubscribed = subscribed
@@ -127,6 +149,7 @@ internal fun ArtistHero(
         background = background,
         topSafePadding = topSafePadding,
         artworkAlpha = artworkAlpha,
+        memorialExtraHeight = memorialExtraHeight,
         artwork = {
             /*
              * No figure stands in for a portrait that has not arrived yet.
@@ -157,16 +180,8 @@ internal fun ArtistHero(
         // persistent.
         title = {},
         actions = {
-            // Keep the hero and the latest-release card fixed in place.
-            // Only the action buttons move within the already reserved slot.
-            // Living artists use the LOWER part of that slot, so there is no
-            // empty hole underneath Subscribe / Shuffle.
-            val candleSlide by animateDpAsState(
-                targetValue = if (showCandle) 0.dp else 62.dp,
-                animationSpec = tween(durationMillis = 260, easing = CapsuleStandardEasing),
-                label = "artist-memorial-action-slide",
-            )
-            Column(Modifier.offset(y = candleSlide)) {
+            // The same first-row anchor applies with and without the candle.
+            Column {
             val stackActions = LocalDensity.current.fontScale > 1.3f
             val subscribeLabel = stringResource(if (displayedSubscribed) R.string.capsule_artist_subscribed else R.string.subscribe)
             if (stackActions) {
@@ -207,9 +222,9 @@ internal fun ArtistHero(
                     )
                 }
             }
-            // Show the memorial action only once the existing buttons have
-            // gracefully reached their new anchor, never over the next card.
-            if (showCandle && candleSlide < 1.dp) {
+            // The growing clipped rail reveals the candle without moving the
+            // first row or briefly painting over the next release.
+            if (showCandle) {
                 Spacer(Modifier.height(14.dp))
                 CapsuleArtistAction(
                     R.drawable.capsule_candle,

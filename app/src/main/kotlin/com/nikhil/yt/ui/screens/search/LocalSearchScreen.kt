@@ -8,6 +8,8 @@
 
 package com.nikhil.yt.ui.screens.search
 
+import com.nikhil.yt.ui.component.capsulePressClickable
+import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -137,7 +139,7 @@ fun LocalSearchScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { viewModel.filter.value = filter }
+                                .capsulePressClickable { viewModel.filter.value = filter }
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
                         ) {
                             Box(
@@ -218,7 +220,7 @@ fun LocalSearchScreen(
                                 }
                             },
                             modifier = Modifier
-                                .combinedClickable(
+                                .capsulePressCombinedClickable(
                                     onClick = {
                                         if (item.id == mediaMetadata?.id) {
                                             playerConnection.player.togglePlayPause()
@@ -258,7 +260,7 @@ fun LocalSearchScreen(
                             isActive = item.id == mediaMetadata?.album?.id,
                             isPlaying = isPlaying,
                             modifier = Modifier
-                                .clickable {
+                                .capsulePressClickable {
                                     onDismiss()
                                     navController.navigate("album/${item.id}")
                                 }
@@ -268,7 +270,7 @@ fun LocalSearchScreen(
                         is Artist -> ArtistListItem(
                             artist = item,
                             modifier = Modifier
-                                .clickable {
+                                .capsulePressClickable {
                                     onDismiss()
                                     navController.navigate("artist/${item.id}")
                                 }
@@ -278,7 +280,7 @@ fun LocalSearchScreen(
                         is Playlist -> PlaylistListItem(
                             playlist = item,
                             modifier = Modifier
-                                .clickable {
+                                .capsulePressClickable {
                                     onDismiss()
                                     navController.navigate("local_playlist/${item.id}")
                                 }

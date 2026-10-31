@@ -11,6 +11,12 @@ package com.nikhil.yt.ui.component
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
@@ -42,8 +48,11 @@ fun LibraryArtistListItem(
     coroutineScope: CoroutineScope,
     artist: Artist,
     modifier: Modifier = Modifier
-) = ArtistListItem(
+) {
+    val press = remember { MutableInteractionSource() }
+    ArtistListItem(
     artist = artist,
+    pressInteractionSource = press,
     trailingContent = {
         androidx.compose.material3.IconButton(
             onClick = {
@@ -64,10 +73,11 @@ fun LibraryArtistListItem(
     },
     modifier = modifier
         .fillMaxWidth()
-        .clickable {
+        .clickable(interactionSource = press, indication = null) {
             navController.navigate("artist/${artist.id}")
         }
-)
+    )
+}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -77,12 +87,19 @@ fun LibraryArtistGridItem(
     coroutineScope: CoroutineScope,
     artist: Artist,
     modifier: Modifier = Modifier
-) = ArtistGridItem(
+) {
+    val press = remember { MutableInteractionSource() }
+    val pressed by press.collectIsPressedAsState()
+    ArtistGridItem(
     artist = artist,
     fillMaxWidth = true,
     modifier = modifier
         .fillMaxWidth()
+        .clip(RoundedCornerShape(18.dp))
+        .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = if (pressed) ActiveBoxAlpha else 0f))
         .combinedClickable(
+            interactionSource = press,
+            indication = null,
             onClick = {
                 navController.navigate("artist/${artist.id}")
             },
@@ -96,7 +113,8 @@ fun LibraryArtistGridItem(
                 }
             }
         )
-)
+    )
+}
 
 @Composable
 fun LibraryAlbumListItem(
@@ -106,8 +124,11 @@ fun LibraryAlbumListItem(
     album: Album,
     isActive: Boolean = false,
     isPlaying: Boolean = false
-) = AlbumListItem(
+) {
+    val press = remember { MutableInteractionSource() }
+    AlbumListItem(
     album = album,
+    pressInteractionSource = press,
     isActive = isActive,
     isPlaying = isPlaying,
     trailingContent = {
@@ -130,10 +151,11 @@ fun LibraryAlbumListItem(
     },
     modifier = modifier
         .fillMaxWidth()
-        .clickable {
+        .clickable(interactionSource = press, indication = null) {
             navController.navigate("album/${album.id}")
         }
-)
+    )
+}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -145,7 +167,10 @@ fun LibraryAlbumGridItem(
     album: Album,
     isActive: Boolean = false,
     isPlaying: Boolean = false
-) = AlbumGridItem(
+) {
+    val press = remember { MutableInteractionSource() }
+    val pressed by press.collectIsPressedAsState()
+    AlbumGridItem(
     album = album,
     isActive = isActive,
     isPlaying = isPlaying,
@@ -153,7 +178,11 @@ fun LibraryAlbumGridItem(
     fillMaxWidth = true,
     modifier = modifier
         .fillMaxWidth()
+        .clip(RoundedCornerShape(18.dp))
+        .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = if (pressed) ActiveBoxAlpha else 0f))
         .combinedClickable(
+            interactionSource = press,
+            indication = null,
             onClick = {
                 navController.navigate("album/${album.id}")
             },
@@ -167,7 +196,8 @@ fun LibraryAlbumGridItem(
                 }
             }
         )
-)
+    )
+}
 
 @Composable
 fun LibraryPlaylistListItem(
@@ -264,10 +294,16 @@ fun LibraryPlaylistListItem(
             onClick = openPlaylist
         )
     } else {
+        val press = remember { MutableInteractionSource() }
         PlaylistListItem(
             playlist = playlist,
+            pressInteractionSource = press,
             trailingContent = trailing,
-            modifier = baseMod.clickable(onClick = openPlaylist)
+            modifier = baseMod.clickable(
+                interactionSource = press,
+                indication = null,
+                onClick = openPlaylist,
+            )
         )
     }
 }
@@ -281,12 +317,19 @@ fun LibraryPlaylistGridItem(
     coroutineScope: CoroutineScope,
     playlist: Playlist,
     modifier: Modifier = Modifier
-) = PlaylistGridItem(
+) {
+    val press = remember { MutableInteractionSource() }
+    val pressed by press.collectIsPressedAsState()
+    PlaylistGridItem(
     playlist = playlist,
     fillMaxWidth = true,
     modifier = modifier
         .fillMaxWidth()
+        .clip(RoundedCornerShape(18.dp))
+        .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = if (pressed) ActiveBoxAlpha else 0f))
         .combinedClickable(
+            interactionSource = press,
+            indication = null,
             onClick = {
                 if (!playlist.playlist.isEditable && playlist.songCount == 0 && playlist.playlist.remoteSongCount != 0)
                     navController.navigate("online_playlist/${playlist.playlist.browseId}")
@@ -333,3 +376,4 @@ fun LibraryPlaylistGridItem(
             }
         )
 )
+}

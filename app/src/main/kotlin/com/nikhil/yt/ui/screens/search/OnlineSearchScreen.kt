@@ -8,6 +8,7 @@
 
 package com.nikhil.yt.ui.screens.search
 
+import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -223,7 +224,7 @@ fun OnlineSearchScreen(
                     }
                 },
                 modifier = Modifier
-                    .combinedClickable(
+                    .capsulePressCombinedClickable(
                         onClick = {
                             when (item) {
                                 is SongItem -> {

@@ -10,18 +10,29 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.hideFromAccessibility
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.painterResource
 import com.nikhil.yt.R
 import androidx.compose.ui.layout.ContentScale
@@ -42,6 +53,7 @@ internal fun AlbumPortraitFrame(
     modifier: Modifier = Modifier,
     artworkAlpha: () -> Float = { 1f },
     artworkMotion: DetailHeaderMotionState? = null,
+    caption: @Composable BoxScope.() -> Unit = {},
     artwork: @Composable BoxScope.() -> Unit,
 ) {
     val screenHeight = LocalConfiguration.current.screenHeightDp.dp
@@ -70,53 +82,122 @@ internal fun AlbumPortraitFrame(
                 // covers look faded long before their scroll transition.
                 softPortrait = false,
             )
+            // Keep the name within the already-existing dark matte instead
+            // of shifting the control capsule below the mini-player.
+            caption()
+        }
+    }
+}
+
+/** ArchiveTune-style hero name: centred just above the collection capsule. */
+@Composable
+internal fun BoxScope.CapsuleDetailCoverTitle(
+    title: String,
+    motion: DetailHeaderMotionState?,
+) {
+    if (title.isBlank()) return
+    val foreground = StandardChrome.text
+    val alpha = motion?.coverTitleAlpha() ?: 1f
+    val hidden = alpha <= .5f
+    Box(Modifier.align(Alignment.BottomCenter).padding(horizontal = 28.dp).padding(bottom = 16.dp)) {
+        // This parent owns the untransformed anchor. The moving child never
+        // changes the caption slot or the control capsule's measured geometry.
+        Box(Modifier.then(if (motion == null) Modifier else
+            Modifier.onGloballyPositioned(motion::measureCoverTitle))) {
+            Text(
+                text = title,
+                modifier = Modifier.detailCoverTitleMotion(motion).testTag("capsule:detail-title")
+                    .semantics { if (hidden) hideFromAccessibility() },
+                color = foreground.copy(alpha = foreground.alpha * alpha),
+                style = MaterialTheme.typography.headlineLarge.copy(
+                    fontSize = 25.sp,
+                    lineHeight = 29.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                ),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                onTextLayout = { motion?.measureCoverTitleText(it) },
+            )
         }
     }
 }
 
 /**
- * A direct Coil AsyncImage uses actual layout constraints. Try the original
- * URL if a Google CDN resize fails, then a track cover if the collection
- * thumbnail is missing or broken. This avoids a blank black hero.
+ * Album and playlist heroes prefer their own cover, but a CDN resize may
+ * fail even when the original URL or a song thumbnail is valid.
+ * Avoid identical requests and keep fallback order deterministic.
+ */
+internal fun detailArtworkCandidates(
+    thumbnailUrl: String?,
+    fallbackThumbnailUrl: String? = null,
+    fallbackThumbnailUrls: List<String> = emptyList(),
+    minimumPixels: Int = 960,
+): List<String> = (listOfNotNull(thumbnailUrl, fallbackThumbnailUrl) +
+    fallbackThumbnailUrls.take(4))
+    .filter(String::isNotBlank)
+    .distinct()
+    .flatMap { url -> listOfNotNull(capsuleArtworkUrl(url, minimumPixels), url) }
+    .distinct()
+
+/**
+ * One image request at a time, with bounded alternatives and recovery.
+ *
+ * Previously a 404/403, a slow CDN request, or an invalid oversized URL
+ * could strand the hero on a full-screen StandardChrome.panel placeholder.
+ * The placeholder also differed from the *page* and toolbar background.
+ *
+ * Match the page surface even while loading. On an error try the original URL
+ * and then up to four real track covers; on a stalled request advance after
+ * seven seconds. At most two further rounds are attempted. No polling or
+ * continuous retry after exhaustion; Coil keeps its shared image cache.
  */
 @Composable
 internal fun DetailPortraitImage(
     thumbnailUrl: String?,
     modifier: Modifier = Modifier,
     fallbackThumbnailUrl: String? = null,
+    fallbackThumbnailUrls: List<String> = emptyList(),
     minimumPixels: Int = 960,
+    background: Color = StandardChrome.background,
 ) {
-    val candidates = remember(thumbnailUrl, fallbackThumbnailUrl, minimumPixels) {
-        listOf(
-            capsuleArtworkUrl(thumbnailUrl, minimumPixels),
-            thumbnailUrl,
-            capsuleArtworkUrl(fallbackThumbnailUrl, minimumPixels),
-            fallbackThumbnailUrl,
-        ).filterNotNull().filter(String::isNotBlank).distinct()
+    val candidates = remember(thumbnailUrl, fallbackThumbnailUrl, fallbackThumbnailUrls, minimumPixels) {
+        detailArtworkCandidates(thumbnailUrl, fallbackThumbnailUrl, fallbackThumbnailUrls, minimumPixels)
     }
-    var candidateIndex by remember(thumbnailUrl, fallbackThumbnailUrl, minimumPixels) {
-        mutableIntStateOf(0)
+    val coverIdentity = thumbnailUrl?.takeIf(String::isNotBlank)
+        ?: fallbackThumbnailUrl?.takeIf(String::isNotBlank)
+        ?: fallbackThumbnailUrls.firstOrNull(String::isNotBlank)
+    val request = remember(coverIdentity, minimumPixels) { DetailArtworkRequestState(candidates) }
+    SideEffect { request.updateCandidates(candidates) }
+    val attempt = request.attempt
+    LaunchedEffect(request, attempt, request.loaded) {
+        if (attempt != null && !request.loaded) {
+            delay(7_000L)
+            request.fail(attempt)
+        }
     }
-    Box(
-        modifier.background(StandardChrome.panel),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            painter = painterResource(R.drawable.music_note),
-            contentDescription = null,
-            tint = StandardChrome.muted.copy(alpha = 0.38f),
-            modifier = Modifier.size(56.dp),
-        )
-        if (candidates.isNotEmpty()) {
-            AsyncImage(
-                model = candidates[candidateIndex.coerceAtMost(candidates.lastIndex)],
+
+    Box(modifier.background(background), contentAlignment = Alignment.Center) {
+        if (attempt == null) {
+            Icon(
+                painter = painterResource(R.drawable.music_note),
                 contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-                onError = {
-                    if (candidateIndex < candidates.lastIndex) candidateIndex++
-                },
+                tint = StandardChrome.muted.copy(alpha = 0.38f),
+                modifier = Modifier.size(56.dp),
             )
+        } else {
+            // Preserve the same source after success even if track pagination
+            // changes fallback order. Round also makes same-URL retries real.
+            key(coverIdentity, attempt) {
+                AsyncImage(
+                    model = attempt.source,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    onSuccess = { request.succeed(attempt) },
+                    onError = { request.fail(attempt) },
+                )
+            }
         }
     }
 }
@@ -129,29 +210,30 @@ internal fun AlbumArtwork(
     artworkAlpha: () -> Float = { 1f },
     artworkMotion: DetailHeaderMotionState? = null,
     fallbackThumbnailUrl: String? = null,
+    fallbackThumbnailUrls: List<String> = emptyList(),
+    title: String = "",
 ) {
     AlbumPortraitFrame(
         background = background,
         modifier = modifier,
         artworkAlpha = artworkAlpha,
         artworkMotion = artworkMotion,
+        caption = { CapsuleDetailCoverTitle(title, artworkMotion) },
     ) {
         DetailPortraitImage(
             thumbnailUrl = thumbnailUrl,
             fallbackThumbnailUrl = fallbackThumbnailUrl,
+            fallbackThumbnailUrls = fallbackThumbnailUrls,
+            background = background,
             modifier = Modifier.fillMaxSize(),
         )
     }
 }
 
-/**
- * Recover the 44dp formerly lost to an EXTERNAL spacer above the artwork.
- * Put those pixels into the portrait itself instead: album and playlist art
- * reach the screen's top edge, while the capsule remains at its old baseline.
- */
+/** Keep the established portrait height and capsule baseline on short and tall screens. */
 internal fun albumCoverHeight(width: Dp, screenHeight: Dp): Dp {
     val natural = width / 0.85f
-    return minOf(natural, maxOf(natural * 0.83f, screenHeight * 0.50f)) + 12.dp + 44.dp
+    return minOf(natural, maxOf(natural * 0.83f, screenHeight * 0.50f)) + 20.dp
 }
 
 @Suppress("UNUSED_PARAMETER")

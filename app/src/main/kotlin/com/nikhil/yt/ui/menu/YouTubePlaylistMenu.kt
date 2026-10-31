@@ -19,12 +19,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
-import androidx.compose.ui.platform.LocalConfiguration
-import android.content.res.Configuration
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -204,9 +203,6 @@ fun YouTubePlaylistMenu(
     )
     HorizontalDivider()
 
-    val configuration = LocalConfiguration.current
-    val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
-
     // Reading the menu must be cheap and side-effect free. The process-owned
     // download coordinator resolves continuation pages on an actual DOWNLOAD
     // tap. Automatically fetching a huge public playlist every time More
@@ -300,7 +296,8 @@ fun YouTubePlaylistMenu(
     }
 
     LazyColumn(
-        userScrollEnabled = !isPortrait,
+        state = androidx.compose.foundation.lazy.rememberLazyListState(),
+        modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(
             start = 0.dp,
             top = 0.dp,

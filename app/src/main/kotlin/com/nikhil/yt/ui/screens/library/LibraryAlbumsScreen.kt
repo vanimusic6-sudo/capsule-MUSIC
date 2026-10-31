@@ -40,6 +40,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -161,6 +163,15 @@ fun LibraryAlbumsScreen(
      */
     val loadedAlbums by viewModel.allAlbums.collectAsState()
     val albums = loadedAlbums.orEmpty()
+    // Use one stable, de-duplicated dataset for grid and list. Rebuilding
+    // distinctBy/filter during every playback/scroll recomposition can
+    // repeatedly allocate and disturb lazy item placement.
+    val visibleAlbums = remember(albums, hideExplicit) {
+        albums.asSequence()
+            .filter { !hideExplicit || !it.album.explicit }
+            .distinctBy { it.id }
+            .toList()
+    }
     val isRefreshing by viewModel.isRefreshing.collectAsState()
 
     val coroutineScope = rememberCoroutineScope()
@@ -168,6 +179,19 @@ fun LibraryAlbumsScreen(
     val lazyListState = rememberLazyListState()
     val lazyGridState = rememberLazyGridState()
     val pullRefreshState = rememberPullToRefreshState()
+    // Pull-to-refresh is a top-edge gesture only. Keeping its nested-scroll
+    // recognizer active halfway down the album grid can steal a slow finger
+    // drag and start a refresh / content reposition unexpectedly.
+    val canPullRefresh by remember(viewType, lazyListState, lazyGridState) {
+        derivedStateOf {
+            when (viewType) {
+                LibraryViewType.LIST ->
+                    lazyListState.firstVisibleItemIndex == 0 && lazyListState.firstVisibleItemScrollOffset == 0
+                LibraryViewType.GRID ->
+                    lazyGridState.firstVisibleItemIndex == 0 && lazyGridState.firstVisibleItemScrollOffset == 0
+            }
+        }
+    }
     // This screen's own entry: it cannot be destroyed while this composition is alive,
     // and observing it does not recompose the screen on unrelated navigation.
     val backStackEntry = LocalNavBackStackEntry.current
@@ -241,7 +265,8 @@ fun LibraryAlbumsScreen(
                 .pullToRefresh(
                     state = pullRefreshState,
                     isRefreshing = isRefreshing,
-                    onRefresh = { if (ytmSync) viewModel.refresh(filter) }
+                    onRefresh = { if (ytmSync) viewModel.refresh(filter) },
+                    enabled = ytmSync && canPullRefresh,
                 ),
     ) {
         when (viewType) {
@@ -276,13 +301,8 @@ fun LibraryAlbumsScreen(
                             }
                         }
 
-                        val filteredAlbumsForList = if (hideExplicit) {
-                            albums.filter { !it.album.explicit }
-                        } else {
-                            albums
-                        }
                         items(
-                            items = filteredAlbumsForList.distinctBy { it.id },
+                            items = visibleAlbums,
                             key = { it.id },
                             contentType = { CONTENT_TYPE_ALBUM },
                         ) { album ->
@@ -334,13 +354,8 @@ fun LibraryAlbumsScreen(
                             }
                         }
 
-                        val filteredAlbumsForGrid = if (hideExplicit) {
-                            albums.filter { !it.album.explicit }
-                        } else {
-                            albums
-                        }
                         items(
-                            items = filteredAlbumsForGrid.distinctBy { it.id },
+                            items = visibleAlbums,
                             key = { it.id },
                             contentType = { CONTENT_TYPE_ALBUM },
                         ) { album ->

@@ -43,10 +43,20 @@ data class MusicResponsiveListItemRenderer(
     val isSong: Boolean
         get() = navigationEndpoint == null || navigationEndpoint.watchEndpoint != null || navigationEndpoint.watchPlaylistEndpoint != null
     val isPlaylist: Boolean
-        get() = navigationEndpoint?.browseEndpoint?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType == MUSIC_PAGE_TYPE_PLAYLIST
+        get() {
+            val browse = navigationEndpoint?.browseEndpoint ?: return false
+            val pageType = browse.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType
+            return pageType == MUSIC_PAGE_TYPE_PLAYLIST ||
+                (pageType == null && browse.browseId.startsWith("VL"))
+        }
     val isAlbum: Boolean
-        get() = navigationEndpoint?.browseEndpoint?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType == MUSIC_PAGE_TYPE_ALBUM ||
-                navigationEndpoint?.browseEndpoint?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType == MUSIC_PAGE_TYPE_AUDIOBOOK
+        get() {
+            val browse = navigationEndpoint?.browseEndpoint ?: return false
+            val pageType = browse.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType
+            return pageType == MUSIC_PAGE_TYPE_ALBUM ||
+                pageType == MUSIC_PAGE_TYPE_AUDIOBOOK ||
+                (pageType == null && browse.browseId.startsWith("MPRE"))
+        }
     val isArtist: Boolean
         get() = navigationEndpoint?.browseEndpoint?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType == MUSIC_PAGE_TYPE_ARTIST
                 || navigationEndpoint?.browseEndpoint?.browseEndpointContextSupportedConfigs?.browseEndpointContextMusicConfig?.pageType == MUSIC_PAGE_TYPE_LIBRARY_ARTIST

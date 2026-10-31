@@ -12,17 +12,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -53,16 +51,14 @@ internal fun CapsuleDetailHero(
     AlbumHeaderLayout(
         modifier = modifier,
         showTitle = false,
-        // The same 44dp portrait inset as albums. Keep online-playlist author
-        // text without pushing its action capsule under the mini-player.
-        artworkTopSpacing = AlbumArtworkTopSpacing -
-            if (subtitle != null) 22.dp else 0.dp,
+        artworkTopSpacing = AlbumArtworkTopSpacing,
         artwork = {
             AlbumPortraitFrame(
                 background = bodyBackground,
                 modifier = Modifier.testTag("capsule:detail-artwork"),
                 artworkAlpha = artworkAlpha,
                 artworkMotion = titleMotion,
+                caption = { CapsuleDetailCoverTitle(title, titleMotion) },
             ) {
                 artwork()
             }
@@ -158,12 +154,17 @@ internal fun PlaylistHero(
     year: String? = null,
     artworkAlpha: () -> Float = { 1f },
     titleMotion: DetailHeaderMotionState? = null,
+    // Keep the previous positional-argument signature intact for callers.
+    fallbackThumbnails: List<String> = emptyList(),
     actions: @Composable RowScope.() -> Unit,
 ) {
-    val metrics = buildList {
-        add(CapsuleHeroMetric(R.drawable.music_note, songCount))
-        if (year != null) add(CapsuleHeroMetric(R.drawable.calendar_today, year))
-        if (duration != null) add(CapsuleHeroMetric(R.drawable.timer, duration))
+    val covers = remember(thumbnails) { thumbnails.filter(String::isNotBlank).take(4) }
+    val metrics = remember(songCount, year, duration) {
+        buildList {
+            add(CapsuleHeroMetric(R.drawable.music_note, songCount))
+            if (year != null) add(CapsuleHeroMetric(R.drawable.calendar_today, year))
+            if (duration != null) add(CapsuleHeroMetric(R.drawable.timer, duration))
+        }
     }
     CapsuleDetailHero(
         title = title,
@@ -173,10 +174,19 @@ internal fun PlaylistHero(
         artworkAlpha = artworkAlpha,
         titleMotion = titleMotion,
         artwork = {
-            val covers = thumbnails.filter(String::isNotBlank).take(4)
-            Box(Modifier.fillMaxSize().background(StandardChrome.panel), contentAlignment = Alignment.Center) {
+            // The full-bleed photo placeholder is a continuation of the
+            // page, NOT a raised card. Otherwise it clashes with the pinned
+            // toolbar until the image arrives (especially under shimmer).
+            Box(Modifier.fillMaxSize().background(StandardChrome.background), contentAlignment = Alignment.Center) {
                 when (covers.size) {
-                    0 -> if (loading) VeluneLoader(size = 30.dp) else Icon(
+                    0 -> if (loading) VeluneLoader(size = 30.dp) else if (fallbackThumbnails.any(String::isNotBlank)) {
+                        DetailPortraitImage(
+                            thumbnailUrl = fallbackThumbnails.firstOrNull { it.isNotBlank() },
+                            fallbackThumbnailUrls = fallbackThumbnails.drop(1),
+                            background = StandardChrome.background,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else Icon(
                         painter = painterResource(placeholderIcon),
                         contentDescription = null,
                         modifier = Modifier.size(64.dp),
@@ -184,6 +194,8 @@ internal fun PlaylistHero(
                     )
                     1 -> DetailPortraitImage(
                         thumbnailUrl = covers.first(),
+                        fallbackThumbnailUrls = fallbackThumbnails,
+                        background = StandardChrome.background,
                         modifier = Modifier.fillMaxSize(),
                     )
                     else -> Column(Modifier.fillMaxSize()) {
@@ -192,6 +204,7 @@ internal fun PlaylistHero(
                                 repeat(2) { column ->
                                     DetailPortraitImage(
                                         thumbnailUrl = covers[(row * 2 + column) % covers.size],
+                                        background = StandardChrome.background,
                                         minimumPixels = 640,
                                         modifier = Modifier.weight(1f).fillMaxHeight(),
                                     )

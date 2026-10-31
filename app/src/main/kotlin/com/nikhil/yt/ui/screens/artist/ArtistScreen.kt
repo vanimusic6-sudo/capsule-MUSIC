@@ -7,6 +7,7 @@
 
 package com.nikhil.yt.ui.screens.artist
 
+import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import com.nikhil.yt.ui.utils.artistPortraitUrl
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -17,6 +18,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -77,6 +79,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.allowHardware
+import coil3.SingletonImageLoader
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.awaitCancellation
+import com.nikhil.yt.ui.component.capsuleArtworkUrl
 import androidx.compose.ui.util.fastForEach
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -85,6 +93,8 @@ import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.HideExplicitKey
+import com.nikhil.yt.constants.CropThumbnailToSquareKey
+import com.nikhil.yt.constants.ReleaseAppearanceDefaults
 import com.nikhil.yt.db.entities.ArtistEntity
 import com.nikhil.yt.extensions.togglePlayPause
 import com.nikhil.yt.extensions.toMediaItem
@@ -107,6 +117,7 @@ import com.nikhil.yt.ui.component.HideOnScrollFAB
 import com.nikhil.yt.ui.component.IconButton
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.LocalSongListVisuals
+import com.nikhil.yt.ui.component.LocalArtistThumbnailCrop
 import com.nikhil.yt.ui.component.NavigationTitle
 import com.nikhil.yt.ui.component.SongListItem
 import com.nikhil.yt.ui.component.SongListVisuals
@@ -139,10 +150,12 @@ private val ArtistLatestReleaseArtworkSize = 112.dp
 internal fun artistArtworkFade(firstVisibleItemIndex: Int, offsetPx: Int, artworkHeightPx: Int, toolbarBottomPx: Int): Float {
     if (firstVisibleItemIndex > 0) return 1f
     val distance = (artworkHeightPx - toolbarBottomPx).coerceAtLeast(1)
-    // Leave room for the action row before it passes behind the pinned toolbar.
-    // A shorter dissolve allows the toolbar to turn opaque before overlap.
-    val earlyCompletionPx = (artworkHeightPx * 0.14f).toInt()
-    return portraitDissolveFraction(offsetPx.toFloat(), (distance - earlyCompletionPx).coerceAtLeast(1).toFloat())
+    // The only fully dark region before the buttons is the measured toolbar
+    // crossing itself. Keep the photo visible during earlier scroll travel,
+    // and seal the toolbar one raster pixel before the photo leaves its edge.
+    return portraitDissolveFraction(
+        offsetPx.toFloat(), distance.toFloat(), toolbarBottomPx.toFloat(),
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
@@ -165,6 +178,7 @@ fun ArtistScreen(
     val librarySongs by viewModel.librarySongs.collectAsState()
     val libraryAlbums by viewModel.libraryAlbums.collectAsState()
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
+    val cropArtistArtwork by rememberPreference(CropThumbnailToSquareKey, ReleaseAppearanceDefaults.cropThumbnail)
     // Anchor scrolling to the actual artist, not a reused destination
     // composition. Remembered index/offset survives a toolbar/hero recompose
     // without leaking the previous artist's scroll position to this one.
@@ -184,6 +198,33 @@ fun ArtistScreen(
         libraryArtist?.artist?.isLocal != true) null
     else artistPage?.artist?.title ?: libraryArtist?.artist?.name
     val remoteLoading = artistPage == null && viewModel.isLoading && !showLocal
+    val showMemorialCandle = !showLocal && viewModel.memorialInfo != null
+
+    // Warm a few off-screen covers only after the visible artwork has started.
+    // Coil shares the app's existing loader/cache; no whole-discography preload.
+    LaunchedEffect(artistPage?.artist?.id) {
+        val sections = artistPage?.sections ?: return@LaunchedEffect
+        delay(420)
+        val loader = SingletonImageLoader.get(context)
+        // Only the next two off-screen release covers. The previous warmup
+        // launched six large requests (including already visible song art),
+        // competing with visible images and doing unnecessary radio/CPU work.
+        val requests = sections.asSequence()
+            .filter { it.items.any { item -> item is AlbumItem || item is PlaylistItem } }
+            .flatMap { it.items.asSequence().drop(2).take(2) }
+            .mapNotNull { item -> item.thumbnail?.takeIf(String::isNotBlank) }
+            .map { url -> capsuleArtworkUrl(url, 320) }
+            .distinct().take(2)
+            .map { url ->
+                loader.enqueue(ImageRequest.Builder(context)
+                    .data(url).size(320, 320).allowHardware(true).build())
+            }.toList()
+        try {
+            awaitCancellation()
+        } finally {
+            requests.forEach { it.dispose() }
+        }
+    }
     val density = LocalDensity.current
 
     val latestRelease =
@@ -246,6 +287,7 @@ fun ArtistScreen(
                     thumbnailSize = ArtistTrackArtworkSize,
                     thumbnailCornerRadius = ArtistTrackArtworkCornerRadius,
                 ),
+            LocalArtistThumbnailCrop provides cropArtistArtwork,
         ) {
             LazyColumn(
                 state = lazyListState,
@@ -267,7 +309,7 @@ fun ArtistScreen(
                     subscribed = libraryArtist?.artist?.bookmarkedAt != null,
                     canSubscribe = libraryArtist != null || artistPage != null,
                     canShuffle = if (showLocal) librarySongs.isNotEmpty() else artistPage?.artist?.shuffleEndpoint != null,
-                    showCandle = !showLocal && viewModel.memorialInfo != null,
+                    showCandle = showMemorialCandle,
                     loading = remoteLoading && libraryArtist == null,
                     topSafePadding = systemBarsTopPadding,
                     artworkAlpha = { 1f - artworkFade },
@@ -356,11 +398,13 @@ fun ArtistScreen(
                             items = filteredLibrarySongs.distinctBy { it.id }.take(5),
                             key = { _, item -> "local_song_${item.id}" }
                         ) { index, song ->
+                            val press = remember { MutableInteractionSource() }
                             SongListItem(
                                 song = song,
                                 showInLibraryIcon = true,
                                 isActive = song.id == mediaMetadata?.id,
                                 isPlaying = isPlaying,
+                                pressInteractionSource = press,
                                 trailingContent = {
                                     IconButton(
                                         onClick = {
@@ -383,6 +427,8 @@ fun ArtistScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .combinedClickable(
+                                        interactionSource = press,
+                                        indication = null,
                                         onClick = {
                                             if (song.id == mediaMetadata?.id) {
                                                 playerConnection.player.togglePlayPause()
@@ -470,7 +516,8 @@ fun ArtistScreen(
                                         isPlaying = isPlaying,
                                         coroutineScope = coroutineScope,
                                         modifier = Modifier
-                                            .combinedClickable(
+                                            .clip(RoundedCornerShape(18.dp))
+                                            .capsulePressCombinedClickable(inset = 0.dp, radius = 18.dp, 
                                                 onClick = {
                                                     navController.navigate("album/${album.id}")
                                                 },
@@ -522,10 +569,13 @@ fun ArtistScreen(
                                 items = section.items.distinctBy { it.id },
                                 key = { "$sectionKey:song:${it.id}" },
                             ) { song ->
+                                val press = remember { MutableInteractionSource() }
                                 YouTubeListItem(
                                     item = song as SongItem,
+                                    artworkRequestPixels = 192,
                                     isActive = mediaMetadata?.id == song.id,
                                     isPlaying = isPlaying,
+                                    pressInteractionSource = press,
                                     trailingContent = {
                                         IconButton(
                                             onClick = {
@@ -546,7 +596,10 @@ fun ArtistScreen(
                                         }
                                     },
                                     modifier = Modifier
+                                        .fillMaxWidth()
                                         .combinedClickable(
+                                            interactionSource = press,
+                                            indication = null,
                                             onClick = {
                                                 if (song.id == mediaMetadata?.id) {
                                                     playerConnection.player.togglePlayPause()
@@ -595,6 +648,7 @@ fun ArtistScreen(
                                     ) { item ->
                                         YouTubeGridItem(
                                             item = item,
+                                            artworkRequestPixels = 320,
                                             isActive = when (item) {
                                                 is SongItem -> mediaMetadata?.id == item.id
                                                 is AlbumItem -> mediaMetadata?.album?.id == item.id
@@ -603,7 +657,8 @@ fun ArtistScreen(
                                             isPlaying = isPlaying,
                                             coroutineScope = coroutineScope,
                                             modifier = Modifier
-                                                .combinedClickable(
+                                                .clip(RoundedCornerShape(18.dp))
+                                                .capsulePressCombinedClickable(inset = 0.dp, radius = 18.dp, 
                                                     onClick = {
                                                         when (item) {
                                                             is SongItem ->
@@ -760,7 +815,7 @@ private fun ArtistLatestReleaseCard(
         ) {
             if (!release.thumbnailUrl.isNullOrBlank()) {
                 AsyncImage(
-                    model = release.thumbnailUrl,
+                    model = capsuleArtworkUrl(release.thumbnailUrl, 320),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier =

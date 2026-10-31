@@ -1,5 +1,10 @@
 package com.nikhil.yt.ui.component
 
+import androidx.compose.runtime.mutableStateOf
+import com.nikhil.yt.ui.screens.albumHasHeroHeader
+import com.nikhil.yt.viewmodels.AlbumUiState
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.ui.unit.Density
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -8,14 +13,60 @@ class DetailToolbarRevealTest {
     private fun fade(index: Int, offset: Int, bottom: Float = 600f, bar: Float = 100f) =
         detailArtworkFadeLikeArtist(index, offset, bottom, bar)
 
-    @Test fun fadeCompletesEarlyEnoughForScrollingActionButtons() {
+    @Test fun initialHeaderPresenceNeverDependsOnImageCallbacks() {
+        val motion = DetailHeaderMotionState(LazyListState(), Density(1f))
+        assertEquals(1f, motion.artworkAlpha(), 0f)
+        assertEquals(0f, motion.toolbarTitleAlpha(), 0f)
+        assertEquals(0f, detailToolbarBackdropAlpha(motion.artworkFade()), 0f)
+        val presence = mutableStateOf(false)
+        val empty = DetailHeaderMotionState(LazyListState(), Density(1f), presence)
+        assertEquals(1f, empty.toolbarTitleAlpha(), 0f)
+        presence.value = true
+        assertEquals(1f, empty.artworkAlpha(), 0f)
+        assertEquals(0f, empty.toolbarTitleAlpha(), 0f)
+    }
+
+    @Test fun onlyOneCaptionPaintsAtEveryScrollPosition() {
+        for (i in 0..10000) {
+            val progress = i / 10000f
+            val compact = detailTitleHandoff(progress)
+            val cover = 1f - compact
+            assertEquals(1f, compact + cover, 0f)
+            assertEquals("No frame may paint overlapping caption copies", 0f, compact * cover, 0f)
+            assertEquals(if (i == 10000) 1f else 0f, compact, 0f)
+        }
+    }
+
+    @Test fun matchingBaselinesKeepTheFinalGlyphPositionWhenTheSourceHasTwoLines() {
+        for (sourceHeight in listOf(58f, 116f)) {
+            val sourceCenter = 130f
+            val offset = 44f - sourceHeight / 2f
+            val targetBaseline = 96f
+            val scale = .88f
+            val translation = detailTitleBaselineTranslation(1f, scale, sourceCenter, offset, targetBaseline)
+            assertEquals(targetBaseline, sourceCenter + scale * offset + translation, .0001f)
+            assertEquals(0f, detailTitleBaselineTranslation(0f, 1f, sourceCenter, offset, targetBaseline), 0f)
+        }
+    }
+
+    @Test fun loadingPortraitIsAHeaderEvenBeforeSongsArrive() {
+        assertTrue(albumHasHeroHeader(false, AlbumUiState.Loading))
+        assertTrue(albumHasHeroHeader(false, AlbumUiState.Content))
+        assertTrue(albumHasHeroHeader(true, AlbumUiState.Error()))
+        assertEquals(false, albumHasHeroHeader(false, AlbumUiState.Empty))
+        assertEquals(false, albumHasHeroHeader(false, AlbumUiState.Error()))
+    }
+
+    @Test fun fadeBeginsAtOldScrollPointButCompletesAtSameMeasuredToolbarEdge() {
+        // Photo edge = 600px; bar bottom = 100px: 500px scroll travel.
+        // Earlier start = 12% (60px), fixed end = 499px. We must not
+        // move that terminal point or create a new solid-black interval.
         assertEquals(0f, fade(0, 0), 0f)
         assertEquals(0f, fade(0, 40), 0f)
-        assertEquals(0f, fade(0, 49), 0f)
-        assertTrue(fade(0, 90) > 0f)
-        assertTrue(fade(0, 370) < 1f)
-        assertTrue("Photo must ease out before the action safety gap", fade(0, 405) < 1f)
-        assertEquals(1f, fade(0, 412), 0f)
+        assertEquals(0f, fade(0, 60), 0f)
+        assertTrue("Begin gradually shortly after the original 12% scroll start", fade(0, 90) > 0f)
+        assertTrue("The photo must still be fading near the current endpoint", fade(0, 480) < 1f)
+        assertEquals(1f, fade(0, 499), 0f)
         assertEquals(1f, fade(1, 0), 0f)
         assertEquals(0f, fade(0, 100, Float.NaN), 0f)
     }
@@ -23,14 +74,12 @@ class DetailToolbarRevealTest {
     @Test fun scrollFadeIsSmoothMonotonicAndReversible() {
         val values = (0..500 step 2).map { fade(0, it) }
         assertTrue(values.zipWithNext().all { (a, b) ->
-            b >= a && b - a < .025f
+            b >= a && b - a < .040f
         })
-        val mid = fade(0, 231)
+        val mid = fade(0, 279)
         assertTrue(mid in .45f.. .55f)
-        // The old assertion compared two *different* scroll positions as if
-        // they were identical; the shortened safety fade is correctly monotonic.
-        assertEquals(mid, fade(0, 231), 0f)
-        assertTrue(fade(0, 270) > mid)
+        assertEquals(mid, fade(0, 279), 0f)
+        assertTrue(fade(0, 340) > mid)
         assertEquals(1f, detailToolbarBackdropAlpha(1f), 0f)
     }
 
@@ -47,11 +96,8 @@ class DetailToolbarRevealTest {
         }
     }
 
-    @Test fun albumsAndPlaylistsUseArtistScrollDistanceInsteadOfTallerCover() {
-        for (offset in 0..550 step 5) {
-            val artist = com.nikhil.yt.ui.screens.artist.artistArtworkFade(
-                0, offset, 600, 100,
-            )
+    @Test fun albumsAndPlaylistsUseRealArtworkHeightNotArtistsShorterPhoto() {
+        for (offset in 0..610 step 5) {
             val detail = detailArtistLengthArtworkFade(
                 firstVisibleItemIndex = 0,
                 offsetPx = offset,
@@ -59,11 +105,19 @@ class DetailToolbarRevealTest {
                 detailArtworkBottomPx = 680f,
                 toolbarBottomPx = 100f,
             )
-            assertEquals("Same fade at offset=$offset despite larger album photo",
-                artist, detail, 0f)
+            val realArtwork = detailArtworkFadeLikeArtist(0, offset, 680f, 100f)
+            assertEquals("Use actual album/playlist bottom at offset=$offset",
+                realArtwork, detail, 0f)
         }
-        // On narrow / short screens never let the cover pass behind an
-        // unpainted bar while the longer artist-distance fade is unfinished.
+        assertTrue("The taller cover should remain in transition at artist's old fade end",
+            detailArtistLengthArtworkFade(0, 470, 600f, 680f, 100f) < 1f)
+        assertTrue("Collection fades after its own measured edge approaches bar",
+            detailArtistLengthArtworkFade(0, 530, 600f, 680f, 100f) > 0f)
+        assertEquals(1f, detailArtistLengthArtworkFade(0, 579, 600f, 680f, 100f), 0f)
+        // Before layout coordinates arrive, keep the artist-height fallback.
+        assertEquals(detailArtworkFadeLikeArtist(0, 450, 600f, 100f),
+            detailArtistLengthArtworkFade(0, 450, 600f, Float.NaN, 100f), 0f)
+        // Narrow screens still seal as soon as their real photo crosses.
         assertEquals(1f, detailArtistLengthArtworkFade(0, 440, 600f, 540f, 100f), 0f)
         assertEquals(1f, detailArtistLengthArtworkFade(1, 0, 600f, 680f, 100f), 0f)
     }

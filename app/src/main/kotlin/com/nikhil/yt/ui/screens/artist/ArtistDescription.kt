@@ -29,7 +29,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.R
@@ -58,16 +57,16 @@ internal fun ArtistDescription(artistId: String, description: String, modifier: 
             }
             val transition = updateTransition(expanded, label = "artist-description")
             val height by transition.animateDp(
-                transitionSpec = { tween(320, easing = CapsuleStandardEasing) }, label = "clip-height",
+                transitionSpec = { tween(245, easing = CapsuleStandardEasing) }, label = "clip-height",
             ) { if (it) fullHeight else collapsedHeight }
             val moving = transition.isRunning || transition.currentState != transition.targetState
             LaunchedEffect(moving) { onGeometryChanged(moving) }
-            // Do not reflow to maxLines=2 while the full text is still being clipped away.
-            val showFullText = transition.isRunning || transition.currentState || transition.targetState
+            // The exact same text layout must survive expansion AND collapse. Switching
+            // maxLines from unlimited to 2 introduces an ellipsis, rewraps the last
+            // visible line and makes words jump horizontally at the very end.
             Box(Modifier.fillMaxWidth().height(height).clipToBounds()) {
                 Text(description, modifier = Modifier.wrapContentHeight(Alignment.Top, unbounded = true),
-                    style = style, color = StandardChrome.muted,
-                    maxLines = if (showFullText) Int.MAX_VALUE else 2, overflow = TextOverflow.Ellipsis)
+                    style = style, color = StandardChrome.muted)
             }
         }
         TextButton(onClick = { expanded = !expanded }) {
@@ -79,5 +78,6 @@ internal fun ArtistDescription(artistId: String, description: String, modifier: 
 /** Text height owns this movement; placement animation still handles actual row insertions/reorders. */
 internal fun androidx.compose.foundation.lazy.LazyItemScope.artistItemPlacement(geometryAnimating: Boolean): Modifier =
     Modifier.animateItem(placementSpec = if (geometryAnimating) null else androidx.compose.animation.core.spring(
-        stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow,
+        stiffness = androidx.compose.animation.core.Spring.StiffnessHigh,
+        dampingRatio = 0.94f,
         visibilityThreshold = androidx.compose.ui.unit.IntOffset(1, 1)))

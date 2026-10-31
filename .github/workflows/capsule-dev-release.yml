@@ -29,6 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 75
 
+    # Signing secrets MUST be provisioned once; no ephemeral DEV identities.
     # Deliberately do not reference STORE_PASSWORD/KEY_ALIAS/KEY_PASSWORD,
     # KEYSTORE_BASE64 or the official capsule-signing environment.
     env:
@@ -70,38 +71,18 @@ jobs:
           mkdir -p app/keystore
           test ! -e app/keystore/release.keystore
           KEYSTORE=app/keystore/development-release.keystore
-          if [[ -n "$CAPSULE_DEV_KEYSTORE_BASE64" ]]; then
-            for value in "$DEV_STORE_PASSWORD" "$DEV_KEY_ALIAS" "$DEV_KEY_PASSWORD"; do
-              if [[ -z "$value" ]]; then
-                echo "::error::All four CAPSULE_DEV_* secrets are required for persistent signing."
-                exit 1
-              fi
-            done
-            printf '%s' "$CAPSULE_DEV_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
-            echo 'mode=persistent' >> "$GITHUB_OUTPUT"
-            echo 'Using separately provisioned development signing identity' >> "$GITHUB_STEP_SUMMARY"
-          else
-            if [[ -n "$DEV_STORE_PASSWORD" || -n "$DEV_KEY_ALIAS" || -n "$DEV_KEY_PASSWORD" ]]; then
-              echo "::error::Partial CAPSULE_DEV_* secrets: set all four or none."
-              exit 1
-            fi
-            DEV_STORE_PASSWORD="$(openssl rand -hex 24)"
-            DEV_KEY_PASSWORD="$DEV_STORE_PASSWORD"
-            DEV_KEY_ALIAS="capsule-dev"
-            echo "::add-mask::$DEV_STORE_PASSWORD"
-            keytool -genkeypair -noprompt -storetype PKCS12 \
-              -keystore "$KEYSTORE" \
-              -storepass "$DEV_STORE_PASSWORD" \
-              -keypass "$DEV_KEY_PASSWORD" \
-              -alias "$DEV_KEY_ALIAS" \
-              -keyalg RSA -keysize 3072 -validity 3650 \
-              -dname "CN=Capsule DEV, O=Nonproduction, C=US"
-            echo "DEV_STORE_PASSWORD=$DEV_STORE_PASSWORD" >> "$GITHUB_ENV"
-            echo "DEV_KEY_PASSWORD=$DEV_KEY_PASSWORD" >> "$GITHUB_ENV"
-            echo "DEV_KEY_ALIAS=$DEV_KEY_ALIAS" >> "$GITHUB_ENV"
-            echo 'mode=ephemeral' >> "$GITHUB_OUTPUT"
-            echo 'Ephemeral DEV signer: uninstall the previous DEV build before installing this one.' >> "$GITHUB_STEP_SUMMARY"
+          # Stable DEV identity only. Ephemeral keys made every optimized
+          # APK incompatible with updates from the previous build.
+          # The private key is never generated, cached or committed in CI.
+          if [[ -z "$CAPSULE_DEV_KEYSTORE_BASE64" || -z "$DEV_STORE_PASSWORD" || \
+                -z "$DEV_KEY_ALIAS" || -z "$DEV_KEY_PASSWORD" ]]; then
+            echo "::error::Persistent Capsule DEV signing is not configured. Set all four CAPSULE_DEV_* repository secrets using docs/CAPSULE_DEV_SIGNING.md. Ephemeral signer intentionally disabled."
+            exit 1
           fi
+          printf '%s' "$CAPSULE_DEV_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
+          chmod 600 "$KEYSTORE"
+          echo 'mode=persistent' >> "$GITHUB_OUTPUT"
+          echo 'Using the dedicated persistent Capsule DEV certificate (NOT the official release certificate).' >> "$GITHUB_STEP_SUMMARY"
           test -s "$KEYSTORE"
           keytool -list -keystore "$KEYSTORE" \
             -storepass "$DEV_STORE_PASSWORD" -alias "$DEV_KEY_ALIAS" >/dev/null
@@ -129,6 +110,12 @@ jobs:
           test -x "$AAPT"
           "$AAPT" dump badging "$APK" | grep -Fq "package: name='com.nikhil.yt.dev'"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
+          CERT_SHA256="$("$APKSIGNER" verify --print-certs "$APK" | awk -F': ' '/certificate SHA-256 digest/ { print tolower($2); exit }')"
+          if [[ -z "$CERT_SHA256" || "$CERT_SHA256" == 'c044579fd886ee7f6ae919d705fb3345f7417957d8cd49fd110d596f864ddd7d' ]]; then
+            echo "::error::DEV APK has no verifiable dedicated signer or uses the production certificate"
+            exit 1
+          fi
+          echo "DEV certificate SHA-256: $CERT_SHA256" >> "$GITHUB_STEP_SUMMARY"
           echo "path=$APK" >> "$GITHUB_OUTPUT"
           echo "signing_mode=${{ steps.dev-signing.outputs.mode }}" >> "$GITHUB_OUTPUT"
           echo "APK SHA-256: $(sha256sum "$APK" | cut -d ' ' -f1)" >> "$GITHUB_STEP_SUMMARY"

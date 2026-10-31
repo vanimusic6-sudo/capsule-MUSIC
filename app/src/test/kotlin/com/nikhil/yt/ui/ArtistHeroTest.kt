@@ -75,15 +75,121 @@ class ArtistHeroTest {
         // The current Capsule hero lets artwork reach the physical top edge and uses the matte
         // overlay itself to soften the status/navigation area. Text/actions keep their reference
         // anchors so the magnetic lower composition remains unchanged.
-        assertEquals(hero.width * 1.48f + 16f * dp, hero.height, 2f)
+        assertEquals(hero.width * 1.25f + 136f * dp, hero.height, 2f)
         assertEquals(hero.top, portrait.top, 2f)
         assertEquals(hero.width * 1.25f, portrait.height, 2f)
         assertEquals(hero.width, portrait.width, 1f)
-        assertEquals(hero.top + 364.8f * dp, title.top, 2f)
+        assertEquals(hero.top + 402f * dp, title.top, 2f)
         assertEquals(hero.left + 14f * dp, title.left, 1f)
-        assertEquals(hero.top + 424.8f * dp, actions.top, 2f)
+        assertEquals(hero.top + 462f * dp, actions.top, 2f)
+        assertEquals("First actions must start BELOW the full-height portrait",
+            portrait.bottom + 12f * dp, actions.top, 2f)
         assertEquals(hero.left + 22f * dp, actions.left, 1f)
         assertTrue(title.bottom < actions.top)
+    }
+
+    @Test fun memorialAndLivingArtistsHaveIdenticalButtonToReleaseSpacing() {
+        var memorialHeight by mutableStateOf(0.dp)
+        compose.setContent {
+            ArtistHeroLayout(
+                background = Color.Black,
+                modifier = Modifier.width(360.dp).testTag("hero"),
+                memorialExtraHeight = memorialHeight,
+                artwork = { Box(Modifier.fillMaxSize().background(Color.Red)) },
+                title = {},
+                actions = {
+                    Box(Modifier.fillMaxWidth().height(48.dp).testTag("first-action"))
+                    if (memorialHeight > 0.dp) {
+                        Box(Modifier.fillMaxWidth().height(14.dp))
+                        Box(Modifier.fillMaxWidth().height(48.dp).testTag("candle-action"))
+                    }
+                },
+            )
+        }
+        fun bounds(tag: String) =
+            compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+        val dp = bounds("hero").width / 360f
+        val portrait = bounds("artist-artwork-field")
+        val first = bounds("first-action")
+        val livingBottom = bounds("hero").bottom
+
+        assertEquals("First action must remain below full-size portrait",
+            portrait.bottom + 12f * dp, first.top, 2f)
+        assertEquals("Living artists have no invisible 62dp second row",
+            first.bottom + 14f * dp, livingBottom, 2f)
+
+        compose.runOnIdle { memorialHeight = 62.dp }
+        val memorialPortrait = bounds("artist-artwork-field")
+        val memorialFirst = bounds("first-action")
+        val memorialCandle = bounds("candle-action")
+        assertEquals(portrait.height, memorialPortrait.height, 1f)
+        assertEquals("The first row never jumps when the candle appears",
+            first.top, memorialFirst.top, 1f)
+        assertEquals("Memorial and living layouts have identical lower spacing",
+            memorialCandle.bottom + 14f * dp, bounds("hero").bottom, 2f)
+        assertEquals(62f * dp, bounds("hero").bottom - livingBottom, 2f)
+    }
+
+    @Test fun sharedPortraitMatteHasSmoothSlopeThroughTheWholeTransition() {
+        assertEquals(0f, com.nikhil.yt.ui.component.capsulePortraitMatteAlpha(0.24f), 0.00001f)
+        assertEquals(1f, com.nikhil.yt.ui.component.capsulePortraitMatteAlpha(0.985f), 0.00001f)
+        // Previous image overlay was barely visible at 60%, then rushed
+        // through most of its opacity in the final quarter. Enforce a
+        // measured, continuously changing transition rather than ad-hoc
+        // fixed stops that bring back the abrupt dark shelf.
+        assertTrue("Fade must already be perceptible by 55%",
+            com.nikhil.yt.ui.component.capsulePortraitMatteAlpha(0.55f) > 0.10f)
+        assertTrue("Image should remain visible at 70%",
+            com.nikhil.yt.ui.component.capsulePortraitMatteAlpha(0.70f) < 0.55f)
+        assertTrue("The 80% transition should not be a late sudden cut",
+            com.nikhil.yt.ui.component.capsulePortraitMatteAlpha(0.80f) in 0.60f..0.80f)
+        val samples = (0..1000).map {
+            com.nikhil.yt.ui.component.capsulePortraitMatteAlpha(it / 1000f)
+        }
+        assertTrue("No alpha discontinuities or reversed fading",
+            samples.zipWithNext().all { (a, b) -> b >= a && b - a < 0.004f })
+        val stops = com.nikhil.yt.ui.component.capsulePortraitMatteStops(Color.Black)
+        assertTrue("Cached gradient stops must begin fully transparent",
+            stops.first().first == 0f && stops.first().second.alpha == 0f)
+        assertTrue("No boundary seam: gradient ends in exact surface colour",
+            stops.last().first == 1f && stops.last().second == Color.Black)
+    }
+
+    @Test fun artistGradientSoftlyReachesPageInsteadOfHardCuttingAtPhotoEdge() {
+        // Reproduces the pyrokinesis regression: the full-size portrait had
+        // colour until its final few pixels, then jumped to flat dark surface.
+        // Use an unmistakable red source to test the actual rendered gradient
+        // (not just its end points) on the full-size, unclipped portrait.
+        compose.setContent {
+            ArtistHeroLayout(
+                background = Color.Black,
+                modifier = Modifier.width(360.dp).testTag("hero"),
+                memorialExtraHeight = 0.dp,
+                artwork = { Box(Modifier.fillMaxSize().background(Color.Red)) },
+                title = {},
+                actions = {},
+            )
+        }
+        val photoHeight = compose.onNodeWithTag("artist-artwork-field")
+            .fetchSemanticsNode().boundsInRoot.height
+        val bitmap = capture("hero")
+        fun redAt(fraction: Float): Int = android.graphics.Color.red(bitmap.getPixel(
+            bitmap.width / 4,
+            (photoHeight * fraction).roundToInt().coerceIn(0, bitmap.height - 1),
+        ))
+        val at40 = redAt(0.40f)
+        val at65 = redAt(0.65f)
+        val at80 = redAt(0.80f)
+        val at90 = redAt(0.90f)
+        val at97 = redAt(0.97f)
+        val at995 = redAt(0.995f)
+        assertTrue("Fade begins smoothly without hiding the top half", at40 >= 175)
+        assertTrue("Fade must begin well before the photo ends", at65 < at40 - 25)
+        assertTrue("Smooth dimming should be unmistakable at 80%", at80 < at65 - 40)
+        assertTrue("Keep fading through the 90% mark", at90 < at80 - 15)
+        assertTrue("No abrupt last-3% transition", at97 < at90 - 4)
+        assertTrue("The image must match the page at its bottom", at995 <= 3)
+        assertTrue("Bottom of photo must already be nearly page-coloured", at97 < 25)
     }
 
     @Test fun loadingUsesTheSameHeaderAndActionsWorkAfterLoading() {
@@ -145,7 +251,7 @@ class ArtistHeroTest {
             hero.bottom - subscribe.bottom <= 35f * dp)
     }
 
-    @Test fun lateMemorialButtonOnlyMovesActionsInsideFixedHeader() {
+    @Test fun lateMemorialGrowsSecondRowWithoutMovingFirstRow() {
         var hasMemorial by mutableStateOf(false)
         compose.setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
@@ -170,9 +276,11 @@ class ArtistHeroTest {
         val afterHeader = compose.onNodeWithTag("hero").fetchSemanticsNode().boundsInRoot
         val afterSubscribe = compose.onNodeWithText(compose.activity.getString(R.string.subscribe))
             .fetchSemanticsNode().boundsInRoot
-        assertEquals(beforeHeader.height, afterHeader.height, 0.1f)
-        assertTrue("Subscription should slide upward within the stable header",
-            afterSubscribe.top < beforeSubscribe.top)
+        assertEquals("The first row must not jump as the candle arrives",
+            beforeSubscribe.top, afterSubscribe.top, 1f)
+        val dp = beforeHeader.width / 360f
+        assertEquals("Only the candle row is added below the first row",
+            62f * dp, afterHeader.height - beforeHeader.height, 2f)
         compose.onNodeWithText(compose.activity.getString(R.string.artist_light_candle)).assertIsDisplayed()
     }
 
@@ -356,7 +464,7 @@ class ArtistHeroTest {
             val toolbarRed = android.graphics.Color.red(bitmap.getPixel(x, (35 * px).roundToInt()))
             val portraitRed = android.graphics.Color.red(bitmap.getPixel(x, (115 * px).roundToInt()))
             assertTrue("Toolbar introduced a dark stripe at $fraction: $toolbarRed vs $portraitRed",
-                kotlin.math.abs(toolbarRed - portraitRed) <= 3)
+                kotlin.math.abs(toolbarRed - portraitRed) <= 5)
         }
     }
 

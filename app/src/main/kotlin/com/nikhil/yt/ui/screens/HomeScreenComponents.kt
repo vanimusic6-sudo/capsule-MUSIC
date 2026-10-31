@@ -8,6 +8,7 @@
 
 package com.nikhil.yt.ui.screens
 
+import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -416,9 +417,7 @@ private fun KeepListeningRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 4.dp)
-            .combinedClickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
+            .capsulePressCombinedClickable(
                 onClick = {
                     if (isActive) {
                         playerConnection.player.togglePlayPause()
@@ -496,7 +495,7 @@ fun ForgottenFavoritesSection(
                 },
                 modifier = Modifier
                     .width(horizontalLazyGridItemWidth)
-                    .combinedClickable(
+                    .capsulePressCombinedClickable(
                         onClick = {
                             if (song.id == mediaMetadata?.id) {
                                 playerConnection.player.togglePlayPause()
@@ -711,7 +710,7 @@ private fun YouTubeGridItemWrapper(
         // The default YouTubeGridItem SongItem ratio is 16:9 for video contexts,
         // which stretched music recommendations into mismatched video layouts.
         thumbnailRatio = 1f,
-        modifier = modifier.combinedClickable(
+        modifier = modifier.capsulePressCombinedClickable(inset = 0.dp, radius = 18.dp, 
             onClick = {
                 when (item) {
                     is SongItem -> playerConnection.playQueue(
@@ -776,7 +775,7 @@ private fun LocalGridItem(
             song = item,
             modifier = modifier
                 .fillMaxWidth()
-                .combinedClickable(
+                .capsulePressCombinedClickable(inset = 0.dp, radius = 18.dp, 
                     onClick = {
                         if (item.id == mediaMetadata?.id) {
                             playerConnection.player.togglePlayPause()
@@ -806,7 +805,7 @@ private fun LocalGridItem(
             coroutineScope = scope,
             modifier = modifier
                 .fillMaxWidth()
-                .combinedClickable(
+                .capsulePressCombinedClickable(inset = 0.dp, radius = 18.dp, 
                     onClick = { navController.navigate("album/${item.id}") },
                     onLongClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -825,7 +824,7 @@ private fun LocalGridItem(
             artist = item,
             modifier = modifier
                 .fillMaxWidth()
-                .combinedClickable(
+                .capsulePressCombinedClickable(inset = 0.dp, radius = 18.dp, 
                     onClick = { navController.navigate("artist/${item.id}") },
                     onLongClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -1083,7 +1082,7 @@ fun QuickPicksListSection(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .combinedClickable(
+                                .capsulePressCombinedClickable(
                                     onClick = {
                                         if (isActive) {
                                             playerConnection.player.togglePlayPause()
@@ -1252,7 +1251,7 @@ fun TasteRecommendationsSection(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .combinedClickable(
+                            .capsulePressCombinedClickable(
                                 onClick = {
                                     if (isActive) {
                                         playerConnection.player.togglePlayPause()

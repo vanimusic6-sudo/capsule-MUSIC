@@ -55,8 +55,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
-import androidx.compose.ui.platform.LocalConfiguration
-import android.content.res.Configuration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -261,13 +259,11 @@ fun YouTubeSongMenu(
 
     HorizontalDivider()
 
-    val configuration = LocalConfiguration.current
-    val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
-
     val bottomSheetPageState = LocalBottomSheetPageState.current
 
     LazyColumn(
-        userScrollEnabled = !isPortrait,
+        state = androidx.compose.foundation.lazy.rememberLazyListState(),
+        modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(
             start = 0.dp,
             top = 0.dp,

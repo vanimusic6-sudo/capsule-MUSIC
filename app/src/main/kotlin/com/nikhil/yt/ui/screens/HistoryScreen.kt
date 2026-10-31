@@ -10,6 +10,7 @@ package com.nikhil.yt.ui.screens
 
 // Natural feed header: moves with content, not via a floating offset.
 
+import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -385,7 +386,7 @@ fun HistoryScreen(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .combinedClickable(
+                                .capsulePressCombinedClickable(
                                     onClick = {
                                         if (song.id == mediaMetadata?.id) {
                                             playerConnection.player.togglePlayPause()
@@ -457,7 +458,7 @@ fun HistoryScreen(
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .combinedClickable(
+                                .capsulePressCombinedClickable(
                                     onClick = {
                                         if (!selection) {
                                             if (event.song.id == mediaMetadata?.id) {

@@ -23,6 +23,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -150,6 +152,12 @@ internal data class SongListVisuals(
 internal val LocalSongListVisuals =
     staticCompositionLocalOf { SongListVisuals() }
 
+/** Artist screens share one crop preference observer across their entire lazy list.
+ * Without this, every visible thumbnail starts its own DataStore collector.
+ * Other screens preserve their existing standalone behavior.
+ */
+internal val LocalArtistThumbnailCrop = staticCompositionLocalOf<Boolean?> { null }
+
 @Composable
 inline fun ListItem(
     modifier: Modifier = Modifier,
@@ -159,13 +167,24 @@ inline fun ListItem(
     trailingContent: @Composable RowScope.() -> Unit = {},
     isActive: Boolean = false,
     itemHeight: Dp = ListItemHeight,
+    pressInteractionSource: MutableInteractionSource? = null,
 ) {
+    // The pressed row uses the EXACT same inset, shape and color as the
+    // currently playing row. Avoid a second rectangle/ripple drawing over it.
+    val pressed = pressInteractionSource?.collectIsPressedAsState()?.value == true
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .height(itemHeight)
             .padding(horizontal = 8.dp)
-            .then(if (isActive) Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.secondaryContainer) else Modifier)
+            .then(
+                if (isActive || pressed) Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.secondaryContainer.copy(
+                        alpha = if (isActive) 1f else ActiveBoxAlpha,
+                    ))
+                else Modifier
+            )
     ) {
         Box(Modifier.padding(6.dp), contentAlignment = Alignment.Center) { thumbnailContent() }
         Column(Modifier.weight(1f).padding(horizontal = 6.dp)) {
@@ -189,6 +208,7 @@ fun ListItem(
     trailingContent: @Composable RowScope.() -> Unit = {},
     isActive: Boolean = false,
     itemHeight: Dp = ListItemHeight,
+    pressInteractionSource: MutableInteractionSource? = null,
 ) = ListItem(
     title = title,
     modifier = modifier,
@@ -202,6 +222,7 @@ fun ListItem(
     thumbnailContent = thumbnailContent,
     trailingContent = trailingContent,
     itemHeight = itemHeight,
+    pressInteractionSource = pressInteractionSource,
 )
 
 @Composable
@@ -325,6 +346,7 @@ fun SongListItem(
     showSourceIcon: Boolean = false,
     trailingContent: @Composable RowScope.() -> Unit = {},
     showActiveBackground: Boolean = true,
+    pressInteractionSource: MutableInteractionSource? = null,
 ) {
     val swipeEnabled by rememberPreference(SwipeToSongKey, defaultValue = false)
     val visuals = LocalSongListVisuals.current
@@ -354,6 +376,7 @@ fun SongListItem(
             modifier = if (isSwipeable && swipeEnabled) Modifier else modifier,
             isActive = isActive && showActiveBackground,
             itemHeight = visuals.rowHeight,
+            pressInteractionSource = pressInteractionSource,
         )
     }
 
@@ -429,6 +452,7 @@ fun SongGridItem(
 fun ArtistListItem(
     artist: Artist,
     modifier: Modifier = Modifier,
+    pressInteractionSource: MutableInteractionSource? = null,
     badges: @Composable RowScope.() -> Unit = {
         if (artist.artist.bookmarkedAt != null) {
             Icon(
@@ -457,6 +481,7 @@ fun ArtistListItem(
     },
     trailingContent = trailingContent,
     modifier = modifier,
+    pressInteractionSource = pressInteractionSource,
 )
 
 @Composable
@@ -491,6 +516,7 @@ fun ArtistGridItem(
 fun AlbumListItem(
     album: Album,
     modifier: Modifier = Modifier,
+    pressInteractionSource: MutableInteractionSource? = null,
     showLikedIcon: Boolean = true,
     badges: @Composable RowScope.() -> Unit = {
         val database = LocalDatabase.current
@@ -535,7 +561,8 @@ fun AlbumListItem(
         )
     },
     trailingContent = trailingContent,
-    modifier = modifier
+    modifier = modifier,
+    pressInteractionSource = pressInteractionSource,
 )
 
 @Composable
@@ -609,6 +636,7 @@ fun AlbumGridItem(
 fun PlaylistListItem(
     playlist: Playlist,
     modifier: Modifier = Modifier,
+    pressInteractionSource: MutableInteractionSource? = null,
     autoPlaylist: Boolean = false,
     badges: @Composable RowScope.() -> Unit = { if (!autoPlaylist) PlaylistDownloadBadge(playlist.id) },
     trailingContent: @Composable RowScope.() -> Unit = {}
@@ -654,7 +682,8 @@ fun PlaylistListItem(
         )
     },
     trailingContent = trailingContent,
-    modifier = modifier
+    modifier = modifier,
+    pressInteractionSource = pressInteractionSource,
 )
 
 @Composable
@@ -947,6 +976,8 @@ fun YouTubeListItem(
     // Search suggestions sometimes expose just a primary credited artist;
     // display a richer already-known credit without touching other callers.
     artistSubtitleOverride: String? = null,
+    artworkRequestPixels: Int? = null,
+    pressInteractionSource: MutableInteractionSource? = null,
     trailingContent: @Composable RowScope.() -> Unit = {},
     badges: @Composable RowScope.() -> Unit = {
         DefaultYouTubeItemBadges(item)
@@ -1011,6 +1042,7 @@ fun YouTubeListItem(
                 ItemThumbnail(
                     unavailableReason = if (item is SongItem) trackUnavailableReason(item.id, item.unavailable) else null,
                     thumbnailUrl = item.thumbnail,
+                    artworkRequestPixels = artworkRequestPixels,
                     albumIndex = albumIndex,
                     isSelected = isSelected,
                     isActive = isActive,
@@ -1028,6 +1060,7 @@ fun YouTubeListItem(
             modifier = if (item is SongItem && isSwipeable && swipeEnabled) Modifier else modifier,
             isActive = isActive,
             itemHeight = visuals.rowHeight,
+            pressInteractionSource = pressInteractionSource,
         )
     }
 
@@ -1056,6 +1089,7 @@ fun YouTubeGridItem(
     isPlaying: Boolean = false,
     fillMaxWidth: Boolean = false,
     animateTitle: Boolean = true,
+    artworkRequestPixels: Int? = null,
 ) = GridItem(
     title = {
         Text(
@@ -1088,6 +1122,7 @@ fun YouTubeGridItem(
         ItemThumbnail(
             unavailableReason = if (item is SongItem) trackUnavailableReason(item.id, item.unavailable) else null,
             thumbnailUrl = item.thumbnail,
+            artworkRequestPixels = artworkRequestPixels,
             isActive = isActive,
             isPlaying = isPlaying,
             shape = shape,
@@ -1231,6 +1266,7 @@ fun ItemThumbnail(
     isSelected: Boolean = false,
     shouldLoadImage: Boolean = true,
     thumbnailRatio: Float = 1f,
+    artworkRequestPixels: Int? = null,
     unavailableReason: String? = null,
 ) {
     val context = LocalContext.current
@@ -1244,8 +1280,9 @@ fun ItemThumbnail(
             .clip(shape)
             .semantics { if (unavailableReason != null) contentDescription = unavailableReason }
     ) {
-        val (cropThumbnailToSquare, _) =
-            rememberPreference(CropThumbnailToSquareKey, ReleaseAppearanceDefaults.cropThumbnail)
+        val sharedCrop = LocalArtistThumbnailCrop.current
+        val cropThumbnailToSquare = sharedCrop
+            ?: rememberPreference(CropThumbnailToSquareKey, ReleaseAppearanceDefaults.cropThumbnail).value
         // Square cards crop the ORIGINAL decoded image, including wide video art and
         // non-ytimg CDN URLs. The source request is not cropped/transformed/cached again.
         val shouldApplySquareCrop = shouldCropSquareThumbnail(cropThumbnailToSquare, thumbnailRatio)
@@ -1256,7 +1293,7 @@ fun ItemThumbnail(
             if (shouldLoadImage) {
                 val request = remember(thumbnailUrl, widthPx, heightPx, thumbnailRatio) {
                     ImageRequest.Builder(context)
-                        .data(capsuleArtworkUrl(thumbnailUrl, if (thumbnailRatio == 1f) 512 else 480))
+                        .data(capsuleArtworkUrl(thumbnailUrl, artworkRequestPixels ?: if (thumbnailRatio == 1f) 512 else 480))
                         .allowHardware(true)
                         .apply {
                             if (widthPx != null && heightPx != null) {

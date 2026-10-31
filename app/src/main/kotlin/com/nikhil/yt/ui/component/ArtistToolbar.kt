@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -20,6 +21,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
 import com.nikhil.yt.R
 
 internal val ArtistToolbarCompactHeight = 64.dp
@@ -86,6 +89,13 @@ internal fun ArtistToolbar(
                 modifier = Modifier.testTag("artist-toolbar-title"),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                // Albums and playlists already use this compact heading metric.
+                // Keep the artist's pinned title in the same typographic system.
+                style = MaterialTheme.typography.headlineLarge.copy(
+                    fontSize = 22.sp,
+                    lineHeight = (29f * 22f / 25f).sp,
+                    fontWeight = FontWeight.SemiBold,
+                ),
             )
         },
         navigationIcon = {
