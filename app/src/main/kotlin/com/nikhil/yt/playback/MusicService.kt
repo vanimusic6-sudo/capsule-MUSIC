@@ -1726,6 +1726,7 @@ class MusicService :
     val maxSafeGainFactor = 1.414f // +3 dB
     @Volatile
     private var hasCalledStartForeground = false
+    private lateinit var mediaNotificationProvider: CapsuleMediaNotificationProvider
 
     private val togetherRuntime =
         TogetherSessionRuntime { operation, error ->
@@ -1793,10 +1794,22 @@ class MusicService :
 
     private fun ensureStartedAsForeground() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        if (hasCalledStartForeground) return
+
+        // ArchiveTune-style foreground handover: once Media3 creates a native
+        // MediaStyle notification, NEVER overwrite it with CATEGORY_SERVICE.
+        // Such a placeholder is not recognized by HONOR's Magic Capsule.
+        val native = if (
+            ::mediaNotificationProvider.isInitialized &&
+            ::player.isInitialized &&
+            player.currentMediaItem != null &&
+            player.playbackState != Player.STATE_IDLE &&
+            player.playbackState != Player.STATE_ENDED
+        ) mediaNotificationProvider.latest else null
+
+        if (hasCalledStartForeground && native == null) return
 
         val notification =
-            try {
+            native?.notification ?: try {
                 val contentIntent =
                     PendingIntent.getActivity(
                         this,
@@ -1823,12 +1836,12 @@ class MusicService :
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(
-                    NOTIFICATION_ID,
+                    native?.notificationId ?: NOTIFICATION_ID,
                     notification,
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
                 )
             } else {
-                startForeground(NOTIFICATION_ID, notification)
+                startForeground(native?.notificationId ?: NOTIFICATION_ID, notification)
             }
             hasCalledStartForeground = true
         } catch (e: Exception) {
@@ -2000,16 +2013,15 @@ class MusicService :
                     sessionArtworkLoader,
                 )
                 .build()
-        setMediaNotificationProvider(
-            DefaultMediaNotificationProvider(
-                this,
-                { NOTIFICATION_ID },
-                CHANNEL_ID,
-                R.string.music_player
-            ).apply {
-                setSmallIcon(R.drawable.ic_capsule_monochrome)
-            }
+        // Proactively register the single session so Media3 can publish
+        // system controls even before its first asynchronous controller binds.
+        // onGetSession continues returning this exact session.
+        if (!isSessionAdded(mediaSession)) addSession(mediaSession)
+        mediaNotificationProvider = CapsuleMediaNotificationProvider(
+            context = this,
+            smallIconRes = R.drawable.ic_capsule_monochrome,
         )
+        setMediaNotificationProvider(mediaNotificationProvider)
         
         updateNotification()
         player.repeatMode = REPEAT_MODE_OFF
@@ -6169,6 +6181,7 @@ class MusicService :
         }
         try {
             mediaSession.release()
+            if (::mediaNotificationProvider.isInitialized) mediaNotificationProvider.clear()
         } catch (error: Exception) {
             reportRecoverableException("MusicService", "release media session", error)
         }
@@ -6262,6 +6275,18 @@ class MusicService :
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = mediaSession
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // A late media-button/service start can arrive after SystemUI already
+        // displays our native media card. Reuse THAT card; do not replace it
+        // with a generic foreground-service notification.
+        if (::mediaSession.isInitialized &&
+            ::player.isInitialized &&
+            player.currentMediaItem != null &&
+            ::mediaNotificationProvider.isInitialized &&
+            mediaNotificationProvider.latest == null
+        ) {
+            runCatching { super.onUpdateNotification(mediaSession, player.isPlaying) }
+                .onFailure { reportException(it) }
+        }
         ensureStartedAsForeground()
 
         when (intent?.action) {
@@ -6312,7 +6337,11 @@ class MusicService :
     private var lastSystemMediaPublication: String? = null
 
     override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
-        if (startInForegroundRequired) ensureStartedAsForeground()
+        // Media3 owns both the native MediaStyle notification and the
+        // foreground transition. Calling ensureStartedAsForeground() here
+        // previously published a CATEGORY_SERVICE placeholder using the same
+        // notification ID during every foreground update.
+        // HONOR must see the real platform session, not the placeholder.
         if (GlobalLog.isEnabled && ::player.isInitialized) {
             val item = player.currentMediaItem
             val now = buildString {
@@ -6329,13 +6358,16 @@ class MusicService :
                 val manager = getSystemService(NotificationManager::class.java)
                 Timber.tag("CapsuleSystemMedia").i(
                     "platform-session mediaPresent=%s playing=%s state=%d foreground=%s " +
-                        "hasTitle=%s hasArtist=%s hasArtwork=%s notifyEnabled=%s channelImportance=%s",
+                        "hasTitle=%s hasArtist=%s hasArtwork=%s notifyEnabled=%s channelImportance=%s " +
+                        "sessionAdded=%s nativeNotificationReady=%s",
                     item != null, player.isPlaying, player.playbackState,
                     startInForegroundRequired, item?.mediaMetadata?.title != null,
                     item?.mediaMetadata?.artist != null,
                     item?.mediaMetadata?.artworkUri != null,
                     manager?.areNotificationsEnabled() ?: false,
                     manager?.getNotificationChannel(CHANNEL_ID)?.importance ?: -1,
+                    isSessionAdded(session),
+                    ::mediaNotificationProvider.isInitialized && mediaNotificationProvider.latest != null,
                 )
             }
         }
