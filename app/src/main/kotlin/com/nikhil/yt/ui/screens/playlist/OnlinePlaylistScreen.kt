@@ -9,7 +9,6 @@ package com.nikhil.yt.ui.screens.playlist
 
 import androidx.compose.foundation.clickable
 import com.nikhil.yt.playback.queues.ListQueue
-import androidx.compose.material3.TopAppBar
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
 import com.nikhil.yt.ui.menu.CapsuleCollectionDownloadButton
@@ -18,9 +17,9 @@ import com.nikhil.yt.playback.OnlinePlaylistDownloadCoordinator
 import com.nikhil.yt.LocalDownloadUtil
 import androidx.media3.exoplayer.offline.Download
 import com.nikhil.yt.ui.component.StandardChrome
-import com.nikhil.yt.ui.component.ArtistToolbarCompactHeight
+import com.nikhil.yt.ui.component.DetailTopAppBar
+import com.nikhil.yt.ui.component.detailTitleMotion
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
-import com.nikhil.yt.ui.component.artistStyleDetailBackdrop
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -30,7 +29,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.asPaddingValues
@@ -55,21 +53,20 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
@@ -77,9 +74,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -205,6 +199,14 @@ fun OnlinePlaylistScreen(
             .toMutableStateList()
 
 
+    val artworkFallbacks = remember(songs) {
+        songs.asSequence().map { it.thumbnail }.filter(String::isNotBlank)
+            .distinct().take(4).toList()
+    }
+    val playlistDuration = remember(songs) {
+        songs.sumOf { it.toMediaMetadata().duration.coerceAtLeast(0) }
+    }
+
     val surfaceColor = StandardChrome.background
 
 
@@ -284,12 +286,9 @@ fun OnlinePlaylistScreen(
                                 // Preserve the official playlist cover when it
                                 // works; only use track artwork if all variants
                                 // of that cover are unavailable or stalled.
-                                fallbackThumbnails = songs.asSequence()
-                                    .map { it.thumbnail }
-                                    .filter(String::isNotBlank)
-                                    .distinct().take(4).toList(),
+                                fallbackThumbnails = artworkFallbacks,
                                 songCount = playlist.songCountText ?: pluralStringResource(R.plurals.n_song, songs.size, songs.size),
-                                duration = songs.sumOf { it.toMediaMetadata().duration.coerceAtLeast(0) }
+                                duration = playlistDuration
                                     .takeIf { it > 0 }?.let { com.nikhil.yt.utils.makeTimeString(it * 1000L) },
                                 subtitle = {
                                     playlist.author?.let { artist ->
@@ -582,22 +581,11 @@ fun OnlinePlaylistScreen(
 
 
         // Top App Bar
-        // One measured title handoff. The bar stays transparent throughout.
-        // Match AlbumScreen: the compact title is left-aligned beside the back button.
-        val toolbarForeground = if (selection || isSearching) StandardChrome.text else
-            lerp(Color.White, StandardChrome.text, titleMotion.artworkFade())
-        TopAppBar(
-            modifier = Modifier.onGloballyPositioned(titleMotion::measureToolbar)
-                .artistStyleDetailBackdrop(titleMotion, surfaceColor, forceOpaque = selection || isSearching),
-            windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
-            expandedHeight = ArtistToolbarCompactHeight,
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = Color.Transparent,
-                scrolledContainerColor = Color.Transparent,
-                titleContentColor = toolbarForeground,
-                navigationIconContentColor = toolbarForeground,
-                actionIconContentColor = toolbarForeground,
-            ),
+        // The compact title shares the hero's progress and keeps the toolbar pinned.
+        DetailTopAppBar(
+            motion = titleMotion,
+            surfaceColor = surfaceColor,
+            forceOpaque = selection || isSearching,
             title = {
                 if (selection) {
                     val count = wrappedSongs.count { it.isSelected }
@@ -629,7 +617,7 @@ fun OnlinePlaylistScreen(
                         modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
                     )
                 } else {
-                    Text(playlist?.title.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.graphicsLayer { alpha = titleMotion.toolbarTitleAlpha() })
+                    Text(playlist?.title.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.detailTitleMotion(titleMotion, compact = true))
                 }
             },
             navigationIcon = {

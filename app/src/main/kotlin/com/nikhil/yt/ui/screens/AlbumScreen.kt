@@ -9,15 +9,12 @@
 package com.nikhil.yt.ui.screens
 
 import androidx.compose.material3.Button
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.ui.unit.sp
 import com.nikhil.yt.ui.component.AlbumArtwork
 import com.nikhil.yt.ui.component.DetailHeroBottomSpacing
+import com.nikhil.yt.ui.component.DetailTopAppBar
+import com.nikhil.yt.ui.component.detailTitleMotion
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
-import com.nikhil.yt.ui.component.artistStyleDetailBackdrop
 import com.nikhil.yt.ui.component.AlbumArtworkTopSpacing
-import com.nikhil.yt.ui.component.ArtistToolbarCompactHeight
 import com.nikhil.yt.ui.component.AlbumHeaderLayout
 import com.nikhil.yt.ui.component.AlbumHeaderPlaceholder
 import com.nikhil.yt.ui.component.AlbumScreenLayout
@@ -26,7 +23,6 @@ import com.nikhil.yt.ui.component.CapsuleHeroMetric
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.menu.CapsuleCollectionDownloadButton
 import com.nikhil.yt.ui.component.StandardChrome
-import com.nikhil.yt.ui.component.VeluneLoader
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -35,9 +31,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -54,32 +48,24 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -87,7 +73,6 @@ import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadRequest
-import androidx.media3.exoplayer.offline.DownloadService
 import androidx.navigation.NavController
 import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.LocalDownloadUtil
@@ -98,7 +83,6 @@ import com.nikhil.yt.constants.AppBarHeight
 import com.nikhil.yt.constants.HideExplicitKey
 import com.nikhil.yt.db.entities.Album
 import com.nikhil.yt.extensions.togglePlayPause
-import com.nikhil.yt.playback.ExoDownloadService
 import com.nikhil.yt.playback.queues.LocalAlbumRadio
 import com.nikhil.yt.ui.component.IconButton
 import com.nikhil.yt.ui.component.LocalMenuState
@@ -108,7 +92,6 @@ import com.nikhil.yt.ui.component.YouTubeGridItem
 import com.nikhil.yt.ui.component.shimmer.ListItemPlaceHolder
 import com.nikhil.yt.ui.component.shimmer.ShimmerHost
 import com.nikhil.yt.ui.menu.AlbumMenu
-import com.nikhil.yt.ui.menu.CapsuleDownloadAction
 import com.nikhil.yt.ui.menu.SelectionSongMenu
 import com.nikhil.yt.ui.menu.SongMenu
 import com.nikhil.yt.ui.menu.YouTubeAlbumMenu
@@ -158,6 +141,15 @@ fun AlbumScreen(
         filteredSongs.map { item -> ItemWrapper(item) }.toMutableStateList()
     }
 
+    val artworkFallbacks = remember(albumWithSongs) {
+        albumWithSongs?.songs.orEmpty().asSequence()
+            .mapNotNull { it.song.thumbnailUrl }.filter(String::isNotBlank)
+            .distinct().take(4).toList()
+    }
+    val albumDuration = remember(wrappedSongs) {
+        wrappedSongs.sumOf { it.item.song.duration.coerceAtLeast(0) }
+    }
+
     var selection by remember { mutableStateOf(false) }
 
     if (selection) {
@@ -172,12 +164,11 @@ fun AlbumScreen(
     // State for LazyColumn to track scroll
     val lazyListState = rememberLazyListState()
 
-    // Like the artist screen, the title lives permanently in the pinned top bar.
-    // The artwork and toolbar share one measured scroll-driven dissolve.
+    // Both titles and the artwork share one measured, reversible scroll progress.
     val titleMotion = rememberDetailHeaderMotion(
         state = lazyListState,
         hasHeader = albumWithSongs?.songs?.isNotEmpty() == true,
-        contentIdentity = playlistId,
+        contentIdentity = viewModel.albumId,
     )
 
     AlbumScreenLayout(
@@ -188,22 +179,13 @@ fun AlbumScreen(
             val hasSongs = albumWithSongs?.songs?.isNotEmpty() == true
             if (hasSongs) {
                 item(key = "header") {
-                    // The cover sits lower, occupying the space freed by its old caption.
                     AlbumHeaderLayout(
                         showTitle = false,
                         artworkTopSpacing = AlbumArtworkTopSpacing,
                         artwork = {
                             AlbumArtwork(
                                 thumbnailUrl = albumWithSongs.album.thumbnailUrl,
-                                fallbackThumbnailUrl = albumWithSongs.songs.firstOrNull {
-                                    !it.song.thumbnailUrl.isNullOrBlank()
-                                }?.song?.thumbnailUrl,
-                                // A valid track cover is preferable to a permanent
-                                // grey page if the album's CDN thumbnail is stale.
-                                fallbackThumbnailUrls = albumWithSongs.songs.asSequence()
-                                    .mapNotNull { it.song.thumbnailUrl }
-                                    .filter(String::isNotBlank)
-                                    .distinct().take(4).toList(),
+                                fallbackThumbnailUrls = artworkFallbacks,
                                 background = surfaceColor,
                                 artworkAlpha = titleMotion::artworkAlpha,
                                 artworkMotion = titleMotion,
@@ -224,7 +206,7 @@ fun AlbumScreen(
                                     albumWithSongs.album.year?.let { year ->
                                         CapsuleHeroMetric(R.drawable.calendar_today, year.toString())
                                     },
-                                    wrappedSongs.sumOf { it.item.song.duration.coerceAtLeast(0) }
+                                    albumDuration
                                         .takeIf { it > 0 }?.let { duration ->
                                             CapsuleHeroMetric(
                                                 R.drawable.timer, makeTimeString(duration * 1000L),
@@ -483,27 +465,11 @@ fun AlbumScreen(
     ) {
         // Exactly as in ArtistToolbar: draw the solid page backdrop only once
         // the artwork has dissolved. Never paint a translucent strip over it.
-        // The artist toolbar has a permanent name; only photo/surface and foreground
-        // colours change on scroll. Preserve the same policy here.
-        val toolbarForeground = if (selection) StandardChrome.text else
-            lerp(Color.White, StandardChrome.text, titleMotion.artworkFade())
-        val topAppBarColors = TopAppBarDefaults.topAppBarColors(
-            containerColor = Color.Transparent,
-            scrolledContainerColor = Color.Transparent,
-            navigationIconContentColor = toolbarForeground,
-            titleContentColor = toolbarForeground,
-            actionIconContentColor = toolbarForeground,
-        )
-
-        TopAppBar(
-            modifier = Modifier.align(Alignment.TopCenter)
-                .onGloballyPositioned(titleMotion::measureToolbar)
-                .artistStyleDetailBackdrop(titleMotion, surfaceColor, forceOpaque = selection),
-            colors = topAppBarColors,
-            windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
-            expandedHeight = ArtistToolbarCompactHeight,
-            // Keep the bar pinned like ArtistToolbar; a collapsing scrollBehavior
-            // forced a second upward tug before album controls became visible.
+        DetailTopAppBar(
+            motion = titleMotion,
+            surfaceColor = surfaceColor,
+            forceOpaque = selection,
+            modifier = Modifier.align(Alignment.TopCenter),
             title = {
                 if (selection) {
                     val count = wrappedSongs.count { it.isSelected }
@@ -517,7 +483,7 @@ fun AlbumScreen(
                         style = MaterialTheme.typography.titleLarge,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.graphicsLayer { alpha = titleMotion.toolbarTitleAlpha() },
+                        modifier = Modifier.detailTitleMotion(titleMotion, compact = true),
                     )
                 }
             },

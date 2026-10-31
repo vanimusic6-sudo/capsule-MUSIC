@@ -10,20 +10,16 @@ class DetailToolbarRevealTest {
     private fun fade(index: Int, offset: Int, bottom: Float = 600f, bar: Float = 100f) =
         detailArtworkFadeLikeArtist(index, offset, bottom, bar)
 
-    @Test fun coverArrivalIsExplicitAndNeverStartsTransparentForever() {
+    @Test fun initialHeaderPresenceNeverDependsOnImageCallbacks() {
         val motion = DetailHeaderMotionState(LazyListState(), Density(1f))
-        assertEquals("Unknown artwork is not ready", 0f, motion.isArtworkReady, 0f)
-        assertEquals("At scroll origin the photograph is never masked by Coil readiness",
-            1f, motion.artworkAlpha(), 0f)
-        motion.setArtworkReady(true)
-        motion.updateArtworkReveal(1f)
-        assertEquals("OnSuccess remains visible", 1f, motion.artworkAlpha(), 0f)
-        motion.setArtworkReady(false)
-        motion.updateArtworkReveal(0f)
-        assertEquals("Even a late readiness reset must not hide a decoded bitmap",
-            1f, motion.artworkAlpha(), 0f)
-        assertEquals("Toolbar readiness may independently return to the page surface",
-            0f, motion.artworkReveal, 0f)
+        assertEquals(1f, motion.artworkAlpha(), 0f)
+        assertEquals(0f, motion.toolbarTitleAlpha(), 0f)
+        assertEquals(0f, detailToolbarBackdropAlpha(motion.artworkFade()), 0f)
+        val empty = DetailHeaderMotionState(LazyListState(), Density(1f), hasHeader = false)
+        assertEquals(1f, empty.toolbarTitleAlpha(), 0f)
+        empty.hasHeader = true
+        assertEquals(1f, empty.artworkAlpha(), 0f)
+        assertEquals(0f, empty.toolbarTitleAlpha(), 0f)
     }
 
     @Test fun fadeBeginsAtOldScrollPointButCompletesAtSameMeasuredToolbarEdge() {

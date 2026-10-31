@@ -8,11 +8,10 @@
 package com.nikhil.yt.ui.screens.playlist
 
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.material3.TopAppBar
 import com.nikhil.yt.ui.component.StandardChrome
-import com.nikhil.yt.ui.component.ArtistToolbarCompactHeight
+import com.nikhil.yt.ui.component.DetailTopAppBar
+import com.nikhil.yt.ui.component.detailTitleMotion
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
-import com.nikhil.yt.ui.component.artistStyleDetailBackdrop
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
 import com.nikhil.yt.ui.menu.CapsuleCollectionDownloadButton
@@ -24,17 +23,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
@@ -43,33 +38,26 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -85,7 +73,6 @@ import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.DownloadRequest
-import androidx.media3.exoplayer.offline.DownloadService
 import androidx.navigation.NavController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -104,11 +91,9 @@ import com.nikhil.yt.constants.YtmSyncKey
 import com.nikhil.yt.db.entities.Song
 import com.nikhil.yt.extensions.toMediaItem
 import com.nikhil.yt.extensions.togglePlayPause
-import com.nikhil.yt.playback.ExoDownloadService
 import com.nikhil.yt.playback.queues.ListQueue
 import com.nikhil.yt.discovery.ExperimentalDownload
 import com.nikhil.yt.discovery.OfflineAudioQueue
-import com.nikhil.yt.ui.component.DefaultDialog
 import com.nikhil.yt.ui.component.EmptyPlaceholder
 import com.nikhil.yt.ui.component.IconButton
 import com.nikhil.yt.ui.component.LocalMenuState
@@ -558,22 +543,11 @@ fun AutoPlaylistScreen(
         }
 
 
-        // One measured title handoff. The bar stays transparent throughout.
-        // Match AlbumScreen: the compact title is left-aligned beside the back button.
-        val toolbarForeground = if (selection || isSearching) StandardChrome.text else
-            lerp(Color.White, StandardChrome.text, titleMotion.artworkFade())
-        TopAppBar(
-            modifier = Modifier.onGloballyPositioned(titleMotion::measureToolbar)
-                .artistStyleDetailBackdrop(titleMotion, surfaceColor, forceOpaque = selection || isSearching),
-            windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
-            expandedHeight = ArtistToolbarCompactHeight,
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = Color.Transparent,
-                scrolledContainerColor = Color.Transparent,
-                titleContentColor = toolbarForeground,
-                navigationIconContentColor = toolbarForeground,
-                actionIconContentColor = toolbarForeground,
-            ),
+        // The compact title shares the hero's progress and keeps the toolbar pinned.
+        DetailTopAppBar(
+            motion = titleMotion,
+            surfaceColor = surfaceColor,
+            forceOpaque = selection || isSearching,
             title = {
                 when {
                     selection -> {
@@ -613,7 +587,7 @@ fun AutoPlaylistScreen(
                             text = playlist,
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.titleLarge,
-                            modifier = Modifier.graphicsLayer { alpha = titleMotion.toolbarTitleAlpha() }
+                            modifier = Modifier.detailTitleMotion(titleMotion, compact = true)
                         )
                     }
                 }

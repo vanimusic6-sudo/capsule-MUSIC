@@ -13,14 +13,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.getValue
 import kotlinx.coroutines.delay
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -101,16 +100,12 @@ internal fun BoxScope.CapsuleDetailCoverTitle(
         text = title,
         modifier = Modifier.align(Alignment.BottomCenter)
             .padding(horizontal = 28.dp).padding(bottom = 16.dp)
-            .graphicsLayer {
-                // The title belongs to the scroll transition, but must not
-                // disappear while Coil is still decoding the background photo.
-                alpha = (1f - (motion?.artworkFade() ?: 0f)).coerceIn(0f, 1f)
-            }
+            .detailTitleMotion(motion)
             .testTag("capsule:detail-title"),
         color = StandardChrome.text,
         style = MaterialTheme.typography.headlineLarge.copy(
-            fontSize = 32.sp,
-            lineHeight = 36.sp,
+            fontSize = 25.sp,
+            lineHeight = 29.sp,
             fontWeight = FontWeight.SemiBold,
             textAlign = TextAlign.Center,
         ),
@@ -156,90 +151,42 @@ internal fun DetailPortraitImage(
     fallbackThumbnailUrls: List<String> = emptyList(),
     minimumPixels: Int = 960,
     background: Color = StandardChrome.background,
-    artworkMotion: DetailHeaderMotionState? = null,
 ) {
     val candidates = remember(thumbnailUrl, fallbackThumbnailUrl, fallbackThumbnailUrls, minimumPixels) {
         detailArtworkCandidates(thumbnailUrl, fallbackThumbnailUrl, fallbackThumbnailUrls, minimumPixels)
     }
-    // Track the *primary image identity*, not the changing collection of
-    // fallback track covers. Track pagination can append candidates after the
-    // primary has already decoded; resetting `loaded` would start a 7-second
-    // retry timer over the visible photo and eventually replace it.
     val coverIdentity = thumbnailUrl?.takeIf(String::isNotBlank)
         ?: fallbackThumbnailUrl?.takeIf(String::isNotBlank)
         ?: fallbackThumbnailUrls.firstOrNull(String::isNotBlank)
-    var candidateIndex by remember(coverIdentity, minimumPixels) { mutableIntStateOf(0) }
-    var retryRound by remember(coverIdentity, minimumPixels) { mutableIntStateOf(0) }
-    var loaded by remember(coverIdentity, minimumPixels) { mutableStateOf(false) }
-    var exhausted by remember(coverIdentity, minimumPixels) { mutableStateOf(false) }
-    var knownCandidateCount by remember(coverIdentity, minimumPixels) {
-        mutableIntStateOf(candidates.size)
-    }
-    // If there was nothing playable, allow newly discovered track fallbacks
-    // to restart the bounded retry chain. This never resets a loaded image.
-    LaunchedEffect(candidates) {
-        if (!loaded && exhausted && candidates.size > knownCandidateCount) {
-            exhausted = false
-            candidateIndex = 0
-            retryRound = 0
-        }
-        knownCandidateCount = maxOf(knownCandidateCount, candidates.size)
-    }
-    // Coil may already have resolved a cached cover before a refreshed motion
-    // controller is attached. Re-publish SUCCESS only; reset belongs to the
-    // parent album/playlist identity, not each individual fallback tile.
-    LaunchedEffect(loaded, artworkMotion) {
-        if (loaded) artworkMotion?.setArtworkReady(true)
-    }
-    fun nextCandidate() {
-        if (loaded || exhausted) return
-        if (candidateIndex < candidates.lastIndex) {
-            candidateIndex++
-        } else if (retryRound < 2) {
-            retryRound++
-            candidateIndex = 0
-        } else {
-            exhausted = true
-        }
-    }
-    LaunchedEffect(candidates, candidateIndex, retryRound, loaded, exhausted) {
-        if (candidates.isNotEmpty() && !loaded && !exhausted) {
+    val request = remember(coverIdentity, minimumPixels) { DetailArtworkRequestState(candidates) }
+    SideEffect { request.updateCandidates(candidates) }
+    val attempt = request.attempt
+    LaunchedEffect(request, attempt, request.loaded) {
+        if (attempt != null && !request.loaded) {
             delay(7_000L)
-            if (!loaded && !exhausted) nextCandidate()
+            request.fail(attempt)
         }
     }
 
     Box(modifier.background(background), contentAlignment = Alignment.Center) {
-        if (candidates.isEmpty() || exhausted) {
+        if (attempt == null) {
             Icon(
                 painter = painterResource(R.drawable.music_note),
                 contentDescription = null,
                 tint = StandardChrome.muted.copy(alpha = 0.38f),
                 modifier = Modifier.size(56.dp),
             )
-        }
-        if (candidates.isNotEmpty() && !exhausted) {
-            val index = candidateIndex.coerceIn(0, candidates.lastIndex)
-            val source = candidates[index]
-            // Recreate the loader only on source/round change, so a retry of
-            // the *same* URL really issues another request rather than
-            // remaining in Coil's previous terminal Error state.
-            key(source, retryRound) {
+        } else {
+            // Preserve the same source after success even if track pagination
+            // changes fallback order. Round also makes same-URL retries real.
+            key(coverIdentity, attempt) {
                 AsyncImage(
-                    model = source,
+                    model = attempt.source,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
-                    onSuccess = {
-                        loaded = true
-                        // This callback was missing from the ready-state path:
-                        // artworkReveal stayed at ZERO and obscured even a
-                        // successfully loaded bitmap with the grey page matte.
-                        artworkMotion?.setArtworkReady(true)
-                    },
-                    onError = {
-                        if (!loaded && candidateIndex == index) nextCandidate()
-                    },
+                    onSuccess = { request.succeed(attempt) },
+                    onError = { request.fail(attempt) },
                 )
             }
         }
@@ -257,9 +204,6 @@ internal fun AlbumArtwork(
     fallbackThumbnailUrls: List<String> = emptyList(),
     title: String = "",
 ) {
-    // Readiness is owned by the page identity, not by dynamic thumbnail
-    // candidates. Resetting here races Coil cache success and can hide a
-    // successfully decoded image after the fallback list changes.
     AlbumPortraitFrame(
         background = background,
         modifier = modifier,
@@ -272,7 +216,6 @@ internal fun AlbumArtwork(
             fallbackThumbnailUrl = fallbackThumbnailUrl,
             fallbackThumbnailUrls = fallbackThumbnailUrls,
             background = background,
-            artworkMotion = artworkMotion,
             modifier = Modifier.fillMaxSize(),
         )
     }
@@ -285,10 +228,7 @@ internal fun AlbumArtwork(
  */
 internal fun albumCoverHeight(width: Dp, screenHeight: Dp): Dp {
     val natural = width / 0.85f
-    // Keep the portrait under the pinned bar, but no longer reserve the
-    // historical 44dp phantom top ribbon: it pushed album and playlist
-    // controls down long after the artwork was already opaque.
-    return minOf(natural, maxOf(natural * 0.83f, screenHeight * 0.50f)) + 12.dp + 8.dp
+    return minOf(natural, maxOf(natural * 0.83f, screenHeight * 0.50f)) + 20.dp
 }
 
 @Suppress("UNUSED_PARAMETER")
@@ -302,11 +242,6 @@ internal fun AlbumArtworkLayers(
     artworkAlpha: () -> Float = { 1f },
     artworkMotion: DetailHeaderMotionState? = null,
 ) {
-    // A predecoded Painter has no Coil onSuccess callback. Mark it ready
-    // immediately, otherwise it is hidden behind artworkReveal=0 forever.
-    LaunchedEffect(painter, artworkMotion) {
-        artworkMotion?.setArtworkReady(true)
-    }
     AlbumPortraitFrame(
         background = background,
         modifier = modifier,

@@ -1,14 +1,14 @@
 package com.nikhil.yt.ui.component
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
@@ -16,40 +16,26 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Density
 
-/**
- * One scroll-driven photo / pinned-toolbar transition for albums and all
- * playlists. Titles live ONLY in the pinned top bar, as on ArtistScreen.
- *
- * Measure the actual artwork's resting bottom edge, including any artwork
- * inset, rather than guessing the title/caption height or assuming one
- * device size. Drawing samples scroll state without a per-frame animation.
- * Artist, album and playlist pages share the same fade function.
- */
+/** Shared, measured scroll progress. Image loading never controls drawing opacity. */
 internal class DetailHeaderMotionState(
     private val scroll: LazyListState,
     private val density: Density,
+    hasHeader: Boolean = true,
 ) {
-    var hasHeader: Boolean = true
-
-    // Cover readiness comes from the *real* Coil success callback, not from
-    // having a non-empty metadata URL. Both the artwork and pinned bar use
-    // the same short reveal. No independent toolbar colour flash on load.
-    var isArtworkReady by mutableFloatStateOf(0f)
-        private set
-    var artworkReveal by mutableFloatStateOf(0f)
-        private set
-
-    fun setArtworkReady(ready: Boolean) {
-        val value = if (ready) 1f else 0f
-        if (isArtworkReady != value) isArtworkReady = value
-    }
-
-    fun updateArtworkReveal(value: Float) {
-        val bounded = value.coerceIn(0f, 1f)
-        if (artworkReveal != bounded) artworkReveal = bounded
-    }
+    var hasHeader by mutableStateOf(hasHeader)
 
     private var restArtworkBottomPx by mutableFloatStateOf(Float.NaN)
     private var toolbarBottomPx by mutableFloatStateOf(Float.NaN)
@@ -81,36 +67,36 @@ internal class DetailHeaderMotionState(
         }
     }
 
-    fun artworkFade(): Float {
-        if (!hasHeader) return 1f
-        val viewportWidth = scroll.layoutInfo.viewportSize.width
-        if (viewportWidth <= 0) return 0f
-        // Use actual measured photo + toolbar edges. Only before the first
-        // measure, use the artist's reference size as a conservative fallback.
-        // Album and playlist photographs may be taller, and using that artist
-        // height after measurement used to leave a large black gap above
-        // the collection controls while the photo was still offscreen.
-        val fallbackArtistBottomPx = with(density) {
-            artistHeroArtworkHeight(viewportWidth.toDp()).roundToPx().toFloat()
+    // All layers read this cached value. At rest there is no clock or scheduled work.
+    private val progress by derivedStateOf {
+        if (!hasHeader) 1f else {
+            val viewportWidth = scroll.layoutInfo.viewportSize.width
+            val fallbackBottom = if (restArtworkBottomPx.isFinite() || viewportWidth <= 0) {
+                0f
+            } else with(density) {
+                artistHeroArtworkHeight(viewportWidth.toDp()).toPx()
+            }
+            detailArtistLengthArtworkFade(
+                firstVisibleItemIndex = scroll.firstVisibleItemIndex,
+                offsetPx = scroll.firstVisibleItemScrollOffset,
+                artistArtworkBottomPx = fallbackBottom,
+                detailArtworkBottomPx = restArtworkBottomPx,
+                toolbarBottomPx = toolbarBottomPx,
+                toolbarHeightPx = toolbarHeightPx,
+            )
         }
-        return detailArtistLengthArtworkFade(
-            firstVisibleItemIndex = scroll.firstVisibleItemIndex,
-            offsetPx = scroll.firstVisibleItemScrollOffset,
-            artistArtworkBottomPx = fallbackArtistBottomPx,
-            detailArtworkBottomPx = restArtworkBottomPx,
-            toolbarBottomPx = toolbarBottomPx,
-            toolbarHeightPx = toolbarHeightPx,
-        )
     }
+
+    fun artworkFade(): Float = progress
 
     // Cover pixels must never depend on asynchronous readiness. Coil paints a
     // placeholder until decoding finishes, then the real bitmap. A late
     // readiness reset previously multiplied a loaded image by zero forever.
     // Scroll fade is exclusively controlled by the measured scroll geometry.
-    fun artworkAlpha(): Float = (1f - artworkFade()).coerceIn(0f, 1f)
+    fun artworkAlpha(): Float = 1f - progress
 
     // Once the hero name has scrolled away, the pinned compact title takes over.
-    fun toolbarTitleAlpha(): Float = artworkFade().coerceIn(0f, 1f)
+    fun toolbarTitleAlpha(): Float = progress
 }
 
 /**
@@ -191,23 +177,10 @@ internal fun rememberDetailHeaderMotion(
     contentIdentity: Any? = null,
 ): DetailHeaderMotionState {
     val density = LocalDensity.current
-    // Reset measured geometry/colour readiness only when navigating to a new
-    // collection, never when track covers or fallback lists arrive later.
     val motion = remember(state, density, contentIdentity) {
-        DetailHeaderMotionState(state, density)
+        DetailHeaderMotionState(state, density, hasHeader)
     }
-    // Load completion is a one-off transition; it does not run while scrolling
-    // or poll the image provider. The page and toolbar acquire their colour
-    // from the same alpha to avoid different-looking placeholders.
-    val reveal by animateFloatAsState(
-        targetValue = motion.isArtworkReady,
-        animationSpec = tween(durationMillis = 240),
-        label = "detail-cover-arrival",
-    )
-    SideEffect {
-        motion.hasHeader = hasHeader
-        motion.updateArtworkReveal(reveal)
-    }
+    SideEffect { motion.hasHeader = hasHeader }
     return motion
 }
 
@@ -223,11 +196,48 @@ internal fun Modifier.artistStyleDetailBackdrop(
     surfaceColor: Color,
     forceOpaque: Boolean = false,
 ): Modifier = drawBehind {
-    drawRect(surfaceColor.copy(alpha = maxOf(
-        detailToolbarBackdropAlpha(
-            photoDissolve = motion.artworkFade(),
-            forceOpaque = forceOpaque,
+    val alpha = detailToolbarBackdropAlpha(motion.artworkFade(), forceOpaque)
+    if (alpha > 0f) drawRect(surfaceColor.copy(alpha = alpha))
+}
+
+/** The same progress moves both captions; graphics-layer reads avoid text re-layout. */
+internal fun Modifier.detailTitleMotion(
+    motion: DetailHeaderMotionState?,
+    compact: Boolean = false,
+): Modifier = graphicsLayer {
+    val progress = motion?.toolbarTitleAlpha() ?: 0f
+    alpha = if (compact) progress else 1f - progress
+    translationY = if (compact) 8.dp.toPx() * (1f - progress) else -12.dp.toPx() * progress
+}
+
+/** Isolate scroll-driven foreground recomposition from the collection and song list. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun DetailTopAppBar(
+    motion: DetailHeaderMotionState,
+    surfaceColor: Color,
+    forceOpaque: Boolean,
+    modifier: Modifier = Modifier,
+    title: @Composable () -> Unit,
+    navigationIcon: @Composable () -> Unit,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
+    val foreground = if (forceOpaque) StandardChrome.text else
+        lerp(Color.White, StandardChrome.text, motion.artworkFade())
+    TopAppBar(
+        modifier = modifier.onGloballyPositioned(motion::measureToolbar)
+            .artistStyleDetailBackdrop(motion, surfaceColor, forceOpaque),
+        windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
+        expandedHeight = ArtistToolbarCompactHeight,
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = Color.Transparent,
+            scrolledContainerColor = Color.Transparent,
+            titleContentColor = foreground,
+            navigationIconContentColor = foreground,
+            actionIconContentColor = foreground,
         ),
-        1f - motion.artworkReveal,
-    )))
+        title = title,
+        navigationIcon = navigationIcon,
+        actions = actions,
+    )
 }
