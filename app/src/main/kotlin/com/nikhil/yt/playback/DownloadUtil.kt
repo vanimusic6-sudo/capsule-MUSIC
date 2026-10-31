@@ -179,6 +179,7 @@ constructor(
                 cache = downloadCache,
                 saveArtwork = { saveArtwork(request.id) },
                 resolve = { resolveDownloadPlayback(request.id) },
+                awaitAdmission = { awaitDownloadResolveWindow() },
                 recover = { playback, failure ->
                     val status = generateSequence(failure as Throwable?) { it.cause }
                         .take(12).filterIsInstance<InvalidResponseCodeException>()
