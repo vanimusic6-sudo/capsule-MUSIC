@@ -10,7 +10,6 @@
 
 package com.nikhil.yt.playback
 
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.KeyguardManager
@@ -23,7 +22,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.content.pm.ServiceInfo
 import android.database.SQLException
 import android.media.AudioManager
 import android.media.audiofx.AudioEffect
@@ -32,7 +30,6 @@ import android.os.Binder
 import android.os.Build
 import android.os.PowerManager
 import android.widget.Toast
-import androidx.core.app.NotificationCompat
 import androidx.core.content.getSystemService
 import androidx.core.net.toUri
 import androidx.datastore.preferences.core.Preferences
@@ -556,21 +553,9 @@ class MusicService :
     // Android's playback clock nor makes unsupported OEM integrations appear;
     // it does, however, wake the main thread and notification manager forever.
     // Keep only one-shot refreshes when the actual session position/state changes.
-    private var lastIslandRefreshMs = 0L
-    private val hasHonorIsland: Boolean
-        get() = Build.MANUFACTURER.equals("HONOR", ignoreCase = true) ||
-            Build.MANUFACTURER.equals("HUAWEI", ignoreCase = true)
-
-    private fun refreshIslandClock() {
-        if (!hasHonorIsland || !::mediaSession.isInitialized) return
-        val now = android.os.SystemClock.elapsedRealtime()
-        if (now - lastIslandRefreshMs < 650L) return
-        lastIslandRefreshMs = now
-        // Media3 publishes media-style notification / platform MediaSession:
-        // explicitly notify on actual track/seek/play state changes only.
-        runCatching { super.onUpdateNotification(mediaSession, player.isPlaying) }
-            .onFailure { Timber.tag("CapsuleIsland").w("System media refresh failed: %s", it.javaClass.simpleName) }
-    }
+    // Android's Media3 system playback clock is timestamped and self-updating.
+    // Forced manual notification refreshes are forbidden by Media3 and can
+    // cause SystemUI to suppress repeated notifications.
 
     private val songMutationMutex = Mutex()
     private val binder = MusicBinder()
@@ -1724,8 +1709,6 @@ class MusicService :
     val autoAddedMediaIds = automixCoordinator.autoAddedMediaIds
 
     val maxSafeGainFactor = 1.414f // +3 dB
-    @Volatile
-    private var hasCalledStartForeground = false
     private lateinit var mediaNotificationProvider: CapsuleMediaNotificationProvider
 
     private val togetherRuntime =
@@ -1790,63 +1773,6 @@ class MusicService :
         val generated = java.util.UUID.randomUUID().toString()
         dataStore.edit { prefs -> prefs[TogetherClientIdKey] = generated }
         return generated
-    }
-
-    private fun ensureStartedAsForeground() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-
-        // ArchiveTune-style foreground handover: once Media3 creates a native
-        // MediaStyle notification, NEVER overwrite it with CATEGORY_SERVICE.
-        // Such a placeholder is not recognized by HONOR's Magic Capsule.
-        val native = if (
-            ::mediaNotificationProvider.isInitialized &&
-            ::player.isInitialized &&
-            player.currentMediaItem != null &&
-            player.playbackState != Player.STATE_IDLE &&
-            player.playbackState != Player.STATE_ENDED
-        ) mediaNotificationProvider.latest else null
-
-        if (hasCalledStartForeground && native == null) return
-
-        val notification =
-            native?.notification ?: try {
-                val contentIntent =
-                    PendingIntent.getActivity(
-                        this,
-                        0,
-                        Intent(this, MainActivity::class.java),
-                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-                    )
-
-                NotificationCompat.Builder(this, CHANNEL_ID)
-                    .setSmallIcon(R.drawable.ic_capsule_monochrome)
-                    .setContentTitle(getString(R.string.music_player))
-                    .setContentText(getString(R.string.app_name))
-                    .setContentIntent(contentIntent)
-                    .setCategory(Notification.CATEGORY_SERVICE)
-                    .setPriority(NotificationCompat.PRIORITY_LOW)
-                    .setOngoing(true)
-                    .setOnlyAlertOnce(true)
-                    .build()
-            } catch (e: Exception) {
-                reportException(e)
-                return
-            }
-
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(
-                    native?.notificationId ?: NOTIFICATION_ID,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
-                )
-            } else {
-                startForeground(native?.notificationId ?: NOTIFICATION_ID, notification)
-            }
-            hasCalledStartForeground = true
-        } catch (e: Exception) {
-            reportException(e)
-        }
     }
 
     override fun onCreate() {
@@ -2676,8 +2602,8 @@ class MusicService :
 
     fun refreshPlaybackNotification() {
         updateNotification()
-        runCatching { super.onUpdateNotification(mediaSession, player.isPlaying) }
-            .onFailure { reportException(it) }
+        // Explicitly supported refresh after POST_NOTIFICATIONS permission grant.
+        triggerNotificationUpdate()
     }
 
 
@@ -3782,7 +3708,6 @@ class MusicService :
 
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         super.onMediaItemTransition(mediaItem, reason)
-        refreshIslandClock()
         if (::offlinePlaybackQueue.isInitialized) offlinePlaybackQueue.checkCurrent()
 
         if (mediaItem?.mediaId?.startsWith(EXPERIMENTAL_MEDIA_PREFIX) == true) {
@@ -4170,7 +4095,6 @@ class MusicService :
     override fun onIsPlayingChanged(isPlaying: Boolean) {
         super.onIsPlayingChanged(isPlaying)
         updateDownloadNetworkPriority()
-        refreshIslandClock()
         updateVideoPauseCollapse()
         val activeMediaId = player.currentMediaItem?.mediaId
         playbackRecoveryCoordinator.onPlaybackActivity(
@@ -4196,7 +4120,6 @@ class MusicService :
         if (events.contains(EVENT_POSITION_DISCONTINUITY)) {
             playbackPositionGeneration.markDiscontinuity()
             // Native OEM progress UI otherwise sometimes keeps the pre-seek clock.
-            refreshIslandClock()
         }
         if (events.containsAny(
                 Player.EVENT_PLAY_WHEN_READY_CHANGED,
@@ -6278,19 +6201,8 @@ class MusicService :
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = mediaSession
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // A late media-button/service start can arrive after SystemUI already
-        // displays our native media card. Reuse THAT card; do not replace it
-        // with a generic foreground-service notification.
-        if (::mediaSession.isInitialized &&
-            ::player.isInitialized &&
-            player.currentMediaItem != null &&
-            ::mediaNotificationProvider.isInitialized &&
-            mediaNotificationProvider.latest == null
-        ) {
-            runCatching { super.onUpdateNotification(mediaSession, player.isPlaying) }
-                .onFailure { reportException(it) }
-        }
-        ensureStartedAsForeground()
+        // Media3 owns foreground handover and its native media notification.
+        // Do not post a CATEGORY_SERVICE placeholder with the media ID.
 
         when (intent?.action) {
             "com.nikhil.yt.ACTION_PREV" -> {
@@ -6341,10 +6253,8 @@ class MusicService :
 
     override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
         // Media3 owns both the native MediaStyle notification and the
-        // foreground transition. Calling ensureStartedAsForeground() here
-        // previously published a CATEGORY_SERVICE placeholder using the same
-        // notification ID during every foreground update.
-        // HONOR must see the real platform session, not the placeholder.
+        // Keep diagnostic logging, but let the default Media3 implementation
+        // publish/withdraw its native MediaStyle notification exactly once.
         if (GlobalLog.isEnabled && ::player.isInitialized) {
             val item = player.currentMediaItem
             val now = buildString {
