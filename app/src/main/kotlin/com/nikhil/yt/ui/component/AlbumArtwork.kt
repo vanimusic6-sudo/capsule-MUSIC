@@ -115,6 +115,7 @@ internal fun DetailPortraitImage(
     fallbackThumbnailUrls: List<String> = emptyList(),
     minimumPixels: Int = 960,
     background: Color = StandardChrome.background,
+    artworkMotion: DetailHeaderMotionState? = null,
 ) {
     val candidates = remember(thumbnailUrl, fallbackThumbnailUrl, fallbackThumbnailUrls, minimumPixels) {
         detailArtworkCandidates(thumbnailUrl, fallbackThumbnailUrl, fallbackThumbnailUrls, minimumPixels)
@@ -123,6 +124,12 @@ internal fun DetailPortraitImage(
     var retryRound by remember(candidates) { mutableIntStateOf(0) }
     var loaded by remember(candidates) { mutableStateOf(false) }
     var exhausted by remember(candidates) { mutableStateOf(false) }
+    // Coil may already have resolved a cached cover before a refreshed motion
+    // controller is attached. Re-publish SUCCESS only; reset belongs to the
+    // parent album/playlist identity, not each individual fallback tile.
+    LaunchedEffect(loaded, artworkMotion) {
+        if (loaded) artworkMotion?.setArtworkReady(true)
+    }
     fun nextCandidate() {
         if (loaded || exhausted) return
         if (candidateIndex < candidates.lastIndex) {
@@ -162,7 +169,13 @@ internal fun DetailPortraitImage(
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
-                    onSuccess = { loaded = true },
+                    onSuccess = {
+                        loaded = true
+                        // This callback was missing from the ready-state path:
+                        // artworkReveal stayed at ZERO and obscured even a
+                        // successfully loaded bitmap with the grey page matte.
+                        artworkMotion?.setArtworkReady(true)
+                    },
                     onError = {
                         if (!loaded && candidateIndex == index) nextCandidate()
                     },
@@ -182,6 +195,12 @@ internal fun AlbumArtwork(
     fallbackThumbnailUrl: String? = null,
     fallbackThumbnailUrls: List<String> = emptyList(),
 ) {
+    // Only a NEW main cover resets the shared arrival state; additional
+    // fallback URLs appearing during pagination must never blank an already
+    // visible image or reset the pinned toolbar.
+    LaunchedEffect(thumbnailUrl, artworkMotion) {
+        artworkMotion?.setArtworkReady(false)
+    }
     AlbumPortraitFrame(
         background = background,
         modifier = modifier,
@@ -193,6 +212,7 @@ internal fun AlbumArtwork(
             fallbackThumbnailUrl = fallbackThumbnailUrl,
             fallbackThumbnailUrls = fallbackThumbnailUrls,
             background = background,
+            artworkMotion = artworkMotion,
             modifier = Modifier.fillMaxSize(),
         )
     }
