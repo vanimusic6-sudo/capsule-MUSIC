@@ -150,6 +150,7 @@ internal class AudioChunkedDataSource(
     private val upstream: DataSource,
     private val chunkBytes: Long = AUDIO_CHUNK_BYTES,
     private val initialChunkBytes: (DataSpec) -> Long = { 0L },
+    private val currentNetworkIdentity: () -> Long? = { null },
 ) : DataSource {
     private var request: DataSpec? = null
     private var nextPosition = 0L
@@ -166,6 +167,9 @@ internal class AudioChunkedDataSource(
     private var bufferedOffset = 0
     private var bufferedLength = 0
     private var opusReadAheadEnabled = false
+    private var directBytesLeft = C.LENGTH_UNSET.toLong()
+    private var socketReadResumeAttempts = 0
+    private var openedNetworkIdentity: Long? = null
 
     override fun addTransferListener(transferListener: TransferListener) {
         upstream.addTransferListener(transferListener)
@@ -175,6 +179,9 @@ internal class AudioChunkedDataSource(
         bufferedOffset = 0
         bufferedLength = 0
         opusReadAheadEnabled = isOpusChunkKey(dataSpec.key)
+        directBytesLeft = dataSpec.length
+        socketReadResumeAttempts = 0
+        openedNetworkIdentity = currentNetworkIdentity()
         /*
          * The library's own size wins when it named one. It works this out per client, which is
          * something a single constant here cannot do — and the constant was only ever chosen by
@@ -234,6 +241,7 @@ internal class AudioChunkedDataSource(
         chunkLeft = minOf(if (firstChunkPending) firstChunkBytes else adaptiveChunkBytes, bytesLeft)
         firstChunkPending = false
         currentChunkBytes = chunkLeft
+        socketReadResumeAttempts = 0
         val chunkSpec =
             spec.buildUpon()
                 .setPosition(nextPosition)
@@ -271,9 +279,96 @@ internal class AudioChunkedDataSource(
         }
     }
 
+    /**
+     * Media3's WebM extractor frequently asks for 1–60 bytes. The ordinary
+     * bounded-range path already coalesces those to 8 KiB, but a cache-tail seek
+     * (or a short file) skipped the chunk wrapper and used *thousands* of TLS
+     * reads. This direct path coalesces the exact same consumer bytes and keeps
+     * all unconsumed read-ahead in RAM, never in the persistent audio cache.
+     */
+    private fun readDirect(buffer: ByteArray, offset: Int, length: Int): Int {
+        if (!opusReadAheadEnabled) return upstream.read(buffer, offset, length)
+        if (directBytesLeft == 0L) return C.RESULT_END_OF_INPUT
+
+        val requested = if (directBytesLeft > 0L) minOf(length.toLong(), directBytesLeft).toInt() else length
+        val read = when {
+            bufferedOffset < bufferedLength -> {
+                val count = minOf(requested, bufferedLength - bufferedOffset)
+                opusReadAhead.copyInto(buffer, offset, bufferedOffset, bufferedOffset + count)
+                bufferedOffset += count
+                count
+            }
+            requested < OPUS_READAHEAD_BYTES -> {
+                val prefetchLength = if (directBytesLeft > 0L) {
+                    minOf(OPUS_READAHEAD_BYTES.toLong(), directBytesLeft).toInt()
+                } else {
+                    OPUS_READAHEAD_BYTES
+                }
+                val filled = upstream.read(opusReadAhead, 0, prefetchLength)
+                if (filled <= 0) filled else {
+                    val count = minOf(requested, filled)
+                    bufferedOffset = count
+                    bufferedLength = filled
+                    opusReadAhead.copyInto(buffer, offset, 0, count)
+                    count
+                }
+            }
+            else -> upstream.read(buffer, offset, requested)
+        }
+        if (read > 0 && directBytesLeft != C.LENGTH_UNSET.toLong()) directBytesLeft -= read.toLong()
+        return read
+    }
+
+    /**
+     * A peer reset *after* 900 KiB of a valid 206 should not trigger a new
+     * /player request or recreate Media3's decoder. Resume only the missing
+     * tail of the current bounded range on the same signed URL, once.
+     *
+     * Never hide cancellation, 403/410/429, a host-cooldown verdict, or an
+     * open-timeout. The service owns those distinct failure categories.
+     */
+    private fun readChunkNetwork(buffer: ByteArray, offset: Int, length: Int): Int {
+        try {
+            return upstream.read(buffer, offset, length)
+        } catch (failure: java.io.IOException) {
+            if (socketReadResumeAttempts != 0 ||
+                failure.isExpectedAudioCdnInterruption() ||
+                !failure.isTransientAudioCdnSocketReset() ||
+                openedNetworkIdentity != currentNetworkIdentity() ||
+                request == null || chunkLeft <= 0L
+            ) throw failure
+
+            socketReadResumeAttempts = 1
+            val remainingSpec = requireNotNull(request).buildUpon()
+                .setPosition(nextPosition)
+                .setLength(chunkLeft)
+                .build()
+            Timber.tag("AudioCDN").i(
+                "cdn-read-resume position=%d remainingBytes=%d reason=socket-reset sameUrl=true",
+                nextPosition, chunkLeft,
+            )
+            // The original response may be half-consumed. A clean close also
+            // ensures OkHttp cannot accidentally reuse its dead TLS socket.
+            try {
+                upstream.close()
+            } catch (closeFailure: java.io.IOException) {
+                failure.addSuppressed(closeFailure)
+            }
+            bufferedOffset = 0
+            bufferedLength = 0
+            try {
+                openWithRefusalRetry(remainingSpec)
+                return upstream.read(buffer, offset, length)
+            } catch (retryFailure: java.io.IOException) {
+                retryFailure.addSuppressed(failure)
+                throw retryFailure
+            }
+        }
+    }
+
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
         if (length == 0) return 0
-        if (request == null) return upstream.read(buffer, offset, length)
+        if (request == null) return readDirect(buffer, offset, length)
         if (bytesLeft == 0L) return C.RESULT_END_OF_INPUT
 
         if (chunkLeft == 0L) {
@@ -294,7 +389,7 @@ internal class AudioChunkedDataSource(
             // At most the remainder of THIS bounded request. No speculative
             // requests, no seek across slices, no write of unused bytes to cache.
             val upstreamRequested = minOf(OPUS_READAHEAD_BYTES.toLong(), chunkLeft).toInt()
-            val filled = upstream.read(opusReadAhead, 0, upstreamRequested)
+            val filled = readChunkNetwork(opusReadAhead, 0, upstreamRequested)
             // Do not reinterpret a coalesced 8K read as evidence for CDN
             // rate adaptation. Before this change Media3 requested tiny
             // WebM fragments that deliberately did not drive that policy.
@@ -309,7 +404,7 @@ internal class AudioChunkedDataSource(
             }
         } else {
             val startedNs = System.nanoTime()
-            read = upstream.read(buffer, offset, requested)
+            read = readChunkNetwork(buffer, offset, requested)
             // Measure actual upstream blocking, never total Media3 idle time.
             // Tiny reads are not evidence of CDN throttling.
             if (requested >= 8 * 1024) ratePolicy.observeRead(
@@ -372,6 +467,9 @@ internal class AudioChunkedDataSource(
         bufferedOffset = 0
         bufferedLength = 0
         opusReadAheadEnabled = false
+        directBytesLeft = C.LENGTH_UNSET.toLong()
+        socketReadResumeAttempts = 0
+        openedNetworkIdentity = null
         upstream.close()
     }
 
@@ -379,8 +477,14 @@ internal class AudioChunkedDataSource(
         private val upstreamFactory: DataSource.Factory,
         private val chunkBytes: Long = AUDIO_CHUNK_BYTES,
         private val initialChunkBytes: (DataSpec) -> Long = { 0L },
+        private val currentNetworkIdentity: () -> Long? = { null },
     ) : DataSource.Factory {
         override fun createDataSource(): DataSource =
-            AudioChunkedDataSource(upstreamFactory.createDataSource(), chunkBytes, initialChunkBytes)
+            AudioChunkedDataSource(
+                upstreamFactory.createDataSource(),
+                chunkBytes,
+                initialChunkBytes,
+                currentNetworkIdentity,
+            )
     }
 }

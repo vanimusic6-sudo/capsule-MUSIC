@@ -4853,6 +4853,10 @@ class MusicService :
                     val id = spec.key?.let(AudioCacheIdentity::mediaId)
                     audioCdnSkipBurstPolicy.stagedFirstChunkBytes(id, spec.position)
                 },
+                // A new Wi-Fi/VPN/mobile default route may change the public
+                // exit IP that the signed URL was issued to. Do not perform
+                // the one-shot same-link read retry across that boundary.
+                currentNetworkIdentity = { connectivityManager.activeNetwork?.networkHandle },
             )
         val streaming = CacheDataSource.Factory().setCache(playerCache)
             .setUpstreamDataSourceFactory(networkUpstream)
