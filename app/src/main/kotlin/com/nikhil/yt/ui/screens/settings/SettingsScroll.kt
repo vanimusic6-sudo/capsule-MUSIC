@@ -1,10 +1,16 @@
 package com.nikhil.yt.ui.screens.settings
 
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.gestures.FlingBehavior
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
+
+/** Compatibility adapter: settings now use the same friction as all other lists. */
+@Composable
+internal fun rememberSettingsFlingBehavior(): FlingBehavior = rememberCapsuleFlingBehavior()
 
 
 /**
