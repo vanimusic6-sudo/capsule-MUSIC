@@ -5,6 +5,7 @@
  */
 
 package com.nikhil.yt.ui.screens.onboarding
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -203,6 +204,8 @@ private fun WelcomeArtistsPage(
         Spacer(Modifier.height(16.dp))
 
         LazyVerticalGrid(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
             columns = GridCells.Fixed(4),
             modifier = Modifier.weight(1f).fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),

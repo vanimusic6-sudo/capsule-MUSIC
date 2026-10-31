@@ -6,6 +6,7 @@
 
 
 package com.nikhil.yt.ui.screens.playlist
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.ui.text.style.TextOverflow
@@ -239,6 +240,8 @@ fun AutoPlaylistScreen(
         )
 
         LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
             state = lazyListState,
             contentPadding = LocalPlayerAwareWindowInsets.current
                 .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom).asPaddingValues(),

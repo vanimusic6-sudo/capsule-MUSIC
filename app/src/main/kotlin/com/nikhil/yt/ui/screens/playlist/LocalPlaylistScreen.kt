@@ -6,6 +6,7 @@
 
 
 package com.nikhil.yt.ui.screens.playlist
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import com.nikhil.yt.ui.component.PlaylistAction
@@ -380,6 +381,8 @@ fun LocalPlaylistScreen(
         )
 
         LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
             state = lazyListState,
             contentPadding = LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime)
                     .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom).asPaddingValues(),

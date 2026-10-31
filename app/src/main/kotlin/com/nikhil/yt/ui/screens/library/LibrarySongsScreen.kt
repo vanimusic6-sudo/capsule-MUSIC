@@ -7,6 +7,8 @@
 
 
 package com.nikhil.yt.ui.screens.library
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
+import com.nikhil.yt.ui.utils.scrollToTopIfIdle
 
 
 import com.nikhil.yt.ui.component.capsulePressCombinedClickable
@@ -159,8 +161,8 @@ fun LibrarySongsScreen(
 
     LaunchedEffect(scrollToTop?.value) {
         if (scrollToTop?.value == true) {
-            lazyListState.animateScrollToItem(0)
             backStackEntry?.liveSavedStateHandle()?.set("scrollToTop", false)
+            lazyListState.scrollToTopIfIdle()
         }
     }
 
@@ -174,6 +176,8 @@ fun LibrarySongsScreen(
                 ),
     ) {
         LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
             state = lazyListState,
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
         ) {

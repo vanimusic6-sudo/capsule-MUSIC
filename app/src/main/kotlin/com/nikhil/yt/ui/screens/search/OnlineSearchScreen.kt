@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.screens.search
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -94,6 +95,8 @@ fun OnlineSearchScreen(
     }
 
     LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
         state = lazyListState,
         contentPadding = PaddingValues(
             top = 8.dp,
