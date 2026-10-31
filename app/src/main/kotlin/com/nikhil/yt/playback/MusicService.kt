@@ -12,7 +12,6 @@ package com.nikhil.yt.playback
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.Notification
 import android.app.KeyguardManager
 import android.app.PendingIntent
 import android.bluetooth.BluetoothClass
@@ -548,16 +547,6 @@ class MusicService :
     private val sessionArtworkLoader by lazy(LazyThreadSafetyMode.NONE) {
         CacheBitmapLoader(CoilBitmapLoader(this, scope))
     }
-    // Android's media session publishes a timestamped PlaybackState. HONOR's
-    // Magic Capsule should consume the same native session as Quick Settings
-    // and lock screen. A 3-second forced notification rebuild neither advances
-    // Android's playback clock nor makes unsupported OEM integrations appear;
-    // it does, however, wake the main thread and notification manager forever.
-    // Keep only one-shot refreshes when the actual session position/state changes.
-    // Android's Media3 system playback clock is timestamped and self-updating.
-    // Forced manual notification refreshes are forbidden by Media3 and can
-    // cause SystemUI to suppress repeated notifications.
-
     private val songMutationMutex = Mutex()
     private val binder = MusicBinder()
     private val togetherShutdownGate = TogetherShutdownGate()
@@ -1866,13 +1855,7 @@ class MusicService :
             reportException(e)
         }
 
-        // A bound or idle MediaLibraryService is not a playing foreground service.
-        // Starting a permanent CATEGORY_SERVICE placeholder here predates the
-        // first MediaItem and can be mistaken for the actual Media3 media
-        // notification by OEM media controls. onStartCommand (for
-        // startForegroundService) and onUpdateNotification (actual playback)
-        // still satisfy Android's foreground start requirements.
-        
+        // Media3 owns the notification once playback begins; idle binds remain quiet.
         player =
             ExoPlayer
                 .Builder(this)
@@ -1999,17 +1982,13 @@ class MusicService :
                     sessionArtworkLoader,
                 )
                 .build()
-        // Register the real native provider BEFORE exposing the session.
-        // Otherwise eager session registration can publish its first media
-        // notification through an unrelated default provider, and HONOR sees
-        // a different notification on the first app-to-launcher transition.
+        // Register Media3's notification provider before exposing the session.
         mediaNotificationProvider = CapsuleMediaNotificationProvider(
             context = this,
             smallIconRes = R.drawable.ic_capsule_monochrome,
         )
         setMediaNotificationProvider(mediaNotificationProvider)
-        // One registered session, even before our asynchronous controller binds.
-        // onGetSession continues returning the same session.
+        // One session for app, system and external media controllers.
         if (!isSessionAdded(mediaSession)) addSession(mediaSession)
         
         updateNotification()
@@ -6276,9 +6255,6 @@ class MusicService :
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         playbackServiceStartIssued = true
-        // Media3 owns foreground handover and its native media notification.
-        // Do not post a CATEGORY_SERVICE placeholder with the media ID.
-
         when (intent?.action) {
             "com.nikhil.yt.ACTION_PREV" -> {
                 if (player.hasPreviousMediaItem()) {
@@ -6321,114 +6297,11 @@ class MusicService :
     }
 
 
-    // Log exactly one entry per native media state change. This lets a phone
-    // field report distinguish missing metadata / disabled notification channel
-    // from OEM Magic Capsule refusing a perfectly valid media session.
-    private var lastSystemMediaPublication: String? = null
-
+    // Media3 handles normal notifications. If it cannot publish one for an
+    // active player, check once and use the real platform MediaStyle fallback.
     override fun onUpdateNotification(session: MediaSession, startInForegroundRequired: Boolean) {
-        // Media3 owns both the native MediaStyle notification and the
-        // Keep diagnostic logging, but let the default Media3 implementation
-        // publish/withdraw its native MediaStyle notification exactly once.
-        if (GlobalLog.isEnabled && ::player.isInitialized) {
-            val item = player.currentMediaItem
-            val now = buildString {
-                append(item?.mediaId ?: "none")
-                append(':').append(player.playbackState)
-                append(':').append(player.isPlaying)
-                append(':').append(startInForegroundRequired)
-                append(':').append(item?.mediaMetadata?.title != null)
-                append(':').append(item?.mediaMetadata?.artist != null)
-                append(':').append(item?.mediaMetadata?.artworkUri != null)
-            }
-            if (lastSystemMediaPublication != now) {
-                lastSystemMediaPublication = now
-                val manager = getSystemService(NotificationManager::class.java)
-                Timber.tag("CapsuleSystemMedia").i(
-                    "platform-session mediaPresent=%s playing=%s state=%d foreground=%s " +
-                        "hasTitle=%s hasArtist=%s hasArtwork=%s notifyEnabled=%s channelImportance=%s " +
-                        "sessionAdded=%s nativeNotificationReady=%s notificationControllerConnected=%s " +
-                        "connectedControllers=%d localTimelineItems=%d rescueActive=%s",
-                    item != null, player.isPlaying, player.playbackState,
-                    startInForegroundRequired, item?.mediaMetadata?.title != null,
-                    item?.mediaMetadata?.artist != null,
-                    item?.mediaMetadata?.artworkUri != null,
-                    manager?.areNotificationsEnabled() ?: false,
-                    manager?.getNotificationChannel(CHANNEL_ID)?.importance ?: -1,
-                    isSessionAdded(session),
-                    ::mediaNotificationProvider.isInitialized && mediaNotificationProvider.latest != null,
-                    session.mediaNotificationControllerInfo != null,
-                    session.connectedControllers.size,
-                    player.mediaItemCount,
-                    nativeMediaCardFallback.rescueActive,
-                )
-            }
-        }
-        // Do NOT swallow Android's ForegroundServiceStartNotAllowedException:
-        // MediaSessionService.onUpdateNotificationInternal has dedicated handling
-        // and must observe the exception to keep its state machine consistent.
-        // ArchiveTune uses Media3's default implementation, without this catch.
         super.onUpdateNotification(session, startInForegroundRequired)
         if (::player.isInitialized && player.isPlaying) scheduleNativeMediaCardCheck()
-    }
-
-    /**
-     * A single bounded device-side proof of what Android actually received.
-     * When the user goes Home, distinguish a native MediaStyle with a platform
-     * session token from a generic service notification. No title, track ID,
-     * URLs, artwork bytes or account identifiers are logged.
-     */
-    fun auditPublishedAndroidMediaCard(origin: String) {
-        if (!GlobalLog.isEnabled) return
-        fun capture(phase: String) {
-            val manager = getSystemService(NotificationManager::class.java)
-            val active = runCatching { manager?.activeNotifications.orEmpty() }
-                .getOrElse { emptyArray() }
-            val native = active.filter { status ->
-                status.notification.extras?.containsKey(Notification.EXTRA_MEDIA_SESSION) == true
-            }
-            val ownedId = active.firstOrNull { it.id == NOTIFICATION_ID }
-            val category = ownedId?.notification?.category ?: "missing"
-            val template = ownedId?.notification?.extras
-                ?.getString(Notification.EXTRA_TEMPLATE)
-                ?.substringAfterLast('.')
-                ?: "missing"
-            Timber.tag("CapsuleSystemMedia").i(
-                "audit phase=%s origin=%s playing=%s playWhenReady=%s state=%d " +
-                    "sessionAdded=%s notificationAllowed=%s channelImportance=%d " +
-                    "notificationCount=%d ownMediaIdPresent=%s ownCategory=%s ownTemplate=%s " +
-                    "mediaSessionTokenCount=%d mediaTokenOnOwnId=%s " +
-                    "notificationControllerConnected=%s connectedControllerCount=%d " +
-                    "timelineItemCount=%d rescueActive=%s",
-                phase,
-                origin,
-                player.isPlaying,
-                player.playWhenReady,
-                player.playbackState,
-                ::mediaSession.isInitialized && isSessionAdded(mediaSession),
-                manager?.areNotificationsEnabled() == true,
-                manager?.getNotificationChannel(CHANNEL_ID)?.importance ?: -1,
-                active.size,
-                ownedId != null,
-                category,
-                template,
-                native.size,
-                ownedId?.notification?.extras
-                    ?.containsKey(Notification.EXTRA_MEDIA_SESSION) == true,
-                mediaSession.mediaNotificationControllerInfo != null,
-                mediaSession.connectedControllers.size,
-                player.mediaItemCount,
-                nativeMediaCardFallback.rescueActive,
-            )
-        }
-        capture("immediate")
-        // DefaultMediaNotificationProvider can finish loading artwork
-        // asynchronously. One delayed sample detects the actual posted style,
-        // without a periodic observer or persistent wakeups.
-        scope.launch {
-            delay(700L)
-            capture("settled")
-        }
     }
 
     inner class MusicBinder : Binder() {
