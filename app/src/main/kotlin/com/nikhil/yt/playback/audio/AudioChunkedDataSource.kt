@@ -150,6 +150,7 @@ internal class AudioChunkedDataSource(
     private val upstream: DataSource,
     private val chunkBytes: Long = AUDIO_CHUNK_BYTES,
     private val initialChunkBytes: (DataSpec) -> Long = { 0L },
+    private val currentNetworkIdentity: () -> Long? = { null },
 ) : DataSource {
     private var request: DataSpec? = null
     private var nextPosition = 0L
@@ -168,6 +169,7 @@ internal class AudioChunkedDataSource(
     private var opusReadAheadEnabled = false
     private var directBytesLeft = C.LENGTH_UNSET.toLong()
     private var socketReadResumeAttempts = 0
+    private var openedNetworkIdentity: Long? = null
 
     override fun addTransferListener(transferListener: TransferListener) {
         upstream.addTransferListener(transferListener)
@@ -179,6 +181,7 @@ internal class AudioChunkedDataSource(
         opusReadAheadEnabled = isOpusChunkKey(dataSpec.key)
         directBytesLeft = dataSpec.length
         socketReadResumeAttempts = 0
+        openedNetworkIdentity = currentNetworkIdentity()
         /*
          * The library's own size wins when it named one. It works this out per client, which is
          * something a single constant here cannot do — and the constant was only ever chosen by
@@ -331,6 +334,7 @@ internal class AudioChunkedDataSource(
             if (socketReadResumeAttempts != 0 ||
                 failure.isExpectedAudioCdnInterruption() ||
                 !failure.isTransientAudioCdnSocketReset() ||
+                openedNetworkIdentity != currentNetworkIdentity() ||
                 request == null || chunkLeft <= 0L
             ) throw failure
 
@@ -465,6 +469,7 @@ internal class AudioChunkedDataSource(
         opusReadAheadEnabled = false
         directBytesLeft = C.LENGTH_UNSET.toLong()
         socketReadResumeAttempts = 0
+        openedNetworkIdentity = null
         upstream.close()
     }
 
@@ -472,8 +477,14 @@ internal class AudioChunkedDataSource(
         private val upstreamFactory: DataSource.Factory,
         private val chunkBytes: Long = AUDIO_CHUNK_BYTES,
         private val initialChunkBytes: (DataSpec) -> Long = { 0L },
+        private val currentNetworkIdentity: () -> Long? = { null },
     ) : DataSource.Factory {
         override fun createDataSource(): DataSource =
-            AudioChunkedDataSource(upstreamFactory.createDataSource(), chunkBytes, initialChunkBytes)
+            AudioChunkedDataSource(
+                upstreamFactory.createDataSource(),
+                chunkBytes,
+                initialChunkBytes,
+                currentNetworkIdentity,
+            )
     }
 }
