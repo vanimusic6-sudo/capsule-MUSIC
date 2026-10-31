@@ -81,23 +81,55 @@ constructor(
         session: MediaSession,
         controller: MediaSession.ControllerInfo,
     ): MediaSession.ConnectionResult {
-        val connectionResult = super.onConnect(session, controller)
-        // Media3 1.11 restricts untrusted controllers by default. Never
-        // unconditionally replace that result with accept(), which exposed
-        // the entire local library + mutation commands to every app once
-        // the system-only manifest BIND permission is removed.
-        if (!controller.isTrusted) return connectionResult
-        return MediaSession.ConnectionResult.accept(
-            connectionResult.availableSessionCommands
-                .buildUpon()
-                .add(MediaSessionConstants.CommandToggleLike)
-                .add(MediaSessionConstants.CommandToggleStartRadio)
-                .add(MediaSessionConstants.CommandToggleLibrary)
-                .add(MediaSessionConstants.CommandToggleShuffle)
-                .add(MediaSessionConstants.CommandToggleRepeatMode)
-                .build(),
-            connectionResult.availablePlayerCommands,
-        )
+        // Mirror ArchiveTune's AcceptedResultBuilder(session, controller), NOT
+        // ConnectionResult.accept(super.onConnect(...)). Media3's notification
+        // controller must receive a normal, fully configured connection result
+        // including GET_TIMELINE; without it MediaNotificationManager silently
+        // suppresses the native MediaStyle notification even while playing.
+        val isNotificationController = session.isMediaNotificationController(controller)
+        val builder = MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
+        val defaults = builder.build()
+        if (controller.isTrusted || isNotificationController) {
+            builder.setAvailableSessionCommands(
+                defaults.availableSessionCommands.buildUpon()
+                    .add(MediaSessionConstants.CommandToggleLike)
+                    .add(MediaSessionConstants.CommandToggleStartRadio)
+                    .add(MediaSessionConstants.CommandToggleLibrary)
+                    .add(MediaSessionConstants.CommandToggleShuffle)
+                    .add(MediaSessionConstants.CommandToggleRepeatMode)
+                    .build(),
+            )
+        }
+        val result = builder.build()
+        if (com.nikhil.yt.utils.GlobalLog.isEnabled) {
+            timber.log.Timber.tag("CapsuleSystemMedia").i(
+                "controller-connect notification=%s trusted=%s timelineGranted=%s accepted=%s",
+                isNotificationController,
+                controller.isTrusted,
+                result.availablePlayerCommands.contains(
+                    androidx.media3.common.Player.COMMAND_GET_TIMELINE,
+                ),
+                result.isAccepted,
+            )
+        }
+        return result
+    }
+
+    override fun onPostConnect(
+        session: MediaSession,
+        controller: MediaSession.ControllerInfo,
+    ) {
+        super.onPostConnect(session, controller)
+        if (session.isMediaNotificationController(controller) &&
+            com.nikhil.yt.utils.GlobalLog.isEnabled
+        ) {
+            timber.log.Timber.tag("CapsuleSystemMedia").i(
+                "notification-controller-connected timelineGranted=%s mediaItems=%d",
+                session.getAvailablePlayerCommands(controller)
+                    .contains(androidx.media3.common.Player.COMMAND_GET_TIMELINE),
+                session.player.mediaItemCount,
+            )
+        }
     }
 
     override fun onCustomCommand(
