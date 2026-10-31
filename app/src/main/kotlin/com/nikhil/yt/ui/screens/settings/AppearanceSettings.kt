@@ -5,6 +5,7 @@
  */
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.motion.LocalCapsuleModalClose
 
@@ -420,7 +421,8 @@ fun AppearanceSettings(
                     WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
                 ),
             )
-            .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior()),
+            .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior(),
+            overscrollEffect = null),
     ) {
         /*
          * =========================

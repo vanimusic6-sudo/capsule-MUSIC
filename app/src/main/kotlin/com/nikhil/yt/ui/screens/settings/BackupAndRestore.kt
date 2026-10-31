@@ -4,6 +4,7 @@
  */
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -187,6 +188,7 @@ fun BackupAndRestore(
         containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
         LazyColumn(
+            overscrollEffect = null,
             flingBehavior = rememberSettingsFlingBehavior(),
             modifier = Modifier
                 .fillMaxSize()
