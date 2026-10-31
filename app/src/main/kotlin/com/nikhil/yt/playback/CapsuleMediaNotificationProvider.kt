@@ -44,6 +44,13 @@ internal class CapsuleMediaNotificationProvider(
         actionFactory: MediaNotification.ActionFactory,
         onNotificationChangedCallback: MediaNotification.Provider.Callback,
     ): MediaNotification {
+        if (com.nikhil.yt.utils.GlobalLog.isEnabled) {
+            timber.log.Timber.tag("CapsuleSystemMedia").i(
+                "media3-provider-create sessionAdded=true mediaItems=%d playing=%s",
+                mediaSession.player.mediaItemCount,
+                mediaSession.player.isPlaying,
+            )
+        }
         val result = delegate.createNotification(
             mediaSession,
             mediaButtonPreferences,
