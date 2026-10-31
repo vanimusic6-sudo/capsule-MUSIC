@@ -221,11 +221,7 @@ internal fun AlbumArtwork(
     }
 }
 
-/**
- * Recover the 44dp formerly lost to an EXTERNAL spacer above the artwork.
- * Put those pixels into the portrait itself instead: album and playlist art
- * reach the screen's top edge, while the capsule remains at its old baseline.
- */
+/** Keep the established portrait height and capsule baseline on short and tall screens. */
 internal fun albumCoverHeight(width: Dp, screenHeight: Dp): Dp {
     val natural = width / 0.85f
     return minOf(natural, maxOf(natural * 0.83f, screenHeight * 0.50f)) + 20.dp

@@ -62,7 +62,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -211,12 +210,6 @@ fun OnlinePlaylistScreen(
 
 
 
-    val headerItems by remember {
-        derivedStateOf {
-            val current = playlist
-            if (!isLoading && current != null && !isSearching) 1 else 0
-        }
-    }
 
     LaunchedEffect(lazyListState) {
         snapshotFlow { lazyListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }

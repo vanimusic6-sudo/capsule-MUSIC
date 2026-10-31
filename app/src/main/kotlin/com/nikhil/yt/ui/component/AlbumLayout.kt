@@ -50,11 +50,7 @@ internal fun AlbumScreenLayout(
     }
 }
 
-/**
- * No empty ribbon above the portrait: artwork begins at the window's top edge
- * underneath the pinned artist-style toolbar. The old 44dp external spacer
- * is incorporated into the portrait height instead, so buttons keep their Y.
- */
+/** Artwork begins at the window edge beneath the pinned toolbar. */
 internal val AlbumArtworkTopSpacing = 0.dp
 
 /** One bottom gap for albums and every playlist, including loading placeholders. */

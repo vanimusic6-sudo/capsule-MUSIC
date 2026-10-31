@@ -69,12 +69,10 @@ internal class DetailHeaderMotionState(
 
     // All layers read this cached value. At rest there is no clock or scheduled work.
     private val progress by derivedStateOf {
-        if (!hasHeader) 1f else {
-            val viewportWidth = scroll.layoutInfo.viewportSize.width
-            val fallbackBottom = if (restArtworkBottomPx.isFinite() || viewportWidth <= 0) {
-                0f
-            } else with(density) {
-                artistHeroArtworkHeight(viewportWidth.toDp()).toPx()
+        if (!hasHeader || scroll.firstVisibleItemIndex > 0) 1f else {
+            val fallbackBottom = if (restArtworkBottomPx.isFinite()) 0f else {
+                val viewportWidth = scroll.layoutInfo.viewportSize.width
+                with(density) { artistHeroArtworkHeight(viewportWidth.toDp()).toPx() }
             }
             detailArtistLengthArtworkFade(
                 firstVisibleItemIndex = scroll.firstVisibleItemIndex,

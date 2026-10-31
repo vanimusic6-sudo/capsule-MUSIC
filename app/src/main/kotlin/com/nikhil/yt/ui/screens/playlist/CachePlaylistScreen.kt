@@ -44,7 +44,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.toMutableStateList
@@ -169,11 +168,6 @@ fun CachePlaylistScreen(
 
 
 
-    val headerItems by remember {
-        derivedStateOf {
-            if (filteredSongs.isNotEmpty() && !isSearching) 2 else 0
-        }
-    }
 
 
     Box(
