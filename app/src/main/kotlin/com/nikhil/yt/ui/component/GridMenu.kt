@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.component
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
@@ -52,6 +53,8 @@ fun GridMenu(
     content: LazyGridScope.() -> Unit,
 ) {
     LazyVerticalGrid(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
         columns = GridCells.Adaptive(minSize = 120.dp),
         modifier = modifier,
         contentPadding = contentPadding,

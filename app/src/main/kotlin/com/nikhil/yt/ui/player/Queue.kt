@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.player
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import android.annotation.SuppressLint
 import android.widget.Toast
@@ -258,8 +259,14 @@ fun Queue(
 
         LaunchedEffect(currentPlayingUid, shouldScrollToCurrent) {
             if (currentPlayingUid != null && shouldScrollToCurrent) {
+                // Consume once: track changes cannot pull a browsed queue back
+                // to the currently playing row while the finger is scrolling.
+                shouldScrollToCurrent = false
                 val indexInMutableList = mutableQueueWindows.indexOfFirst { it.uid == currentPlayingUid }
-                if (indexInMutableList != -1) {
+                if (indexInMutableList != -1 &&
+                    !lazyListState.isScrollInProgress &&
+                    !reorderableState.isAnyItemDragging
+                ) {
                     lazyListState.scrollToItem(indexInMutableList + headerItems)
                 }
             }
@@ -299,7 +306,10 @@ fun Queue(
         LaunchedEffect(state.isCollapsed) {
             if (!state.isCollapsed && currentPlayingUid != null) {
                 val indexInMutableList = mutableQueueWindows.indexOfFirst { it.uid == currentPlayingUid }
-                if (indexInMutableList != -1) {
+                if (indexInMutableList != -1 &&
+                    !lazyListState.isScrollInProgress &&
+                    !reorderableState.isAnyItemDragging
+                ) {
                     lazyListState.scrollToItem(indexInMutableList + headerItems)
                 }
             }
@@ -453,6 +463,8 @@ fun Queue(
                 }
 
                 LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
                     state = lazyListState,
                     contentPadding =
                     WindowInsets.systemBars

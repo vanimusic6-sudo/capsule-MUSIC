@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.component
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -111,7 +112,9 @@ fun AssignTagsDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .weight(1f, fill = false)
-                            .verticalScroll(rememberScrollState()),
+                            .verticalScroll(rememberScrollState(),
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -232,7 +235,9 @@ private fun AssignTagsToPlaylistsDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(max = 200.dp)
-                            .verticalScroll(rememberScrollState()),
+                            .verticalScroll(rememberScrollState(),
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -256,6 +261,8 @@ private fun AssignTagsToPlaylistsDialog(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(max = 360.dp),

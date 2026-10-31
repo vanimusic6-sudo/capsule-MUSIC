@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.component
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import android.annotation.SuppressLint
 import androidx.compose.animation.AnimatedContent
@@ -80,7 +81,9 @@ fun <E> ChipsRow(
         modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp)
-            .horizontalScroll(rememberScrollState()),
+            .horizontalScroll(rememberScrollState(),
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null),
     ) {
         Spacer(Modifier.width(12.dp))
 
@@ -254,7 +257,9 @@ fun <Int> ChoiceChipsRow(
                 modifier =
                 Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
+                    .horizontalScroll(rememberScrollState(),
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null),
             ) {
                 chips.forEach { (value, label) ->
                     Spacer(Modifier.width(8.dp))

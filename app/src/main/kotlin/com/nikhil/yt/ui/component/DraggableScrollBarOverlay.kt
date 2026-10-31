@@ -6,6 +6,7 @@
 package com.nikhil.yt.ui.component
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -28,7 +29,6 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.consume
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -108,11 +108,10 @@ fun DraggableScrollbar(
         val shownFraction = if (dragging) dragFraction else nativeFraction
         val y = CapsuleScrollbarMath.thumbTop(shownFraction, viewportPx, thumbPx)
 
-        Canvas(
+        Box(
             modifier = Modifier
+                .width(trackWidth)
                 .fillMaxHeight()
-                .width(thumbWidth)
-                .align(Alignment.CenterEnd)
                 .pointerInput(scrollState, viewportPx, thumbPx) {
                     detectDragGestures(
                         onDragStart = { point ->
@@ -143,12 +142,16 @@ fun DraggableScrollbar(
                     }
                 },
         ) {
-            drawRoundRect(
+            Canvas(
+                modifier = Modifier.fillMaxHeight().width(thumbWidth).align(Alignment.CenterEnd),
+            ) {
+                drawRoundRect(
                 color = if (dragging) thumbColorActive else thumbColor,
                 topLeft = Offset(0f, y),
                 size = Size(size.width, thumbPx.coerceAtMost(size.height)),
                 cornerRadius = CornerRadius(thumbCornerRadius.toPx()),
             )
+            }
         }
     }
 }
