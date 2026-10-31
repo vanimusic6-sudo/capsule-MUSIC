@@ -163,6 +163,15 @@ fun LibraryAlbumsScreen(
      */
     val loadedAlbums by viewModel.allAlbums.collectAsState()
     val albums = loadedAlbums.orEmpty()
+    // Use one stable, de-duplicated dataset for grid and list. Rebuilding
+    // distinctBy/filter during every playback/scroll recomposition can
+    // repeatedly allocate and disturb lazy item placement.
+    val visibleAlbums = remember(albums, hideExplicit) {
+        albums.asSequence()
+            .filter { !hideExplicit || !it.album.explicit }
+            .distinctBy { it.id }
+            .toList()
+    }
     val isRefreshing by viewModel.isRefreshing.collectAsState()
 
     val coroutineScope = rememberCoroutineScope()
@@ -292,13 +301,8 @@ fun LibraryAlbumsScreen(
                             }
                         }
 
-                        val filteredAlbumsForList = if (hideExplicit) {
-                            albums.filter { !it.album.explicit }
-                        } else {
-                            albums
-                        }
                         items(
-                            items = filteredAlbumsForList.distinctBy { it.id },
+                            items = visibleAlbums,
                             key = { it.id },
                             contentType = { CONTENT_TYPE_ALBUM },
                         ) { album ->
@@ -350,13 +354,8 @@ fun LibraryAlbumsScreen(
                             }
                         }
 
-                        val filteredAlbumsForGrid = if (hideExplicit) {
-                            albums.filter { !it.album.explicit }
-                        } else {
-                            albums
-                        }
                         items(
-                            items = filteredAlbumsForGrid.distinctBy { it.id },
+                            items = visibleAlbums,
                             key = { it.id },
                             contentType = { CONTENT_TYPE_ALBUM },
                         ) { album ->
