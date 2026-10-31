@@ -15,14 +15,18 @@ class DownloadYieldingInputStreamTest {
         var checks = 0
         var triggeredYield = false
         val output = ByteArrayOutputStream(content.size)
-        DownloadYieldingInputStream(ByteArrayInputStream(content)) {
-            checks++
-            // Simulate a short foreground buffering period after the first 64 KiB.
-            if (!triggeredYield) {
-                triggeredYield = true
-                true
-            } else false
-        }.use { input ->
+        // Named argument is required: trailing lambdas bind to the last
+        // constructor parameter (checkActive), not to shouldYield.
+        DownloadYieldingInputStream(
+            ByteArrayInputStream(content),
+            shouldYield = {
+                checks++
+                if (!triggeredYield) {
+                    triggeredYield = true
+                    true
+                } else false
+            },
+        ).use { input ->
             val buffer = ByteArray(32 * 1024)
             while (true) {
                 val count = input.read(buffer)
