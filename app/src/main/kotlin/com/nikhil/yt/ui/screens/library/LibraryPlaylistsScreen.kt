@@ -7,6 +7,8 @@
 
 
 package com.nikhil.yt.ui.screens.library
+import com.nikhil.yt.ui.utils.rememberCapsuleReorderEdgePadding
+import com.nikhil.yt.ui.utils.rememberCapsuleReorderScroller
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 import com.nikhil.yt.ui.utils.scrollToTopIfIdle
 
@@ -230,7 +232,9 @@ fun LibraryPlaylistsScreen(
     var dragInfo by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     val reorderableState = rememberReorderableLazyListState(
         lazyListState = lazyListState,
-        scrollThresholdPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+        scrollThresholdPadding = rememberCapsuleReorderEdgePadding(),
+        scrollThreshold = 32.dp,
+        scroller = rememberCapsuleReorderScroller(lazyListState),
     ) { from, to ->
         if (!canReorderPlaylists) return@rememberReorderableLazyListState
         if (from.index < listHeaderItems || to.index < listHeaderItems) return@rememberReorderableLazyListState

@@ -7,6 +7,8 @@
 
 
 package com.nikhil.yt.ui.player
+import com.nikhil.yt.ui.utils.rememberCapsuleReorderEdgePadding
+import com.nikhil.yt.ui.utils.rememberCapsuleReorderScroller
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import android.annotation.SuppressLint
@@ -212,12 +214,9 @@ fun Queue(
 
         val reorderableState = rememberReorderableLazyListState(
             lazyListState = lazyListState,
-            scrollThresholdPadding = WindowInsets.systemBars.add(
-                WindowInsets(
-                    top = ListItemHeight,
-                    bottom = ListItemHeight
-                )
-            ).asPaddingValues()
+            scrollThresholdPadding = rememberCapsuleReorderEdgePadding(),
+        scrollThreshold = 32.dp,
+        scroller = rememberCapsuleReorderScroller(lazyListState)
         ) { from, to ->
             val currentDragInfo = dragInfo
             dragInfo = if (currentDragInfo == null) {

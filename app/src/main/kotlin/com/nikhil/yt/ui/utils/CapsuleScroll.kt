@@ -1,6 +1,8 @@
 package com.nikhil.yt.ui.utils
 
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.gestures.FlingBehavior
 import androidx.compose.foundation.gestures.ScrollableDefaults
 import androidx.compose.foundation.lazy.LazyListState
@@ -37,4 +39,35 @@ suspend fun LazyGridState.scrollToTopIfIdle() {
 
 suspend fun ScrollState.scrollToTopIfIdle() {
     if (mayProgrammaticallyScroll(isScrollInProgress) && value != 0) animateScrollTo(0)
+}
+
+/**
+ * Only a small part of the visible edge may trigger reorder auto-scroll.
+ * Full player-aware content padding is much larger than the actual drag
+ * activation zone and can make holding a handle auto-scroll from mid-screen.
+ */
+@Composable
+fun rememberCapsuleReorderEdgePadding(): androidx.compose.foundation.layout.PaddingValues {
+    val bottomInset = com.nikhil.yt.LocalPlayerAwareWindowInsets.current
+        .asPaddingValues().calculateBottomPadding()
+    return androidx.compose.runtime.remember(bottomInset) {
+        androidx.compose.foundation.layout.PaddingValues(
+            bottom = bottomInset.coerceIn(0.dp, 56.dp),
+        )
+    }
+}
+
+/** Bound reorder auto-pan velocity, independent of list size and screen density. */
+@Composable
+fun rememberCapsuleReorderScroller(state: LazyListState): sh.calvin.reorderable.Scroller {
+    val maxStepPx = with(androidx.compose.ui.platform.LocalDensity.current) {
+        28.dp.toPx()
+    }
+    return sh.calvin.reorderable.rememberScroller(
+        scrollableState = state,
+        pixelAmountProvider = {
+            (state.layoutInfo.viewportSize.height.coerceAtLeast(0) * 0.018f)
+                .coerceAtMost(maxStepPx)
+        },
+    )
 }
