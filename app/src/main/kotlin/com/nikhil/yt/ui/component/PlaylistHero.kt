@@ -149,7 +149,6 @@ internal fun CapsuleAlbumControls(
 internal fun PlaylistHero(
     thumbnails: List<String>,
     songCount: String,
-    fallbackThumbnails: List<String> = emptyList(),
     duration: String? = null,
     modifier: Modifier = Modifier,
     @DrawableRes placeholderIcon: Int = R.drawable.queue_music,
@@ -159,6 +158,8 @@ internal fun PlaylistHero(
     year: String? = null,
     artworkAlpha: () -> Float = { 1f },
     titleMotion: DetailHeaderMotionState? = null,
+    // Keep the previous positional-argument signature intact for callers.
+    fallbackThumbnails: List<String> = emptyList(),
     actions: @Composable RowScope.() -> Unit,
 ) {
     val metrics = buildList {
