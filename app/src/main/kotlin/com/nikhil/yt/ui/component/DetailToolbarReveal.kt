@@ -76,12 +76,11 @@ internal class DetailHeaderMotionState(
     fun compactTitleAlpha(): Float = if (hasHeader && hasTitleAnchors())
         detailTitleHandoff(progress) else progress
 
+    fun coverTitleAlpha(): Float = 1f - compactTitleAlpha()
+
     fun moveCoverTitle(layer: GraphicsLayerScope) {
         val p = progress
-        if (!hasTitleAnchors()) {
-            layer.alpha = 1f - p
-            return
-        }
+        if (!hasTitleAnchors()) return
         // Follow the current source position into the fixed toolbar anchor.
         // Geometry remains scroll-driven and reverses immediately with the finger.
         layer.translationX = (compactTitleX - restTitleX) * p
@@ -89,7 +88,6 @@ internal class DetailHeaderMotionState(
         val scale = 1f + (compactTitleScale - 1f) * p
         layer.scaleX = scale
         layer.scaleY = scale
-        layer.alpha = 1f - detailTitleHandoff(p)
     }
 
     fun measureArtwork(coordinates: LayoutCoordinates) {

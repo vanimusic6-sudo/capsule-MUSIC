@@ -94,6 +94,8 @@ internal fun BoxScope.CapsuleDetailCoverTitle(
     motion: DetailHeaderMotionState?,
 ) {
     if (title.isBlank()) return
+    val foreground = StandardChrome.text
+    val alpha = motion?.coverTitleAlpha() ?: 1f
     Box(Modifier.align(Alignment.BottomCenter).padding(horizontal = 28.dp).padding(bottom = 16.dp)) {
         // This parent owns the untransformed anchor. The moving child never
         // changes the caption slot or the control capsule's measured geometry.
@@ -102,7 +104,7 @@ internal fun BoxScope.CapsuleDetailCoverTitle(
             Text(
                 text = title,
                 modifier = Modifier.detailCoverTitleMotion(motion).testTag("capsule:detail-title"),
-                color = StandardChrome.text,
+                color = foreground.copy(alpha = foreground.alpha * alpha),
                 style = MaterialTheme.typography.headlineLarge.copy(
                     fontSize = 25.sp,
                     lineHeight = 29.sp,

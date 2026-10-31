@@ -194,8 +194,8 @@ class CollectionHeaderMotionTest {
             }
         }
         val start = compose.onNodeWithTag("capsule:detail-title").fetchSemanticsNode().boundsInRoot
-        fun glyphPixels(name: String): Int {
-            val bounds = compose.onNodeWithTag("capsule:detail-toolbar-title").fetchSemanticsNode().boundsInRoot
+        fun glyphPixels(name: String, tag: String = "capsule:detail-toolbar-title"): Int {
+            val bounds = compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
             var count = 0
             compose.runOnIdle {
                 val bitmap = Bitmap.createBitmap(800, 1800, Bitmap.Config.ARGB_8888)
@@ -235,6 +235,12 @@ class CollectionHeaderMotionTest {
         assertEquals(start.top, restored.top, 1f)
         compose.runOnIdle { runBlocking { state.scrollToItem(0, endOffset) } }
         assertTrue("A second scroll must show the title again without recreation", glyphPixels("second") > 30)
+        // Re-enter a hero that was removed from the visible lazy viewport.
+        compose.runOnIdle { runBlocking { state.scrollToItem(1, 300) } }
+        compose.runOnIdle { runBlocking { state.scrollToItem(0, endOffset) } }
+        compose.runOnIdle { runBlocking { state.scrollToItem(0, 0) } }
+        assertTrue("Recreated cover glyphs must also paint on reverse scroll",
+            glyphPixels("hero-returned", "capsule:detail-title") > 30)
     }
 
     @Test fun twoLineLargeFontCaptionDoesNotChangeCapsuleBaseline() {
