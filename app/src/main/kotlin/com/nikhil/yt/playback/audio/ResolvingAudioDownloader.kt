@@ -1,5 +1,6 @@
 package com.nikhil.yt.playback.audio
 
+import com.nikhil.yt.playback.withAudioDownloadSlotAfterAdmission
 import androidx.media3.common.MediaItem
 import androidx.media3.datasource.cache.Cache
 import androidx.media3.datasource.cache.CacheDataSource
@@ -21,6 +22,7 @@ internal class ResolvingAudioDownloader(
     private val mediaId: String,
     private val cache: Cache,
     private val resolve: suspend () -> CapsuleAudioEngine.PlaybackData,
+    private val awaitAdmission: suspend () -> Unit = {},
     private val dataSource: (CapsuleAudioEngine.PlaybackData) -> CacheDataSource.Factory,
     private val saveArtwork: suspend () -> Unit = {},
     private val recover: (CapsuleAudioEngine.PlaybackData, IOException) -> Boolean = { _, _ -> false },
@@ -43,7 +45,12 @@ internal class ResolvingAudioDownloader(
                 coroutineScope {
                     var artwork: Job? = null
                     try {
-                        com.nikhil.yt.playback.AudioDownloadSlots.withSlot {
+                        withAudioDownloadSlotAfterAdmission(
+                            awaitAdmission = {
+                                // A complete cache-only item never needs to ask YouTube.
+                                if (!AudioCacheIdentity.isComplete(cache, mediaId)) awaitAdmission()
+                            },
+                        ) {
                             downloadWithSlot({ length, bytes, percent ->
                                 progressListener?.onProgress(length, bytes, percent.coerceAtMost(99f))
                             }) {
