@@ -14,6 +14,7 @@ on:
       - 'fix/archivetune-media-session-parity-20261031'
       - 'fix/honor-notification-controller-20261031'
       - 'cleanup/working-honor-media-20261031'
+      - 'refactor/unified-scroll-engine-20261101'
   workflow_dispatch:
 
 permissions:
