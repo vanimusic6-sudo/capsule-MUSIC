@@ -103,7 +103,14 @@ internal class DetailHeaderMotionState(
         )
     }
 
-    fun artworkAlpha(): Float = (1f - artworkFade()) * artworkReveal
+    // Cover pixels must never depend on asynchronous readiness. Coil paints a
+    // placeholder until decoding finishes, then the real bitmap. A late
+    // readiness reset previously multiplied a loaded image by zero forever.
+    // Scroll fade is exclusively controlled by the measured scroll geometry.
+    fun artworkAlpha(): Float = (1f - artworkFade()).coerceIn(0f, 1f)
+
+    // Once the hero name has scrolled away, the pinned compact title takes over.
+    fun toolbarTitleAlpha(): Float = artworkFade().coerceIn(0f, 1f)
 }
 
 /**
@@ -181,9 +188,14 @@ internal fun portraitDissolveFraction(
 internal fun rememberDetailHeaderMotion(
     state: LazyListState,
     hasHeader: Boolean,
+    contentIdentity: Any? = null,
 ): DetailHeaderMotionState {
     val density = LocalDensity.current
-    val motion = remember(state, density) { DetailHeaderMotionState(state, density) }
+    // Reset measured geometry/colour readiness only when navigating to a new
+    // collection, never when track covers or fallback lists arrive later.
+    val motion = remember(state, density, contentIdentity) {
+        DetailHeaderMotionState(state, density)
+    }
     // Load completion is a one-off transition; it does not run while scrolling
     // or poll the image provider. The page and toolbar acquire their colour
     // from the same alpha to avoid different-looking placeholders.

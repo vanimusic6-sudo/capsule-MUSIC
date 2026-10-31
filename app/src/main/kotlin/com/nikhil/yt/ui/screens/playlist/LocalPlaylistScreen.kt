@@ -382,6 +382,7 @@ fun LocalPlaylistScreen(
         val titleMotion = rememberDetailHeaderMotion(
             state = lazyListState,
             hasHeader = playlist != null && !isSearching,
+            contentIdentity = viewModel.playlistId,
         )
 
         LazyColumn(
@@ -891,7 +892,7 @@ fun LocalPlaylistScreen(
                             .focusRequester(focusRequester)
                     )
                 } else {
-                    Text(playlist?.playlist?.name.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, color = toolbarForeground, modifier = Modifier)
+                    Text(playlist?.playlist?.name.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, color = toolbarForeground, modifier = Modifier.graphicsLayer { alpha = titleMotion.toolbarTitleAlpha() })
                 }
             },
             navigationIcon = {

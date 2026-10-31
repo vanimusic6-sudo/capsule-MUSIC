@@ -12,7 +12,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,6 +63,7 @@ internal fun CapsuleDetailHero(
                 modifier = Modifier.testTag("capsule:detail-artwork"),
                 artworkAlpha = artworkAlpha,
                 artworkMotion = titleMotion,
+                caption = { CapsuleDetailCoverTitle(title, titleMotion) },
             ) {
                 artwork()
             }
@@ -163,12 +163,9 @@ internal fun PlaylistHero(
     fallbackThumbnails: List<String> = emptyList(),
     actions: @Composable RowScope.() -> Unit,
 ) {
-    // Reset once per new playlist cover, never once per tile or whenever
-    // asynchronous track fallbacks extend. Otherwise multiple Coil requests
-    // fight over the toolbar's ready flag and produce a short colour flash.
-    LaunchedEffect(thumbnails, titleMotion) {
-        titleMotion?.setArtworkReady(false)
-    }
+    // Do not reset shared readiness for thumbnail list mutations: playlists
+    // acquire covers progressively and a reset after Coil success can leave
+    // already-visible artwork obscured by the page matte.
     val metrics = buildList {
         add(CapsuleHeroMetric(R.drawable.music_note, songCount))
         if (year != null) add(CapsuleHeroMetric(R.drawable.calendar_today, year))

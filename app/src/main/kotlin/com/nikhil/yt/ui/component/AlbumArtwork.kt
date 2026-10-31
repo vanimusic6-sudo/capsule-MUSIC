@@ -26,6 +26,13 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.painterResource
 import com.nikhil.yt.R
 import androidx.compose.ui.layout.ContentScale
@@ -46,6 +53,7 @@ internal fun AlbumPortraitFrame(
     modifier: Modifier = Modifier,
     artworkAlpha: () -> Float = { 1f },
     artworkMotion: DetailHeaderMotionState? = null,
+    caption: @Composable BoxScope.() -> Unit = {},
     artwork: @Composable BoxScope.() -> Unit,
 ) {
     val screenHeight = LocalConfiguration.current.screenHeightDp.dp
@@ -74,8 +82,40 @@ internal fun AlbumPortraitFrame(
                 // covers look faded long before their scroll transition.
                 softPortrait = false,
             )
+            // Keep the name within the already-existing dark matte instead
+            // of shifting the control capsule below the mini-player.
+            caption()
         }
     }
+}
+
+/** ArchiveTune-style hero name: centred just above the collection capsule. */
+@Composable
+internal fun BoxScope.CapsuleDetailCoverTitle(
+    title: String,
+    motion: DetailHeaderMotionState?,
+) {
+    if (title.isBlank()) return
+    Text(
+        text = title,
+        modifier = Modifier.align(Alignment.BottomCenter)
+            .padding(horizontal = 28.dp, bottom = 16.dp)
+            .graphicsLayer {
+                // The title belongs to the scroll transition, but must not
+                // disappear while Coil is still decoding the background photo.
+                alpha = (1f - (motion?.artworkFade() ?: 0f)).coerceIn(0f, 1f)
+            }
+            .testTag("capsule:detail-title"),
+        color = StandardChrome.text,
+        style = MaterialTheme.typography.headlineLarge.copy(
+            fontSize = 32.sp,
+            lineHeight = 36.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+        ),
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+    )
 }
 
 /**
@@ -194,18 +234,17 @@ internal fun AlbumArtwork(
     artworkMotion: DetailHeaderMotionState? = null,
     fallbackThumbnailUrl: String? = null,
     fallbackThumbnailUrls: List<String> = emptyList(),
+    title: String = "",
 ) {
-    // Only a NEW main cover resets the shared arrival state; additional
-    // fallback URLs appearing during pagination must never blank an already
-    // visible image or reset the pinned toolbar.
-    LaunchedEffect(thumbnailUrl, artworkMotion) {
-        artworkMotion?.setArtworkReady(false)
-    }
+    // Readiness is owned by the page identity, not by dynamic thumbnail
+    // candidates. Resetting here races Coil cache success and can hide a
+    // successfully decoded image after the fallback list changes.
     AlbumPortraitFrame(
         background = background,
         modifier = modifier,
         artworkAlpha = artworkAlpha,
         artworkMotion = artworkMotion,
+        caption = { CapsuleDetailCoverTitle(title, artworkMotion) },
     ) {
         DetailPortraitImage(
             thumbnailUrl = thumbnailUrl,

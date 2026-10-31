@@ -183,6 +183,7 @@ fun TopPlaylistScreen(
     val titleMotion = rememberDetailHeaderMotion(
         state = lazyListState,
         hasHeader = songs?.isNotEmpty() == true && !isSearching,
+        contentIdentity = name,
     )
 
     val surfaceColor = StandardChrome.background
@@ -445,7 +446,7 @@ fun TopPlaylistScreen(
                             text = name,
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.titleLarge,
-                            modifier = Modifier
+                            modifier = Modifier.graphicsLayer { alpha = titleMotion.toolbarTitleAlpha() }
                         )
                     }
                 }

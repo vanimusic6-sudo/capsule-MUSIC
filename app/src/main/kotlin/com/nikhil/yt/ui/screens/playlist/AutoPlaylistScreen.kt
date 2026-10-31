@@ -256,6 +256,7 @@ fun AutoPlaylistScreen(
         val titleMotion = rememberDetailHeaderMotion(
             state = lazyListState,
             hasHeader = (songs?.isNotEmpty() == true || externalSaved.isNotEmpty()) && !isSearching,
+            contentIdentity = playlistId,
         )
 
         LazyColumn(
@@ -612,7 +613,7 @@ fun AutoPlaylistScreen(
                             text = playlist,
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.titleLarge,
-                            modifier = Modifier
+                            modifier = Modifier.graphicsLayer { alpha = titleMotion.toolbarTitleAlpha() }
                         )
                     }
                 }

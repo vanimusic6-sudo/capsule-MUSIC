@@ -177,6 +177,7 @@ fun AlbumScreen(
     val titleMotion = rememberDetailHeaderMotion(
         state = lazyListState,
         hasHeader = albumWithSongs?.songs?.isNotEmpty() == true,
+        contentIdentity = playlistId,
     )
 
     AlbumScreenLayout(
@@ -206,6 +207,7 @@ fun AlbumScreen(
                                 background = surfaceColor,
                                 artworkAlpha = titleMotion::artworkAlpha,
                                 artworkMotion = titleMotion,
+                                title = albumWithSongs.album.title,
                             )
                         },
                         title = {},
@@ -515,7 +517,7 @@ fun AlbumScreen(
                         style = MaterialTheme.typography.titleLarge,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        // Always visible, exactly like the artist's pinned title.
+                        modifier = Modifier.graphicsLayer { alpha = titleMotion.toolbarTitleAlpha() },
                     )
                 }
             },

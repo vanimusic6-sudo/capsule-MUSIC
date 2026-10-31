@@ -244,6 +244,7 @@ fun OnlinePlaylistScreen(
         val titleMotion = rememberDetailHeaderMotion(
             state = lazyListState,
             hasHeader = playlist != null && !isSearching,
+            contentIdentity = playlist?.id,
         )
 
         LazyColumn(
@@ -628,7 +629,7 @@ fun OnlinePlaylistScreen(
                         modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
                     )
                 } else {
-                    Text(playlist?.title.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier)
+                    Text(playlist?.title.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.graphicsLayer { alpha = titleMotion.toolbarTitleAlpha() })
                 }
             },
             navigationIcon = {
