@@ -1712,6 +1712,38 @@ class MusicService :
     val maxSafeGainFactor = 1.414f // +3 dB
     private lateinit var mediaNotificationProvider: CapsuleMediaNotificationProvider
 
+    // One-shot recovery only when Android posts NO platform media notification
+    // despite a real READY/playing Media3 session. Never poll indefinitely.
+    private val nativeMediaCardFallback by lazy(LazyThreadSafetyMode.NONE) {
+        NativeMediaCardFallback(this)
+    }
+    private var nativeMediaCardCheckJob: Job? = null
+
+    private fun scheduleNativeMediaCardCheck() {
+        if (!::mediaSession.isInitialized || !::player.isInitialized) return
+        nativeMediaCardCheckJob?.cancel()
+        if (player.currentMediaItem == null ||
+            player.playbackState == Player.STATE_IDLE ||
+            player.playbackState == Player.STATE_ENDED
+        ) {
+            if (nativeMediaCardFallback.rescueActive) nativeMediaCardFallback.clear()
+            return
+        }
+
+        nativeMediaCardCheckJob = scope.launch {
+            // Allow Media3's internal notification controller to connect and
+            // DefaultMediaNotificationProvider to publish first. The HONOR
+            // field log showed 0 notifications even after playback was READY.
+            delay(if (nativeMediaCardFallback.rescueActive) 0L else 450L)
+            nativeMediaCardFallback.reconcile(
+                mediaSession,
+                player,
+                ::mediaNotificationProvider.isInitialized &&
+                    mediaNotificationProvider.latest != null,
+            )
+        }
+    }
+
     // ArchiveTune's important second half: Activity only BINDS, but the
     // playback service explicitly becomes STARTED once audio is requested.
     // Without this step a bound-only service could be destroyed as soon as
@@ -4144,7 +4176,14 @@ class MusicService :
         ) {
             updateDownloadNetworkPriority()
             ensurePlaybackServiceStarted()
+            scheduleNativeMediaCardCheck()
         }
+        if (events.containsAny(
+                Player.EVENT_IS_PLAYING_CHANGED,
+                Player.EVENT_MEDIA_METADATA_CHANGED,
+                Player.EVENT_TIMELINE_CHANGED,
+            )
+        ) scheduleNativeMediaCardCheck()
         if (events.containsAny(Player.EVENT_PLAY_WHEN_READY_CHANGED, Player.EVENT_MEDIA_ITEM_TRANSITION)) {
             updateVideoPauseCollapse()
         }
@@ -6094,6 +6133,10 @@ class MusicService :
     }
 
     override fun onDestroy() {
+        nativeMediaCardCheckJob?.cancel()
+        if (::mediaSession.isInitialized && nativeMediaCardFallback.rescueActive) {
+            nativeMediaCardFallback.clear()
+        }
         DownloadPlaybackCoexistence.priority.clear()
         videoPauseCollapseJob?.cancel()
         videoModeSwitchJob?.cancel()
@@ -6304,7 +6347,8 @@ class MusicService :
                 Timber.tag("CapsuleSystemMedia").i(
                     "platform-session mediaPresent=%s playing=%s state=%d foreground=%s " +
                         "hasTitle=%s hasArtist=%s hasArtwork=%s notifyEnabled=%s channelImportance=%s " +
-                        "sessionAdded=%s nativeNotificationReady=%s",
+                        "sessionAdded=%s nativeNotificationReady=%s notificationControllerConnected=%s " +
+                        "connectedControllers=%d localTimelineItems=%d rescueActive=%s",
                     item != null, player.isPlaying, player.playbackState,
                     startInForegroundRequired, item?.mediaMetadata?.title != null,
                     item?.mediaMetadata?.artist != null,
@@ -6313,6 +6357,10 @@ class MusicService :
                     manager?.getNotificationChannel(CHANNEL_ID)?.importance ?: -1,
                     isSessionAdded(session),
                     ::mediaNotificationProvider.isInitialized && mediaNotificationProvider.latest != null,
+                    session.mediaNotificationControllerInfo != null,
+                    session.connectedControllers.size,
+                    player.mediaItemCount,
+                    nativeMediaCardFallback.rescueActive,
                 )
             }
         }
@@ -6321,6 +6369,7 @@ class MusicService :
         // and must observe the exception to keep its state machine consistent.
         // ArchiveTune uses Media3's default implementation, without this catch.
         super.onUpdateNotification(session, startInForegroundRequired)
+        if (::player.isInitialized && player.isPlaying) scheduleNativeMediaCardCheck()
     }
 
     /**
@@ -6348,7 +6397,9 @@ class MusicService :
                 "audit phase=%s origin=%s playing=%s playWhenReady=%s state=%d " +
                     "sessionAdded=%s notificationAllowed=%s channelImportance=%d " +
                     "notificationCount=%d ownMediaIdPresent=%s ownCategory=%s ownTemplate=%s " +
-                    "mediaSessionTokenCount=%d mediaTokenOnOwnId=%s",
+                    "mediaSessionTokenCount=%d mediaTokenOnOwnId=%s " +
+                    "notificationControllerConnected=%s connectedControllerCount=%d " +
+                    "timelineItemCount=%d rescueActive=%s",
                 phase,
                 origin,
                 player.isPlaying,
@@ -6364,6 +6415,10 @@ class MusicService :
                 native.size,
                 ownedId?.notification?.extras
                     ?.containsKey(Notification.EXTRA_MEDIA_SESSION) == true,
+                mediaSession.mediaNotificationControllerInfo != null,
+                mediaSession.connectedControllers.size,
+                player.mediaItemCount,
+                nativeMediaCardFallback.rescueActive,
             )
         }
         capture("immediate")
