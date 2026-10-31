@@ -31,7 +31,6 @@ import androidx.media3.exoplayer.offline.DownloadManager
 import androidx.media3.exoplayer.offline.DownloadNotificationHelper
 import com.nikhil.yt.playback.audio.AudioDownloadClientPolicy
 import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
-import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
 import com.nikhil.yt.constants.AudioStreamPolicy
 import com.nikhil.yt.db.MusicDatabase
@@ -58,8 +57,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import okhttp3.OkHttpClient
 import java.time.LocalDateTime
 import java.util.concurrent.atomic.AtomicInteger
@@ -89,7 +86,6 @@ constructor(
     // cycling YouTube client identities or bypassing an explicit challenge.
     @Volatile private var cooldownUntilMs = 0L
     private val consecutiveThrottleSignals = AtomicInteger(0)
-    private val downloadResolveMutex = Mutex()
     // Dedicated download-only entries. Never consume the player's URLs, clients or tokens.
     // A short pause for a manual request should resume the same signed file without another /player.
     private val resumeUrls = com.nikhil.yt.playback.audio.PlaybackDataCache(
@@ -118,22 +114,16 @@ constructor(
     @Volatile private var initialIndexLoaded = false
     private val removedWhileLoading = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private suspend fun awaitDownloadResolveWindow() {
-        val ready = withTimeoutOrNull(DOWNLOAD_GATE_TIMEOUT_MS) {
-            downloadResolveMutex.withLock {
-                var waitMs: Long
-                do {
-                    val nowMs = System.currentTimeMillis()
-                    waitMs = maxOf(
-                        CapsulePlaybackSafety.remainingBlockMs(nowMs),
-                        CapsuleAudioEngine.downloadCooldownRemainingMs(),
-                        (cooldownUntilMs - nowMs).coerceAtLeast(0L),
-                    )
-                    if (waitMs > 0L) delay(minOf(waitMs, DOWNLOAD_WAIT_SLICE_MS))
-                } while (waitMs > 0L)
-                true
-            }
-        }
-        if (ready != true) throw IOException("Download cooldown has not elapsed; retry later")
+        // Do not convert a valid 10-minute server 429 cooldown into a permanent
+        // Media3 download failure after 30 seconds. The suspended download owns
+        // its cancellation; no resolver mutex is held across the wait.
+        awaitDownloadCooldownWindow(
+            nowMs = System::currentTimeMillis,
+            globalRemainingMs = CapsulePlaybackSafety::remainingBlockMs,
+            downloadRemainingMs = CapsuleAudioEngine::downloadCooldownRemainingMs,
+            localCooldownUntilMs = { cooldownUntilMs },
+            sliceMs = DOWNLOAD_WAIT_SLICE_MS,
+        )
     }
 
     private suspend fun resolveDownloadPlayback(
@@ -499,7 +489,6 @@ constructor(
         internal const val MAX_PARALLEL_DOWNLOADS = AudioDownloadSlots.LIMIT
         private const val SHORT_COOLDOWN_MS = 2_500L
         private const val LONG_COOLDOWN_MS = 8_000L
-        private const val DOWNLOAD_GATE_TIMEOUT_MS = 30_000L
         private const val MAX_DOWNLOAD_RESOLVE_ATTEMPTS = 2
         private const val DOWNLOAD_WAIT_SLICE_MS = 2_000L
     }
