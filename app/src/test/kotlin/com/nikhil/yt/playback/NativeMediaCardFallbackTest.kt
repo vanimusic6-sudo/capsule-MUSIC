@@ -22,7 +22,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [28], application = Application::class, manifest = Config.NONE)
 class NativeMediaCardFallbackTest {
     @Test fun fallbackAttachesTheRealPlatformMediaTokenAndThreeControls() {
-        val context = RuntimeEnvironment.getApplication<Application>()
+        val context = RuntimeEnvironment.getApplication()
         val platformSession = MediaSession(context, "capsule-native-card-contract")
         try {
             val notification = buildNativeMediaCardNotification(
