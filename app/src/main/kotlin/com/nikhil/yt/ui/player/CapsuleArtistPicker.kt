@@ -57,8 +57,10 @@ internal fun CapsuleArtistPickerDialog(
         title = { Text(text = stringResource(R.string.capsule_choose_artist)) },
         text = {
             LazyColumn(
-            flingBehavior = rememberCapsuleFlingBehavior(),
-            overscrollEffect = null,Modifier.heightIn(max = 360.dp)) {
+                modifier = Modifier.heightIn(max = 360.dp),
+                flingBehavior = rememberCapsuleFlingBehavior(),
+                overscrollEffect = null,
+            ) {
                 itemsIndexed(
                     items = artists.sanitizedArtistCredits(),
                     key = { index, artist ->
