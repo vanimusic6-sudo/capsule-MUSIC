@@ -10,6 +10,7 @@
 
 package com.nikhil.yt.ui.screens
 
+import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -217,7 +218,7 @@ fun YouTubeBrowseScreen(
                                         coroutineScope = coroutineScope,
                                         modifier =
                                         Modifier
-                                            .combinedClickable(
+                                            .capsulePressCombinedClickable(inset = 0.dp, radius = 18.dp, 
                                                 onClick = {
                                                     when (item) {
                                                         is AlbumItem -> navController.navigate("album/${item.id}")
