@@ -42,8 +42,8 @@ class DownloadYieldingInputStreamTest {
             checkActive = { throw CancellationException("Worker was cancelled") },
         )
         val buffer = ByteArray(32 * 1024)
-        input.read(buffer)
-        input.read(buffer)
+        // New transfers must respect an already-buffering foreground player
+        // before their first network read, including cancellation.
         assertThrows(CancellationException::class.java) { input.read(buffer) }
     }
 }
