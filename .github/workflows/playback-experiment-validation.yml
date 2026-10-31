@@ -10,6 +10,7 @@ on:
       - 'fix/audio-socket-resume-opus-heat-20261031'
       - 'fix/android-media-downloads-20261031'
       - 'fix/playback-download-fairness-sabr-harness-20261031'
+      - 'fix/honor-native-media-transition-20261031'
   workflow_dispatch:
 
 permissions:
