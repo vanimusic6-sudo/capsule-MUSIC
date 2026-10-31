@@ -1,5 +1,8 @@
 package com.nikhil.yt.ui.component
 
+import androidx.compose.runtime.mutableStateOf
+import com.nikhil.yt.ui.screens.albumHasHeroHeader
+import com.nikhil.yt.viewmodels.AlbumUiState
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.ui.unit.Density
 import org.junit.Assert.assertEquals
@@ -15,24 +18,43 @@ class DetailToolbarRevealTest {
         assertEquals(1f, motion.artworkAlpha(), 0f)
         assertEquals(0f, motion.toolbarTitleAlpha(), 0f)
         assertEquals(0f, detailToolbarBackdropAlpha(motion.artworkFade()), 0f)
-        val empty = DetailHeaderMotionState(LazyListState(), Density(1f), initialHasHeader = false)
+        val presence = mutableStateOf(false)
+        val empty = DetailHeaderMotionState(LazyListState(), Density(1f), presence)
         assertEquals(1f, empty.toolbarTitleAlpha(), 0f)
-        empty.hasHeader = true
+        presence.value = true
         assertEquals(1f, empty.artworkAlpha(), 0f)
         assertEquals(0f, empty.toolbarTitleAlpha(), 0f)
     }
 
-    @Test fun titleLayoutsHandOffOnlyAtTheSameMeasuredDestination() {
-        assertEquals(0f, detailTitleHandoff(0f), 0f)
-        assertEquals(0f, detailTitleHandoff(.88f), 0f)
-        assertEquals(1f, detailTitleHandoff(1f), 0f)
-        val values = (0..1000).map { detailTitleHandoff(it / 1000f) }
-        assertTrue(values.zipWithNext().all { (a, b) -> b >= a && b - a < .02f })
-        for (i in 0..1000) {
-            val progress = i / 1000f
-            assertEquals(1f, detailTitleHandoff(progress) + (1f - detailTitleHandoff(progress)), .00001f)
-            assertEquals(values[i], detailTitleHandoff(progress), 0f)
+    @Test fun onlyOneCaptionPaintsAtEveryScrollPosition() {
+        for (i in 0..10000) {
+            val progress = i / 10000f
+            val compact = detailTitleHandoff(progress)
+            val cover = 1f - compact
+            assertEquals(1f, compact + cover, 0f)
+            assertEquals("No frame may paint overlapping caption copies", 0f, compact * cover, 0f)
+            assertEquals(if (i == 10000) 1f else 0f, compact, 0f)
         }
+    }
+
+    @Test fun matchingBaselinesKeepTheFinalGlyphPositionWhenTheSourceHasTwoLines() {
+        for (sourceHeight in listOf(58f, 116f)) {
+            val sourceCenter = 130f
+            val offset = 44f - sourceHeight / 2f
+            val targetBaseline = 96f
+            val scale = .88f
+            val translation = detailTitleBaselineTranslation(1f, scale, sourceCenter, offset, targetBaseline)
+            assertEquals(targetBaseline, sourceCenter + scale * offset + translation, .0001f)
+            assertEquals(0f, detailTitleBaselineTranslation(0f, 1f, sourceCenter, offset, targetBaseline), 0f)
+        }
+    }
+
+    @Test fun loadingPortraitIsAHeaderEvenBeforeSongsArrive() {
+        assertTrue(albumHasHeroHeader(false, AlbumUiState.Loading))
+        assertTrue(albumHasHeroHeader(false, AlbumUiState.Content))
+        assertTrue(albumHasHeroHeader(true, AlbumUiState.Error()))
+        assertEquals(false, albumHasHeroHeader(false, AlbumUiState.Empty))
+        assertEquals(false, albumHasHeroHeader(false, AlbumUiState.Error()))
     }
 
     @Test fun fadeBeginsAtOldScrollPointButCompletesAtSameMeasuredToolbarEdge() {

@@ -238,7 +238,7 @@ fun OnlinePlaylistScreen(
 
         val titleMotion = rememberDetailHeaderMotion(
             state = lazyListState,
-            hasHeader = playlist != null && !isSearching,
+            hasHeader = isLoading || (playlist != null && !isSearching),
             contentIdentity = playlist?.id,
         )
 

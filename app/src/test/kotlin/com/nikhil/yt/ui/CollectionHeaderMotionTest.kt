@@ -36,6 +36,8 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.ui.component.*
+import com.nikhil.yt.ui.screens.albumHasHeroHeader
+import com.nikhil.yt.viewmodels.AlbumUiState
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import org.junit.Assert.*
@@ -157,22 +159,45 @@ class CollectionHeaderMotionTest {
         }
     }
 
+    @Test fun headerPresenceIsReadBeforePostCompositionEffectsCanFlashThePinnedTitle() {
+        var header by mutableStateOf(false)
+        val observed = mutableListOf<Pair<Boolean, Float>>()
+        compose.setContent {
+            val motion = rememberDetailHeaderMotion(rememberLazyListState(), header)
+            observed += header to motion.compactTitleAlpha()
+            Box(Modifier.size(100.dp))
+        }
+        for (present in listOf(true, false, true)) {
+            compose.runOnIdle { observed.clear(); header = present }
+            compose.runOnIdle {
+                assertTrue(observed.isNotEmpty())
+                assertEquals("The first composition must use this frame's header presence",
+                    present to (if (present) 0f else 1f), observed.first())
+            }
+        }
+    }
+
     @Test fun actualToolbarGlyphsAppearWithoutRestartAndCaptionMovesIntoTheirAnchor() {
         lateinit var state: LazyListState
         lateinit var motion: DetailHeaderMotionState
         var title by mutableStateOf("Обломки чувств")
+        var loaded by mutableStateOf(false)
         compose.setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 CompositionLocalProvider(LocalPlayerAwareWindowInsets provides WindowInsets()) {
                     state = rememberLazyListState()
-                    motion = rememberDetailHeaderMotion(state, true, "same-open-screen")
+                    motion = rememberDetailHeaderMotion(
+                        state,
+                        albumHasHeroHeader(loaded, if (loaded) AlbumUiState.Content else AlbumUiState.Loading),
+                        "same-open-screen",
+                    )
                     AlbumScreenLayout(
                         background = Color.Black,
                         state = state,
                         modifier = Modifier.size(320.dp, 700.dp),
                         content = {
                             item(key = "header") {
-                                CapsuleDetailHero(
+                                if (!loaded) AlbumHeaderPlaceholder(Color.Black) else CapsuleDetailHero(
                                     title = title,
                                     metrics = emptyList(),
                                     artworkAlpha = motion::artworkAlpha,
@@ -194,7 +219,6 @@ class CollectionHeaderMotionTest {
                 }
             }
         }
-        val start = compose.onNodeWithTag("capsule:detail-title").fetchSemanticsNode().boundsInRoot
         fun glyphPixels(name: String, tag: String = "capsule:detail-toolbar-title"): Int {
             val bounds = compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
             var count = 0
@@ -220,6 +244,13 @@ class CollectionHeaderMotionTest {
         assertTrue("The invisible compact copy must not be read by TalkBack",
             compose.onNodeWithTag("capsule:detail-toolbar-title").fetchSemanticsNode().config
                 .contains(SemanticsProperties.HideFromAccessibility))
+        repeat(3) {
+            compose.mainClock.advanceTimeByFrame()
+            assertEquals("A known cached name must not flash over the loading portrait", 0, glyphPixels("loading"))
+        }
+        compose.runOnIdle { loaded = true }
+        assertEquals("Metadata arrival at scroll origin must keep the pinned title hidden", 0, glyphPixels("loaded"))
+        val start = compose.onNodeWithTag("capsule:detail-title").fetchSemanticsNode().boundsInRoot
         val midOffset = with(compose.density) { 180.dp.roundToPx() }
         compose.runOnIdle { runBlocking { state.scrollToItem(0, midOffset) } }
         val mid = compose.onNodeWithTag("capsule:detail-title").fetchSemanticsNode().boundsInRoot
@@ -228,6 +259,33 @@ class CollectionHeaderMotionTest {
         assertTrue("Caption shrinks into the compact title", mid.width < start.width)
         glyphPixels("moving")
         val endOffset = with(compose.density) { 340.dp.roundToPx() }
+        var lo = 0
+        var hi = endOffset
+        while (lo < hi) {
+            val offset = (lo + hi) / 2
+            compose.runOnIdle { runBlocking { state.scrollToItem(0, offset) } }
+            var pinned = false
+            compose.runOnIdle { pinned = motion.artworkFade() >= 1f }
+            if (pinned) hi = offset else lo = offset + 1
+        }
+        compose.runOnIdle { runBlocking { state.scrollToItem(0, (lo - 1).coerceAtLeast(0)) } }
+        compose.runOnIdle {
+            assertEquals(1f, motion.coverTitleAlpha(), 0f)
+            assertEquals(0f, motion.compactTitleAlpha(), 0f)
+        }
+        assertTrue("The moving caption must reach the bar without a second copy",
+            glyphPixels("before-transfer") > 30)
+        val coverLayout = mutableListOf<TextLayoutResult>()
+        val compactLayout = mutableListOf<TextLayoutResult>()
+        compose.onNodeWithTag("capsule:detail-title").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(coverLayout) }
+        compose.onNodeWithTag("capsule:detail-toolbar-title").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(compactLayout) }
+        val source = compose.onNodeWithTag("capsule:detail-title").fetchSemanticsNode().boundsInRoot
+        val target = compose.onNodeWithTag("capsule:detail-toolbar-title").fetchSemanticsNode().boundsInRoot
+        val s = source.height / coverLayout.single().size.height
+        val sourceBaseline = source.center.y +
+            (coverLayout.single().firstBaseline - coverLayout.single().size.height / 2f) * s
+        val targetBaseline = target.top + compactLayout.single().firstBaseline
+        assertEquals("The handoff must not shift the glyph baseline", targetBaseline, sourceBaseline, 2f)
         compose.runOnIdle { runBlocking { state.scrollToItem(0, endOffset) } }
         assertTrue("Actual pinned glyphs must be painted before any app restart", glyphPixels("pinned") > 30)
         assertFalse("The visible compact caption must be accessible",

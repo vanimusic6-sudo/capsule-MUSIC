@@ -102,6 +102,10 @@ import com.nikhil.yt.utils.rememberPreference
 import com.nikhil.yt.viewmodels.AlbumUiState
 import com.nikhil.yt.viewmodels.AlbumViewModel
 
+/** Mirrors the loaded header and the reserved loading portrait in the list below. */
+internal fun albumHasHeroHeader(hasSongs: Boolean, uiState: AlbumUiState): Boolean =
+    hasSongs || uiState == AlbumUiState.Loading || uiState == AlbumUiState.Content
+
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun AlbumScreen(
@@ -167,7 +171,7 @@ fun AlbumScreen(
     // Both titles and the artwork share one measured, reversible scroll progress.
     val titleMotion = rememberDetailHeaderMotion(
         state = lazyListState,
-        hasHeader = albumWithSongs?.songs?.isNotEmpty() == true,
+        hasHeader = albumHasHeroHeader(albumWithSongs?.songs?.isNotEmpty() == true, uiState),
         contentIdentity = viewModel.albumId,
     )
 

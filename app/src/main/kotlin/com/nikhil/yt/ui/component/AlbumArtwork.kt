@@ -117,6 +117,7 @@ internal fun BoxScope.CapsuleDetailCoverTitle(
                 ),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+                onTextLayout = { motion?.measureCoverTitleText(it) },
             )
         }
     }
