@@ -12,6 +12,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -75,48 +80,95 @@ internal fun AlbumPortraitFrame(
 }
 
 /**
- * A direct Coil AsyncImage uses actual layout constraints. Try the original
- * URL if a Google CDN resize fails, then a track cover if the collection
- * thumbnail is missing or broken. This avoids a blank black hero.
+ * Album and playlist heroes prefer their own cover, but a CDN resize may
+ * fail even when the original URL or a song thumbnail is valid.
+ * Avoid identical requests and keep fallback order deterministic.
+ */
+internal fun detailArtworkCandidates(
+    thumbnailUrl: String?,
+    fallbackThumbnailUrl: String? = null,
+    fallbackThumbnailUrls: List<String> = emptyList(),
+    minimumPixels: Int = 960,
+): List<String> = (listOfNotNull(thumbnailUrl, fallbackThumbnailUrl) +
+    fallbackThumbnailUrls.take(4))
+    .filter(String::isNotBlank)
+    .distinct()
+    .flatMap { url -> listOfNotNull(capsuleArtworkUrl(url, minimumPixels), url) }
+    .distinct()
+
+/**
+ * One image request at a time, with bounded alternatives and recovery.
+ *
+ * Previously a 404/403, a slow CDN request, or an invalid oversized URL
+ * could strand the hero on a full-screen StandardChrome.panel placeholder.
+ * The placeholder also differed from the *page* and toolbar background.
+ *
+ * Match the page surface even while loading. On an error try the original URL
+ * and then up to four real track covers; on a stalled request advance after
+ * seven seconds. At most two further rounds are attempted. No polling or
+ * continuous retry after exhaustion; Coil keeps its shared image cache.
  */
 @Composable
 internal fun DetailPortraitImage(
     thumbnailUrl: String?,
     modifier: Modifier = Modifier,
     fallbackThumbnailUrl: String? = null,
+    fallbackThumbnailUrls: List<String> = emptyList(),
     minimumPixels: Int = 960,
+    background: Color = StandardChrome.background,
 ) {
-    val candidates = remember(thumbnailUrl, fallbackThumbnailUrl, minimumPixels) {
-        listOf(
-            capsuleArtworkUrl(thumbnailUrl, minimumPixels),
-            thumbnailUrl,
-            capsuleArtworkUrl(fallbackThumbnailUrl, minimumPixels),
-            fallbackThumbnailUrl,
-        ).filterNotNull().filter(String::isNotBlank).distinct()
+    val candidates = remember(thumbnailUrl, fallbackThumbnailUrl, fallbackThumbnailUrls, minimumPixels) {
+        detailArtworkCandidates(thumbnailUrl, fallbackThumbnailUrl, fallbackThumbnailUrls, minimumPixels)
     }
-    var candidateIndex by remember(thumbnailUrl, fallbackThumbnailUrl, minimumPixels) {
-        mutableIntStateOf(0)
+    var candidateIndex by remember(candidates) { mutableIntStateOf(0) }
+    var retryRound by remember(candidates) { mutableIntStateOf(0) }
+    var loaded by remember(candidates) { mutableStateOf(false) }
+    var exhausted by remember(candidates) { mutableStateOf(false) }
+    fun nextCandidate() {
+        if (loaded || exhausted) return
+        if (candidateIndex < candidates.lastIndex) {
+            candidateIndex++
+        } else if (retryRound < 2) {
+            retryRound++
+            candidateIndex = 0
+        } else {
+            exhausted = true
+        }
     }
-    Box(
-        modifier.background(StandardChrome.panel),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            painter = painterResource(R.drawable.music_note),
-            contentDescription = null,
-            tint = StandardChrome.muted.copy(alpha = 0.38f),
-            modifier = Modifier.size(56.dp),
-        )
-        if (candidates.isNotEmpty()) {
-            AsyncImage(
-                model = candidates[candidateIndex.coerceAtMost(candidates.lastIndex)],
+    LaunchedEffect(candidates, candidateIndex, retryRound, loaded, exhausted) {
+        if (candidates.isNotEmpty() && !loaded && !exhausted) {
+            delay(7_000L)
+            if (!loaded && !exhausted) nextCandidate()
+        }
+    }
+
+    Box(modifier.background(background), contentAlignment = Alignment.Center) {
+        if (candidates.isEmpty() || exhausted) {
+            Icon(
+                painter = painterResource(R.drawable.music_note),
                 contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-                onError = {
-                    if (candidateIndex < candidates.lastIndex) candidateIndex++
-                },
+                tint = StandardChrome.muted.copy(alpha = 0.38f),
+                modifier = Modifier.size(56.dp),
             )
+        }
+        if (candidates.isNotEmpty() && !exhausted) {
+            val index = candidateIndex.coerceIn(0, candidates.lastIndex)
+            val source = candidates[index]
+            // Recreate the loader only on source/round change, so a retry of
+            // the *same* URL really issues another request rather than
+            // remaining in Coil's previous terminal Error state.
+            key(source, retryRound) {
+                AsyncImage(
+                    model = source,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                    onSuccess = { loaded = true },
+                    onError = {
+                        if (!loaded && candidateIndex == index) nextCandidate()
+                    },
+                )
+            }
         }
     }
 }
@@ -129,6 +181,7 @@ internal fun AlbumArtwork(
     artworkAlpha: () -> Float = { 1f },
     artworkMotion: DetailHeaderMotionState? = null,
     fallbackThumbnailUrl: String? = null,
+    fallbackThumbnailUrls: List<String> = emptyList(),
 ) {
     AlbumPortraitFrame(
         background = background,
@@ -139,6 +192,8 @@ internal fun AlbumArtwork(
         DetailPortraitImage(
             thumbnailUrl = thumbnailUrl,
             fallbackThumbnailUrl = fallbackThumbnailUrl,
+            fallbackThumbnailUrls = fallbackThumbnailUrls,
+            background = background,
             modifier = Modifier.fillMaxSize(),
         )
     }
