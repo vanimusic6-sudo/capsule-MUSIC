@@ -33,6 +33,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.ui.component.*
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
