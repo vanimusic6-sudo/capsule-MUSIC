@@ -1,3 +1,5 @@
+@file:Suppress("UnsafeOptInUsageError")
+
 package com.nikhil.yt.playback
 
 import android.app.Notification
