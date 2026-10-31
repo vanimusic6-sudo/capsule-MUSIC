@@ -151,6 +151,38 @@ class AudioChunkedDataSourceTest {
     }
 
     @Test
+    fun networkHandoffMustNotReplayAnOldIpBoundSignedUrl() {
+        val bytes = ByteArray(500) { it.toByte() }
+        val inner = FakeUpstream(bytes)
+        var route = 41L
+        var supplied = 0
+        val upstream = object : DataSource {
+            override fun addTransferListener(transferListener: TransferListener) = Unit
+            override fun open(dataSpec: DataSpec): Long = inner.open(dataSpec)
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                if (supplied >= 35) {
+                    route = 42L
+                    throw java.net.SocketException("Connection reset")
+                }
+                val count = inner.read(buffer, offset, length)
+                if (count > 0) supplied += count
+                return count
+            }
+            override fun getUri(): Uri? = inner.getUri()
+            override fun close() = inner.close()
+        }
+        val source = AudioChunkedDataSource(
+            upstream,
+            chunkBytes = 128,
+            currentNetworkIdentity = { route },
+        )
+        source.open(spec(bytes.size.toLong()))
+        assertTrue(runCatching { drain(source) }.exceptionOrNull() is java.net.SocketException)
+        assertEquals("old route link must go to normal fresh-URL recovery", 1, inner.opens.size)
+        source.close()
+    }
+
+    @Test
     fun aServerRefusalOnReadIsNeverClassifiedAsResetOrRetried() {
         val bytes = ByteArray(500) { it.toByte() }
         val inner = FakeUpstream(bytes)
