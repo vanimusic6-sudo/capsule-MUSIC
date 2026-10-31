@@ -8,6 +8,7 @@
 
 package com.nikhil.yt.ui.screens
 
+import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -279,7 +280,7 @@ fun ExploreScreen(
                                     },
                                     modifier = Modifier
                                         .width(horizontalLazyGridItemWidth)
-                                        .combinedClickable(
+                                        .capsulePressCombinedClickable(
                                             onClick = {
                                                 if (song.id == mediaMetadata?.id) {
                                                     playerConnection.player.togglePlayPause()
@@ -331,7 +332,7 @@ fun ExploreScreen(
                                 isPlaying = isPlaying,
                                 coroutineScope = coroutineScope,
                                 modifier = Modifier
-                                    .combinedClickable(
+                                    .capsulePressCombinedClickable(inset = 0.dp, radius = 18.dp, 
                                         onClick = {
                                             navController.navigate("album/${album.id}")
                                         },
@@ -371,7 +372,7 @@ fun ExploreScreen(
                                 isPlaying = isPlaying,
                                 coroutineScope = coroutineScope,
                                 modifier = Modifier
-                                    .combinedClickable(
+                                    .capsulePressCombinedClickable(inset = 0.dp, radius = 18.dp, 
                                         onClick = {
                                             if (video.id == mediaMetadata?.id) {
                                                 playerConnection.player.togglePlayPause()
