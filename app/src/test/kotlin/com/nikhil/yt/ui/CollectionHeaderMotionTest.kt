@@ -57,7 +57,7 @@ class CollectionHeaderMotionTest {
             MaterialTheme(colorScheme = if (light) lightColorScheme() else darkColorScheme()) {
                 CompositionLocalProvider(LocalPlayerAwareWindowInsets provides WindowInsets()) {
                     val state = rememberLazyListState()
-                    val motion = rememberDetailHeaderMotion(state, hasHeader = true)
+                    val motion = rememberDetailHeaderMotion(state, hasHeader = decoded)
                     AlbumScreenLayout(
                         background = Color.Black,
                         state = state,

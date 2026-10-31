@@ -33,9 +33,9 @@ import androidx.compose.ui.unit.Density
 internal class DetailHeaderMotionState(
     private val scroll: LazyListState,
     private val density: Density,
-    hasHeader: Boolean = true,
+    initialHasHeader: Boolean = true,
 ) {
-    var hasHeader by mutableStateOf(hasHeader)
+    var hasHeader by mutableStateOf(initialHasHeader)
 
     private var restArtworkBottomPx by mutableFloatStateOf(Float.NaN)
     private var toolbarBottomPx by mutableFloatStateOf(Float.NaN)

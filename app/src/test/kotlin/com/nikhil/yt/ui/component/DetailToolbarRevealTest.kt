@@ -15,7 +15,7 @@ class DetailToolbarRevealTest {
         assertEquals(1f, motion.artworkAlpha(), 0f)
         assertEquals(0f, motion.toolbarTitleAlpha(), 0f)
         assertEquals(0f, detailToolbarBackdropAlpha(motion.artworkFade()), 0f)
-        val empty = DetailHeaderMotionState(LazyListState(), Density(1f), hasHeader = false)
+        val empty = DetailHeaderMotionState(LazyListState(), Density(1f), initialHasHeader = false)
         assertEquals(1f, empty.toolbarTitleAlpha(), 0f)
         empty.hasHeader = true
         assertEquals(1f, empty.artworkAlpha(), 0f)
