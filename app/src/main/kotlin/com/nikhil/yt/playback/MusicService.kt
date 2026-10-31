@@ -195,6 +195,7 @@ import com.nikhil.yt.playback.video.CAPSULE_VIDEO_AUDIO_WARMUP_BYTES
 import com.nikhil.yt.playback.video.CapsuleVideoStreamInterceptor
 import com.nikhil.yt.playback.video.CapsuleVideoGuardStore
 import com.nikhil.yt.playback.video.CapsuleVideoCompanion
+import com.nikhil.yt.playback.video.CapsuleVideoHttp3Transport
 import com.nikhil.yt.playback.video.CapsuleVideoDirectMediaSourceFactory
 import com.nikhil.yt.playback.video.YouTubeVideoResolver
 import com.nikhil.yt.playback.video.CapsuleVideoResolveCoordinator
@@ -4878,7 +4879,11 @@ class MusicService :
                 .addInterceptor(CapsuleVideoStreamInterceptor())
                 .build()
 
-        val httpUpstream = DefaultDataSource.Factory(this, OkHttpDataSource.Factory(videoHttpClient))
+        val httpUpstream = CapsuleVideoHttp3Transport.createUpstream(
+            context = this,
+            okhttpClient = videoHttpClient,
+            explicitProxyConfigured = YouTube.streamProxy != null,
+        )
         return CacheDataSource
             .Factory()
             .setCache(videoCache)
