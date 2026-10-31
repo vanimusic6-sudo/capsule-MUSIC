@@ -9,6 +9,7 @@
 @file:Suppress("UNUSED_EXPRESSION")
 
 package com.nikhil.yt.ui.screens
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -110,6 +111,8 @@ fun YouTubeBrowseScreen(
             )
         }
         LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
             contentPadding = LocalPlayerAwareWindowInsets.current
                 .add(WindowInsets(top = com.nikhil.yt.constants.AppBarHeight))
                 .asPaddingValues(),
@@ -125,7 +128,7 @@ fun YouTubeBrowseScreen(
                                 .padding(12.dp)
                                 .width(250.dp),
                         )
-                        LazyRow {
+                        LazyRow(flingBehavior = rememberCapsuleFlingBehavior(), overscrollEffect = null) {
                             items(4) {
                                 GridItemPlaceHolder()
                             }
@@ -144,6 +147,7 @@ fun YouTubeBrowseScreen(
                     if (it.items.all { item -> item is SongItem }) {
                         item {
                             LazyHorizontalGrid(
+            overscrollEffect = null,
                                 state = lazyGridState,
                                 rows = GridCells.Fixed(4),
                                 flingBehavior = rememberSnapFlingBehavior(snapLayoutInfoProvider),
@@ -203,7 +207,7 @@ fun YouTubeBrowseScreen(
                         }
                     } else {
                         item {
-                            LazyRow {
+                            LazyRow(flingBehavior = rememberCapsuleFlingBehavior(), overscrollEffect = null) {
                                 items(
                                     items = it.items,
                                 ) { item ->

@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.screens.artist
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -100,6 +101,8 @@ fun ArtistSongsScreen(
         modifier = Modifier.fillMaxSize(),
     ) {
         LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
             state = lazyListState,
             contentPadding = LocalPlayerAwareWindowInsets.current
                 .add(WindowInsets(top = AppBarHeight))

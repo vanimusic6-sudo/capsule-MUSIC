@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.screens
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import android.content.Intent
 import android.view.View
@@ -743,7 +744,9 @@ private fun PremiumYearPickerDialog(
             }
         },
         text = {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            LazyRow(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(availableYears) { year ->
                     val isSelected = year == selectedYear
                     Box(

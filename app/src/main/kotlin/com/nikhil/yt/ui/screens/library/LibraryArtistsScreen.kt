@@ -7,6 +7,8 @@
 
 
 package com.nikhil.yt.ui.screens.library
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
+import com.nikhil.yt.ui.utils.scrollToTopIfIdle
 
 
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -166,11 +168,11 @@ fun LibraryArtistsScreen(
 
     LaunchedEffect(scrollToTop?.value) {
         if (scrollToTop?.value == true) {
-            when (viewType) {
-                LibraryViewType.LIST -> lazyListState.animateScrollToItem(0)
-                LibraryViewType.GRID -> lazyGridState.animateScrollToItem(0)
-            }
             backStackEntry?.liveSavedStateHandle()?.set("scrollToTop", false)
+            when (viewType) {
+                LibraryViewType.LIST -> lazyListState.scrollToTopIfIdle()
+                LibraryViewType.GRID -> lazyGridState.scrollToTopIfIdle()
+            }
         }
     }
 
@@ -240,6 +242,8 @@ fun LibraryArtistsScreen(
         when (viewType) {
             LibraryViewType.LIST ->
                 LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
                     state = lazyListState,
                     contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
                 ) {
@@ -287,6 +291,8 @@ fun LibraryArtistsScreen(
 
             LibraryViewType.GRID ->
                 LazyVerticalGrid(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
                     state = lazyGridState,
                     columns =
                     GridCells.Adaptive(

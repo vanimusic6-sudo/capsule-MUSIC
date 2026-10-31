@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.screens.artist
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -133,6 +134,8 @@ fun ArtistItemsScreen(
 
     if (itemsPage?.items?.firstOrNull() is SongItem) {
         LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
             state = lazyListState,
             contentPadding = LocalPlayerAwareWindowInsets.current
                 .add(WindowInsets(top = AppBarHeight))
@@ -232,6 +235,8 @@ fun ArtistItemsScreen(
         }
     } else {
         LazyVerticalGrid(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
             state = lazyGridState,
             columns = GridCells.Adaptive(minSize = GridThumbnailHeight + 24.dp),
             contentPadding = LocalPlayerAwareWindowInsets.current

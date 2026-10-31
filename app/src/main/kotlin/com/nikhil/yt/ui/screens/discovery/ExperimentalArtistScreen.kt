@@ -1,4 +1,5 @@
 package com.nikhil.yt.ui.screens.discovery
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import android.content.Intent
 import android.net.Uri
@@ -83,6 +84,8 @@ fun ExperimentalArtistScreen(
     }
 
     LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
         contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
         modifier = Modifier.fillMaxSize(),
     ) {

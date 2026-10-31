@@ -6,6 +6,7 @@
 
 
 package com.nikhil.yt.ui.screens.artist
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import com.nikhil.yt.ui.utils.artistPortraitUrl
@@ -290,11 +291,11 @@ fun ArtistScreen(
             LocalArtistThumbnailCrop provides cropArtistArtwork,
         ) {
             LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
                 state = lazyListState,
-                // The loading-row → remote-sections swap changes every item
-                // key. A fling during that replacement loses its anchor and
-                // can visibly snap the artist page back to the top.
-                userScrollEnabled = !remoteLoading,
+                // Keep native gesture ownership stable during asynchronous loading.
+                // Disabling scrolling mid-touch was cancelling the current fling.
                 contentPadding =
                     LocalPlayerAwareWindowInsets.current
                         .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
@@ -503,6 +504,8 @@ fun ArtistScreen(
                             }
 
                             LazyRow(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
                                 contentPadding = PaddingValues(horizontal = 12.dp),
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
@@ -630,6 +633,8 @@ fun ArtistScreen(
                             // Grid items (albums, playlists, etc.)
                             item(key = "$sectionKey:content") {
                                 LazyRow(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
                                     contentPadding = PaddingValues(horizontal = 12.dp),
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {

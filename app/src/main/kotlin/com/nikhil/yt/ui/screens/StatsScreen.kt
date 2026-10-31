@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.screens
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 // Natural feed header: moves with content, not via a floating offset.
 
@@ -328,6 +329,8 @@ fun StatsScreen(
         }
 
         LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
             state = lazyListState,
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
             modifier = Modifier
@@ -540,6 +543,8 @@ fun StatsScreen(
 
                 if (mostPlayedAlbums.isNotEmpty()) {
                     LazyRow(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
                         modifier = Modifier,
                     ) {
                         itemsIndexed(
