@@ -242,6 +242,11 @@ internal fun AlbumArtworkLayers(
     artworkAlpha: () -> Float = { 1f },
     artworkMotion: DetailHeaderMotionState? = null,
 ) {
+    // A predecoded Painter has no Coil onSuccess callback. Mark it ready
+    // immediately, otherwise it is hidden behind artworkReveal=0 forever.
+    LaunchedEffect(painter, artworkMotion) {
+        artworkMotion?.setArtworkReady(true)
+    }
     AlbumPortraitFrame(
         background = background,
         modifier = modifier,
