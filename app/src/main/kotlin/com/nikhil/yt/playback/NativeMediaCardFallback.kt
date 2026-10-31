@@ -71,7 +71,11 @@ internal class NativeMediaCardFallback(private val service: MusicService) {
                 artist = player.mediaMetadata.artist ?: "",
                 isPlaying = player.isPlaying,
             )
-            if (!rescueActive) {
+            // Media3 may call removeNotification() again if its own
+            // notification-controller timeline stays empty. In that case
+            // it also stops *our* foreground service (same notification ID).
+            // Reassert foreground whenever the native card disappeared.
+            if (!rescueActive || !nativePosted) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     service.startForeground(
                         MusicService.NOTIFICATION_ID,
