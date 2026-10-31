@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.VeluneLoader
 import android.widget.Toast
@@ -306,7 +307,8 @@ fun ThemeCreatorScreen(
                 .fillMaxWidth()
                 .padding(paddingValues)
                 .windowInsetsPadding(LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal))
-                .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior())
+                .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior(),
+            overscrollEffect = null)
                 .padding(bottom = settingsBottomContentPadding()),
         ) {
             ThemeHeroPreview(
@@ -657,7 +659,8 @@ private fun ThemeRichPreview(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .verticalScroll(scrollState, flingBehavior = rememberSettingsFlingBehavior())
+                        .verticalScroll(scrollState, flingBehavior = rememberSettingsFlingBehavior(),
+            overscrollEffect = null)
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
@@ -869,7 +872,9 @@ private fun ThemeRichPreview(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
+                                    .horizontalScroll(rememberScrollState(),
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {

@@ -5,6 +5,7 @@
  */
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
@@ -165,6 +166,8 @@ internal fun PriorityOrderDialog(
                 Spacer(Modifier.height(16.dp))
 
                 LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(max = 430.dp)

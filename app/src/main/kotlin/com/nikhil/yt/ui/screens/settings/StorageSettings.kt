@@ -4,6 +4,7 @@
  */
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -243,6 +244,7 @@ fun StorageSettings(
         containerColor = MaterialTheme.colorScheme.background,
     ) { innerPadding ->
         LazyColumn(
+            overscrollEffect = null,
             flingBehavior = rememberSettingsFlingBehavior(),
             modifier =
                 Modifier

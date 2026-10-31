@@ -5,6 +5,7 @@
  */
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -202,6 +203,7 @@ fun UpdateScreen(
         },
     ) { paddingValues ->
         LazyColumn(
+            overscrollEffect = null,
             flingBehavior = rememberSettingsFlingBehavior(),
             modifier = Modifier
                 .fillMaxSize()
