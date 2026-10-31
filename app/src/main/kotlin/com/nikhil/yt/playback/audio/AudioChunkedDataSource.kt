@@ -287,8 +287,21 @@ internal class AudioChunkedDataSource(
      * all unconsumed read-ahead in RAM, never in the persistent audio cache.
      */
     private fun readDirect(buffer: ByteArray, offset: Int, length: Int): Int {
-        if (!opusReadAheadEnabled) return upstream.read(buffer, offset, length)
         if (directBytesLeft == 0L) return C.RESULT_END_OF_INPUT
+        if (!opusReadAheadEnabled) {
+            val allowed = if (directBytesLeft > 0L)
+                minOf(length.toLong(), directBytesLeft).toInt() else length
+            val read = upstream.read(buffer, offset, allowed)
+            if (read == C.RESULT_END_OF_INPUT && directBytesLeft > 0L) {
+                throw java.io.EOFException(
+                    "Audio CDN ended a direct bounded read early (remainingBytes=$directBytesLeft)",
+                )
+            }
+            if (read > 0 && directBytesLeft != C.LENGTH_UNSET.toLong()) {
+                directBytesLeft -= read.toLong()
+            }
+            return read
+        }
 
         val requested = if (directBytesLeft > 0L) minOf(length.toLong(), directBytesLeft).toInt() else length
         val read = when {
