@@ -315,6 +315,14 @@ internal class AudioChunkedDataSource(
             }
             else -> upstream.read(buffer, offset, requested)
         }
+        // A small direct file and the tail of a seek bypass chunk slicing.
+        // Declared-size EOF before the requested bytes arrive is NOT the
+        // successful end of the track: surface it to Media3's recovery path.
+        if (read == C.RESULT_END_OF_INPUT && directBytesLeft > 0L) {
+            throw java.io.EOFException(
+                "Audio CDN ended a direct bounded read early (remainingBytes=$directBytesLeft)",
+            )
+        }
         if (read > 0 && directBytesLeft != C.LENGTH_UNSET.toLong()) directBytesLeft -= read.toLong()
         return read
     }
