@@ -68,7 +68,6 @@ internal class NativeMediaCardFallback(private val service: MusicService) {
                 title = player.mediaMetadata.title ?: service.getString(R.string.music_player),
                 artist = player.mediaMetadata.artist ?: "",
                 isPlaying = player.isPlaying,
-                mediaIdAvailable = player.currentMediaItem != null,
             )
             if (!rescueActive) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -124,7 +123,6 @@ internal fun buildNativeMediaCardNotification(
     title: CharSequence,
     artist: CharSequence,
     isPlaying: Boolean,
-    mediaIdAvailable: Boolean,
 ): Notification {
     fun command(action: String, requestCode: Int): PendingIntent =
         PendingIntent.getService(
