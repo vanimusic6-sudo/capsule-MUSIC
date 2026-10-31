@@ -352,12 +352,18 @@ object ExperimentalDownload {
                     val output = provider.openOutputStream(safeUri, "w")
                         ?: throw IllegalStateException("Cannot open downloaded file")
                     output.use { out ->
-                        DownloadYieldingInputStream(conn.inputStream).use { input ->
+                        // WorkManager cancellation must remain observable while waiting
+                        // for the foreground network priority gate, not only
+                        // between physical read() calls.
+                        val coroutine = currentCoroutineContext()
+                        DownloadYieldingInputStream(
+                            conn.inputStream,
+                            checkActive = { coroutine.ensureActive() },
+                        ).use { input ->
                             // WorkManager's independent Audius copy must not saturate
                             // the same network while a foreground YouTube/Audius
                             // player is buffering. This yields reads only and keeps
                             // the original file/MediaStore cancellation contract.
-                            val coroutine = currentCoroutineContext()
                             VerifiedAudioCopy.copy(input, out, size, MAX_BYTES) { coroutine.ensureActive() }
                         }
                     }
