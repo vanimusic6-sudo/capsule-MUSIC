@@ -412,7 +412,7 @@ fun TopPlaylistScreen(
                         )
                     }
                     else -> {
-                        DetailToolbarTitle(playlist, titleMotion)
+                        DetailToolbarTitle(name, titleMotion)
                     }
                 }
             },
