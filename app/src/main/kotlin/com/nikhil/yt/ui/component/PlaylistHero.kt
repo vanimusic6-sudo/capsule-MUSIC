@@ -149,6 +149,7 @@ internal fun CapsuleAlbumControls(
 internal fun PlaylistHero(
     thumbnails: List<String>,
     songCount: String,
+    fallbackThumbnails: List<String> = emptyList(),
     duration: String? = null,
     modifier: Modifier = Modifier,
     @DrawableRes placeholderIcon: Int = R.drawable.queue_music,
@@ -174,9 +175,19 @@ internal fun PlaylistHero(
         titleMotion = titleMotion,
         artwork = {
             val covers = thumbnails.filter(String::isNotBlank).take(4)
-            Box(Modifier.fillMaxSize().background(StandardChrome.panel), contentAlignment = Alignment.Center) {
+            // The full-bleed photo placeholder is a continuation of the
+            // page, NOT a raised card. Otherwise it clashes with the pinned
+            // toolbar until the image arrives (especially under shimmer).
+            Box(Modifier.fillMaxSize().background(bodyBackground), contentAlignment = Alignment.Center) {
                 when (covers.size) {
-                    0 -> if (loading) VeluneLoader(size = 30.dp) else Icon(
+                    0 -> if (loading) VeluneLoader(size = 30.dp) else if (fallbackThumbnails.any(String::isNotBlank)) {
+                        DetailPortraitImage(
+                            thumbnailUrl = fallbackThumbnails.firstOrNull { it.isNotBlank() },
+                            fallbackThumbnailUrls = fallbackThumbnails.drop(1),
+                            background = bodyBackground,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else Icon(
                         painter = painterResource(placeholderIcon),
                         contentDescription = null,
                         modifier = Modifier.size(64.dp),
@@ -184,6 +195,8 @@ internal fun PlaylistHero(
                     )
                     1 -> DetailPortraitImage(
                         thumbnailUrl = covers.first(),
+                        fallbackThumbnailUrls = fallbackThumbnails,
+                        background = bodyBackground,
                         modifier = Modifier.fillMaxSize(),
                     )
                     else -> Column(Modifier.fillMaxSize()) {
@@ -192,6 +205,7 @@ internal fun PlaylistHero(
                                 repeat(2) { column ->
                                     DetailPortraitImage(
                                         thumbnailUrl = covers[(row * 2 + column) % covers.size],
+                                        background = bodyBackground,
                                         minimumPixels = 640,
                                         modifier = Modifier.weight(1f).fillMaxHeight(),
                                     )
