@@ -31,6 +31,33 @@ class CapsuleScrollbarMathTest {
             CapsuleScrollbarMath.fractionForIndex(49, 20, 40, total))
     }
 
+    @Test fun allDiscreteDragPositionsAreMonotonicEvenForChangingLayouts() {
+        for (total in listOf(0, 1, 6, 20, 80, 1200)) {
+            for (visible in listOf(0, 1, 7, 20, 65)) {
+                val last = CapsuleScrollbarMath.lastStartingIndex(total, visible)
+                var previous = 0
+                for (step in 0..500) {
+                    val fraction = step / 500f
+                    val index = CapsuleScrollbarMath.indexForFraction(fraction, last)
+                    assertTrue("A drag must never scroll backwards at a fixed layout", index >= previous)
+                    assertTrue(index in 0..last)
+                    previous = index
+                }
+            }
+        }
+    }
+
+    @Test fun missingItemsAndInvalidDimensionsCannotMakeNaNCoordinates() {
+        for (px in listOf(-100f, 0f, Float.NaN, Float.POSITIVE_INFINITY)) {
+            val offset = CapsuleScrollbarMath.thumbTop(0.5f, px, 72f)
+            assertTrue(offset.isFinite())
+            assertTrue(offset >= 0f)
+        }
+        assertEquals(0f, CapsuleScrollbarMath.fractionForIndex(0, 100, 0, 0), 0f)
+        assertEquals(0f, CapsuleScrollbarMath.fractionForTouch(Float.NaN, 700f, 72f), 0f)
+        assertEquals(0f, CapsuleScrollbarMath.fractionForTouch(0f, 72f, 72f), 0f)
+    }
+
     @Test fun tabReselectCannotStealActiveDrag() {
         assertTrue(mayProgrammaticallyScroll(false))
         assertTrue(!mayProgrammaticallyScroll(true))

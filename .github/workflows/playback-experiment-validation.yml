@@ -51,6 +51,7 @@ jobs:
           gradle :app:testUniversalDebugUnitTest
           --tests 'com.nikhil.yt.playback.*'
           --tests 'com.nikhil.yt.discovery.*'
+          --tests 'com.nikhil.yt.ui.utils.*'
           --stacktrace --no-daemon --max-workers=2
       - name: Test isolated VIDEO extractor
         run: gradle :innertube:test --stacktrace --no-daemon --max-workers=2
