@@ -317,12 +317,19 @@ fun LibraryPlaylistGridItem(
     coroutineScope: CoroutineScope,
     playlist: Playlist,
     modifier: Modifier = Modifier
-) = PlaylistGridItem(
+) {
+    val press = remember { MutableInteractionSource() }
+    val pressed by press.collectIsPressedAsState()
+    PlaylistGridItem(
     playlist = playlist,
     fillMaxWidth = true,
     modifier = modifier
         .fillMaxWidth()
+        .clip(RoundedCornerShape(18.dp))
+        .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = if (pressed) ActiveBoxAlpha else 0f))
         .combinedClickable(
+            interactionSource = press,
+            indication = null,
             onClick = {
                 if (!playlist.playlist.isEditable && playlist.songCount == 0 && playlist.playlist.remoteSongCount != 0)
                     navController.navigate("online_playlist/${playlist.playlist.browseId}")
@@ -369,3 +376,4 @@ fun LibraryPlaylistGridItem(
             }
         )
 )
+}
