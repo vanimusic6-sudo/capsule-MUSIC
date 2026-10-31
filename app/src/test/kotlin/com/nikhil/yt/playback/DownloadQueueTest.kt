@@ -14,6 +14,7 @@ import androidx.media3.exoplayer.scheduler.Requirements
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicBoolean
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -29,17 +30,32 @@ class DownloadQueueTest {
         val provider = StandaloneDatabaseProvider(RuntimeEnvironment.getApplication())
         val started = Collections.synchronizedList(mutableListOf<String>())
         val gates = (1..102).associate { "track-$it" to CountDownLatch(1) }
+        // Cancellation must not be mistaken for a successful download.
+        // A fresh fake downloader instance owns a fresh completion gate.
+        val attemptGates = Collections.synchronizedList(mutableListOf<CountDownLatch>())
         val active = AtomicInteger()
         val maximum = AtomicInteger()
         val index = DefaultDownloadIndex(provider)
         val manager = DownloadManager(RuntimeEnvironment.getApplication(), index, DownloaderFactory { request ->
             object : Downloader {
+                private val cancelled = AtomicBoolean(false)
+                private val gate = if (request.id == "track-1") gates.getValue("track-1")
+                    else CountDownLatch(1).also { attemptGates.add(it) }
+
                 override fun download(listener: Downloader.ProgressListener?) {
                     maximum.accumulateAndGet(active.incrementAndGet(), ::maxOf)
                     started.add(request.id)
-                    try { gates.getValue(request.id).await() } finally { active.decrementAndGet() }
+                    try {
+                        gate.await()
+                        if (cancelled.get()) {
+                            throw java.io.InterruptedIOException("Fake IO cancelled")
+                        }
+                    } finally { active.decrementAndGet() }
                 }
-                override fun cancel() { gates.getValue(request.id).countDown() }
+                override fun cancel() {
+                    cancelled.set(true)
+                    gate.countDown()
+                }
                 override fun remove() {}
             }
         })
@@ -96,7 +112,11 @@ class DownloadQueueTest {
             )
             assertEquals(2, maximum.get())
         } finally {
-            gates.values.forEach { it.countDown() }; queue.close(); manager.release(); provider.close()
+            gates.values.forEach { it.countDown() }
+            attemptGates.forEach { it.countDown() }
+            queue.close()
+            manager.release()
+            provider.close()
         }
     }
     @Test fun pausedCollectionCanResumeItsExistingMedia3Request() {
