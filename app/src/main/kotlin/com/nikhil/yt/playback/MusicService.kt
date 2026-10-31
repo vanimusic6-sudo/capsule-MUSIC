@@ -1866,8 +1866,12 @@ class MusicService :
             reportException(e)
         }
 
-        ensureStartedAsForeground()
-
+        // A bound or idle MediaLibraryService is not a playing foreground service.
+        // Starting a permanent CATEGORY_SERVICE placeholder here predates the
+        // first MediaItem and can be mistaken for the actual Media3 media
+        // notification by OEM media controls. onStartCommand (for
+        // startForegroundService) and onUpdateNotification (actual playback)
+        // still satisfy Android's foreground start requirements.
         
         player =
             ExoPlayer
