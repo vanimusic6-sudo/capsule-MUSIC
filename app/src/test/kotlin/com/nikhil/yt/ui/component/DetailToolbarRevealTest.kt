@@ -1,5 +1,7 @@
 package com.nikhil.yt.ui.component
 
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.ui.unit.Density
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -7,6 +9,19 @@ import org.junit.Test
 class DetailToolbarRevealTest {
     private fun fade(index: Int, offset: Int, bottom: Float = 600f, bar: Float = 100f) =
         detailArtworkFadeLikeArtist(index, offset, bottom, bar)
+
+    @Test fun coverArrivalIsExplicitAndNeverStartsTransparentForever() {
+        val motion = DetailHeaderMotionState(LazyListState(), Density(1f))
+        assertEquals("Unknown artwork is not ready", 0f, motion.isArtworkReady, 0f)
+        assertEquals(0f, motion.artworkAlpha(), 0f)
+        motion.setArtworkReady(true)
+        motion.setArtworkReveal(1f)
+        assertEquals("OnSuccess must make the full bitmap visible", 1f, motion.artworkAlpha(), 0f)
+        motion.setArtworkReady(false)
+        motion.setArtworkReveal(0f)
+        assertEquals("New collection resets the photo and the toolbar as one surface",
+            0f, motion.artworkAlpha(), 0f)
+    }
 
     @Test fun fadeBeginsAtOldScrollPointButCompletesAtSameMeasuredToolbarEdge() {
         // Photo edge = 600px; bar bottom = 100px: 500px scroll travel.
