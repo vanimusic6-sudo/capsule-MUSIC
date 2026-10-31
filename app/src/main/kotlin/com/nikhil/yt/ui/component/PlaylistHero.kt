@@ -12,6 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -162,6 +163,12 @@ internal fun PlaylistHero(
     fallbackThumbnails: List<String> = emptyList(),
     actions: @Composable RowScope.() -> Unit,
 ) {
+    // Reset once per new playlist cover, never once per tile or whenever
+    // asynchronous track fallbacks extend. Otherwise multiple Coil requests
+    // fight over the toolbar's ready flag and produce a short colour flash.
+    LaunchedEffect(thumbnails, titleMotion) {
+        titleMotion?.setArtworkReady(false)
+    }
     val metrics = buildList {
         add(CapsuleHeroMetric(R.drawable.music_note, songCount))
         if (year != null) add(CapsuleHeroMetric(R.drawable.calendar_today, year))
@@ -186,6 +193,7 @@ internal fun PlaylistHero(
                             thumbnailUrl = fallbackThumbnails.firstOrNull { it.isNotBlank() },
                             fallbackThumbnailUrls = fallbackThumbnails.drop(1),
                             background = StandardChrome.background,
+                            artworkMotion = titleMotion,
                             modifier = Modifier.fillMaxSize(),
                         )
                     } else Icon(
@@ -198,6 +206,7 @@ internal fun PlaylistHero(
                         thumbnailUrl = covers.first(),
                         fallbackThumbnailUrls = fallbackThumbnails,
                         background = StandardChrome.background,
+                        artworkMotion = titleMotion,
                         modifier = Modifier.fillMaxSize(),
                     )
                     else -> Column(Modifier.fillMaxSize()) {
@@ -207,6 +216,7 @@ internal fun PlaylistHero(
                                     DetailPortraitImage(
                                         thumbnailUrl = covers[(row * 2 + column) % covers.size],
                                         background = StandardChrome.background,
+                                        artworkMotion = titleMotion,
                                         minimumPixels = 640,
                                         modifier = Modifier.weight(1f).fillMaxHeight(),
                                     )
