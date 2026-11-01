@@ -26,39 +26,22 @@ class DetailToolbarRevealTest {
         assertEquals(0f, empty.toolbarTitleAlpha(), 0f)
     }
 
-    @Test fun captionHandoffIsContinuousMonotoneAndReversible() {
-        var previous = 0f
-        for (i in 0..10000) {
-            val progress = i / 10000f
-            val compact = detailTitleHandoff(progress)
-            assertTrue(compact in 0f..1f)
-            assertTrue(compact >= previous)
-            assertTrue(compact - previous < .001f)
-            assertEquals(1f, compact + (1f - compact), 0f)
-            previous = compact
-        }
-        assertEquals(0f, detailTitleHandoff(0f), 0f)
-        assertEquals(1f, detailTitleHandoff(1f), 0f)
-        assertEquals(.5f, detailTitleHandoff(.89f), .0001f)
-    }
-
-    @Test fun longAndShortCaptionsAlignTheirFirstGlyphAtTheEndpoint() {
-        for (startOffset in listOf(-55f, -180f)) {
-            val translation = detailTitleStartTranslation(1f, .88f, 200f, startOffset, 64f)
-            assertEquals(64f, 200f + startOffset * .88f + translation, .0001f)
-            assertEquals(0f, detailTitleStartTranslation(0f, .88f, 200f, startOffset, 64f), 0f)
-        }
-    }
-
-    @Test fun matchingBaselinesKeepTheFinalGlyphPositionWhenTheSourceHasTwoLines() {
-        for (sourceHeight in listOf(58f, 116f)) {
-            val sourceCenter = 130f
-            val offset = 44f - sourceHeight / 2f
-            val targetBaseline = 96f
-            val scale = .88f
-            val translation = detailTitleBaselineTranslation(1f, scale, sourceCenter, offset, targetBaseline)
-            assertEquals(targetBaseline, sourceCenter + scale * offset + translation, .0001f)
-            assertEquals(0f, detailTitleBaselineTranslation(0f, 1f, sourceCenter, offset, targetBaseline), 0f)
+    @Test fun oneParagraphMovesToItsBaselineWithoutChangingGlyphSpacing() {
+        val target = androidx.compose.ui.geometry.Rect(56f, 25f, 300f, 54f)
+        for (height in listOf(29f, 58f)) {
+            val source = androidx.compose.ui.geometry.Offset(180f, 400f)
+            val start = detailTitleGeometry(0f, .88f, 300f, height, 5f, 22f, 29f, source, 0f, target)
+            assertEquals(30f, start.origin.x, .001f)
+            assertEquals(1f, start.scale, 0f)
+            val end = detailTitleGeometry(1f, .88f, 300f, height, 5f, 22f, 29f, source, 300f, target)
+            assertEquals(56f, end.origin.x + 5f * end.scale, .001f)
+            assertEquals(target, end.clip)
+            assertEquals(.88f, end.scale, 0f)
+            for (i in 0..100) {
+                val g = detailTitleGeometry(i / 100f, .88f, 300f, height, 5f, 22f, 29f, source, 100f, target)
+                assertEquals("Every glyph uses the same uniform scale", 80f * g.scale,
+                    (g.origin.x + 85f * g.scale) - (g.origin.x + 5f * g.scale), .0001f)
+            }
         }
     }
 

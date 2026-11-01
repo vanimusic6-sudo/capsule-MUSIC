@@ -97,6 +97,7 @@ import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.Download.STATE_COMPLETED
 import androidx.media3.exoplayer.offline.Download.STATE_DOWNLOADING
 import androidx.media3.exoplayer.offline.Download.STATE_QUEUED
+import androidx.compose.ui.graphics.graphicsLayer
 import coil3.compose.AsyncImage
 import coil3.request.crossfade
 import coil3.request.ImageRequest
@@ -1293,6 +1294,11 @@ fun ItemThumbnail(
 
         if (albumIndex == null) {
             if (shouldLoadImage) {
+                // Coil's native crossfade is disabled here; it also skips memory-cache hits.
+                // Reveal decoded pixels once for this visible artwork identity without a
+                // perpetual shimmer or a second image request.
+                var decoded by remember(thumbnailUrl) { androidx.compose.runtime.mutableStateOf(false) }
+                val arrival = rememberArtworkArrivalAlpha(thumbnailUrl, decoded)
                 val request = remember(thumbnailUrl, widthPx, heightPx, thumbnailRatio, artworkRequestPixels) {
                     ImageRequest.Builder(context)
                         .data(capsuleArtworkUrl(thumbnailUrl, artworkRequestPixels ?: thumbnailRequestPixels(widthPx, heightPx)))
@@ -1308,11 +1314,10 @@ fun ItemThumbnail(
                 AsyncImage(
                     model = request,
                     contentDescription = null,
+                    onSuccess = { decoded = true },
                     colorFilter = if (unavailableReason != null) ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }) else null,
                     contentScale = if (shouldApplySquareCrop) ContentScale.Crop else ContentScale.Fit,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        
+                    modifier = Modifier.fillMaxSize().graphicsLayer { alpha = arrival.value }
                 )
             } else {
                 Box(
