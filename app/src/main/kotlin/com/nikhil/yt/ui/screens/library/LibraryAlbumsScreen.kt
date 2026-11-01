@@ -7,6 +7,8 @@
 
 
 package com.nikhil.yt.ui.screens.library
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
+import com.nikhil.yt.ui.utils.scrollToTopIfIdle
 
 
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -40,7 +42,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -179,19 +180,9 @@ fun LibraryAlbumsScreen(
     val lazyListState = rememberLazyListState()
     val lazyGridState = rememberLazyGridState()
     val pullRefreshState = rememberPullToRefreshState()
-    // Pull-to-refresh is a top-edge gesture only. Keeping its nested-scroll
-    // recognizer active halfway down the album grid can steal a slow finger
-    // drag and start a refresh / content reposition unexpectedly.
-    val canPullRefresh by remember(viewType, lazyListState, lazyGridState) {
-        derivedStateOf {
-            when (viewType) {
-                LibraryViewType.LIST ->
-                    lazyListState.firstVisibleItemIndex == 0 && lazyListState.firstVisibleItemScrollOffset == 0
-                LibraryViewType.GRID ->
-                    lazyGridState.firstVisibleItemIndex == 0 && lazyGridState.firstVisibleItemScrollOffset == 0
-            }
-        }
-    }
+    // Keep the modifier stable while a pointer is down. Material3 pull-to-refresh
+    // receives only the unconsumed scroll when the child reaches its top bound;
+    // switching enabled every frame at index/offset zero resets gesture ownership.
     // This screen's own entry: it cannot be destroyed while this composition is alive,
     // and observing it does not recompose the screen on unrelated navigation.
     val backStackEntry = LocalNavBackStackEntry.current
@@ -200,11 +191,11 @@ fun LibraryAlbumsScreen(
 
     LaunchedEffect(scrollToTop?.value) {
         if (scrollToTop?.value == true) {
-            when (viewType) {
-                LibraryViewType.LIST -> lazyListState.animateScrollToItem(0)
-                LibraryViewType.GRID -> lazyGridState.animateScrollToItem(0)
-            }
             backStackEntry?.liveSavedStateHandle()?.set("scrollToTop", false)
+            when (viewType) {
+                LibraryViewType.LIST -> lazyListState.scrollToTopIfIdle()
+                LibraryViewType.GRID -> lazyGridState.scrollToTopIfIdle()
+            }
         }
     }
 
@@ -266,12 +257,14 @@ fun LibraryAlbumsScreen(
                     state = pullRefreshState,
                     isRefreshing = isRefreshing,
                     onRefresh = { if (ytmSync) viewModel.refresh(filter) },
-                    enabled = ytmSync && canPullRefresh,
+                    enabled = ytmSync,
                 ),
     ) {
         when (viewType) {
             LibraryViewType.LIST ->
                 LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
                     state = lazyListState,
                     contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
                 ) {
@@ -319,6 +312,8 @@ fun LibraryAlbumsScreen(
 
             LibraryViewType.GRID ->
                 LazyVerticalGrid(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
                     state = lazyGridState,
                     columns =
                     GridCells.Adaptive(

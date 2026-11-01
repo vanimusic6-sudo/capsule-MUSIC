@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import androidx.compose.animation.AnimatedContent
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
@@ -158,7 +159,8 @@ fun AccountSettings(
                 LocalPlayerAwareWindowInsets.current
                     .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom),
             )
-            .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior())
+            .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior(),
+            overscrollEffect = null)
     ) {
         // Header Section
         AccountSettingsHeader(onClose = onClose)
@@ -914,6 +916,7 @@ private fun PlaylistSelectionDialog(onDismiss: () -> Unit) {
                 }
             } else {
                 LazyColumn(
+            overscrollEffect = null,
             flingBehavior = rememberSettingsFlingBehavior(),
                     modifier = Modifier.height(400.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)

@@ -7,6 +7,10 @@
 
 
 package com.nikhil.yt.ui.screens.library
+import com.nikhil.yt.ui.utils.rememberCapsuleReorderEdgePadding
+import com.nikhil.yt.ui.utils.rememberCapsuleReorderScroller
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
+import com.nikhil.yt.ui.utils.scrollToTopIfIdle
 
 
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -246,7 +250,9 @@ fun LibraryMixScreen(
     var dragInfo by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     val reorderableState = rememberReorderableLazyListState(
         lazyListState = lazyListState,
-        scrollThresholdPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+        scrollThresholdPadding = rememberCapsuleReorderEdgePadding(),
+        scrollThreshold = 32.dp,
+        scroller = rememberCapsuleReorderScroller(lazyListState),
     ) { from, to ->
         if (!canReorderPlaylists) return@rememberReorderableLazyListState
         if (from.index < listHeaderItems || to.index < listHeaderItems) return@rememberReorderableLazyListState
@@ -349,11 +355,11 @@ fun LibraryMixScreen(
 
     LaunchedEffect(scrollToTop?.value) {
         if (scrollToTop?.value == true) {
-            when (viewType) {
-                LibraryViewType.LIST -> lazyListState.animateScrollToItem(0)
-                LibraryViewType.GRID -> lazyGridState.animateScrollToItem(0)
-            }
             backStackEntry?.liveSavedStateHandle()?.set("scrollToTop", false)
+            when (viewType) {
+                LibraryViewType.LIST -> lazyListState.scrollToTopIfIdle()
+                LibraryViewType.GRID -> lazyGridState.scrollToTopIfIdle()
+            }
         }
     }
 
@@ -424,6 +430,8 @@ fun LibraryMixScreen(
         when (viewType) {
             LibraryViewType.LIST ->
                 LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
                     state = lazyListState,
                     contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
                 ) {
@@ -762,6 +770,8 @@ fun LibraryMixScreen(
 
             LibraryViewType.GRID ->
                 LazyVerticalGrid(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
                     state = lazyGridState,
                     columns =
                     GridCells.Adaptive(

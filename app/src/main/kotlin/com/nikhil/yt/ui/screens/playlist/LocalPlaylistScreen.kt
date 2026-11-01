@@ -6,6 +6,9 @@
 
 
 package com.nikhil.yt.ui.screens.playlist
+import com.nikhil.yt.ui.utils.rememberCapsuleReorderEdgePadding
+import com.nikhil.yt.ui.utils.rememberCapsuleReorderScroller
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import com.nikhil.yt.ui.component.PlaylistAction
@@ -316,7 +319,9 @@ fun LocalPlaylistScreen(
     var dragInfo by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     val reorderableState = rememberReorderableLazyListState(
         lazyListState = lazyListState,
-        scrollThresholdPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues()
+        scrollThresholdPadding = rememberCapsuleReorderEdgePadding(),
+        scrollThreshold = 32.dp,
+        scroller = rememberCapsuleReorderScroller(lazyListState)
     ) { from, to ->
         if (to.index >= headerItems && from.index >= headerItems) {
             val currentDragInfo = dragInfo
@@ -380,6 +385,8 @@ fun LocalPlaylistScreen(
         )
 
         LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
             state = lazyListState,
             contentPadding = LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime)
                     .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom).asPaddingValues(),

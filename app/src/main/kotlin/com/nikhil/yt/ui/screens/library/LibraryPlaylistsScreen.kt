@@ -7,6 +7,10 @@
 
 
 package com.nikhil.yt.ui.screens.library
+import com.nikhil.yt.ui.utils.rememberCapsuleReorderEdgePadding
+import com.nikhil.yt.ui.utils.rememberCapsuleReorderScroller
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
+import com.nikhil.yt.ui.utils.scrollToTopIfIdle
 
 
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -116,7 +120,6 @@ import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.extensions.move
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.util.UUID
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
@@ -168,45 +171,41 @@ fun LibraryPlaylistsScreen(
 
     val topSize by viewModel.topValue.collectAsState(initial = 50)
 
-    val likedPlaylist =
+    // Match LibraryMixScreen: synthetic tiles must keep stable IDs across
+    // recomposition. Random UUIDs here made every scroll/selection invalidate
+    // four visible cards and could disturb lazy layout anchoring.
+    val likedName = stringResource(R.string.liked)
+    val likedPlaylist = remember(likedName) {
         Playlist(
-            playlist = PlaylistEntity(
-                id = UUID.randomUUID().toString(),
-                name = stringResource(R.string.liked)
-            ),
+            playlist = PlaylistEntity(id = "capsule:library:liked", name = likedName),
             songCount = 0,
             songThumbnails = emptyList(),
         )
-
-    val downloadPlaylist =
+    }
+    val downloadName = stringResource(R.string.offline)
+    val downloadPlaylist = remember(downloadName) {
         Playlist(
-            playlist = PlaylistEntity(
-                id = UUID.randomUUID().toString(),
-                name = stringResource(R.string.offline)
-            ),
+            playlist = PlaylistEntity(id = "capsule:library:downloaded", name = downloadName),
             songCount = 0,
             songThumbnails = emptyList(),
         )
-
-    val topPlaylist =
+    }
+    val topName = stringResource(R.string.my_top) + " $topSize"
+    val topPlaylist = remember(topName) {
         Playlist(
-            playlist = PlaylistEntity(
-                id = UUID.randomUUID().toString(),
-                name = stringResource(R.string.my_top) + " $topSize"
-            ),
+            playlist = PlaylistEntity(id = "capsule:library:top", name = topName),
             songCount = 0,
             songThumbnails = emptyList(),
         )
-
-    val cachePlaylist =
+    }
+    val cacheName = stringResource(R.string.cached_playlist)
+    val cachePlaylist = remember(cacheName) {
         Playlist(
-            playlist = PlaylistEntity(
-                id = UUID.randomUUID().toString(),
-                name = stringResource(R.string.cached_playlist)
-            ),
+            playlist = PlaylistEntity(id = "capsule:library:cached", name = cacheName),
             songCount = 0,
             songThumbnails = emptyList(),
         )
+    }
 
     val (showLiked) = rememberPreference(ShowLikedPlaylistKey, true)
     val (showDownloaded) = rememberPreference(ShowDownloadedPlaylistKey, true)
@@ -228,7 +227,9 @@ fun LibraryPlaylistsScreen(
     var dragInfo by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     val reorderableState = rememberReorderableLazyListState(
         lazyListState = lazyListState,
-        scrollThresholdPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
+        scrollThresholdPadding = rememberCapsuleReorderEdgePadding(),
+        scrollThreshold = 32.dp,
+        scroller = rememberCapsuleReorderScroller(lazyListState),
     ) { from, to ->
         if (!canReorderPlaylists) return@rememberReorderableLazyListState
         if (from.index < listHeaderItems || to.index < listHeaderItems) return@rememberReorderableLazyListState
@@ -304,11 +305,11 @@ fun LibraryPlaylistsScreen(
 
     LaunchedEffect(scrollToTop?.value) {
         if (scrollToTop?.value == true) {
-            when (viewType) {
-                LibraryViewType.LIST -> lazyListState.animateScrollToItem(0)
-                LibraryViewType.GRID -> lazyGridState.animateScrollToItem(0)
-            }
             backStackEntry?.liveSavedStateHandle()?.set("scrollToTop", false)
+            when (viewType) {
+                LibraryViewType.LIST -> lazyListState.scrollToTopIfIdle()
+                LibraryViewType.GRID -> lazyGridState.scrollToTopIfIdle()
+            }
         }
     }
 
@@ -592,6 +593,8 @@ fun LibraryPlaylistsScreen(
         when (viewType) {
             LibraryViewType.LIST -> {
                 LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
                     state = lazyListState,
                     contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
                 ) {
@@ -739,6 +742,8 @@ fun LibraryPlaylistsScreen(
 
             LibraryViewType.GRID -> {
                 LazyVerticalGrid(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
                     state = lazyGridState,
                     columns =
                     GridCells.Adaptive(

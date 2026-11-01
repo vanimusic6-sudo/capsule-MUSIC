@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.component
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import android.content.Intent
 import android.net.Uri
@@ -130,7 +131,9 @@ fun DefaultDialog(
                         if (contentScrollable) {
                             Modifier
                                 .weight(1f, fill = false)
-                                .verticalScroll(rememberScrollState())
+                                .verticalScroll(rememberScrollState(),
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null)
                         } else {
                             Modifier
                         }
@@ -304,6 +307,8 @@ fun ListDialog(
                     modifier = modifier.padding(vertical = 12.dp),
                 ) {
                     LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
                         modifier = Modifier.heightIn(max = listMaxHeight),
                         content = content,
                     )

@@ -7,8 +7,10 @@
 
 
 package com.nikhil.yt.ui.screens
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.utils.liveSavedStateHandle
+import com.nikhil.yt.ui.utils.scrollToTopIfIdle
 import com.nikhil.yt.ui.component.StandardChrome
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -36,7 +38,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
@@ -61,7 +62,6 @@ import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.NavigationTitle
-import com.nikhil.yt.ui.utils.SnapLayoutInfoProvider
 import com.nikhil.yt.viewmodels.HomeViewModel
 import com.nikhil.yt.constants.ExperimentalSourcesEnabledKey
 import com.nikhil.yt.constants.HomeFeedSourcesKey
@@ -132,11 +132,6 @@ fun HomeScreen(
 
     val scope = rememberCoroutineScope()
     val lazylistState = rememberLazyListState()
-    // During vertical motion, sideways drags must not turn the recommendation carousels.
-    // Their ordinary horizontal gestures remain available when the feed is idle.
-    val horizontalShelvesEnabled = remember(lazylistState) {
-        derivedStateOf { !lazylistState.isScrollInProgress }
-    }
     // This screen's own entry: it cannot be destroyed while this composition is alive,
     // and observing it does not recompose the screen on unrelated navigation.
     val backStackEntry = LocalNavBackStackEntry.current
@@ -148,7 +143,7 @@ fun HomeScreen(
             // Consume navigation request before any suspend point. An old
             // reselect must not hijack an in-progress finger fling.
             backStackEntry?.liveSavedStateHandle()?.set("scrollToTop", false)
-            if (!lazylistState.isScrollInProgress) lazylistState.scrollToItem(0)
+            lazylistState.scrollToTopIfIdle()
         }
     }
 
@@ -185,18 +180,11 @@ fun HomeScreen(
         ) {
             val horizontalLazyGridItemWidthFactor = if (maxWidth * 0.475f >= 320.dp) 0.475f else 0.9f
             val horizontalLazyGridItemWidth = maxWidth * horizontalLazyGridItemWidthFactor
-            val forgottenFavoritesSnapLayoutInfoProvider = remember(forgottenFavoritesLazyGridState, horizontalLazyGridItemWidthFactor) {
-                SnapLayoutInfoProvider(
-                    lazyGridState = forgottenFavoritesLazyGridState,
-                    positionInLayout = { layoutSize, itemSize ->
-                        (layoutSize * horizontalLazyGridItemWidthFactor / 2f - itemSize / 2f)
-                    }
-                )
-            }
 
             // One natural scroll surface. Greeting and controls are simply
             // the first row of the feed: no independent element/animation.
             LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
                 state = lazylistState,
                 verticalArrangement = Arrangement.spacedBy(18.dp),
                 contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
@@ -208,7 +196,7 @@ fun HomeScreen(
                 item(key = "home:quick-hero") {
                     QuickPicksSection(
                         quickPicks = picks,
-                        userScrollEnabled = horizontalShelvesEnabled.value,
+                        userScrollEnabled = true,
                         mediaMetadata = mediaMetadata,
                         isPlaying = isPlaying,
                         navController = navController,
@@ -226,7 +214,7 @@ fun HomeScreen(
                         NavigationTitle(title = stringResource(R.string.keep_listening))
                         KeepListeningSection(
                             keepListening = songs,
-                            userScrollEnabled = horizontalShelvesEnabled.value,
+                            userScrollEnabled = true,
                             mediaMetadata = mediaMetadata,
                             isPlaying = isPlaying,
                             navController = navController,
@@ -242,7 +230,7 @@ fun HomeScreen(
                 item(key = "home:taste") {
                     TasteRecommendationsSection(
                         suggestions = suggestions,
-                        userScrollEnabled = horizontalShelvesEnabled.value,
+                        userScrollEnabled = true,
                         mediaMetadata = mediaMetadata,
                         isPlaying = isPlaying,
                         navController = navController,
@@ -263,7 +251,7 @@ fun HomeScreen(
                         title = stringResource(R.string.capsule_discovery_home_title),
                         source = null,
                         tracks = beyond,
-                        userScrollEnabled = horizontalShelvesEnabled.value,
+                        userScrollEnabled = true,
                         playerConnection = playerConnection,
                         navController = navController,
                     )
@@ -274,7 +262,7 @@ fun HomeScreen(
                             title = lane.source.label + " · " + (lane.titleRes?.let { stringResource(it) } ?: catalogLaneTitle(lane.kind)),
                             source = lane.source,
                             tracks = lane.tracks,
-                            userScrollEnabled = horizontalShelvesEnabled.value,
+                            userScrollEnabled = true,
                             playerConnection = playerConnection,
                             navController = navController,
                         )
@@ -316,7 +304,7 @@ fun HomeScreen(
                         )
                         HomePageSectionContent(
                             section = releases,
-                            userScrollEnabled = horizontalShelvesEnabled.value,
+                            userScrollEnabled = true,
                             mediaMetadata = mediaMetadata,
                             isPlaying = isPlaying,
                             navController = navController,
@@ -335,12 +323,11 @@ fun HomeScreen(
                         NavigationTitle(title = stringResource(R.string.forgotten_favorites))
                         ForgottenFavoritesSection(
                             forgottenFavorites = favorites,
-                            userScrollEnabled = horizontalShelvesEnabled.value,
+                            userScrollEnabled = true,
                             mediaMetadata = mediaMetadata,
                             isPlaying = isPlaying,
                             horizontalLazyGridItemWidth = horizontalLazyGridItemWidth,
                             lazyGridState = forgottenFavoritesLazyGridState,
-                            snapLayoutInfoProvider = forgottenFavoritesSnapLayoutInfoProvider,
                             navController = navController,
                             playerConnection = playerConnection,
                             menuState = menuState,
@@ -360,7 +347,7 @@ fun HomeScreen(
                                 endpoint = null, items = playlists,
                             )
                         }.copy(title = stringResource(R.string.home_community_playlists)),
-                        userScrollEnabled = horizontalShelvesEnabled.value,
+                        userScrollEnabled = true,
                         mediaMetadata = mediaMetadata,
                         isPlaying = isPlaying,
                         navController = navController,
@@ -392,7 +379,7 @@ fun HomeScreen(
                     if (isPlaylistCarousel) {
                         CommunityPlaylistsSection(
                             section = section,
-                            userScrollEnabled = horizontalShelvesEnabled.value,
+                            userScrollEnabled = true,
                             mediaMetadata = mediaMetadata,
                             isPlaying = isPlaying,
                             navController = navController,
@@ -409,7 +396,7 @@ fun HomeScreen(
                             )
                             HomePageSectionContent(
                                 section = section,
-                                userScrollEnabled = horizontalShelvesEnabled.value,
+                                userScrollEnabled = true,
                                 mediaMetadata = mediaMetadata,
                                 isPlaying = isPlaying,
                                 navController = navController,

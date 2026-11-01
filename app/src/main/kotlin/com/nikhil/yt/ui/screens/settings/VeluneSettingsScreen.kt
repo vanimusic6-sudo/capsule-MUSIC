@@ -3,6 +3,8 @@
  */
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
+import com.nikhil.yt.ui.utils.scrollToTopIfIdle
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
@@ -110,7 +112,7 @@ fun VeluneSettingsScreen(
         if (previousSettingsMode != advancedSettings) {
             previousSettingsMode = advancedSettings
             if (listState.firstVisibleItemIndex > 0) {
-                listState.animateScrollToItem(0)
+                listState.scrollToTopIfIdle()
             }
         }
     }
@@ -175,8 +177,9 @@ fun VeluneSettingsScreen(
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         LazyColumn(
+            overscrollEffect = null,
             state = listState,
-            flingBehavior = rememberSettingsFlingBehavior(),
+            flingBehavior = rememberCapsuleFlingBehavior(),
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)

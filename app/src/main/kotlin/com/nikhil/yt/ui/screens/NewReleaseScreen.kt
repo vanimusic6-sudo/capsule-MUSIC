@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.screens
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -89,6 +90,8 @@ fun NewReleaseScreen(
                 .nestedScroll(scrollBehavior.nestedScrollConnection),
     ) {
         LazyVerticalGrid(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
             columns = GridCells.Adaptive(minSize = GridThumbnailHeight + 24.dp),
             contentPadding = LocalPlayerAwareWindowInsets.current
             .add(WindowInsets(top = com.nikhil.yt.constants.AppBarHeight))

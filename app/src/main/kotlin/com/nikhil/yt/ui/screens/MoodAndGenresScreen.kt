@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.screens
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import android.content.res.Configuration.ORIENTATION_LANDSCAPE
 import androidx.compose.foundation.background
@@ -63,6 +64,8 @@ fun MoodAndGenresScreen(
     val moodAndGenresList by viewModel.moodAndGenres.collectAsState()
 
     LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
         contentPadding = LocalPlayerAwareWindowInsets.current
             .add(WindowInsets(top = com.nikhil.yt.constants.AppBarHeight))
             .asPaddingValues(),

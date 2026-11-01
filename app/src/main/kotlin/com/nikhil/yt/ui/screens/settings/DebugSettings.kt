@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.BuildConfig
 import com.nikhil.yt.innertube.CapsuleVideoRequestGuard
@@ -180,7 +181,8 @@ fun DebugSettings(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior())
+                .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior(),
+            overscrollEffect = null)
                 .padding(bottom = settingsBottomContentPadding()),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -719,6 +721,7 @@ private fun LogViewerPanel() {
                     EmptyLogPlaceholder()
                 } else {
                     LazyColumn(
+            overscrollEffect = null,
             flingBehavior = rememberSettingsFlingBehavior(),
                         state = listState,
                         modifier = Modifier

@@ -1,4 +1,5 @@
 package com.nikhil.yt.ui.screens.search
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.capsulePressClickable
 import com.nikhil.yt.ui.component.capsulePressCombinedClickable
@@ -237,6 +238,8 @@ fun OnlineSearchResult(
     }
 
     LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
         state = listState,
         contentPadding = LocalPlayerAwareWindowInsets.current
             .add(WindowInsets(top = AppBarHeight + SearchFilterHeight + 8.dp))
@@ -253,7 +256,9 @@ fun OnlineSearchResult(
             }
             item(key = "experimental-filters") {
                 Row(
-                    Modifier.horizontalScroll(rememberScrollState())
+                    Modifier.horizontalScroll(rememberScrollState(),
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null)
                         .padding(horizontal = 16.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {

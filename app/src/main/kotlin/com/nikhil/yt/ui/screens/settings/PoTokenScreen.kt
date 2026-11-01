@@ -5,6 +5,7 @@
  */
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import android.app.Activity
 import android.content.Intent
@@ -260,7 +261,8 @@ fun PoTokenScreen(
             .windowInsetsPadding(
                 LocalPlayerAwareWindowInsets.current.only(WindowInsetsSides.Horizontal)
             )
-            .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior())
+            .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior(),
+            overscrollEffect = null)
             .padding(bottom = settingsBottomContentPadding())
             .animateContentSize(
                 animationSpec = spring(stiffness = Spring.StiffnessMediumLow)

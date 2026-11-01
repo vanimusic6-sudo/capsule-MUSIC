@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.screens
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
  
  import androidx.compose.foundation.ExperimentalFoundationApi
  import androidx.compose.foundation.combinedClickable
@@ -69,6 +70,8 @@ import androidx.compose.foundation.layout.asPaddingValues
      val coroutineScope = rememberCoroutineScope()
  
      LazyVerticalGrid(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
          columns = GridCells.Adaptive(minSize = GridThumbnailHeight + 24.dp),
          contentPadding = LocalPlayerAwareWindowInsets.current
             .add(WindowInsets(top = com.nikhil.yt.constants.AppBarHeight))

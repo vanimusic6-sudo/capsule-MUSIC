@@ -1,4 +1,5 @@
 package com.nikhil.yt.ui.player
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
 import androidx.compose.foundation.background
@@ -326,7 +327,9 @@ internal fun CapsulePlayerLayout(
             } else {
                 Column(
                     modifier = Modifier.fillMaxWidth().nestedScroll(queueScroll)
-                        .verticalScroll(scrollState, enabled = scrollState.maxValue > 0),
+                        .verticalScroll(scrollState, enabled = scrollState.maxValue > 0,
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Spacer(Modifier.height(8.dp))

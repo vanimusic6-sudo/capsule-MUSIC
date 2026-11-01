@@ -7,13 +7,13 @@
 
 
 package com.nikhil.yt.ui.screens
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -42,6 +42,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.nikhil.yt.innertube.models.*
 import com.nikhil.yt.ui.utils.liveSavedStateHandle
+import com.nikhil.yt.ui.utils.scrollToTopIfIdle
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
@@ -52,13 +53,13 @@ import com.nikhil.yt.playback.queues.YouTubeQueue
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.NavigationTitle
 import com.nikhil.yt.ui.component.YouTubeGridItem
+import com.nikhil.yt.ui.component.gridShelfHeight
 import com.nikhil.yt.ui.component.YouTubeListItem
 import com.nikhil.yt.ui.component.shimmer.GridItemPlaceHolder
 import com.nikhil.yt.ui.component.shimmer.ShimmerHost
 import com.nikhil.yt.ui.component.shimmer.TextPlaceholder
 import com.nikhil.yt.ui.menu.YouTubeAlbumMenu
 import com.nikhil.yt.ui.menu.YouTubeSongMenu
-import com.nikhil.yt.ui.utils.SnapLayoutInfoProvider
 import com.nikhil.yt.viewmodels.ChartsViewModel
 import com.nikhil.yt.viewmodels.ExploreViewModel
 
@@ -100,8 +101,8 @@ fun ExploreScreen(
 
     LaunchedEffect(scrollToTop) {
         if (scrollToTop) {
-            scrollState.animateScrollTo(0)
             backStackEntry?.liveSavedStateHandle()?.set("scrollToTop", false)
+            scrollState.scrollToTopIfIdle()
         }
     }
 
@@ -109,7 +110,9 @@ fun ExploreScreen(
         modifier = Modifier.fillMaxSize(),
     ) {
         Column(
-            modifier = Modifier.verticalScroll(scrollState),
+            modifier = Modifier.verticalScroll(scrollState,
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null),
         ) {
             Spacer(
                 Modifier.height(
@@ -130,6 +133,9 @@ fun ExploreScreen(
                         val horizontalLazyGridItemWidth = maxWidth * horizontalLazyGridItemWidthFactor
 
                         LazyHorizontalGrid(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
+                        
                             rows = GridCells.Fixed(4),
                             contentPadding = PaddingValues(start = 4.dp),
                             modifier = Modifier
@@ -231,19 +237,12 @@ fun ExploreScreen(
                         val horizontalLazyGridItemWidth = maxWidth * horizontalLazyGridItemWidthFactor
 
                         val lazyGridState = rememberLazyGridState()
-                        val snapLayoutInfoProvider = remember(lazyGridState) {
-                            SnapLayoutInfoProvider(
-                                lazyGridState = lazyGridState,
-                                positionInLayout = { layoutSize, itemSize ->
-                                    (layoutSize * horizontalLazyGridItemWidthFactor / 2f - itemSize / 2f)
-                                },
-                            )
-                        }
-
                         LazyHorizontalGrid(
+            overscrollEffect = null,
+                            
                             state = lazyGridState,
                             rows = GridCells.Fixed(4),
-                            flingBehavior = rememberSnapFlingBehavior(snapLayoutInfoProvider),
+                            flingBehavior = rememberCapsuleFlingBehavior(),
                             contentPadding = WindowInsets.systemBars
                                 .only(WindowInsetsSides.Horizontal)
                                 .asPaddingValues(),
@@ -318,6 +317,12 @@ fun ExploreScreen(
                         },
                     )
                     LazyRow(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
+                        
+                        // Cards have different metadata line counts; do not let
+                        // horizontal swipes remeasure the vertical Explore feed.
+                        modifier = Modifier.fillMaxWidth().height(gridShelfHeight()),
                         contentPadding = WindowInsets.systemBars
                             .only(WindowInsetsSides.Horizontal)
                             .asPaddingValues(),
@@ -358,6 +363,12 @@ fun ExploreScreen(
                         title = stringResource(R.string.top_music_videos),
                     )
                     LazyRow(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
+                        
+                        // Cards have different metadata line counts; do not let
+                        // horizontal swipes remeasure the vertical Explore feed.
+                        modifier = Modifier.fillMaxWidth().height(gridShelfHeight()),
                         contentPadding = WindowInsets.systemBars
                             .only(WindowInsetsSides.Horizontal)
                             .asPaddingValues(),
@@ -410,6 +421,9 @@ fun ExploreScreen(
                         },
                     )
                     LazyHorizontalGrid(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
+                        
                         rows = GridCells.Fixed(4),
                         contentPadding = PaddingValues(6.dp),
                         modifier = Modifier.height((MoodAndGenresButtonHeight + 12.dp) * 4 + 12.dp),

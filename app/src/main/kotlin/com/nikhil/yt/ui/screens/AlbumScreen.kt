@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.screens
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.material3.Button
@@ -90,6 +91,7 @@ import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.NavigationTitle
 import com.nikhil.yt.ui.component.SongListItem
 import com.nikhil.yt.ui.component.YouTubeGridItem
+import com.nikhil.yt.ui.component.gridShelfHeight
 import com.nikhil.yt.ui.component.shimmer.ListItemPlaceHolder
 import com.nikhil.yt.ui.component.shimmer.ShimmerHost
 import com.nikhil.yt.ui.menu.AlbumMenu
@@ -364,7 +366,12 @@ fun AlbumScreen(
                         )
                     }
                     item(key = "other_versions_list") {
-                        LazyRow {
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth().height(gridShelfHeight()),
+                            flingBehavior = rememberCapsuleFlingBehavior(),
+                            
+                            overscrollEffect = null,
+                        ) {
                             items(
                                 items = otherVersions.distinctBy { it.id },
                                 key = { it.id },

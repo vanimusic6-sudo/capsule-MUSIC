@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.screens
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -122,6 +123,8 @@ fun ChartsScreen(
                             val horizontalLazyGridItemWidth = maxWidth * horizontalLazyGridItemWidthFactor
 
                             LazyHorizontalGrid(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
                                 rows = GridCells.Fixed(4),
                                 contentPadding = PaddingValues(start = 4.dp),
                                 modifier = Modifier
@@ -179,6 +182,8 @@ fun ChartsScreen(
                 }
             } else {
                 LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
                     state = lazyListState,
                     contentPadding = LocalPlayerAwareWindowInsets.current
                         .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
@@ -210,6 +215,7 @@ fun ChartsScreen(
                                 }
 
                                 LazyHorizontalGrid(
+            overscrollEffect = null,
                                     state = lazyGridState,
                                     rows = GridCells.Fixed(4),
                                     flingBehavior = rememberSnapFlingBehavior(snapLayoutInfoProvider),
@@ -290,6 +296,8 @@ fun ChartsScreen(
                         }
                         item {
                             LazyRow(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
                                 contentPadding = WindowInsets.systemBars
                                     .only(WindowInsetsSides.Horizontal)
                                     .asPaddingValues(),

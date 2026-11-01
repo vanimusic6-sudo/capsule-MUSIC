@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.screens.artist
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -102,6 +103,8 @@ fun ArtistAlbumsScreen(
         modifier = Modifier.fillMaxSize()
     ) {
         LazyVerticalGrid(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
             state = lazyGridState,
             columns = GridCells.Adaptive(minSize = GridThumbnailHeight + 24.dp),
             contentPadding = LocalPlayerAwareWindowInsets.current

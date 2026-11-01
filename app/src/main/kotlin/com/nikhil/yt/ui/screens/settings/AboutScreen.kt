@@ -5,6 +5,7 @@
  */
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -230,6 +231,7 @@ fun AboutScreen(
         containerColor = Color.Transparent,
     ) { innerPadding ->
         LazyColumn(
+            overscrollEffect = null,
             flingBehavior = rememberSettingsFlingBehavior(),
             modifier =
                 Modifier

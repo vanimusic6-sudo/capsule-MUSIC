@@ -2,9 +2,12 @@
 androidGradlePlugin = "9.3.1"
 annotation = "1.9.1"
 kotlin = "2.4.21"
-compose = "1.12.1"
+# Foundation owns drag arbitration. 1.12.1 can lose a caught fling to a nested
+# cross-axis child (b/532946466) and mishandles stationary MOVE (b/524163413).
+# Keep it aligned with the already-used UI/runtime/animation fix release.
+compose = "1.13.0-beta02"
 # Official SeekableTransitionState NaN fix (b/555294641). AndroidX aligns UI transitively.
-# Foundation and Material keep their existing versions; no app motion specs change.
+# Material keeps its existing version; app motion specs are unchanged.
 composeAnimation = "1.13.0-beta02"
 composeRuntime = "1.13.0-beta02"
 composeUi = "1.13.0-beta02"

@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.screens
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 // Natural feed header: moves with content, not via a floating offset.
 
@@ -316,6 +317,8 @@ fun HistoryScreen(
         }
 
         LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
             state = lazyListState,
             // When the contextual search/selection bar is open it sits below
             // the pinned Activity header, never behind it or over the first row.

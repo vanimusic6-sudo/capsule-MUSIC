@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.screens
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.runtime.rememberCoroutineScope
@@ -18,7 +19,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -118,7 +118,6 @@ import com.nikhil.yt.ui.menu.YouTubeAlbumMenu
 import com.nikhil.yt.ui.menu.YouTubeArtistMenu
 import com.nikhil.yt.ui.menu.YouTubePlaylistMenu
 import com.nikhil.yt.ui.menu.YouTubeSongMenu
-import androidx.compose.foundation.gestures.snapping.SnapLayoutInfoProvider
 import com.nikhil.yt.innertube.pages.MoodAndGenres
 import kotlin.math.min
 
@@ -441,7 +440,6 @@ fun ForgottenFavoritesSection(
     isPlaying: Boolean,
     horizontalLazyGridItemWidth: Dp,
     lazyGridState: LazyGridState,
-    snapLayoutInfoProvider: SnapLayoutInfoProvider,
     navController: NavController,
     playerConnection: PlayerConnection,
     menuState: MenuState,
@@ -453,11 +451,12 @@ fun ForgottenFavoritesSection(
     val distinctForgottenFavorites = remember(forgottenFavorites) { forgottenFavorites.distinctBy { it.id } }
     
     LazyHorizontalGrid(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
         userScrollEnabled = userScrollEnabled,
         state = lazyGridState,
         rows = GridCells.Fixed(rows),
-        flingBehavior = rememberSnapFlingBehavior(snapLayoutInfoProvider),
-        contentPadding = WindowInsets.systemBars
+                contentPadding = WindowInsets.systemBars
             .only(WindowInsetsSides.Horizontal)
             .asPaddingValues(),
         modifier = modifier
@@ -540,6 +539,8 @@ fun AccountPlaylistsSection(
     val distinctPlaylists = remember(accountPlaylists) { accountPlaylists.distinctBy { it.id } }
     
     LazyRow(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
         contentPadding = PaddingValues(horizontal = 4.dp),
         modifier = modifier.fillMaxWidth().height(gridShelfHeight(104.dp)),
     ) {
@@ -579,6 +580,8 @@ fun HomePageSectionContent(
     userScrollEnabled: Boolean = true,
 ) {
     LazyRow(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
         userScrollEnabled = userScrollEnabled,
         // GridItem already adds 12.dp; the first artwork starts at 4 + 12 = 16dp.
         contentPadding = PaddingValues(horizontal = 4.dp),
@@ -615,6 +618,8 @@ fun MoodAndGenresSection(
     userScrollEnabled: Boolean = true,
 ) {
     LazyHorizontalGrid(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
         userScrollEnabled = userScrollEnabled,
         rows = GridCells.Fixed(2),
         contentPadding = PaddingValues(6.dp),
@@ -646,7 +651,7 @@ fun HomeLoadingShimmer(modifier: Modifier = Modifier) {
                 .padding(12.dp)
                 .width(250.dp),
         )
-        LazyRow {
+        LazyRow(flingBehavior = rememberCapsuleFlingBehavior(), overscrollEffect = null) {
             items(4) {
                 GridItemPlaceHolder()
             }
@@ -1154,6 +1159,8 @@ fun CommunityPlaylistsSection(
         NavigationTitle(title = localizedHomeShelfTitle(section))
 
         LazyRow(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
             userScrollEnabled = userScrollEnabled,
             contentPadding = PaddingValues(horizontal = 4.dp),
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),

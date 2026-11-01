@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.component
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import android.annotation.SuppressLint
 import android.content.Intent
@@ -1514,6 +1515,8 @@ fun Lyrics(
             }
         } else {
             LazyColumn(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
             state = lazyListState,
             userScrollEnabled = hasDisplayableLyrics && !isReturningToSync,
             contentPadding = WindowInsets.systemBarsIgnoringVisibility
@@ -3457,7 +3460,9 @@ fun Lyrics(
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(rememberScrollState(),
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null)
                         .padding(horizontal = 20.dp, vertical = 24.dp)
                 ) {
                     Text(
@@ -3502,7 +3507,9 @@ fun Lyrics(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState())
+                            .horizontalScroll(rememberScrollState(),
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null)
                     ) {
                         availableStyles.forEach { style ->
                             val isSelected = selectedGlassStyle == style

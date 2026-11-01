@@ -5,6 +5,7 @@
  */
 
 package com.nikhil.yt.ui.player
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -55,7 +56,11 @@ internal fun CapsuleArtistPickerDialog(
         onDismissRequest = onDismiss,
         title = { Text(text = stringResource(R.string.capsule_choose_artist)) },
         text = {
-            LazyColumn(Modifier.heightIn(max = 360.dp)) {
+            LazyColumn(
+                modifier = Modifier.heightIn(max = 360.dp),
+                flingBehavior = rememberCapsuleFlingBehavior(),
+                overscrollEffect = null,
+            ) {
                 itemsIndexed(
                     items = artists.sanitizedArtistCredits(),
                     key = { index, artist ->

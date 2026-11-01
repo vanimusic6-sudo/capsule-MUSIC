@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -987,7 +988,8 @@ fun PalettePickerScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior())
+                .verticalScroll(rememberScrollState(), flingBehavior = rememberSettingsFlingBehavior(),
+            overscrollEffect = null)
                 .padding(bottom = settingsBottomContentPadding()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -1255,6 +1257,8 @@ private fun ColorPaletteSelector(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         LazyRow(
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null,
             state = listState,
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(horizontal = 24.dp),

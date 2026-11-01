@@ -1,4 +1,5 @@
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -125,7 +126,9 @@ private fun PaxsenixStatsContent(stats: PaxsenixStats) {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(rememberScrollState(),
+            flingBehavior = rememberCapsuleFlingBehavior(),
+            overscrollEffect = null),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         PaxsenixHealthBar(

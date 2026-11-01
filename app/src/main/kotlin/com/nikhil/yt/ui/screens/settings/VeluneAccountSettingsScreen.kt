@@ -4,6 +4,7 @@
  */
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
@@ -102,6 +103,7 @@ fun VeluneAccountSettingsScreen(
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         LazyColumn(
+            overscrollEffect = null,
             flingBehavior = rememberSettingsFlingBehavior(),
             modifier = Modifier
                 .fillMaxSize()
@@ -412,6 +414,7 @@ private fun PlaylistSelectionDialog(onDismiss: () -> Unit) {
                 }
             } else {
                 LazyColumn(
+            overscrollEffect = null,
             flingBehavior = rememberSettingsFlingBehavior(),
                     modifier = Modifier.height(400.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
