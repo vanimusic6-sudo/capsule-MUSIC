@@ -70,4 +70,27 @@ class DownloadPlaybackNetworkPriorityTest {
         assertFalse(priority.shouldYield())
     }
 
+    @Test fun lowHeadroomAtReadyKeepsDownloadsYieldingUntilAudioHasTimeToRefill() {
+        priority.observe("song-a", playWhenReady = true, buffering = true, ready = false)
+        nowMs += 1_000L
+        priority.observe("song-a", playWhenReady = true, buffering = false, ready = true,
+            bufferedAheadMs = 2_832L)
+        nowMs += 3_000L
+        assertTrue("2.8s buffered must not release all downloads after 2.5s",
+            priority.shouldYield())
+        nowMs += 5_001L
+        assertFalse("Low-buffer network priority must expire", priority.shouldYield())
+    }
+
+    @Test fun healthyReadyBufferStillUsesShortYieldAndRepeatedEventsDoNotRearm() {
+        priority.observe("song-a", playWhenReady = true, buffering = false, ready = true,
+            bufferedAheadMs = 40_000L)
+        nowMs += 2_000L
+        priority.observe("song-a", playWhenReady = true, buffering = false, ready = true,
+            bufferedAheadMs = 1_000L)
+        nowMs += 501L
+        assertFalse("A repeated READY event cannot extend the original gate",
+            priority.shouldYield())
+    }
+
 }
