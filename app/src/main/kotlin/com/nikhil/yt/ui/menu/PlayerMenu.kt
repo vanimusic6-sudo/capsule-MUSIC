@@ -422,7 +422,7 @@ fun PlayerMenu(
                                 )
                             },
                             text = stringResource(R.string.start_radio),
-                            enabled = !isExternalCatalog || isOfflineAudio,
+                            enabled = !isExternalCatalog,
                             onClick = {
                                 if (!isExternalCatalog) {
                                     Toast.makeText(context, resources.getString(R.string.starting_radio),
