@@ -18,6 +18,7 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -119,6 +120,27 @@ internal class DetailHeaderMotionState(
         } else (compactTitleY - sourceCenterY) * p
         layer.scaleX = scale
         layer.scaleY = scale
+    }
+
+    fun moveCompactTitle(layer: GraphicsLayerScope) {
+        // The two layouts share one first-glyph trajectory while the second
+        // line and ellipsis trade visibility. A fixed toolbar copy would ghost
+        // beside the still-moving caption during the handoff.
+        if (compactTitleAlpha() <= 0f || !hasTitleAnchors() ||
+            !coverFirstLineStart.isFinite() || !compactFirstLineStart.isFinite() ||
+            !coverFirstBaseline.isFinite() || !compactFirstBaseline.isFinite()) return
+        moveCoverTitle(layer)
+        val sourceScale = layer.scaleX
+        val targetScale = sourceScale / compactTitleScale
+        layer.translationX = detailTitleOverlayTranslation(layer.translationX,
+            restTitleX, compactTitleX, coverFirstLineStart, compactFirstLineStart,
+            sourceScale, targetScale)
+        layer.translationY = detailTitleOverlayTranslation(layer.translationY,
+            restTitleY - scroll.firstVisibleItemScrollOffset, compactTitleY,
+            coverFirstBaseline - coverTitleHeight / 2f,
+            compactFirstBaseline - compactTitleHeight / 2f, sourceScale, targetScale)
+        layer.scaleX = targetScale
+        layer.scaleY = targetScale
     }
 
     fun measureArtwork(coordinates: LayoutCoordinates) {
@@ -294,6 +316,18 @@ internal fun detailTitleStartTranslation(
     targetLineStartX: Float,
 ): Float = (targetLineStartX - sourceCenterX - targetScale * sourceLineStart) * progress
 
+/** Put the compact layout's matching glyph exactly over the moving caption. */
+internal fun detailTitleOverlayTranslation(
+    coverTranslation: Float,
+    sourceCenter: Float,
+    compactCenter: Float,
+    sourceGlyphOffset: Float,
+    compactGlyphOffset: Float,
+    sourceScale: Float,
+    compactScale: Float,
+): Float = coverTranslation + sourceCenter - compactCenter +
+    sourceGlyphOffset * sourceScale - compactGlyphOffset * compactScale
+
 /** Align actual baselines, including a two-line source and a one-line destination. */
 internal fun detailTitleBaselineTranslation(
     progress: Float,
@@ -330,18 +364,24 @@ internal fun DetailToolbarTitle(title: String, motion: DetailHeaderMotionState) 
     SideEffect { motion.compactTitleScale = compactScale }
     val foreground = LocalContentColor.current
     val hidden by remember(motion) { derivedStateOf { motion.compactTitleAlpha() < .5f } }
-    Text(
-        text = title,
-        modifier = Modifier.onGloballyPositioned(motion::measureToolbarTitle)
-            .graphicsLayer { alpha = motion.compactTitleAlpha() }
-            .testTag("capsule:detail-toolbar-title")
-            .semantics { if (hidden) hideFromAccessibility() },
-        color = foreground,
-        style = style,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        onTextLayout = motion::measureCompactTitleText,
-    )
+    // Measure a stationary parent so the overlay transform cannot feed back
+    // into its own destination anchor during a reverse scroll.
+    Box(Modifier.onGloballyPositioned(motion::measureToolbarTitle)) {
+        Text(
+            text = title,
+            modifier = Modifier.graphicsLayer {
+                    alpha = motion.compactTitleAlpha()
+                    motion.moveCompactTitle(this)
+                }
+                .testTag("capsule:detail-toolbar-title")
+                .semantics { if (hidden) hideFromAccessibility() },
+            color = foreground,
+            style = style,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = motion::measureCompactTitleText,
+        )
+    }
 }
 
 /** Isolate scroll-driven foreground recomposition from the collection and song list. */
