@@ -57,7 +57,7 @@ internal fun AlbumScreenLayout(
 internal val AlbumArtworkTopSpacing = 0.dp
 
 /** One bottom gap for albums and every playlist, including loading placeholders. */
-internal val DetailHeroBottomSpacing = 34.dp
+internal val DetailHeroBottomSpacing = 23.dp
 
 /** Loading and loaded headers use the same spacing and cover geometry. */
 @Composable
@@ -82,7 +82,7 @@ internal fun AlbumHeaderLayout(
             Spacer(Modifier.height(12.dp))
         } else {
             // Caption is overlaid inside the portrait; controls keep their baseline.
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(6.dp))
             metadata()
         }
         actions()
@@ -96,7 +96,7 @@ internal fun AlbumHeaderLayout(
  * Its height matches the loaded content to prevent jumping on first render.
  */
 @Composable
-internal fun AlbumHeaderPlaceholder(background: Color, modifier: Modifier = Modifier) {
+internal fun AlbumHeaderPlaceholder(background: Color, modifier: Modifier = Modifier, motion: DetailHeaderMotionState? = null) {
     val loading = stringResource(R.string.loading)
     val placeholder = StandardChrome.muted.copy(alpha = 0.18f)
     AlbumHeaderLayout(
@@ -104,13 +104,16 @@ internal fun AlbumHeaderPlaceholder(background: Color, modifier: Modifier = Modi
         showTitle = false,
         artworkTopSpacing = AlbumArtworkTopSpacing,
         artwork = {
-            AlbumArtworkLayers(
-                // While metadata is loading the photo slot must be exactly
-                // the same page colour as the pinned toolbar, not panel grey.
-                ColorPainter(background),
-                blurred = null,
-                background = background,
-            )
+            AlbumPortraitFrame(background, artworkMotion = motion) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.Icon(
+                        painter = androidx.compose.ui.res.painterResource(R.drawable.music_note),
+                        contentDescription = null,
+                        tint = placeholder,
+                        modifier = Modifier.size(56.dp),
+                    )
+                }
+            }
         },
         title = {},
         metadata = {},
@@ -122,15 +125,14 @@ internal fun AlbumHeaderPlaceholder(background: Color, modifier: Modifier = Modi
                     CapsuleHeroMetric(R.drawable.timer, "—"),
                 ),
             ) {
-                repeat(5) {
-                    Box(
-                        Modifier.weight(1f).height(60.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Box(
-                            Modifier.size(22.dp).clip(CircleShape).background(placeholder),
-                        )
-                    }
+                for ((icon, label) in listOf(
+                    R.drawable.favorite_border to R.string.action_like,
+                    R.drawable.play_outline to R.string.play,
+                    R.drawable.shuffle to R.string.shuffle,
+                    R.drawable.download to R.string.download,
+                    R.drawable.more_vert to R.string.more,
+                )) {
+                    PlaylistAction(icon, stringResource(label), {}, enabled = false)
                 }
             }
         },
