@@ -49,4 +49,25 @@ class DownloadPlaybackNetworkPriorityTest {
         priority.observe("song-b", playWhenReady = true, buffering = true, ready = false)
         assertTrue(priority.shouldYield())
     }
+    @Test fun audioReadyCannotReleaseDownloadsWhileVideoIsPreparing() {
+        priority.observe("song-a", true, false, true)
+        nowMs += 3_000
+        priority.observe("song-a", true, true, false, owner = "video")
+        assertTrue(priority.shouldYield())
+        // Audio is already ready; another event must preserve the VIDEO lease.
+        priority.observe("song-a", true, false, true)
+        assertTrue(priority.shouldYield())
+        priority.clear("video")
+        assertFalse(priority.shouldYield())
+    }
+
+    @Test fun videoPauseCannotClearAnAudioBufferingLeaseAndHoldRemainsBounded() {
+        priority.observe("song-a", true, true, false)
+        priority.observe("song-a", true, true, false, owner = "video")
+        priority.observe("song-a", false, false, false, owner = "video")
+        assertTrue(priority.shouldYield())
+        nowMs += DownloadPlaybackNetworkPriority.MAX_BUFFERING_YIELD_MS
+        assertFalse(priority.shouldYield())
+    }
+
 }

@@ -110,6 +110,18 @@ class CapsuleVideoSessionTest {
             ),
         ).build()
 
+    @Test fun preparingVideoOwnsNetworkPriorityEvenWhenCanonicalMusicIsReady() = runTest {
+        val priority = com.nikhil.yt.playback.audio.DownloadPlaybackCoexistence.priority
+        priority.clear()
+        val f = Fixture(this)
+        f.start()
+        assertTrue(priority.shouldYield())
+        priority.observe("song", false, false, false)
+        assertTrue("An audio event must not discard the video loader lease", priority.shouldYield())
+        f.session.stop()
+        assertFalse("Stopping VIDEO must release only its own lease", priority.shouldYield())
+    }
+
     @Test fun indexedDashStartsNearMusicWithoutThrowawayFrameAndNetworkSeek() = runTest {
         val f = Fixture(this)
         f.music.position = 12_000L

@@ -4989,37 +4989,7 @@ class MusicService :
                         )
                     }
                 }.getOrElse { throwable ->
-                    when (throwable) {
-                        is PlaybackException -> throw throwable
-
-                        is java.net.ConnectException, is java.net.UnknownHostException -> {
-                            throw PlaybackException(
-                                getString(R.string.error_no_internet),
-                                throwable,
-                                PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
-                            )
-                        }
-
-                        is TimeoutCancellationException,
-                        is java.net.SocketTimeoutException,
-                        -> {
-                            throw PlaybackException(
-                                getString(R.string.error_timeout),
-                                throwable,
-                                PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
-                            )
-                        }
-
-                        // Media3 expects IO at this synchronous loader boundary.
-                        // A cancelled loader is discarded; it must not become a remote playback error.
-                        is kotlinx.coroutines.CancellationException -> throw cancelledAudioLoad(throwable)
-
-                        else -> throw PlaybackException(
-                            getString(R.string.error_unknown),
-                            throwable,
-                            PlaybackException.ERROR_CODE_REMOTE_ERROR
-                        )
-                    }
+                    throw com.nikhil.yt.playback.audio.audioResolveLoadFailure(throwable)
                 }
 
                 songMetadataRecoveryCoordinator.schedule(mediaId, playbackData)

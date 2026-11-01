@@ -277,8 +277,8 @@ class CapsuleAudioFallbackPolicyTest {
 
     @Test
     fun fallbackPacingIsDeterministicAndRateLimitsNeverRetry() {
-        assertEquals(350L, CapsuleAudioFallbackPolicy.fallbackDelayMs(YouTubeFailureKind.NONE))
-        assertEquals(350L, CapsuleAudioFallbackPolicy.fallbackDelayMs(YouTubeFailureKind.UNPLAYABLE))
+        assertEquals(0L, CapsuleAudioFallbackPolicy.fallbackDelayMs(YouTubeFailureKind.NONE))
+        assertEquals(0L, CapsuleAudioFallbackPolicy.fallbackDelayMs(YouTubeFailureKind.UNPLAYABLE))
         assertEquals(1_000L, CapsuleAudioFallbackPolicy.fallbackDelayMs(YouTubeFailureKind.BOT_CHECK))
         assertEquals(0L, CapsuleAudioFallbackPolicy.fallbackDelayMs(YouTubeFailureKind.RATE_LIMITED))
     }

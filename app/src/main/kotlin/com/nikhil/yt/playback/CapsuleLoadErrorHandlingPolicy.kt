@@ -50,6 +50,11 @@ internal class CapsuleLoadErrorHandlingPolicy : DefaultLoadErrorHandlingPolicy()
     override fun getRetryDelayMsFor(
         loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo,
     ): Long {
+        // The resolver already exhausted its bounded client plan. Repeating it
+        // in Loader would multiply requests for an unavailable/restricted track.
+        if (loadErrorInfo.exception is com.nikhil.yt.playback.audio.AudioResolveLoadException) {
+            return C.TIME_UNSET
+        }
         loadErrorInfo.exception.audioCdnRefreshRequiredOrNull()?.let { refresh ->
             Timber.tag("AudioCDN").i(
                 "cdn-retry-policy refresh=%s id=%s stop=true",
