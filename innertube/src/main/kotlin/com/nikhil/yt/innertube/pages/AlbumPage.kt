@@ -15,6 +15,7 @@ import com.nikhil.yt.innertube.models.MusicResponsiveHeaderRenderer
 import com.nikhil.yt.innertube.models.MusicResponsiveListItemRenderer
 import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.getItems
+import com.nikhil.yt.innertube.models.getContinuation
 import com.nikhil.yt.innertube.models.oddElements
 import com.nikhil.yt.innertube.models.response.BrowseResponse
 import com.nikhil.yt.innertube.models.splitBySeparator
@@ -26,6 +27,26 @@ data class AlbumPage(
     val otherVersions: List<AlbumItem>,
 ) {
     companion object {
+        /** null means a missing/partial shelf and requires the canonical playlist.
+         * An explicitly empty complete shelf is a valid empty album, not a retry.
+         */
+        fun completeInlineSongs(response: BrowseResponse, album: AlbumItem): List<SongItem>? {
+            val contents = response.contents ?: return null
+            val sections = contents.twoColumnBrowseResultsRenderer?.secondaryContents?.sectionListRenderer?.contents.orEmpty() +
+                contents.twoColumnBrowseResultsRenderer?.tabs.orEmpty().flatMap {
+                    it?.tabRenderer?.content?.sectionListRenderer?.contents.orEmpty()
+                } + contents.singleColumnBrowseResultsRenderer?.tabs.orEmpty().flatMap {
+                    it.tabRenderer.content?.sectionListRenderer?.contents.orEmpty()
+                }
+            val shelf = sections.firstNotNullOfOrNull { it.musicShelfRenderer }
+            val playlistShelf = sections.firstNotNullOfOrNull { it.musicPlaylistShelfRenderer }
+            val rows = shelf?.contents ?: playlistShelf?.contents ?: return null
+            val continuation = shelf?.continuations?.getContinuation()
+                ?: playlistShelf?.continuations?.getContinuation() ?: rows.getContinuation()
+            if (continuation != null) return null
+            return rows.getItems().mapNotNull { getSong(it, album) }
+        }
+
         fun getPlaylistId(response: BrowseResponse): String? {
             var playlistId = response.microformat?.microformatDataRenderer?.urlCanonical?.substringAfterLast('=')
             if (playlistId == null)
