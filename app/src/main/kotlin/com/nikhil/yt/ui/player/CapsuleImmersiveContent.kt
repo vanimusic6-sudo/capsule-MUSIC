@@ -634,7 +634,7 @@ internal fun CapsuleImmersiveContent(
         // The remembered frame contains the PREVIOUS song's actual image and all its
         // background colours. It remains intact during fade-out even if Media3 has already
         // switched its metadata to the NEXT song.
-        val visualKey = "${mediaMetadata.id}|${mediaMetadata.thumbnailUrl}|${artworkAspect}"
+        val visualKey = "${mediaMetadata.id}|${artworkTone.displayUrl}|${artworkAspect}"
         // A decoded bitmap that has been displayed through VIDEO must remain
         // opaque on VIDEO -> AUDIO. The track-switch gradient fade is independent
         // of the cover/video morph and can be interrupted by sheet visibility.

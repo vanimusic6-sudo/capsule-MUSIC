@@ -84,7 +84,8 @@ internal fun rememberImmersiveEdgeColor(
     visibleArtworkAspectRatio: Float = 1f,
 ): ImmersiveArtworkTone {
     val context = LocalContext.current
-    val sourceUrl = mediaMetadata?.thumbnailUrl
+    var pinnedSource by remember(mediaMetadata?.id) { mutableStateOf<String?>(null) }
+    val sourceUrl = pinnedSource ?: mediaMetadata?.thumbnailUrl?.takeIf(String::isNotBlank)
     // A different viewport shows a different centre-cropped area of the same frame.
     val artworkAspect = visibleArtworkAspectRatio.coerceIn(0.55f, 2.2f)
     val key = mediaMetadata?.id?.let { "$it|$sourceUrl|${(artworkAspect * 100f).toInt()}" }
@@ -102,6 +103,7 @@ internal fun rememberImmersiveEdgeColor(
             return@LaunchedEffect
         }
         cached?.let {
+            pinnedSource = sourceUrl
             resolved = it
             resolvedKey = key
             return@LaunchedEffect
@@ -172,6 +174,7 @@ internal fun rememberImmersiveEdgeColor(
         // Cache only a real decoded image with a sampled background. Transient thumbnail
         // errors should not poison every later attempt for this same track.
         if (resultTone != null) {
+            pinnedSource = sourceUrl
             synchronized(immersiveArtworkCache) { immersiveArtworkCache[key] = finalTone }
         }
         resolved = finalTone
