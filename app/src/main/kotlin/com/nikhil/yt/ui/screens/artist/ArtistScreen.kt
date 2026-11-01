@@ -124,6 +124,7 @@ import com.nikhil.yt.ui.component.NavigationTitle
 import com.nikhil.yt.ui.component.SongListItem
 import com.nikhil.yt.ui.component.SongListVisuals
 import com.nikhil.yt.ui.component.YouTubeGridItem
+import com.nikhil.yt.ui.component.gridShelfHeight
 import com.nikhil.yt.ui.component.YouTubeListItem
 import com.nikhil.yt.ui.component.shimmer.ListItemPlaceHolder
 import com.nikhil.yt.ui.component.shimmer.ShimmerHost
@@ -509,6 +510,9 @@ fun ArtistScreen(
             flingBehavior = rememberCapsuleFlingBehavior(),
             overscrollEffect = null,
                                 userScrollEnabled = shelfScrollEnabled,
+                                // Keep the parent LazyColumn's section offsets stable
+                                // when a horizontally revealed card has longer metadata.
+                                modifier = Modifier.fillMaxWidth().height(gridShelfHeight()),
                                 contentPadding = PaddingValues(horizontal = 12.dp),
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
@@ -639,6 +643,9 @@ fun ArtistScreen(
             flingBehavior = rememberCapsuleFlingBehavior(),
             overscrollEffect = null,
                                 userScrollEnabled = shelfScrollEnabled,
+                                // Keep the parent LazyColumn's section offsets stable
+                                // when a horizontally revealed card has longer metadata.
+                                modifier = Modifier.fillMaxWidth().height(gridShelfHeight()),
                                     contentPadding = PaddingValues(horizontal = 12.dp),
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
