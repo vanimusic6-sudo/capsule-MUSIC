@@ -110,4 +110,35 @@ class YouTubeMusicVideoMatcherTest {
         assertEquals(245, YouTubeMusicVideoMatcher.extractDurationSeconds("4:05"))
         assertEquals(3723, YouTubeMusicVideoMatcher.extractDurationSeconds("1:02:03"))
     }
+    @Test
+    fun sameTitleFromDifferentArtistIsNotAnOfficialMatchForThisTrack() {
+        // An OMV label alone cannot prove ownership. The old -55 score
+        // penalty still allowed a false positive with an exact song title.
+        assertNull(
+            YouTubeMusicVideoMatcher.scoreCandidate(
+                sourceTitle = "Hello",
+                sourceTitleNorm = YouTubeMusicVideoMatcher.normalizeTitle("Hello"),
+                sourceArtistNorms = listOf("adele"),
+                candidateTitle = "Another Singer - Hello (Official Video)",
+                secondaryText = "Another Singer • 4:50",
+                sourceDurationSeconds = 290,
+            ),
+        )
+    }
+
+    @Test
+    fun matchingOfficialClipArtistInTitlePassesEvenWithShortMetadataRow() {
+        assertTrue(
+            requireNotNull(YouTubeMusicVideoMatcher.scoreCandidate(
+                sourceTitle = "Hello",
+                sourceTitleNorm = YouTubeMusicVideoMatcher.normalizeTitle("Hello"),
+                sourceArtistNorms = listOf("adele"),
+                candidateTitle = "Adele - Hello (Official Video)",
+                secondaryText = "4:50",
+                sourceDurationSeconds = 290,
+            )) >= YouTubeMusicVideoMatcher.MIN_MATCH_SCORE,
+        )
+    }
+
+
 }
