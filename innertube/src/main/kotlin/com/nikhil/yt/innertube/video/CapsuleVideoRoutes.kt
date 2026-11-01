@@ -60,7 +60,11 @@ internal class CapsuleVideoRouteHealth(private val clock: () -> Long = System::n
     @Synchronized
     fun failure(route: CapsuleVideoRoute, kind: CapsuleNewPipeFailure? = null) {
         val now = clock()
-        retryAfter[route] = now + TimeUnit.SECONDS.toNanos(45)
+        // A connection outage can recover quickly (including a VPN/network
+        // switch). Parser failures keep the longer quiet period.
+        retryAfter[route] = now + TimeUnit.SECONDS.toNanos(
+            if (kind == CapsuleNewPipeFailure.NETWORK) 5 else 45,
+        )
         if (kind == CapsuleNewPipeFailure.BOT_BLOCKED) {
             botQuietUntil[route] = now + TimeUnit.MINUTES.toNanos(10)
         }

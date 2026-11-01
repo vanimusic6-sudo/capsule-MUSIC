@@ -196,7 +196,7 @@ class CapsuleVideoRoutesTest {
             assertEquals(CapsuleNewPipeFailure.NETWORK, CapsuleNewPipeExtractor.classify(error))
         }
         assertEquals(0, calls)
-        now = java.util.concurrent.TimeUnit.SECONDS.toNanos(46)
+        now = java.util.concurrent.TimeUnit.SECONDS.toNanos(6)
         assertEquals("direct-visionos", resolveVideoRoutes(health = health) { calls++; stream }.backend)
         assertEquals(1, calls)
     }

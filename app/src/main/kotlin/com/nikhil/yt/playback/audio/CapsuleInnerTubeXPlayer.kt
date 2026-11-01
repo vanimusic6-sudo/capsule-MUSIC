@@ -496,7 +496,8 @@ object CapsuleInnerTubeXPlayer {
                     ?: plan.firstOrNull { it !in attempted }
                     ?: run {
                         lastFailure?.let { throw it }
-                        throw IllegalStateException(
+                        throw StreamResolveException(
+                            StreamResolveException.Reason.NO_PLAYABLE_STREAM,
                             if (priorityBeforeAttempt == AudioResolvePriority.PLAYBACK) {
                                 "No safe AUDIO client profile is currently available"
                             } else {
@@ -609,7 +610,7 @@ object CapsuleInnerTubeXPlayer {
                 }
                 val canFallback = CapsuleAudioFallbackPolicy.canFallbackAfter(kind)
                 if (canFallback) {
-                    markStreamClientFailed(videoId, profileId, download = download)
+                    markStreamClientFailed(videoId, profileId, download = download, failureKind = kind)
                 }
 
                 /*
@@ -707,7 +708,12 @@ object CapsuleInnerTubeXPlayer {
         clientName: String?,
         nowMs: Long = System.currentTimeMillis(),
         download: Boolean = false,
+        failureKind: YouTubeFailureKind? = null,
     ) {
+        // A timed-out connection says nothing about this client identity.
+        // Keep the local attempted set for this resolve, but do not poison the
+        // next download/foreground attempt for the five-minute verdict TTL.
+        if (failureKind == YouTubeFailureKind.TRANSIENT) return
         val normalized = clientName?.substringBefore('@')?.trim()?.takeIf { it.isNotBlank() } ?: return
         val failuresByMedia = if (download) downloadStreamClientFailures else streamClientFailures
         failuresByMedia.compute(videoId) { _, failures ->

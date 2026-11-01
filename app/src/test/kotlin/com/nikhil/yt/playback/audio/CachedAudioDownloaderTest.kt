@@ -42,7 +42,7 @@ class CachedAudioDownloaderTest {
         }
     }
 
-    @Test fun completePlaybackCacheIsSavedWithoutResolverAdmissionOrNetwork() = withCaches { source, target ->
+    @Test(timeout = 15_000) fun completePlaybackCacheIsSavedWithoutResolverAdmissionOrNetwork() = withCaches { source, target ->
         val bytes = ByteArray(200_000) { (it % 127).toByte() }
         val key = "capsule:audio:track:251:${bytes.size}"
         write(source, key, bytes)
@@ -70,13 +70,13 @@ class CachedAudioDownloaderTest {
         assertArrayEquals(bytes, actual.toByteArray())
     }
 
-    @Test fun partialPlaybackCacheCannotMasqueradeAsOfflineDownload() = withCaches { source, target ->
+    @Test(timeout = 15_000) fun partialPlaybackCacheCannotMasqueradeAsOfflineDownload() = withCaches { source, target ->
         write(source, "capsule:audio:track:140:1000", ByteArray(100), length = 1_000)
         assertNull(createCachedAudioDownloader("track", source, target))
         assertFalse(AudioCacheIdentity.isComplete(target, "track"))
     }
 
-    @Test fun differentPartialDownloadEncodingIsDiscardedBeforeCopy() = withCaches { source, target ->
+    @Test(timeout = 15_000) fun differentPartialDownloadEncodingIsDiscardedBeforeCopy() = withCaches { source, target ->
         val bytes = ByteArray(1_000) { 7 }
         AudioCacheIdentity.prepareDownload(target, "track", "capsule:audio:track:140:1000", 1_000)
         write(target, "track", ByteArray(100) { 2 }, length = 1_000)
@@ -89,7 +89,7 @@ class CachedAudioDownloaderTest {
         assertEquals(1_000L, target.getCacheSpace())
     }
 
-    @Test fun cancelledCopyCannotStartResolverOrReportCompletion() = withCaches { source, target ->
+    @Test(timeout = 15_000) fun cancelledCopyCannotStartResolverOrReportCompletion() = withCaches { source, target ->
         write(source, "capsule:audio:track:251:1000", ByteArray(1_000))
         val downloader = ResolvingAudioDownloader(
             "track", target, { error("cancelled") }, { error("cancelled") },

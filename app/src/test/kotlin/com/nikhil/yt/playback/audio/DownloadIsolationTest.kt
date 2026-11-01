@@ -41,6 +41,20 @@ class DownloadIsolationTest {
         assertEquals(setOf("WEB_REMIX"), CapsuleInnerTubeXPlayer.failedStreamClients("same-track", 104L))
     }
 
+    @Test fun transientPlayerTimeoutDoesNotPoisonTheNextDownloadClientPlan() {
+        CapsuleInnerTubeXPlayer.markStreamClientFailed(
+            "timed-out-track", "VISIONOS_0_1", nowMs = 100L, download = true,
+            failureKind = com.nikhil.yt.innertube.YouTubeFailureKind.TRANSIENT,
+        )
+        val excluded = CapsuleInnerTubeXPlayer.failedStreamClients("timed-out-track", 101L, true)
+        assertTrue(excluded.isEmpty())
+        assertEquals(AudioDownloadClientPolicy.order, CapsuleAudioFallbackPolicy.profilePlan(
+            "VISIONOS_0_1", AudioResolvePriority.DOWNLOAD, false, false, excluded,
+            AudioDownloadClientPolicy.order,
+        ))
+        assertNull(CapsulePlaybackSafety.blockedExceptionOrNull())
+    }
+
     @Test fun challengeStopsLaterDownloadsWithoutSlidingDeadlineOrOpeningPlaybackBreaker() {
         var now = 1_000L
         val gate = DownloadBotCheckGate { now }
