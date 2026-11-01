@@ -195,9 +195,12 @@ fun OnlinePlaylistScreen(
         BackHandler { selection = false }
     }
 
-    val wrappedSongs =
-        remember(filteredSongs) { filteredSongs.map { item -> ItemWrapper(item) } }
-            .toMutableStateList()
+    // Keep the selection wrappers stable across count updates and playback ticks.
+    // Recreating the SnapshotStateList in every recomposition discarded selection
+    // and invalidated the visible playlist rows unnecessarily.
+    val wrappedSongs = remember(filteredSongs) {
+        filteredSongs.map { item -> ItemWrapper(item) }.toMutableStateList()
+    }
 
 
     val artworkFallbacks = remember(songs) {
