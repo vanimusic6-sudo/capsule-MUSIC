@@ -1,5 +1,29 @@
 package com.nikhil.yt.ui.component
 
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.isSpecified
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.semantics.contentDescription
+
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.State
 import androidx.compose.runtime.rememberUpdatedState
@@ -48,155 +72,118 @@ internal class DetailHeaderMotionState(
     private val density: Density,
     private val headerPresence: State<Boolean> = mutableStateOf(true),
 ) {
-
     private var restArtworkBottomPx by mutableFloatStateOf(Float.NaN)
     private var toolbarBottomPx by mutableFloatStateOf(Float.NaN)
     private var toolbarHeightPx by mutableFloatStateOf(Float.NaN)
-    private var restTitleX by mutableFloatStateOf(Float.NaN)
-    private var restTitleY by mutableFloatStateOf(Float.NaN)
-    private var compactTitleX by mutableFloatStateOf(Float.NaN)
-    private var compactTitleY by mutableFloatStateOf(Float.NaN)
-    private var coverTitleHeight by mutableFloatStateOf(Float.NaN)
-    private var compactTitleHeight by mutableFloatStateOf(Float.NaN)
-    private var coverFirstBaseline by mutableFloatStateOf(Float.NaN)
-    private var compactFirstBaseline by mutableFloatStateOf(Float.NaN)
-    private var coverFirstLineStart by mutableFloatStateOf(Float.NaN)
-    private var compactFirstLineStart by mutableFloatStateOf(Float.NaN)
+    private var sourceCenter by mutableStateOf(Offset.Unspecified)
+    private var target by mutableStateOf(Rect.Zero)
+    var overlayOrigin by mutableStateOf(Offset.Zero)
+    var titleAttached by mutableStateOf(false)
+    var title by mutableStateOf("")
     var compactTitleScale by mutableFloatStateOf(22f / 25f)
+    private var coverLayout by mutableStateOf<TextLayoutResult?>(null)
+    var fallbackLayout by mutableStateOf<TextLayoutResult?>(null)
 
-    // Measure the stationary parent, never the translated text itself. Adding
-    // scroll back gives an invariant source anchor and avoids feedback drift.
     fun measureCoverTitle(coordinates: LayoutCoordinates) {
         if (scroll.firstVisibleItemIndex != 0) return
-        val position = coordinates.positionInRoot()
-        val x = position.x + coordinates.size.width / 2f
-        val y = position.y + coordinates.size.height / 2f + scroll.firstVisibleItemScrollOffset
-        if (x.isFinite() && restTitleX != x) restTitleX = x
-        if (y.isFinite() && (!restTitleY.isFinite() || kotlin.math.abs(y - restTitleY) > .5f)) restTitleY = y
+        val p = coordinates.positionInRoot()
+        sourceCenter = Offset(p.x + coordinates.size.width / 2f,
+            p.y + coordinates.size.height / 2f + scroll.firstVisibleItemScrollOffset)
     }
 
+    fun measureCoverTitleText(layout: TextLayoutResult) { coverLayout = layout }
     fun measureToolbarTitle(coordinates: LayoutCoordinates) {
-        val position = coordinates.positionInRoot()
-        val x = position.x + coordinates.size.width / 2f
-        val y = position.y + coordinates.size.height / 2f
-        if (x.isFinite() && compactTitleX != x) compactTitleX = x
-        if (y.isFinite() && compactTitleY != y) compactTitleY = y
+        val p = coordinates.positionInRoot()
+        target = Rect(p, androidx.compose.ui.geometry.Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat()))
     }
 
-    fun measureCoverTitleText(layout: TextLayoutResult) {
-        coverTitleHeight = layout.size.height.toFloat()
-        coverFirstBaseline = layout.firstBaseline
-        coverFirstLineStart = layout.getLineLeft(0) - layout.size.width / 2f
+    private fun layout() = coverLayout?.takeIf { it.layoutInput.text.text == title } ?: fallbackLayout
+    fun overlayReady() = titleAttached && title.isNotBlank() && layout() != null &&
+        target.width > 0f && (sourceCenter.isSpecified || !headerPresence.value)
+
+    fun geometry(): DetailTitleGeometry? {
+        if (!overlayReady()) return null
+        val layout = layout() ?: return null
+        return detailTitleGeometry(progress, compactTitleScale, layout.size.width.toFloat(),
+            layout.size.height.toFloat(), layout.getLineLeft(0), layout.firstBaseline,
+            layout.getLineBottom(0) - layout.getLineTop(0),
+            if (sourceCenter.isSpecified) sourceCenter else target.center,
+            scroll.firstVisibleItemScrollOffset.toFloat(), target)
     }
 
-    fun measureCompactTitleText(layout: TextLayoutResult) {
-        compactTitleHeight = layout.size.height.toFloat()
-        compactFirstBaseline = layout.firstBaseline
-        compactFirstLineStart = layout.getLineLeft(0) - layout.size.width / 2f
-    }
-
-    private fun hasTitleAnchors(): Boolean = restTitleX.isFinite() && restTitleY.isFinite() &&
-        compactTitleX.isFinite() && compactTitleY.isFinite()
-
-    fun compactTitleAlpha(): Float = detailTitleHandoff(progress)
-
-    fun coverTitleAlpha(): Float = 1f - compactTitleAlpha()
-
-    fun moveCoverTitle(layer: GraphicsLayerScope) {
-        val p = progress
-        if (!hasTitleAnchors()) return
-        // Follow the current source position into the fixed toolbar anchor.
-        // Geometry remains scroll-driven and reverses immediately with the finger.
-        layer.translationX = if (coverFirstLineStart.isFinite() && compactFirstLineStart.isFinite()) {
-            detailTitleStartTranslation(p, compactTitleScale, restTitleX,
-                coverFirstLineStart, compactTitleX + compactFirstLineStart)
-        } else (compactTitleX - restTitleX) * p
-        val scale = 1f + (compactTitleScale - 1f) * p
-        val sourceCenterY = restTitleY - scroll.firstVisibleItemScrollOffset
-        val sourceBaselineOffset = coverFirstBaseline - coverTitleHeight / 2f
-        val targetBaselineY = compactTitleY - compactTitleHeight / 2f + compactFirstBaseline
-        layer.translationY = if (sourceBaselineOffset.isFinite() && targetBaselineY.isFinite()) {
-            detailTitleBaselineTranslation(p, scale, sourceCenterY, sourceBaselineOffset, targetBaselineY)
-        } else (compactTitleY - sourceCenterY) * p
-        layer.scaleX = scale
-        layer.scaleY = scale
-    }
-
-    fun moveCompactTitle(layer: GraphicsLayerScope) {
-        // The two layouts share one first-glyph trajectory while the second
-        // line and ellipsis trade visibility. A fixed toolbar copy would ghost
-        // beside the still-moving caption during the handoff.
-        if (compactTitleAlpha() <= 0f || !hasTitleAnchors() ||
-            !coverFirstLineStart.isFinite() || !compactFirstLineStart.isFinite() ||
-            !coverFirstBaseline.isFinite() || !compactFirstBaseline.isFinite()) return
-        moveCoverTitle(layer)
-        val sourceScale = layer.scaleX
-        val targetScale = sourceScale / compactTitleScale
-        layer.translationX = detailTitleOverlayTranslation(layer.translationX,
-            restTitleX, compactTitleX, coverFirstLineStart, compactFirstLineStart,
-            sourceScale, targetScale)
-        layer.translationY = detailTitleOverlayTranslation(layer.translationY,
-            restTitleY - scroll.firstVisibleItemScrollOffset, compactTitleY,
-            coverFirstBaseline - coverTitleHeight / 2f,
-            compactFirstBaseline - compactTitleHeight / 2f, sourceScale, targetScale)
-        layer.scaleX = targetScale
-        layer.scaleY = targetScale
+    fun drawTitle(scope: DrawScope, color: Color, paint: Paint, fade: Brush, fadeWidth: Float) = with(scope) {
+        val geometry = geometry() ?: return@with
+        val layout = layout() ?: return@with
+        val clip = geometry.clip.translate(-overlayOrigin)
+        val origin = geometry.origin - overlayOrigin
+        if (clip.width <= 0f || clip.height <= 0f) return@with
+        val tail = origin.x + layout.getLineRight(0) * geometry.scale
+        val hiddenLowerLine = layout.lineCount > 1 &&
+            origin.y + layout.getLineTop(1) * geometry.scale >= clip.bottom - 1f
+        val masked = tail > clip.right + .5f || hiddenLowerLine
+        val fadeEnd = minOf(clip.right, tail)
+        if (masked) drawContext.canvas.saveLayer(clip, paint)
+        clipRect(clip.left, clip.top, clip.right, clip.bottom) {
+            withTransform({ translate(origin.x, origin.y); scale(geometry.scale, geometry.scale, Offset.Zero) }) {
+                drawText(layout, color = color, alpha = 1f)
+            }
+            if (masked) {
+                translate(fadeEnd - fadeWidth, clip.top) {
+                    drawRect(fade, size = androidx.compose.ui.geometry.Size(fadeWidth, clip.height), blendMode = BlendMode.DstIn)
+                }
+            }
+        }
+        if (masked) drawContext.canvas.restore()
     }
 
     fun measureArtwork(coordinates: LayoutCoordinates) {
         if (scroll.firstVisibleItemIndex != 0) return
-        val bottom = coordinates.positionInRoot().y +
-            coordinates.size.height + scroll.firstVisibleItemScrollOffset
-        if (bottom.isFinite() &&
-            (restArtworkBottomPx.isNaN() || kotlin.math.abs(bottom - restArtworkBottomPx) > 0.5f)
-        ) {
+        val bottom = coordinates.positionInRoot().y + coordinates.size.height + scroll.firstVisibleItemScrollOffset
+        if (bottom.isFinite() && (!restArtworkBottomPx.isFinite() || kotlin.math.abs(bottom - restArtworkBottomPx) > .5f))
             restArtworkBottomPx = bottom
-        }
     }
-
     fun measureToolbar(coordinates: LayoutCoordinates) {
-        val height = coordinates.size.height.toFloat()
-        val bottom = coordinates.positionInRoot().y + height
-        if (bottom.isFinite() &&
-            (toolbarBottomPx.isNaN() || kotlin.math.abs(bottom - toolbarBottomPx) > 0.5f)
-        ) {
-            toolbarBottomPx = bottom
-        }
-        if (height > 0f && (toolbarHeightPx.isNaN() ||
-            kotlin.math.abs(height - toolbarHeightPx) > 0.5f)
-        ) {
-            toolbarHeightPx = height
-        }
+        toolbarHeightPx = coordinates.size.height.toFloat()
+        toolbarBottomPx = coordinates.positionInRoot().y + coordinates.size.height
     }
-
-    // All layers read this cached value. At rest there is no clock or scheduled work.
     private val progress by derivedStateOf {
         if (!headerPresence.value || scroll.firstVisibleItemIndex > 0) 1f else {
-            val fallbackBottom = if (restArtworkBottomPx.isFinite()) 0f else {
-                val viewportWidth = scroll.layoutInfo.viewportSize.width
-                with(density) { artistHeroArtworkHeight(viewportWidth.toDp()).toPx() }
+            val fallback = if (restArtworkBottomPx.isFinite()) 0f else with(density) {
+                artistHeroArtworkHeight(scroll.layoutInfo.viewportSize.width.toDp()).toPx()
             }
-            detailArtistLengthArtworkFade(
-                firstVisibleItemIndex = scroll.firstVisibleItemIndex,
-                offsetPx = scroll.firstVisibleItemScrollOffset,
-                artistArtworkBottomPx = fallbackBottom,
-                detailArtworkBottomPx = restArtworkBottomPx,
-                toolbarBottomPx = toolbarBottomPx,
-                toolbarHeightPx = toolbarHeightPx,
-            )
+            detailArtistLengthArtworkFade(scroll.firstVisibleItemIndex, scroll.firstVisibleItemScrollOffset,
+                fallback, restArtworkBottomPx, toolbarBottomPx, toolbarHeightPx)
         }
     }
+    fun artworkFade() = progress
+    // Keep the original photograph: only the static matte and pinned bar own backgrounds.
+    // The single moving title is opaque, but the PHOTO retains its original measured scroll dissolve.
+    fun artworkAlpha() = 1f - progress
+    fun toolbarTitleAlpha() = progress
+    fun compactTitleAlpha() = if (progress >= 1f) 1f else 0f
+    fun coverTitleAlpha() = 1f - compactTitleAlpha()
+}
 
-    fun artworkFade(): Float = progress
+internal data class DetailTitleGeometry(val origin: Offset, val scale: Float, val clip: Rect)
 
-    // Cover pixels must never depend on asynchronous readiness. Coil paints a
-    // placeholder until decoding finishes, then the real bitmap. A late
-    // readiness reset previously multiplied a loaded image by zero forever.
-    // Scroll fade is exclusively controlled by the measured scroll geometry.
-    fun artworkAlpha(): Float = 1f - progress
-
-    // Once the hero name has scrolled away, the pinned compact title takes over.
-    fun toolbarTitleAlpha(): Float = progress
+/** One fixed paragraph, one baseline trajectory and a shrinking viewport; no reflow/ellipsis swap. */
+internal fun detailTitleGeometry(
+    progress: Float, compactScale: Float, width: Float, height: Float,
+    lineLeft: Float, baseline: Float, lineHeight: Float,
+    sourceCenter: Offset, scrollOffset: Float, target: Rect,
+): DetailTitleGeometry {
+    val p = progress.coerceIn(0f, 1f)
+    fun mix(a: Float, b: Float) = a + (b - a) * p
+    val scale = mix(1f, compactScale)
+    val source = Offset(sourceCenter.x - width / 2f, sourceCenter.y - height / 2f - scrollOffset)
+    val glyphX = mix(source.x + lineLeft, target.left)
+    val targetBaseline = target.center.y - lineHeight * compactScale / 2f + baseline * compactScale
+    val glyphY = mix(source.y + baseline, targetBaseline)
+    return DetailTitleGeometry(
+        Offset(glyphX - lineLeft * scale, glyphY - baseline * scale), scale,
+        Rect(mix(source.x, target.left), mix(source.y, target.top),
+            mix(source.x + width, target.right), mix(source.y + height, target.bottom)),
+    )
 }
 
 /**
@@ -301,88 +288,37 @@ internal fun Modifier.artistStyleDetailBackdrop(
     if (alpha > 0f) drawRect(surfaceColor.copy(alpha = alpha))
 }
 
-/** Finish the handoff smoothly before the measured endpoint; reverse with scroll. */
-internal fun detailTitleHandoff(progress: Float): Float {
-    val t = ((progress - .78f) / .22f).coerceIn(0f, 1f)
-    return t * t * (3f - 2f * t)
-}
-
-/** Preserve the first glyph position when a two-line caption becomes an ellipsis. */
-internal fun detailTitleStartTranslation(
-    progress: Float,
-    targetScale: Float,
-    sourceCenterX: Float,
-    sourceLineStart: Float,
-    targetLineStartX: Float,
-): Float = (targetLineStartX - sourceCenterX - targetScale * sourceLineStart) * progress
-
-/** Put the compact layout's matching glyph exactly over the moving caption. */
-internal fun detailTitleOverlayTranslation(
-    coverTranslation: Float,
-    sourceCenter: Float,
-    compactCenter: Float,
-    sourceGlyphOffset: Float,
-    compactGlyphOffset: Float,
-    sourceScale: Float,
-    compactScale: Float,
-): Float = coverTranslation + sourceCenter - compactCenter +
-    sourceGlyphOffset * sourceScale - compactGlyphOffset * compactScale
-
-/** Align actual baselines, including a two-line source and a one-line destination. */
-internal fun detailTitleBaselineTranslation(
-    progress: Float,
-    scale: Float,
-    sourceCenterY: Float,
-    sourceBaselineOffset: Float,
-    targetBaselineY: Float,
-): Float = (targetBaselineY - sourceCenterY - sourceBaselineOffset) * progress +
-    (1f - scale) * sourceBaselineOffset
-
-internal fun Modifier.detailCoverTitleMotion(motion: DetailHeaderMotionState?): Modifier =
-    graphicsLayer {
-        motion?.let { alpha = it.coverTitleAlpha(); it.moveCoverTitle(this) }
-    }
-
-/**
- * Keep both text layouts measured from the first frame. Layer alpha and
- * translation observe scroll without recomposing the collection or the glyphs.
- * The first-line start, baseline and zero letter spacing meet at the same endpoint.
- */
 @Composable
 internal fun DetailToolbarTitle(title: String, motion: DetailHeaderMotionState) {
-    // Match the moving caption's typeface, weight and scaled line height.
-    // The terminal ownership change must not look like another font animation.
-    val style = MaterialTheme.typography.headlineLarge.copy(
-        fontSize = 22.sp,
-        lineHeight = (29f * 22f / 25f).sp,
-        fontWeight = FontWeight.SemiBold,
-        letterSpacing = 0.sp,
-    )
     val density = LocalDensity.current
-    val compactScale = with(density) { style.fontSize.toPx() / 25.sp.toPx() }
-        .takeIf { it.isFinite() && it > 0f }?.coerceIn(.5f, 1f) ?: (22f / 25f)
-    SideEffect { motion.compactTitleScale = compactScale }
-    val foreground = LocalContentColor.current
-    val hidden by remember(motion) { derivedStateOf { motion.compactTitleAlpha() < .5f } }
-    // Measure a stationary parent so the overlay transform cannot feed back
-    // into its own destination anchor during a reverse scroll.
-    Box(Modifier.onGloballyPositioned(motion::measureToolbarTitle)) {
-        Text(
-            text = title,
-            modifier = Modifier.graphicsLayer {
-                    alpha = motion.compactTitleAlpha()
-                    motion.moveCompactTitle(this)
-                }
-                .testTag("capsule:detail-toolbar-title")
-                .semantics { if (hidden) hideFromAccessibility() },
-            color = foreground,
-            style = style,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            onTextLayout = motion::measureCompactTitleText,
-        )
+    val measurer = rememberTextMeasurer()
+    val style = detailTitleStyle()
+    val sourceWidth = with(density) { (LocalConfiguration.current.screenWidthDp.dp - 56.dp).roundToPx().coerceAtLeast(1) }
+    val fallback = remember(title, style, sourceWidth, measurer) {
+        measurer.measure(title, style, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            constraints = Constraints(maxWidth = sourceWidth))
     }
+    SideEffect {
+        motion.title = title
+        motion.fallbackLayout = fallback
+        motion.compactTitleScale = with(density) { 22.sp.toPx() / 25.sp.toPx() }
+    }
+    DisposableEffect(motion) {
+        motion.titleAttached = true
+        onDispose { motion.titleAttached = false }
+    }
+    val hidden by remember(motion) { derivedStateOf { motion.compactTitleAlpha() == 0f } }
+    Box(Modifier.fillMaxWidth().height(with(density) { (29f * 22f / 25f).sp.toDp() })
+        .onGloballyPositioned(motion::measureToolbarTitle)
+        .testTag("capsule:detail-toolbar-title")
+        .semantics { contentDescription = title; if (hidden) hideFromAccessibility() })
 }
+
+@Composable
+internal fun detailTitleStyle() = MaterialTheme.typography.headlineLarge.copy(
+    fontSize = 25.sp, lineHeight = 29.sp, fontWeight = FontWeight.SemiBold,
+    letterSpacing = 0.sp, textAlign = TextAlign.Center,
+)
 
 /** Isolate scroll-driven foreground recomposition from the collection and song list. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -398,8 +334,9 @@ internal fun DetailTopAppBar(
 ) {
     val foreground = if (forceOpaque) StandardChrome.text else
         lerp(Color.White, StandardChrome.text, motion.artworkFade())
+    Box(modifier.fillMaxSize().onGloballyPositioned { motion.overlayOrigin = it.positionInRoot() }) {
     TopAppBar(
-        modifier = modifier.onGloballyPositioned(motion::measureToolbar)
+        modifier = Modifier.onGloballyPositioned(motion::measureToolbar)
             .artistStyleDetailBackdrop(motion, surfaceColor, forceOpaque),
         windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
         expandedHeight = ArtistToolbarCompactHeight,
@@ -414,4 +351,13 @@ internal fun DetailTopAppBar(
         navigationIcon = navigationIcon,
         actions = actions,
     )
+    val titleColor = StandardChrome.text
+    Spacer(Modifier.matchParentSize().drawWithCache {
+        val paint = Paint()
+        val edge = 18.dp.toPx()
+        val fade = Brush.horizontalGradient(listOf(Color.White, Color.Transparent), 0f, edge)
+        onDrawBehind { motion.drawTitle(this, titleColor, paint, fade, edge) }
+    })
+    }
+
 }
