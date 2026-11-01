@@ -56,4 +56,13 @@ class VideoStreamValidationTest {
         assertTrue(VideoStreamValidation.isFresh(45_101, 100))
         assertFalse(VideoStreamValidation.isFresh(Long.MIN_VALUE, 100))
     }
+    @Test fun totalPacketSizeIsCheckedBeforeParsingAnOtherwiseBoundedManifest() {
+        val result = indexed()
+        val padded = requireNotNull(result.dashManifest).replace("<Period>", "<Period>" + " ".repeat(VideoStreamValidation.MAX_TOTAL_TEXT_LENGTH))
+        assertTrue(padded.length < VideoStreamValidation.MAX_MANIFEST_LENGTH)
+        assertFalse(VideoStreamValidation.accepts(result.videoUrl, result.audioUrl, padded, null, result.delivery))
+        assertFalse(VideoStreamValidation.accepts(result.videoUrl, null, null, null,
+            qualityLabel = "x".repeat(VideoStreamValidation.MAX_QUALITY_LABEL_LENGTH + 1)))
+    }
+
 }

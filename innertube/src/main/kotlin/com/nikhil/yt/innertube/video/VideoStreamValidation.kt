@@ -17,6 +17,9 @@ object VideoStreamValidation {
     const val MAX_URL_LENGTH = 16_384
     const val MAX_MANIFEST_LENGTH = 512 * 1024
     const val MAX_USER_AGENT_LENGTH = 1024
+    const val MAX_QUALITY_LABEL_LENGTH = 64
+    // Bound aggregate UTF-16 text too; independent field caps can exceed an IPC parcel budget.
+    const val MAX_TOTAL_TEXT_LENGTH = 384 * 1024
     const val MIN_REMAINING_LIFETIME_MS = 45_000L
 
     fun isFresh(expiresAtMs: Long, nowMs: Long = System.currentTimeMillis()): Boolean =
@@ -44,10 +47,14 @@ object VideoStreamValidation {
         dashManifest: String?,
         userAgent: String?,
         delivery: CapsuleVideoDelivery = CapsuleVideoDelivery.PROGRESSIVE,
+        qualityLabel: String? = null,
     ): Boolean = isSupportedUrl(videoUrl) &&
         (audioUrl == null || isSupportedUrl(audioUrl)) &&
         (dashManifest?.length ?: 0) <= MAX_MANIFEST_LENGTH &&
         (userAgent?.length ?: 0) <= MAX_USER_AGENT_LENGTH &&
+        (qualityLabel?.length ?: 0) <= MAX_QUALITY_LABEL_LENGTH &&
+        videoUrl.orEmpty().length + audioUrl.orEmpty().length + dashManifest.orEmpty().length +
+            userAgent.orEmpty().length + qualityLabel.orEmpty().length <= MAX_TOTAL_TEXT_LENGTH &&
         userAgent.orEmpty().none { it < ' ' || it == '\u007f' } &&
         (delivery != CapsuleVideoDelivery.DASH || isIndexedManifest(dashManifest))
 

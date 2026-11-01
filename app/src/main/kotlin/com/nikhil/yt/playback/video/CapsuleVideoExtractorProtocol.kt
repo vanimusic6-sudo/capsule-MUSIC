@@ -90,7 +90,7 @@ internal object CapsuleVideoIpc {
 
     fun successBundle(resolved: CapsuleResolvedVideo): Bundle {
         if (!com.nikhil.yt.innertube.video.VideoStreamValidation.accepts(
-                resolved.videoUrl, resolved.audioUrl, resolved.dashManifest, resolved.userAgent, resolved.delivery,
+                resolved.videoUrl, resolved.audioUrl, resolved.dashManifest, resolved.userAgent, resolved.delivery, resolved.qualityLabel,
             )) return failureBundle(CapsuleVideoFailure.UNAVAILABLE, "Unsupported VIDEO extractor response")
         return Bundle().apply {
             putBoolean(EXTRA_SUCCESS, true)
@@ -121,6 +121,7 @@ internal object CapsuleVideoIpc {
         val url = bundle.getString(EXTRA_VIDEO_URL)
         val audio = bundle.getString(EXTRA_AUDIO_URL)?.takeIf { it.isNotBlank() }
         val id = bundle.getString(EXTRA_VIDEO_ID).orEmpty().ifBlank { expectedVideoId }
+        val label = bundle.getString(EXTRA_QUALITY_LABEL).orEmpty().ifBlank { "VIDEO" }
         val manifest = bundle.getString(EXTRA_DASH_MANIFEST)
         val agent = bundle.getString(EXTRA_USER_AGENT)
         val expiry = bundle.getLong(EXTRA_EXPIRES_AT, nowMs + 3_600_000L)
@@ -128,11 +129,11 @@ internal object CapsuleVideoIpc {
         val delivery = if (rawDelivery.isBlank()) CapsuleVideoDelivery.PROGRESSIVE else
             CapsuleVideoDelivery.entries.firstOrNull { it.name == rawDelivery } ?: return null
         if (id != expectedVideoId ||
-            !com.nikhil.yt.innertube.video.VideoStreamValidation.accepts(url, audio, manifest, agent, delivery) ||
+            !com.nikhil.yt.innertube.video.VideoStreamValidation.accepts(url, audio, manifest, agent, delivery, label) ||
             !com.nikhil.yt.innertube.video.VideoStreamValidation.isFresh(expiry, nowMs)) return null
         return CapsuleResolvedVideo(
             videoId = id, videoUrl = requireNotNull(url), audioUrl = audio,
-            qualityLabel = bundle.getString(EXTRA_QUALITY_LABEL).orEmpty().ifBlank { "VIDEO" },
+            qualityLabel = label,
             width = bundle.getInt(EXTRA_WIDTH, 0), height = bundle.getInt(EXTRA_HEIGHT, 0),
             videoItag = bundle.getInt(EXTRA_VIDEO_ITAG, -1), audioItag = bundle.getInt(EXTRA_AUDIO_ITAG, -1),
             expiresAtMs = expiry, backend = bundle.getString(EXTRA_BACKEND) ?: "newpipe",

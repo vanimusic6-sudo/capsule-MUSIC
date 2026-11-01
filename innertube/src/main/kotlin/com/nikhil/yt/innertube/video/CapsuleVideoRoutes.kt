@@ -104,7 +104,7 @@ internal fun resolveVideoRoutes(
         val started = System.nanoTime()
         try {
             VideoExtractionRequests.withRouteBudget(route.budgetMs) { resolve(route) }?.let {
-                if (!VideoStreamValidation.accepts(it.videoUrl, it.audioUrl, it.dashManifest, it.userAgent, it.delivery) ||
+                if (!VideoStreamValidation.accepts(it.videoUrl, it.audioUrl, it.dashManifest, it.userAgent, it.delivery, it.qualityLabel) ||
                     !VideoStreamValidation.isFresh(it.expiresAtMs) ||
                     (expectedVideoId != null && it.videoId != expectedVideoId)) {
                     throw CapsuleDirectVideoException(CapsuleNewPipeFailure.EXTRACTOR, "invalid output contract")
