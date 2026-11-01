@@ -375,8 +375,24 @@ fun OnlineSearchResult(
             }
         } else if (filter == null) {
             if (searchSummary == null) {
-                item(key = "summary-loading") {
-                    ShimmerHost { repeat(8) { ListItemPlaceHolder() } }
+                if (viewModel.summaryRequestFailed) {
+                    item(key = "summary-error") {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(stringResource(R.string.error_unknown))
+                            TextButton(onClick = viewModel::retrySummary) {
+                                Text(stringResource(R.string.retry))
+                            }
+                        }
+                    }
+                } else {
+                    // Keep the complete shelf geometry reserved while all
+                    // responses run concurrently. No lone Top result jump.
+                    item(key = "summary-loading") {
+                        ShimmerHost { repeat(8) { ListItemPlaceHolder() } }
+                    }
                 }
             } else {
                 searchSummary.summaries.forEachIndexed { index, summary ->
