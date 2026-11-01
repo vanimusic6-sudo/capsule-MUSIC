@@ -95,4 +95,22 @@ class UiEnergyRegressionTest {
         assertTrue(source.contains(".size(Size(requestWidthPx, requestHeightPx))"))
         assertTrue(!source.contains("song.song.thumbnailUrl?.toHighResThumbnail()"))
     }
+    @Test
+    fun `online playlist optional metadata is bounded by the visible viewport`() {
+        val viewModel = source("com/nikhil/yt/viewmodels/OnlinePlaylistViewModel.kt")
+        val screen = source("com/nikhil/yt/ui/screens/playlist/OnlinePlaylistScreen.kt")
+        assertTrue("Never fetch one video count per track during playlist load",
+            !viewModel.contains("prefetchViewCounts(playlistPage.songs.map"))
+        assertTrue("Continuation batches must not start a whole-page metadata fan-out",
+            !viewModel.contains("prefetchViewCounts(playlistContinuationPage.songs.map"))
+        assertTrue(viewModel.contains("videoIds.distinct().filter(String::isNotBlank).take(8)"))
+        assertTrue(viewModel.contains("delay(300L)"))
+        assertTrue(viewModel.contains("Semaphore(permits = 2)"))
+        assertTrue(viewModel.contains("viewCountsJob?.cancel()"))
+        assertTrue(viewModel.contains("withContext(NonCancellable)"))
+        assertTrue(screen.contains("keys.filterIsInstance<String>().filter(knownSongIds::contains)"))
+        assertTrue(screen.contains("viewModel.prefetchViewCounts(emptyList())"))
+        assertTrue(screen.contains("val wrappedSongs = remember(filteredSongs)"))
+    }
+
 }
