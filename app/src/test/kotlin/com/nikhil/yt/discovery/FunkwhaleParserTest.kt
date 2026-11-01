@@ -28,7 +28,7 @@ class FunkwhaleParserTest {
         assertEquals("Creator", tracks[0].artist)
         assertTrue(tracks[0].playable)
         assertTrue(tracks[0].streamUrl!!.contains("/api/v2/listen/b927e90a-"))
-        assertFalse(tracks[0].downloadable)
+        assertNull(tracks[0].downloadUrl)
     }
 
     @Test fun missingPublicUploadKeepsPublisherPageWithoutInventingPlayback() {

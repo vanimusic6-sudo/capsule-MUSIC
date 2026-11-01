@@ -164,6 +164,7 @@ jobs:
           name: capsule-video-regression-evidence
           path: |
             app/build/video-morph-preview/*.png
+            app/build/reports/ui-previews/*.png
             app/build/test-results/testUniversalDebugUnitTest/*.xml
           if-no-files-found: warn
           retention-days: 14
