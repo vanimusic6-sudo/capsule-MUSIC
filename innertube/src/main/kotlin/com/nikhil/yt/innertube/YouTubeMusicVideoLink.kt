@@ -33,7 +33,10 @@ data class YouTubeMusicVideoLink(
 object YouTubeMusicVideoLinkResolver {
     private const val VIDEO_FILTER = "EgWKAQIQAWoKEAkQChAFEAMQBA%3D%3D"
     private const val POSITIVE_CACHE_MS = 24 * 60 * 60 * 1000L
-    private const val NEGATIVE_CACHE_MS = 12 * 60 * 60 * 1000L
+    // A search that returned no safe clip is not proof no video exists.
+    // Shelf availability/metadata can change across YouTube responses; the
+    // old 12h negative entry hid newly available official clips all day.
+    private const val NEGATIVE_CACHE_MS = 15 * 60 * 1000L
     private const val MAX_CACHE_ENTRIES = 600
 
     private data class CacheEntry(
@@ -122,12 +125,11 @@ object YouTubeMusicVideoLinkResolver {
 
                 val candidatesById = linkedMapOf<String, Candidate>()
 
-                for ((index, query) in queries.withIndex()) {
-                    /*
-                     * Only use the explicit fallback query if the natural query
-                     * produced no usable official candidate at all.
-                     */
-                    if (index > 0 && candidatesById.isNotEmpty()) break
+                for (query in queries) {
+                    // The second "official video" query is only needed when
+                    // no STRONG candidate was found. Previously even a weak
+                    // or misidentified candidate skipped it and could win.
+                    // Keep high-confidence lookups to one request.
 
                     val renderers = searchVideoRenderers(query, beforeMetadataRequest)
 
@@ -294,7 +296,10 @@ object YouTubeMusicVideoLinkResolver {
                     ?.takeIf { it.isNotBlank() }
                 ?: return null
 
-        if (videoId == sourceMediaId) return null
+        // Official clips can genuinely have the very same watch/video ID as
+        // their YouTube Music song. A positive OMV type is already required
+        // above; excluding identical IDs created a false "no clip" result.
+        // Never accept the same ID without the strict OMV + title check.
 
         val candidateTitle =
             renderer.flexColumns
