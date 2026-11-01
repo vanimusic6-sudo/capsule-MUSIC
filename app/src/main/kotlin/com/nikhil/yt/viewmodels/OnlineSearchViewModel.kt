@@ -9,6 +9,11 @@
 package com.nikhil.yt.viewmodels
 
 import android.content.Context
+import android.os.SystemClock
+import android.util.Log
+import com.nikhil.yt.utils.GlobalLog
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -46,7 +51,13 @@ constructor(
 ) : ViewModel() {
     val query = savedStateHandle.get<String>("query")!!
     val filter = MutableStateFlow<YouTube.SearchFilter?>(null)
+    // The default Results tab is published atomically. A one-shelf response
+    // must never appear as a finished search and then push everything down.
     var summaryPage by mutableStateOf<SearchSummaryPage?>(null)
+        private set
+    var summaryRequestFailed by mutableStateOf(false)
+        private set
+    private var summaryJob: Job? = null
     val viewStateMap = mutableStateMapOf<String, ItemsPage?>()
 
     sealed interface ExperimentalSearchState {
@@ -60,47 +71,70 @@ constructor(
     private var loadMoreJob: Job? = null
 
     init {
+        // Unlike collectLatest on the selected chip, this work is NOT cancelled
+        // when the user briefly visits Songs or Albums. One complete result is
+        // delivered in one Compose state write; the UI never shifts its shelves
+        // underneath a finger.
+        retrySummary()
         viewModelScope.launch {
-            filter.collectLatest { filter ->
-                if (filter == null) {
-                    if (summaryPage == null) {
-                        YouTube
-                            .searchSummary(query)
-                            .onSuccess { result ->
-                                val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-                                val filteredSummary = result.filterExplicit(hideExplicit)
-                                // Reuse all credits already present in this response by ID.
-                                // One artist is not evidence of missing data: do not hold
-                                // every search behind two speculative network requests.
-                                summaryPage = filteredSummary.withFilteredSongCredits(
-                                    filteredSummary.summaries.flatMap { it.items }.filterIsInstance<SongItem>()
-                                )
-                            }.onFailure {
-                                reportException(it)
-                            }
-                    }
-                } else {
-                    if (viewStateMap[filter.value] == null) {
-                        YouTube
-                            .search(query, filter)
-                            .onSuccess { result ->
-                                viewStateMap[filter.value] =
-                                    ItemsPage(
-                                        result.items
-                                            .distinctBy { it.id }
-                                            .filterExplicit(
-                                                context.dataStore.get(
-                                                    HideExplicitKey,
-                                                    false
-                                                )
-                                            ),
-                                        result.continuation,
-                                    )
-                            }.onFailure {
-                                reportException(it)
-                            }
-                    }
+            filter.collectLatest { selectedFilter ->
+                if (selectedFilter == null || viewStateMap[selectedFilter.value] != null) {
+                    return@collectLatest
                 }
+                YouTube.search(query, selectedFilter)
+                    .onSuccess { result ->
+                        val hideExplicit = withContext(Dispatchers.IO) {
+                            context.dataStore.get(HideExplicitKey, false)
+                        }
+                        viewStateMap[selectedFilter.value] = ItemsPage(
+                            result.items.distinctBy { it.id }.filterExplicit(hideExplicit),
+                            result.continuation,
+                        )
+                    }.onFailure { reportException(it) }
+            }
+        }
+    }
+
+    /**
+     * Preserve the speed improvement from concurrent Songs/Albums requests,
+     * but present the *complete* summary at once. Errors terminate the skeleton
+     * and offer retry instead of leaving an infinite loading state.
+     */
+    fun retrySummary() {
+        if (summaryPage != null || summaryJob?.isActive == true) return
+        summaryRequestFailed = false
+        summaryJob = viewModelScope.launch {
+            val startedAt = SystemClock.elapsedRealtime()
+            try {
+                val hideExplicit = withContext(Dispatchers.IO) {
+                    context.dataStore.get(HideExplicitKey, false)
+                }
+                // This callback is diagnostic only; it does NOT change UI state.
+                val response = withContext(Dispatchers.Default) {
+                    YouTube.searchSummary(query, onPrimary = { primary ->
+                        if (GlobalLog.isEnabled) {
+                            GlobalLog.append(Log.DEBUG, "SearchLatency",
+                                "primaryMs=${SystemClock.elapsedRealtime() - startedAt} shelves=${primary.summaries.size}")
+                        }
+                    })
+                }.getOrThrow()
+                val completed = withContext(Dispatchers.Default) {
+                    val filtered = response.filterExplicit(hideExplicit)
+                    filtered.withFilteredSongCredits(
+                        filtered.summaries.flatMap { it.items }.filterIsInstance<SongItem>()
+                    )
+                }
+                // One observable update = one settled content layout.
+                summaryPage = completed
+                if (GlobalLog.isEnabled) {
+                    GlobalLog.append(Log.DEBUG, "SearchLatency",
+                        "completeMs=${SystemClock.elapsedRealtime() - startedAt} shelves=${completed.summaries.size}")
+                }
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (error: Exception) {
+                summaryRequestFailed = true
+                reportException(error)
             }
         }
     }

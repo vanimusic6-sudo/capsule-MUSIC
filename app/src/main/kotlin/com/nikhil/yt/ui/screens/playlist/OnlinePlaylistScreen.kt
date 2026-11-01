@@ -279,7 +279,12 @@ fun OnlinePlaylistScreen(
                             songCount = stringResource(R.string.loading),
                             loading = true,
                         ) {
-                            repeat(5) { PlaylistAction(R.drawable.play, stringResource(R.string.loading), {}, enabled = false) }
+                            // Correct actions even before metadata arrives; these stay disabled during loading.
+                            PlaylistAction(R.drawable.favorite_border, stringResource(R.string.action_like), {}, enabled = false)
+                            PlaylistAction(R.drawable.play_outline, stringResource(R.string.play), {}, enabled = false)
+                            PlaylistAction(R.drawable.shuffle, stringResource(R.string.shuffle), {}, enabled = false)
+                            PlaylistAction(R.drawable.download, stringResource(R.string.download), {}, enabled = false)
+                            PlaylistAction(R.drawable.more_vert, stringResource(R.string.more), {}, enabled = false)
                         }
                         ShimmerHost { repeat(6) { ListItemPlaceHolder() } }
                     }

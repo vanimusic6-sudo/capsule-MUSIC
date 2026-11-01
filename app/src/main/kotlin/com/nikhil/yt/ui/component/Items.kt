@@ -97,6 +97,7 @@ import androidx.media3.exoplayer.offline.Download
 import androidx.media3.exoplayer.offline.Download.STATE_COMPLETED
 import androidx.media3.exoplayer.offline.Download.STATE_DOWNLOADING
 import androidx.media3.exoplayer.offline.Download.STATE_QUEUED
+import androidx.compose.ui.graphics.graphicsLayer
 import coil3.compose.AsyncImage
 import coil3.request.crossfade
 import coil3.request.ImageRequest
@@ -473,12 +474,9 @@ fun ArtistListItem(
     subtitle = pluralStringResource(R.plurals.n_song, artist.songCount, artist.songCount),
     badges = badges,
     thumbnailContent = {
-        AsyncImage(
+        CapsuleFadeAsyncImage(
             model = artist.artist.thumbnailUrl,
-            contentDescription = null,
-            modifier = Modifier
-                .size(ListThumbnailSize)
-                .clip(CircleShape),
+            modifier = Modifier.size(ListThumbnailSize).clip(CircleShape),
         )
     },
     trailingContent = trailingContent,
@@ -501,13 +499,10 @@ fun ArtistGridItem(
     subtitle = pluralStringResource(R.plurals.n_song, artist.songCount, artist.songCount),
     badges = badges,
     thumbnailContent = {
-        AsyncImage(
+        CapsuleFadeAsyncImage(
             model = artist.artist.thumbnailUrl,
-            contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(CircleShape)
+            modifier = Modifier.fillMaxSize().clip(CircleShape),
         )
     },
     fillMaxWidth = fillMaxWidth,
@@ -810,7 +805,7 @@ fun OverlayPlaylistListItem(
             confirmButton = { TextButton(onClick = { showPreview = false }) { Text(stringResource(R.string.close_dialog)) } },
             text = {
                 Box(modifier = Modifier.fillMaxWidth().height(360.dp)) {
-                    AsyncImage(model = backgroundUrl, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    CapsuleFadeAsyncImage(model = backgroundUrl, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 }
             }
         )
@@ -1293,9 +1288,20 @@ fun ItemThumbnail(
 
         if (albumIndex == null) {
             if (shouldLoadImage) {
-                val request = remember(thumbnailUrl, widthPx, heightPx, thumbnailRatio, artworkRequestPixels) {
+                // Coil's native crossfade is disabled here; it also skips memory-cache hits.
+                // Reveal decoded pixels once for this visible artwork identity without a
+                // perpetual shimmer or a second image request.
+                var decoded by remember(thumbnailUrl) { androidx.compose.runtime.mutableStateOf(false) }
+                val arrival = rememberArtworkArrivalAlpha(thumbnailUrl, decoded)
+                // Google thumbnails sometimes reject an enlarged URL. Fall back
+                // once to the original address, never keep a blank tile forever.
+                val enhancedUrl = remember(thumbnailUrl, widthPx, heightPx, artworkRequestPixels) {
+                    capsuleArtworkUrl(thumbnailUrl, artworkRequestPixels ?: thumbnailRequestPixels(widthPx, heightPx))
+                }
+                var originalFallback by remember(thumbnailUrl) { androidx.compose.runtime.mutableStateOf(false) }
+                val request = remember(thumbnailUrl, enhancedUrl, originalFallback, widthPx, heightPx, thumbnailRatio) {
                     ImageRequest.Builder(context)
-                        .data(capsuleArtworkUrl(thumbnailUrl, artworkRequestPixels ?: thumbnailRequestPixels(widthPx, heightPx)))
+                        .data(if (originalFallback) thumbnailUrl else enhancedUrl)
                         .crossfade(false)
                         .allowHardware(true)
                         .apply {
@@ -1308,11 +1314,11 @@ fun ItemThumbnail(
                 AsyncImage(
                     model = request,
                     contentDescription = null,
+                    onSuccess = { decoded = true },
+                    onError = { if (!originalFallback && enhancedUrl != thumbnailUrl) originalFallback = true },
                     colorFilter = if (unavailableReason != null) ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }) else null,
                     contentScale = if (shouldApplySquareCrop) ContentScale.Crop else ContentScale.Fit,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        
+                    modifier = Modifier.fillMaxSize().graphicsLayer { alpha = arrival.value }
                 )
             } else {
                 Box(
@@ -1405,6 +1411,7 @@ fun LocalThumbnail(
         val request = remember(thumbnailUrl, widthPx, heightPx) {
             ImageRequest.Builder(context)
                 .data(thumbnailUrl)
+                .crossfade(false)
                 .allowHardware(true)
                 .apply {
                     if (widthPx != null && heightPx != null) {
@@ -1413,11 +1420,11 @@ fun LocalThumbnail(
                 }
                 .build()
         }
-        AsyncImage(
+        CapsuleFadeAsyncImage(
             model = request,
-            contentDescription = null,
+            identity = thumbnailUrl,
             contentScale = if (shouldApplySquareCrop) ContentScale.Crop else ContentScale.Fit,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
         )
 
         AnimatedVisibility(

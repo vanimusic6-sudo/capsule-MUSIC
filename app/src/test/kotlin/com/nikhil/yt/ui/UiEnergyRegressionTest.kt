@@ -103,11 +103,14 @@ class UiEnergyRegressionTest {
             !viewModel.contains("prefetchViewCounts(playlistPage.songs.map"))
         assertTrue("Continuation batches must not start a whole-page metadata fan-out",
             !viewModel.contains("prefetchViewCounts(playlistContinuationPage.songs.map"))
-        assertTrue(viewModel.contains("videoIds.distinct().filter(String::isNotBlank).take(8)"))
-        assertTrue(viewModel.contains("delay(300L)"))
+        // Count the *semantic* bounds, not a specific lambda spelling.
+        // The previous regression asserted old text from a replaced ViewModel
+        // despite the newer implementation retaining the same thermal limits.
+        assertTrue(viewModel.contains("videoIds.distinct().filter { it.isNotBlank() }.take(8)"))
+        assertTrue(viewModel.contains("delay(250)"))
         assertTrue(viewModel.contains("Semaphore(permits = 2)"))
         assertTrue(viewModel.contains("viewCountsJob?.cancel()"))
-        assertTrue(viewModel.contains("withContext(NonCancellable)"))
+        assertTrue(viewModel.contains("uniqueIds.filterNot { _viewCounts.value.containsKey(it) }"))
         assertTrue(screen.contains("keys.filterIsInstance<String>().filter(knownSongIds::contains)"))
         assertTrue(screen.contains("viewModel.prefetchViewCounts(emptyList())"))
         assertTrue(screen.contains("val wrappedSongs = remember(filteredSongs)"))

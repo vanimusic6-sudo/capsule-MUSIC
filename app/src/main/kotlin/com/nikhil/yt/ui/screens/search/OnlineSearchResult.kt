@@ -101,9 +101,8 @@ private fun RareTrackRow(
             .padding(horizontal = 20.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AsyncImage(
+        CapsuleFadeAsyncImage(
             model = track.artwork,
-            contentDescription = null,
             modifier = Modifier.size(60.dp).clip(RoundedCornerShape(11.dp)),
         )
         Spacer(Modifier.width(12.dp))
@@ -375,8 +374,24 @@ fun OnlineSearchResult(
             }
         } else if (filter == null) {
             if (searchSummary == null) {
-                item(key = "summary-loading") {
-                    ShimmerHost { repeat(8) { ListItemPlaceHolder() } }
+                if (viewModel.summaryRequestFailed) {
+                    item(key = "summary-error") {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(stringResource(R.string.error_unknown))
+                            TextButton(onClick = viewModel::retrySummary) {
+                                Text(stringResource(R.string.retry))
+                            }
+                        }
+                    }
+                } else {
+                    // Keep the complete shelf geometry reserved while all
+                    // responses run concurrently. No lone Top result jump.
+                    item(key = "summary-loading") {
+                        ShimmerHost { repeat(8) { ListItemPlaceHolder() } }
+                    }
                 }
             } else {
                 searchSummary.summaries.forEachIndexed { index, summary ->
