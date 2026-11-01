@@ -1,6 +1,7 @@
 package com.nikhil.yt.ui.component
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -20,7 +21,10 @@ internal fun rememberArtworkArrivalAlpha(identity: Any?, decoded: Boolean): Stat
     val decodedNow = rememberUpdatedState(decoded)
     LaunchedEffect(alpha) {
         snapshotFlow { decodedNow.value }.first { it }
-        alpha.animateTo(1f, tween(180))
+        // The prior linear 180ms ramp looked like an abrupt pop, especially on
+        // high-contrast covers. Smooth both ends and keep all work on the
+        // graphics layer (no repeated image decoding).
+        alpha.animateTo(1f, tween(320, easing = FastOutSlowInEasing))
     }
     return alpha.asState()
 }

@@ -233,14 +233,23 @@ internal fun DetailPortraitImage(
                     model = fullRequest,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize().graphicsLayer {
-                        alpha = if (upgradeFromPreview) upgrade.value else 1f
+                        // Coil can draw its first decoded frame before the
+                        // onSuccess callback updates animation state. Keep
+                        // that frame hidden until this request is accepted,
+                        // otherwise a fully opaque 960px bitmap flashes for
+                        // one frame on top of a visible preview.
+                        alpha = when {
+                            !request.loaded -> 0f
+                            upgradeFromPreview -> upgrade.value
+                            else -> 1f
+                        }
                     },
                     contentScale = ContentScale.Crop,
                     onSuccess = {
                         if (request.attempt == attempt) {
                             // If both cache hits arrive together, reveal once;
                             // reserve the second fade for an already visible preview.
-                            upgradeFromPreview = previewReady && arrival.value >= .999f
+                            upgradeFromPreview = previewReady && arrival.value >= .95f
                             if (!request.loaded && GlobalLog.isEnabled) {
                                 GlobalLog.append(Log.DEBUG, "ArtworkLatency",
                                     "detailFullMs=${SystemClock.elapsedRealtime() - firstRequestAt} preview=${previewReady}")
