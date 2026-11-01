@@ -195,9 +195,10 @@ fun OnlinePlaylistScreen(
         BackHandler { selection = false }
     }
 
-    val wrappedSongs =
-        remember(filteredSongs) { filteredSongs.map { item -> ItemWrapper(item) } }
-            .toMutableStateList()
+    // Retain selection state and row identity across playback/progress recompositions.
+    val wrappedSongs = remember(filteredSongs) {
+        filteredSongs.map { item -> ItemWrapper(item) }.toMutableStateList()
+    }
 
 
     val artworkFallbacks = remember(songs) {
@@ -213,17 +214,28 @@ fun OnlinePlaylistScreen(
 
 
 
-    LaunchedEffect(lazyListState) {
-        snapshotFlow { lazyListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
-            .collect { lastVisibleIndex ->
-                if (
-                    songs.size >= 5 &&
-                        lastVisibleIndex != null &&
-                        lastVisibleIndex >= songs.size - 5
-                ) {
-                    viewModel.loadMoreSongs()
-                }
+    // Playlists can contain hundreds of tracks. Only fetch optional view counts
+    // for the visible viewport, not for every remote page on arrival.
+    val knownSongIds = remember(songs) { songs.asSequence().map { it.id }.toSet() }
+    val onScreen = com.nikhil.yt.ui.player.appIsOnScreen()
+    LaunchedEffect(lazyListState, songs, onScreen) {
+        if (!onScreen) {
+            viewModel.prefetchViewCounts(emptyList())
+            return@LaunchedEffect
+        }
+        snapshotFlow {
+            lazyListState.layoutInfo.visibleItemsInfo.map { it.key } to
+                lazyListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
+        }.collect { (keys, lastVisibleIndex) ->
+            viewModel.prefetchViewCounts(
+                keys.filterIsInstance<String>().filter(knownSongIds::contains),
+            )
+            if (songs.size >= 5 && lastVisibleIndex != null &&
+                lastVisibleIndex >= songs.size - 5
+            ) {
+                viewModel.loadMoreSongs()
             }
+        }
     }
 
     Box(

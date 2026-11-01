@@ -19,6 +19,10 @@ import com.nikhil.yt.db.MusicDatabase
 import com.nikhil.yt.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -64,7 +68,11 @@ class OnlinePlaylistViewModel @Inject constructor(
 
     private val viewCountsMutex = Mutex()
     private val viewCountsInFlight = mutableSetOf<String>()
-    private val viewCountsSemaphore = Semaphore(permits = 4)
+    // Metadata isn't part of playback. Limit concurrent requests so browsing a large
+    // playlist cannot keep the radio/decoder busy for minutes in the background.
+    private val viewCountsSemaphore = Semaphore(permits = 2)
+    private var viewCountsJob: Job? = null
+    private var lastVisibleIds = emptyList<String>()
 
     var continuation: String? = null
         private set
@@ -89,7 +97,6 @@ class OnlinePlaylistViewModel @Inject constructor(
                         currentSongs.addAll(playlistContinuationPage.songs)
                         playlistSongs.value = currentSongs.distinctBy { it.id }
                         continuation = playlistContinuationPage.continuation
-                        prefetchViewCounts(playlistContinuationPage.songs.map { song -> song.id })
                         _isLoadingMore.value = false
                     }.onFailure { throwable ->
                         _isLoadingMore.value = false
@@ -126,7 +133,6 @@ class OnlinePlaylistViewModel @Inject constructor(
                     playlist.value = playlistPage.playlist
                     playlistSongs.value = playlistPage.songs.distinctBy { it.id }
                     continuation = playlistPage.songsContinuation
-                    prefetchViewCounts(playlistPage.songs.map { song -> song.id })
                 }.onFailure { throwable ->
                     _error.value = throwable.message ?: "Failed to load playlist"
                     reportException(throwable)
@@ -140,26 +146,35 @@ class OnlinePlaylistViewModel @Inject constructor(
         }
     }
 
-    private fun prefetchViewCounts(videoIds: List<String>) {
-        val uniqueIds = videoIds.distinct().filter { it.isNotBlank() }
-        if (uniqueIds.isEmpty()) return
-
-        viewModelScope.launch(Dispatchers.IO) {
+    /**
+     * Optional row counts are fetched only for settled, currently visible rows.
+     * Never spawn one network job per track in the entire remote playlist:
+     * a long playlist could create hundreds of requests and unnecessary heat.
+     * A fling cancels the pending window, including its in-flight lookups.
+     */
+    fun prefetchViewCounts(videoIds: List<String>) {
+        val visible = videoIds.distinct().filter(String::isNotBlank).take(8)
+        if (visible == lastVisibleIds) return
+        lastVisibleIds = visible
+        viewCountsJob?.cancel()
+        if (visible.isEmpty()) {
+            viewCountsJob = null
+            return
+        }
+        viewCountsJob = viewModelScope.launch(Dispatchers.IO) {
+            delay(300L) // Wait for the finger/fling to settle before network metadata.
             coroutineScope {
-                uniqueIds.map { videoId ->
+                visible.map { videoId ->
                     async {
-                        val shouldFetch =
-                            viewCountsMutex.withLock {
-                                if (_viewCounts.value.containsKey(videoId) || viewCountsInFlight.contains(videoId)) {
-                                    false
-                                } else {
-                                    viewCountsInFlight.add(videoId)
-                                    true
-                                }
+                        val shouldFetch = viewCountsMutex.withLock {
+                            if (_viewCounts.value.containsKey(videoId) ||
+                                videoId in viewCountsInFlight
+                            ) false else {
+                                viewCountsInFlight.add(videoId)
+                                true
                             }
-
+                        }
                         if (!shouldFetch) return@async
-
                         try {
                             viewCountsSemaphore.withPermit {
                                 val count = YouTube.getMediaInfo(videoId).getOrNull()?.viewCount
@@ -168,7 +183,11 @@ class OnlinePlaylistViewModel @Inject constructor(
                                 }
                             }
                         } finally {
-                            viewCountsMutex.withLock { viewCountsInFlight.remove(videoId) }
+                            // Cancellation must not strand an ID in the in-flight set;
+                            // otherwise subsequent viewport visits silently skip it.
+                            withContext(NonCancellable) {
+                                viewCountsMutex.withLock { viewCountsInFlight.remove(videoId) }
+                            }
                         }
                     }
                 }.awaitAll()
