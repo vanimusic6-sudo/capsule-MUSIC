@@ -6,7 +6,6 @@
 
 
 package com.nikhil.yt.ui.screens.artist
-import com.nikhil.yt.ui.utils.rememberCapsuleShelfScrollEnabled
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.capsulePressCombinedClickable
@@ -188,7 +187,6 @@ fun ArtistScreen(
     val lazyListState = rememberSaveable(viewModel.artistId, saver = LazyListState.Saver) {
         LazyListState()
     }
-    val shelfScrollEnabled = rememberCapsuleShelfScrollEnabled(lazyListState)
     var descriptionMoving by remember(viewModel.artistId) { mutableStateOf(false) }
     var memorialDialogVisible by remember(viewModel.artistId) { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -509,7 +507,7 @@ fun ArtistScreen(
                             LazyRow(
             flingBehavior = rememberCapsuleFlingBehavior(),
             overscrollEffect = null,
-                                userScrollEnabled = shelfScrollEnabled,
+                                
                                 // Keep the parent LazyColumn's section offsets stable
                                 // when a horizontally revealed card has longer metadata.
                                 modifier = Modifier.fillMaxWidth().height(gridShelfHeight()),
@@ -642,7 +640,7 @@ fun ArtistScreen(
                                 LazyRow(
             flingBehavior = rememberCapsuleFlingBehavior(),
             overscrollEffect = null,
-                                userScrollEnabled = shelfScrollEnabled,
+                                
                                 // Keep the parent LazyColumn's section offsets stable
                                 // when a horizontally revealed card has longer metadata.
                                 modifier = Modifier.fillMaxWidth().height(gridShelfHeight()),

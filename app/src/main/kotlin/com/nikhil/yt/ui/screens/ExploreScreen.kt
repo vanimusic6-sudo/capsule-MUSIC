@@ -8,7 +8,6 @@
 
 package com.nikhil.yt.ui.screens
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
-import com.nikhil.yt.ui.utils.rememberCapsuleShelfScrollEnabled
 
 import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -83,7 +82,6 @@ fun ExploreScreen(
 
     val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
-    val shelfScrollEnabled = rememberCapsuleShelfScrollEnabled(scrollState)
 
     // This screen's own entry: it cannot be destroyed while this composition is alive,
     // and observing it does not recompose the screen on unrelated navigation.
@@ -137,7 +135,7 @@ fun ExploreScreen(
                         LazyHorizontalGrid(
             flingBehavior = rememberCapsuleFlingBehavior(),
             overscrollEffect = null,
-                        userScrollEnabled = shelfScrollEnabled,
+                        
                             rows = GridCells.Fixed(4),
                             contentPadding = PaddingValues(start = 4.dp),
                             modifier = Modifier
@@ -241,7 +239,7 @@ fun ExploreScreen(
                         val lazyGridState = rememberLazyGridState()
                         LazyHorizontalGrid(
             overscrollEffect = null,
-                            userScrollEnabled = shelfScrollEnabled,
+                            
                             state = lazyGridState,
                             rows = GridCells.Fixed(4),
                             flingBehavior = rememberCapsuleFlingBehavior(),
@@ -321,7 +319,7 @@ fun ExploreScreen(
                     LazyRow(
             flingBehavior = rememberCapsuleFlingBehavior(),
             overscrollEffect = null,
-                        userScrollEnabled = shelfScrollEnabled,
+                        
                         // Cards have different metadata line counts; do not let
                         // horizontal swipes remeasure the vertical Explore feed.
                         modifier = Modifier.fillMaxWidth().height(gridShelfHeight()),
@@ -367,7 +365,7 @@ fun ExploreScreen(
                     LazyRow(
             flingBehavior = rememberCapsuleFlingBehavior(),
             overscrollEffect = null,
-                        userScrollEnabled = shelfScrollEnabled,
+                        
                         // Cards have different metadata line counts; do not let
                         // horizontal swipes remeasure the vertical Explore feed.
                         modifier = Modifier.fillMaxWidth().height(gridShelfHeight()),
@@ -425,7 +423,7 @@ fun ExploreScreen(
                     LazyHorizontalGrid(
             flingBehavior = rememberCapsuleFlingBehavior(),
             overscrollEffect = null,
-                        userScrollEnabled = shelfScrollEnabled,
+                        
                         rows = GridCells.Fixed(4),
                         contentPadding = PaddingValues(6.dp),
                         modifier = Modifier.height((MoodAndGenresButtonHeight + 12.dp) * 4 + 12.dp),

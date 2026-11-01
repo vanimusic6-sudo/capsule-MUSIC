@@ -7,7 +7,6 @@
 
 
 package com.nikhil.yt.ui.screens
-import com.nikhil.yt.ui.utils.rememberCapsuleShelfScrollEnabled
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.capsulePressCombinedClickable
@@ -170,7 +169,6 @@ fun AlbumScreen(
     val downloadIndex by downloadUtil.downloads.collectAsState()
     // State for LazyColumn to track scroll
     val lazyListState = rememberLazyListState()
-    val shelfScrollEnabled = rememberCapsuleShelfScrollEnabled(lazyListState)
 
     // Both titles and the artwork share one measured, reversible scroll progress.
     val titleMotion = rememberDetailHeaderMotion(
@@ -371,7 +369,7 @@ fun AlbumScreen(
                         LazyRow(
                             modifier = Modifier.fillMaxWidth().height(gridShelfHeight()),
                             flingBehavior = rememberCapsuleFlingBehavior(),
-                            userScrollEnabled = shelfScrollEnabled,
+                            
                             overscrollEffect = null,
                         ) {
                             items(

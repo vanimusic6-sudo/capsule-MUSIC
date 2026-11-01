@@ -8,7 +8,6 @@
 
 package com.nikhil.yt.ui.screens
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
-import com.nikhil.yt.ui.utils.rememberCapsuleShelfScrollEnabled
 
 import com.nikhil.yt.ui.utils.liveSavedStateHandle
 import com.nikhil.yt.ui.utils.scrollToTopIfIdle
@@ -133,7 +132,6 @@ fun HomeScreen(
 
     val scope = rememberCoroutineScope()
     val lazylistState = rememberLazyListState()
-    val shelfScrollEnabled = rememberCapsuleShelfScrollEnabled(lazylistState)
     // This screen's own entry: it cannot be destroyed while this composition is alive,
     // and observing it does not recompose the screen on unrelated navigation.
     val backStackEntry = LocalNavBackStackEntry.current
@@ -198,7 +196,7 @@ fun HomeScreen(
                 item(key = "home:quick-hero") {
                     QuickPicksSection(
                         quickPicks = picks,
-                        userScrollEnabled = shelfScrollEnabled,
+                        userScrollEnabled = true,
                         mediaMetadata = mediaMetadata,
                         isPlaying = isPlaying,
                         navController = navController,
@@ -216,7 +214,7 @@ fun HomeScreen(
                         NavigationTitle(title = stringResource(R.string.keep_listening))
                         KeepListeningSection(
                             keepListening = songs,
-                            userScrollEnabled = shelfScrollEnabled,
+                            userScrollEnabled = true,
                             mediaMetadata = mediaMetadata,
                             isPlaying = isPlaying,
                             navController = navController,
@@ -232,7 +230,7 @@ fun HomeScreen(
                 item(key = "home:taste") {
                     TasteRecommendationsSection(
                         suggestions = suggestions,
-                        userScrollEnabled = shelfScrollEnabled,
+                        userScrollEnabled = true,
                         mediaMetadata = mediaMetadata,
                         isPlaying = isPlaying,
                         navController = navController,
@@ -253,7 +251,7 @@ fun HomeScreen(
                         title = stringResource(R.string.capsule_discovery_home_title),
                         source = null,
                         tracks = beyond,
-                        userScrollEnabled = shelfScrollEnabled,
+                        userScrollEnabled = true,
                         playerConnection = playerConnection,
                         navController = navController,
                     )
@@ -264,7 +262,7 @@ fun HomeScreen(
                             title = lane.source.label + " · " + (lane.titleRes?.let { stringResource(it) } ?: catalogLaneTitle(lane.kind)),
                             source = lane.source,
                             tracks = lane.tracks,
-                            userScrollEnabled = shelfScrollEnabled,
+                            userScrollEnabled = true,
                             playerConnection = playerConnection,
                             navController = navController,
                         )
@@ -306,7 +304,7 @@ fun HomeScreen(
                         )
                         HomePageSectionContent(
                             section = releases,
-                            userScrollEnabled = shelfScrollEnabled,
+                            userScrollEnabled = true,
                             mediaMetadata = mediaMetadata,
                             isPlaying = isPlaying,
                             navController = navController,
@@ -325,7 +323,7 @@ fun HomeScreen(
                         NavigationTitle(title = stringResource(R.string.forgotten_favorites))
                         ForgottenFavoritesSection(
                             forgottenFavorites = favorites,
-                            userScrollEnabled = shelfScrollEnabled,
+                            userScrollEnabled = true,
                             mediaMetadata = mediaMetadata,
                             isPlaying = isPlaying,
                             horizontalLazyGridItemWidth = horizontalLazyGridItemWidth,
@@ -349,7 +347,7 @@ fun HomeScreen(
                                 endpoint = null, items = playlists,
                             )
                         }.copy(title = stringResource(R.string.home_community_playlists)),
-                        userScrollEnabled = shelfScrollEnabled,
+                        userScrollEnabled = true,
                         mediaMetadata = mediaMetadata,
                         isPlaying = isPlaying,
                         navController = navController,
@@ -381,7 +379,7 @@ fun HomeScreen(
                     if (isPlaylistCarousel) {
                         CommunityPlaylistsSection(
                             section = section,
-                            userScrollEnabled = shelfScrollEnabled,
+                            userScrollEnabled = true,
                             mediaMetadata = mediaMetadata,
                             isPlaying = isPlaying,
                             navController = navController,
@@ -398,7 +396,7 @@ fun HomeScreen(
                             )
                             HomePageSectionContent(
                                 section = section,
-                                userScrollEnabled = shelfScrollEnabled,
+                                userScrollEnabled = true,
                                 mediaMetadata = mediaMetadata,
                                 isPlaying = isPlaying,
                                 navController = navController,
