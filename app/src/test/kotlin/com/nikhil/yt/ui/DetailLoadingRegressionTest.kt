@@ -57,7 +57,9 @@ class DetailLoadingRegressionTest {
         }
         frames(20)
         compose.runOnIdle { assertEquals(1f, alpha.value, 0f); identity = "cover-b" }
-        compose.mainClock.advanceTimeByFrame()
+        // In Robolectric a mutable identity change may be queued after the current frame.
+        // Sample the new composition, not a stale reference from the previous one.
+        frames(3)
         compose.runOnIdle { assertEquals(0f, alpha.value, 0f) }
     }
 }
