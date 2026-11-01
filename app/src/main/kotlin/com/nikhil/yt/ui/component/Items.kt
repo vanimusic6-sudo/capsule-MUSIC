@@ -131,6 +131,7 @@ import com.nikhil.yt.constants.CropThumbnailToSquareKey
 import com.nikhil.yt.constants.ReleaseAppearanceDefaults
 import com.nikhil.yt.utils.reportException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
@@ -1635,9 +1636,14 @@ fun SwipeToSongBox(
     val player = LocalPlayerConnection.current
     val scope = rememberCoroutineScope()
     val offset = remember(mediaItem.mediaId) { mutableStateOf(0f) }
+    // Drag input must own this value while the finger is down. A previous
+    // 300ms snap-back animation otherwise races the next swipe sample.
+    var resetJob by remember(mediaItem.mediaId) { mutableStateOf<Job?>(null) }
     val threshold = 300f
 
     val dragState = rememberDraggableState { delta ->
+        resetJob?.cancel()
+        resetJob = null
         offset.value = (offset.value + delta).coerceIn(-threshold, threshold)
     }
 
@@ -1652,17 +1658,15 @@ fun SwipeToSongBox(
                         offset.value >= threshold -> {
                             player?.playNext(listOf(mediaItem))
                             Toast.makeText(ctx, R.string.play_next, Toast.LENGTH_SHORT).show()
-                            reset(offset, scope)
                         }
 
                         offset.value <= -threshold -> {
                             player?.addToQueue(listOf(mediaItem))
                             Toast.makeText(ctx, R.string.add_to_queue, Toast.LENGTH_SHORT).show()
-                            reset(offset, scope)
                         }
-
-                        else -> reset(offset, scope)
                     }
+                    resetJob?.cancel()
+                    resetJob = reset(offset, scope)
                 }
             )
     ) {
@@ -1712,7 +1716,7 @@ fun SwipeToSongBox(
 }
 
 // Helper to animate reset of swipe offset
-private fun reset(offset: MutableState<Float>, scope: CoroutineScope) {
+private fun reset(offset: MutableState<Float>, scope: CoroutineScope): Job =
     scope.launch {
         animate(
             initialValue = offset.value,
@@ -1720,7 +1724,6 @@ private fun reset(offset: MutableState<Float>, scope: CoroutineScope) {
             animationSpec = tween(durationMillis = 300, easing = CapsuleStandardEasing)
         ) { value, _ -> offset.value = value }
     }
-}
 
 // Data holder for swipe visuals
 data class Quadruple<A, B, C, D>(
