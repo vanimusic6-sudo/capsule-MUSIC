@@ -186,12 +186,12 @@ internal class DownloadedArtworkInterceptor(private val context: Context) : Inte
         } else null
         if (local == null) return chain.proceed()
 
-        if (DownloadedArtwork.needsFullResolutionFetch(local, url!!)) {
-            // Online: promote a legacy small image to requested 640px.
-            // Offline: never hide the already downloaded thumbnail.
-            val upgraded = chain.proceed()
-            if (upgraded !is coil3.request.ErrorResult) return upgraded
-        }
+        // A valid on-disk cover must be visible immediately. The previous
+        // branch attempted a high-resolution *network* upgrade synchronously
+        // before returning an already valid local file. That made some player
+        // covers wait for a slow CDN despite having a usable offline thumbnail.
+        // DownloadedArtwork.save() handles bounded quality upgrades separately;
+        // the image-loading interceptor should never hold a frame hostage to one.
         val result = chain.withRequest(chain.request.newBuilder().data(local).build()).proceed()
         if (result is coil3.request.ErrorResult) {
             // Bounds can survive damage to the compressed body. Fall back once, without looping.
