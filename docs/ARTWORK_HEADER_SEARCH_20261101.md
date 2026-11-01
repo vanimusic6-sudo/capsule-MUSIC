@@ -1,7 +1,9 @@
 # Artwork, collection headers, search and source cleanup — 2026-11-01
 
-Review branch: `fix/artwork-header-search-cleanup-20261101`  
-PR: https://github.com/vanimusic6-sudo/capsule-MUSIC/pull/71  
+Review branch: `fix/artwork-header-search-cleanup-20261101`
+
+PR: https://github.com/vanimusic6-sudo/capsule-MUSIC/pull/71
+
 Base: `2409c2a7c515eb2f31ea52ac0241283f77f677aa` (DEV 319 playback/download fixes)
 
 ## Changes and causes
