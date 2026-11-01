@@ -34,7 +34,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:usesCleartextTraffic="true"
         android:supportsRtl="false"
-        android:theme="@style/Theme.VeluneApp"
+        android:theme="@style/Theme.Capsule"
         tools:targetApi="tiramisu">
         <meta-data
             android:name="androidx.media3.session.default_notification_icon"
@@ -48,7 +48,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
-            android:theme="@style/Theme.VeluneApp"
+            android:theme="@style/Theme.Capsule"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -68,9 +68,9 @@
 
                 <data
                     android:host="together"
-                    android:scheme="velune" />
+                    android:scheme="capsule" />
                 <data
-                    android:host="together"
+                    android:host="playlist"
                     android:scheme="capsule" />
             </intent-filter>
 
@@ -236,7 +236,7 @@
             android:name=".DebugActivity"
             android:exported="false"
             android:process=":crash"
-            android:theme="@style/Theme.VeluneApp">
+            android:theme="@style/Theme.Capsule">
         </activity>
 
         <receiver
@@ -254,7 +254,7 @@
         <activity
             android:name=".ui.screens.settings.PoTokenExtractionActivity"
             android:exported="false"
-            android:theme="@style/Theme.VeluneApp" />
+            android:theme="@style/Theme.Capsule" />
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="dataSync"

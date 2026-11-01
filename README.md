@@ -47,6 +47,8 @@ python3 -m unittest discover -s scripts -p 'test_*.py'
 
 CI builds a separately signed DEV APK, a separate TEST APK and the Universal Debug APK. The playback validation workflow runs recovery/download/extractor tests and records the exact runtime dependency graph and OSV audit status. The full regression workflow runs native title rendering, UI regressions and Android lint. An unavailable advisory service is recorded as an incomplete scan, not as evidence that dependencies are clean.
 
+Capsule uses the independent `com.vanimusic.capsule` install ID, with `.dev` and `.debug` variants. Earlier builds shared Velune's ID. Before moving to the new installation, read [application identity and data migration](docs/APP_IDENTITY.md); the new package installs separately and cannot automatically read the old app's private data.
+
 Historical dated reports describe the revision they audited; the architecture and maintenance guide describe the active contracts. Keep changes on review branches until the resulting behavior has been reviewed on a device.
 
 ## License

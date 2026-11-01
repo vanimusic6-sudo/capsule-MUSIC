@@ -4,7 +4,7 @@ name: Capsule Full Regression Tests (manual)
 # on-demand testing. Everyday builds are produced by capsule-test-apk.yml.
 on:
   push:
-    branches: ['refactor/unified-scroll-engine-20261101', 'fix/playback-download-resilience-20261101', 'fix/artwork-header-search-cleanup-20261101', 'cleanup/extractor-boundaries-20261101']
+    branches: ['refactor/unified-scroll-engine-20261101', 'fix/playback-download-resilience-20261101', 'fix/artwork-header-search-cleanup-20261101', 'cleanup/extractor-boundaries-20261101', 'fix/capsule-app-identity-20261101']
   workflow_dispatch:
 
 permissions:
@@ -46,7 +46,19 @@ jobs:
 
       - name: Test cover geometry, title handoff and source cleanup
         run: |
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+          gradle :app:processUniversalReleaseMainManifest :app:processUniversalDevReleaseMainManifest --no-daemon
+          for ENTRY in 'release universalRelease' 'dev universalDevRelease'; do
+            read -r VARIANT DIRECTORY <<< "$ENTRY"
+            MANIFEST="$(find app/build/intermediates -path "*/$DIRECTORY/*" -name AndroidManifest.xml | sort | head -n 1)"
+            test -s "$MANIFEST"
+            python3 scripts/verify_app_identity.py --variant "$VARIANT" --manifest "$MANIFEST"
+          done
           gradle :app:testUniversalDebugUnitTest \
+            --tests 'com.nikhil.yt.utils.CapsuleAppIdentityTest' \
+            --tests 'com.nikhil.yt.ui.CapsuleBrandingTest' \
+            --tests 'com.nikhil.yt.together.TogetherCoreTest' \
+            --tests 'com.nikhil.yt.viewmodels.Backup*Test' \
             --tests 'com.nikhil.yt.ui.component.ArtworkResolutionTest' \
             --tests 'com.nikhil.yt.ui.component.DetailToolbarRevealTest' \
             --tests 'com.nikhil.yt.ui.CollectionHeaderMotionTest' \

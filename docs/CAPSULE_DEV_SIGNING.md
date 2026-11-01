@@ -1,6 +1,6 @@
 # Persistent Capsule DEV signing
 
-The DEV APK package is `com.nikhil.yt.dev`. It must have the **same** dedicated
+The DEV APK package is `com.vanimusic.capsule.dev`. It must have the **same** dedicated
 DEV signing certificate in every build to allow updates without uninstalling.
 The production release key is never used or exposed to DEV builds.
 
@@ -29,6 +29,11 @@ The production release key is never used or exposed to DEV builds.
    Export/backup any important DEV app data first. After that, all DEV
    builds signed with this unchanged key install as normal updates.
 
-The TEST APK uses the separate `com.nikhil.yt.debug` package and still works
+The TEST APK uses the separate `com.vanimusic.capsule.debug` package and still works
 without the DEV signing secrets. Never put the .p12 or passwords in git,
 GitHub Issues, comments, logs, or public links. Never use the production key.
+
+The installation identity was separated from Velune on 2026-11-01. Earlier
+Capsule builds used `com.nikhil.yt`, `.dev` and `.debug`; the new IDs install
+beside them, not as updates. The signing key has not changed. See
+[application identity and migration](APP_IDENTITY.md) before removing an old app.

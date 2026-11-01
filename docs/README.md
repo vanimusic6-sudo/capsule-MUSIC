@@ -5,6 +5,7 @@
 - [Playback architecture](PLAYBACK_ARCHITECTURE.md): responsibilities, bounded fallback, cancellation, cache identity and audio/video separation.
 - [Extractor maintenance](EXTRACTOR_MAINTENANCE.md): dependency ownership, adapter rules and failure-injection checks.
 - [DEV signing](CAPSULE_DEV_SIGNING.md): development build identity and signing setup.
+- [Application identity](APP_IDENTITY.md): independent install IDs, shortcut/provider contracts and migration from earlier Capsule builds.
 - [Native Android media integration](ANDROID_MEDIA_NOTIFICATION.md): platform integration context.
 - [Scroll engine](SCROLL_ENGINE_20261101.md): Foundation gesture ownership and fixed scroll policy.
 - [Security material](security/): supporting security evidence and checks.

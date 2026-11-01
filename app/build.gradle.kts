@@ -1,5 +1,6 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Properties
+import com.android.build.api.variant.ResValue
 
 plugins {
     alias(libs.plugins.android.application)
@@ -47,6 +48,7 @@ val gitCommit: String =
         .ifEmpty { "unknown" }
 
 val localProperties = Properties()
+val capsuleApplicationId = providers.gradleProperty("capsuleApplicationId").get()
 val localPropertiesFile = rootProject.file("local.properties")
 if (localPropertiesFile.exists()) {
     localProperties.load(localPropertiesFile.inputStream())
@@ -59,7 +61,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.nikhil.yt"
+        applicationId = capsuleApplicationId
         minSdk = 26
         targetSdk = 36
         versionCode = 10
@@ -80,6 +82,7 @@ android {
         buildConfigField("String", "TOGETHER_BEARER_TOKEN", "\"\"")
 
         buildConfigField("String", "GIT_COMMIT", "\"$gitCommit\"")
+        buildConfigField("String", "CAPSULE_RELEASE_PACKAGE", "\"$capsuleApplicationId\"")
     }
 
     flavorDimensions += "abi"
@@ -124,8 +127,8 @@ android {
             }
         }
         // Never reuse the official keystore for ordinary development builds.
-        // CI provisions a disposable key until the owner configures separate
-        // CAPSULE_DEV_* secrets for seamless upgrades of the DEV app.
+        // CI requires the persistent CAPSULE_DEV_* key. Never generate an
+        // ephemeral identity or fall back to the production signer.
         create("developmentRelease") {
             val keystoreFile = file("keystore/development-release.keystore")
             if (keystoreFile.exists()) {
@@ -172,6 +175,7 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        resValues = true
     }
 
     testOptions {
@@ -210,6 +214,23 @@ android {
             excludes += "META-INF/NOTICE.md"
             excludes += "META-INF/CONTRIBUTORS.md"
             excludes += "META-INF/LICENSE.md"
+        }
+    }
+}
+
+// Static shortcut XML is not a manifest: ${applicationId} is not expanded there.
+// Resolve its package/actions from the final variant, including DEV/TEST suffixes.
+androidComponents {
+    onVariants { variant ->
+        for ((name, suffix) in mapOf(
+            "capsule_application_id" to "",
+            "capsule_action_search" to ".action.SEARCH",
+            "capsule_action_library" to ".action.LIBRARY",
+        )) {
+            variant.resValues.put(
+                variant.makeResValueKey("string", name),
+                variant.applicationId.map { ResValue(it + suffix, "Variant install identity") },
+            )
         }
     }
 }
