@@ -4018,6 +4018,7 @@ class MusicService :
             playWhenReady = player.playWhenReady,
             buffering = player.playbackState == Player.STATE_BUFFERING,
             ready = player.playbackState == Player.STATE_READY,
+            bufferedAheadMs = player.totalBufferedDuration.takeIf { it >= 0L },
         )
     }
 
