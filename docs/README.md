@@ -12,6 +12,7 @@
 
 ## Recent verification reports
 
+- [Independent install identity and fork consistency](APP_IDENTITY_VERIFICATION_20261101.md).
 - [Extractor cleanup and fallback boundary verification](EXTRACTOR_CLEANUP_20261101.md).
 - [Artwork, headers, search and Audius removal](ARTWORK_HEADER_SEARCH_20261101.md).
 - [Playback/download review](PLAYBACK_DOWNLOAD_REVIEW_20261101.md).
