@@ -453,8 +453,6 @@ fun OnlineSearchResult(
                 add(SearchChip.ARTISTS to stringResource(R.string.filter_artists))
                 add(SearchChip.COMMUNITY_PLAYLISTS to stringResource(R.string.filter_community_playlists))
                 add(SearchChip.FEATURED_PLAYLISTS to stringResource(R.string.filter_featured_playlists))
-                if (experimentalEnabled) {
-                }
             },
             currentValue = selectedChip,
             onValueUpdate = { chip ->

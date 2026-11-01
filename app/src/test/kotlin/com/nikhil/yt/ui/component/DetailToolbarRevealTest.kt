@@ -42,6 +42,14 @@ class DetailToolbarRevealTest {
         assertEquals(.5f, detailTitleHandoff(.89f), .0001f)
     }
 
+    @Test fun longAndShortCaptionsAlignTheirFirstGlyphAtTheEndpoint() {
+        for (startOffset in listOf(-55f, -180f)) {
+            val translation = detailTitleStartTranslation(1f, .88f, 200f, startOffset, 64f)
+            assertEquals(64f, 200f + startOffset * .88f + translation, .0001f)
+            assertEquals(0f, detailTitleStartTranslation(0f, .88f, 200f, startOffset, 64f), 0f)
+        }
+    }
+
     @Test fun matchingBaselinesKeepTheFinalGlyphPositionWhenTheSourceHasTwoLines() {
         for (sourceHeight in listOf(58f, 116f)) {
             val sourceCenter = 130f

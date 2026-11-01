@@ -59,6 +59,8 @@ internal class DetailHeaderMotionState(
     private var compactTitleHeight by mutableFloatStateOf(Float.NaN)
     private var coverFirstBaseline by mutableFloatStateOf(Float.NaN)
     private var compactFirstBaseline by mutableFloatStateOf(Float.NaN)
+    private var coverFirstLineStart by mutableFloatStateOf(Float.NaN)
+    private var compactFirstLineStart by mutableFloatStateOf(Float.NaN)
     var compactTitleScale by mutableFloatStateOf(22f / 25f)
 
     // Measure the stationary parent, never the translated text itself. Adding
@@ -83,11 +85,13 @@ internal class DetailHeaderMotionState(
     fun measureCoverTitleText(layout: TextLayoutResult) {
         coverTitleHeight = layout.size.height.toFloat()
         coverFirstBaseline = layout.firstBaseline
+        coverFirstLineStart = layout.getLineLeft(0) - layout.size.width / 2f
     }
 
     fun measureCompactTitleText(layout: TextLayoutResult) {
         compactTitleHeight = layout.size.height.toFloat()
         compactFirstBaseline = layout.firstBaseline
+        compactFirstLineStart = layout.getLineLeft(0) - layout.size.width / 2f
     }
 
     private fun hasTitleAnchors(): Boolean = restTitleX.isFinite() && restTitleY.isFinite() &&
@@ -102,7 +106,10 @@ internal class DetailHeaderMotionState(
         if (!hasTitleAnchors()) return
         // Follow the current source position into the fixed toolbar anchor.
         // Geometry remains scroll-driven and reverses immediately with the finger.
-        layer.translationX = (compactTitleX - restTitleX) * p
+        layer.translationX = if (coverFirstLineStart.isFinite() && compactFirstLineStart.isFinite()) {
+            detailTitleStartTranslation(p, compactTitleScale, restTitleX,
+                coverFirstLineStart, compactTitleX + compactFirstLineStart)
+        } else (compactTitleX - restTitleX) * p
         val scale = 1f + (compactTitleScale - 1f) * p
         val sourceCenterY = restTitleY - scroll.firstVisibleItemScrollOffset
         val sourceBaselineOffset = coverFirstBaseline - coverTitleHeight / 2f
@@ -278,6 +285,15 @@ internal fun detailTitleHandoff(progress: Float): Float {
     return t * t * (3f - 2f * t)
 }
 
+/** Preserve the first glyph position when a two-line caption becomes an ellipsis. */
+internal fun detailTitleStartTranslation(
+    progress: Float,
+    targetScale: Float,
+    sourceCenterX: Float,
+    sourceLineStart: Float,
+    targetLineStartX: Float,
+): Float = (targetLineStartX - sourceCenterX - targetScale * sourceLineStart) * progress
+
 /** Align actual baselines, including a two-line source and a one-line destination. */
 internal fun detailTitleBaselineTranslation(
     progress: Float,
@@ -294,10 +310,9 @@ internal fun Modifier.detailCoverTitleMotion(motion: DetailHeaderMotionState?): 
     }
 
 /**
- * Keep the compact text laid out from the first frame. Colour invalidation
- * redraws actual glyphs when scrolling. Do not rely on reviving an initially
- * empty zero-alpha layer after cached-cover or navigation state changes.
- * Only this small text scope observes progress; the collection stays skippable.
+ * Keep both text layouts measured from the first frame. Layer alpha and
+ * translation observe scroll without recomposing the collection or the glyphs.
+ * The first-line start, baseline and zero letter spacing meet at the same endpoint.
  */
 @Composable
 internal fun DetailToolbarTitle(title: String, motion: DetailHeaderMotionState) {

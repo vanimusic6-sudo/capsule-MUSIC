@@ -17,6 +17,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nikhil.yt.innertube.YouTube
+import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.models.filterExplicit
 import com.nikhil.yt.innertube.pages.SearchSummaryPage
 import com.nikhil.yt.constants.HideExplicitKey
@@ -68,7 +69,12 @@ constructor(
                             .onSuccess { result ->
                                 val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                                 val filteredSummary = result.filterExplicit(hideExplicit)
-                                summaryPage = filteredSummary
+                                // Reuse all credits already present in this response by ID.
+                                // One artist is not evidence of missing data: do not hold
+                                // every search behind two speculative network requests.
+                                summaryPage = filteredSummary.withFilteredSongCredits(
+                                    filteredSummary.summaries.flatMap { it.items }.filterIsInstance<SongItem>()
+                                )
                             }.onFailure {
                                 reportException(it)
                             }
