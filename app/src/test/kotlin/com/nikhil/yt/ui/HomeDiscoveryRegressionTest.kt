@@ -38,7 +38,7 @@ class HomeDiscoveryRegressionTest {
     }
 
     @Test
-    fun sourcePickerOnlyAffectsHomeAndOldForgottenShelfIsGone() {
+    fun accountButtonReplacesSourcePickerAndOldForgottenShelfIsGone() {
         val home = source("ui/screens/HomeScreen.kt")
         val header = source("ui/screens/CapsuleRouteSurface.kt")
         val shelf = source("ui/screens/ExperimentalDiscoveryShelf.kt")
@@ -50,11 +50,12 @@ class HomeDiscoveryRegressionTest {
         assertTrue(home.contains("includeYouTube"))
         assertFalse(home.contains("ExperimentalForgottenShelf("))
         assertTrue(header.contains("if (isHome)"))
-        assertTrue(header.contains("HomeFeedSource.selectable.forEach"))
-        assertTrue(header.contains("val active = source in effective"))
-        assertTrue(header.contains("val next = effective.toMutableSet()"))
-        assertTrue(header.contains("capsule_home_reset_youtube"))
-        assertTrue(header.contains("setRaw(HomeFeedSource.DEFAULT)"))
+        assertTrue(header.contains("navController?.navigate(\"settings/account\")"))
+        assertFalse(header.contains("HomeFeedSource.selectable.forEach"))
+        assertFalse(header.contains("chooserOpen"))
+        val chrome = source("ui/component/StandardChrome.kt")
+        assertTrue(chrome.contains("homeGuestIcon(signedIn = signedIn, period = dayPeriod)"))
+        assertTrue(chrome.contains("model = if (signedIn) accountImageUrl else null"))
         assertTrue(home.contains("home:catalog-loading"))
         assertTrue(home.contains("HomeLoadingShimmer()"))
         assertTrue(home.contains("CatalogHomeError("))
@@ -79,7 +80,7 @@ class HomeDiscoveryRegressionTest {
         assertTrue(archive.contains("streamUrl = null"))
         assertTrue(commons.contains("iiurlwidth=320"))
         assertTrue(commons.contains("fun artist(name: String)"))
-        assertTrue(selector.contains("HomeFeedSource.selectable.toSet()"))
+        assertFalse(selector.contains("HomeFeedSource.selectable.toSet()"))
         assertTrue(catalog.contains("RadioBrowserMusic.browse("))
     }
 

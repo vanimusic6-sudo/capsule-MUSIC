@@ -6,7 +6,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import timber.log.Timber
@@ -90,9 +89,6 @@ object ExperimentalCatalog {
             }
         }
     }
-
-    /** No unselected provider may start a background recommendation request. */
-    suspend fun recommend(tasteArtists: List<String>): List<Track> = emptyList()
 
     suspend fun discoveryFrom(source: Source, tasteArtists: List<String>): List<Track> =
         when (source) {
@@ -270,7 +266,8 @@ object ExperimentalCatalog {
                     }
                     .distinctBy { it.mediaId }
                     .sortedWith(compareByDescending<Track> { it.playable }
-                        )
+                        .thenByDescending { it.favoriteCount + it.repostCount * 2L }
+                        .thenByDescending { it.playCount })
                     .filter { used.add(it.mediaId) }
                     .take(16).toList()
                     .map { track ->
