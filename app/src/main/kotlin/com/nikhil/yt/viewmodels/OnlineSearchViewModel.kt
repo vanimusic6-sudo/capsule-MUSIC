@@ -9,6 +9,9 @@
 package com.nikhil.yt.viewmodels
 
 import android.content.Context
+import android.os.SystemClock
+import android.util.Log
+import com.nikhil.yt.utils.GlobalLog
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -72,8 +75,10 @@ constructor(
                 requestFailed = false
                 if (filter == null) {
                     if (summaryPage == null) {
-                        withContext(Dispatchers.IO) { YouTube.searchSummary(query) }
-                            .onSuccess { result ->
+                        val started = SystemClock.elapsedRealtime()
+                        val result = withContext(Dispatchers.IO) { YouTube.searchSummary(query) }
+                        val received = SystemClock.elapsedRealtime()
+                        result.onSuccess { result ->
                                 val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                                 val filteredSummary = result.filterExplicit(hideExplicit)
                                 // Reuse all credits already present in this response by ID.
@@ -82,6 +87,8 @@ constructor(
                                 summaryPage = filteredSummary.withFilteredSongCredits(
                                     filteredSummary.summaries.flatMap { it.items }.filterIsInstance<SongItem>()
                                 )
+                                GlobalLog.append(Log.DEBUG, "SearchLatency",
+                                    "summary responseMs=${received - started} publishMs=${SystemClock.elapsedRealtime() - started} shelves=${filteredSummary.summaries.size}")
                             }.onFailure {
                                 requestFailed = true
                                 reportException(it)
@@ -89,8 +96,10 @@ constructor(
                     }
                 } else {
                     if (viewStateMap[filter.value] == null) {
-                        withContext(Dispatchers.IO) { YouTube.search(query, filter) }
-                            .onSuccess { result ->
+                        val started = SystemClock.elapsedRealtime()
+                        val result = withContext(Dispatchers.IO) { YouTube.search(query, filter) }
+                        val received = SystemClock.elapsedRealtime()
+                        result.onSuccess { result ->
                                 viewStateMap[filter.value] =
                                     ItemsPage(
                                         result.items
@@ -103,6 +112,8 @@ constructor(
                                             ),
                                         result.continuation,
                                     )
+                                GlobalLog.append(Log.DEBUG, "SearchLatency",
+                                    "filtered responseMs=${received - started} publishMs=${SystemClock.elapsedRealtime() - started} items=${result.items.size}")
                             }.onFailure {
                                 requestFailed = true
                                 reportException(it)

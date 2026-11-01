@@ -282,13 +282,10 @@ object YouTube {
             browseId = browseId, playlistId = playlistId, title = albumTitle,
             artists = albumArtists, year = albumYear, thumbnail = albumThumbnail, explicit = false,
         )
-        val inlineSongs = AlbumPage.getSongs(response, album)
-        val hasMoreInline = twoColumn?.secondaryContents?.sectionListRenderer?.contents
-            ?.any { it.musicShelfRenderer?.continuations?.getContinuation() != null } == true
+        val inlineSongs = AlbumPage.completeInlineSongs(response, album)
         AlbumPage(
             album = album,
-            songs = if (!withSongs) emptyList() else if (inlineSongs.isNotEmpty() && !hasMoreInline)
-                inlineSongs else albumSongs(playlistId, album).getOrThrow(),
+            songs = if (!withSongs) emptyList() else inlineSongs ?: albumSongs(playlistId, album).getOrThrow(),
             otherVersions = twoColumn?.secondaryContents?.sectionListRenderer?.contents?.getOrNull(1)?.musicCarouselShelfRenderer?.contents
                 ?.mapNotNull { it.musicTwoRowItemRenderer }
                 ?.mapNotNull(NewReleaseAlbumPage::fromMusicTwoRowItemRenderer)
