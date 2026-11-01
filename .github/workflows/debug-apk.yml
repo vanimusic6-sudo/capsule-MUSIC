@@ -4,7 +4,7 @@ name: Capsule Full Regression Tests (manual)
 # on-demand testing. Everyday builds are produced by capsule-test-apk.yml.
 on:
   push:
-    branches: ['refactor/unified-scroll-engine-20261101', 'fix/playback-download-resilience-20261101', 'fix/artwork-header-search-cleanup-20261101', 'cleanup/extractor-boundaries-20261101', 'fix/capsule-app-identity-20261101']
+    branches: ['refactor/unified-scroll-engine-20261101', 'fix/playback-download-resilience-20261101', 'fix/artwork-header-search-cleanup-20261101', 'cleanup/extractor-boundaries-20261101', 'fix/capsule-app-identity-20261101', 'fix/detail-loading-title-actions-20261101']
   workflow_dispatch:
 
 permissions:
@@ -55,6 +55,8 @@ jobs:
             python3 scripts/verify_app_identity.py --variant "$VARIANT" --manifest "$MANIFEST"
           done
           gradle :app:testUniversalDebugUnitTest \
+            --tests 'com.nikhil.yt.ui.DetailLoadingRegressionTest' \
+            --tests 'com.nikhil.yt.ui.AlbumLayoutTest' \
             --tests 'com.nikhil.yt.utils.CapsuleAppIdentityTest' \
             --tests 'com.nikhil.yt.ui.CapsuleBrandingTest' \
             --tests 'com.nikhil.yt.together.TogetherCoreTest' \
@@ -64,6 +66,17 @@ jobs:
             --tests 'com.nikhil.yt.ui.CollectionHeaderMotionTest' \
             --tests 'com.nikhil.yt.discovery.*' \
             --stacktrace --no-daemon
+
+      - name: Upload focused header and loading evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capsule-detail-loading-evidence
+          path: |
+            app/build/test-results/testUniversalDebugUnitTest/*.xml
+            app/build/reports/ui-previews/*.png
+          retention-days: 14
+          if-no-files-found: warn
 
       - name: Run Android lint
         run: |

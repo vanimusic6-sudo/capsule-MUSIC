@@ -99,10 +99,12 @@ sealed class QueueData : Serializable {
         val params: String? = null,
         val index: Int? = null,
         val musicVideoType: String? = null,
+        val shuffleBrowsePages: Boolean = false,
     ) : QueueData() {
         companion object {
             private const val serialVersionUID = 1L
             const val STRUCTURED_ENDPOINT = "structured_watch_endpoint_v1"
+            const val BROWSE_PLAYLIST = "loaded_browse_playlist_v1"
         }
     }
 

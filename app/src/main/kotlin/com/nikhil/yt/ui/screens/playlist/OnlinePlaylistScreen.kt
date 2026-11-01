@@ -213,14 +213,15 @@ fun OnlinePlaylistScreen(
 
 
 
-    LaunchedEffect(lazyListState) {
-        snapshotFlow { lazyListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
-            .collect { lastVisibleIndex ->
-                if (
-                    songs.size >= 5 &&
-                        lastVisibleIndex != null &&
-                        lastVisibleIndex >= songs.size - 5
-                ) {
+    val onScreen = com.nikhil.yt.ui.player.appIsOnScreen()
+    LaunchedEffect(lazyListState, songs, onScreen) {
+        if (!onScreen) { viewModel.prefetchViewCounts(emptyList()); return@LaunchedEffect }
+        snapshotFlow { lazyListState.layoutInfo.visibleItemsInfo.map { it.key } }
+            .collect { visibleKeys ->
+                val visibleIds = visibleKeys.filterIsInstance<String>().filter { key -> songs.any { it.id == key } }
+                viewModel.prefetchViewCounts(visibleIds)
+                val lastVisibleIndex = lazyListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
+                if (songs.size >= 5 && lastVisibleIndex != null && lastVisibleIndex >= songs.size - 5) {
                     viewModel.loadMoreSongs()
                 }
             }
@@ -259,16 +260,7 @@ fun OnlinePlaylistScreen(
                         // Never shimmer the full-bleed portrait: shimmer
                         // brightened its placeholder while the separately
                         // pinned toolbar stayed the ordinary page colour.
-                        PlaylistHero(
-                                artworkAlpha = titleMotion::artworkAlpha,
-                                titleMotion = titleMotion,
-                            title = playlist?.title.orEmpty(),
-                            thumbnails = listOfNotNull(playlist?.thumbnail),
-                            songCount = stringResource(R.string.loading),
-                            loading = true,
-                        ) {
-                            repeat(5) { PlaylistAction(R.drawable.play, stringResource(R.string.loading), {}, enabled = false) }
-                        }
+                        com.nikhil.yt.ui.component.AlbumHeaderPlaceholder(background = surfaceColor, motion = titleMotion)
                         ShimmerHost { repeat(6) { ListItemPlaceHolder() } }
                     }
                 } else if (playlist != null) {
@@ -351,9 +343,11 @@ fun OnlinePlaylistScreen(
                                 PlaylistAction(
                                     icon = R.drawable.play, label = stringResource(R.string.play),
                                     onClick = {
-                                        val endpoint = playlist.playEndpoint
-                                        if (endpoint != null) playerConnection.playQueue(YouTubeQueue(endpoint))
-                                        else playerConnection.playQueue(ListQueue(title = playlist.title, items = songs.map { it.toMediaItem() }))
+                                        if (songs.isNotEmpty()) {
+                                            playerConnection.playQueue(com.nikhil.yt.playback.queues.LoadedPlaylistQueue(
+                                                playlist.title, songs.map { it.toMediaItem() }, viewModel.continuation,
+                                            ))
+                                        } else playlist.playEndpoint?.let { playerConnection.playQueue(YouTubeQueue(it)) }
                                     },
                                     enabled = playlist.playEndpoint != null || songs.isNotEmpty(),
                                 )
@@ -362,15 +356,11 @@ fun OnlinePlaylistScreen(
                                     label = stringResource(R.string.shuffle),
                                     enabled = playlist.shuffleEndpoint != null || songs.isNotEmpty(),
                                     onClick = {
-                                        val endpoint = playlist.shuffleEndpoint
-                                        if (endpoint != null) {
-                                            playerConnection.playQueue(YouTubeQueue(endpoint))
-                                        } else {
-                                            playerConnection.playQueue(
-                                                ListQueue(title = playlist.title,
-                                                    items = songs.shuffled().map { it.toMediaItem() }),
-                                            )
-                                        }
+                                        if (songs.isNotEmpty()) {
+                                            playerConnection.playQueue(com.nikhil.yt.playback.queues.LoadedPlaylistQueue(
+                                                playlist.title, songs.map { it.toMediaItem() }, viewModel.continuation, shuffle = true,
+                                            ))
+                                        } else playlist.shuffleEndpoint?.let { playerConnection.playQueue(YouTubeQueue(it)) }
                                     },
                                 )
                                 CapsuleCollectionDownloadButton(

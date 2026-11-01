@@ -106,8 +106,8 @@ import com.nikhil.yt.viewmodels.AlbumUiState
 import com.nikhil.yt.viewmodels.AlbumViewModel
 
 /** Mirrors the loaded header and the reserved loading portrait in the list below. */
-internal fun albumHasHeroHeader(hasSongs: Boolean, uiState: AlbumUiState): Boolean =
-    hasSongs || uiState == AlbumUiState.Loading || uiState == AlbumUiState.Content
+internal fun albumHasHeroHeader(hasSongs: Boolean, uiState: AlbumUiState, hasMetadata: Boolean = false): Boolean =
+    hasSongs || hasMetadata || uiState == AlbumUiState.Loading || uiState == AlbumUiState.Content
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -173,7 +173,7 @@ fun AlbumScreen(
     // Both titles and the artwork share one measured, reversible scroll progress.
     val titleMotion = rememberDetailHeaderMotion(
         state = lazyListState,
-        hasHeader = albumHasHeroHeader(albumWithSongs?.songs?.isNotEmpty() == true, uiState),
+        hasHeader = albumHasHeroHeader(albumWithSongs?.songs?.isNotEmpty() == true, uiState, albumWithSongs != null),
         contentIdentity = viewModel.albumId,
     )
 
@@ -183,7 +183,7 @@ fun AlbumScreen(
         content = {
             val albumWithSongs = albumWithSongs
             val hasSongs = albumWithSongs?.songs?.isNotEmpty() == true
-            if (hasSongs) {
+            if (albumWithSongs != null) {
                 item(key = "header") {
                     AlbumHeaderLayout(
                         showTitle = false,
@@ -234,6 +234,7 @@ fun AlbumScreen(
                         PlaylistAction(
                             icon = R.drawable.play_outline,
                             label = stringResource(R.string.play),
+                            enabled = wrappedSongs.isNotEmpty(),
                             onClick = {
                                                                 playerConnection.playQueue(LocalAlbumRadio(albumWithSongs))
                             },
@@ -241,6 +242,7 @@ fun AlbumScreen(
                         PlaylistAction(
                             icon = R.drawable.shuffle,
                             label = stringResource(R.string.shuffle),
+                            enabled = wrappedSongs.isNotEmpty(),
                             onClick = {
                                                                 playerConnection.playQueue(
                                     LocalAlbumRadio(albumWithSongs.copy(
@@ -252,6 +254,7 @@ fun AlbumScreen(
                         CapsuleCollectionDownloadButton(
                             actionKey = albumWithSongs.album.id,
                             collectionName = albumWithSongs.album.title,
+                            enabled = wrappedSongs.isNotEmpty(),
                             state = downloadState,
                             hasStoredItems = albumWithSongs.songs.any { downloadIndex.containsKey(it.id) },
                             hasCompletedItems = albumWithSongs.songs.any {
@@ -299,6 +302,21 @@ fun AlbumScreen(
                     )
                 }
 
+                if (uiState == AlbumUiState.Empty) {
+                    item(key = "empty") {
+                        Text(stringResource(R.string.empty_album),
+                            modifier = Modifier.fillMaxWidth().padding(24.dp),
+                            textAlign = TextAlign.Center, color = StandardChrome.muted)
+                    }
+                }
+                if (!hasSongs && uiState is AlbumUiState.Error) {
+                    item(key = "cached-album-error") {
+                        Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(stringResource(R.string.error_unknown), color = StandardChrome.muted)
+                            Button(onClick = viewModel::retry) { Text(stringResource(R.string.retry)) }
+                        }
+                    }
+                }
                 // Songs List
                 itemsIndexed(
                     items = wrappedSongs,
@@ -406,7 +424,7 @@ fun AlbumScreen(
                     AlbumUiState.Loading,
                     AlbumUiState.Content -> {
                         item(key = "header") {
-                            AlbumHeaderPlaceholder(background = surfaceColor)
+                            AlbumHeaderPlaceholder(background = surfaceColor, motion = titleMotion)
                         }
                         item(key = "loading_songs") {
                             ShimmerHost { repeat(6) { ListItemPlaceHolder() } }

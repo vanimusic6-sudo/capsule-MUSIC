@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -23,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +45,9 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
+import androidx.compose.ui.platform.LocalContext
 
 /**
  * Portrait canvas shared by album AND playlists: identical full-width cover,
@@ -108,16 +114,10 @@ internal fun BoxScope.CapsuleDetailCoverTitle(
             Modifier.onGloballyPositioned(motion::measureCoverTitle))) {
             Text(
                 text = title,
-                modifier = Modifier.detailCoverTitleMotion(motion).testTag("capsule:detail-title")
+                modifier = Modifier.drawWithContent { if (motion?.overlayReady() != true) drawContent() }.testTag("capsule:detail-title")
                     .semantics { if (hidden) hideFromAccessibility() },
                 color = foreground,
-                style = MaterialTheme.typography.headlineLarge.copy(
-                    fontSize = 25.sp,
-                    lineHeight = 29.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 0.sp,
-                    textAlign = TextAlign.Center,
-                ),
+                style = detailTitleStyle(),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 onTextLayout = { motion?.measureCoverTitleText(it) },
@@ -173,6 +173,17 @@ internal fun DetailPortraitImage(
     val request = remember(coverIdentity, minimumPixels) { DetailArtworkRequestState(candidates) }
     SideEffect { request.updateCandidates(candidates) }
     val attempt = request.attempt
+    val context = LocalContext.current
+    var previewReady by remember(coverIdentity) { mutableStateOf(false) }
+    var upgradeFromPreview by remember(coverIdentity) { mutableStateOf(false) }
+    val arrival = rememberArtworkArrivalAlpha(coverIdentity, previewReady || request.loaded)
+    val upgrade = rememberArtworkArrivalAlpha(coverIdentity to "full", request.loaded)
+    val fullRequest = remember(attempt) {
+        ImageRequest.Builder(context).data(attempt?.source).crossfade(false).build()
+    }
+    val previewRequest = remember(coverIdentity) {
+        ImageRequest.Builder(context).data(coverIdentity).size(512, 512).crossfade(false).build()
+    }
     LaunchedEffect(request, attempt, request.loaded) {
         if (attempt != null && !request.loaded) {
             delay(7_000L)
@@ -181,7 +192,7 @@ internal fun DetailPortraitImage(
     }
 
     Box(modifier.background(background), contentAlignment = Alignment.Center) {
-        if (attempt == null) {
+        if (attempt == null && !previewReady) {
             Icon(
                 painter = painterResource(R.drawable.music_note),
                 contentDescription = null,
@@ -191,15 +202,28 @@ internal fun DetailPortraitImage(
         } else {
             // Preserve the same source after success even if track pagination
             // changes fallback order. Round also makes same-URL retries real.
-            key(coverIdentity, attempt) {
+            Box(Modifier.fillMaxSize().graphicsLayer { alpha = arrival.value }) {
+                // Reuse the original/feed URL immediately while the larger CDN
+                // variant decodes. Both layers use identical, fixed crop geometry.
                 AsyncImage(
-                    model = attempt.source,
+                    model = previewRequest,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
-                    onSuccess = { request.succeed(attempt) },
+                    onSuccess = { previewReady = true },
+                )
+                if (attempt != null) key(coverIdentity, attempt) {
+                AsyncImage(
+                    model = fullRequest,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize().graphicsLayer {
+                        alpha = if (upgradeFromPreview) upgrade.value else 1f
+                    },
+                    contentScale = ContentScale.Crop,
+                    onSuccess = { upgradeFromPreview = previewReady; request.succeed(attempt) },
                     onError = { request.fail(attempt) },
                 )
+                }
             }
         }
     }

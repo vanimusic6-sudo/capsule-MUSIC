@@ -179,7 +179,7 @@ internal fun PlaylistHero(
             // toolbar until the image arrives (especially under shimmer).
             Box(Modifier.fillMaxSize().background(StandardChrome.background), contentAlignment = Alignment.Center) {
                 when (covers.size) {
-                    0 -> if (loading) VeluneLoader(size = 30.dp) else if (fallbackThumbnails.any(String::isNotBlank)) {
+                    0 -> if (fallbackThumbnails.any(String::isNotBlank)) {
                         DetailPortraitImage(
                             thumbnailUrl = fallbackThumbnails.firstOrNull { it.isNotBlank() },
                             fallbackThumbnailUrls = fallbackThumbnails.drop(1),

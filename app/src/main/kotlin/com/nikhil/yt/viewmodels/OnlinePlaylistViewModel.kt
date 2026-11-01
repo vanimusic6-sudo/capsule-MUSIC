@@ -14,10 +14,11 @@ import androidx.lifecycle.viewModelScope
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.PlaylistItem
 import com.nikhil.yt.innertube.models.SongItem
-import com.nikhil.yt.innertube.utils.completed
 import com.nikhil.yt.db.MusicDatabase
 import com.nikhil.yt.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -28,9 +29,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import javax.inject.Inject
 
@@ -62,9 +61,9 @@ class OnlinePlaylistViewModel @Inject constructor(
     private val _viewCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
     val viewCounts = _viewCounts.asStateFlow()
 
-    private val viewCountsMutex = Mutex()
-    private val viewCountsInFlight = mutableSetOf<String>()
-    private val viewCountsSemaphore = Semaphore(permits = 4)
+    private var viewCountsJob: Job? = null
+    private var visibleCountIds = emptyList<String>()
+    private val viewCountsSemaphore = Semaphore(permits = 2)
 
     var continuation: String? = null
         private set
@@ -89,7 +88,6 @@ class OnlinePlaylistViewModel @Inject constructor(
                         currentSongs.addAll(playlistContinuationPage.songs)
                         playlistSongs.value = currentSongs.distinctBy { it.id }
                         continuation = playlistContinuationPage.continuation
-                        prefetchViewCounts(playlistContinuationPage.songs.map { song -> song.id })
                         _isLoadingMore.value = false
                     }.onFailure { throwable ->
                         _isLoadingMore.value = false
@@ -121,12 +119,10 @@ class OnlinePlaylistViewModel @Inject constructor(
 
             YouTube
                 .playlist(playlistId)
-                .completed()
                 .onSuccess { playlistPage ->
                     playlist.value = playlistPage.playlist
                     playlistSongs.value = playlistPage.songs.distinctBy { it.id }
                     continuation = playlistPage.songsContinuation
-                    prefetchViewCounts(playlistPage.songs.map { song -> song.id })
                 }.onFailure { throwable ->
                     _error.value = throwable.message ?: "Failed to load playlist"
                     reportException(throwable)
@@ -140,35 +136,24 @@ class OnlinePlaylistViewModel @Inject constructor(
         }
     }
 
-    private fun prefetchViewCounts(videoIds: List<String>) {
-        val uniqueIds = videoIds.distinct().filter { it.isNotBlank() }
-        if (uniqueIds.isEmpty()) return
-
-        viewModelScope.launch(Dispatchers.IO) {
+    fun prefetchViewCounts(videoIds: List<String>) {
+        val uniqueIds = videoIds.distinct().filter { it.isNotBlank() }.take(8)
+        if (uniqueIds == visibleCountIds) return
+        visibleCountIds = uniqueIds
+        viewCountsJob?.cancel()
+        if (uniqueIds.isEmpty()) { viewCountsJob = null; return }
+        viewCountsJob = viewModelScope.launch(Dispatchers.IO) {
+            // Optional metadata starts only after the viewport settles. A fling
+            // must not enqueue player requests for hundreds of off-screen rows.
+            delay(250)
             coroutineScope {
-                uniqueIds.map { videoId ->
+                uniqueIds.filterNot { _viewCounts.value.containsKey(it) }.map { videoId ->
                     async {
-                        val shouldFetch =
-                            viewCountsMutex.withLock {
-                                if (_viewCounts.value.containsKey(videoId) || viewCountsInFlight.contains(videoId)) {
-                                    false
-                                } else {
-                                    viewCountsInFlight.add(videoId)
-                                    true
-                                }
+                        viewCountsSemaphore.withPermit {
+                            val count = YouTube.getMediaInfo(videoId).getOrNull()?.viewCount
+                            if (count != null && count >= 0) {
+                                _viewCounts.update { current -> current + (videoId to count) }
                             }
-
-                        if (!shouldFetch) return@async
-
-                        try {
-                            viewCountsSemaphore.withPermit {
-                                val count = YouTube.getMediaInfo(videoId).getOrNull()?.viewCount
-                                if (count != null && count >= 0) {
-                                    _viewCounts.update { current -> current + (videoId to count) }
-                                }
-                            }
-                        } finally {
-                            viewCountsMutex.withLock { viewCountsInFlight.remove(videoId) }
                         }
                     }
                 }.awaitAll()

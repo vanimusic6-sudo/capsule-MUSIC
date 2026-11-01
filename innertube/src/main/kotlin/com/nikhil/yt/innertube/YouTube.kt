@@ -164,7 +164,7 @@ object YouTube {
     suspend fun searchSummary(query: String): Result<SearchSummaryPage> = runCatchingCancellable {
         val response = innerTube.search(WEB_REMIX, query).body<SearchResponse>()
 
-        var parsedSummaries = response.contents?.tabbedSearchResultsRenderer?.tabs?.firstOrNull()
+        val parsedSummaries = response.contents?.tabbedSearchResultsRenderer?.tabs?.firstOrNull()
             ?.tabRenderer?.content?.sectionListRenderer?.contents?.mapNotNull { section ->
                 try {
                     when {
@@ -223,25 +223,8 @@ object YouTube {
                 }
             }?.filter { it.items.isNotEmpty() }.orEmpty()
 
-        if (parsedSummaries.size <= 1) {
-
-            val songsFallback = runCatchingCancellable {
-                search(query, SearchFilter.FILTER_SONG).getOrNull()?.items ?: emptyList()
-            }.getOrDefault(emptyList())
-
-            if (songsFallback.isNotEmpty()) {
-                parsedSummaries = parsedSummaries + SearchSummary(title = "Songs", items = songsFallback.take(12))
-            }
-
-            val albumsFallback = runCatchingCancellable {
-                search(query, SearchFilter.FILTER_ALBUM).getOrNull()?.items ?: emptyList()
-            }.getOrDefault(emptyList())
-
-            if (albumsFallback.isNotEmpty()) {
-                parsedSummaries = parsedSummaries + SearchSummary(title = "Albums", items = albumsFallback.take(12))
-            }
-        }
-
+        // A one-shelf response is already useful. Filter tabs issue their own
+        // requests; never hold the first result behind speculative Songs/Albums calls.
         SearchSummaryPage(summaries = enrichSearchSummaryArtists(markExplicitVideoShelves(parsedSummaries)))
     }
 
@@ -285,54 +268,28 @@ object YouTube {
         val response = innerTube.browse(WEB_REMIX, browseId).body<BrowseResponse>()
         val contents = response.contents ?: throw IllegalStateException("Missing browse contents for $browseId")
         val twoColumn = contents.twoColumnBrowseResultsRenderer
-            ?: throw IllegalStateException("Missing twoColumnBrowseResultsRenderer for $browseId")
-        val tabs = twoColumn.tabs ?: throw IllegalStateException("Missing tabs for $browseId")
-        val header = tabs.firstOrNull()
-            ?.tabRenderer
-            ?.content
-            ?.sectionListRenderer
-            ?.contents
-            ?.firstOrNull()
-            ?.musicResponsiveHeaderRenderer
-            ?: throw IllegalStateException("Missing album header for $browseId")
-        val playlistId = response.microformat?.microformatDataRenderer?.urlCanonical?.substringAfterLast('=')!!
-        val albumTitle = header.title.runs?.firstOrNull()?.text
+        val header = twoColumn?.tabs?.firstOrNull()?.tabRenderer?.content?.sectionListRenderer?.contents
+            ?.firstNotNullOfOrNull { it.musicResponsiveHeaderRenderer }
+        val playlistId = AlbumPage.getPlaylistId(response)
+            ?: throw IllegalStateException("Missing album playlist for $browseId")
+        val albumTitle = AlbumPage.getTitle(response)
             ?: throw IllegalStateException("Missing album title for $browseId")
-        val albumArtists = (header.straplineTextOne ?: throw IllegalStateException("Missing album artists for $browseId"))
-            .runs
-            ?.oddElements()
-            ?.map {
-                Artist(
-                    name = it.text,
-                    id = it.navigationEndpoint?.browseEndpoint?.browseId
-                )
-            }
-            ?: throw IllegalStateException("Missing album artists runs for $browseId")
-        val albumYear = header.subtitle.runs?.lastOrNull()?.text?.toIntOrNull()
-        val albumThumbnail = (header.thumbnail ?: throw IllegalStateException("Missing album thumbnail for $browseId"))
-            .musicThumbnailRenderer
-            ?.getThumbnailUrl()
-            ?: throw IllegalStateException("Missing album thumbnail url for $browseId")
+        val albumArtists = AlbumPage.getArtists(response)
+        val albumYear = AlbumPage.getYear(response)
+        val albumThumbnail = header?.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl()
+            ?: AlbumPage.getThumbnail(response).orEmpty()
+        val album = AlbumItem(
+            browseId = browseId, playlistId = playlistId, title = albumTitle,
+            artists = albumArtists, year = albumYear, thumbnail = albumThumbnail, explicit = false,
+        )
+        val inlineSongs = AlbumPage.getSongs(response, album)
+        val hasMoreInline = twoColumn?.secondaryContents?.sectionListRenderer?.contents
+            ?.any { it.musicShelfRenderer?.continuations?.getContinuation() != null } == true
         AlbumPage(
-            album = AlbumItem(
-                browseId = browseId,
-                playlistId = playlistId,
-                title = albumTitle,
-                artists = albumArtists,
-                year = albumYear,
-                thumbnail = albumThumbnail,
-                explicit = false, // TODO: Extract explicit badge for albums from YouTube response
-            ),
-            songs = if (withSongs) albumSongs(playlistId, AlbumItem(
-                browseId = browseId,
-                playlistId = playlistId,
-                title = albumTitle,
-                artists = albumArtists,
-                year = albumYear,
-                thumbnail = albumThumbnail,
-                explicit = false
-            )).getOrThrow() else emptyList(),
-            otherVersions = twoColumn.secondaryContents?.sectionListRenderer?.contents?.getOrNull(1)?.musicCarouselShelfRenderer?.contents
+            album = album,
+            songs = if (!withSongs) emptyList() else if (inlineSongs.isNotEmpty() && !hasMoreInline)
+                inlineSongs else albumSongs(playlistId, album).getOrThrow(),
+            otherVersions = twoColumn?.secondaryContents?.sectionListRenderer?.contents?.getOrNull(1)?.musicCarouselShelfRenderer?.contents
                 ?.mapNotNull { it.musicTwoRowItemRenderer }
                 ?.mapNotNull(NewReleaseAlbumPage::fromMusicTwoRowItemRenderer)
                 .orEmpty()
@@ -347,10 +304,10 @@ object YouTube {
             ?.musicPlaylistShelfRenderer?.contents?.getItems()
             ?.mapNotNull {
                 AlbumPage.getSong(it, album)
-            }!!
+            }.orEmpty()
             .toMutableList()
-        var continuation = response.contents.twoColumnBrowseResultsRenderer.secondaryContents.sectionListRenderer
-            .contents.firstOrNull()?.musicPlaylistShelfRenderer?.contents?.getContinuation()
+        var continuation = response.contents?.twoColumnBrowseResultsRenderer?.secondaryContents?.sectionListRenderer
+            ?.contents?.firstOrNull()?.musicPlaylistShelfRenderer?.contents?.getContinuation()
         val seenContinuations = mutableSetOf<String>()
         var requestCount = 0
         val maxRequests = 50 // Prevent excessive API calls

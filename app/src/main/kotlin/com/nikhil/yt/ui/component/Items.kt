@@ -78,6 +78,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -1305,13 +1306,17 @@ fun ItemThumbnail(
                         }
                         .build()
                 }
+                var decoded by remember(request) { mutableStateOf(false) }
+                val arrival = rememberArtworkArrivalAlpha(request, decoded)
                 AsyncImage(
                     model = request,
                     contentDescription = null,
                     colorFilter = if (unavailableReason != null) ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }) else null,
                     contentScale = if (shouldApplySquareCrop) ContentScale.Crop else ContentScale.Fit,
+                    onSuccess = { decoded = true },
                     modifier = Modifier
                         .fillMaxSize()
+                        .graphicsLayer { alpha = arrival.value }
                         
                 )
             } else {

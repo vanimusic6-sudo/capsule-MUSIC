@@ -373,6 +373,13 @@ fun OnlineSearchResult(
                     }
                 }
             }
+        } else if (viewModel.requestFailed) {
+            item(key = "search-error") {
+                Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(stringResource(R.string.error_unknown))
+                    TextButton(onClick = viewModel::retrySearch) { Text(stringResource(R.string.retry)) }
+                }
+            }
         } else if (filter == null) {
             if (searchSummary == null) {
                 item(key = "summary-loading") {

@@ -19,6 +19,7 @@ on:
       - 'fix/artwork-header-search-cleanup-20261101'
       - 'cleanup/extractor-boundaries-20261101'
       - 'fix/capsule-app-identity-20261101'
+      - 'fix/detail-loading-title-actions-20261101'
   workflow_dispatch:
 
 permissions:

@@ -23,6 +23,9 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import javax.inject.Inject
 
 sealed interface AlbumUiState {
@@ -62,47 +65,49 @@ constructor(
 
     val uiState: StateFlow<AlbumUiState> =
         combine(albumWithSongs, _fetchState) { data, fetch ->
-            when {
-                data != null && data.songs.isNotEmpty() -> AlbumUiState.Content
-                fetch is FetchState.Pending -> AlbumUiState.Loading
-                fetch is FetchState.Failed && data == null -> AlbumUiState.Error(fetch.isNotFound)
-                fetch is FetchState.Success && (data == null || data.songs.isEmpty()) -> AlbumUiState.Empty
-                fetch is FetchState.Failed && data != null && data.songs.isNotEmpty() -> AlbumUiState.Content
-                else -> AlbumUiState.Loading
-            }
+            resolveAlbumUiState(data != null, data?.songs?.isNotEmpty() == true,
+                fetch is FetchState.Pending, fetch is FetchState.Failed,
+                (fetch as? FetchState.Failed)?.isNotFound == true)
+
         }.stateIn(viewModelScope, SharingStarted.Eagerly, AlbumUiState.Loading)
+
+    private var fetchJob: Job? = null
 
     init {
         retry()
     }
 
     fun retry() {
-        viewModelScope.launch {
+        fetchJob?.cancel()
+        fetchJob = viewModelScope.launch(Dispatchers.IO) {
             _fetchState.value = FetchState.Pending
-            val album = database.album(albumId).first()
-            YouTube
-                .album(albumId)
-                .onSuccess {
-                    playlistId.value = it.album.playlistId
-                    otherVersions.value = it.otherVersions
-                    database.transaction {
-                        if (album == null) {
-                            insert(it)
-                        } else {
-                            update(album.album, it, album.artists)
-                        }
-                    }
-                    _fetchState.value = FetchState.Success
-                }.onFailure {
-                    reportException(it)
-                    val isNotFound = it.message?.contains("NOT_FOUND") == true
-                    if (isNotFound) {
-                        database.query {
-                            album?.album?.let(::delete)
-                        }
-                    }
-                    _fetchState.value = FetchState.Failed(isNotFound = isNotFound)
+            try {
+                val previous = database.album(albumId).first()
+                val page = YouTube.album(albumId).getOrThrow()
+                playlistId.value = page.album.playlistId
+                otherVersions.value = page.otherVersions
+                database.withTransaction {
+                    if (previous == null) insert(page) else update(previous.album, page, previous.artists)
                 }
+                _fetchState.value = FetchState.Success
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (error: Exception) {
+                reportException(error)
+                // A remote miss must not delete a cached/bookmarked collection.
+                _fetchState.value = FetchState.Failed(error.message?.contains("NOT_FOUND") == true)
+            }
         }
     }
+
+}
+
+/** Cached metadata without tracks must terminate in Empty/Error, never a stuck spinner. */
+internal fun resolveAlbumUiState(hasMetadata: Boolean, hasSongs: Boolean,
+    pending: Boolean, failed: Boolean, notFound: Boolean = false): AlbumUiState = when {
+    hasSongs -> AlbumUiState.Content
+    pending -> AlbumUiState.Loading
+    failed -> AlbumUiState.Error(notFound)
+    !hasMetadata -> AlbumUiState.Loading
+    else -> AlbumUiState.Empty
 }

@@ -29,11 +29,14 @@ import com.nikhil.yt.utils.get
 import com.nikhil.yt.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -46,6 +49,10 @@ constructor(
 ) : ViewModel() {
     val query = savedStateHandle.get<String>("query")!!
     val filter = MutableStateFlow<YouTube.SearchFilter?>(null)
+    private val reload = MutableStateFlow(0)
+    var requestFailed by mutableStateOf(false)
+        private set
+    fun retrySearch() { reload.value++ }
     var summaryPage by mutableStateOf<SearchSummaryPage?>(null)
     val viewStateMap = mutableStateMapOf<String, ItemsPage?>()
 
@@ -61,11 +68,11 @@ constructor(
 
     init {
         viewModelScope.launch {
-            filter.collectLatest { filter ->
+            combine(filter, reload) { selected, _ -> selected }.collectLatest { filter ->
+                requestFailed = false
                 if (filter == null) {
                     if (summaryPage == null) {
-                        YouTube
-                            .searchSummary(query)
+                        withContext(Dispatchers.IO) { YouTube.searchSummary(query) }
                             .onSuccess { result ->
                                 val hideExplicit = context.dataStore.get(HideExplicitKey, false)
                                 val filteredSummary = result.filterExplicit(hideExplicit)
@@ -76,13 +83,13 @@ constructor(
                                     filteredSummary.summaries.flatMap { it.items }.filterIsInstance<SongItem>()
                                 )
                             }.onFailure {
+                                requestFailed = true
                                 reportException(it)
                             }
                     }
                 } else {
                     if (viewStateMap[filter.value] == null) {
-                        YouTube
-                            .search(query, filter)
+                        withContext(Dispatchers.IO) { YouTube.search(query, filter) }
                             .onSuccess { result ->
                                 viewStateMap[filter.value] =
                                     ItemsPage(
@@ -97,6 +104,7 @@ constructor(
                                         result.continuation,
                                     )
                             }.onFailure {
+                                requestFailed = true
                                 reportException(it)
                             }
                     }

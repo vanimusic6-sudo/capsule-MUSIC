@@ -12,6 +12,7 @@ import com.nikhil.yt.models.PersistQueue
 import com.nikhil.yt.models.QueueData
 import com.nikhil.yt.models.QueueType
 import com.nikhil.yt.playback.queues.ListQueue
+import com.nikhil.yt.playback.queues.LoadedPlaylistQueue
 import com.nikhil.yt.playback.queues.LocalAlbumRadio
 import com.nikhil.yt.playback.queues.Queue
 import com.nikhil.yt.playback.queues.YouTubeAlbumRadio
@@ -24,6 +25,15 @@ fun Queue.toPersistQueue(
     position: Long,
 ): PersistQueue =
     when (this) {
+        is LoadedPlaylistQueue -> PersistQueue(
+            title, items, mediaItemIndex, position,
+            queueType = QueueType.YOUTUBE,
+            queueData = QueueData.YouTubeData(
+                endpoint = QueueData.YouTubeData.BROWSE_PLAYLIST,
+                continuation = continuation(),
+                shuffleBrowsePages = shufflesPages(),
+            ),
+        )
         is ListQueue ->
             PersistQueue(
                 title = title,
@@ -135,6 +145,10 @@ fun PersistQueue.toQueue(): Queue {
 
         is QueueType.YOUTUBE -> {
             val data = queueData as? QueueData.YouTubeData
+            if (data?.endpoint == QueueData.YouTubeData.BROWSE_PLAYLIST) {
+                return LoadedPlaylistQueue(title, restoredStatus.items, data.continuation,
+                    data.shuffleBrowsePages, restoredStatus)
+            }
             if (
                 data == null ||
                 data.endpoint != QueueData.YouTubeData.STRUCTURED_ENDPOINT
