@@ -54,6 +54,7 @@ import com.nikhil.yt.playback.queues.YouTubeQueue
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.NavigationTitle
 import com.nikhil.yt.ui.component.YouTubeGridItem
+import com.nikhil.yt.ui.component.gridShelfHeight
 import com.nikhil.yt.ui.component.YouTubeListItem
 import com.nikhil.yt.ui.component.shimmer.GridItemPlaceHolder
 import com.nikhil.yt.ui.component.shimmer.ShimmerHost
@@ -240,6 +241,7 @@ fun ExploreScreen(
                         val lazyGridState = rememberLazyGridState()
                         LazyHorizontalGrid(
             overscrollEffect = null,
+                            userScrollEnabled = shelfScrollEnabled,
                             state = lazyGridState,
                             rows = GridCells.Fixed(4),
                             flingBehavior = rememberCapsuleFlingBehavior(),
@@ -320,6 +322,9 @@ fun ExploreScreen(
             flingBehavior = rememberCapsuleFlingBehavior(),
             overscrollEffect = null,
                         userScrollEnabled = shelfScrollEnabled,
+                        // Cards have different metadata line counts; do not let
+                        // horizontal swipes remeasure the vertical Explore feed.
+                        modifier = Modifier.fillMaxWidth().height(gridShelfHeight()),
                         contentPadding = WindowInsets.systemBars
                             .only(WindowInsetsSides.Horizontal)
                             .asPaddingValues(),
@@ -363,6 +368,9 @@ fun ExploreScreen(
             flingBehavior = rememberCapsuleFlingBehavior(),
             overscrollEffect = null,
                         userScrollEnabled = shelfScrollEnabled,
+                        // Cards have different metadata line counts; do not let
+                        // horizontal swipes remeasure the vertical Explore feed.
+                        modifier = Modifier.fillMaxWidth().height(gridShelfHeight()),
                         contentPadding = WindowInsets.systemBars
                             .only(WindowInsetsSides.Horizontal)
                             .asPaddingValues(),
