@@ -1,6 +1,7 @@
 package com.nikhil.yt.ui.utils
 
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.gestures.FlingBehavior
@@ -18,6 +19,23 @@ import androidx.compose.runtime.Composable
  */
 @Composable
 fun rememberCapsuleFlingBehavior(): FlingBehavior = ScrollableDefaults.flingBehavior()
+
+/**
+ * Suspend nested horizontal shelves only while the vertical owner is actively
+ * under the finger. Do NOT use isScrollInProgress: that also includes fling,
+ * and made a fresh horizontal swipe unresponsive until the parent settled.
+ *
+ * Compose's row/column axis arbitration can otherwise let a shelf react while
+ * a diagonal vertical drag is underway. The row retains its native drag/fling
+ * whenever the parent is merely coasting or idle.
+ */
+@Composable
+fun rememberCapsuleShelfScrollEnabled(parent: LazyListState): Boolean =
+    !parent.interactionSource.collectIsDraggedAsState().value
+
+@Composable
+fun rememberCapsuleShelfScrollEnabled(parent: ScrollState): Boolean =
+    !parent.interactionSource.collectIsDraggedAsState().value
 
 /**
  * A delayed navigation/reselection event must never steal the user's active
