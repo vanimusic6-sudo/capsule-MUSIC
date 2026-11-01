@@ -474,12 +474,9 @@ fun ArtistListItem(
     subtitle = pluralStringResource(R.plurals.n_song, artist.songCount, artist.songCount),
     badges = badges,
     thumbnailContent = {
-        AsyncImage(
+        CapsuleFadeAsyncImage(
             model = artist.artist.thumbnailUrl,
-            contentDescription = null,
-            modifier = Modifier
-                .size(ListThumbnailSize)
-                .clip(CircleShape),
+            modifier = Modifier.size(ListThumbnailSize).clip(CircleShape),
         )
     },
     trailingContent = trailingContent,
@@ -502,13 +499,10 @@ fun ArtistGridItem(
     subtitle = pluralStringResource(R.plurals.n_song, artist.songCount, artist.songCount),
     badges = badges,
     thumbnailContent = {
-        AsyncImage(
+        CapsuleFadeAsyncImage(
             model = artist.artist.thumbnailUrl,
-            contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(CircleShape)
+            modifier = Modifier.fillMaxSize().clip(CircleShape),
         )
     },
     fillMaxWidth = fillMaxWidth,
@@ -811,7 +805,7 @@ fun OverlayPlaylistListItem(
             confirmButton = { TextButton(onClick = { showPreview = false }) { Text(stringResource(R.string.close_dialog)) } },
             text = {
                 Box(modifier = Modifier.fillMaxWidth().height(360.dp)) {
-                    AsyncImage(model = backgroundUrl, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    CapsuleFadeAsyncImage(model = backgroundUrl, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 }
             }
         )
@@ -1425,11 +1419,11 @@ fun LocalThumbnail(
                 }
                 .build()
         }
-        AsyncImage(
+        CapsuleFadeAsyncImage(
             model = request,
-            contentDescription = null,
+            identity = thumbnailUrl,
             contentScale = if (shouldApplySquareCrop) ContentScale.Crop else ContentScale.Fit,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
         )
 
         AnimatedVisibility(
