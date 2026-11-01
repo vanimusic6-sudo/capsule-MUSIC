@@ -120,6 +120,81 @@ class AudioChunkedDataSourceTest {
     }
 
     @Test
+    fun resetWhileOpeningNextChunkRetriesOnlyItsExactBytes() {
+        val bytes = ByteArray(384) { (it % 251).toByte() }
+        val inner = FakeUpstream(bytes)
+        var thrown = false
+        val upstream = object : DataSource {
+            override fun addTransferListener(transferListener: TransferListener) = Unit
+            override fun open(dataSpec: DataSpec): Long {
+                if (dataSpec.position == 128L && !thrown) {
+                    thrown = true
+                    throw AudioCdnRefreshRequiredException(
+                        "abcdefghijk", AudioCdnRefreshReason.OPEN_FAILURE,
+                        java.net.SocketException("Connection reset by peer"),
+                    )
+                }
+                return inner.open(dataSpec)
+            }
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+                inner.read(buffer, offset, length)
+            override fun getUri(): Uri? = inner.getUri()
+            override fun close() = inner.close()
+        }
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 128L)
+        source.open(spec(bytes.size.toLong()))
+        assertArrayEquals(bytes, drain(source))
+        assertTrue(thrown)
+        assertEquals(listOf(0L to 128L, 128L to 128L, 256L to 128L), inner.opens)
+        source.close()
+    }
+
+    @Test
+    fun openResetAfterNetworkHandoffNeverReusesOldSignedUrl() {
+        val bytes = ByteArray(384) { it.toByte() }
+        val inner = FakeUpstream(bytes)
+        var opensOnOldLink = 0
+        var routeIdentity = 1L
+        val upstream = object : DataSource {
+            override fun addTransferListener(transferListener: TransferListener) = Unit
+            override fun open(dataSpec: DataSpec): Long {
+                opensOnOldLink++
+                if (dataSpec.position == 128L) {
+                    routeIdentity = 2L
+                    throw AudioCdnRefreshRequiredException(
+                        "abcdefghijk", AudioCdnRefreshReason.OPEN_FAILURE,
+                        java.net.SocketException("Connection reset"),
+                    )
+                }
+                return inner.open(dataSpec)
+            }
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+                inner.read(buffer, offset, length)
+            override fun getUri(): Uri? = inner.getUri()
+            override fun close() = inner.close()
+        }
+        val source = AudioChunkedDataSource(upstream, chunkBytes = 128L,
+            currentNetworkIdentity = { routeIdentity })
+        source.open(spec(bytes.size.toLong()))
+        assertTrue(runCatching { drain(source) }.exceptionOrNull()
+            is AudioCdnRefreshRequiredException)
+        assertEquals("The second chunk must be attempted only once", 2, opensOnOldLink)
+        source.close()
+    }
+
+    @Test
+    fun socketRetryClassificationDoesNotHideAnHttpResponse() {
+        val refused = InvalidResponseCodeException(
+            403, "Forbidden", null, emptyMap(), spec(128), ByteArray(0),
+        )
+        assertTrue(refused.hasAudioCdnHttpResponse())
+        assertTrue(AudioCdnRefreshRequiredException(
+            "song", AudioCdnRefreshReason.OPEN_FAILURE, refused,
+        ).hasAudioCdnHttpResponse())
+        assertTrue(!java.net.SocketException("Connection reset").hasAudioCdnHttpResponse())
+    }
+
+    @Test
     fun resetAfterPartialHttp206ContinuesExactMissingBytesWithoutPlayerReResolve() {
         val bytes = ByteArray(500) { (it % 251).toByte() }
         val inner = FakeUpstream(bytes)
