@@ -9,6 +9,11 @@
 package com.nikhil.yt.viewmodels
 
 import android.content.Context
+import android.os.SystemClock
+import android.util.Log
+import com.nikhil.yt.utils.GlobalLog
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +52,9 @@ constructor(
     val query = savedStateHandle.get<String>("query")!!
     val filter = MutableStateFlow<YouTube.SearchFilter?>(null)
     var summaryPage by mutableStateOf<SearchSummaryPage?>(null)
+    // A partially published result is NOT a completed search. Switching filters
+    // while the supplements are loading must not permanently hide the shelves.
+    private var summaryComplete = false
     val viewStateMap = mutableStateMapOf<String, ItemsPage?>()
 
     sealed interface ExperimentalSearchState {
@@ -63,21 +71,34 @@ constructor(
         viewModelScope.launch {
             filter.collectLatest { filter ->
                 if (filter == null) {
-                    if (summaryPage == null) {
-                        YouTube
-                            .searchSummary(query)
-                            .onSuccess { result ->
-                                val hideExplicit = context.dataStore.get(HideExplicitKey, false)
-                                val filteredSummary = result.filterExplicit(hideExplicit)
-                                // Reuse all credits already present in this response by ID.
-                                // One artist is not evidence of missing data: do not hold
-                                // every search behind two speculative network requests.
-                                summaryPage = filteredSummary.withFilteredSongCredits(
-                                    filteredSummary.summaries.flatMap { it.items }.filterIsInstance<SongItem>()
-                                )
-                            }.onFailure {
-                                reportException(it)
-                            }
+                    if (!summaryComplete) {
+                        val startedAt = SystemClock.elapsedRealtime()
+                        val hideExplicit = withContext(Dispatchers.IO) {
+                            context.dataStore.get(HideExplicitKey, false)
+                        }
+                        // JSON parsing/artist deduplication belongs off the UI thread.
+                        val result = withContext(Dispatchers.Default) {
+                            YouTube.searchSummary(query, onPrimary = { primary ->
+                                val published = primary.filterExplicit(hideExplicit)
+                                    .withFilteredSongCredits(
+                                        primary.summaries.flatMap { it.items }.filterIsInstance<SongItem>()
+                                    )
+                                withContext(Dispatchers.Main.immediate) {
+                                    summaryPage = published
+                                    GlobalLog.append(Log.DEBUG, "SearchLatency",
+                                        "primaryMs=${SystemClock.elapsedRealtime() - startedAt} shelves=${published.summaries.size}")
+                                }
+                            })
+                        }
+                        result.onSuccess { full ->
+                            val page = full.filterExplicit(hideExplicit)
+                            summaryPage = page.withFilteredSongCredits(
+                                page.summaries.flatMap { it.items }.filterIsInstance<SongItem>()
+                            )
+                            summaryComplete = true
+                            GlobalLog.append(Log.DEBUG, "SearchLatency",
+                                "completeMs=${SystemClock.elapsedRealtime() - startedAt} shelves=${page.summaries.size}")
+                        }.onFailure { reportException(it) }
                     }
                 } else {
                     if (viewStateMap[filter.value] == null) {

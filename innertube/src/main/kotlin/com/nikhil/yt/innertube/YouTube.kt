@@ -75,6 +75,8 @@ import com.nikhil.yt.innertube.pages.extractSearchCardArtists
 import io.ktor.client.call.body
 import io.ktor.client.statement.bodyAsText
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
@@ -161,7 +163,16 @@ object YouTube {
         )
     }
 
-    suspend fun searchSummary(query: String): Result<SearchSummaryPage> = runCatchingCancellable {
+    /**
+     * One primary response first, then (only if the server supplied one shelf)
+     * Songs and Albums supplements in parallel. The callback lets the UI render
+     * the useful primary response without sacrificing any final categories.
+     * Non-UI callers continue receiving the complete result.
+     */
+    suspend fun searchSummary(
+        query: String,
+        onPrimary: (suspend (SearchSummaryPage) -> Unit)? = null,
+    ): Result<SearchSummaryPage> = runCatchingCancellable {
         val response = innerTube.search(WEB_REMIX, query).body<SearchResponse>()
 
         var parsedSummaries = response.contents?.tabbedSearchResultsRenderer?.tabs?.firstOrNull()
@@ -224,21 +235,34 @@ object YouTube {
             }?.filter { it.items.isNotEmpty() }.orEmpty()
 
         if (parsedSummaries.size <= 1) {
-
-            val songsFallback = runCatchingCancellable {
-                search(query, SearchFilter.FILTER_SONG).getOrNull()?.items ?: emptyList()
-            }.getOrDefault(emptyList())
-
-            if (songsFallback.isNotEmpty()) {
-                parsedSummaries = parsedSummaries + SearchSummary(title = "Songs", items = songsFallback.take(12))
+            // First meaningful content is available after ONE network call.
+            // This is not the completed search: the supplements must still run.
+            if (parsedSummaries.isNotEmpty()) {
+                onPrimary?.invoke(SearchSummaryPage(
+                    enrichSearchSummaryArtists(markExplicitVideoShelves(parsedSummaries))
+                ))
             }
-
-            val albumsFallback = runCatchingCancellable {
-                search(query, SearchFilter.FILTER_ALBUM).getOrNull()?.items ?: emptyList()
-            }.getOrDefault(emptyList())
-
+            // Previously the two extra endpoint calls ran serially, so a
+            // one-shelf response waited through both latencies before drawing.
+            // Keep BOTH categories but wait for only their longest request.
+            val (songsFallback, albumsFallback) = coroutineScope {
+                val songs = async {
+                    search(query, SearchFilter.FILTER_SONG).getOrNull()?.items.orEmpty()
+                }
+                val albums = async {
+                    search(query, SearchFilter.FILTER_ALBUM).getOrNull()?.items.orEmpty()
+                }
+                songs.await() to albums.await()
+            }
+            if (songsFallback.isNotEmpty()) {
+                parsedSummaries = parsedSummaries + SearchSummary(
+                    title = "Songs", items = songsFallback.take(12),
+                )
+            }
             if (albumsFallback.isNotEmpty()) {
-                parsedSummaries = parsedSummaries + SearchSummary(title = "Albums", items = albumsFallback.take(12))
+                parsedSummaries = parsedSummaries + SearchSummary(
+                    title = "Albums", items = albumsFallback.take(12),
+                )
             }
         }
 
