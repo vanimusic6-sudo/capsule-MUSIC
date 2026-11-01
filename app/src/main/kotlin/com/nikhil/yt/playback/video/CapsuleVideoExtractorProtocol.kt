@@ -85,27 +85,13 @@ internal object CapsuleVideoIpc {
     // Extractors work on third-party metadata. Never let a malformed
     // URL/manifest or oversized parcel escape to the main player process.
     // This guards Binder/Media3, not third-party code executing in our UID.
-    fun isSafeStreamUrl(raw: String?): Boolean {
-        if (raw.isNullOrBlank() || raw.length > 16_384) return false
-        val uri = runCatching { java.net.URI(raw) }.getOrNull() ?: return false
-        if (!uri.scheme.equals("https", ignoreCase = true) ||
-            uri.userInfo != null || (uri.port != -1 && uri.port != 443)) return false
-        val host = uri.host?.lowercase(java.util.Locale.ROOT) ?: return false
-        if (host == "localhost" || host.endsWith(".localhost") ||
-            host == "0.0.0.0" || host == "::1" ||
-            host.matches(Regex("(?i)127\\.[0-9.]+")) ||
-            host.matches(Regex("(?i)10\\.[0-9.]+")) ||
-            host.matches(Regex("(?i)192\\.168\\.[0-9.]+")) ||
-            host.matches(Regex("(?i)169\\.254\\.[0-9.]+"))) return false
-        return host.isNotBlank() && !host.contains("..")
-    }
+    fun isSafeStreamUrl(raw: String?): Boolean =
+        com.nikhil.yt.innertube.video.VideoStreamValidation.isSupportedUrl(raw)
 
     fun successBundle(resolved: CapsuleResolvedVideo): Bundle {
-        if (!isSafeStreamUrl(resolved.videoUrl) ||
-            (resolved.audioUrl != null && !isSafeStreamUrl(resolved.audioUrl)) ||
-            (resolved.dashManifest?.length ?: 0) > 512 * 1024 ||
-            (resolved.userAgent?.length ?: 0) > 1024
-        ) return failureBundle(CapsuleVideoFailure.UNAVAILABLE, "Unsafe VIDEO extractor response")
+        if (!com.nikhil.yt.innertube.video.VideoStreamValidation.accepts(
+                resolved.videoUrl, resolved.audioUrl, resolved.dashManifest, resolved.userAgent, resolved.delivery, resolved.qualityLabel,
+            )) return failureBundle(CapsuleVideoFailure.UNAVAILABLE, "Unsupported VIDEO extractor response")
         return Bundle().apply {
             putBoolean(EXTRA_SUCCESS, true)
             putString(EXTRA_VIDEO_ID, resolved.videoId)
@@ -123,6 +109,37 @@ internal object CapsuleVideoIpc {
             putString(EXTRA_DASH_MANIFEST, resolved.dashManifest)
             putString(EXTRA_USER_AGENT, resolved.userAgent)
         }
+    }
+
+    /** Revalidate the response in the consumer process before caching or switching players. */
+    fun resolvedFromBundle(
+        bundle: Bundle,
+        expectedVideoId: String,
+        nowMs: Long = System.currentTimeMillis(),
+    ): CapsuleResolvedVideo? {
+        if (!bundle.getBoolean(EXTRA_SUCCESS, false)) return null
+        val url = bundle.getString(EXTRA_VIDEO_URL)
+        val audio = bundle.getString(EXTRA_AUDIO_URL)?.takeIf { it.isNotBlank() }
+        val id = bundle.getString(EXTRA_VIDEO_ID).orEmpty().ifBlank { expectedVideoId }
+        val label = bundle.getString(EXTRA_QUALITY_LABEL).orEmpty().ifBlank { "VIDEO" }
+        val manifest = bundle.getString(EXTRA_DASH_MANIFEST)
+        val agent = bundle.getString(EXTRA_USER_AGENT)
+        val expiry = bundle.getLong(EXTRA_EXPIRES_AT, nowMs + 3_600_000L)
+        val rawDelivery = bundle.getString(EXTRA_DELIVERY).orEmpty()
+        val delivery = if (rawDelivery.isBlank()) CapsuleVideoDelivery.PROGRESSIVE else
+            CapsuleVideoDelivery.entries.firstOrNull { it.name == rawDelivery } ?: return null
+        if (id != expectedVideoId ||
+            !com.nikhil.yt.innertube.video.VideoStreamValidation.accepts(url, audio, manifest, agent, delivery, label) ||
+            !com.nikhil.yt.innertube.video.VideoStreamValidation.isFresh(expiry, nowMs)) return null
+        return CapsuleResolvedVideo(
+            videoId = id, videoUrl = requireNotNull(url), audioUrl = audio,
+            qualityLabel = label,
+            width = bundle.getInt(EXTRA_WIDTH, 0), height = bundle.getInt(EXTRA_HEIGHT, 0),
+            videoItag = bundle.getInt(EXTRA_VIDEO_ITAG, -1), audioItag = bundle.getInt(EXTRA_AUDIO_ITAG, -1),
+            expiresAtMs = expiry, backend = bundle.getString(EXTRA_BACKEND) ?: "newpipe",
+            delivery = delivery, maxHeight = bundle.getInt(EXTRA_MAX_HEIGHT, 720).coerceIn(1, 720),
+            dashManifest = manifest, userAgent = agent,
+        )
     }
 
     fun failureBundle(

@@ -2,8 +2,16 @@ package com.nikhil.yt.playback.video
 
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotNull
+import android.os.Bundle
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import org.junit.Test
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35], application = android.app.Application::class)
 class CapsuleVideoIpcBoundaryTest {
     @Test fun acceptsNormalOfficialCdnUrls() {
         assertTrue(CapsuleVideoIpc.isSafeStreamUrl(
@@ -27,4 +35,26 @@ class CapsuleVideoIpcBoundaryTest {
             "https://example.org/" + "a".repeat(17_000)
         )) assertFalse(url, CapsuleVideoIpc.isSafeStreamUrl(url))
     }
+    @Test fun consumerRechecksUntrustedBundlesBeforeCachingThem() {
+        fun response() = Bundle().apply {
+            putBoolean(CapsuleVideoIpc.EXTRA_SUCCESS, true)
+            putString(CapsuleVideoIpc.EXTRA_VIDEO_ID, "abcdefghijk")
+            putString(CapsuleVideoIpc.EXTRA_VIDEO_URL, "https://rr.googlevideo.com/video")
+            putLong(CapsuleVideoIpc.EXTRA_EXPIRES_AT, 1_000_000L)
+        }
+        assertNotNull(CapsuleVideoIpc.resolvedFromBundle(response(), "abcdefghijk", 100L))
+        assertNull(CapsuleVideoIpc.resolvedFromBundle(response(), "otherclip12", 100L))
+        for ((field, value) in listOf(
+            CapsuleVideoIpc.EXTRA_VIDEO_URL to "https://172.16.0.1/private",
+            CapsuleVideoIpc.EXTRA_AUDIO_URL to "https://[::1]/private",
+            CapsuleVideoIpc.EXTRA_DELIVERY to "SABR",
+            CapsuleVideoIpc.EXTRA_USER_AGENT to "agent\r\nCookie: secret",
+        )) {
+            val bad = response().apply { putString(field, value) }
+            assertNull(CapsuleVideoIpc.resolvedFromBundle(bad, "abcdefghijk", 100L))
+        }
+        val expired = response().apply { putLong(CapsuleVideoIpc.EXTRA_EXPIRES_AT, 100L) }
+        assertNull(CapsuleVideoIpc.resolvedFromBundle(expired, "abcdefghijk", 100L))
+    }
+
 }

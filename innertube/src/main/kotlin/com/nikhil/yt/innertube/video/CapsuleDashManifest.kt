@@ -10,8 +10,7 @@ internal data class CapsuleDashTrack(
     val width: Int = 0, val height: Int = 0, val fps: Int = 0,
 ) {
     fun valid(): Boolean {
-        val uri = runCatching { URI(url) }.getOrNull() ?: return false
-        return uri.scheme == "https" && uri.host?.endsWith(".googlevideo.com") == true && uri.userInfo == null &&
+        return VideoStreamValidation.isSupportedUrl(url) &&
             itag > 0 && mimeType in setOf("video/mp4", "video/webm", "audio/mp4", "audio/webm") &&
             codecs.matches(Regex("[a-zA-Z0-9.,_-]+")) && initStart >= 0 && initEnd >= initStart &&
             indexStart > initEnd && indexEnd >= indexStart &&

@@ -153,18 +153,6 @@ internal object CapsuleAudioFallbackPolicy {
             -> false
         }
 
-    fun botQuarantineProfiles(profileId: String): Set<String> {
-        val normalized = normalize(profileId)
-        if (normalized.isBlank()) return emptySet()
-        return when (familyOf(normalized)) {
-            "VISION" -> setOf(VISIONOS, VISIONOS_0_1)
-            "WEB_MUSIC" -> setOf(WEB_REMIX, WEB_CREATOR)
-            "WEB_EMBEDDED" -> setOf(WEB_EMBEDDED)
-            "TV" -> setOf(TVHTML5_SIMPLY)
-            else -> setOf(normalized)
-        }
-    }
-
     /** After a bot-check use the first later profile from a different user-ordered family. */
     fun crossFamilyFallback(
         plan: List<String>,

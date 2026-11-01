@@ -82,6 +82,7 @@ internal fun resolveVideoRoutes(
     health: CapsuleVideoRouteHealth? = null,
     onAttempt: (CapsuleVideoRoute, Long, Boolean) -> Unit = { _, _, _ -> },
     onFailure: (CapsuleVideoRoute, Throwable) -> Unit = { _, _ -> },
+    expectedVideoId: String? = null,
     resolve: (CapsuleVideoRoute) -> CapsuleNewPipeResolved?,
 ): CapsuleNewPipeResolved {
     val failures = mutableListOf<Exception>()
@@ -103,6 +104,11 @@ internal fun resolveVideoRoutes(
         val started = System.nanoTime()
         try {
             VideoExtractionRequests.withRouteBudget(route.budgetMs) { resolve(route) }?.let {
+                if (!VideoStreamValidation.accepts(it.videoUrl, it.audioUrl, it.dashManifest, it.userAgent, it.delivery, it.qualityLabel) ||
+                    !VideoStreamValidation.isFresh(it.expiresAtMs) ||
+                    (expectedVideoId != null && it.videoId != expectedVideoId)) {
+                    throw CapsuleDirectVideoException(CapsuleNewPipeFailure.EXTRACTOR, "invalid output contract")
+                }
                 health?.success(route)
                 onAttempt(route, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started), true)
                 return it.copy(backend = route.wireName)
@@ -115,7 +121,7 @@ internal fun resolveVideoRoutes(
             // broken route. VM failures are not safe to recover here.
             val failure = when (problem) {
                 is Exception -> problem
-                is LinkageError -> IOException("VIDEO parser incompatible", problem)
+                is LinkageError -> CapsuleDirectVideoException(CapsuleNewPipeFailure.EXTRACTOR, "parser incompatible").apply { initCause(problem) }
                 else -> throw problem
             }
             // Route deadlines leave room for the next backend. Request-wide

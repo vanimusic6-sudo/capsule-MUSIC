@@ -10,6 +10,7 @@ import re
 import sys
 import urllib.error
 import urllib.request
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -78,6 +79,31 @@ def read(path: str) -> str:
         return ""
 
 
+def guarded_evidence(ident: str, data: str):
+    """Recognize existing controls without suppressing findings when they disappear."""
+    if ident == "BUILD-003" and re.search(r"(?m)^distributionSha256Sum=[a-fA-F0-9]{64}$", data):
+        return "Gradle distribution has an explicit SHA-256 checksum."
+    if ident == "DATA-002" and re.search(
+        r"for\s*\(\(key, value\) in prefs\)\s*\{\s*if \(!BackupSecurity\.exportablePreference\(key\.name\)\) continue", data
+    ):
+        return "Manual settings export explicitly filters credentials through BackupSecurity.exportablePreference."
+    if ident == "DATA-003":
+        try:
+            root = ET.fromstring(data)
+            guarded = all(
+                any(e.get("domain") == "file" and e.get("path", "").rstrip("/") == "datastore"
+                    for e in root.findall(f"{scope}/exclude"))
+                and any(e.get("domain") == "sharedpref" and e.get("path") == "."
+                    for e in root.findall(f"{scope}/exclude"))
+                for scope in ("cloud-backup", "device-transfer")
+            )
+            if guarded:
+                return "Cloud backup and device transfer both exclude credential datastore/shared-preference paths."
+        except ET.ParseError:
+            pass
+    return None
+
+
 def source_findings():
     findings = []
     for ident, severity, path, pattern, description in RULES:
@@ -85,8 +111,9 @@ def source_findings():
         match = re.search(pattern, data, re.IGNORECASE)
         if match:
             line = data.count("\n", 0, match.start()) + 1
-            findings.append(dict(id=ident, severity=severity, path=path, line=line, evidence=description,
-                                 status="requires-review"))
+            guard = guarded_evidence(ident, data)
+            findings.append(dict(id=ident, severity="INFO" if guard else severity, path=path, line=line,
+                                 evidence=guard or description, status="guarded" if guard else "requires-review"))
     blocking = []
     for ident, path, pattern in BLOCKERS:
         data = read(path)
@@ -188,7 +215,7 @@ def main():
     (out / "source-and-dependency.json").write_text(json.dumps(report, indent=2, ensure_ascii=False)+"\n")
     md = ["# Capsule Music automated security inventory", "",
           "**Heuristic static checks only. Not a security certification.**", "",
-          f"Findings requiring manual review: {len(findings)}",
+          f"Findings requiring manual review: {sum(f['status'] == 'requires-review' for f in findings)}",
           f"Security regressions / candidate secrets: {len(blockers)}",
           f"Resolved Maven packages: {len(packages)}",
           f"OSV status: {osv['status']} ({osv.get('queried',0)} packages queried)",

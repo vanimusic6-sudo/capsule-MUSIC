@@ -17,6 +17,7 @@ on:
       - 'refactor/unified-scroll-engine-20261101'
       - 'fix/playback-download-resilience-20261101'
       - 'fix/artwork-header-search-cleanup-20261101'
+      - 'cleanup/extractor-boundaries-20261101'
   workflow_dispatch:
 
 permissions:
@@ -52,6 +53,12 @@ jobs:
         run: >-
           gradle :app:dependencyInsight --dependency foundation-android
           --configuration universalDebugRuntimeClasspath --no-daemon
+      - name: Inventory exact runtime dependencies and security checks
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+          mkdir -p app/build/extractor-audit
+          gradle :app:dependencies --configuration universalDebugRuntimeClasspath --no-daemon > app/build/extractor-audit/dependencies.txt
+          python3 scripts/capsule_security_audit.py --dependencies app/build/extractor-audit/dependencies.txt --output app/build/extractor-audit/security
       - name: Test audio/video recovery, download lifecycle and cooldown regressions
         run: >-
           gradle :app:testUniversalDebugUnitTest
@@ -71,6 +78,7 @@ jobs:
           path: |
             app/build/test-results/
             app/build/reports/tests/
+            app/build/extractor-audit/
             innertube/build/test-results/
           retention-days: 14
           if-no-files-found: warn

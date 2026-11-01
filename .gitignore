@@ -46,3 +46,7 @@ captures/
 # swallowed the Gradle wrapper config, which is why ./gradlew stopped working.
 !gradle/wrapper/gradle-wrapper.properties
 !app/src/main/res/resources.properties
+
+# Local bytecode from repository audit tools.
+__pycache__/
+*.pyc

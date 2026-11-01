@@ -114,13 +114,15 @@ class CapsuleVideoRoutesTest {
 
     @Test fun incompatibleParserDoesNotKillRemainingFallbacks() {
         val routes = mutableListOf<CapsuleVideoRoute>()
-        val stream = resolveVideoRoutes {
+        val failures = mutableListOf<CapsuleNewPipeFailure>()
+        val stream = resolveVideoRoutes(onFailure = { _, failure -> failures += CapsuleNewPipeExtractor.classify(failure) }) {
             routes += it
             if (it == CapsuleVideoRoute.PIPEPIPE) throw VerifyError("bad Android class")
             if (it == CapsuleVideoRoute.NEWPIPE) this.stream else null
         }
         assertEquals("newpipe", stream.backend)
         assertTrue(routes.contains(CapsuleVideoRoute.PIPEPIPE))
+        assertEquals(listOf(CapsuleNewPipeFailure.EXTRACTOR), failures)
     }
 
     @Test fun directBotFailureStillAllowsOtherBackendsAndNoFormatDoesNotPenalizeNextClip() {
@@ -199,6 +201,35 @@ class CapsuleVideoRoutesTest {
         now = java.util.concurrent.TimeUnit.SECONDS.toNanos(6)
         assertEquals("direct-visionos", resolveVideoRoutes(health = health) { calls++; stream }.backend)
         assertEquals(1, calls)
+    }
+
+    @Test fun anInvalidResponseDoesNotMarkTheRouteHealthyOrBlockItsReserve() {
+        val health = CapsuleVideoRouteHealth()
+        val failed = mutableListOf<CapsuleVideoRoute>()
+        val result = resolveVideoRoutes(health = health, onFailure = { route, _ -> failed += route }) { route ->
+            if (route == CapsuleVideoRoute.VISIONOS) stream.copy(videoUrl = "https://172.16.0.1/private") else stream
+        }
+        assertEquals(listOf(CapsuleVideoRoute.VISIONOS), failed)
+        assertEquals("direct-android-vr", result.backend)
+        assertFalse(CapsuleVideoRoute.VISIONOS in health.candidates(null))
+    }
+
+    @Test fun wrongTrackExpiredUrlAndBrokenDashEachAdvanceToTheReserve() {
+        val rejected = listOf(
+            stream.copy(videoId = "otherclip12"), stream.copy(expiresAtMs = 0),
+            stream.copy(delivery = CapsuleVideoDelivery.DASH, dashManifest = "broken"),
+            stream.copy(userAgent = "browser\r\nAuthorization: secret"),
+        )
+        for (bad in rejected) {
+            val calls = mutableListOf<CapsuleVideoRoute>()
+            val result = resolveVideoRoutes(expectedVideoId = stream.videoId) { route ->
+                calls += route
+                if (calls.size == 1) bad else stream
+            }
+            assertEquals(2, calls.size)
+            assertEquals(stream.videoUrl, result.videoUrl)
+            assertEquals("direct-visionos", result.backend)
+        }
     }
 
 }

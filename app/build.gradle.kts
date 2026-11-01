@@ -224,7 +224,7 @@ ksp {
 
 dependencies {
     constraints {
-        implementation("com.squareup.wire:wire-runtime:6.4.5") {
+        implementation(libs.wire.runtime) {
             because("Fix GHSA-9rm7-3qhh-h2mc: untrusted protobuf length overflow")
         }
     }
@@ -261,13 +261,8 @@ dependencies {
 
     implementation(libs.shimmer)
 
-    implementation(libs.media3)
-    implementation("androidx.media3:media3-exoplayer-hls:${libs.versions.media3.get()}")
-    implementation("androidx.media3:media3-exoplayer-dash:${libs.versions.media3.get()}")
-    implementation(libs.media3.session)
-    implementation(libs.media3.okhttp)
-    implementation("androidx.media3:media3-ui:${libs.versions.media3.get()}")
-    implementation("androidx.media3:media3-ui-compose:${libs.versions.media3.get()}")
+    implementation(libs.bundles.media3.playback)
+
     implementation(libs.squigglyslider)
 
     implementation(libs.room.runtime)

@@ -136,13 +136,6 @@ internal object CapsulePlaybackSafety {
     }
 
     /**
-     * Kept while older resolver call sites are migrated. A previous track's bot
-     * challenge must never remove a client from a new track's plan.
-     */
-    @Suppress("UNUSED_PARAMETER")
-    fun quarantinedProfileIds(nowMs: Long = System.currentTimeMillis()): Set<String> = emptySet()
-
-    /**
      * Exhausting the one bounded bot fallback fails only the current resolve.
      * Do not manufacture an app-wide cooldown: only an actual HTTP 429 may do that.
      */

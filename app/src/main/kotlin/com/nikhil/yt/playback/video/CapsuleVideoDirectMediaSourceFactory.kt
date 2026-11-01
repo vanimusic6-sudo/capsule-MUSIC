@@ -55,7 +55,7 @@ internal class CapsuleVideoDirectMediaSourceFactory(
         ) {
             "Resolved VIDEO URL expired before source preparation"
         }
-        check(stream.expiresAtMs > System.currentTimeMillis() + 45_000L) {
+        check(com.nikhil.yt.innertube.video.VideoStreamValidation.isFresh(stream.expiresAtMs)) {
             "Resolved VIDEO signed URL is already expired"
         }
         val segmentedUpstream = CapsuleVideoTransportFactory(hlsUpstream, stream.userAgent)

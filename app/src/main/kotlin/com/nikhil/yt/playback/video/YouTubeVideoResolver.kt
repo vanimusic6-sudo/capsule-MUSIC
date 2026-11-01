@@ -354,31 +354,8 @@ object YouTubeVideoResolver {
             throw VideoBackendException(failure, message)
         }
 
-        val url =
-            bundle.getString(CapsuleVideoIpc.EXTRA_VIDEO_URL)
-                ?.takeIf { it.startsWith("http", ignoreCase = true) }
-                ?: throw VideoBackendException(
-                    CapsuleVideoFailure.EXTRACTOR,
-                    "VIDEO extractor returned an invalid stream URL",
-                )
-
-        CapsuleResolvedVideo(
-            videoId = bundle.getString(CapsuleVideoIpc.EXTRA_VIDEO_ID).orEmpty().ifBlank { videoId },
-            videoUrl = url,
-            audioUrl = bundle.getString(CapsuleVideoIpc.EXTRA_AUDIO_URL)?.takeIf { it.isNotBlank() },
-            qualityLabel = bundle.getString(CapsuleVideoIpc.EXTRA_QUALITY_LABEL).orEmpty().ifBlank { "VIDEO" },
-            width = bundle.getInt(CapsuleVideoIpc.EXTRA_WIDTH, 0),
-            height = bundle.getInt(CapsuleVideoIpc.EXTRA_HEIGHT, 0),
-            videoItag = bundle.getInt(CapsuleVideoIpc.EXTRA_VIDEO_ITAG, -1),
-            audioItag = bundle.getInt(CapsuleVideoIpc.EXTRA_AUDIO_ITAG, -1),
-            expiresAtMs = bundle.getLong(CapsuleVideoIpc.EXTRA_EXPIRES_AT, System.currentTimeMillis() + 3_600_000L),
-            backend = bundle.getString(CapsuleVideoIpc.EXTRA_BACKEND) ?: "newpipe",
-            delivery = runCatching { CapsuleVideoDelivery.valueOf(bundle.getString(CapsuleVideoIpc.EXTRA_DELIVERY).orEmpty()) }
-                .getOrDefault(CapsuleVideoDelivery.PROGRESSIVE),
-            maxHeight = bundle.getInt(CapsuleVideoIpc.EXTRA_MAX_HEIGHT, 720).coerceIn(1, 720),
-            dashManifest = bundle.getString(CapsuleVideoIpc.EXTRA_DASH_MANIFEST),
-            userAgent = bundle.getString(CapsuleVideoIpc.EXTRA_USER_AGENT),
-        )
+        CapsuleVideoIpc.resolvedFromBundle(bundle, videoId)
+            ?: throw VideoBackendException(CapsuleVideoFailure.EXTRACTOR, "Unsupported VIDEO extractor response")
     }
 
     private fun CapsuleResolvedVideo.toResolved(sourceMediaId: String): ResolvedVideo {

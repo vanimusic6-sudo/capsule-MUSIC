@@ -40,7 +40,6 @@ desugaring = "2.1.5"
 junit = "4.13.2"
 timber = "5.0.1"
 kuromojiIpadic = "0.9.0"
-extractor = "2d2d9ed"
 rhino = "1.9.1"
 multiplatformMarkdown = "0.39.2"
 innertubex = "v0.11.2"
@@ -119,14 +118,22 @@ timber = { module = "com.jakewharton.timber:timber", version.ref = "timber" }
 # Metrolist's maintained AUDIO extraction stack. Pin exact version; do not use snapshots.
 innertubex = { module = "com.github.MetrolistGroup.innertubex:innertubex", version.ref = "innertubex" }
 
-# Stable, reproducible VIDEO extraction. Never use master-SNAPSHOT in production.
-# Latest upstream stable VIDEO extractor, explicitly pinned for reproducible builds.
-# v0.26.5 retains the YouTube SABR workaround introduced in v0.26.3;
-# its only new release-note fix affects media.ccc.de, not YouTube anti-bot checks.
+# Pinned VIDEO extractor; the update workflow maintains this coordinate and its bundled-version marker.
 newpipe-extractor = { module = "com.github.TeamNewPipe:NewPipeExtractor", version = "v0.26.5" }
 
 kuromoji-ipadic = { module = "com.atilika.kuromoji:kuromoji-ipadic", version.ref = "kuromojiIpadic" }
 multiplatform-markdown = { module = "com.mikepenz:multiplatform-markdown-renderer-m3", version.ref = "multiplatformMarkdown" }
+
+# All Media3 playback components share the engine version above.
+media3-hls = { module = "androidx.media3:media3-exoplayer-hls", version.ref = "media3" }
+media3-dash = { module = "androidx.media3:media3-exoplayer-dash", version.ref = "media3" }
+media3-ui = { module = "androidx.media3:media3-ui", version.ref = "media3" }
+media3-ui-compose = { module = "androidx.media3:media3-ui-compose", version.ref = "media3" }
+pipepipe-extractor = { module = "com.github.maxrave-dev:PipePipeExtractor", version = "f8982ca9e7" }
+wire-runtime = { module = "com.squareup.wire:wire-runtime", version = "6.4.5" }
+
+[bundles]
+media3-playback = ["media3", "media3-session", "media3-okhttp", "media3-hls", "media3-dash", "media3-ui", "media3-ui-compose"]
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "androidGradlePlugin" }
