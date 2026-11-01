@@ -19,8 +19,8 @@ This is **source-level evidence**, not a controlled network benchmark. No device
 
 ## Changes in the isolated branch
 
-- Search renders the primary response on receipt, launches *both* conditional supplements in parallel, preserves Songs and Albums in the final result, and marks that result complete only after merging. Network/parsing and card projections are moved off Main. Switching tabs no longer treats an unfinished Top-only response as final.
-- ItemThumbnail, artist cards, local covers, playlist preview and detail portraits have one bounded 180ms decode-driven entrance; no perpetual shimmer. Google CDN resize failures fall back to the original thumbnail.
+- Search measures the primary response internally, but **publishes the entire result in a single Compose state change**. It still launches both conditional Songs and Albums supplements in parallel, preserving the categories and keeping decode/projection off Main. The background summary job is independent of chip switching and a failure offers retry.
+- ItemThumbnail, artist cards, local covers, playlist preview and detail portraits have **one eased 320ms decode-driven entrance** including cache hits. Overlapping native Coil crossfades are disabled. Google resize failures fall back to the original thumbnail, and the full-size detail layer stays hidden until the success callback.
 - Detail portrait displays the original feed URL in parallel with the larger candidate, preserving crop/palette/matte. It avoids redundant preview decode when original and full URL are equal.
 - Album/playlist layout retains the original photo dissolve but uses one opaque measured title paragraph through handoff; the control capsule is raised relative to the cover, and loading actions mirror their real disabled buttons instead of five identical play icons.
 - Online playlists publish page one immediately and continue on demand. Albums reuse a complete inline shelf when present, await DB transaction, and preserve cached metadata on network errors. Audio/video stream resolver, Android package identity and download manager are untouched.
@@ -29,7 +29,7 @@ This is **source-level evidence**, not a controlled network benchmark. No device
 
 Record a cold start and a warm revisit with the *same* query, album and playlist. Compare:
 
-- `SearchLatency primaryMs=...`: first useful summary published; `completeMs=...`: all needed shelves received.
+- `SearchLatency primaryMs=...`: first response ready internally (not displayed); `completeMs=...`: all needed shelves received.
 - `DetailLatency playlistFirstPageMs=... rows=... more=...`: initial playlist metadata; `albumBrowseMs=...` and `albumReadyMs=...`: network/catalog vs Room commit.
 - `ArtworkLatency detailPreviewMs=...` / `detailFullMs=...`: first usable photo and the optional 960px refinement; values may differ due to proxy, CDN and cache.
 - Record actual screen-to-visible timing, route/network type, cache state, and Android system-level CPU/GPU/battery thermal trace for a comparable idle/playback session.
@@ -37,3 +37,7 @@ Record a cold start and a warm revisit with the *same* query, album and playlist
 Sensitive query strings, artwork URLs, signed tokens and media IDs are deliberately excluded from these new timing logs.
 
 **Acceptance:** all search shelves returned, album/playlist card and controls remain usable under slow network, images never remain blank on a failed upsized variant, title stays solid on every frame, photo darkens exactly as before, and offline audio/video behavior is unchanged.
+
+## Regression gate added
+
+A previous full-regression run failed one **stale assertion** in `UiEnergyRegressionTest`: it expected an old 300ms/NonCancellable implementation rather than the current 250ms, 2-slot and 8-visible-ID viewport limiter. The test now checks the actual source contract. `SearchPresentationRegressionTest` separately guards one atomic summary publication, both parallel category fallbacks, and absence of an opaque full-res frame before image success. A successful debug build does not replace physical-device visual and thermal checks.
