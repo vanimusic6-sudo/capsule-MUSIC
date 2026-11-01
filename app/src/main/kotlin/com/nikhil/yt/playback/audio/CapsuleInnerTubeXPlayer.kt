@@ -12,8 +12,6 @@ package com.nikhil.yt.playback.audio
 
 import android.content.Context
 import android.net.ConnectivityManager
-import com.metrolist.innertubex.sabr.ExperimentalSabrApi
-import com.nikhil.yt.BuildConfig
 import com.metrolist.innertubex.InnerTube
 import com.metrolist.innertubex.InnerTubeLogLevel
 import com.metrolist.innertubex.InnerTubeLogger
@@ -63,7 +61,6 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import timber.log.Timber
 import java.net.SocketTimeoutException
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import com.nikhil.yt.innertube.PlaybackAuthState
 import com.nikhil.yt.innertube.models.YouTubeLocale
@@ -85,7 +82,6 @@ import kotlin.time.Clock
  */
 object CapsuleInnerTubeXPlayer {
     private const val TAG = "CapsuleInnerTubeX"
-    private const val STREAM_CLIENT_FAILURE_TTL_MS = 5 * 60 * 1000L
     /* One network request gets 8 s; the complete InnerTubeX client chain gets 18 s. */
     private const val PER_REQUEST_TIMEOUT_MS = 8_000L
     private const val ENGINE_RESOLVE_TIMEOUT_MS = 18_000L
@@ -96,73 +92,13 @@ object CapsuleInnerTubeXPlayer {
     private val resolveMutex = Mutex()
     private val scheduler = AudioResolveScheduler()
 
-    /**
-     * Developer-only, explicit one-shot SABR proof. It does not change playback
-     * or download resolution, does not claim SABR is seekable in Media3, and
-     * never sends a duplicate /player request for a normal play action.
-     *
-     * A SABR-only extractor result is usable here but is still not passed to
-     * the production ProgressiveMediaSource/ProgressiveDownloader.
-     */
-    @OptIn(ExperimentalSabrApi::class)
-    internal suspend fun debugProbeSabrAudio(
-        videoId: String,
-        profileId: String = "WEB_REMIX",
-    ): Result<SabrAudioProbeSummary> {
-        if (!BuildConfig.DEBUG) {
-            return Result.failure(IllegalStateException("SABR probe is disabled outside debug builds"))
-        }
-        if (!videoId.matches(Regex("[A-Za-z0-9_-]{11}"))) {
-            return Result.failure(IllegalArgumentException("SABR probe expects one YouTube video ID"))
-        }
-        return try {
-            CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
-            val (client, bootstrap) = scheduler.run(videoId, AudioResolvePriority.PREFETCH) {
-                resolveMutex.withLock {
-                    withTimeout(ENGINE_RESOLVE_TIMEOUT_MS) {
-                        val snapshot = bundle()
-                        val hints = ContentHints(
-                            wantVideo = false,
-                            playbackClientOverrideId = profileId,
-                        ).withStreamCapabilities(
-                            allowHls = false,
-                            allowSabr = true,
-                            allowBoundedRange = true,
-                        )
-                        val extracted = requireNotNull(
-                            snapshot.extractor.extract(
-                                videoId = videoId,
-                                hints = hints,
-                                excludedClients = emptySet(),
-                                audioQuality = InnerTubeXAudioQuality.HIGH,
-                                clientPlaybackNonce = generateClientPlaybackNonce(),
-                            ),
-                        ) { "SABR probe could not extract a playback response" }
-                        val sabr = requireNotNull(extracted.sabrBootstrap) {
-                            "This profile returned direct media rather than a SABR bootstrap"
-                        }
-                        snapshot.httpClient to sabr
-                    }
-                }
-            }
-            Result.success(probeSabrAudioWire(client, bootstrap))
-        } catch (timeout: TimeoutCancellationException) {
-            currentCoroutineContext().ensureActive()
-            Result.failure(SocketTimeoutException("SABR debug probe timed out"))
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (failure: Exception) {
-            Result.failure(failure)
-        }
-    }
-
     fun prioritizePlayback(mediaId: String) = scheduler.promote(mediaId)
 
     fun effectiveResolvePriority(mediaId: String, fallback: AudioResolvePriority): AudioResolvePriority =
         scheduler.effectivePriority(mediaId, fallback)
     private val prewarmScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val streamClientFailures = ConcurrentHashMap<String, FailedStreamClients>()
-    private val downloadStreamClientFailures = ConcurrentHashMap<String, FailedStreamClients>()
+    private val streamClientFailures = TrackClientFailureCache()
+    private val downloadStreamClientFailures = TrackClientFailureCache()
     private val downloadBotGate = DownloadBotCheckGate()
 
     fun downloadCooldownRemainingMs(): Long = downloadBotGate.remainingMs()
@@ -341,7 +277,7 @@ object CapsuleInnerTubeXPlayer {
             bundle().cipherService.refreshAfterStreamRejection()
         }
 
-    suspend fun playerResponseForPlayback(
+    suspend fun resolveStream(
         videoId: String,
         playlistId: String?,
         audioQuality: AudioQuality,
@@ -467,7 +403,7 @@ object CapsuleInnerTubeXPlayer {
     ): ExtractedStream {
         var lastFailure: Exception? = null
         var transientFallbacks = 0
-        var botSignalAlreadySeen = CapsulePlaybackSafety.quarantinedProfileIds().isNotEmpty()
+        var botSignalAlreadySeen = false
         var onlyPostBotProfile: String? = null
         val attempted = linkedSetOf<String>()
 
@@ -479,7 +415,7 @@ object CapsuleInnerTubeXPlayer {
             }
             val priorityBeforeAttempt = priorityProvider()
             val excludedBeforeAttempt =
-                CapsulePlaybackSafety.quarantinedProfileIds() + failedStreamClients(videoId, download = download)
+                failedStreamClients(videoId, download = download)
             val plan =
                 CapsuleAudioFallbackPolicy.profilePlan(
                     primaryProfileId = primaryProfileId,
@@ -655,13 +591,15 @@ object CapsuleInnerTubeXPlayer {
         while (true) {
             val extracted =
                 requireNotNull(
-                    (if (download) extractionBundle.downloadExtractor else extractionBundle.extractor).extract(
-                        videoId = videoId,
-                        hints = hints,
-                        excludedClients = CapsuleAudioClientStrategy.exclusions(excludedClients),
-                        audioQuality = audioQuality,
-                        clientPlaybackNonce = generateClientPlaybackNonce(),
-                    ),
+                    audioExtractorAttempt {
+                        (if (download) extractionBundle.downloadExtractor else extractionBundle.extractor).extract(
+                            videoId = videoId,
+                            hints = hints,
+                            excludedClients = CapsuleAudioClientStrategy.exclusions(excludedClients),
+                            audioQuality = audioQuality,
+                            clientPlaybackNonce = generateClientPlaybackNonce(),
+                        )
+                    },
                 ) { "InnerTubeX returned no playable AUDIO stream" }
 
             if (extracted.sabrBootstrap == null) {
@@ -716,12 +654,7 @@ object CapsuleInnerTubeXPlayer {
         if (failureKind == YouTubeFailureKind.TRANSIENT) return
         val normalized = clientName?.substringBefore('@')?.trim()?.takeIf { it.isNotBlank() } ?: return
         val failuresByMedia = if (download) downloadStreamClientFailures else streamClientFailures
-        failuresByMedia.compute(videoId) { _, failures ->
-            FailedStreamClients(
-                clientNames = failures?.clientNames.orEmpty() + normalized,
-                failedAtMs = nowMs,
-            )
-        }
+        failuresByMedia.record(videoId, normalized, nowMs)
         Timber.tag(TAG).w("Per-song client rollover id=%s failedClient=%s download=%s", videoId, normalized, download)
     }
 
@@ -758,12 +691,7 @@ object CapsuleInnerTubeXPlayer {
         download: Boolean = false,
     ): Set<String> {
         val failuresByMedia = if (download) downloadStreamClientFailures else streamClientFailures
-        val failures = failuresByMedia[videoId] ?: return emptySet()
-        if ((nowMs - failures.failedAtMs) !in 0 until STREAM_CLIENT_FAILURE_TTL_MS) {
-            failuresByMedia.remove(videoId, failures)
-            return emptySet()
-        }
-        return failures.clientNames
+        return failuresByMedia.clients(videoId, nowMs)
     }
 
     private suspend fun bundle(): ExtractionBundle {
@@ -1000,10 +928,7 @@ object CapsuleInnerTubeXPlayer {
         )
     }
 
-    private data class FailedStreamClients(
-        val clientNames: Set<String>,
-        val failedAtMs: Long,
-    )
+
 
     private data class ExtractionBundle(
         val key: SessionSnapshot,

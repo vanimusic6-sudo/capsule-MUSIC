@@ -11,7 +11,6 @@ internal class PlaybackDataCache(
         val expiresAtMs: Long,
         val context: Any?,
         val storedAtMs: Long,
-        val prefetched: Boolean,
         var deliveredAudioBytes: Boolean = false,
     )
     private val entries = LinkedHashMap<String, Entry>(16, 0.75f, true)
@@ -66,7 +65,6 @@ internal class PlaybackDataCache(
         mediaId: String,
         data: CapsuleAudioEngine.PlaybackData,
         context: Any? = currentContext(),
-        prefetched: Boolean = false,
     ) {
         val now = nowMs()
         entries[mediaId] =
@@ -75,7 +73,6 @@ internal class PlaybackDataCache(
                 expiresAtMs = now + data.streamExpiresInSeconds.coerceAtLeast(1) * 1_000L,
                 context = context,
                 storedAtMs = now,
-                prefetched = prefetched,
             )
         while (entries.size > capacity) entries.remove(entries.keys.first())
     }

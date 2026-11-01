@@ -260,22 +260,6 @@ class CapsuleAudioFallbackPolicyTest {
     }
 
     @Test
-    fun botQuarantineCoversSiblingIdentityProfiles() {
-        assertEquals(
-            setOf("WEB_REMIX", "WEB_CREATOR"),
-            CapsuleAudioFallbackPolicy.botQuarantineProfiles("WEB_REMIX"),
-        )
-        assertEquals(
-            setOf("VISIONOS", "VISIONOS_0_1"),
-            CapsuleAudioFallbackPolicy.botQuarantineProfiles("VISIONOS_0_1"),
-        )
-        assertEquals(
-            setOf("TVHTML5_SIMPLY"),
-            CapsuleAudioFallbackPolicy.botQuarantineProfiles("TVHTML5_SIMPLY"),
-        )
-    }
-
-    @Test
     fun fallbackPacingIsDeterministicAndRateLimitsNeverRetry() {
         assertEquals(0L, CapsuleAudioFallbackPolicy.fallbackDelayMs(YouTubeFailureKind.NONE))
         assertEquals(0L, CapsuleAudioFallbackPolicy.fallbackDelayMs(YouTubeFailureKind.UNPLAYABLE))

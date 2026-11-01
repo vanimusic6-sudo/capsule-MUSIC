@@ -56,7 +56,6 @@ class CapsulePlaybackSafetyTest {
         CapsulePlaybackSafety.markProfileBotCheck("web_remix")
         CapsulePlaybackSafety.markBotDetectionFailure("confirmed across multiple AUDIO client profiles")
 
-        assertTrue(CapsulePlaybackSafety.quarantinedProfileIds().isEmpty())
         assertNull(CapsulePlaybackSafety.blockedExceptionOrNull())
     }
 
@@ -73,7 +72,6 @@ class CapsulePlaybackSafetyTest {
                 before,
             ),
         )
-        assertTrue(CapsulePlaybackSafety.quarantinedProfileIds().isEmpty())
         assertNull(CapsulePlaybackSafety.blockedExceptionOrNull())
     }
 

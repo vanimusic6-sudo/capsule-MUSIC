@@ -4446,19 +4446,19 @@ class MusicService :
         ) {
             /*
              * An explicit bot-check is not a reason to cycle through more
-             * identities. Open the AUDIO breaker and stop this attempt.
+             * identities. Stop this resolve; optional traffic observes its own cooldown.
              */
             CapsuleAudioEngine.markBotDetectionFailure(
-                error.message ?: error.cause?.message,
+                "AUDIO client fallback exhausted",
             )
-            CapsuleAudioEngine.invalidateCachedStreamUrls(currentMediaId)
+
             playbackUrlCache.remove(currentMediaId)
             audioResolveCoordinator.cancelAll()
             streamRetryJob?.cancel()
             playbackRecoveryCoordinator.cancelNetworkRecovery()
 
             Timber.tag("MusicService").w(
-                "YouTube bot-check for $currentMediaId — AUDIO requests cooling down",
+                "YouTube bot-check for $currentMediaId — optional AUDIO requests cooling down",
             )
 
             player.pause()
@@ -4519,7 +4519,7 @@ class MusicService :
                 // Clear only song-local extraction state. Keep the user's selected
                 // client/profile and every global anti-bot/rate-limit guard intact.
                 CapsuleAudioEngine.clearTrackClientFailures(currentMediaId)
-                CapsuleAudioEngine.invalidateCachedStreamUrls(currentMediaId)
+
                 audioResolveCoordinator.cancelMedia(currentMediaId) {
                     playbackUrlCache.remove(currentMediaId)
                 }
@@ -5077,7 +5077,6 @@ class MusicService :
                 mediaId = mediaId,
                 data = playback,
                 context = selection,
-                prefetched = priority == AudioResolvePriority.PREFETCH,
             )
         }
     }
@@ -5572,7 +5571,7 @@ class MusicService :
         audioBufferStallRefreshes.remove(mediaId)
         playbackRecoveryCoordinator.cancelNetworkRecovery()
         CapsuleAudioEngine.clearTrackClientFailures(mediaId)
-        CapsuleAudioEngine.invalidateCachedStreamUrls(mediaId)
+
         audioResolveCoordinator.cancelMedia(mediaId) {
             playbackUrlCache.remove(mediaId)
         }

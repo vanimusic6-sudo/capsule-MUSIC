@@ -13,14 +13,18 @@ import android.net.ConnectivityManager
 import androidx.media3.common.PlaybackException
 import com.nikhil.yt.constants.AudioQuality
 import com.nikhil.yt.constants.AudioStreamPolicy
-import com.nikhil.yt.constants.PlayerStreamClient
 import com.nikhil.yt.innertube.CapsuleAnonymousSession
 import com.nikhil.yt.innertube.models.YouTubeClient
 import com.nikhil.yt.innertube.models.response.PlayerResponse
-import java.util.concurrent.ConcurrentHashMap
+import java.util.Collections
 
 object CapsuleAudioEngine {
-    private val lastResolvedClientByVideoId = ConcurrentHashMap<String, String>()
+    // Client hints live no longer than the bounded URL cache they describe.
+    private val lastResolvedClientByVideoId = Collections.synchronizedMap(
+        object : LinkedHashMap<String, String>(16, .75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean = size > 128
+        },
+    )
 
     data class PlaybackData(
         val audioConfig: PlayerResponse.PlayerConfig.AudioConfig?,
@@ -86,8 +90,8 @@ object CapsuleAudioEngine {
      * Resolve normal AUDIO through the single maintained InnerTubeX extraction stack.
      *
      * This is the canonical playback API. Only inputs that still affect modern
-     * extraction are accepted here; compatibility-only legacy routing knobs stay
-     * in [playerResponseForPlayback] until older callers have been migrated.
+     * extraction are accepted here. Playback and downloads use separate client
+     * plans while sharing the same maintained extraction boundary.
      */
     suspend fun resolvePlayback(
         videoId: String,
@@ -113,7 +117,7 @@ object CapsuleAudioEngine {
         CapsulePlaybackSafety.blockedExceptionOrNull()?.let { return Result.failure(it) }
 
         return CapsuleInnerTubeXPlayer
-            .playerResponseForPlayback(
+            .resolveStream(
                 videoId = videoId,
                 playlistId = playlistId,
                 audioQuality = audioQuality,
@@ -124,7 +128,7 @@ object CapsuleAudioEngine {
             )
             .map { resolved ->
                 resolved.streamClient.takeIf { priority != AudioResolvePriority.DOWNLOAD && it.isNotBlank() }
-                    ?.let { client -> lastResolvedClientByVideoId[videoId] = client.substringBefore('@').trim() }
+                    ?.let { client -> lastResolvedClientByVideoId.put(videoId, client.substringBefore('@').trim()) }
 
                 PlaybackData(
                     audioConfig = resolved.audioConfig,
@@ -142,37 +146,6 @@ object CapsuleAudioEngine {
             .onFailure(CapsulePlaybackSafety::observeFailure)
     }
 
-    /**
-     * Source-compatibility wrapper for older call sites and diagnostics.
-     *
-     * [preferredStreamClient], [networkMetered], and [avoidCodecs] no longer
-     * route or alter modern AUDIO extraction. New code must call [resolvePlayback]
-     * so the API surface accurately describes the active playback contract.
-     */
-    @Deprecated(
-        message = "Use resolvePlayback(); legacy stream-client/network/codec routing parameters no longer affect modern AUDIO extraction.",
-    )
-    @Suppress("UNUSED_PARAMETER")
-    suspend fun playerResponseForPlayback(
-        videoId: String,
-        playlistId: String? = null,
-        audioQuality: AudioQuality,
-        connectivityManager: ConnectivityManager,
-        preferredStreamClient: PlayerStreamClient = PlayerStreamClient.ANDROID_VR,
-        streamPolicy: AudioStreamPolicy = AudioStreamPolicy.VISIONOS,
-        networkMetered: Boolean? = null,
-        avoidCodecs: Set<String> = emptySet(),
-        priority: AudioResolvePriority = AudioResolvePriority.PLAYBACK,
-    ): Result<PlaybackData> =
-        resolvePlayback(
-            videoId = videoId,
-            playlistId = playlistId,
-            audioQuality = audioQuality,
-            connectivityManager = connectivityManager,
-            streamPolicy = streamPolicy,
-            priority = priority,
-        )
-
     /** Metadata-only compatibility request. This never resolves a stream URL. */
     suspend fun playerResponseForMetadata(
         videoId: String,
@@ -185,12 +158,6 @@ object CapsuleAudioEngine {
             signatureTimestamp = null,
         ).onFailure(CapsulePlaybackSafety::observeFailure)
     }
-
-    /**
-     * InnerTubeX does not keep Capsule's signed URL cache. The active URL cache
-     * is owned by MusicService and is removed there before calling this hook.
-     */
-    fun invalidateCachedStreamUrls(videoId: String) = Unit
 
     fun clearTrackClientFailures(videoId: String) {
         lastResolvedClientByVideoId.remove(videoId)
@@ -231,28 +198,11 @@ object CapsuleAudioEngine {
                 ?.substringBefore('@')
                 ?.trim()
                 ?.takeIf { it.isNotBlank() }
-                ?: lastResolvedClientByVideoId[videoId]
+                ?: lastResolvedClientByVideoId.get(videoId)
 
         CapsuleInnerTubeXPlayer.markStreamClientFailed(
             videoId = videoId,
             clientName = resolvedClient,
-        )
-        lastResolvedClientByVideoId.remove(videoId)
-    }
-
-    /**
-     * Kept only for binary/source compatibility with older diagnostics. Normal
-     * Capsule AUDIO playback no longer uses PlayerStreamClient routing.
-     */
-    fun markPreferredClientFailed(
-        videoId: String,
-        client: PlayerStreamClient,
-        httpStatusCode: Int?,
-    ) {
-        CapsulePlaybackSafety.markHttpStatusFailure(httpStatusCode)
-        CapsuleInnerTubeXPlayer.markStreamClientFailed(
-            videoId = videoId,
-            clientName = client.name,
         )
         lastResolvedClientByVideoId.remove(videoId)
     }

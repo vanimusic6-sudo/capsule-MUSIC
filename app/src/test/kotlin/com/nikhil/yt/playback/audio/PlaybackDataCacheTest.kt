@@ -83,7 +83,7 @@ class PlaybackDataCacheTest {
         val cache = PlaybackDataCache(nowMs = { now })
         val data = playback()
 
-        cache.put("prefetched", data, prefetched = true)
+        cache.put("prefetched", data)
         now = 1_001L
         assertNull(
             cache.getForPlayback(
@@ -94,7 +94,7 @@ class PlaybackDataCacheTest {
 
         // Foreground priority is not proof of playback: a rapid-skip item can resolve its
         // URL and be abandoned before the CDN receives a request. Its untested URL also ages out.
-        cache.put("foreground", data, prefetched = false)
+        cache.put("foreground", data)
         now = 2_002L
         assertNull(
             cache.getForPlayback(
@@ -108,7 +108,7 @@ class PlaybackDataCacheTest {
         var now = 0L
         val cache = PlaybackDataCache(nowMs = { now })
         val data = playback()
-        cache.put("playing", data, prefetched = false)
+        cache.put("playing", data)
         cache.markDeliveredAudioBytes("playing", data.streamUrl)
         now = 2_000L
         assertSame(data, cache.getForPlayback("playing", maxPrefetchedAgeMs = 1_000L))
