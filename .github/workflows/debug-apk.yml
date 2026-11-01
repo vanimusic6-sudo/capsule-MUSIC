@@ -3,6 +3,8 @@ name: Capsule Full Regression Tests (manual)
 # Comprehensive legacy/debug regression runner, retained for deeper
 # on-demand testing. Everyday builds are produced by capsule-test-apk.yml.
 on:
+  push:
+    branches: ['refactor/unified-scroll-engine-20261101']
   workflow_dispatch:
 
 permissions:
@@ -92,6 +94,8 @@ jobs:
       - name: Test TASK 02 Home and artwork regressions
         run: |
           gradle :app:testUniversalDebugUnitTest \
+            --tests 'com.nikhil.yt.ui.ScrollPointerOwnershipTest' \
+            --tests 'com.nikhil.yt.ui.ScrollFlingCatchRegressionTest' \
             --tests 'com.nikhil.yt.ui.HomePerformanceRegressionTest' \
             --tests 'com.nikhil.yt.ui.HomeDiscoveryRegressionTest' \
             --tests 'com.nikhil.yt.ui.player.PlayerArtworkReliabilityTest' \
