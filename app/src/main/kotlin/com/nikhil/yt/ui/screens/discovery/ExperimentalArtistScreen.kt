@@ -32,7 +32,7 @@ import com.nikhil.yt.utils.rememberPreference
 import kotlinx.coroutines.CancellationException
 
 /**
- * External creators: Audius uses official /users/{id}/tracks.
+ * External creators: independent audio uses official /users/{id}/tracks.
  * Openverse searches the original creator field, optionally scoped to provider.
  */
 @Composable

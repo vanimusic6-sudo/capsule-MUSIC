@@ -57,8 +57,8 @@ internal fun ExperimentalDiscoveryShelf(
         candidates = emptyList()
         failedSources = emptySet()
         loading = true
-        // Show Audius promptly; Openverse is an independent async lane.
-        // Its latency cannot hide or block the Audius shelf.
+        // Show independent audio promptly; Openverse is an independent async lane.
+        // Its latency cannot hide or block the independent audio shelf.
         supervisorScope {
             val discovered = mutableListOf<ExperimentalCatalog.Track>()
             for (source in HomeFeedSource.entries.filter { it in sources && it != HomeFeedSource.YOUTUBE }) {

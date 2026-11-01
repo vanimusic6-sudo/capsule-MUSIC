@@ -11,15 +11,19 @@ class HomePerformanceRegressionTest {
         listOf(File("src/main/kotlin/com/nikhil/yt/$path"), File("app/src/main/kotlin/com/nikhil/yt/$path"))
             .firstOrNull { it.isFile }?.readText() ?: error("Missing $path")
 
-    @Test fun keepListeningPressKeepsSemanticsButHasNoRowOverlay() {
+    @Test fun keepListeningUsesSharedPressFeedbackAndKeepsActiveTrackSemantics() {
         val row = source("ui/screens/HomeScreenComponents.kt")
             .substringAfter("private fun KeepListeningRow(").substringBefore("fun ForgottenFavoritesSection(")
         // Active tracks must retain the SongListItem selection background.
-        // The unwanted PRESS ripple remains separately disabled.
+        // Shared draw-phase feedback owns the press; Material ripple stays disabled.
         assertFalse(row.contains("showActiveBackground = false"))
         assertTrue(row.contains("isActive = isActive"))
-        assertTrue(row.contains("indication = null"))
-        assertTrue(row.contains("interactionSource = remember { MutableInteractionSource() }"))
+        assertTrue(row.contains(".capsulePressCombinedClickable("))
+        val feedback = source("ui/component/CapsulePressFeedback.kt")
+            .substringAfter("fun Modifier.capsulePressCombinedClickable(")
+        assertTrue(feedback.contains("indication = null"))
+        assertTrue(feedback.contains("remember { MutableInteractionSource() }"))
+        assertTrue(feedback.contains("onLongClick = onLongClick"))
         assertTrue(row.contains("onLongClick = showSongMenu"))
         assertTrue(row.contains("playerConnection.playQueue"))
         assertTrue(source("ui/component/Items.kt").contains("showActiveBackground: Boolean = true"))

@@ -4,7 +4,7 @@ name: Capsule Full Regression Tests (manual)
 # on-demand testing. Everyday builds are produced by capsule-test-apk.yml.
 on:
   push:
-    branches: ['refactor/unified-scroll-engine-20261101', 'fix/playback-download-resilience-20261101']
+    branches: ['refactor/unified-scroll-engine-20261101', 'fix/playback-download-resilience-20261101', 'fix/artwork-header-search-cleanup-20261101']
   workflow_dispatch:
 
 permissions:
@@ -44,6 +44,15 @@ jobs:
           unqualifiedResLocale=en-US
           EOF
 
+      - name: Test cover geometry, title handoff and source cleanup
+        run: |
+          gradle :app:testUniversalDebugUnitTest \
+            --tests 'com.nikhil.yt.ui.component.ArtworkResolutionTest' \
+            --tests 'com.nikhil.yt.ui.component.DetailToolbarRevealTest' \
+            --tests 'com.nikhil.yt.ui.CollectionHeaderMotionTest' \
+            --tests 'com.nikhil.yt.discovery.*' \
+            --stacktrace --no-daemon
+
       - name: Run Android lint
         run: |
           gradle :app:verifyAndroidJsonRuntime :app:lintUniversalDebug --stacktrace --no-daemon
@@ -59,41 +68,21 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Test TASK 04 existing theme modes and preference persistence
+      - name: Test UI, preferences, Home and player regressions
+        if: ${{ !cancelled() }}
         run: |
           gradle :app:testUniversalDebugUnitTest \
             --tests 'com.nikhil.yt.ui.theme.CapsuleThemeModeTest' \
             --tests 'com.nikhil.yt.ui.theme.CapsuleThemeBackgroundTest' \
             --tests 'com.nikhil.yt.utils.PreferenceInitialValueTest' \
-            --stacktrace --no-daemon
-
-      - name: Test TASK 05 home clock, guest icon, scroll header and Capsule Light
-        run: |
-          gradle :app:testUniversalDebugUnitTest \
             --tests 'com.nikhil.yt.ui.component.HomeDayPeriodTest' \
             --tests 'com.nikhil.yt.ui.component.HomeGuestIconTest' \
             --tests 'com.nikhil.yt.ui.HomeScrollableHeaderTest' \
             --tests 'com.nikhil.yt.ui.theme.CapsuleLightPaletteTest' \
-            --tests 'com.nikhil.yt.ui.theme.CapsuleThemeModeTest' \
-            --stacktrace --no-daemon
-
-      - name: Test TASK 06 release defaults and saved preference priority
-        run: |
-          gradle :app:testUniversalDebugUnitTest \
             --tests 'com.nikhil.yt.constants.ReleaseDefaultsTest' \
             --tests 'com.nikhil.yt.constants.AudioClientOrderTest' \
             --tests 'com.nikhil.yt.ui.LyricsProviderOrderTest' \
-            --stacktrace --no-daemon
-
-      - name: Test TASK 07 settings cleanup, modes and saved preferences
-        run: |
-          gradle :app:testUniversalDebugUnitTest \
             --tests 'com.nikhil.yt.ui.screens.settings.SettingsModeRegressionTest' \
-            --stacktrace --no-daemon
-
-      - name: Test TASK 02 Home and artwork regressions
-        run: |
-          gradle :app:testUniversalDebugUnitTest \
             --tests 'com.nikhil.yt.ui.ScrollPointerOwnershipTest' \
             --tests 'com.nikhil.yt.ui.ScrollFlingCatchRegressionTest' \
             --tests 'com.nikhil.yt.ui.HomePerformanceRegressionTest' \
@@ -102,11 +91,6 @@ jobs:
             --tests 'com.nikhil.yt.ui.player.ImmersiveVideoArtworkClipRegressionTest' \
             --tests 'com.nikhil.yt.ui.component.MiniPlayerGestureArbiterTest' \
             --tests 'com.nikhil.yt.ui.component.SquareArtworkCropTest' \
-            --stacktrace --no-daemon
-
-      - name: Test player transition and energy regressions
-        run: |
-          gradle :app:testUniversalDebugUnitTest \
             --tests 'com.nikhil.yt.lyrics.InstrumentalLyricsTest' \
             --tests 'com.nikhil.yt.ui.BottomSheetAnchorTest' \
             --tests 'com.nikhil.yt.ui.DockHandoverTest' \
@@ -121,7 +105,7 @@ jobs:
             --tests 'com.nikhil.yt.playback.CrossfadeIdlePollTest' \
             --tests 'com.nikhil.yt.ui.UiEnergyRegressionTest' \
             --tests 'com.nikhil.yt.ui.MotionEnergyStructuralRegressionTest' \
-          --tests 'com.nikhil.yt.ui.ScreenTransitionsTest' \
+            --tests 'com.nikhil.yt.ui.ScreenTransitionsTest' \
             --tests 'com.nikhil.yt.ui.player.CapsuleVideoArtworkTransitionTest' \
             --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveContentTest' \
             --tests 'com.nikhil.yt.ui.player.ImmersiveArtworkBackgroundTest' \
@@ -155,11 +139,13 @@ jobs:
           name: capsule-video-regression-evidence
           path: |
             app/build/video-morph-preview/*.png
+            app/build/reports/ui-previews/*.png
             app/build/test-results/testUniversalDebugUnitTest/*.xml
           if-no-files-found: warn
           retention-days: 14
 
       - name: Test search summary metadata
+        if: ${{ !cancelled() }}
         run: |
           gradle :kizzy:test --stacktrace --no-daemon
           gradle :innertube:test \
@@ -168,6 +154,7 @@ jobs:
             --stacktrace --no-daemon
 
       - name: Test VIDEO quality, clip matching and podcast classification
+        if: ${{ !cancelled() }}
         run: |
           gradle :innertube:test \
             --tests 'com.nikhil.yt.innertube.YouTubeMusicVideoMatcherTest' \

@@ -44,7 +44,7 @@ object ExperimentalDownload {
     private val main = Handler(Looper.getMainLooper())
     /**
      * The native app library reads Media3's DownloadIndex, while independent
-     * creator-approved Audius files are saved through Android MediaStore.
+     * licensed independent files are saved through Android MediaStore.
      * Expose the latter explicitly so the library's Downloaded filter can
      * combine both without lying to YouTube's offline cache/index.
      *
@@ -69,14 +69,14 @@ object ExperimentalDownload {
             sourceMediaId?.startsWith("capsule-open:archive:") == true -> "Internet Archive"
             sourceMediaId?.startsWith("capsule-open:ccmixter:") == true -> "ccMixter"
             sourceMediaId?.startsWith("capsule-open:funkwhale:") == true -> "Funkwhale"
-            else -> "Audius" // Legacy files did not persist provider identity.
+            else -> "Local audio" // Legacy files did not persist provider identity.
         }
 
         // Older releases saved only a filename; those recordings remain playable.
         val title: String get() = savedTitle?.takeIf(String::isNotBlank)
             ?: name.substringBeforeLast('.').substringAfter(" - ", name.substringBeforeLast('.'))
         val artist: String get() = savedArtist?.takeIf(String::isNotBlank)
-            ?: name.substringBefore(" - ", "Audius")
+            ?: name.substringBefore(" - ", "Local audio")
     }
 
     suspend fun savedFiles(context: Context): List<SavedAudio> = withContext(Dispatchers.IO) {
@@ -246,9 +246,7 @@ object ExperimentalDownload {
         if (uri.scheme != "https" || uri.host.isNullOrBlank() ||
             track.source == ExperimentalCatalog.Source.RADIO) return false
         val app = context.applicationContext
-        val extension = when {
-            track.source == ExperimentalCatalog.Source.AUDIUS -> "mp3"
-            else -> when (uri.lastPathSegment?.substringAfterLast('.', "").orEmpty().lowercase()) {
+        val extension = when (uri.lastPathSegment?.substringAfterLast('.', "").orEmpty().lowercase()) {
                 "ogg", "oga" -> "ogg"
                 "opus" -> "opus"
                 "m4a" -> "m4a"
@@ -256,7 +254,6 @@ object ExperimentalDownload {
                 "flac" -> "flac"
                 "wav" -> "wav"
                 else -> "mp3"
-            }
         }
         val name = "${track.artist} - ${track.title}"
             .replace(Regex("[^\\p{L}\\p{N} _().-]"), "_")
@@ -360,8 +357,8 @@ object ExperimentalDownload {
                             conn.inputStream,
                             checkActive = { coroutine.ensureActive() },
                         ).use { input ->
-                            // WorkManager's independent Audius copy must not saturate
-                            // the same network while a foreground YouTube/Audius
+                            // WorkManager's independent audio copy must not saturate
+                            // the same network while a foreground audio
                             // player is buffering. This yields reads only and keeps
                             // the original file/MediaStore cancellation contract.
                             VerifiedAudioCopy.copy(input, out, size, MAX_BYTES) { coroutine.ensureActive() }

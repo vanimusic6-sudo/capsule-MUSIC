@@ -968,7 +968,7 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="capsule_advanced_mode_warning_confirm">Got it</string>
     <string name="capsule_discovery_experimental">Experimental sources</string>
     <string name="capsule_discovery_toggle">Rare music sources</string>
-    <string name="capsule_discovery_toggle_desc">Enable Audius and Openverse in search and discovery. Openverse includes Creative Commons recordings indexed from Jamendo without registering for a Jamendo Client ID. Turn off to stop experimental sources.</string>
+    <string name="capsule_discovery_toggle_desc">Enable Openverse and other independent catalogs in search and discovery. Openverse includes Creative Commons recordings indexed from Jamendo without registering for a Jamendo Client ID. Turn off to stop experimental sources.</string>
     <string name="capsule_discovery_short">Under 4 min</string>
     <string name="capsule_discovery_long">Over 4 min</string>
     <string name="capsule_discovery_old">Before 2000</string>
@@ -1002,15 +1002,6 @@ Velune will only extract your token, and everything else is stored locally.</str
     <string name="capsule_radio_jazz">Jazz radio</string>
     <string name="capsule_radio_rock">Rock radio</string>
     <string name="capsule_radio_electronic">Electronic radio</string>
-    <string name="capsule_audius_this_week">Trending this week</string>
-    <string name="capsule_audius_new_releases">Freshly uploaded</string>
-    <string name="capsule_audius_underground">Hidden gems</string>
-    <string name="capsule_audius_genre_chart">Today’s genre</string>
-    <string name="capsule_audius_fresh">Best new releases</string>
-    <string name="capsule_audius_radar">Under the radar</string>
-    <string name="capsule_audius_month">Monthly charts</string>
-    <string name="capsule_audius_loved">Community favorites</string>
-    <string name="capsule_audius_not_downloadable">The creator has disabled downloads</string>
     <string name="capsule_source_selector_subtitle">Pick what appears on Home</string>
     <string name="capsule_like_local">Like</string>
     <string name="capsule_unlike_local">Remove like</string>

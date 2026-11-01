@@ -38,11 +38,11 @@ class ListStabilityTest {
     @Test fun partialCatalogArrivalsDoNotReshuffleAPublishedDiscoveryShelf() {
         val state = com.nikhil.yt.ui.screens.CatalogHomeState()
         fun track(i: Int) = com.nikhil.yt.discovery.ExperimentalCatalog.Track(
-            source = com.nikhil.yt.discovery.ExperimentalCatalog.Source.AUDIUS, id = "$i", title = "Track $i",
+            source = com.nikhil.yt.discovery.ExperimentalCatalog.Source.ARCHIVE, id = "$i", title = "Track $i",
             artist = "Artist $i", artwork = null, streamUrl = "https://example.org/$i.mp3", sourcePage = "",
             durationSeconds = 180)
         fun lane(tracks: List<com.nikhil.yt.discovery.ExperimentalCatalog.Track>) =
-            com.nikhil.yt.discovery.ExperimentalCatalog.HomeLane(com.nikhil.yt.discovery.HomeFeedSource.AUDIUS,
+            com.nikhil.yt.discovery.ExperimentalCatalog.HomeLane(com.nikhil.yt.discovery.HomeFeedSource.YOUTUBE,
                 com.nikhil.yt.discovery.ExperimentalCatalog.HomeLaneKind.TRENDING, tracks)
         state.lanes = listOf(lane((1..10).map(::track)))
         state.publishDiscovery(emptyList(), 42)

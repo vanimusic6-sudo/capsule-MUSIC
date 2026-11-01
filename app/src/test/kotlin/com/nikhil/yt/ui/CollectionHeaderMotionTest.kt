@@ -270,8 +270,8 @@ class CollectionHeaderMotionTest {
         }
         compose.runOnIdle { runBlocking { state.scrollToItem(0, (lo - 1).coerceAtLeast(0)) } }
         compose.runOnIdle {
-            assertEquals(1f, motion.coverTitleAlpha(), 0f)
-            assertEquals(0f, motion.compactTitleAlpha(), 0f)
+            assertTrue(motion.coverTitleAlpha() < .01f)
+            assertTrue(motion.compactTitleAlpha() > .99f)
         }
         assertTrue("The moving caption must reach the bar without a second copy",
             glyphPixels("before-transfer") > 30)
@@ -286,6 +286,30 @@ class CollectionHeaderMotionTest {
             (coverLayout.single().firstBaseline - coverLayout.single().size.height / 2f) * s
         val targetBaseline = target.top + compactLayout.single().firstBaseline
         assertEquals("The handoff must not shift the glyph baseline", targetBaseline, sourceBaseline, 2f)
+        // During the handoff both layouts must share the moving first glyph,
+        // rather than crossfading two spatially separated title copies.
+        var blendLo = 0
+        var blendHi = endOffset
+        while (blendLo < blendHi) {
+            val offset = (blendLo + blendHi) / 2
+            compose.runOnIdle { runBlocking { state.scrollToItem(0, offset) } }
+            var reached = false
+            compose.runOnIdle { reached = motion.artworkFade() >= .89f }
+            if (reached) blendHi = offset else blendLo = offset + 1
+        }
+        compose.runOnIdle { runBlocking { state.scrollToItem(0, blendLo) } }
+        val moving = compose.onNodeWithTag("capsule:detail-title").fetchSemanticsNode().boundsInRoot
+        val overlay = compose.onNodeWithTag("capsule:detail-toolbar-title").fetchSemanticsNode().boundsInRoot
+        val coverText = coverLayout.single()
+        val compactText = compactLayout.single()
+        val movingScale = moving.width / coverText.size.width
+        val overlayScale = overlay.width / compactText.size.width
+        assertEquals("First glyphs must share the entire handoff trajectory",
+            moving.left + coverText.getLineLeft(0) * movingScale,
+            overlay.left + compactText.getLineLeft(0) * overlayScale, 2f)
+        assertEquals("Baselines must stay together during the blend",
+            moving.top + coverText.firstBaseline * movingScale,
+            overlay.top + compactText.firstBaseline * overlayScale, 2f)
         compose.runOnIdle { runBlocking { state.scrollToItem(0, endOffset) } }
         assertTrue("Actual pinned glyphs must be painted before any app restart", glyphPixels("pinned") > 30)
         assertFalse("The visible compact caption must be accessible",

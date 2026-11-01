@@ -171,31 +171,8 @@ fun PlayerMenu(
     val download by downloadUtil.getDownload(mediaMetadata.id)
         .collectAsState(initial = null)
     val isExternalCatalog = mediaMetadata.id.startsWith("capsule-open:")
-    val isAudius = mediaMetadata.id.startsWith("capsule-open:audius:")
     val isOfflineAudio = mediaMetadata.id.startsWith("capsule-open:offline:")
     val isRadio = mediaMetadata.id.startsWith("capsule-open:radio:")
-    val originalAudiusTrack = remember(mediaMetadata.id) {
-        ExperimentalCatalog.playingTrack(mediaMetadata.id)
-    }
-    val canDownloadAudius = isAudius && originalAudiusTrack?.downloadUrl != null
-    // Non-Audius tracks should not subscribe to global independent-download
-    // state updates: those would recompose the entire player More sheet whenever
-    // an unrelated background worker reports progress.
-    val externalDownloadStatus = if (isAudius) {
-        ExperimentalDownload.states.collectAsState().value[mediaMetadata.id]
-    } else null
-    // Observe MediaStore changes only for an Audius track. Other tracks have
-    // their own Media3 index and should not recompose on unrelated file writes.
-    val savedFilesRevision = if (isAudius) {
-        ExperimentalDownload.savedFilesRevision.collectAsState().value
-    } else 0L
-    val savedAudiusFile by produceState<ExperimentalDownload.SavedAudio?>(
-        initialValue = null, mediaMetadata.id, savedFilesRevision,
-    ) {
-        value = if (isAudius) ExperimentalDownload.savedFiles(context)
-            .firstOrNull { it.sourceMediaId == mediaMetadata.id } else null
-    }
-
     val artists =
         remember(mediaMetadata.artists) {
             mediaMetadata.artists.sanitizedArtistCredits()
@@ -243,7 +220,7 @@ fun PlayerMenu(
                 }
             }
             // The dialog itself syncs YouTube playlists where allowed.
-            // Audius entries may only enter Capsule's local playlists.
+            // Independent entries may only enter Capsule's local playlists.
             listOf(mediaMetadata.id)
         },
         onDismiss = {
@@ -445,23 +422,9 @@ fun PlayerMenu(
                                 )
                             },
                             text = stringResource(R.string.start_radio),
-                            enabled = !isExternalCatalog || isAudius || isOfflineAudio,
+                            enabled = !isExternalCatalog,
                             onClick = {
-                                if (isAudius || isOfflineAudio) {
-                                    coroutineScope.launch {
-                                        val taste = mediaMetadata.artists.map { it.name }
-                                        val picks = ExperimentalCatalog.recommend(taste)
-                                            .filter { it.playable && it.mediaId != mediaMetadata.id }
-                                            .take(40)
-                                        picks.firstOrNull()?.let { first ->
-                                            com.nikhil.yt.discovery.ExperimentalTrackQueue
-                                                .create("Audius", picks, first)
-                                                ?.let(playerConnection::playQueue)
-                                        } ?: Toast.makeText(context, R.string.no_results_found,
-                                            Toast.LENGTH_SHORT).show()
-                                        onDismiss()
-                                    }
-                                } else if (!isExternalCatalog) {
+                                if (!isExternalCatalog) {
                                     Toast.makeText(context, resources.getString(R.string.starting_radio),
                                         Toast.LENGTH_SHORT).show()
                                     playerConnection.startRadioSeamlessly()
@@ -505,7 +468,7 @@ fun PlayerMenu(
                                         resources.getString(R.string.copy_link),
                                         (if (isExternalCatalog) mediaMetadata.sourceUrl
                                             ?.takeIf { it.startsWith("https://") }
-                                            ?: "https://audius.co"
+                                            ?: ""
                                         else "https://music.youtube.com/watch?v=${mediaMetadata.id}"),
                                     )
                                 clipboard.setPrimaryClip(clip)
@@ -617,7 +580,7 @@ fun PlayerMenu(
                 Spacer(modifier = Modifier.height(12.dp))
             }
         }
-        if (!isExternalCatalog || isAudius || isOfflineAudio) item(key = "download", contentType = "menu-section") {
+        if (!isExternalCatalog || isOfflineAudio) item(key = "download", contentType = "menu-section") {
             if (isOfflineAudio) {
                 MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                     ListItem(
@@ -653,52 +616,6 @@ fun PlayerMenu(
                                     Toast.makeText(context, R.string.capsule_download_remove_failed,
                                         Toast.LENGTH_SHORT).show()
                                 }
-                            }
-                        },
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    )
-                }
-            } else if (isAudius) {
-                val saved = savedAudiusFile
-                val downloading = saved == null &&
-                    externalDownloadStatus == ExperimentalDownload.State.DOWNLOADING
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
-                    ListItem(
-                        headlineContent = {
-                            Text(stringResource(when {
-                                saved != null -> R.string.remove_download
-                                downloading -> R.string.downloading
-                                !canDownloadAudius -> R.string.capsule_audius_not_downloadable
-                                else -> R.string.action_download
-                            }), color = if (saved != null) MaterialTheme.colorScheme.error
-                                else MaterialTheme.colorScheme.onSurface)
-                        },
-                        leadingContent = {
-                            if (downloading) VeluneLoader(size = 24.dp)
-                            else Icon(
-                                painterResource(if (saved != null) R.drawable.offline else R.drawable.download),
-                                contentDescription = null,
-                                tint = if (saved != null) MaterialTheme.colorScheme.error
-                                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        },
-                        modifier = Modifier.clickable(enabled = saved != null ||
-                            downloading || canDownloadAudius) {
-                            if (downloading) {
-                                ExperimentalDownload.cancelInProgress(context, mediaMetadata.id)
-                            } else if (saved != null) {
-                                coroutineScope.launch {
-                                    if (ExperimentalDownload.deleteSaved(context, saved)) {
-                                        com.nikhil.yt.discovery.OfflineAudioQueue
-                                            .removeDeletedFromPlayer(playerConnection.player, saved.id)
-                                        // Do not abruptly collapse the More sheet on removal.
-                                    } else {
-                                        Toast.makeText(context, R.string.capsule_download_remove_failed,
-                                            Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            } else {
-                                originalAudiusTrack?.let { ExperimentalDownload.enqueue(context, it) }
                             }
                         },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),

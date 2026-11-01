@@ -21,7 +21,7 @@ internal object AudioDownloadSlots {
 /**
  * A server-imposed wait must not reserve either of the process-wide file-transfer
  * permits. In particular, a throttled YouTube download must not keep an unrelated
- * Audius/local-source worker from transferring while the YouTube circuit is open.
+ * independent audio/local-source worker from transferring while the YouTube circuit is open.
  */
 internal suspend fun <T> withAudioDownloadSlotAfterAdmission(
     awaitAdmission: suspend () -> Unit,

@@ -64,7 +64,7 @@ import kotlinx.coroutines.launch
 
 private enum class SearchChip {
     ALL, SONGS, VIDEOS, ALBUMS, ARTISTS, COMMUNITY_PLAYLISTS, FEATURED_PLAYLISTS,
-    AUDIUS, OPENVERSE, ARCHIVE, CCMIXTER, RADIO,
+    OPENVERSE, ARCHIVE, CCMIXTER, RADIO,
 }
 
 private enum class RareFilter { ALL, SHORT, LONG, ELECTRONIC, AMBIENT }
@@ -424,7 +424,6 @@ fun OnlineSearchResult(
     }
 
     val selectedChip = when {
-        rareSource == ExperimentalCatalog.Source.AUDIUS -> SearchChip.AUDIUS
         rareSource == ExperimentalCatalog.Source.OPENVERSE -> SearchChip.OPENVERSE
         rareSource == ExperimentalCatalog.Source.ARCHIVE -> SearchChip.ARCHIVE
         rareSource == ExperimentalCatalog.Source.CCMIXTER -> SearchChip.CCMIXTER
@@ -454,15 +453,11 @@ fun OnlineSearchResult(
                 add(SearchChip.ARTISTS to stringResource(R.string.filter_artists))
                 add(SearchChip.COMMUNITY_PLAYLISTS to stringResource(R.string.filter_community_playlists))
                 add(SearchChip.FEATURED_PLAYLISTS to stringResource(R.string.filter_featured_playlists))
-                if (experimentalEnabled) {
-                    add(SearchChip.AUDIUS to "Audius")
-                }
             },
             currentValue = selectedChip,
             onValueUpdate = { chip ->
                 rareFilter = RareFilter.ALL
                 rareSource = when(chip) {
-                    SearchChip.AUDIUS -> ExperimentalCatalog.Source.AUDIUS
                     SearchChip.OPENVERSE -> ExperimentalCatalog.Source.OPENVERSE
                     SearchChip.ARCHIVE -> ExperimentalCatalog.Source.ARCHIVE
                     SearchChip.CCMIXTER -> ExperimentalCatalog.Source.CCMIXTER
@@ -487,16 +482,14 @@ fun OnlineSearchResult(
                 SearchChip.ARTISTS to R.drawable.person,
                 SearchChip.COMMUNITY_PLAYLISTS to R.drawable.queue_music,
                 SearchChip.FEATURED_PLAYLISTS to R.drawable.playlist_play,
-                SearchChip.AUDIUS to R.drawable.ic_capsule_audius,
                 SearchChip.OPENVERSE to R.drawable.ic_capsule_openverse,
                 SearchChip.ARCHIVE to R.drawable.ic_capsule_archive_home,
                 SearchChip.CCMIXTER to R.drawable.ic_capsule_ccmixter_home,
                 SearchChip.RADIO to R.drawable.ic_capsule_radio_home,
             ),
-            persistentIconValues = setOf(SearchChip.AUDIUS, SearchChip.OPENVERSE,
+            persistentIconValues = setOf(SearchChip.OPENVERSE,
                 SearchChip.ARCHIVE, SearchChip.CCMIXTER, SearchChip.RADIO),
             iconAccentColors = mapOf(
-                SearchChip.AUDIUS to Color(0xFF7B39E8),
                 SearchChip.OPENVERSE to Color(0xFF138C9B),
                 SearchChip.ARCHIVE to Color(0xFFB87346),
                 SearchChip.CCMIXTER to Color(0xFF18A995),

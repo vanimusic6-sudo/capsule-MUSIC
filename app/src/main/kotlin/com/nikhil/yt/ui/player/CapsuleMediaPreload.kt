@@ -18,6 +18,7 @@ import coil3.request.ImageRequest
 import com.nikhil.yt.innertube.toHighResThumbnail
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.ui.component.PreloadArtistPortraits
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
 private const val CAPSULE_FULL_ARTWORK_PREFETCH_SIZE = 960
@@ -34,18 +35,15 @@ internal const val CAPSULE_VISUAL_PREFETCH_SETTLE_MS = 420L
  * can see. Returning to the app flips [appIsOnScreen] back to true and warms the
  * current track normally.
  *
- * This uses Coil's normal non-blocking enqueue path and only the thumbnail URL
+ * This uses Coil's cancellable suspending request path and only the thumbnail URL
  * already present in playback metadata. It does not perform any additional
  * metadata/API lookup in the background.
  */
 @Composable
 internal fun PreloadCapsuleTrackAssets(mediaMetadata: MediaMetadata?) {
     val context = LocalContext.current
-    val artworkUrl = mediaMetadata?.thumbnailUrl?.let { url ->
-        // Video poster cropping must not jump from one YouTube thumbnail
-        // variant to a different one when the player expands.
-        if (mediaMetadata.isOriginalVideo || mediaMetadata.id.startsWith("capsule-open:")) url
-        else url.toHighResThumbnail()
+    val artworkUrl = remember(mediaMetadata?.id, mediaMetadata?.thumbnailUrl) {
+        com.nikhil.yt.ui.component.capsuleArtworkUrl(mediaMetadata?.thumbnailUrl, 960)
     }
     val onScreen = appIsOnScreen()
     var stableEnoughToWarm by
@@ -66,8 +64,8 @@ internal fun PreloadCapsuleTrackAssets(mediaMetadata: MediaMetadata?) {
         delay(CAPSULE_VISUAL_PREFETCH_SETTLE_MS)
         stableEnoughToWarm = true
 
-        runCatching {
-            context.imageLoader.enqueue(
+        try {
+            context.imageLoader.execute(
                 ImageRequest.Builder(context)
                     .data(artworkUrl)
                     .size(
@@ -76,6 +74,10 @@ internal fun PreloadCapsuleTrackAssets(mediaMetadata: MediaMetadata?) {
                     )
                     .build(),
             )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // A visual preload must not affect playback; the visible image can retry.
         }
     }
 

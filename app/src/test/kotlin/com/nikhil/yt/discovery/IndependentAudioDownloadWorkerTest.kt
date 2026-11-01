@@ -12,9 +12,10 @@ import org.robolectric.annotation.Config
 @Config(manifest = Config.NONE, sdk = [35], application = Application::class)
 class IndependentAudioDownloadWorkerTest {
     private fun track(downloadable: Boolean) = ExperimentalCatalog.Track(
-        source = ExperimentalCatalog.Source.AUDIUS, id = "abc", title = "Song", artist = "Artist",
-        artwork = "https://images.example/art.jpg", streamUrl = "https://api.audius.co/v1/tracks/abc/stream",
-        sourcePage = "https://audius.co/artist/song", downloadable = downloadable,
+        source = ExperimentalCatalog.Source.ARCHIVE, id = "abc", title = "Song", artist = "Artist",
+        artwork = "https://images.example/art.jpg", streamUrl = "https://archive.org/download/release/song.mp3",
+        sourcePage = "https://archive.org/details/release",
+        license = if (downloadable) "https://creativecommons.org/licenses/by/4.0/" else null,
     )
 
     @Test fun durableInputPreservesCreditsAndPublisherPermission() {

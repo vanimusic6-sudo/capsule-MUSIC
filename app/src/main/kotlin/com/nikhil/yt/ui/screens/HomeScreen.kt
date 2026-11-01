@@ -132,6 +132,18 @@ fun HomeScreen(
 
     val scope = rememberCoroutineScope()
     val lazylistState = rememberLazyListState()
+    val artworkShelves = remember(homePage, displayYouTube, newReleaseAlbums) {
+        if (!displayYouTube) emptyList() else homePage?.sections.orEmpty()
+            .distinctBy { if (isYouTubeReleaseShelf(it)) "home:yt:releases" else
+                "home:yt:${it.endpoint?.browseId}:${it.endpoint?.params}:${it.title}" }
+            .map { section ->
+                val items = if (isYouTubeReleaseShelf(section) && newReleaseAlbums.isNotEmpty())
+                    newReleaseAlbums else section.items
+                "home:yt:${section.endpoint?.browseId.orEmpty()}:${section.endpoint?.params}:${section.title}" to
+                    items.mapNotNull { it.thumbnail }.take(3)
+            }
+    }
+    com.nikhil.yt.ui.component.PrefetchFeedArtwork(lazylistState, artworkShelves)
     // This screen's own entry: it cannot be destroyed while this composition is alive,
     // and observing it does not recompose the screen on unrelated navigation.
     val backStackEntry = LocalNavBackStackEntry.current

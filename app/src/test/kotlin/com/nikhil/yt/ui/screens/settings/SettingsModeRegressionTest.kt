@@ -113,7 +113,7 @@ class SettingsModeRegressionTest {
         assertEquals(1, home.split("spring<IntOffset>(").size - 1)
         assertEquals(14, home.split("fadeInSpec = SettingsRowFadeIn").size - 1)
         assertEquals(14, home.split("fadeOutSpec = SettingsRowFadeOut").size - 1)
-        assertTrue(home.contains("listState.animateScrollToItem(0)"))
+        assertTrue(home.contains("listState.scrollToTopIfIdle()"))
         assertFalse(home.contains("Switch("))
         assertEquals(
             listOf(

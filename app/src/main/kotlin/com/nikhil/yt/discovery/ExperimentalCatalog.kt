@@ -6,7 +6,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import timber.log.Timber
@@ -21,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object ExperimentalCatalog {
     enum class Source(val title: String) {
-        AUDIUS("Audius"), OPENVERSE("Openverse"), ARCHIVE("Internet Archive"), CCMIXTER("ccMixter"), RADIO("Open Radio"), FUNKWHALE("Funkwhale")
+        OPENVERSE("Openverse"), ARCHIVE("Internet Archive"), CCMIXTER("ccMixter"), RADIO("Open Radio"), FUNKWHALE("Funkwhale")
     }
 
     data class Track(
@@ -43,24 +42,16 @@ object ExperimentalCatalog {
         val catalogProvider: String? = null,
         /** Openverse audio category (music, sound_effect, pronunciation, etc.). */
         val audioCategory: String? = null,
-        /** Actual provider-reported engagement; available for Audius only. */
+        /** Actual provider statistics, when supplied (for example ccMixter votes). */
         val playCount: Long = 0,
         val favoriteCount: Long = 0,
         val repostCount: Long = 0,
         /** Openverse indexes candidate files; a candidate URL is not a working stream. */
         val streamCandidates: List<String> = emptyList(),
-        /** Respect Audius's is_downloadable permission; other providers require CC metadata. */
-        val downloadable: Boolean = false,
     ) {
         val mediaId: String get() = EXPERIMENTAL_MEDIA_PREFIX + source.name.lowercase() + ":" + id
         val playable: Boolean get() = streamUrl?.startsWith("https://") == true
-        val downloadUrl: String? get() = when {
-            !playable -> null
-            source == Source.AUDIUS && downloadable ->
-                "https://api.audius.co/v1/tracks/" + id + "/download"
-            source != Source.AUDIUS && !license.isNullOrBlank() -> streamUrl
-            else -> null
-        }
+        val downloadUrl: String? get() = streamUrl?.takeIf { playable && !license.isNullOrBlank() }
     }
 
     /** Independent sections for an actual provider Home, not a single discovery carousel. */
@@ -90,7 +81,6 @@ object ExperimentalCatalog {
         if (trimmed.isBlank()) return@withContext emptyList()
         cached("search:${source.name}:${trimmed.lowercase()}") {
             when (source) {
-                Source.AUDIUS -> audius("/tracks/search?query=${enc(trimmed)}&limit=24")
                 Source.OPENVERSE -> validateSearchTracks(openverse(query = trimmed))
                 Source.ARCHIVE -> InternetArchiveMusic.artist(trimmed)
                 Source.CCMIXTER -> CCMixterMusic.search(trimmed)
@@ -100,25 +90,8 @@ object ExperimentalCatalog {
         }
     }
 
-    /**
-     * Audius remains an independent official catalog. Openverse searches the
-     * Creative Commons audio index, including tracks indexed from Jamendo:
-     * no direct Jamendo API credentials, HTML scraping or accounts.
-     */
-    suspend fun recommend(tasteArtists: List<String>): List<Track> = coroutineScope {
-        val lanes = HomeFeedSource.selectable.filter { it == HomeFeedSource.AUDIUS }
-            .map { source -> async(Dispatchers.IO) { safely { discoveryFromHome(source, tasteArtists) } } }
-        ExperimentalRanking.select(
-            tracks = lanes.flatMap { it.await() },
-            dayKey = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay(),
-            tasteArtists = tasteArtists,
-        )
-    }
-
-    /** Legacy callers: Audius or Jamendo-indexed results. */
     suspend fun discoveryFrom(source: Source, tasteArtists: List<String>): List<Track> =
         when (source) {
-            Source.AUDIUS -> discoveryFromHome(HomeFeedSource.AUDIUS, tasteArtists)
             Source.OPENVERSE -> discoveryFromHome(HomeFeedSource.JAMENDO, tasteArtists)
             Source.ARCHIVE -> discoveryFromHome(HomeFeedSource.ARCHIVE, tasteArtists)
             Source.CCMIXTER -> discoveryFromHome(HomeFeedSource.CCMIXTER, tasteArtists)
@@ -128,7 +101,7 @@ object ExperimentalCatalog {
 
     /**
      * Source-selective Home discovery. Every provider has its own cache key;
-     * one unreachable Openverse upstream never stops Audius from appearing.
+     * one unreachable upstream never stops other providers from appearing.
      * Use only the official anonymous Openverse API for all three origins.
      */
     suspend fun discoveryFromHome(
@@ -139,13 +112,6 @@ object ExperimentalCatalog {
         cached("home:${source.id}:$day:" + tasteArtists.take(2).joinToString("|").lowercase()) {
             when (source) {
                 HomeFeedSource.YOUTUBE -> emptyList()
-                HomeFeedSource.AUDIUS -> {
-                    val underground = audius("/tracks/trending/underground?limit=25")
-                    val artistMatches = tasteArtists.take(2).filter(String::isNotBlank).flatMap {
-                        safely { audius("/tracks/search?query=${enc(it)}&limit=5") }
-                    }
-                    underground + artistMatches
-                }
                 HomeFeedSource.ARCHIVE -> InternetArchiveMusic.browse(HomeLaneKind.DISCOVER)
                 HomeFeedSource.CCMIXTER -> CCMixterMusic.browse(HomeLaneKind.DISCOVER)
                 HomeFeedSource.RADIO -> RadioBrowserMusic.browse(HomeLaneKind.TRENDING)
@@ -233,52 +199,6 @@ object ExperimentalCatalog {
                 }
                 return@withContext lanes
             }
-            if (source == HomeFeedSource.AUDIUS) {
-                // Mix ranking periods, editorial APIs, genre charts and deeper
-                // catalog cuts. Different daily offsets avoid replaying exactly
-                // the same global top 20 every time without using random tracks.
-                val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay()
-                val offset = (Math.floorMod(day, 4L) * 12).toInt()
-                val genre = listOf("Electronic","Hip-Hop/Rap","Jazz","Rock",
-                    "Pop","Alternative")[Math.floorMod(day, 6L).toInt()]
-                val endpoints = listOf(
-                    Triple(HomeLaneKind.TRENDING, com.nikhil.yt.R.string.capsule_audius_this_week,
-                        "/tracks/trending?time=week&limit=35"),
-                    Triple(HomeLaneKind.NEW, com.nikhil.yt.R.string.capsule_audius_new_releases,
-                        "/tracks/latest?limit=35"),
-                    Triple(HomeLaneKind.DISCOVER, com.nikhil.yt.R.string.capsule_audius_underground,
-                        "/tracks/trending/underground?limit=35"),
-                    Triple(HomeLaneKind.TRENDING, com.nikhil.yt.R.string.capsule_audius_genre_chart,
-                        "/tracks/trending?time=month&genre=${enc(genre)}&limit=35&offset=$offset"),
-                    Triple(HomeLaneKind.NEW, com.nikhil.yt.R.string.capsule_audius_fresh,
-                        "/tracks/best_new_releases?limit=35"),
-                    Triple(HomeLaneKind.DISCOVER, com.nikhil.yt.R.string.capsule_audius_radar,
-                        "/tracks/under_the_radar?limit=35"),
-                    Triple(HomeLaneKind.TRENDING, com.nikhil.yt.R.string.capsule_audius_month,
-                        "/tracks/trending?time=month&limit=35&offset=$offset"),
-                    Triple(HomeLaneKind.DISCOVER, com.nikhil.yt.R.string.capsule_audius_loved,
-                        "/tracks/most_loved?limit=35"),
-                ) + tasteArtists.firstOrNull { it.isNotBlank() }?.let {
-                    listOf(Triple(HomeLaneKind.FOR_YOU,
-                        com.nikhil.yt.R.string.capsule_home_catalog_for_you,
-                        "/tracks/search?query=${enc(it.take(60))}&limit=35"))
-                }.orEmpty()
-                val seen = mutableSetOf<String>()
-                val lanes = mutableListOf<HomeLane>()
-                for ((kind, label, endpoint) in endpoints) {
-                    val candidates = safely {
-                        cached("audius:${label}:${day}:${genre}:${endpoint}") { audius(endpoint) }
-                    }
-                    val tracks = candidates.filter { it.playable && it.durationSeconds in 1..2400 &&
-                        seen.add(it.mediaId) }.take(14)
-                    if (tracks.isNotEmpty()) {
-                        val lane = HomeLane(source,kind,tracks,label)
-                        lanes.add(lane)
-                        onLane(lane)
-                    }
-                }
-                return@withContext lanes
-            }
             val day = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toEpochDay()
             val upstream = source.openverseId
             val themes = when (source) {
@@ -307,13 +227,7 @@ object ExperimentalCatalog {
                 HomeLaneKind.TRENDING to { InternetArchiveMusic.browse(HomeLaneKind.TRENDING) },
                 HomeLaneKind.NEW to { InternetArchiveMusic.browse(HomeLaneKind.NEW) },
                 HomeLaneKind.DISCOVER to { InternetArchiveMusic.browse(HomeLaneKind.DISCOVER, theme) },
-            ) else if (source == HomeFeedSource.AUDIUS) listOf(
-                HomeLaneKind.TRENDING to { audius("/tracks/trending?limit=30") },
-                HomeLaneKind.NEW to { audius("/tracks/latest?limit=30") },
-                HomeLaneKind.DISCOVER to { audius("/tracks/trending/underground?limit=30") },
-            ) + if (searchTaste != null) listOf(
-                HomeLaneKind.FOR_YOU to { audius("/tracks/search?query=${enc(searchTaste)}&limit=25") },
-            ) else emptyList() else listOf(
+            ) else listOf(
                 HomeLaneKind.TRENDING to { when (source) {
                     HomeFeedSource.WIKIMEDIA -> WikimediaMusic.browse("music")
                     HomeFeedSource.FREESOUND -> openverse("ambient", sourceFilter = upstream)
@@ -381,11 +295,6 @@ object ExperimentalCatalog {
         withContext(Dispatchers.IO) {
             cached("artist:${source.name}:${id.orEmpty()}:${artist.lowercase()}") {
                 when (source) {
-                    Source.AUDIUS -> if (!id.isNullOrBlank() &&
-                        id.matches(Regex("[A-Za-z0-9_-]+"))) {
-                        audius("/users/${enc(id)}/tracks?limit=40")
-                    } else audius("/tracks/search?query=${enc(artist)}&limit=35")
-                        .filter { it.artist.equals(artist, true) }
                     Source.OPENVERSE -> if (id == "wikimedia_audio") {
                         WikimediaMusic.artist(artist).ifEmpty {
                             // Commons full-text search does not always index
@@ -416,52 +325,6 @@ object ExperimentalCatalog {
         val value = loader().distinctBy { it.mediaId }
         if (value.isNotEmpty()) cache[key] = CacheEntry(now, value)
         return value
-    }
-
-    private fun image(obj: JSONObject?, size: Int): String? =
-        obj?.let {
-            it.optString("${size}x$size")
-                .ifBlank { it.optString("_${size}x$size") }
-                .takeIf { url -> url.startsWith("https://") }
-        }
-
-    private fun audius(endpoint: String): List<Track> {
-        val data = requestJson("https://api.audius.co/v1" + endpoint).optJSONArray("data")
-            ?: return emptyList()
-        return (0 until data.length()).mapNotNull { index ->
-            val item = data.optJSONObject(index) ?: return@mapNotNull null
-            val id = item.optString("id").takeIf { it.isNotBlank() } ?: return@mapNotNull null
-            val access = item.optJSONObject("access")
-            if (!item.optBoolean("is_streamable", true) ||
-                access?.optBoolean("stream", true) == false ||
-                item.optString("access").equals("purchase", true)) return@mapNotNull null
-            val owner = item.optJSONObject("user")
-            val handle = owner?.optString("handle").orEmpty()
-            val ownerName = owner?.optString("name")?.takeIf { it.isNotBlank() } ?: "Audius"
-            val photo = item.optJSONObject("artwork")
-            Track(
-                source = Source.AUDIUS,
-                id = id,
-                title = item.optString("title").takeIf(String::isNotBlank) ?: return@mapNotNull null,
-                artist = ownerName,
-                artwork = image(photo, 480) ?: image(photo, 150),
-                artworkLarge = image(photo, 1000) ?: image(photo, 480)
-                    ?: image(photo, 150),
-                streamUrl = "https://api.audius.co/v1/tracks/${enc(id)}/stream",
-                sourcePage = item.optString("permalink").takeIf { it.startsWith("https://") }
-                    ?: "https://audius.co",
-                durationSeconds = item.optInt("duration").coerceAtLeast(0),
-                playCount = item.optLong("play_count").coerceAtLeast(0),
-                favoriteCount = item.optLong("favorite_count").coerceAtLeast(0),
-                repostCount = item.optLong("repost_count").coerceAtLeast(0),
-                downloadable = item.optBoolean("is_downloadable", false) &&
-                    access?.optBoolean("download", true) != false,
-                genre = item.optString("genre").ifBlank { null },
-                artistId = owner?.optString("id")?.takeIf { it.isNotBlank() },
-                artistPage = handle.takeIf { it.isNotBlank() }
-                    ?.let { "https://audius.co/${enc(it)}" },
-            )
-        }
     }
 
     /** Official anonymous Openverse /v1/audio search (rate limited by provider).
@@ -662,7 +525,7 @@ object ExperimentalCatalog {
     private fun enc(value: String): String = Uri.encode(value)
     private fun requestJson(url: String, maxBytes: Int = 2 * 1024 * 1024): JSONObject {
         require(url.startsWith("https://"))
-        // Respect Capsule's configured network proxy for Audius and Openverse.
+        // Respect Capsule's configured network proxy for independent catalogs.
         val networkProxy = YouTube.streamProxy
         // No explicit proxy means use the Android/system default connection.
         // Proxy.NO_PROXY incorrectly ignored legitimate system HTTP proxies.
@@ -677,7 +540,7 @@ object ExperimentalCatalog {
         return try {
             if (connection.responseCode !in 200..299) {
                 val provider = if (url.startsWith("https://api.openverse.org/"))
-                    "Openverse" else "Audius"
+                    "Openverse" else "Catalog"
                 throw java.io.IOException("$provider HTTP ${connection.responseCode}")
             }
             connection.inputStream.bufferedReader().use { input ->

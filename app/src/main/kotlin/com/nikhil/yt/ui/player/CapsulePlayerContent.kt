@@ -616,17 +616,16 @@ fun CapsulePlayerContent(
                             modifier = Modifier.size(72.dp),
                         )
                     } else {
-                        val originalArtworkUrl = mediaMetadata.thumbnailUrl
-                        val highResArtworkUrl = remember(mediaMetadata.id, originalArtworkUrl) {
-                            originalArtworkUrl?.let { artwork ->
-                                // Original-video posters can use different
-                                // frames/aspect crops at higher YouTube image
-                                // resolutions. Preserve the first displayed
-                                // thumbnail rather than recropping midway.
-                                if (mediaMetadata.isOriginalVideo ||
-                                    mediaMetadata.id.startsWith("capsule-open:")) artwork
-                                else artwork.toHighResThumbnail()
-                            }
+                        // Late player metadata must not replace an already visible poster.
+                        // Lock the source after decoding, so bad initial metadata can
+                        // still recover but an already visible cover never changes crop.
+                        var pinnedArtworkUrl by remember(mediaMetadata.id) {
+                            mutableStateOf<String?>(decodedArtworkCache[mediaMetadata.id]?.first)
+                        }
+                        val originalArtworkUrl = pinnedArtworkUrl
+                            ?: mediaMetadata.thumbnailUrl?.takeIf(String::isNotBlank)
+                        val highResArtworkUrl = remember(originalArtworkUrl) {
+                            com.nikhil.yt.ui.component.capsuleArtworkUrl(originalArtworkUrl, 960)
                         }
                         var useOriginalArtwork by remember(mediaMetadata.id, originalArtworkUrl) {
                             mutableStateOf(false)
@@ -712,7 +711,6 @@ fun CapsulePlayerContent(
                                     contentDescription = null,
                                     contentScale = artworkContentScale,
                                     modifier = Modifier.fillMaxSize()
-                                        .blur(((1f - artworkReveal) * 2.5f).dp)
                                         .graphicsLayer { alpha = artworkReveal },
                                 )
                             }
@@ -737,6 +735,7 @@ fun CapsulePlayerContent(
                                     contentDescription = null,
                                     contentScale = artworkContentScale,
                                     onSuccess = { preview ->
+                                        if (pinnedArtworkUrl == null) pinnedArtworkUrl = originalArtworkUrl
                                         // Never downgrade an already decoded
                                         // high-resolution image on a late callback.
                                         if (retainedArtworkUrl != requestedArtworkUrl) {
@@ -758,6 +757,7 @@ fun CapsulePlayerContent(
                                 contentDescription = mediaMetadata.title,
                                 onLoading = { artworkLoading = true; artworkFailed = false },
                                 onSuccess = { success ->
+                                    if (pinnedArtworkUrl == null) pinnedArtworkUrl = originalArtworkUrl
                                     retainedArtworkPainter = success.painter
                                     retainedArtworkUrl = requestedArtworkUrl
                                     if (!requestedArtworkUrl.isNullOrBlank()) {
