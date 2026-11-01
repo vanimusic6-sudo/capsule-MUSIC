@@ -63,6 +63,12 @@ internal const val CHUNK_OPEN_ATTEMPTS = 2
 // whole-short-song optimization skipped the staged first read and turned a
 // 3–4MB ordinary file into one long CDN request, reintroducing pacing/seek risks.
 
+/** A network reset is never a license to retry an HTTP refusal. */
+internal fun Throwable.hasAudioCdnHttpResponse(): Boolean =
+    generateSequence(this as Throwable?) { it.cause }
+        .take(12)
+        .any { it is InvalidResponseCodeException }
+
 /** Response codes that mean "not this request" rather than "not this stream". */
 internal val REFUSAL_CODES = setOf(403, 410)
 
@@ -257,24 +263,50 @@ internal class AudioChunkedDataSource(
      * to the service's shared recovery budget. Never retry 429 or a cancellation here.
      */
     private fun openWithRefusalRetry(spec: DataSpec): Long {
-        var attempt = 1
+        var refusalAttempt = 1
+        var socketResetRetried = false
         while (true) {
             try {
                 return upstream.open(spec)
             } catch (refused: InvalidResponseCodeException) {
-                if (refused.responseCode !in REFUSAL_CODES || attempt >= CHUNK_OPEN_ATTEMPTS) throw refused
+                if (refused.responseCode !in REFUSAL_CODES ||
+                    refusalAttempt >= CHUNK_OPEN_ATTEMPTS
+                ) throw refused
                 if (GlobalLog.isEnabled) {
                     Timber.tag("AudioCDN").w(
                         "cdn-chunk-refused linkRef=%s position=%d length=%d attempt=%d code=%d; asking again",
                         AudioCdnLinkIdentity.ref(spec.uri.toString()),
-                        spec.position,
-                        spec.length,
-                        attempt,
-                        refused.responseCode,
+                        spec.position, spec.length, refusalAttempt, refused.responseCode,
                     )
                 }
                 upstream.close()
-                attempt += 1
+                refusalAttempt += 1
+            } catch (failure: java.io.IOException) {
+                // In the 21:09 capture a pooled HTTP/1.1 connection reset
+                // immediately at the next chunk boundary, after an otherwise
+                // healthy 206. Its bytes never reached Media3. Reopening this
+                // exact bounded range on a new socket is cheaper and safer than
+                // requesting a new signed /player URL or recreating the decoder.
+                //
+                // Only reset signatures qualify. Never swallow a cancellation,
+                // 403/410/429, a timed-out server, or an IP-bound URL after
+                // the connectivity route changed. One retry maximum.
+                val reset = failure.isTransientAudioCdnSocketReset()
+                val changedRoute = openedNetworkIdentity != currentNetworkIdentity()
+                if (socketResetRetried || !reset || changedRoute ||
+                    failure.isExpectedAudioCdnInterruption() ||
+                    failure.hasAudioCdnHttpResponse()
+                ) throw failure
+                socketResetRetried = true
+                Timber.tag("AudioCDN").i(
+                    "cdn-open-socket-reset retry=1 sameLink=true position=%d length=%d",
+                    spec.position, spec.length,
+                )
+                try {
+                    upstream.close()
+                } catch (closeFailure: java.io.IOException) {
+                    failure.addSuppressed(closeFailure)
+                }
             }
         }
     }
