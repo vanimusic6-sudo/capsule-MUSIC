@@ -20,7 +20,8 @@ import com.nikhil.yt.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -182,7 +183,11 @@ class OnlinePlaylistViewModel @Inject constructor(
                                 }
                             }
                         } finally {
-                            viewCountsMutex.withLock { viewCountsInFlight.remove(videoId) }
+                            // Cancellation must not strand an ID in the in-flight set;
+                            // otherwise subsequent viewport visits silently skip it.
+                            withContext(NonCancellable) {
+                                viewCountsMutex.withLock { viewCountsInFlight.remove(videoId) }
+                            }
                         }
                     }
                 }.awaitAll()
