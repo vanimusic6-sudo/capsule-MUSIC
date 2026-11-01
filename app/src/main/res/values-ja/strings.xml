@@ -333,7 +333,7 @@
     <string name="custom_value">カスタム値</string>
     <string name="new_library_design">新しいライブラリのデザイン</string>
     <string name="new_library_design_description">新しいライブラリのデザインを有効にする(不安定な可能性があります)</string>
-    <string name="velune_canvas">Velune Canvas</string>
+    <string name="velune_canvas">Capsule Canvas</string>
     <string name="velune_canvas_desc">再生中にアルバムアートワークをアニメーション化 (BetterLyrics提供)</string>
     <string name="show_button1_description">Discord Rich Presenceのボタン1の表示を切り替える</string>
     <string name="show_button2_description">Discord Rich Presenceのボタン2の表示を切り替える</string>
@@ -439,7 +439,7 @@
     <string name="backup_create_failed">バックアップを作成できませんでした</string>
     <string name="restore_failed">バックアップの復元に失敗しました</string>
     <string name="discord_integration">Discord 統合</string>
-    <string name="discord_information">Velune は KizzyRPC ライブラリを使用して Discord アカウントのステータスを設定します。これには Discord ゲートウェイ接続の使用が含まれており、Discord の TOS への違反とみなされる可能性があります。ただし、この理由でユーザー アカウントが停止されたという既知のケースはありません。自己責任で使用してください。Velune はトークンのみを抽出し、その他はすべてローカルに保存されます。</string>
+    <string name="discord_information">Capsule は KizzyRPC ライブラリを使用して Discord アカウントのステータスを設定します。これには Discord ゲートウェイ接続の使用が含まれており、Discord の TOS への違反とみなされる可能性があります。ただし、この理由でユーザー アカウントが停止されたという既知のケースはありません。自己責任で使用してください。Capsule はトークンのみを抽出し、その他はすべてローカルに保存されます。</string>
     <string name="dismiss">閉じる</string>
     <string name="options">オプション</string>
     <string name="preview">プレビュー</string>
@@ -490,7 +490,7 @@
     <string name="select_language">言語を選択</string>
     <string name="close_dialog">閉じる</string>
     <string name="select_dialog">選択</string>
-    <string name="support_github">スター・アーカイブ・チューン！</string>
+    <string name="support_github">Capsule にスターを付けてください！</string>
     <!-- Update dialog -->
     <string name="new_update_available">新しいアップデートが利用可能</string>
     <string name="release_notes_unavailable">リリースノートは次のとおりです 利用不可</string>
@@ -568,7 +568,7 @@
     <string name="update_notification_channel_name">アプリの更新</string>
     <string name="update_notification_channel_desc">新しいアプリ更新の通知</string>
     <string name="update_notification_title">アップデート可能</string>
-    <string name="update_notification_text">Velune %s が利用可能です</string>
+    <string name="update_notification_text">Capsule %s が利用可能です</string>
     <string name="download">ダウンロード</string>
     <string name="queue_continue_playing">プレイを続ける</string>
     <string name="queue_autoplaying_similar">類似した音楽の自動再生</string>
@@ -605,7 +605,7 @@
     <string name="eq_virtualizer">バーチャライザー</string>
     <string name="smart_trimmer">スマートトリマー</string>
     <string name="smart_trimmer_description">スマートトリマーは画像キャッシュと曲キャッシュを動的に管理し、古いエントリを削除してディスク容量を節約します。</string>
-    <string name="permissions_title">Veluneが最適に動作するようにしてください</string>
+    <string name="permissions_title">Capsuleが最適に動作するようにしてください</string>
     <string name="permissions_subtitle">音楽を確実に再生・管理するために、いくつかの権限を使用しています。システム設定でいつでも変更できます。</string>
     <string name="permission_storage_title">ストレージアクセス</string>
     <string name="permission_storage_desc">ダウンロードしたオーディオファイルおよびローカルのオーディオファイルを読み込み、再生するために必要です。</string>
@@ -649,7 +649,7 @@
     <string name="you_might_like">あなた好み</string>
     <string name="refresh_suggestions">提案を更新</string>
 
-    <string name="music_together">Velune Music Together</string>
+    <string name="music_together">Capsule Music Together</string>
     <string name="together_display_name">表示名</string>
     <string name="together_display_name_placeholder">あなたの名前</string>
     <string name="together_port">セッションポート</string>
@@ -705,10 +705,10 @@
 
     <string name="got_it">了解</string>
     <string name="together_dont_show_again">これを二度と表示しない</string>
-    <string name="together_welcome_title">Velune Music Togetherへようこそ</string>
+    <string name="together_welcome_title">Capsule Music Togetherへようこそ</string>
     <string name="together_welcome_body">Music Togetherを使用すると、複数のデバイスで同期キューと再生を備えたライブセッションを共有できます。</string>
     <string name="together_welcome_host_title">セッションをホスト</string>
-    <string name="together_welcome_host_body">「セッションを開始」をタップし、セッションリンクを共有します。ホストしている間はVeluneをバックグラウンドで開いたままにしてください。</string>
+    <string name="together_welcome_host_body">「セッションを開始」をタップし、セッションリンクを共有します。ホストしている間はCapsuleをバックグラウンドで開いたままにしてください。</string>
     <string name="together_welcome_join_title">別のデバイスから参加</string>
     <string name="together_welcome_join_body">オープンな共有リンク、またはコードを入力して「参加」をタップします。キューと再生はホストに従います。</string>
     <string name="together_welcome_permissions_title">権限と安全</string>

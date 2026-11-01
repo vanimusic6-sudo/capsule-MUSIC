@@ -26,6 +26,28 @@ import org.robolectric.annotation.GraphicsMode
 class CapsuleBrandingTest {
     private val context get() = RuntimeEnvironment.getApplication()
 
+    @Test fun currentProductStringsUseCapsuleAcrossTranslatedConfigurations() {
+        val labels = listOf(
+            R.string.velune_canvas, R.string.support_github, R.string.discord_information,
+            R.string.update_notification_text, R.string.permissions_title,
+            R.string.music_together, R.string.together_welcome_title,
+            R.string.together_welcome_host_body,
+        )
+        for (tag in listOf("en", "ru", "ru-RU", "de-DE", "fr", "fr-FR", "es", "es-ES",
+            "pt-BR", "id-ID", "ja", "ko", "it", "vi", "tr", "hi-IN", "zh-CN", "et")) {
+            val localised = context.createConfigurationContext(
+                android.content.res.Configuration(context.resources.configuration).apply {
+                    setLocale(java.util.Locale.forLanguageTag(tag))
+                },
+            )
+            for (id in labels) {
+                val label = localised.getString(id)
+                assertTrue("Wrong product name in $tag: $label", label.contains("Capsule"))
+                assertTrue("Upstream product leaks into $tag: $label", !label.contains("Velune", true))
+            }
+        }
+    }
+
     /**
      * The skin stored as SUPER is shown as Cosmo.
      *
