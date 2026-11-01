@@ -4,7 +4,7 @@ name: Capsule Full Regression Tests (manual)
 # on-demand testing. Everyday builds are produced by capsule-test-apk.yml.
 on:
   push:
-    branches: ['refactor/unified-scroll-engine-20261101', 'fix/playback-download-resilience-20261101', 'fix/artwork-header-search-cleanup-20261101', 'cleanup/extractor-boundaries-20261101', 'fix/capsule-app-identity-20261101', 'fix/rollback-search-matte-thermal-20261101']
+    branches: ['refactor/unified-scroll-engine-20261101', 'fix/playback-download-resilience-20261101', 'fix/artwork-header-search-cleanup-20261101', 'cleanup/extractor-boundaries-20261101', 'fix/capsule-app-identity-20261101', 'fix/rollback-search-matte-thermal-20261101', 'fix/search-artwork-collection-motion-20261101']
   workflow_dispatch:
 
 permissions:
