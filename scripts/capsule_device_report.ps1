@@ -1,8 +1,14 @@
 # Read-only Android security metadata. NO logcat, cookies, databases or network payloads.
 # Requirements: Windows PowerShell 5.1+ and Android platform-tools (adb on PATH).
 # Run: powershell -NoProfile -File .\scripts\capsule_device_report.ps1
+param([ValidateSet("release", "dev", "debug")][string]$Variant = "release")
 $ErrorActionPreference = "Stop"
-$pkg = "com.nikhil.yt"
+$properties = Get-Content (Join-Path $PSScriptRoot "..\gradle.properties")
+$base = @($properties | Select-String '^capsuleApplicationId=([a-zA-Z0-9_.]+)$')
+if ($base.Count -ne 1) { throw "Missing or ambiguous Capsule install identity" }
+$pkg = $base[0].Matches[0].Groups[1].Value
+if ($Variant -eq "dev") { $pkg += ".dev" }
+if ($Variant -eq "debug") { $pkg += ".debug" }
 if (-not (Get-Command adb -ErrorAction SilentlyContinue)) {
   throw "adb not found. Install Android platform-tools, then retry."
 }

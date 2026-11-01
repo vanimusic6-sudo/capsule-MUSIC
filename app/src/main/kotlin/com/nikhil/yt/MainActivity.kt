@@ -1874,7 +1874,7 @@ class MainActivity : ComponentActivity() {
 
         val authority = uri.authority?.lowercase()
         // A playlist tile on the shelf widget.
-        if (uri.scheme.equals("velune", ignoreCase = true) && authority == "playlist") {
+        if ((uri.scheme.equals("capsule", ignoreCase = true) || uri.scheme.equals("velune", ignoreCase = true)) && authority == "playlist") {
             uri.lastPathSegment?.takeIf { it.isNotBlank() }?.let { playlistId ->
                 navController.navigate("local_playlist/$playlistId")
             }
@@ -1999,8 +1999,8 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val STATE_TOP_LEVEL_ROUTE = "capsule.lastTopLevelRoute"
-        const val ACTION_SEARCH = "com.nikhil.yt.action.SEARCH"
-        const val ACTION_LIBRARY = "com.nikhil.yt.action.LIBRARY"
+        const val ACTION_SEARCH = BuildConfig.APPLICATION_ID + ".action.SEARCH"
+        const val ACTION_LIBRARY = BuildConfig.APPLICATION_ID + ".action.LIBRARY"
     }
 }
 

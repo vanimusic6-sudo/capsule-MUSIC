@@ -14,8 +14,9 @@ import subprocess
 import sys
 import zipfile
 from pathlib import Path
+from verify_app_identity import release_package, verify_apk_identity
 
-EXPECTED_PACKAGE = "com.nikhil.yt"
+EXPECTED_PACKAGE = release_package()
 # Pinned to the previously verified GitHub-signed release certificate.
 # If rotating signing keys, update only after an explicit owner decision.
 EXPECTED_SIGNER_SHA256 = "c044579fd886ee7f6ae919d705fb3345f7417957d8cd49fd110d596f864ddd7d"
@@ -70,6 +71,7 @@ def verify(apk: Path, apksigner: str, aapt: str):
         raise ValueError("Unexpected APK package ID")
     if re.search(r"^application-debuggable\b", badging, re.M):
         raise ValueError("Release APK is debuggable")
+    verify_apk_identity(apk, aapt, "release")
 
     permissions = set(re.findall(r"^uses-permission: name='([^']+)'", badging, re.M))
     prohibited = sorted(permissions & FORBIDDEN_PERMISSIONS)

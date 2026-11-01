@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import com.nikhil.yt.BuildConfig
 import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
@@ -22,7 +23,7 @@ import kotlinx.coroutines.withContext
 internal object ReleaseApkVerifier {
     const val OFFICIAL_CERT_SHA256 =
         "c044579fd886ee7f6ae919d705fb3345f7417957d8cd49fd110d596f864ddd7d"
-    const val OFFICIAL_PACKAGE = "com.nikhil.yt"
+    const val OFFICIAL_PACKAGE = BuildConfig.CAPSULE_RELEASE_PACKAGE
     private const val MAX_APK_BYTES = 256L * 1024 * 1024
 
     data class Report(val packageName: String, val version: String, val sha256: String)

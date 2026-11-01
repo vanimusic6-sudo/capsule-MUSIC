@@ -18,6 +18,7 @@ on:
       - 'fix/playback-download-resilience-20261101'
       - 'fix/artwork-header-search-cleanup-20261101'
       - 'cleanup/extractor-boundaries-20261101'
+      - 'fix/capsule-app-identity-20261101'
   workflow_dispatch:
 
 permissions:

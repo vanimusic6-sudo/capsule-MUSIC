@@ -80,9 +80,8 @@ jobs:
           test -x "$APKSIGNER"
           test -x "$AAPT"
 
-          # This is NOT an update for com.nikhil.yt: Android installs it
-          # separately as com.nikhil.yt.debug (existing Gradle build-type suffix).
-          "$AAPT" dump badging "$APK" | grep -Fq "package: name='com.nikhil.yt.debug'"
+          # TEST has its own install ID, providers and private data.
+          python3 scripts/verify_app_identity.py --variant debug --apk "$APK" --aapt "$AAPT"
           "$APKSIGNER" verify --verbose "$APK"
           "$APKSIGNER" verify --print-certs "$APK" > "$RUNNER_TEMP/test-apk-signer.txt"
           if grep -Fqi "c044579fd886ee7f6ae919d705fb3345f7417957d8cd49fd110d596f864ddd7d" "$RUNNER_TEMP/test-apk-signer.txt"; then
@@ -92,7 +91,7 @@ jobs:
 
           sha256sum "$APK"
           echo "path=$APK" >> "$GITHUB_OUTPUT"
-          echo "test_package=com.nikhil.yt.debug" >> "$GITHUB_OUTPUT"
+          echo "test_package=$(python3 scripts/verify_app_identity.py --variant debug --print-package)" >> "$GITHUB_OUTPUT"
 
       - name: Upload Capsule TEST APK
         uses: actions/upload-artifact@v4
