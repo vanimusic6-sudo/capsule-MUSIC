@@ -1411,6 +1411,7 @@ fun LocalThumbnail(
         val request = remember(thumbnailUrl, widthPx, heightPx) {
             ImageRequest.Builder(context)
                 .data(thumbnailUrl)
+                .crossfade(false)
                 .allowHardware(true)
                 .apply {
                     if (widthPx != null && heightPx != null) {
