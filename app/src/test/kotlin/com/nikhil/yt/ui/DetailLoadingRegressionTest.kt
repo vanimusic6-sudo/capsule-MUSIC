@@ -42,10 +42,20 @@ class DetailLoadingRegressionTest {
             alpha = rememberArtworkArrivalAlpha(identity, decoded)
             Box(Modifier.size(40.dp).graphicsLayer { this.alpha = alpha.value })
         }
+        fun frames(count: Int) = repeat(count) {
+            compose.mainClock.advanceTimeByFrame()
+            // Android's layout/composition clock must finish between samples.
+            compose.waitForIdle()
+        }
+        frames(2)
         compose.runOnIdle { decoded = true }
-        compose.mainClock.advanceTimeBy(90)
-        compose.runOnIdle { assertTrue(alpha.value > 0f && alpha.value < 1f); decoded = false }
-        compose.mainClock.advanceTimeBy(250)
+        val samples = mutableListOf<Float>()
+        repeat(8) { frames(1); compose.runOnIdle { samples += alpha.value } }
+        compose.runOnIdle {
+            assertTrue("A normal arrival needs intermediate frames: $samples", samples.any { it > 0f && it < 1f })
+            decoded = false
+        }
+        frames(20)
         compose.runOnIdle { assertEquals(1f, alpha.value, 0f); identity = "cover-b" }
         compose.mainClock.advanceTimeByFrame()
         compose.runOnIdle { assertEquals(0f, alpha.value, 0f) }

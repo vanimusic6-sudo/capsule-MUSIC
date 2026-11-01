@@ -118,14 +118,17 @@ internal class DetailHeaderMotionState(
         val origin = geometry.origin - overlayOrigin
         if (clip.width <= 0f || clip.height <= 0f) return@with
         val tail = origin.x + layout.getLineRight(0) * geometry.scale
-        val masked = tail > clip.right + .5f
+        val hiddenLowerLine = layout.lineCount > 1 &&
+            origin.y + layout.getLineTop(1) * geometry.scale >= clip.bottom - 1f
+        val masked = tail > clip.right + .5f || hiddenLowerLine
+        val fadeEnd = minOf(clip.right, tail)
         if (masked) drawContext.canvas.saveLayer(clip, paint)
         clipRect(clip.left, clip.top, clip.right, clip.bottom) {
             withTransform({ translate(origin.x, origin.y); scale(geometry.scale, geometry.scale, Offset.Zero) }) {
                 drawText(layout, color = color, alpha = 1f)
             }
             if (masked) {
-                translate(clip.right - fadeWidth, clip.top) {
+                translate(fadeEnd - fadeWidth, clip.top) {
                     drawRect(fade, size = androidx.compose.ui.geometry.Size(fadeWidth, clip.height), blendMode = BlendMode.DstIn)
                 }
             }

@@ -219,7 +219,7 @@ class CollectionHeaderMotionTest {
                 }
             }
         }
-        fun capture(name: String): Pair<Int, Int> {
+        fun capture(name: String, fadeEnd: Float? = null): Pair<Int, Int> {
             var pixels = 0
             var peak = 0
             compose.runOnIdle {
@@ -236,6 +236,16 @@ class CollectionHeaderMotionTest {
                         assertTrue("A second title is painted outside the moving viewport at $x,$y",
                             x >= clip!!.left - 2 && x <= clip.right + 2 && y >= clip.top - 2 && y <= clip.bottom + 2)
                     }
+                }
+                if (fadeEnd != null && clip != null) {
+                    var tailPeak = 0
+                    for (y in clip.top.toInt().coerceAtLeast(0) until clip.bottom.toInt().coerceAtMost(bitmap.height)) {
+                        for (x in (fadeEnd.toInt() - 24).coerceAtLeast(0) until fadeEnd.toInt().coerceAtMost(bitmap.width)) {
+                            tailPeak = maxOf(tailPeak, android.graphics.Color.green(bitmap.getPixel(x, y)))
+                        }
+                    }
+                    assertTrue("A hidden second line needs a soft continuation edge: tail=$tailPeak body=$peak",
+                        tailPeak in 1 until peak - 20)
                 }
                 val file = File("build/reports/ui-previews/title-single-owner-$name.png")
                 file.parentFile.mkdirs()
@@ -265,7 +275,14 @@ class CollectionHeaderMotionTest {
             assertTrue("Title must not dim during transfer at $offset", rendered.second >= original.second - 3)
         }
         compose.runOnIdle { title = "Ugly is Beautiful: Shorter, Thicker & Uglier — long album title" }
-        assertTrue(capture("long-compact").first > 30)
+        val layouts = mutableListOf<TextLayoutResult>()
+        compose.onNodeWithTag("capsule:detail-title").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        var edge = 0f
+        compose.runOnIdle {
+            val g = motion.geometry()!!
+            edge = minOf(g.clip.right, g.origin.x + layouts.single().getLineRight(0) * g.scale)
+        }
+        assertTrue(capture("long-compact", edge).first > 30)
         val semantics = compose.onNodeWithTag("capsule:detail-toolbar-title").fetchSemanticsNode().config
         assertEquals(listOf(title), semantics[SemanticsProperties.ContentDescription])
         compose.runOnIdle { runBlocking { state.scrollToItem(1, 300) } }
