@@ -65,7 +65,7 @@ class IndependentAudioDownloadWorker(context: Context, parameters: WorkerParamet
             "source" to track.source.name, "id" to track.id, "title" to track.title,
             "artist" to track.artist, "artwork" to track.artwork,
             "artworkLarge" to track.artworkLarge, "stream" to track.streamUrl,
-            "license" to track.license, "downloadable" to track.downloadable,
+            "license" to track.license,
             "name" to name, "mime" to mime,
         )
 
@@ -76,7 +76,7 @@ class IndependentAudioDownloadWorker(context: Context, parameters: WorkerParamet
                 artist = requireNotNull(data.getString("artist")), artwork = data.getString("artwork"),
                 artworkLarge = data.getString("artworkLarge"), streamUrl = data.getString("stream"),
                 sourcePage = "", license = data.getString("license"),
-                downloadable = data.getBoolean("downloadable", false),
+
             )
         }.getOrNull()
     }

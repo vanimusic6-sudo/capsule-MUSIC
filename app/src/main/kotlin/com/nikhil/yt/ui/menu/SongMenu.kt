@@ -399,24 +399,9 @@ fun SongMenu(
                     )
                 },
                 text = startRadioText,
-                enabled = !independentSong || song.id.startsWith("capsule-open:audius:") || offlineSong,
+                enabled = !independentSong,
                 onClick = {
-                    if (song.id.startsWith("capsule-open:audius:") || offlineSong) {
-                        coroutineScope.launch {
-                            val suggestions = com.nikhil.yt.discovery.ExperimentalCatalog
-                                .recommend(song.artists.map { it.name })
-                                .filter { it.playable && it.mediaId != song.id }
-                                .take(40)
-                            suggestions.firstOrNull()?.let { first ->
-                                com.nikhil.yt.discovery.ExperimentalTrackQueue
-                                    .create("Audius", suggestions, first)
-                                    ?.let(playerConnection::playQueue)
-                            } ?: android.widget.Toast.makeText(context,
-                                R.string.no_results_found,
-                                android.widget.Toast.LENGTH_SHORT).show()
-                            onDismiss()
-                        }
-                    } else if (!independentSong) {
+                    if (!independentSong) {
                         playerConnection.playQueue(YouTubeQueue.radio(song.toMediaMetadata()))
                         onDismiss()
                     }
@@ -488,7 +473,7 @@ fun SongMenu(
                             } else if (independentSong) {
                                 putExtra(Intent.EXTRA_TEXT,
                                     com.nikhil.yt.discovery.ExperimentalCatalog
-                                        .playingTrack(song.id)?.sourcePage ?: "https://audius.co")
+                                        .playingTrack(song.id)?.sourcePage ?: "")
                             } else {
                                 putExtra(Intent.EXTRA_TEXT,
                                     "https://music.youtube.com/watch?v=${song.id}")

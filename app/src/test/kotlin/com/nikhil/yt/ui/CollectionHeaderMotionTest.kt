@@ -270,8 +270,8 @@ class CollectionHeaderMotionTest {
         }
         compose.runOnIdle { runBlocking { state.scrollToItem(0, (lo - 1).coerceAtLeast(0)) } }
         compose.runOnIdle {
-            assertEquals(1f, motion.coverTitleAlpha(), 0f)
-            assertEquals(0f, motion.compactTitleAlpha(), 0f)
+            assertTrue(motion.coverTitleAlpha() < .01f)
+            assertTrue(motion.compactTitleAlpha() > .99f)
         }
         assertTrue("The moving caption must reach the bar without a second copy",
             glyphPixels("before-transfer") > 30)

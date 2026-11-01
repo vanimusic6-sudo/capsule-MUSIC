@@ -41,11 +41,8 @@ internal const val CAPSULE_VISUAL_PREFETCH_SETTLE_MS = 420L
 @Composable
 internal fun PreloadCapsuleTrackAssets(mediaMetadata: MediaMetadata?) {
     val context = LocalContext.current
-    val artworkUrl = mediaMetadata?.thumbnailUrl?.let { url ->
-        // Video poster cropping must not jump from one YouTube thumbnail
-        // variant to a different one when the player expands.
-        if (mediaMetadata.isOriginalVideo || mediaMetadata.id.startsWith("capsule-open:")) url
-        else url.toHighResThumbnail()
+    val artworkUrl = remember(mediaMetadata?.id, mediaMetadata?.thumbnailUrl) {
+        com.nikhil.yt.ui.component.capsuleArtworkUrl(mediaMetadata?.thumbnailUrl, 960)
     }
     val onScreen = appIsOnScreen()
     var stableEnoughToWarm by

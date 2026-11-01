@@ -39,9 +39,6 @@ fun Song.toMediaItem(): MediaItem {
     val playbackUri = when {
         offlineId != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
             ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, offlineId).toString()
-        song.id.startsWith("capsule-open:audius:") ->
-            "https://api.audius.co/v1/tracks/" +
-                Uri.encode(song.id.removePrefix("capsule-open:audius:")) + "/stream"
         else -> song.id
     }
     return MediaItem
@@ -95,9 +92,6 @@ fun MediaMetadata.toMediaItem(): MediaItem {
     val playbackUri = when {
         offlineId != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
             ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, offlineId).toString()
-        id.startsWith("capsule-open:audius:") ->
-            "https://api.audius.co/v1/tracks/" +
-                Uri.encode(id.removePrefix("capsule-open:audius:")) + "/stream"
         else -> id
     }
     return MediaItem

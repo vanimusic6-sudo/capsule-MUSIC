@@ -26,15 +26,20 @@ class DetailToolbarRevealTest {
         assertEquals(0f, empty.toolbarTitleAlpha(), 0f)
     }
 
-    @Test fun onlyOneCaptionPaintsAtEveryScrollPosition() {
+    @Test fun captionHandoffIsContinuousMonotoneAndReversible() {
+        var previous = 0f
         for (i in 0..10000) {
             val progress = i / 10000f
             val compact = detailTitleHandoff(progress)
-            val cover = 1f - compact
-            assertEquals(1f, compact + cover, 0f)
-            assertEquals("No frame may paint overlapping caption copies", 0f, compact * cover, 0f)
-            assertEquals(if (i == 10000) 1f else 0f, compact, 0f)
+            assertTrue(compact in 0f..1f)
+            assertTrue(compact >= previous)
+            assertTrue(compact - previous < .001f)
+            assertEquals(1f, compact + (1f - compact), 0f)
+            previous = compact
         }
+        assertEquals(0f, detailTitleHandoff(0f), 0f)
+        assertEquals(1f, detailTitleHandoff(1f), 0f)
+        assertEquals(.5f, detailTitleHandoff(.89f), .0001f)
     }
 
     @Test fun matchingBaselinesKeepTheFinalGlyphPositionWhenTheSourceHasTwoLines() {

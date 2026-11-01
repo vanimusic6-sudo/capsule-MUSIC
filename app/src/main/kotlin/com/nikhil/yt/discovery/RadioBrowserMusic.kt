@@ -11,7 +11,7 @@ import timber.log.Timber
 
 /**
  * Radio Browser community directory. A station is a live broadcast, NOT a
- * downloadable Audius/YouTube track. Categories are explicit country/tag
+ * downloadable independent/YouTube track. Categories are explicit country/tag
  * searches, verified against returned metadata, never random broadcasts.
  */
 internal object RadioBrowserMusic {
@@ -184,7 +184,7 @@ internal object RadioBrowserMusic {
             sourcePage = homepage,
             durationSeconds = 0,
             license = null,
-            downloadable = false,
+
             genre = row.optString("tags").take(150),
             catalogProvider = "radio",
             audioCategory = "music",

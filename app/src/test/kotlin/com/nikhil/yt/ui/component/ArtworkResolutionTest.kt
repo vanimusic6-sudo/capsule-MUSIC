@@ -48,8 +48,17 @@ class ArtworkResolutionTest {
     @Test fun doesNotRecreateSignedOrThirdPartyUrls() {
         val signed = "https://lh3.googleusercontent.com/id=w120-h120?signature=private"
         assertEquals(signed, capsuleArtworkUrl(signed))
-        val external = "https://cdn.audius.co/image=s120"
+        val external = "https://cdn.example.org/image=s120"
         assertEquals(external, capsuleArtworkUrl(external))
         assertEquals(null, capsuleArtworkUrl(null))
     }
+    @Test fun resizingPreservesWideCoverCompositionAndCropFlags() {
+        assertEquals("https://lh3.googleusercontent.com/art=w960-h540-l90-rj",
+            capsuleArtworkUrl("https://lh3.googleusercontent.com/art=w480-h270-l90-rj", 540))
+        assertEquals("https://i.ytimg.com/vi/id/hqdefault.jpg",
+            capsuleArtworkUrl("https://i.ytimg.com/vi/id/hqdefault.jpg", 960))
+        assertEquals(160, thumbnailRequestPixels(120, 120))
+        assertEquals(512, thumbnailRequestPixels(380, 380))
+    }
+
 }

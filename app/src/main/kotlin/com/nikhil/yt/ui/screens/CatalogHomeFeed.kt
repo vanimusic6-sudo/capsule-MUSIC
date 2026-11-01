@@ -204,8 +204,7 @@ internal fun CatalogHomeRow(
             items(tracks, key = { it.mediaId }) { track ->
                 val cardSource = HomeFeedSource.entries.firstOrNull {
                     it.id == track.catalogProvider
-                } ?: if (track.source == ExperimentalCatalog.Source.AUDIUS)
-                    HomeFeedSource.AUDIUS else source ?: HomeFeedSource.JAMENDO
+                } ?: source ?: HomeFeedSource.JAMENDO
                 Card(
                     modifier = Modifier.width(156.dp).clickable {
                         if (track.playable) {

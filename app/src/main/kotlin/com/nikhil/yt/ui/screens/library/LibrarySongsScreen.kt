@@ -126,7 +126,7 @@ fun LibrarySongsScreen(
     val externalStates by ExperimentalDownload.states.collectAsState()
     val savedFilesRevision by ExperimentalDownload.savedFilesRevision.collectAsState()
     var externalSaved by remember { mutableStateOf<List<ExperimentalDownload.SavedAudio>>(emptyList()) }
-    // Media3's DownloadIndex covers YouTube only. Audius is persisted in the
+    // Media3's DownloadIndex covers YouTube only. Independent audio is persisted in the
     // system MediaStore Downloads collection: join both *visibly*, but do not
     // write fake media entries into YouTube's cache/index.
     LaunchedEffect(filter, externalStates, savedFilesRevision) {
@@ -319,7 +319,7 @@ fun LibrarySongsScreen(
             if (filter == SongFilter.DOWNLOADED && externalSaved.isNotEmpty()) {
                 item(key = "capsule:external-downloads:heading") {
                     Text(
-                        text = "Audius · " + stringResource(R.string.filter_downloaded),
+                        text = stringResource(R.string.filter_downloaded),
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
                         style = MaterialTheme.typography.titleSmall,
                     )

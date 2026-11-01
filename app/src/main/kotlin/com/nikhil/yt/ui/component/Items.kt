@@ -98,6 +98,7 @@ import androidx.media3.exoplayer.offline.Download.STATE_COMPLETED
 import androidx.media3.exoplayer.offline.Download.STATE_DOWNLOADING
 import androidx.media3.exoplayer.offline.Download.STATE_QUEUED
 import coil3.compose.AsyncImage
+import coil3.request.crossfade
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import com.nikhil.yt.innertube.YouTube
@@ -1292,9 +1293,10 @@ fun ItemThumbnail(
 
         if (albumIndex == null) {
             if (shouldLoadImage) {
-                val request = remember(thumbnailUrl, widthPx, heightPx, thumbnailRatio) {
+                val request = remember(thumbnailUrl, widthPx, heightPx, thumbnailRatio, artworkRequestPixels) {
                     ImageRequest.Builder(context)
-                        .data(capsuleArtworkUrl(thumbnailUrl, artworkRequestPixels ?: if (thumbnailRatio == 1f) 512 else 480))
+                        .data(capsuleArtworkUrl(thumbnailUrl, artworkRequestPixels ?: thumbnailRequestPixels(widthPx, heightPx)))
+                        .crossfade(false)
                         .allowHardware(true)
                         .apply {
                             if (widthPx != null && heightPx != null) {
@@ -1552,6 +1554,7 @@ fun PlaylistThumbnail(
                     ImageRequest.Builder(context)
                         .data(url)
                         .size(halfPx, halfPx)
+                        .crossfade(false)
                         .allowHardware(true)
                         .build()
                 }

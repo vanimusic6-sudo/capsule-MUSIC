@@ -21,7 +21,7 @@ class DownloadIsolationRegressionTest {
         val menu = source("ui/menu/PlayerMenu.kt")
         val util = source("playback/DownloadUtil.kt")
         val viewModel = source("viewmodels/AutoPlaylistViewModel.kt")
-        assertTrue(menu.contains("!isExternalCatalog || isAudius"))
+        assertTrue(menu.contains("!isExternalCatalog || isOfflineAudio"))
         assertTrue(menu.contains("enqueuePriorityAudioDownload("))
         assertTrue(source("playback/AudioDownloadQueue.kt").contains("DownloadService.sendAddDownload("))
         assertTrue(menu.contains("ExoDownloadService::class.java"))
@@ -31,7 +31,7 @@ class DownloadIsolationRegressionTest {
         assertTrue(viewModel.contains("downloads[it.id]?.state == Download.STATE_COMPLETED"))
     }
 
-    @Test fun externalAudiusUsesOnlyIndependentMediaStorePipeline() {
+    @Test fun licensedAudioUsesOnlyIndependentMediaStorePipeline() {
         val external = source("discovery/ExperimentalDownload.kt")
         val queue = source("discovery/OfflineAudioQueue.kt")
         val service = source("playback/MusicService.kt")
@@ -60,12 +60,12 @@ class DownloadIsolationRegressionTest {
         assertTrue(source("ui/menu/OfflineDownloadMenu.kt").contains("OfflineAudioQueue.mediaItem(file)"))
         assertTrue(source("extensions/MediaItemExt.kt").contains("ContentUris.withAppendedId"))
         assertTrue(source("ui/menu/OfflineDownloadMenu.kt").contains("allowSyncing = false"))
-        assertTrue(source("ui/menu/PlayerMenu.kt").contains("isAudius || isOfflineAudio"))
-        assertTrue(source("ui/menu/SongMenu.kt").contains("|| offlineSong"))
+        assertTrue(source("ui/menu/PlayerMenu.kt").contains("isOfflineAudio"))
+        assertTrue(source("ui/menu/SongMenu.kt").contains("if (!independentSong)"))
         assertTrue(source("ui/menu/SongMenu.kt").contains("getSongById(song.id) == null"))
         assertTrue(source("ui/menu/SongMenu.kt").contains("it.copy(isLocal = true, inLibrary = LocalDateTime.now())"))
         assertTrue(source("ui/menu/SongMenu.kt").contains("existing.song.localToggleLike()"))
-        assertTrue(source("extensions/MediaItemExt.kt").contains("capsule-open:audius:"))
+        assertFalse(source("extensions/MediaItemExt.kt").contains("api.audius.co"))
         assertTrue(source("playback/MusicService.kt").contains("!mediaId.startsWith(EXPERIMENTAL_MEDIA_PREFIX)"))
         assertTrue(source("ui/menu/PlayerMenu.kt").contains("allowSyncing = !isExternalCatalog"))
         assertTrue(source("discovery/ExperimentalDownload.kt").contains("suspend fun deleteSaved"))

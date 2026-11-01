@@ -249,7 +249,7 @@ fun AutoPlaylistScreen(
             if (songs != null) {
                 // This screen draws its toolbar over its content. A playlist with
                 // no YouTube hero must reserve toolbar space (also in search mode),
-                // otherwise the back button lands directly over the first Audius row.
+                // otherwise the back button lands directly over the first downloaded row.
                 if ((songs!!.isEmpty() && externalSaved.isEmpty()) || isSearching) {
                     item(key = "capsule:playlist:toolbar-spacer") {
                         Spacer(Modifier.height(AppBarHeight))

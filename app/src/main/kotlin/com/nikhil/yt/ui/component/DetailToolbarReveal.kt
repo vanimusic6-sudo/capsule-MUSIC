@@ -272,8 +272,11 @@ internal fun Modifier.artistStyleDetailBackdrop(
     if (alpha > 0f) drawRect(surfaceColor.copy(alpha = alpha))
 }
 
-/** Transfer drawing at the shared endpoint; never blend two glyph layouts. */
-internal fun detailTitleHandoff(progress: Float): Float = if (progress >= 1f) 1f else 0f
+/** Finish the handoff smoothly before the measured endpoint; reverse with scroll. */
+internal fun detailTitleHandoff(progress: Float): Float {
+    val t = ((progress - .78f) / .22f).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
+}
 
 /** Align actual baselines, including a two-line source and a one-line destination. */
 internal fun detailTitleBaselineTranslation(
@@ -286,7 +289,9 @@ internal fun detailTitleBaselineTranslation(
     (1f - scale) * sourceBaselineOffset
 
 internal fun Modifier.detailCoverTitleMotion(motion: DetailHeaderMotionState?): Modifier =
-    graphicsLayer { motion?.moveCoverTitle(this) }
+    graphicsLayer {
+        motion?.let { alpha = it.coverTitleAlpha(); it.moveCoverTitle(this) }
+    }
 
 /**
  * Keep the compact text laid out from the first frame. Colour invalidation
@@ -302,20 +307,21 @@ internal fun DetailToolbarTitle(title: String, motion: DetailHeaderMotionState) 
         fontSize = 22.sp,
         lineHeight = (29f * 22f / 25f).sp,
         fontWeight = FontWeight.SemiBold,
+        letterSpacing = 0.sp,
     )
     val density = LocalDensity.current
     val compactScale = with(density) { style.fontSize.toPx() / 25.sp.toPx() }
         .takeIf { it.isFinite() && it > 0f }?.coerceIn(.5f, 1f) ?: (22f / 25f)
     SideEffect { motion.compactTitleScale = compactScale }
     val foreground = LocalContentColor.current
-    val alpha = motion.compactTitleAlpha()
-    val hidden = alpha < .5f
+    val hidden by remember(motion) { derivedStateOf { motion.compactTitleAlpha() < .5f } }
     Text(
         text = title,
         modifier = Modifier.onGloballyPositioned(motion::measureToolbarTitle)
+            .graphicsLayer { alpha = motion.compactTitleAlpha() }
             .testTag("capsule:detail-toolbar-title")
             .semantics { if (hidden) hideFromAccessibility() },
-        color = foreground.copy(alpha = foreground.alpha * alpha),
+        color = foreground,
         style = style,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,

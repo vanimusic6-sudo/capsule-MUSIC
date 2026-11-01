@@ -69,10 +69,6 @@ object StandardChrome {
 fun StandardHeaderTitle(
     accountName: String?,
     accountImageUrl: String?,
-    sourceIcon: Int? = null,
-    sourceContentDescription: String? = null,
-    sourceAccents: List<Color> = emptyList(),
-    sourceIcons: List<Int> = emptyList(),
     onAccountClick: () -> Unit,
 ) {
     val accountLabel = stringResource(R.string.account)
@@ -105,36 +101,15 @@ fun StandardHeaderTitle(
                 .clickable(interactionSource = sourceInteraction, indication = null,
                     role = Role.Button, onClick = onAccountClick)
                 .graphicsLayer { scaleX = sourceScale; scaleY = sourceScale }
-                .semantics { contentDescription = sourceContentDescription ?: accountLabel },
+                .semantics { contentDescription = accountLabel },
         ) {
             Box(
                 Modifier.size(width = 58.dp, height = 34.dp)
                     .clip(RoundedCornerShape(17.dp))
-                    .background(sourceAccents.firstOrNull() ?: Color(0xFFBC3606))
-                    .then(if (sourceAccents.size > 1)
-                        Modifier.background(Brush.horizontalGradient(sourceAccents))
-                        else Modifier),
+                    .background(Color(0xFFBC3606)),
                 contentAlignment = Alignment.Center,
             ) {
-                if (sourceIcon != null) {
-                    // An original combined-catalog glyph is much clearer than
-                    // intersecting three tiny badges at 30dp.
-                    Row(verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Icon(
-                            painter = painterResource(sourceIcon),
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(if (sourceIcons.size > 1) 20.dp else 21.dp),
-                        )
-                        Icon(
-                            painter = painterResource(R.drawable.drop_down),
-                            contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.9f),
-                            modifier = Modifier.size(17.dp),
-                        )
-                    }
-                } else if (guestIcon != null) {
+                if (guestIcon != null) {
                     Icon(
                         painter = painterResource(guestIcon),
                         contentDescription = null,

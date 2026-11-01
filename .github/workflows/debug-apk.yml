@@ -4,7 +4,7 @@ name: Capsule Full Regression Tests (manual)
 # on-demand testing. Everyday builds are produced by capsule-test-apk.yml.
 on:
   push:
-    branches: ['refactor/unified-scroll-engine-20261101', 'fix/playback-download-resilience-20261101']
+    branches: ['refactor/unified-scroll-engine-20261101', 'fix/playback-download-resilience-20261101', 'fix/artwork-header-search-cleanup-20261101']
   workflow_dispatch:
 
 permissions:
@@ -58,6 +58,15 @@ jobs:
             app/build/intermediates/lint_intermediate_text_report/universalDebug/lintReportUniversalDebug/*.txt
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Test cover geometry, title handoff and source cleanup
+        run: |
+          gradle :app:testUniversalDebugUnitTest \
+            --tests 'com.nikhil.yt.ui.component.ArtworkResolutionTest' \
+            --tests 'com.nikhil.yt.ui.component.DetailToolbarRevealTest' \
+            --tests 'com.nikhil.yt.ui.CollectionHeaderMotionTest' \
+            --tests 'com.nikhil.yt.discovery.*' \
+            --stacktrace --no-daemon
 
       - name: Test TASK 04 existing theme modes and preference persistence
         run: |

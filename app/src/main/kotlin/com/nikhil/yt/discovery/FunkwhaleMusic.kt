@@ -172,7 +172,7 @@ internal object FunkwhaleMusic {
                 durationSeconds = row.optInt("duration", 0),
                 audioCategory = "music",
                 catalogProvider = "funkwhale",
-                downloadable = false,
+
             )
         }
 }

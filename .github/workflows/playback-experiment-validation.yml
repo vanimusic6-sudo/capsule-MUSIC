@@ -16,6 +16,7 @@ on:
       - 'cleanup/working-honor-media-20261031'
       - 'refactor/unified-scroll-engine-20261101'
       - 'fix/playback-download-resilience-20261101'
+      - 'fix/artwork-header-search-cleanup-20261101'
   workflow_dispatch:
 
 permissions:

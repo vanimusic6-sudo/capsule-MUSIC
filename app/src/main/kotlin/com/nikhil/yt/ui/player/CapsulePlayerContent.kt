@@ -616,17 +616,17 @@ fun CapsulePlayerContent(
                             modifier = Modifier.size(72.dp),
                         )
                     } else {
-                        val originalArtworkUrl = mediaMetadata.thumbnailUrl
-                        val highResArtworkUrl = remember(mediaMetadata.id, originalArtworkUrl) {
-                            originalArtworkUrl?.let { artwork ->
-                                // Original-video posters can use different
-                                // frames/aspect crops at higher YouTube image
-                                // resolutions. Preserve the first displayed
-                                // thumbnail rather than recropping midway.
-                                if (mediaMetadata.isOriginalVideo ||
-                                    mediaMetadata.id.startsWith("capsule-open:")) artwork
-                                else artwork.toHighResThumbnail()
-                            }
+                        // Late player metadata must not replace an already visible poster.
+                        // Keep the first non-empty source for this track; allow a blank
+                        // initial response to acquire artwork when it becomes available.
+                        var pinnedArtworkUrl by remember(mediaMetadata.id) { mutableStateOf<String?>(null) }
+                        val originalArtworkUrl = pinnedArtworkUrl
+                            ?: mediaMetadata.thumbnailUrl?.takeIf(String::isNotBlank)
+                        androidx.compose.runtime.SideEffect {
+                            if (pinnedArtworkUrl == null) pinnedArtworkUrl = originalArtworkUrl
+                        }
+                        val highResArtworkUrl = remember(originalArtworkUrl) {
+                            com.nikhil.yt.ui.component.capsuleArtworkUrl(originalArtworkUrl, 960)
                         }
                         var useOriginalArtwork by remember(mediaMetadata.id, originalArtworkUrl) {
                             mutableStateOf(false)
@@ -712,7 +712,6 @@ fun CapsulePlayerContent(
                                     contentDescription = null,
                                     contentScale = artworkContentScale,
                                     modifier = Modifier.fillMaxSize()
-                                        .blur(((1f - artworkReveal) * 2.5f).dp)
                                         .graphicsLayer { alpha = artworkReveal },
                                 )
                             }

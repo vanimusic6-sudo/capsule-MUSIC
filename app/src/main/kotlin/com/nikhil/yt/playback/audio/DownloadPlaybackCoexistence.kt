@@ -114,13 +114,13 @@ internal class DownloadYieldingDataSource(
     }
 }
 
-/** Audius uses HttpURLConnection rather than Media3, but must obey the same network priority. */
+/** independent audio uses HttpURLConnection rather than Media3, but must obey the same network priority. */
 internal class DownloadYieldingInputStream(
     input: InputStream,
     private val shouldYield: () -> Boolean = DownloadPlaybackCoexistence.priority::shouldYield,
     private val checkActive: () -> Unit = {},
 ) : FilterInputStream(input) {
-    // Unlike the player's network, Audius downloads may begin after a long
+    // Unlike the player's network, independent audio downloads may begin after a long
     // resolver/cache warmup. Honor an already-buffering player before the
     // FIRST network body read, not only after downloading 64 KiB.
     private var readSinceCheck = 64 * 1024
