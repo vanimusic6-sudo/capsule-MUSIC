@@ -50,7 +50,12 @@ internal object YouTubeMusicVideoMatcher {
                         )
                 }
 
-            if (artistMatched) score += 65 else score -= 55
+            // A same-title video from another performer can otherwise pass
+            // even with the old -55 penalty (e.g. "Hello" Official Video).
+            // OMV tags prove video *type*, not the music ownership. Require
+            // an explicit artist signal in the title or YouTube Music row.
+            if (!artistMatched) return null
+            score += 65
         }
 
         // MUSIC_VIDEO_TYPE_OMV is checked by the resolver before this helper.
