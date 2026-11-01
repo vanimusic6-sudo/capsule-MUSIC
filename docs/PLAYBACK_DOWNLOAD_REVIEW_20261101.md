@@ -74,3 +74,34 @@ playback recovery, download and extractor tests remain enabled.
 Live YouTube/CDN behavior, video startup time and concurrent downloading still
 need confirmation on the phone. No four-second startup, elimination of network
 outages or new production SABR/QUIC engine is claimed from deterministic CI.
+
+## Verified results for 2ebbe04b
+
+- [Playback/download/extractor validation](https://github.com/vanimusic6-sudo/capsule-MUSIC/actions/runs/41268762668):
+  **802 tests, zero failures/errors/skips**. New cache-copy tests use real
+  SimpleCache files; existing 42 VIDEO session cases and 16 route cases pass.
+- [TEST APK 377](https://github.com/vanimusic6-sudo/capsule-MUSIC/actions/runs/41268762417)
+  assembled and passed package/signer verification.
+- [Review PR #70](https://github.com/vanimusic6-sudo/capsule-MUSIC/pull/70) targets
+  the verified scroll branch; no main-branch merge is performed.
+- The initial DEV job could not resolve the unchanged Hilt 2.60.1 plugin before
+  compilation. That failed infrastructure attempt is retained; its job was retried.
+- [Android lint / full UI workflow](https://github.com/vanimusic6-sudo/capsule-MUSIC/actions/runs/41268762583):
+  lint completed with **zero errors** (621 warnings, 25 hints). Compared with
+  the earlier lint report, all four HttpEngine API errors disappeared; the only
+  added warning is the now-unused `R.string.error_timeout` resource.
+- Theme, preference/default and Home checks preceding TASK 07 passed. TASK 07
+  reports one pre-existing structural test failure at
+  `SettingsModeRegressionTest.kt:116`: it searches for
+  `listState.animateScrollToItem(0)`, while the verified scroll refactor uses
+  `listState.scrollToTopIfIdle()`. Both that test and VeluneSettingsScreen are
+  byte-identical to base `ecd513d1`; the literal assertion also fails on that
+  base. This is not dismissed as flaky or suppressed. Later UI suites were
+  skipped by the workflow after this failure and are not claimed as passed.
+- [Optimized DEV APK 319](https://github.com/vanimusic6-sudo/capsule-MUSIC/actions/runs/41268762673)
+  succeeded on its retried job (R8/resource shrinking and persistent development
+  signer verification). APK SHA-256:
+  `0d614f4a8341fb2a5782632419eaf03b4a809613dee906f76173db68fa7c2e2f`.
+- The full workflow also assembled its Universal Debug APK successfully after
+  recording the settings test failure. It remains red for that one assertion;
+  the failure is not concealed by the successful APK build.
