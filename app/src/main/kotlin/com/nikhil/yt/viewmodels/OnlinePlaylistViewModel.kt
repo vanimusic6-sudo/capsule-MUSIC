@@ -8,6 +8,9 @@
 
 package com.nikhil.yt.viewmodels
 
+import android.os.SystemClock
+import android.util.Log
+import com.nikhil.yt.utils.GlobalLog
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -117,7 +120,10 @@ class OnlinePlaylistViewModel @Inject constructor(
         _error.value = null
         loadJob = viewModelScope.launch(Dispatchers.IO) {
             try {
+                val started = SystemClock.elapsedRealtime()
                 val page = YouTube.playlist(playlistId).getOrThrow()
+                if (GlobalLog.isEnabled) GlobalLog.append(Log.DEBUG, "DetailLatency",
+                    "playlistFirstPageMs=${SystemClock.elapsedRealtime() - started} rows=${page.songs.size} more=${page.songsContinuation != null}")
                 if (owner != generation) return@launch
                 usedCursors.clear()
                 continuation = page.songsContinuation

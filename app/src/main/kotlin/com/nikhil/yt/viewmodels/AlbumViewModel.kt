@@ -8,6 +8,9 @@
 
 package com.nikhil.yt.viewmodels
 
+import android.os.SystemClock
+import android.util.Log
+import com.nikhil.yt.utils.GlobalLog
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -83,13 +86,18 @@ constructor(
             _fetchState.value = FetchState.Pending
             try {
                 val previous = database.album(albumId).first()
+                val started = SystemClock.elapsedRealtime()
                 val page = YouTube.album(albumId).getOrThrow()
+                if (GlobalLog.isEnabled) GlobalLog.append(Log.DEBUG, "DetailLatency",
+                    "albumBrowseMs=${SystemClock.elapsedRealtime() - started} songs=${page.songs.size}")
                 playlistId.value = page.album.playlistId
                 otherVersions.value = page.otherVersions
                 database.withTransaction {
                     if (previous == null) insert(page) else update(previous.album, page, previous.artists)
                 }
                 _fetchState.value = FetchState.Success
+                if (GlobalLog.isEnabled) GlobalLog.append(Log.DEBUG, "DetailLatency",
+                    "albumReadyMs=${SystemClock.elapsedRealtime() - started}")
             } catch (cancel: CancellationException) {
                 throw cancel
             } catch (error: Exception) {
