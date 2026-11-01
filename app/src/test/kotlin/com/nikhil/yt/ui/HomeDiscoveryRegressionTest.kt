@@ -146,11 +146,13 @@ class HomeDiscoveryRegressionTest {
     }
 
     @Test
-    fun verticalScrollingDoesNotMoveHorizontalShelves() {
+    fun foundationOwnsShelfGestureAxesForTheWholePointerSession() {
         val home = source("ui/screens/HomeScreen.kt")
         val components = source("ui/screens/HomeScreenComponents.kt")
-        assertTrue(home.contains("derivedStateOf { !lazylistState.isScrollInProgress }"))
-        assertTrue(home.contains("userScrollEnabled = horizontalShelvesEnabled.value"))
+        assertFalse(home.contains("derivedStateOf { !lazylistState.isScrollInProgress }"))
+        assertFalse(home.contains("horizontalShelvesEnabled"))
+        assertTrue(home.contains("userScrollEnabled = true"))
+        assertTrue(home.contains("rememberCapsuleFlingBehavior()"))
         val sections = listOf(
             "QuickPicksSection", "KeepListeningSection", "ForgottenFavoritesSection",
             "HomePageSectionContent", "CommunityPlaylistsSection",
@@ -158,9 +160,9 @@ class HomeDiscoveryRegressionTest {
         )
         for (name in sections) {
             val body = components.substringAfter("fun $name(").substringBefore("\n}\n")
-            assertTrue("$name should support vertical gesture locking",
+            assertTrue("$name should forward its explicit gesture preference",
                 body.contains("userScrollEnabled: Boolean = true"))
-            assertTrue("$name must disable horizontal gestures during vertical scrolling",
+            assertTrue("$name must preserve the caller gesture preference",
                 body.contains("userScrollEnabled = userScrollEnabled"))
         }
     }
