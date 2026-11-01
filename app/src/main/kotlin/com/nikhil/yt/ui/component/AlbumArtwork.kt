@@ -1,5 +1,8 @@
 package com.nikhil.yt.ui.component
 
+import android.os.SystemClock
+import android.util.Log
+import com.nikhil.yt.utils.GlobalLog
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -176,6 +179,8 @@ internal fun DetailPortraitImage(
     val context = LocalContext.current
     var previewReady by remember(coverIdentity) { mutableStateOf(false) }
     var upgradeFromPreview by remember(coverIdentity) { mutableStateOf(false) }
+    val firstRequestAt = remember(coverIdentity) { SystemClock.elapsedRealtime() }
+    var previewReported by remember(coverIdentity) { mutableStateOf(false) }
     val arrival = rememberArtworkArrivalAlpha(coverIdentity, previewReady || request.loaded)
     val upgrade = rememberArtworkArrivalAlpha(coverIdentity to "full", request.loaded)
     val fullRequest = remember(attempt) {
@@ -205,13 +210,24 @@ internal fun DetailPortraitImage(
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = arrival.value }) {
                 // Reuse the original/feed URL immediately while the larger CDN
                 // variant decodes. Both layers use identical, fixed crop geometry.
-                AsyncImage(
-                    model = previewRequest,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    onSuccess = { previewReady = true },
-                )
+                // When the original is already full-resolution, requesting it
+                // twice at 512 and 960 wastes decoder work and memory.
+                if (coverIdentity != attempt?.source || previewReady) {
+                    AsyncImage(
+                        model = previewRequest,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        onSuccess = {
+                            previewReady = true
+                            if (!previewReported && GlobalLog.isEnabled) {
+                                previewReported = true
+                                GlobalLog.append(Log.DEBUG, "ArtworkLatency",
+                                    "detailPreviewMs=${SystemClock.elapsedRealtime() - firstRequestAt}")
+                            }
+                        },
+                    )
+                }
                 if (attempt != null) key(coverIdentity, attempt) {
                 AsyncImage(
                     model = fullRequest,
@@ -225,6 +241,10 @@ internal fun DetailPortraitImage(
                             // If both cache hits arrive together, reveal once;
                             // reserve the second fade for an already visible preview.
                             upgradeFromPreview = previewReady && arrival.value >= .999f
+                            if (!request.loaded && GlobalLog.isEnabled) {
+                                GlobalLog.append(Log.DEBUG, "ArtworkLatency",
+                                    "detailFullMs=${SystemClock.elapsedRealtime() - firstRequestAt} preview=${previewReady}")
+                            }
                             request.succeed(attempt)
                         }
                     },

@@ -1299,9 +1299,15 @@ fun ItemThumbnail(
                 // perpetual shimmer or a second image request.
                 var decoded by remember(thumbnailUrl) { androidx.compose.runtime.mutableStateOf(false) }
                 val arrival = rememberArtworkArrivalAlpha(thumbnailUrl, decoded)
-                val request = remember(thumbnailUrl, widthPx, heightPx, thumbnailRatio, artworkRequestPixels) {
+                // Google thumbnails sometimes reject an enlarged URL. Fall back
+                // once to the original address, never keep a blank tile forever.
+                val enhancedUrl = remember(thumbnailUrl, widthPx, heightPx, artworkRequestPixels) {
+                    capsuleArtworkUrl(thumbnailUrl, artworkRequestPixels ?: thumbnailRequestPixels(widthPx, heightPx))
+                }
+                var originalFallback by remember(thumbnailUrl) { androidx.compose.runtime.mutableStateOf(false) }
+                val request = remember(thumbnailUrl, enhancedUrl, originalFallback, widthPx, heightPx, thumbnailRatio) {
                     ImageRequest.Builder(context)
-                        .data(capsuleArtworkUrl(thumbnailUrl, artworkRequestPixels ?: thumbnailRequestPixels(widthPx, heightPx)))
+                        .data(if (originalFallback) thumbnailUrl else enhancedUrl)
                         .crossfade(false)
                         .allowHardware(true)
                         .apply {
@@ -1315,6 +1321,7 @@ fun ItemThumbnail(
                     model = request,
                     contentDescription = null,
                     onSuccess = { decoded = true },
+                    onError = { if (!originalFallback && enhancedUrl != thumbnailUrl) originalFallback = true },
                     colorFilter = if (unavailableReason != null) ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) }) else null,
                     contentScale = if (shouldApplySquareCrop) ContentScale.Crop else ContentScale.Fit,
                     modifier = Modifier.fillMaxSize().graphicsLayer { alpha = arrival.value }
