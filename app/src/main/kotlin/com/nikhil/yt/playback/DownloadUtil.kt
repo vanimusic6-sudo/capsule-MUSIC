@@ -216,6 +216,9 @@ constructor(
             ResolvingAudioDownloader(
                 mediaId = request.id,
                 cache = downloadCache,
+                createCachedDownloader = {
+                    com.nikhil.yt.playback.audio.createCachedAudioDownloader(request.id, playerCache, downloadCache)
+                },
                 saveArtwork = { saveArtwork(request.id) },
                 resolve = { resolveDownloadPlayback(request.id) },
                 awaitAdmission = { awaitDownloadResolveWindow() },
@@ -367,6 +370,14 @@ constructor(
                             download.request.id, download.state, download.stopReason, download.bytesDownloaded,
                             finalException?.javaClass?.simpleName ?: "none",
                         )
+                        if (download.state == Download.STATE_FAILED && finalException != null) {
+                            timber.log.Timber.tag("AudioDownload").w(
+                                "failure id=%s kind=%s causeType=%s",
+                                download.request.id,
+                                PlaybackFailureClassifier.classify(finalException, !YouTube.authState.cookie.isNullOrBlank()),
+                                finalException.cause?.javaClass?.simpleName ?: "none",
+                            )
+                        }
                         removedWhileLoading.remove(download.request.id)
                         if (download.state == Download.STATE_QUEUED &&
                             downloads.value[download.request.id]?.state == Download.STATE_FAILED) {

@@ -22,9 +22,9 @@ internal class DownloadPlaybackNetworkPriority(
     private enum class Phase { IDLE, BUFFERING, READY }
     private data class Snapshot(val mediaId: String?, val phase: Phase, val enteredAtMs: Long)
 
-    @Volatile private var snapshot = Snapshot(null, Phase.IDLE, 0L)
+    @Volatile private var snapshots = emptyMap<String, Snapshot>()
 
-    fun observe(mediaId: String?, playWhenReady: Boolean, buffering: Boolean, ready: Boolean) {
+    fun observe(mediaId: String?, playWhenReady: Boolean, buffering: Boolean, ready: Boolean, owner: String = "audio") {
         val newPhase = when {
             !playWhenReady || mediaId.isNullOrBlank() -> Phase.IDLE
             buffering -> Phase.BUFFERING
@@ -32,25 +32,27 @@ internal class DownloadPlaybackNetworkPriority(
             else -> Phase.IDLE
         }
         synchronized(this) {
-            val previous = snapshot
+            val previous = snapshots[owner]
             // Repeated player events must not extend the gate indefinitely.
-            if (previous.mediaId == mediaId && previous.phase == newPhase) return
-            snapshot = Snapshot(mediaId, newPhase, nowMs())
+            if (previous?.mediaId == mediaId && previous?.phase == newPhase) return
+            snapshots = if (newPhase == Phase.IDLE) snapshots - owner
+                else snapshots + (owner to Snapshot(mediaId, newPhase, nowMs()))
         }
     }
 
-    fun clear() {
-        snapshot = Snapshot(null, Phase.IDLE, 0L)
+    fun clear(owner: String? = null) = synchronized(this) {
+        snapshots = if (owner == null) emptyMap() else snapshots - owner
     }
 
     fun shouldYield(): Boolean {
-        val current = snapshot
-        val elapsed = nowMs() - current.enteredAtMs
-        if (elapsed < 0L) return false
-        return when (current.phase) {
-            Phase.IDLE -> false
-            Phase.BUFFERING -> elapsed < MAX_BUFFERING_YIELD_MS
-            Phase.READY -> elapsed < READY_REFILL_YIELD_MS
+        val now = nowMs()
+        return snapshots.values.any { current ->
+            val elapsed = now - current.enteredAtMs
+            elapsed >= 0L && when (current.phase) {
+                Phase.IDLE -> false
+                Phase.BUFFERING -> elapsed < MAX_BUFFERING_YIELD_MS
+                Phase.READY -> elapsed < READY_REFILL_YIELD_MS
+            }
         }
     }
 

@@ -18,6 +18,7 @@ import android.content.Context
 import android.net.Uri
 import android.net.http.HttpEngine
 import android.os.Build
+import android.os.ext.SdkExtensions
 import androidx.annotation.RequiresApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
@@ -145,6 +146,9 @@ internal object CapsuleVideoHttp3Transport {
         val fallback = DefaultDataSource.Factory(context, okhttpFactory)
         // Do not start even an idle QUIC engine on a production or proxied route.
         if (!BuildConfig.DEBUG || Build.VERSION.SDK_INT < 34 || explicitProxyConfigured) return fallback
+        // Media3 exposes HttpEngine through its S-extension API contract.
+        // A device missing the extension keeps the existing OkHttp fallback.
+        if (SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S) < 7) return fallback
 
         val http3Factory = runCatching {
             HttpEngineDataSource.Factory(getEngine(context), callbackExecutor)

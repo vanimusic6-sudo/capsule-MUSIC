@@ -31,16 +31,19 @@ internal class CapsuleVideoRouteHealth(private val clock: () -> Long = System::n
             { it.wireName == failedBackend }
             .thenBy { (retryAfter[it] ?: 0L) > now }
             .thenBy { it != lastSuccessful }
-            // Cold start: try the independent PipePipe parser first; once a
-            // route succeeds, the measured last winner takes priority.
-            .thenBy { it != CapsuleVideoRoute.PIPEPIPE })
+            // Device trace: PipePipe spent its entire 10s budget before the
+            // working direct Vision route was reached. Try the bounded direct
+            // path first; remember a measured winner on subsequent clips.
+            .thenBy { it != CapsuleVideoRoute.VISIONOS })
     }
 
     /** Known bot-blocked clients stay quiet. An independent unblocked route
      * remains eligible; we don't identify a whole platform outage from one client. */
     @Synchronized fun candidates(failedBackend: String?): List<CapsuleVideoRoute> {
         val now = clock()
-        return order(failedBackend).filter { (botQuietUntil[it] ?: 0L) <= now }
+        return order(failedBackend).filter {
+            (botQuietUntil[it] ?: 0L) <= now && (retryAfter[it] ?: 0L) <= now
+        }
     }
 
     @Synchronized fun pausedBotCount(): Int {
@@ -86,8 +89,10 @@ internal fun resolveVideoRoutes(
     val pausedBotRoutes = health?.pausedBotCount() ?: 0
     // If every route already explicitly reported an anti-bot response in this
     // process, do not send another five /player calls just to get the same answer.
-    if (routes.isEmpty() && pausedBotRoutes > 0) {
-        throw CapsuleVideoRoutesException(CapsuleNewPipeFailure.BOT_BLOCKED, null)
+    if (routes.isEmpty()) {
+        val kind = if (pausedBotRoutes == CapsuleVideoRoute.entries.size)
+            CapsuleNewPipeFailure.BOT_BLOCKED else CapsuleNewPipeFailure.NETWORK
+        throw CapsuleVideoRoutesException(kind, null)
     }
     for (route in routes) {
         VideoExtractionRequests.checkActive()

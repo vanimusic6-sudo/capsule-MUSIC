@@ -21,7 +21,7 @@ internal object CapsuleAudioFallbackPolicy {
 
     private val supportedProfiles = AudioClientOrder.supportedProfiles.toSet()
     const val MAX_RESOLVE_ATTEMPTS = 3
-    private const val NORMAL_FALLBACK_DELAY_MS = 350L
+    private const val NORMAL_FALLBACK_DELAY_MS = 0L
     private const val BOT_FALLBACK_DELAY_MS = 1_000L
 
     fun profilePlan(

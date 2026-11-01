@@ -88,7 +88,7 @@ internal class CapsuleVideoCompanion(
         // the highest supported bitrate on slow first-byte connections.
         .setTrackSelector(DefaultTrackSelector(context))
         .setLoadControl(DefaultLoadControl.Builder()
-            .setBufferDurationsMs(3_000, 10_000, 250, 1_200)
+            .setBufferDurationsMs(6_000, 20_000, 1_000, 3_000)
             .setPrioritizeTimeOverSizeThresholds(true).build())
         .setWakeMode(C.WAKE_MODE_LOCAL)
         .build()
@@ -153,7 +153,7 @@ internal class CapsuleVideoCompanion(
         idleExpiry?.cancel()
         idleExpiry = if (keep) scope.launch {
             // One paused decoder, only for quick mode toggles. Standard Media3
-            // buffering remains bounded to 12 seconds; no custom LoadControl.
+            // buffering remains bounded to 20 seconds; no custom LoadControl.
             delay(20_000L)
             session.stop()
             idleExpiry = null
@@ -386,6 +386,15 @@ internal class CapsuleVideoSession(
             seekTo(deferredSeek)
             return
         }
+        // VIDEO has an independent loader and soundtrack. Audio READY alone
+        // must not release downloads while VIDEO is preparing/rebuffering.
+        com.nikhil.yt.playback.audio.DownloadPlaybackCoexistence.priority.observe(
+            mediaId = current,
+            playWhenReady = audio.playWhenReady && (rendering || committed),
+            buffering = !committed || video.playbackState == Player.STATE_BUFFERING,
+            ready = committed && ready,
+            owner = "video",
+        )
         // After the first presentation, VIDEO owns the session through seeks,
         // buffering, pauses and detached surfaces. Silence while loading is
         // part of VIDEO; playing MUSIC underneath it would change the mode.
@@ -483,6 +492,7 @@ internal class CapsuleVideoSession(
                     }
                     committed = true
                     reportPresentation(current)
+                    evaluate()
                     Timber.tag("CapsuleVideo").i("sound-owner VIDEO session=%s", current)
                 } else {
                     returnSound()
@@ -669,6 +679,7 @@ internal class CapsuleVideoSession(
         onFailure(failed, cause)
     }
     fun stop(keepPrepared: Boolean = false, synchronizeMusic: Boolean = true) {
+        com.nikhil.yt.playback.audio.DownloadPlaybackCoexistence.priority.clear("video")
         generation++
         watchdog?.cancel(); watchdog = null
         val wasActive = id != null

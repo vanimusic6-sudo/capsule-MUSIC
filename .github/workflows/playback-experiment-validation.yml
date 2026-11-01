@@ -15,6 +15,7 @@ on:
       - 'fix/honor-notification-controller-20261031'
       - 'cleanup/working-honor-media-20261031'
       - 'refactor/unified-scroll-engine-20261101'
+      - 'fix/playback-download-resilience-20261101'
   workflow_dispatch:
 
 permissions:
@@ -74,6 +75,7 @@ jobs:
           if-no-files-found: warn
 
   scroll-old-engine-repro:
+    if: github.ref == 'refs/heads/refactor/unified-scroll-engine-20261101'
     # Require the new behavioral test to FAIL on the actual old drag engine.
     # A green happy-path test on both versions would not validate this repair.
     runs-on: ubuntu-latest

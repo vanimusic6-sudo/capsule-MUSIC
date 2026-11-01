@@ -32,6 +32,7 @@ internal class ResolvingAudioDownloader(
         )
     },
     private val awaitAdmission: suspend () -> Unit = {},
+    private val createCachedDownloader: () -> Downloader? = { null },
 ) : Downloader {
     private val cancellation = SupervisorJob()
     @Volatile private var delegate: Downloader? = null
@@ -45,7 +46,12 @@ internal class ResolvingAudioDownloader(
                 coroutineScope {
                     var artwork: Job? = null
                     try {
-                        withAudioDownloadSlotAfterAdmission(
+                        val startArtwork = {
+                            if (artwork == null) artwork = launch(Dispatchers.IO) { saveArtwork() }
+                            Unit
+                        }
+                        val copied = downloadFromPlaybackCache(progressListener, startArtwork)
+                        if (!copied) withAudioDownloadSlotAfterAdmission(
                             awaitAdmission = {
                                 // A complete cache-only item never needs to ask YouTube.
                                 if (!AudioCacheIdentity.isComplete(cache, mediaId)) awaitAdmission()
@@ -53,9 +59,7 @@ internal class ResolvingAudioDownloader(
                         ) {
                             downloadWithSlot({ length, bytes, percent ->
                                 progressListener?.onProgress(length, bytes, percent.coerceAtMost(99f))
-                            }) {
-                                if (artwork == null) artwork = launch(Dispatchers.IO) { saveArtwork() }
-                            }
+                            }, startArtwork)
                         }
                         // Audio's shared network slot is free. Still await artwork
                         // before marking the Media3 download complete.
@@ -66,6 +70,32 @@ internal class ResolvingAudioDownloader(
             }
         } catch (cancelled: CancellationException) {
             throw InterruptedException("Audio download cancelled while waiting for a slot").apply { initCause(cancelled) }
+        }
+    }
+
+    private fun downloadFromPlaybackCache(
+        progressListener: Downloader.ProgressListener?, startArtwork: () -> Unit,
+    ): Boolean {
+        checkActive()
+        if (AudioCacheIdentity.isComplete(cache, mediaId)) return false
+        try {
+            val cached = createCachedDownloader() ?: return false
+            delegate = cached
+            try {
+                checkActive()
+                cached.download { length, bytes, percent ->
+                    progressListener?.onProgress(length, bytes, percent.coerceAtMost(99f))
+                }
+                checkActive()
+                AudioCacheIdentity.requireCompleteDownload(cache, mediaId, null)
+                startArtwork()
+                return true
+            } finally { delegate = null }
+        } catch (evicted: IOException) {
+            checkActive()
+            // An LRU eviction can race the copy. Retain verified partial bytes;
+            // the normal resolver will bind/check the format before resuming.
+            return false
         }
     }
 
