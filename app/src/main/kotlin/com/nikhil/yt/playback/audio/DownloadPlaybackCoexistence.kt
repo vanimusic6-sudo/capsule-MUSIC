@@ -20,11 +20,17 @@ internal class DownloadPlaybackNetworkPriority(
     private val nowMs: () -> Long = { System.nanoTime() / 1_000_000L },
 ) {
     private enum class Phase { IDLE, BUFFERING, READY }
-    private data class Snapshot(val mediaId: String?, val phase: Phase, val enteredAtMs: Long)
+    private data class Snapshot(
+        val mediaId: String?, val phase: Phase, val enteredAtMs: Long,
+        val lowHeadroomOnReady: Boolean,
+    )
 
     @Volatile private var snapshots = emptyMap<String, Snapshot>()
 
-    fun observe(mediaId: String?, playWhenReady: Boolean, buffering: Boolean, ready: Boolean, owner: String = "audio") {
+    fun observe(
+        mediaId: String?, playWhenReady: Boolean, buffering: Boolean,
+        ready: Boolean, owner: String = "audio", bufferedAheadMs: Long? = null,
+    ) {
         val newPhase = when {
             !playWhenReady || mediaId.isNullOrBlank() -> Phase.IDLE
             buffering -> Phase.BUFFERING
@@ -36,7 +42,11 @@ internal class DownloadPlaybackNetworkPriority(
             // Repeated player events must not extend the gate indefinitely.
             if (previous?.mediaId == mediaId && previous?.phase == newPhase) return
             snapshots = if (newPhase == Phase.IDLE) snapshots - owner
-                else snapshots + (owner to Snapshot(mediaId, newPhase, nowMs()))
+                else snapshots + (owner to Snapshot(
+                    mediaId, newPhase, nowMs(),
+                    lowHeadroomOnReady = newPhase == Phase.READY &&
+                        bufferedAheadMs != null && bufferedAheadMs in 0 until LOW_READY_HEADROOM_MS,
+                ))
         }
     }
 
@@ -51,7 +61,8 @@ internal class DownloadPlaybackNetworkPriority(
             elapsed >= 0L && when (current.phase) {
                 Phase.IDLE -> false
                 Phase.BUFFERING -> elapsed < MAX_BUFFERING_YIELD_MS
-                Phase.READY -> elapsed < READY_REFILL_YIELD_MS
+                Phase.READY -> elapsed < if (current.lowHeadroomOnReady)
+                    LOW_HEADROOM_REFILL_YIELD_MS else READY_REFILL_YIELD_MS
             }
         }
     }
@@ -59,6 +70,12 @@ internal class DownloadPlaybackNetworkPriority(
     companion object {
         internal const val MAX_BUFFERING_YIELD_MS = 12_000L
         internal const val READY_REFILL_YIELD_MS = 2_500L
+        // 20:54:49 capture: READY at just 2.8 seconds buffered, then a 7s
+        // rebuffer while batch downloads were running. Do not release all
+        // download workers after 2.5s when playback has barely a few seconds
+        // of audio ahead. This extension is bounded, not a persistent throttle.
+        internal const val LOW_READY_HEADROOM_MS = 8_000L
+        internal const val LOW_HEADROOM_REFILL_YIELD_MS = 8_000L
     }
 }
 

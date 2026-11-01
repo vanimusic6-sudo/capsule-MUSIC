@@ -21,6 +21,7 @@ on:
       - 'fix/capsule-app-identity-20261101'
       - 'fix/rollback-search-matte-thermal-20261101'
       - 'fix/search-artwork-collection-motion-20261101'
+      - 'fix/underrun-only-stable-20261101'
   workflow_dispatch:
 
 permissions:
