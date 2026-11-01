@@ -17,6 +17,7 @@ import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.db.MusicDatabase
 import com.nikhil.yt.utils.reportException
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
@@ -65,6 +66,11 @@ class OnlinePlaylistViewModel @Inject constructor(
     private var visibleCountIds = emptyList<String>()
     private val viewCountsSemaphore = Semaphore(permits = 2)
 
+    private var loadJob: Job? = null
+    private var pageJob: Job? = null
+    @Volatile private var generation = 0L
+    private val usedCursors = mutableSetOf<String>()
+
     var continuation: String? = null
         private set
 
@@ -77,22 +83,23 @@ class OnlinePlaylistViewModel @Inject constructor(
     }
 
     fun loadMoreSongs() {
-        if (_isLoadingMore.value) return // Prevent multiple concurrent requests
-        
-        continuation?.let {
-            viewModelScope.launch(Dispatchers.IO) {
-                _isLoadingMore.value = true
-                YouTube.playlistContinuation(it)
-                    .onSuccess { playlistContinuationPage ->
-                        val currentSongs = playlistSongs.value.toMutableList()
-                        currentSongs.addAll(playlistContinuationPage.songs)
-                        playlistSongs.value = currentSongs.distinctBy { it.id }
-                        continuation = playlistContinuationPage.continuation
-                        _isLoadingMore.value = false
-                    }.onFailure { throwable ->
-                        _isLoadingMore.value = false
-                        reportException(throwable)
-                    }
+        if (_isLoadingMore.value || _isLoading.value || _isRefreshing.value) return
+        val cursor = continuation ?: return
+        val owner = generation
+        _isLoadingMore.value = true
+        pageJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val page = YouTube.playlistContinuation(cursor).getOrThrow()
+                if (owner != generation) return@launch
+                usedCursors += cursor
+                continuation = page.continuation?.takeUnless { it in usedCursors }
+                playlistSongs.value = (playlistSongs.value + page.songs).distinctBy { it.id }
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (error: Exception) {
+                if (owner == generation) reportException(error)
+            } finally {
+                if (owner == generation) _isLoadingMore.value = false
             }
         }
     }
@@ -102,36 +109,32 @@ class OnlinePlaylistViewModel @Inject constructor(
     }
 
     private fun load(initial: Boolean) {
-        if (initial) {
-            if (_isLoading.value && playlist.value != null) return
-        } else {
-            if (_isRefreshing.value || _isLoading.value) return
-        }
-
-        viewModelScope.launch(Dispatchers.IO) {
-            if (initial) {
-                _isLoading.value = true
-            } else {
-                _isRefreshing.value = true
-            }
-
-            _error.value = null
-
-            YouTube
-                .playlist(playlistId)
-                .onSuccess { playlistPage ->
-                    playlist.value = playlistPage.playlist
-                    playlistSongs.value = playlistPage.songs.distinctBy { it.id }
-                    continuation = playlistPage.songsContinuation
-                }.onFailure { throwable ->
-                    _error.value = throwable.message ?: "Failed to load playlist"
-                    reportException(throwable)
+        if (loadJob?.isActive == true) return
+        val owner = ++generation
+        pageJob?.cancel()
+        _isLoadingMore.value = false
+        if (initial) _isLoading.value = true else _isRefreshing.value = true
+        _error.value = null
+        loadJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val page = YouTube.playlist(playlistId).getOrThrow()
+                if (owner != generation) return@launch
+                usedCursors.clear()
+                continuation = page.songsContinuation
+                playlist.value = page.playlist
+                playlistSongs.value = page.songs.distinctBy { it.id }
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (error: Exception) {
+                if (owner == generation) {
+                    _error.value = error.message ?: "Failed to load playlist"
+                    reportException(error)
                 }
-
-            if (initial) {
-                _isLoading.value = false
-            } else {
-                _isRefreshing.value = false
+            } finally {
+                if (owner == generation) {
+                    _isLoading.value = false
+                    _isRefreshing.value = false
+                }
             }
         }
     }

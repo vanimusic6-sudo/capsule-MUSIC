@@ -220,7 +220,14 @@ internal fun DetailPortraitImage(
                         alpha = if (upgradeFromPreview) upgrade.value else 1f
                     },
                     contentScale = ContentScale.Crop,
-                    onSuccess = { upgradeFromPreview = previewReady; request.succeed(attempt) },
+                    onSuccess = {
+                        if (request.attempt == attempt) {
+                            // If both cache hits arrive together, reveal once;
+                            // reserve the second fade for an already visible preview.
+                            upgradeFromPreview = previewReady && arrival.value >= .999f
+                            request.succeed(attempt)
+                        }
+                    },
                     onError = { request.fail(attempt) },
                 )
                 }
