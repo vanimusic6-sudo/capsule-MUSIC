@@ -391,8 +391,14 @@ object YouTubeMusicVideoLinkResolver {
                         )
                     }
 
+            // Legacy builds persisted "no video" for twelve hours. Do not
+            // carry that stale verdict forward after making discovery safer:
+            // bound imported misses to the new short negative-cache window.
+            val expires = if (link == null) {
+                minOf(row.expiresAtMs, now + NEGATIVE_CACHE_MS)
+            } else row.expiresAtMs
             matchCache[row.sourceMediaId] =
-                CacheEntry(link = link, expiresAtMs = row.expiresAtMs)
+                CacheEntry(link = link, expiresAtMs = expires)
         }
 
         pruneIfNeeded()
