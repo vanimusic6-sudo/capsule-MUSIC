@@ -7,6 +7,7 @@
 
 
 package com.nikhil.yt.ui.screens
+import com.nikhil.yt.ui.utils.rememberCapsuleShelfScrollEnabled
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.capsulePressCombinedClickable
@@ -91,6 +92,7 @@ import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.NavigationTitle
 import com.nikhil.yt.ui.component.SongListItem
 import com.nikhil.yt.ui.component.YouTubeGridItem
+import com.nikhil.yt.ui.component.gridShelfHeight
 import com.nikhil.yt.ui.component.shimmer.ListItemPlaceHolder
 import com.nikhil.yt.ui.component.shimmer.ShimmerHost
 import com.nikhil.yt.ui.menu.AlbumMenu
@@ -168,6 +170,7 @@ fun AlbumScreen(
     val downloadIndex by downloadUtil.downloads.collectAsState()
     // State for LazyColumn to track scroll
     val lazyListState = rememberLazyListState()
+    val shelfScrollEnabled = rememberCapsuleShelfScrollEnabled(lazyListState)
 
     // Both titles and the artwork share one measured, reversible scroll progress.
     val titleMotion = rememberDetailHeaderMotion(
@@ -365,7 +368,12 @@ fun AlbumScreen(
                         )
                     }
                     item(key = "other_versions_list") {
-                        LazyRow(flingBehavior = rememberCapsuleFlingBehavior(), overscrollEffect = null) {
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth().height(gridShelfHeight()),
+                            flingBehavior = rememberCapsuleFlingBehavior(),
+                            userScrollEnabled = shelfScrollEnabled,
+                            overscrollEffect = null,
+                        ) {
                             items(
                                 items = otherVersions.distinctBy { it.id },
                                 key = { it.id },
