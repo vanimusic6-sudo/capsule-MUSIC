@@ -120,7 +120,6 @@ import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.extensions.move
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.util.UUID
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
@@ -172,45 +171,41 @@ fun LibraryPlaylistsScreen(
 
     val topSize by viewModel.topValue.collectAsState(initial = 50)
 
-    val likedPlaylist =
+    // Match LibraryMixScreen: synthetic tiles must keep stable IDs across
+    // recomposition. Random UUIDs here made every scroll/selection invalidate
+    // four visible cards and could disturb lazy layout anchoring.
+    val likedName = stringResource(R.string.liked)
+    val likedPlaylist = remember(likedName) {
         Playlist(
-            playlist = PlaylistEntity(
-                id = UUID.randomUUID().toString(),
-                name = stringResource(R.string.liked)
-            ),
+            playlist = PlaylistEntity(id = "capsule:library:liked", name = likedName),
             songCount = 0,
             songThumbnails = emptyList(),
         )
-
-    val downloadPlaylist =
+    }
+    val downloadName = stringResource(R.string.offline)
+    val downloadPlaylist = remember(downloadName) {
         Playlist(
-            playlist = PlaylistEntity(
-                id = UUID.randomUUID().toString(),
-                name = stringResource(R.string.offline)
-            ),
+            playlist = PlaylistEntity(id = "capsule:library:downloaded", name = downloadName),
             songCount = 0,
             songThumbnails = emptyList(),
         )
-
-    val topPlaylist =
+    }
+    val topName = stringResource(R.string.my_top) + " $topSize"
+    val topPlaylist = remember(topName) {
         Playlist(
-            playlist = PlaylistEntity(
-                id = UUID.randomUUID().toString(),
-                name = stringResource(R.string.my_top) + " $topSize"
-            ),
+            playlist = PlaylistEntity(id = "capsule:library:top", name = topName),
             songCount = 0,
             songThumbnails = emptyList(),
         )
-
-    val cachePlaylist =
+    }
+    val cacheName = stringResource(R.string.cached_playlist)
+    val cachePlaylist = remember(cacheName) {
         Playlist(
-            playlist = PlaylistEntity(
-                id = UUID.randomUUID().toString(),
-                name = stringResource(R.string.cached_playlist)
-            ),
+            playlist = PlaylistEntity(id = "capsule:library:cached", name = cacheName),
             songCount = 0,
             songThumbnails = emptyList(),
         )
+    }
 
     val (showLiked) = rememberPreference(ShowLikedPlaylistKey, true)
     val (showDownloaded) = rememberPreference(ShowDownloadedPlaylistKey, true)
