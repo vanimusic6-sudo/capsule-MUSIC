@@ -43,6 +43,8 @@ enum class CapsuleVideoFailure {
 
 internal object CapsuleVideoIpc {
     const val METHOD_RESOLVE = "resolve"
+    /** Local isolated-process bootstrap only; never fetches a YouTube URL. */
+    const val METHOD_PREPARE = "prepare"
     const val METHOD_CANCEL = "cancel"
     const val METHOD_INVALIDATE = "invalidate"
     const val EXTRA_REQUEST_ID = "request_id"
