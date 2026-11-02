@@ -172,7 +172,9 @@ class CapsuleVideoSessionTest {
             audioItag = 140, audioLastModified = 170000000L, audioLength = 3_840_000L,
             clientName = 101, clientVersion = "1.2.0", durationMs = 240_000L,
         )
-        val item = MediaItem.Builder().setMediaId("song").setTag(
+        val item = MediaItem.Builder().setMediaId("song")
+            .setUri("https://rr.googlevideo.com/videoplayback")
+            .setTag(
             YouTubeVideoResolver.ResolvedVideo(
                 sourceMediaId = "song", videoId = "abcdefghijk",
                 videoStreamUrl = "https://rr.googlevideo.com/videoplayback?expire=1999999999",
