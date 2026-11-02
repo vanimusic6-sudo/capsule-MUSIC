@@ -34,6 +34,12 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
         if (!requestId.matches(Regex("[a-fA-F0-9-]{36}"))) {
             return CapsuleVideoIpc.failureBundle(CapsuleVideoFailure.UNKNOWN, "Invalid VIDEO request id")
         }
+        if (method == CapsuleVideoIpc.METHOD_PREPARE) {
+            // Crossing this Binder boundary starts the isolated process while
+            // the foreground request is still matching a MUSIC clip. No
+            // Youtube requests, parsers or player clients are invoked here.
+            return Bundle.EMPTY
+        }
         if (method == CapsuleVideoIpc.METHOD_CANCEL) {
             VideoExtractionRequests.cancel(requestId)
             return Bundle.EMPTY
