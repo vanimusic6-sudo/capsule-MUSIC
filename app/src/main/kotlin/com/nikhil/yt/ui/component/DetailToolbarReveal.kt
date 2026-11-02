@@ -128,16 +128,16 @@ internal class DetailHeaderMotionState(
         if (clip.width <= 1f || clip.height <= 1f || !clip.width.isFinite() ||
             !clip.height.isFinite()) return@with
 
-        val scale = geometry.scale
+        val titleScale = geometry.scale
         // Calculate horizontal overflow from lines ACTUALLY intersecting the
         // viewport. An already-disappeared second line cannot dim the first.
         val visibleLines = (0 until layout.lineCount).filter { line ->
-            origin.y + layout.getLineTop(line) * scale < clip.bottom &&
-                origin.y + layout.getLineBottom(line) * scale > clip.top
+            origin.y + layout.getLineTop(line) * titleScale < clip.bottom &&
+                origin.y + layout.getLineBottom(line) * titleScale > clip.top
         }
-        val right = visibleLines.maxOfOrNull { origin.x + layout.getLineRight(it) * scale }
+        val right = visibleLines.maxOfOrNull { origin.x + layout.getLineRight(it) * titleScale }
             ?: clip.right
-        val left = visibleLines.minOfOrNull { origin.x + layout.getLineLeft(it) * scale }
+        val left = visibleLines.minOfOrNull { origin.x + layout.getLineLeft(it) * titleScale }
             ?: clip.left
         val horizontalFeather = minOf(featherPx, clip.width * .27f).coerceAtLeast(1f)
         val rightFade = detailTitleFeatherStrength(right - clip.right, horizontalFeather)
@@ -148,12 +148,12 @@ internal class DetailHeaderMotionState(
         // top bar. Keep the FIRST line at full opacity throughout the handoff.
         val lastLine = layout.lineCount - 1
         val lastLineTop = if (lastLine > 0) {
-            origin.y + layout.getLineTop(lastLine) * scale
+            origin.y + layout.getLineTop(lastLine) * titleScale
         } else Float.POSITIVE_INFINITY
         val lastLineBottom = if (lastLine > 0) {
-            origin.y + layout.getLineBottom(lastLine) * scale
+            origin.y + layout.getLineBottom(lastLine) * titleScale
         } else Float.NEGATIVE_INFINITY
-        val firstLineBottom = origin.y + layout.getLineBottom(0) * scale
+        val firstLineBottom = origin.y + layout.getLineBottom(0) * titleScale
         val lowerLineVisible = lastLine > 0 && lastLineTop < clip.bottom &&
             lastLineBottom > clip.top && firstLineBottom < clip.bottom
         val trailingFeather = if (lowerLineVisible) {
@@ -171,7 +171,7 @@ internal class DetailHeaderMotionState(
         clipRect(clip.left, clip.top, clip.right, clip.bottom) {
             withTransform({
                 translate(origin.x, origin.y)
-                scale(scale, scale, Offset.Zero)
+                scale(titleScale, titleScale, Offset.Zero)
             }) {
                 drawText(layout, color = color, alpha = 1f)
             }
