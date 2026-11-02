@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - 'fix/video-startup-buffer-artwork-20261102'
+      - 'fix/video-stream-strategy-hq-artwork-20261102'
   workflow_dispatch:
 
 permissions:
@@ -43,6 +44,8 @@ jobs:
           --tests 'com.nikhil.yt.playback.video.CapsuleVideoSessionTest'
           --tests 'com.nikhil.yt.ui.component.ArtworkResolutionTest'
           --tests 'com.nikhil.yt.ui.player.PlayerArtworkReliabilityTest'
+          --tests 'com.nikhil.yt.ui.player.CapsulePlayerArtworkQualityTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveContentTest'
           --stacktrace --no-daemon --max-workers=2
       - name: Verify isolated clip route preference and anti-bot quarantine
         run: >-
