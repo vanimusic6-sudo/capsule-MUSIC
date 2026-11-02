@@ -204,6 +204,10 @@ internal class CapsuleVideoDirectMediaSourceFactory(
             .connectTimeout(5, TimeUnit.SECONDS)
             .readTimeout(10, TimeUnit.SECONDS)
             .callTimeout(20, TimeUnit.SECONDS)
+            // Never relay UMP session/visitor metadata to an HTTP redirect
+            // target. Redirect instructions inside UMP are validated separately.
+            .followRedirects(false)
+            .followSslRedirects(false)
             .retryOnConnectionFailure(false)
             .connectionPool(okhttp3.ConnectionPool(2, 45L, TimeUnit.SECONDS))
             .build()
