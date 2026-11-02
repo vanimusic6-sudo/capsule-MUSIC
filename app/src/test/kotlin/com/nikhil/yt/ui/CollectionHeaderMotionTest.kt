@@ -237,6 +237,9 @@ class CollectionHeaderMotionTest {
                             x >= clip!!.left - 2 && x <= clip.right + 2 && y >= clip.top - 2 && y <= clip.bottom + 2)
                     }
                 }
+                val file = File("build/reports/ui-previews/title-single-owner-$name.png")
+                file.parentFile.mkdirs()
+                file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
                 if (fadeEnd != null && clip != null) {
                     var tailPeak = 0
                     for (y in clip.top.toInt().coerceAtLeast(0) until clip.bottom.toInt().coerceAtMost(bitmap.height)) {
@@ -244,12 +247,9 @@ class CollectionHeaderMotionTest {
                             tailPeak = maxOf(tailPeak, android.graphics.Color.green(bitmap.getPixel(x, y)))
                         }
                     }
-                    assertTrue("A hidden second line needs a soft continuation edge: tail=$tailPeak body=$peak",
+                    assertTrue("A hidden second line needs a soft continuation edge: tail=$tailPeak body=$peak fadeEnd=$fadeEnd clip=$clip",
                         tailPeak in 1 until peak - 20)
                 }
-                val file = File("build/reports/ui-previews/title-single-owner-$name.png")
-                file.parentFile.mkdirs()
-                file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
                 bitmap.recycle()
             }
             return pixels to peak
