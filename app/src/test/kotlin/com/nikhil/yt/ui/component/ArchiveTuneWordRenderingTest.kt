@@ -42,6 +42,7 @@ class ArchiveTuneWordRenderingTest {
         val fontSize = mutableStateOf(40.sp)
         var textLayouts = 0
         var measures = 0
+        var laidOutFontSize = 0.sp
         compose.setContent {
             Box(Modifier.size(300.dp, 120.dp).background(Color.Black).testTag("lyrics-word-scene")) {
                 ArchiveTuneWord("Capsule", 0L, 2_000L, position, false, fontSize.value, Color.White,
@@ -51,7 +52,7 @@ class ArchiveTuneWordRenderingTest {
                         val word = measurable.measure(constraints)
                         layout(word.width, word.height) { word.place(0, 0) }
                     },
-                    onTextLayout = { textLayouts++ },
+                    onTextLayout = { textLayouts++; laidOutFontSize = it.layoutInput.style.fontSize },
                 )
             }
         }
@@ -75,8 +76,11 @@ class ArchiveTuneWordRenderingTest {
         assertEquals(baselineLayouts, textLayouts)
         assertEquals(baselineMeasures, measures)
         compose.runOnIdle { fontSize.value = 48.sp }
-        compose.mainClock.advanceTimeByFrame(); compose.waitForIdle()
+        compose.mainClock.advanceTimeUntil(timeoutMillis = 1_000L) { textLayouts > baselineLayouts }
+        compose.waitForIdle()
         assertTrue("An actual typography change must still invalidate the layout", textLayouts > baselineLayouts)
+        assertEquals(48.sp, laidOutFontSize)
+        assertTrue(measures > baselineMeasures)
     }
 
     @Test fun paintPreservesTheExistingWaveAndCompletedLineTail() {
