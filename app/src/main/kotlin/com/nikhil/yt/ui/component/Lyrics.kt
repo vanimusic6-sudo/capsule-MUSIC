@@ -12,6 +12,7 @@ import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.res.Configuration
+import android.os.SystemClock
 import android.os.Build
 import android.widget.Toast
 import androidx.annotation.RequiresApi
@@ -469,7 +470,7 @@ private fun KaraokeWord(
 
 
 @Composable
-private fun ArchiveTuneWord(
+internal fun ArchiveTuneWord(
     text: String,
     startTime: Long,
     endTime: Long,
@@ -832,6 +833,10 @@ fun Lyrics(
         mutableIntStateOf(0)
     }
 
+    // Media3 1.11's dynamic scheduler publishes a coarse position even when
+    // queried at display cadence. ArchiveTune's clock bridges those samples.
+    val playbackClock = remember(playerConnection.player, mediaMetadata?.id) { LyricsPlaybackClock() }
+    val clockDiagnostics = remember(mediaMetadata?.id) { LyricsClockDiagnostics() }
     val playbackPositionState = remember { mutableLongStateOf(0L) }
     var currentPlaybackPosition by playbackPositionState
     var pausedSeekLineIndex by remember(mediaMetadata?.id, lyrics) {
@@ -1103,11 +1108,14 @@ fun Lyrics(
     var seekRevision by remember(playerConnection.player) { mutableIntStateOf(0) }
     DisposableEffect(playerConnection.player) {
         val listener = object : Player.Listener {
-            override fun onPositionDiscontinuity(
-                oldPosition: Player.PositionInfo,
-                newPosition: Player.PositionInfo,
-                reason: Int,
-            ) { seekRevision++ }
+            override fun onEvents(player: Player, events: Player.Events) {
+                if (events.contains(Player.EVENT_POSITION_DISCONTINUITY) ||
+                    events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION) ||
+                    events.contains(Player.EVENT_IS_PLAYING_CHANGED) ||
+                    events.contains(Player.EVENT_PLAYBACK_STATE_CHANGED) ||
+                    events.contains(Player.EVENT_PLAYBACK_PARAMETERS_CHANGED)
+                ) seekRevision++
+            }
         }
         playerConnection.player.addListener(listener)
         onDispose { playerConnection.player.removeListener(listener) }
@@ -1137,6 +1145,7 @@ fun Lyrics(
             return@LaunchedEffect
         }
 
+        playbackClock.reset(sliderPositionProvider() ?: playerConnection.player.currentPosition)
         /*
          * Update first, sleep second. Velune did the opposite, so reopening lyrics or returning
          * from the background could show the stale line until the next polling/animation beat.
@@ -1155,7 +1164,17 @@ fun Lyrics(
                 isSeeking = seekingNow
             }
 
-            val position = sliderPosition ?: playerConnection.player.currentPosition
+            val player = playerConnection.player
+            val sourcePosition = sliderPosition ?: player.currentPosition
+            val sampleTimeNanos = SystemClock.elapsedRealtimeNanos()
+            val position = playbackClock.update(
+                sourcePositionMs = sourcePosition,
+                sampleTimeNanos = sampleTimeNanos,
+                speed = player.playbackParameters.speed,
+                isAdvancing = player.isPlaying && !seekingNow,
+                durationMs = player.duration,
+            )
+            clockDiagnostics.sample(sourcePosition, position, sampleTimeNanos)
             val newLineIndex =
                 if (hasPausedSeekPreview && sliderPosition == null) {
                     pausedSeekLineIndex
@@ -1186,7 +1205,9 @@ fun Lyrics(
             }
 
             // Seek/listener and slider changes restart this effect with an immediate sample.
-            if (!isPlaying) return@LaunchedEffect
+            // Actual decoder readiness matters: the UI's play intent also stays
+            // true while buffering. A media event restarts us when sound resumes.
+            if (!player.isPlaying) return@LaunchedEffect
 
             if (needsFineProgress && !isManualScrolling) {
                 withInfiniteAnimationFrameNanos { }
