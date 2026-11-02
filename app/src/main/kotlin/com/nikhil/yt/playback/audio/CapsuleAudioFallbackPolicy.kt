@@ -3,6 +3,7 @@ package com.nikhil.yt.playback.audio
 import com.nikhil.yt.constants.AudioClientOrder
 import com.nikhil.yt.innertube.YouTubeFailureKind
 import java.util.Locale
+import java.net.UnknownHostException
 
 /**
  * Small, bounded client plan layered on top of InnerTubeX.
@@ -189,3 +190,14 @@ internal object CapsuleAudioFallbackPolicy {
     private fun normalize(profileId: String): String =
         profileId.substringBefore('@').trim().uppercase(Locale.US)
 }
+
+/**
+ * DNS resolution is shared transport state, not a verdict against an InnerTube profile.
+ * On a VPN/default-network hand-off every client reaches the same unresolved YouTube
+ * endpoint. Rotating identities only duplicates requests and wrongly quarantines
+ * previously healthy profiles for five minutes.
+ */
+internal fun Throwable.isSharedAudioDnsFailure(): Boolean =
+    generateSequence(this as Throwable?) { it.cause }
+        .take(12)
+        .any { it is UnknownHostException }
