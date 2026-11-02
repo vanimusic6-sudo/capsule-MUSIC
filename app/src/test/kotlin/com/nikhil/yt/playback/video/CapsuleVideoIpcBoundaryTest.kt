@@ -35,6 +35,37 @@ class CapsuleVideoIpcBoundaryTest {
             "https://example.org/" + "a".repeat(17_000)
         )) assertFalse(url, CapsuleVideoIpc.isSafeStreamUrl(url))
     }
+    @Test fun nativeSabrSpecRoundTripsThroughIsolatedExtractorIpc() {
+        val spec = com.nikhil.yt.innertube.video.CapsuleSabrVideoSpec(
+            ustreamerConfigBase64 = "AQIDBAUGBwg=",
+            videoItag = 136, videoLastModified = 170000000L, videoLength = 48_000_000L,
+            audioItag = 140, audioLastModified = 170000000L, audioLength = 3_840_000L,
+            clientName = 101, clientVersion = "1.2.0", durationMs = 240_000L,
+        )
+        val model = CapsuleResolvedVideo(
+            videoId = "abcdefghijk",
+            videoUrl = "https://rr.googlevideo.com/videoplayback?expire=1999999999",
+            qualityLabel = "720p SABR", width = 1280, height = 720,
+            videoItag = 136, audioItag = 140, expiresAtMs = 1_999_999_999_000L,
+            delivery = com.nikhil.yt.innertube.video.CapsuleVideoDelivery.SABR,
+            userAgent = "VisionOS", sabrSpec = spec,
+        )
+        val delivered = CapsuleVideoIpc.resolvedFromBundle(
+            CapsuleVideoIpc.successBundle(model), model.videoId, 1_800_000_000_000L,
+        )
+        assertNotNull(delivered)
+        assertTrue(delivered!!.sabrSpec!!.isValid())
+        assertTrue(delivered.delivery == com.nikhil.yt.innertube.video.CapsuleVideoDelivery.SABR)
+
+        val missing = CapsuleVideoIpc.successBundle(model).apply {
+            remove(CapsuleVideoIpc.EXTRA_SABR)
+        }
+        assertNull(CapsuleVideoIpc.resolvedFromBundle(missing, model.videoId, 1_800_000_000_000L))
+        val corrupt = CapsuleVideoIpc.successBundle(model)
+        corrupt.getBundle(CapsuleVideoIpc.EXTRA_SABR)!!.putLong("v_length", Long.MAX_VALUE)
+        assertNull(CapsuleVideoIpc.resolvedFromBundle(corrupt, model.videoId, 1_800_000_000_000L))
+    }
+
     @Test fun consumerRechecksUntrustedBundlesBeforeCachingThem() {
         fun response() = Bundle().apply {
             putBoolean(CapsuleVideoIpc.EXTRA_SUCCESS, true)
