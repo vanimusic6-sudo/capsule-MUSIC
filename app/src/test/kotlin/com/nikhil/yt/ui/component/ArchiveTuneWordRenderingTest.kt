@@ -76,7 +76,10 @@ class ArchiveTuneWordRenderingTest {
         assertEquals(baselineLayouts, textLayouts)
         assertEquals(baselineMeasures, measures)
         compose.runOnIdle { fontSize.value = 48.sp }
-        compose.mainClock.advanceTimeUntil(timeoutMillis = 1_000L) { textLayouts > baselineLayouts }
+        // Text layout/draw is driven by Android as well as the Compose clock.
+        // Let host passes finish instead of waiting only on virtual animation time.
+        compose.mainClock.autoAdvance = true
+        compose.waitUntil(timeoutMillis = 5_000L) { textLayouts > baselineLayouts && laidOutFontSize == 48.sp }
         compose.waitForIdle()
         assertTrue("An actual typography change must still invalidate the layout", textLayouts > baselineLayouts)
         assertEquals(48.sp, laidOutFontSize)
