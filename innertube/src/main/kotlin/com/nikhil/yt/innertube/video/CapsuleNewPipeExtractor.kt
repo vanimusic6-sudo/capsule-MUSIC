@@ -38,9 +38,11 @@ data class CapsuleNewPipeResolved(
     val maxHeight: Int = 720,
     val dashManifest: String? = null,
     val userAgent: String? = null,
+    /** The future native Media3 SABR transport reads this, never NewPipe's regular URL loader. */
+    val sabrSpec: CapsuleSabrVideoSpec? = null,
 )
 
-enum class CapsuleVideoDelivery { PROGRESSIVE, HLS, DASH }
+enum class CapsuleVideoDelivery { PROGRESSIVE, HLS, DASH, SABR }
 
 enum class CapsuleNewPipeFailure {
     UNAVAILABLE, NETWORK, EXTRACTOR, RATE_LIMITED, BOT_BLOCKED, UNKNOWN
