@@ -25,6 +25,17 @@ internal class CapsuleVideoRouteHealth(private val clock: () -> Long = System::n
     private val botQuietUntil = mutableMapOf<CapsuleVideoRoute, Long>()
     private var lastSuccessful: CapsuleVideoRoute? = null
 
+    /**
+     * A new isolated extractor process should start at the last backend that
+     * actually produced a playable clip, instead of paying two 4s failed
+     * direct-route budgets again after every app/process restart.
+     * Runtime successes/failures take precedence over this saved hint.
+     */
+    @Synchronized fun restorePreferredRoute(wireName: String?) {
+        if (lastSuccessful != null) return
+        lastSuccessful = CapsuleVideoRoute.entries.firstOrNull { it.wireName == wireName }
+    }
+
     @Synchronized fun order(failedBackend: String?): List<CapsuleVideoRoute> {
         val now = clock()
         return CapsuleVideoRoute.entries.sortedWith(compareBy<CapsuleVideoRoute>
