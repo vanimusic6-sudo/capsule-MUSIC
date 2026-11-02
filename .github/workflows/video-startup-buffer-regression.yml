@@ -1,0 +1,62 @@
+name: Capsule VIDEO Startup and Buffer Regression
+
+on:
+  push:
+    branches:
+      - 'fix/video-startup-buffer-artwork-20261102'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: video-startup-buffer-regression-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  video-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.5.0'
+      - name: Prepare Android SDK and locale
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [[ -x "$SDKMANAGER" ]]; then
+            "$SDKMANAGER" 'platforms;android-37.1'
+          fi
+          echo 'unqualifiedResLocale=en-US' > app/src/main/res/resources.properties
+      - name: Verify VIDEO buffers, byte-resume, and artwork
+        run: >-
+          gradle :app:testUniversalDebugUnitTest
+          --tests 'com.nikhil.yt.playback.video.CapsuleVideoChunkedDataSourceTest'
+          --tests 'com.nikhil.yt.playback.video.CapsuleVideoBufferPolicyTest'
+          --tests 'com.nikhil.yt.playback.video.CapsuleVideoSessionTest'
+          --tests 'com.nikhil.yt.ui.component.ArtworkResolutionTest'
+          --tests 'com.nikhil.yt.ui.player.PlayerArtworkReliabilityTest'
+          --stacktrace --no-daemon --max-workers=2
+      - name: Verify isolated clip route preference and anti-bot quarantine
+        run: >-
+          gradle :innertube:test
+          --tests 'com.nikhil.yt.innertube.video.CapsuleVideoRoutesTest'
+          --stacktrace --no-daemon --max-workers=2
+      - name: Save test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capsule-video-buffer-regressions
+          path: |
+            app/build/test-results/
+            app/build/reports/tests/
+            innertube/build/test-results/
+          if-no-files-found: warn
+          retention-days: 14
