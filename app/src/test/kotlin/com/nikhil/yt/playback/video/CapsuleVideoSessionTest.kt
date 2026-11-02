@@ -329,6 +329,10 @@ class CapsuleVideoSessionTest {
         f.music.position = 9_700L; f.clip.buffered = 9_800L; f.clip.frame()
         repeat(5) { f.clip.event() }
         assertEquals(listOf(8_000L), f.clip.seeks)
+        // 400ms of extra buffered video used to trigger a premature
+        // second seek, then starved and failed the 12s readiness watchdog.
+        f.clip.buffered = 10_100L; f.clip.event()
+        assertEquals(listOf(8_000L), f.clip.seeks)
         f.clip.buffered = 15_000L; f.clip.event()
         assertEquals(listOf(8_000L, 9_700L), f.clip.seeks)
         f.music.position = 10_200L; f.clip.frame()
