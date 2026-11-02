@@ -146,6 +146,46 @@ class CapsuleVideoChunkedDataSourceTest {
         assertEquals(C.LENGTH_UNSET.toLong(), cdn.requests.last().length)
     }
 
+    @Test
+    fun peerResetResumesOnlyMissingVideoRangeWithoutLostOrDuplicateBytes() {
+        val bytes = ByteArray(5_000) { (it % 251).toByte() }
+        val cdn = MemoryCdn(bytes)
+        var resetOnce = false
+        var bytesBeforeReset = 0
+        val flaky = object : DataSource by cdn {
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                if (!resetOnce && bytesBeforeReset >= 600) {
+                    resetOnce = true
+                    throw java.net.SocketException("Connection reset")
+                }
+                return cdn.read(buffer, offset, length).also {
+                    if (it > 0) bytesBeforeReset += it
+                }
+            }
+        }
+        val source = CapsuleVideoChunkedDataSource(flaky, chunkBytes = 1024)
+        try {
+            assertEquals(bytes.size.toLong(), source.open(DataSpec(uri)))
+            assertArrayEquals(bytes, readAll(source))
+        } finally {
+            source.close()
+        }
+        assertTrue(resetOnce)
+        assertEquals(600L, cdn.requests[1].position)
+        assertEquals(424L, cdn.requests[1].length)
+        assertEquals(1024L, cdn.requests[2].position)
+    }
+
+    @Test
+    fun onlySocketResetsAreEligibleForInPlaceVideoResume() {
+        assertTrue(isRecoverableVideoSocketReset(java.net.SocketException("Connection reset by peer")))
+        assertTrue(isRecoverableVideoSocketReset(java.io.IOException(
+            "wrapped", java.net.SocketException("ECONNRESET"))))
+        org.junit.Assert.assertFalse(isRecoverableVideoSocketReset(java.net.SocketTimeoutException("Read timed out")))
+        org.junit.Assert.assertFalse(isRecoverableVideoSocketReset(java.net.UnknownHostException("bad DNS")))
+        org.junit.Assert.assertFalse(isRecoverableVideoSocketReset(java.io.InterruptedIOException("cancelled")))
+    }
+
     @Test fun youtubeRangeRefusalNeverReopensTheEntireVideo() {
         val cdn = MemoryCdn(ByteArray(7_000), supportsRanges = false)
         val source = CapsuleVideoChunkedDataSource(cdn, chunkBytes = 1024)
