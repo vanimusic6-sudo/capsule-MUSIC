@@ -82,6 +82,16 @@ object CapsuleDirectVideoExtractor {
         })
         val response = post("https://youtubei.googleapis.com/youtubei/v1/player?prettyPrint=false&t=${nonce(9)}&id=$videoId",
             payload, deadline, clientId = identity.clientId, clientVersion = identity.clientVersion, userAgent = identity.userAgent)
+        // The actual new architecture runs over SABR/UMP in a dedicated
+        // Media3 source. Prefer the already-returned serverAbrStreamingUrl
+        // without a second /player request or a new visitor bootstrap.
+        // Keep all existing URL-based direct backends as bounded reserves.
+        if (identity == YouTubeClient.VISIONOS && !muxedOnly) {
+            selectNativeSabrVideo(
+                response, videoId, quality, identity.clientId.toIntOrNull() ?: 101,
+                identity.clientVersion, identity.userAgent,
+            )?.let { return it }
+        }
         return requireDirectVideo(response, videoId, quality, muxedOnly,
             onRejectedSession = { visitors.remove(identity.clientId) }).copy(userAgent = identity.userAgent)
     }
@@ -237,6 +247,87 @@ internal fun requireDirectVideo(
     throw CapsuleDirectVideoException(CapsuleNewPipeFailure.EXTRACTOR,
         "$reason:formats=${formats.size},cipher=$cipher,n=$challenged,hls=${data?.get("hlsManifestUrl") != null},muxed=$muxedOnly",
         penalizeRoute = false)
+}
+
+/**
+ * Accept a signed SABR endpoint from the same trusted /player response as the
+ * ordinary VisionOS streams. Only MP4/H.264 + AAC formats with known lengths
+ * can enter Media3; the UMP engine pins both itags for the entire session.
+ *
+ * Experimental VIDEO-only primary path. Audio resolution is unchanged.
+ */
+internal fun selectNativeSabrVideo(
+    response: JsonObject,
+    videoId: String,
+    quality: CapsuleNewPipeQuality,
+    clientName: Int,
+    clientVersion: String,
+    userAgent: String,
+    nowMs: Long = System.currentTimeMillis(),
+): CapsuleNewPipeResolved? {
+    if ((response["playabilityStatus"] as? JsonObject)
+            ?.get("status")?.jsonPrimitive?.contentOrNull != "OK") return null
+    val returnedId = (response["videoDetails"] as? JsonObject)
+        ?.get("videoId")?.jsonPrimitive?.contentOrNull
+    if (returnedId != null && returnedId != videoId) return null
+    val data = response["streamingData"] as? JsonObject ?: return null
+    val url = (data["serverAbrStreamingUrl"] as? JsonPrimitive)?.contentOrNull ?: return null
+    if (!VideoStreamValidation.isSupportedUrl(url)) return null
+    val expires = runCatching {
+        URI(url).rawQuery.orEmpty().split('&')
+            .firstOrNull { it.startsWith("expire=") }
+            ?.substringAfter('=')?.toLongOrNull()?.times(1000L)
+    }.getOrNull() ?: return null
+    if (!VideoStreamValidation.isFresh(expires, nowMs)) return null
+    val config = (((response["playerConfig"] as? JsonObject)
+        ?.get("mediaCommonConfig") as? JsonObject)
+        ?.get("mediaUstreamerRequestConfig") as? JsonObject)
+        ?.get("videoPlaybackUstreamerConfig")?.jsonPrimitive?.contentOrNull
+        ?: return null
+    val formats = (data["adaptiveFormats"] as? JsonArray).orEmpty()
+        .mapNotNull { it as? JsonObject }
+    fun JsonObject.text(key: String): String? = (get(key) as? JsonPrimitive)?.contentOrNull
+    fun JsonObject.int(key: String): Int = text(key)?.toIntOrNull() ?: 0
+    fun JsonObject.number(key: String): Long = text(key)?.toLongOrNull() ?: 0L
+    fun eligible(f: JsonObject) = f.int("itag") > 0 &&
+        f.number("contentLength") in 1L..4_000_000_000L &&
+        f.text("signatureCipher") == null
+    val video = formats.filter { eligible(it) &&
+        it.text("mimeType").orEmpty().startsWith("video/mp4;") &&
+        it.text("mimeType").orEmpty().contains("avc1.") &&
+        it.int("height") in 1..quality.maxHeight
+    }.maxWithOrNull(compareBy<JsonObject> { it.int("height") }
+        .thenBy { it.int("fps") }.thenBy { it.int("bitrate") }) ?: return null
+    val audio = formats.filter { eligible(it) &&
+        it.text("mimeType").orEmpty().startsWith("audio/mp4;") &&
+        it.text("mimeType").orEmpty().contains("mp4a.")
+    }.maxByOrNull { it.int("bitrate") } ?: return null
+    val duration = video.number("approxDurationMs").takeIf { it > 0 }
+        ?: (response["videoDetails"] as? JsonObject)?.get("lengthSeconds")
+            ?.jsonPrimitive?.contentOrNull?.toLongOrNull()?.times(1000L)
+        ?: return null
+    val spec = CapsuleSabrVideoSpec(
+        ustreamerConfigBase64 = config,
+        videoItag = video.int("itag"),
+        videoLastModified = video.number("lastModified"),
+        videoLength = video.number("contentLength"),
+        audioItag = audio.int("itag"),
+        audioLastModified = audio.number("lastModified"),
+        audioLength = audio.number("contentLength"),
+        clientName = clientName,
+        clientVersion = clientVersion,
+        durationMs = duration,
+    )
+    if (!spec.isValid()) return null
+    val height = video.int("height")
+    return CapsuleNewPipeResolved(
+        videoId = videoId, videoUrl = url, audioUrl = null,
+        qualityLabel = "${height}p SABR", width = video.int("width"), height = height,
+        videoItag = video.int("itag"), audioItag = audio.int("itag"),
+        expiresAtMs = expires, backend = "native-sabr-visionos",
+        delivery = CapsuleVideoDelivery.SABR, maxHeight = quality.maxHeight,
+        userAgent = userAgent, sabrSpec = spec,
+    )
 }
 
 internal fun selectAndroidReelVideo(
