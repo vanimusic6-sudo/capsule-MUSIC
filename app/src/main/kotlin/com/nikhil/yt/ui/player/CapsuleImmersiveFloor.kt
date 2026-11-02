@@ -78,7 +78,8 @@ internal fun immersiveArtworkCandidates(mediaId: String?, original: String?): Li
     return listOf(
         "https://i.ytimg.com/vi/$mediaId/maxresdefault.jpg",
         "https://i.ytimg.com/vi/$mediaId/hq720.jpg",
-        "https://i.ytimg.com/vi/$mediaId/hqdefault.jpg",
+        // No 480x360 hqdefault preview in the expanded player.
+        // If no high-quality frame exists, retain the neutral canvas.
         base,
     ).distinct()
 }
@@ -140,7 +141,7 @@ internal fun rememberImmersiveEdgeColor(
             val landscape = image.width.toFloat() / image.height.coerceAtLeast(1) >= 4f / 3f
             // maxresdefault/hq720 may return a small 'unavailable thumbnail' image with HTTP
             // 200. Those must not replace the actual song cover or contaminate its palette.
-            if (isYtimg && index < 2 && (!landscape || image.width < 200)) continue
+            if (isYtimg && (!landscape || image.width < 224)) continue
 
             resultTone = withContext(Dispatchers.Default) {
                 // ORIGINAL Immersion colour extraction: the modal background
