@@ -5,6 +5,7 @@ on:
     branches:
       - 'fix/video-startup-buffer-artwork-20261102'
       - 'fix/video-stream-strategy-hq-artwork-20261102'
+      - 'feature/native-sabr-video-20261102'
   workflow_dispatch:
 
 permissions:
@@ -46,6 +47,12 @@ jobs:
           --tests 'com.nikhil.yt.ui.player.PlayerArtworkReliabilityTest'
           --tests 'com.nikhil.yt.ui.player.CapsulePlayerArtworkQualityTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveContentTest'
+          --tests 'com.nikhil.yt.playback.video.sabr.SabrProtoTest'
+          --tests 'com.nikhil.yt.playback.video.sabr.SabrUmpTest'
+          --tests 'com.nikhil.yt.playback.video.sabr.SabrMessagesTest'
+          --tests 'com.nikhil.yt.playback.video.sabr.SabrBufferTest'
+          --tests 'com.nikhil.yt.playback.video.sabr.SabrSeekLogicTest'
+          --tests 'com.nikhil.yt.playback.video.sabr.SabrProtectionTest'
           --stacktrace --no-daemon --max-workers=2
       - name: Verify isolated clip route preference and anti-bot quarantine
         run: >-
