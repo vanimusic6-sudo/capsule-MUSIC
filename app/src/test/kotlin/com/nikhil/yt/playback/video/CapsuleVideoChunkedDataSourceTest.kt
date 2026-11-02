@@ -36,6 +36,7 @@ class CapsuleVideoChunkedDataSourceTest {
         var timedOut = false
         var reads = 0
         val upstream = object : DataSource by cdn {
+            override fun getResponseHeaders() = cdn.responseHeaders
             override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
                 if (++reads == 3 && !timedOut) {
                     timedOut = true

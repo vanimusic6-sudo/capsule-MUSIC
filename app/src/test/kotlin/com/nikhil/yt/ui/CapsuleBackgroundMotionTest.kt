@@ -1,6 +1,5 @@
 package com.nikhil.yt.ui
 
-import java.io.File
 import com.nikhil.yt.ui.player.CONSTELLATION_PERIOD_MS
 import com.nikhil.yt.ui.player.CapsuleBackgroundEffect
 import com.nikhil.yt.ui.player.capsuleBackgroundAngle
@@ -59,29 +58,7 @@ class CapsuleBackgroundMotionTest {
         }
     }
 
-    @Test fun proceduralBackgroundPauseKeepsItsCurrentAnimationPhase() {
-        val candidates =
-            listOf(
-                File("src/main/kotlin/com/nikhil/yt/ui/player/CapsuleBackgroundEffects.kt"),
-                File("app/src/main/kotlin/com/nikhil/yt/ui/player/CapsuleBackgroundEffects.kt"),
-            )
-        val source =
-            candidates.firstOrNull(File::isFile)?.readText()
-                ?: error("Could not find CapsuleBackgroundEffects.kt")
+    // Timeline cadence, pause/resume and recomposition counts are verified by
+    // CapsuleBackgroundClockTest with a real Compose frame clock.
 
-        val normalized = source.replace(Regex("\\s+"), " ")
-        assertTrue(normalized.contains("running: Boolean = true"))
-        assertTrue(
-            normalized.contains(
-                "if (!isVisible || !running || !motionEnabled) return@LaunchedEffect",
-            ),
-        )
-        assertTrue(normalized.contains("time.longValue += delta"))
-        assertTrue(normalized.contains("running = animated && motionEnabled"))
-        assertFalse(
-            normalized.contains(
-                "animated && motionEnabled && capsuleBackgroundNeedsClock(effect)",
-            ),
-        )
-    }
 }

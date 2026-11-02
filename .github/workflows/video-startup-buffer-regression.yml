@@ -49,6 +49,7 @@ jobs:
           --tests 'com.nikhil.yt.playback.AudioCdnSkipBurstPolicyTest'
           --tests 'com.nikhil.yt.ui.CapsuleBackgroundMotionTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleBackgroundClockTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleBackgroundShaderTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleVideoArtworkTransitionTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleVideoMorphPixelsTest'
           --tests 'com.nikhil.yt.playback.video.*'

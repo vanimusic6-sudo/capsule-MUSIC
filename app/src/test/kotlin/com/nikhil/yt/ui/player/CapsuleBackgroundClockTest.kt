@@ -49,7 +49,9 @@ class CapsuleBackgroundClockTest {
         compose.runOnIdle { before = timeline.value }
         compose.mainClock.advanceTimeBy(1_000L)
         compose.runOnIdle { assertEquals(before, timeline.value); running.value = true }
-        repeat(3) { compose.mainClock.advanceTimeByFrame() }
-        compose.runOnIdle { assertTrue(timeline.value - before in 1L..64L) }
+        compose.waitForIdle()
+        repeat(3) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
+        compose.runOnIdle { assertTrue("Resume must advance without including paused time: ${timeline.value - before}ms",
+            timeline.value - before in 1L..64L) }
     }
 }

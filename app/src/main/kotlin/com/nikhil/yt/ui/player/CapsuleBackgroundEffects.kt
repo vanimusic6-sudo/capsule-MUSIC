@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
@@ -170,6 +171,24 @@ internal fun CapsuleProceduralBackground(
             )
             else -> null
         }
+        val extent = max(size.width, size.height)
+        val movingLights = when (effect) {
+            CapsuleBackgroundEffect.COLOR_FLOW -> palette.mapIndexed { index, color ->
+                CachedSoftLight(color, extent * (0.78f - index * 0.08f),
+                    if (index == 0) 0.35f else 0.2f, if (compact) 0.34f else 1.1f)
+            }
+            CapsuleBackgroundEffect.NEBULA -> palette.mapIndexed { index, color ->
+                CachedSoftLight(color, extent * (0.66f + index * 0.07f),
+                    if (compact) 0.24f else 0.34f, if (compact) 0.36f else 0.72f)
+            }
+            else -> emptyList()
+        }
+        val starBloom = if (effect == CapsuleBackgroundEffect.CAPSULE_STAR) {
+            Brush.radialGradient(colors = listOf(
+                palette[0].copy(alpha = if (compact) 0.14f else 0.2f),
+                palette[1].copy(alpha = if (compact) 0.05f else 0.09f), Color.Transparent),
+                center = Offset.Zero, radius = extent * if (compact) 1.14f else 0.7f)
+        } else null
         val starSweep = if (effect == CapsuleBackgroundEffect.CAPSULE_STAR) {
             Brush.linearGradient(
                 colors = listOf(Color.Transparent,
@@ -198,15 +217,15 @@ internal fun CapsuleProceduralBackground(
                 CapsuleBackgroundEffect.TONAL_WASH -> drawTonalWash(palette)
                 CapsuleBackgroundEffect.AMBIENT_GLOW -> drawAmbientGlow(palette)
                 CapsuleBackgroundEffect.COLOR_FLOW -> drawSoftColorFlow(
-                    palette, elapsedMs, compact, requireNotNull(baseBrush), requireNotNull(vignette),
+                    elapsedMs, movingLights, requireNotNull(baseBrush), requireNotNull(vignette),
                 )
                 CapsuleBackgroundEffect.CAPSULE_STAR -> drawCapsuleStarField(
                     palette, elapsedMs, compact, starFields, requireNotNull(baseBrush),
-                    requireNotNull(starSweep), requireNotNull(vignette),
+                    requireNotNull(starSweep), requireNotNull(starBloom), requireNotNull(vignette),
                 )
                 CapsuleBackgroundEffect.CAPSULE_GLOW -> drawCapsuleGlow(palette, compact)
                 CapsuleBackgroundEffect.NEBULA -> drawArtworkNebula(
-                    palette, elapsedMs, compact, requireNotNull(vignette),
+                    palette, elapsedMs, compact, movingLights, requireNotNull(vignette),
                 )
             }
         }
@@ -470,6 +489,24 @@ private fun deepColor(
     amount: Float,
 ): Color = lerp(color, Color(0xFF03040A), amount.coerceIn(0f, 1f))
 
+/** Same light profile and geometry as drawSoftLight. Translate a cached shader
+ * instead of constructing three radial gradients and color-stop arrays per frame. */
+internal class CachedSoftLight(color: Color, radius: Float, opacity: Float, private val verticalScale: Float) {
+    private val radius = radius.coerceAtLeast(1f)
+    private val brush = Brush.radialGradient(
+        0f to color.copy(alpha = opacity), 0.34f to color.copy(alpha = opacity * 0.6f),
+        0.7f to color.copy(alpha = opacity * 0.16f), 1f to Color.Transparent,
+        center = Offset.Zero, radius = this.radius)
+
+    fun draw(scope: DrawScope, center: Offset) = with(scope) {
+        translate(center.x, center.y) {
+            scale(scaleX = 1f, scaleY = verticalScale, pivot = Offset.Zero) {
+                drawCircle(brush = brush, radius = radius, center = Offset.Zero)
+            }
+        }
+    }
+}
+
 /** Diffuse elliptical light; no blur bitmap, texture uploads or per-frame palette extraction. */
 private fun DrawScope.drawSoftLight(
     color: Color,
@@ -544,29 +581,23 @@ private fun DrawScope.drawAmbientGlow(palette: List<Color>) {
 }
 
 private fun DrawScope.drawSoftColorFlow(
-    palette: List<Color>,
     elapsedMs: Long,
-    compact: Boolean,
+    lights: List<CachedSoftLight>,
     baseBrush: Brush,
     vignette: Brush,
 ) {
     val angle = capsuleBackgroundAngle(elapsedMs) * 0.36
-    val extent = max(size.width, size.height)
     drawRect(baseBrush)
-    val centers = listOf(
-        Offset(size.width * (0.12f + 0.13f * waveSin(angle)),
-            size.height * (0.12f + 0.09f * waveCos(angle * 0.72))),
-        Offset(size.width * (0.88f + 0.11f * waveCos(angle * 0.62)),
-            size.height * (0.52f + 0.12f * waveSin(angle * 0.66))),
-        Offset(size.width * (0.48f + 0.15f * waveSin(angle * 0.48 + 2.2)),
-            size.height * (0.82f + 0.09f * waveCos(angle * 0.52 + 1.4))),
-    )
-    palette.forEachIndexed { index, color ->
-        drawSoftLight(
-            color, centers[index], extent * (0.78f - index * 0.08f),
-            if (index == 0) 0.35f else 0.2f,
-            if (compact) 0.34f else 1.1f,
-        )
+    lights.forEachIndexed { index, light ->
+        val center = when (index) {
+            0 -> Offset(size.width * (0.12f + 0.13f * waveSin(angle)),
+                size.height * (0.12f + 0.09f * waveCos(angle * 0.72)))
+            1 -> Offset(size.width * (0.88f + 0.11f * waveCos(angle * 0.62)),
+                size.height * (0.52f + 0.12f * waveSin(angle * 0.66)))
+            else -> Offset(size.width * (0.48f + 0.15f * waveSin(angle * 0.48 + 2.2)),
+                size.height * (0.82f + 0.09f * waveCos(angle * 0.52 + 1.4)))
+        }
+        light.draw(this, center)
     }
     drawRect(vignette)
 }
@@ -578,28 +609,18 @@ private fun DrawScope.drawCapsuleStarField(
     fields: CapsuleStarFields,
     baseBrush: Brush,
     sweepBrush: Brush,
+    bloomBrush: Brush,
     vignette: Brush,
 ) {
     drawRect(baseBrush)
 
     val angle = capsuleBackgroundAngle(elapsedMs)
-    drawRect(
-        brush =
-            Brush.radialGradient(
-                colors =
-                    listOf(
-                        palette[0].copy(alpha = if (compact) 0.14f else 0.2f),
-                        palette[1].copy(alpha = if (compact) 0.05f else 0.09f),
-                        Color.Transparent,
-                    ),
-                center =
-                    Offset(
-                        size.width * (0.44f + 0.1f * waveSin(angle * 0.34f)),
-                        size.height * (0.38f + 0.08f * waveCos(angle * 0.3f)),
-                    ),
-                radius = max(size.width, size.height) * if (compact) 1.14f else 0.7f,
-            ),
-    )
+    val center = Offset(size.width * (0.44f + 0.1f * waveSin(angle * 0.34f)),
+        size.height * (0.38f + 0.08f * waveCos(angle * 0.3f)))
+    val bounds = size
+    translate(center.x, center.y) {
+        drawRect(bloomBrush, topLeft = Offset(-center.x, -center.y), size = bounds)
+    }
     drawRect(sweepBrush)
 
     val blend = constellationBlend(elapsedMs)
@@ -682,22 +703,21 @@ private fun DrawScope.drawArtworkNebula(
     palette: List<Color>,
     elapsedMs: Long,
     compact: Boolean,
+    lights: List<CachedSoftLight>,
     vignette: Brush,
 ) {
     val angle = capsuleBackgroundAngle(elapsedMs) * 0.42
-    val extent = max(size.width, size.height)
     drawRect(deepColor(lerp(palette[0], palette[1], 0.28f), 0.88f))
-    val centers = listOf(
-        Offset(size.width * (0.16f + 0.07f * waveCos(angle * 0.36)),
-            size.height * (0.24f + 0.07f * waveSin(angle * 0.32))),
-        Offset(size.width * (0.84f + 0.08f * waveSin(angle * 0.3 + 1.8)),
-            size.height * (0.5f + 0.09f * waveCos(angle * 0.28 + 1.2))),
-        Offset(size.width * (0.48f + 0.08f * waveCos(angle * 0.24 + 3.1)),
-            size.height * (0.68f + 0.06f * waveSin(angle * 0.26 + 2.4))),
-    )
-    centers.forEachIndexed { index, center ->
-        drawSoftLight(palette[index], center, extent * (0.66f + index * 0.07f),
-            if (compact) 0.24f else 0.34f, if (compact) 0.36f else 0.72f)
+    lights.forEachIndexed { index, light ->
+        val center = when (index) {
+            0 -> Offset(size.width * (0.16f + 0.07f * waveCos(angle * 0.36)),
+                size.height * (0.24f + 0.07f * waveSin(angle * 0.32)))
+            1 -> Offset(size.width * (0.84f + 0.08f * waveSin(angle * 0.3 + 1.8)),
+                size.height * (0.5f + 0.09f * waveCos(angle * 0.28 + 1.2)))
+            else -> Offset(size.width * (0.48f + 0.08f * waveCos(angle * 0.24 + 3.1)),
+                size.height * (0.68f + 0.06f * waveSin(angle * 0.26 + 2.4)))
+        }
+        light.draw(this, center)
     }
     repeat(if (compact) 10 else 24) { index ->
         val twinkle = 0.08f + 0.09f * ((waveSin(angle * 0.44 + index * 0.91) + 1f) / 2f)
