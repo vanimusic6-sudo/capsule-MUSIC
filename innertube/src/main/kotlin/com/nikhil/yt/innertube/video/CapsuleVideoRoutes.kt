@@ -2,6 +2,7 @@
 package com.nikhil.yt.innertube.video
 
 import java.io.IOException
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 
 internal enum class CapsuleVideoRoute(val wireName: String, val budgetMs: Long) {
@@ -87,6 +88,16 @@ internal class CapsuleVideoRoutesException(
     val failure: CapsuleNewPipeFailure, cause: Throwable?,
 ) : IOException("VIDEO routes exhausted ($failure)", cause)
 
+/**
+ * DNS is network-wide, not evidence that a single YouTube player identity
+ * was rejected. Do not poison a healthy route or spend 20s rotating extractor
+ * clients after two independent backends cannot resolve their hostnames.
+ */
+internal fun isVideoDnsFailure(error: Throwable): Boolean =
+    generateSequence(error as Throwable?) { it.cause }
+        .take(8)
+        .any { it is UnknownHostException }
+
 /** One attempt per backend; move the failed playback backend to the end. */
 internal fun resolveVideoRoutes(
     failedBackend: String? = null,
@@ -97,6 +108,7 @@ internal fun resolveVideoRoutes(
     resolve: (CapsuleVideoRoute) -> CapsuleNewPipeResolved?,
 ): CapsuleNewPipeResolved {
     val failures = mutableListOf<Exception>()
+    var consecutiveDnsFailures = 0
     // A URL can resolve successfully yet fail at the CDN/decoder. Remember
     // this feedback across the next clips, not just this one recovery call.
     CapsuleVideoRoute.entries.firstOrNull { it.wireName == failedBackend }?.let { health?.failure(it) }
@@ -141,10 +153,17 @@ internal fun resolveVideoRoutes(
             onFailure(route, failure)
             if (CapsuleNewPipeExtractor.classify(failure) == CapsuleNewPipeFailure.RATE_LIMITED) throw failure
             val kind = CapsuleNewPipeExtractor.classify(failure)
-            if ((failure as? CapsuleDirectVideoException)?.penalizeRoute != false)
+            val dnsFailure = isVideoDnsFailure(failure)
+            if (!dnsFailure && (failure as? CapsuleDirectVideoException)?.penalizeRoute != false)
                 health?.failure(route, kind)
             onAttempt(route, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started), false)
             failures += failure
+            consecutiveDnsFailures = if (dnsFailure) consecutiveDnsFailures + 1 else 0
+            if (consecutiveDnsFailures >= 2) {
+                throw CapsuleVideoRoutesException(CapsuleNewPipeFailure.NETWORK, failure).also { combined ->
+                    failures.forEach(combined::addSuppressed)
+                }
+            }
         }
     }
     // A client-specific bot response is not proof that every independent
