@@ -299,23 +299,20 @@ internal const val MIN_NORMALIZATION_GAIN_DB = -12.0
 internal const val SIGNED_URL_CIPHER_REFRESH_THRESHOLD_MS = 3_000L
 
 /**
- * How long a googlevideo request may take to answer before it is treated as unanswered.
+ * A hung CDN TCP/TLS/header open must not monopolize a foreground track for 15 s.
  *
- * This was six seconds, chosen from 322 successful opens whose slowest was 3.87 s. It was wrong,
- * and a capture shows exactly how: one song failed twelve times in two minutes, every attempt
- * ending at 6009 to 6150 ms. That is not a host refusing, that is this number cutting a host off
- * mid-answer, over and over, so the song never played at all.
+ * The previous 6-second allowance repeatedly cut off a working host, while
+ * successful opens in the recorded sessions peaked around 4.1 s. Ten seconds
+ * keeps more than twice that measured allowance, but trims five seconds from
+ * the failed TLS handshake seen in the November 2 capture.
  *
- * The mistake was treating a timeout as the tool for abandoning a dead host. It cannot be: a dead
- * host and a slow one look identical until one of them answers, and the only way to be sure is to
- * wait longer than any live host would take. Fifteen seconds is past anything observed — the
- * worst success on record is 4.1 s — so a host that misses it was not going to answer.
- *
- * A transport failure goes to the service's shared recovery budget with a fresh URL, instead of
- * waiting out several Media3 retries of the same cached URL. Host health also remembers groups
- * that repeatedly fail. Neither path resets the shared automatic retry budget.
+ * This is a socket connect/read timeout, not a whole-track download deadline.
+ * Once it fires, the existing typed no-byte OPEN_FAILURE path asks for a fresh
+ * signed URL on a bounded retry. Never shorten it to a speculative 3–6 s or
+ * extend the retry/client budget: an unstable VPN benefits from fewer dead
+ * waits, not a high-rate request carousel.
  */
-internal const val AUDIO_CDN_TIMEOUT_SECONDS = 15L
+internal const val AUDIO_CDN_TIMEOUT_SECONDS = 10L
 
 /**
  * How long an idle googlevideo connection is kept before this app drops it.
