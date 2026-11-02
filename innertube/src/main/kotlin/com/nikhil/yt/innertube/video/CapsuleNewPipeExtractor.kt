@@ -52,6 +52,9 @@ enum class CapsuleNewPipeQuality(val maxHeight: Int) {
 
 object CapsuleNewPipeExtractor {
     private val routeHealth = CapsuleVideoRouteHealth()
+
+    /** Only a hint; the route-health cooldown and explicit video guard still win. */
+    fun restorePreferredRoute(wireName: String?) = routeHealth.restorePreferredRoute(wireName)
     private const val CACHE_SAFETY_MS = 45_000L
     private const val DEFAULT_URL_TTL_MS = 3_600_000L
     private val initialized = AtomicBoolean(false)
