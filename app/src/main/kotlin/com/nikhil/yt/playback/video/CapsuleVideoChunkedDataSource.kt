@@ -21,6 +21,20 @@ import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
 import java.io.EOFException
 import java.io.IOException
+import java.net.SocketException
+import timber.log.Timber
+
+/** Resume only a peer-reset socket, never 403/410/429, DNS, TLS or a cancelled seek. */
+internal fun isRecoverableVideoSocketReset(failure: IOException): Boolean =
+    generateSequence(failure as Throwable?) { it.cause }
+        .take(8)
+        .any { cause ->
+            (cause is SocketException &&
+                (cause.message?.contains("connection reset", ignoreCase = true) == true ||
+                    cause.message?.contains("ECONNRESET", ignoreCase = true) == true)) ||
+                (cause is IOException && cause.javaClass.simpleName == "ConnectionResetException")
+        }
+
 
 internal const val CAPSULE_VIDEO_CHUNK_BYTES = 4L * 1024 * 1024
 
@@ -46,6 +60,7 @@ internal class CapsuleVideoChunkedDataSource(
     private var chunkLeft = 0L
     private var resourceLength = 0L
     private var opened = false
+    private var readResumeAttempted = false
 
     override fun addTransferListener(transferListener: TransferListener) {
         upstream.addTransferListener(transferListener)
@@ -54,6 +69,7 @@ internal class CapsuleVideoChunkedDataSource(
     override fun open(dataSpec: DataSpec): Long {
         check(!opened) { "VIDEO DataSource is already open" }
         opened = true
+        readResumeAttempted = false
 
         // Preserve native short-stream playback and pre-windowed signed URLs.
         // A URL with its own range query cannot be sliced beyond that window.
@@ -141,6 +157,51 @@ internal class CapsuleVideoChunkedDataSource(
             throw IOException("VIDEO CDN did not honor continuation byte range")
         }
         chunkLeft = range.size
+        readResumeAttempted = false
+    }
+
+    /**
+     * A long VIDEO response can be reset after valid bytes were already cached.
+     * Reopen only the missing part of the current bounded Range once, keeping
+     * its signed URL, representation, cache key and decoder intact. This is a
+     * transport reconnect, never an extractor/client/bot-guard retry.
+     */
+    private fun readWithOneSocketResume(buffer: ByteArray, offset: Int, length: Int): Int {
+        try {
+            return upstream.read(buffer, offset, length)
+        } catch (failure: IOException) {
+            val source = original ?: throw failure
+            if (readResumeAttempted || chunkLeft <= 0L ||
+                !isRecoverableVideoSocketReset(failure)
+            ) throw failure
+            readResumeAttempted = true
+            val remaining = source.buildUpon()
+                .setPosition(nextPosition)
+                .setLength(chunkLeft)
+                .build()
+            try {
+                upstream.close()
+            } catch (closeFailure: IOException) {
+                failure.addSuppressed(closeFailure)
+            }
+            try {
+                upstream.open(remaining)
+                val range = parseRange(upstream.responseHeaders)
+                if (range == null || range.start != nextPosition ||
+                    range.total != resourceLength || range.size != chunkLeft
+                ) {
+                    throw IOException("VIDEO CDN resume returned incompatible Content-Range")
+                }
+                Timber.tag("CapsuleVideo").i(
+                    "video-range-resume position=%d remainingBytes=%d reason=socket-reset",
+                    nextPosition, chunkLeft,
+                )
+                return upstream.read(buffer, offset, length)
+            } catch (retryFailure: IOException) {
+                retryFailure.addSuppressed(failure)
+                throw retryFailure
+            }
+        }
     }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
@@ -153,7 +214,7 @@ internal class CapsuleVideoChunkedDataSource(
             openNextChunk()
         }
 
-        val count = upstream.read(buffer, offset, minOf(length.toLong(), chunkLeft).toInt())
+        val count = readWithOneSocketResume(buffer, offset, minOf(length.toLong(), chunkLeft).toInt())
         if (count == C.RESULT_END_OF_INPUT) {
             throw EOFException(
                 "VIDEO CDN ended a bounded request early (remaining=$chunkLeft)",
@@ -175,6 +236,7 @@ internal class CapsuleVideoChunkedDataSource(
 
     override fun close() {
         opened = false
+        readResumeAttempted = false
         original = null
         nextPosition = 0L
         bytesLeft = 0L
