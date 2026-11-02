@@ -114,7 +114,7 @@ internal class DetailHeaderMotionState(
     /**
      * One opaque paragraph follows the header all the way into the toolbar.
      * Only glyphs at a genuinely clipped edge receive an alpha mask: the first
-     * line must NEVER fade grey just because the second line no longer fits.
+     * line stays solid except for a short continuation hint at its final glyphs.
      *
      * Important: DstIn is applied to the entire isolated text layer. Masking
      * only a tiny strip at the end left a hard-scissored boundary, and the
@@ -166,7 +166,22 @@ internal class DetailHeaderMotionState(
             )
         } else 0f
 
-        val needsMask = rightFade > 0f || leftFade > 0f || lowerFade > 0f
+        // Once the second line has folded away, the first line is still
+        // logically truncated EVEN IF it physically fits the top-bar width.
+        // Preserve a 30dp end-of-line continuation feather. The old 18dp
+        // strip tried to do this but was cropped by an opaque hard edge.
+        val continuationFade = if (lastLine > 0) {
+            detailTitleFeatherStrength(
+                lastLineBottom - clip.bottom,
+                (lastLineBottom - lastLineTop).coerceAtLeast(1f),
+            )
+        } else 0f
+        val activeRightFeather = horizontalFeather * maxOf(rightFade, continuationFade)
+        val firstLineTail = origin.x + layout.getLineRight(0) * titleScale
+        val rightFadeEnd = if (rightFade > 0f) clip.right else
+            minOf(clip.right, firstLineTail)
+
+        val needsMask = activeRightFeather > 0f || leftFade > 0f || lowerFade > 0f
         if (needsMask) drawContext.canvas.saveLayer(clip, paint)
         clipRect(clip.left, clip.top, clip.right, clip.bottom) {
             withTransform({
@@ -181,16 +196,17 @@ internal class DetailHeaderMotionState(
                 // painting a clipped strip, there is no razor-sharp seam.
                 val region = androidx.compose.ui.geometry.Size(clip.width, clip.height)
                 val position = Offset(clip.left, clip.top)
-                if (rightFade > 0f) {
-                    // Always reach zero opacity at the actual crop boundary.
-                    // Growing the feather itself (rather than dimming only its
-                    // endpoint) avoids a partially bright razor-cut glyph.
-                    val activeFeather = (horizontalFeather * rightFade).coerceAtLeast(.01f)
+                if (activeRightFeather > 0f) {
+                    // Fully transparent at the actual text/viewport edge.
+                    // For a hidden second line the edge is the last real
+                    // first-line glyph, not an unrelated rectangle boundary.
+                    val endX = rightFadeEnd - clip.left
+                    val activeFeather = activeRightFeather.coerceAtLeast(.01f)
                     drawRect(
                         Brush.horizontalGradient(
                             listOf(Color.White, Color.Transparent),
-                            startX = clip.width - activeFeather,
-                            endX = clip.width,
+                            startX = endX - activeFeather,
+                            endX = endX,
                         ), topLeft = position, size = region, blendMode = BlendMode.DstIn,
                     )
                 }
