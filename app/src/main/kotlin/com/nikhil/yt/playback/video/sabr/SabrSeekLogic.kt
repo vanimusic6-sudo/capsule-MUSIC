@@ -62,7 +62,16 @@ internal object SabrSeekLogic {
         var margin = marginMs
         if (sessionAlive) {
             when {
-                anchor < 0 -> if (sinceStartMs < LAND_GRACE_MS) return Grace   // hasn't landed yet
+                // At position zero BOTH child DataSources share one session.
+                // Media3 opens audio later than video; under a slow VPN the
+                // video first UMP reply may contain only policies, no media.
+                // The old 4s grace made the late AUDIO open kill an alive
+                // video POST and start it again at t=0 (observed at 16:09:54).
+                // Do not destroy a live cold-start session just for the
+                // other track having no media offset yet. Its HTTP deadline,
+                // dry-response budget and player watchdog bound failures.
+                anchor < 0 && position == 0L -> return Grace
+                anchor < 0 -> if (sinceStartMs < LAND_GRACE_MS) return Grace   // real seek hasn't landed yet
                 anchor <= position -> return LetDrain                          // draining toward the target
                 else -> margin = (marginMs * 2).coerceAtMost(MAX_MARGIN_MS)    // landed PAST -> widen + re-aim
             }
