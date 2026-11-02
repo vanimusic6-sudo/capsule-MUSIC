@@ -81,6 +81,15 @@ class CapsuleVideoRoutesTest {
         assertFalse(CapsuleVideoRoute.NEWPIPE in health.candidates(null))
     }
 
+    @Test fun coldOrderedRoutesTryMaintainedExtractorBeforeOldPipePipeAdapter() {
+        val ordered = CapsuleVideoRouteHealth().order(null)
+        assertEquals(CapsuleVideoRoute.VISIONOS, ordered[0])
+        assertEquals(CapsuleVideoRoute.ANDROID_VR, ordered[1])
+        assertTrue(ordered.indexOf(CapsuleVideoRoute.NEWPIPE) <
+            ordered.indexOf(CapsuleVideoRoute.PIPEPIPE))
+        assertEquals(CapsuleVideoRoute.ANDROID_REEL, ordered.last())
+    }
+
     @Test fun nextClipStartsWithSuccessfulRouteWithoutRepeatingDeadEndpoints() {
         val health = CapsuleVideoRouteHealth()
         resolveVideoRoutes(health = health) { route ->
