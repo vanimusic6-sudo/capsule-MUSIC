@@ -1,0 +1,79 @@
+name: Playback final validation and baseline comparison
+
+on:
+  push:
+    branches: ['fix/playback-fast-recovery-20261102']
+    paths: ['.github/workflows/playback-final-validation.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-built-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 2259a163fc978df183f4d928bb390799000cfd6a
+          fetch-depth: 0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.5.0'
+      - name: Prepare Android SDK and locale
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1'
+          echo 'unqualifiedResLocale=en-US' > app/src/main/res/resources.properties
+      - name: Extractor and lyrics regressions for the exact APK source
+        run: gradle :innertube:test :betterlyrics:test --stacktrace --no-daemon --max-workers=2
+      - name: Android lint and runtime check for the exact APK source
+        run: gradle :app:verifyAndroidJsonRuntime :app:lintUniversalDebug --stacktrace --no-daemon --max-workers=2
+      - name: Reproduce the three UI failures on the unmodified baseline
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout cc4d35b3ae39d0bbcf8b070acd7127790072f6ef -- .
+          echo 'unqualifiedResLocale=en-US' > app/src/main/res/resources.properties
+          rm -rf app/build/test-results/testUniversalDebugUnitTest
+          set +e
+          gradle :app:testUniversalDebugUnitTest \
+            --tests 'com.nikhil.yt.ui.AlbumLayoutTest' \
+            --tests 'com.nikhil.yt.ui.PlaylistHeroTest' \
+            --tests 'com.nikhil.yt.ui.CapsuleReleaseUiCorrectionsTest' \
+            --stacktrace --no-daemon --max-workers=2
+          result=$?
+          set -e
+          test "$result" -ne 0
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          expected = {
+              ('com.nikhil.yt.ui.AlbumLayoutTest', 'loadingAlbumRetainsOriginalPortraitCoverAndUnifiedControlsOnLoad'),
+              ('com.nikhil.yt.ui.PlaylistHeroTest', 'titleIsCentredInsidePortraitAboveControlsAndDoesNotDisplaceCapsule'),
+              ('com.nikhil.yt.ui.CapsuleReleaseUiCorrectionsTest', 'downloadsShareLocalPlaylistSemanticsAndNeverCloseMoreOnTap'),
+          }
+          actual = set()
+          for path in Path('app/build/test-results/testUniversalDebugUnitTest').glob('TEST-*.xml'):
+              for case in ET.parse(path).getroot().findall('testcase'):
+                  if case.find('failure') is not None or case.find('error') is not None:
+                      actual.add((case.get('classname'), case.get('name')))
+          assert actual == expected, (actual, expected)
+          print('Baseline comparison PASS: the same three UI failures reproduce before the playback patch.')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playback-final-lint-and-baseline-evidence
+          path: |
+            app/build/reports/lint-results-universalDebug.*
+            app/build/test-results/
+            innertube/build/test-results/
+            betterlyrics/build/test-results/
+          if-no-files-found: error
+          retention-days: 14
