@@ -202,13 +202,24 @@ internal class DetailHeaderMotionState(
                     // first-line glyph, not an unrelated rectangle boundary.
                     val endX = rightFadeEnd - clip.left
                     val activeFeather = activeRightFeather.coerceAtLeast(.01f)
-                    drawRect(
-                        Brush.horizontalGradient(
-                            listOf(Color.White, Color.Transparent),
-                            startX = endX - activeFeather,
-                            endX = endX,
-                        ), topLeft = position, size = region, blendMode = BlendMode.DstIn,
+                    val mask = Brush.horizontalGradient(
+                        listOf(Color.White, Color.Transparent),
+                        startX = endX - activeFeather,
+                        endX = endX,
                     )
+                    if (rightFade > 0f) {
+                        drawRect(mask, topLeft = position, size = region,
+                            blendMode = BlendMode.DstIn)
+                    } else {
+                        // A second-line continuation hint must never erase
+                        // the other line horizontally before its own bottom
+                        // feather completes.
+                        clipRect(clip.left, clip.top, clip.right,
+                            minOf(clip.bottom, firstLineBottom)) {
+                            drawRect(mask, topLeft = position, size = region,
+                                blendMode = BlendMode.DstIn)
+                        }
+                    }
                 }
                 if (leftFade > 0f) {
                     val activeFeather = (horizontalFeather * leftFade).coerceAtLeast(.01f)
