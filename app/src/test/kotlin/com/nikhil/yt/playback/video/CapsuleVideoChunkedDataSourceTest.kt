@@ -153,6 +153,10 @@ class CapsuleVideoChunkedDataSourceTest {
         var resetOnce = false
         var bytesBeforeReset = 0
         val flaky = object : DataSource by cdn {
+            // Java's default DataSource#getResponseHeaders is NOT forwarded
+            // automatically by Kotlin delegation. Without this the wrapper
+            // sees no Content-Range and enters the unbounded fallback path.
+            override fun getResponseHeaders(): Map<String, List<String>> = cdn.responseHeaders
             override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
                 if (!resetOnce && bytesBeforeReset >= 600) {
                     resetOnce = true
