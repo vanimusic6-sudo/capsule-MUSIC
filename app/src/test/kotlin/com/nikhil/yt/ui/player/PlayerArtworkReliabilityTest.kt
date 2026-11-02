@@ -69,7 +69,12 @@ class PlayerArtworkReliabilityTest {
         assertTrue(full.contains("artworkRebind"))
         assertTrue(full.contains("retainedArtworkPainter = success.painter"))
         assertTrue(full.contains("retainedArtworkPainter?.let { ready ->"))
-        assertTrue(full.contains("delay(if (retainedArtworkPainter != null) 650L else 1_600L)"))
+        assertTrue(full.contains("delay(if (retainedArtworkPainter != null) 8_000L else 5_000L)"))
+        assertTrue("A downloaded preview must not cancel the full-resolution request",
+            full.contains("if (retainedArtworkPainter == null &&") &&
+                full.contains("useOriginalArtwork = true"))
+        assertFalse("650ms rebind downgraded high-res artwork after a normal cache miss",
+            full.contains("delay(if (retainedArtworkPainter != null) 650L"))
         assertTrue("Decoded cover owns visible pixels during loading", full.contains("retainedArtworkPainter?.let { ready ->"))
         assertTrue(full.contains("capsule-artwork-soft-reveal"))
         assertTrue(full.contains("onError = {"))
