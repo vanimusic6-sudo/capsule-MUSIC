@@ -38,6 +38,19 @@ internal const val CAPSULE_SOUND_RAMP_STEP_MS = 16L
 internal const val CAPSULE_SOUND_RAMP_STEPS = 5
 
 /**
+ * The VIDEO player has its own independent network/CDN and must hold enough
+ * ahead to survive a brief VPN hand-off without repeatedly starving its
+ * soundtrack. The old 6–20s window and 3s rebuffer target were tuned for
+ * ideal networks; keep first-frame startup at 1s while banking up to 45s once
+ * playback begins. This does not change source quality or AUDIO's buffer.
+ */
+internal const val CAPSULE_VIDEO_MIN_BUFFER_MS = 15_000
+internal const val CAPSULE_VIDEO_MAX_BUFFER_MS = 45_000
+internal const val CAPSULE_VIDEO_START_BUFFER_MS = 1_000
+internal const val CAPSULE_VIDEO_REBUFFER_MS = 5_000
+internal const val CAPSULE_VIDEO_TARGET_BUFFER_BYTES = 24 * 1024 * 1024
+
+/**
  * Only an indexed DASH clip carries a reliable duration before Media3 prepare.
  * Start decoding around the advancing MUSIC clock instead of decoding at 0,
  * discarding that frame and performing two network seeks. Unknown lengths,
@@ -88,7 +101,13 @@ internal class CapsuleVideoCompanion(
         // the highest supported bitrate on slow first-byte connections.
         .setTrackSelector(DefaultTrackSelector(context))
         .setLoadControl(DefaultLoadControl.Builder()
-            .setBufferDurationsMs(6_000, 20_000, 1_000, 3_000)
+            .setBufferDurationsMs(
+                CAPSULE_VIDEO_MIN_BUFFER_MS,
+                CAPSULE_VIDEO_MAX_BUFFER_MS,
+                CAPSULE_VIDEO_START_BUFFER_MS,
+                CAPSULE_VIDEO_REBUFFER_MS,
+            )
+            .setTargetBufferBytes(CAPSULE_VIDEO_TARGET_BUFFER_BYTES)
             .setPrioritizeTimeOverSizeThresholds(true).build())
         .setWakeMode(C.WAKE_MODE_LOCAL)
         .build()
