@@ -65,6 +65,7 @@ object YouTubeVideoResolver {
         val maxHeight: Int = 720,
     val dashManifest: String? = null,
     val userAgent: String? = null,
+    val sabrSpec: com.nikhil.yt.innertube.video.CapsuleSabrVideoSpec? = null,
     ) {
         val streamUrl: String
             get() = videoStreamUrl
@@ -423,6 +424,7 @@ object YouTubeVideoResolver {
             maxHeight = maxHeight,
             dashManifest = dashManifest,
             userAgent = userAgent,
+            sabrSpec = sabrSpec,
         )
     }
 
