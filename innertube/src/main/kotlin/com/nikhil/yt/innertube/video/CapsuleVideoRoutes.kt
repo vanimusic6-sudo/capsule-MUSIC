@@ -43,10 +43,18 @@ internal class CapsuleVideoRouteHealth(private val clock: () -> Long = System::n
             { it.wireName == failedBackend }
             .thenBy { (retryAfter[it] ?: 0L) > now }
             .thenBy { it != lastSuccessful }
-            // Device trace: PipePipe spent its entire 10s budget before the
-            // working direct Vision route was reached. Try the bounded direct
-            // path first; remember a measured winner on subsequent clips.
-            .thenBy { it != CapsuleVideoRoute.VISIONOS })
+            // Prefer the maintained NewPipe 0.26.5 HTTP workaround over
+            // an older pinned PipePipe extractor (Aug 2026). Full SABR is
+            // not yet wired into our Media3 DataSource, so a SABR-only
+            // response from PipePipe cannot currently be played by Capsule.
+            // A measured successful backend always wins above this default.
+            .thenBy { route -> when (route) {
+                CapsuleVideoRoute.VISIONOS -> 0
+                CapsuleVideoRoute.ANDROID_VR -> 1
+                CapsuleVideoRoute.NEWPIPE -> 2
+                CapsuleVideoRoute.PIPEPIPE -> 3
+                CapsuleVideoRoute.ANDROID_REEL -> 4
+            } })
     }
 
     /** Known bot-blocked clients stay quiet. An independent unblocked route
