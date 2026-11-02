@@ -41,6 +41,22 @@ class SabrSeekLogicTest {
     }
 
     @Test
+    fun `late audio open at position zero never restarts live cold-start video POST`() {
+        for (age in listOf(0L, 3_999L, 4_001L, 8_000L, 15_000L)) {
+            val action = decide(
+                alive = true, anchor = -1L, position = 0L,
+                since = age, attempts = 1,
+            )
+            assertTrue("age=$age should reuse the still-alive shared video session",
+                action === SabrSeekLogic.Grace)
+        }
+        // This exception is only for a new clip at zero. A real seek into
+        // the middle must still re-aim a never-landed session after 4s.
+        assertTrue(decide(alive = true, anchor = -1L, position = 500_000L,
+            since = 8_000L, attempts = 1) is SabrSeekLogic.Restart)
+    }
+
+    @Test
     fun `a just-started session that hasn't landed gets grace, then restarts`() {
         assertEquals(SabrSeekLogic.Grace, decide(alive = true, anchor = -1, position = 500_000, since = 1_000, attempts = 0))
         assertTrue(decide(alive = true, anchor = -1, position = 500_000, since = 10_000, attempts = 0) is SabrSeekLogic.Restart)
