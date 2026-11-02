@@ -624,11 +624,14 @@ fun CapsulePlayerContent(
                         }
                         val originalArtworkUrl = pinnedArtworkUrl
                             ?: mediaMetadata.thumbnailUrl?.takeIf(String::isNotBlank)
-                        val highResArtworkUrl = remember(originalArtworkUrl) {
-                            com.nikhil.yt.ui.component.capsuleArtworkUrl(originalArtworkUrl, 960)
+                        // Never render a tiny intermediate bitmap in the full player.
+                        // Wait for a genuine high-res rendition; Youtube's hqdefault
+                        // is not an acceptable fallback for a 960px hero image.
+                        val fullArtworkCandidates = remember(originalArtworkUrl) {
+                            capsuleFullPlayerArtworkCandidates(originalArtworkUrl)
                         }
-                        var useOriginalArtwork by remember(mediaMetadata.id, originalArtworkUrl) {
-                            mutableStateOf(false)
+                        var artworkCandidateIndex by remember(mediaMetadata.id, originalArtworkUrl) {
+                            mutableIntStateOf(0)
                         }
                         var artworkFailed by remember(mediaMetadata.id, originalArtworkUrl) {
                             mutableStateOf(false)
@@ -652,8 +655,7 @@ fun CapsulePlayerContent(
                         var artworkRebind by remember(mediaMetadata.id, originalArtworkUrl) {
                             mutableIntStateOf(0)
                         }
-                        val requestedArtworkUrl =
-                            if (useOriginalArtwork) originalArtworkUrl else highResArtworkUrl
+                        val requestedArtworkUrl = fullArtworkCandidates.getOrNull(artworkCandidateIndex)
                         val imageContext = LocalContext.current
                         val imageRequest = remember(imageContext, requestedArtworkUrl) {
                             ImageRequest.Builder(imageContext)
@@ -670,27 +672,20 @@ fun CapsulePlayerContent(
                             if (!artworkLoading || artworkRebind > 0 || requestedArtworkUrl.isNullOrBlank()) {
                                 return@LaunchedEffect
                             }
-                            // A low-resolution preview often arrives before the 960px cover.
-                            // The old 650ms watchdog *cancelled* the high-resolution request
-                            // and pinned the tiny original as the final player artwork. Retry a
-                            // genuinely stuck full-size request only after a realistic network
-                            // deadline. Preserve the visible preview throughout the upgrade.
-                            delay(if (retainedArtworkPainter != null) 8_000L else 5_000L)
+                            // A real full-resolution URL can be slow on VPNs. Wait
+                            // rather than presenting a blurred 256px preview.
+                            // If a YouTube maxres variant stalls, try hq720;
+                            // otherwise rebind the SAME full-resolution request once.
+                            delay(8_000L)
                             if (artworkLoading) {
                                 Timber.tag("CapsuleArtwork").w(
-                                    "player-artwork-stalled id=%s original=%s rebind=%s preview=%s",
-                                    mediaMetadata.id, useOriginalArtwork, artworkRebind,
-                                    retainedArtworkPainter != null,
+                                    "player-hq-artwork-stalled id=%s candidate=%s rebind=%s",
+                                    mediaMetadata.id, artworkCandidateIndex, artworkRebind,
                                 )
-                                if (retainedArtworkPainter == null &&
-                                    !useOriginalArtwork && originalArtworkUrl != highResArtworkUrl
-                                ) {
-                                    // No visible bitmap after five seconds: unblock the UI.
-                                    // An actual high-res HTTP error is handled by onError.
-                                    useOriginalArtwork = true
+                                if (artworkCandidateIndex < fullArtworkCandidates.lastIndex) {
+                                    artworkCandidateIndex++
+                                    artworkRebind = 0
                                 } else {
-                                    // When a preview exists, never demote it to the final image
-                                    // simply because the full-size CDN request takes >650ms.
                                     artworkRebind++
                                 }
                             }
@@ -724,40 +719,8 @@ fun CapsulePlayerContent(
                                         .graphicsLayer { alpha = artworkReveal },
                                 )
                             }
-                            // Show the smaller original cover immediately from
-                            // Coil's list/mini-player disk or memory cache while
-                            // the high-resolution player URL resolves. Previously
-                            // we requested ONLY the upgraded URL, leaving an
-                            // empty grey slot for several seconds per new song.
-                            if (retainedArtworkPainter == null &&
-                                !originalArtworkUrl.isNullOrBlank() &&
-                                requestedArtworkUrl != originalArtworkUrl
-                            ) {
-                                val previewRequest = remember(imageContext, originalArtworkUrl) {
-                                    ImageRequest.Builder(imageContext)
-                                        .data(originalArtworkUrl)
-                                        .size(256, 256)
-                                        .crossfade(false)
-                                        .build()
-                                }
-                                AsyncImage(
-                                    model = previewRequest,
-                                    contentDescription = null,
-                                    contentScale = artworkContentScale,
-                                    onSuccess = { preview ->
-                                        if (pinnedArtworkUrl == null) pinnedArtworkUrl = originalArtworkUrl
-                                        // Never downgrade an already decoded
-                                        // high-resolution image on a late callback.
-                                        if (retainedArtworkUrl != requestedArtworkUrl) {
-                                            retainedArtworkPainter = preview.painter
-                                            retainedArtworkUrl = originalArtworkUrl
-                                        }
-                                    },
-                                    // Coil still decodes and caches while only the
-                                    // single retained painter owns visible pixels.
-                                    modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 0f },
-                                )
-                            }
+                            // No low-resolution preview node: only the fully
+                            // decoded artwork is ever placed on the canvas.
                             if (retainedArtworkPainter == null ||
                                 retainedArtworkUrl != requestedArtworkUrl
                             ) {
@@ -767,6 +730,26 @@ fun CapsulePlayerContent(
                                 contentDescription = mediaMetadata.title,
                                 onLoading = { artworkLoading = true; artworkFailed = false },
                                 onSuccess = { success ->
+                                    if (!capsulePlayerPosterLargeEnough(
+                                            requestedArtworkUrl,
+                                            success.result.image.width,
+                                            success.result.image.height,
+                                        )) {
+                                        // maxresdefault sometimes returns a small
+                                        // placeholder with HTTP 200, not a 404.
+                                        artworkLoading = false
+                                        Timber.tag("CapsuleArtwork").w(
+                                            "player-poster-too-small id=%s width=%s height=%s",
+                                            mediaMetadata.id, success.result.image.width,
+                                            success.result.image.height,
+                                        )
+                                        if (artworkCandidateIndex < fullArtworkCandidates.lastIndex) {
+                                            artworkCandidateIndex++
+                                            artworkRebind = 0
+                                        } else {
+                                            artworkFailed = true
+                                        }
+                                    } else {
                                     if (pinnedArtworkUrl == null) pinnedArtworkUrl = originalArtworkUrl
                                     retainedArtworkPainter = success.painter
                                     retainedArtworkUrl = requestedArtworkUrl
@@ -782,19 +765,18 @@ fun CapsulePlayerContent(
                                     }
                                     artworkLoading = false
                                     artworkFailed = false
+                                    }
                                 },
                                 onError = { error ->
                                     artworkLoading = false
                                     Timber.tag("CapsuleArtwork").w(
-                                        "player-artwork-error id=%s original=%s rebind=%s type=%s",
-                                        mediaMetadata.id, useOriginalArtwork, artworkRebind,
+                                        "player-hq-artwork-error id=%s candidate=%s rebind=%s type=%s",
+                                        mediaMetadata.id, artworkCandidateIndex, artworkRebind,
                                         error.result.throwable::class.java.simpleName,
                                     )
-                                    if (!useOriginalArtwork &&
-                                        !originalArtworkUrl.isNullOrBlank() &&
-                                        originalArtworkUrl != highResArtworkUrl
-                                    ) {
-                                        useOriginalArtwork = true
+                                    if (artworkCandidateIndex < fullArtworkCandidates.lastIndex) {
+                                        artworkCandidateIndex++
+                                        artworkRebind = 0
                                     } else if (artworkRebind == 0) {
                                         artworkRebind++
                                     } else {
