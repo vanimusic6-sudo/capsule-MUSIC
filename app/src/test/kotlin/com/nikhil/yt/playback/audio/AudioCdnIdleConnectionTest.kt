@@ -20,6 +20,13 @@ private const val OBSERVED_SERVER_HANGUP_SECONDS = 61L
  * the start.
  */
 class AudioCdnIdleConnectionTest {
+    @Test fun `dead TLS handshakes exit quickly without reviving the six-second regression`() {
+        assertTrue("ten-second upper bound must leave time for bounded recovery",
+            AUDIO_CDN_TIMEOUT_SECONDS <= 10L)
+        assertTrue("six-second timeout cut off healthy CDN responses",
+            AUDIO_CDN_TIMEOUT_SECONDS >= 8L)
+    }
+
     @Test fun `an idle socket is dropped before the server would drop it`() {
         assertTrue(
             "keeping a socket for $AUDIO_CDN_IDLE_CONNECTION_SECONDS s outlives the server",
