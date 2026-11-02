@@ -16,8 +16,8 @@ class AudioCdnOpenContextTest {
 
     @Test
     fun foregroundStartsEarlierButRapidSkipRetainsFullSafetyWindow() {
-        assertEquals(90L, audioCdnInitialSettleDelayMs(1_000L, 1_000L, fastForeground = true))
-        assertEquals(40L, audioCdnInitialSettleDelayMs(1_050L, 1_000L, fastForeground = true))
+        assertEquals(0L, audioCdnInitialSettleDelayMs(1_000L, 1_000L, fastForeground = true))
+        assertEquals(0L, audioCdnInitialSettleDelayMs(1_050L, 1_000L, fastForeground = true))
         assertEquals(0L, audioCdnInitialSettleDelayMs(1_120L, 1_000L, fastForeground = true))
         assertEquals(250L, audioCdnInitialSettleDelayMs(1_000L, 1_000L, fastForeground = false))
     }

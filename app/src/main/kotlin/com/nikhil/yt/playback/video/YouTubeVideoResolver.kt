@@ -66,6 +66,7 @@ object YouTubeVideoResolver {
     val dashManifest: String? = null,
     val userAgent: String? = null,
     val sabrSpec: com.nikhil.yt.innertube.video.CapsuleSabrVideoSpec? = null,
+    val requestHeaders: Map<String, String> = emptyMap(),
     ) {
         val streamUrl: String
             get() = videoStreamUrl
@@ -224,6 +225,9 @@ object YouTubeVideoResolver {
                                     .getOrThrow()
                                     .videoId
                             }
+                        // A verified song-to-clip match survives a transient stream
+                        // failure; the next attempt need not repeat the MUSIC search.
+                        synchronized(matchedClips) { matchedClips[canonicalId] = videoId }
                         val matchedAt = SystemClock.elapsedRealtime()
                         Timber.tag(TAG).i("VIDEO timing match id=%s clip=%s ms=%s", canonicalId, videoId, matchedAt - startedAt)
 
@@ -296,7 +300,10 @@ object YouTubeVideoResolver {
         return resolveMutex.withLock {
             cache[key]?.let { return@withLock it }
             beforeMetadataRequest()
-            val remote = callRemoteExtractor(videoId, quality, muxedOnly, failedBackend, refresh)
+            val remote = if (!muxedOnly && failedBackend != CapsuleWebVideoResolver.BACKEND) {
+                CapsuleWebVideoResolver.resolve(videoId, quality)
+                    ?: callRemoteExtractor(videoId, quality, muxedOnly, failedBackend, refresh)
+            } else callRemoteExtractor(videoId, quality, muxedOnly, failedBackend, refresh)
             val resolved = remote.toResolved(sourceMediaId)
             cache.put(videoId, key, resolved)
             resolved
@@ -377,9 +384,9 @@ object YouTubeVideoResolver {
                     ?: "VIDEO extraction failed"
 
             when (failure) {
-                CapsuleVideoFailure.RATE_LIMITED,
-                CapsuleVideoFailure.BOT_BLOCKED,
-                -> CapsuleVideoRequestGuard.noteBlockedAfterAllAttempts(failure.name.lowercase(), guardEpoch)
+                // The anonymous roster has per-route bot quarantine. It cannot
+                // prohibit the independent token-backed Web route for 30 minutes.
+                CapsuleVideoFailure.RATE_LIMITED -> CapsuleVideoRequestGuard.noteBlockedAfterAllAttempts(failure.name.lowercase(), guardEpoch)
 
                 else -> Unit
             }
@@ -425,6 +432,7 @@ object YouTubeVideoResolver {
             dashManifest = dashManifest,
             userAgent = userAgent,
             sabrSpec = sabrSpec,
+            requestHeaders = requestHeaders,
         )
     }
 

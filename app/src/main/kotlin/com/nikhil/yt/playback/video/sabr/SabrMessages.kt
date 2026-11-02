@@ -18,7 +18,7 @@ import com.nikhil.yt.playback.video.sabr.SabrProto.vField
 internal object SabrMessages {
 
     /** The format a SABR track streams (audio or video) — from the /player response's adaptiveFormats. */
-    class Format(val itag: Int, val lastModified: Long, val contentLength: Long)
+    class Format(val itag: Int, val lastModified: Long, val contentLength: Long, val xtags: String? = null)
 
     /** Identity for the SABR streamerContext.clientInfo (must match the /player request client). */
     class ClientInfo(
@@ -33,7 +33,8 @@ internal object SabrMessages {
 
     // misc.FormatId { itag=1, lastModified=2 }
     private fun formatId(f: Format): ByteArray =
-        concat(vField(1, f.itag.toLong()), if (f.lastModified != 0L) vField(2, f.lastModified) else ByteArray(0))
+        concat(vField(1, f.itag.toLong()), if (f.lastModified != 0L) vField(2, f.lastModified) else ByteArray(0),
+            f.xtags?.let { sField(3, it) } ?: ByteArray(0))
 
     // StreamerContext.ClientInfo { deviceMake=12, deviceModel=13, clientName=16, clientVersion=17, osName=18, osVersion=19, androidSdkVersion=64 }
     private fun clientInfo(c: ClientInfo): ByteArray = concat(

@@ -42,6 +42,7 @@ internal class SabrVideoConfig(
     val durationMs: Long = 0,
     /** The listen's cpn for watch-time CDN correlation (DIRECT stampCpn parity); null = download (no stamp). */
     val cpn: () -> String? = { null },
+    val requestOrigin: String? = null,
 )
 
 /**
@@ -201,6 +202,7 @@ internal class SabrVideoSession(
             val req = Request.Builder()
                 .url(url)
                 .header("User-Agent", config.userAgent)
+                .apply { config.requestOrigin?.let { header("Origin", it); header("Referer", "$it/") } }
                 .post(body.toRequestBody(protobuf))
                 .build()
             // Every UMP response is BOUNDED. A malicious/buggy media endpoint

@@ -7,6 +7,7 @@ on:
       - 'fix/video-stream-strategy-hq-artwork-20261102'
       - 'feature/native-sabr-video-20261102'
       - 'fix/sabr-coldstart-liveness-video-20261102'
+      - 'fix/playback-fast-recovery-20261102'
   workflow_dispatch:
 
 permissions:
@@ -41,6 +42,10 @@ jobs:
       - name: Verify VIDEO buffers, byte-resume, and artwork
         run: >-
           gradle :app:testUniversalDebugUnitTest
+          --tests 'com.nikhil.yt.playback.audio.*'
+          --tests 'com.nikhil.yt.playback.CapsuleLoadControlTest'
+          --tests 'com.nikhil.yt.playback.AudioNetworkSelectionPolicyTest'
+          --tests 'com.nikhil.yt.playback.video.*'
           --tests 'com.nikhil.yt.playback.video.CapsuleVideoChunkedDataSourceTest'
           --tests 'com.nikhil.yt.playback.video.CapsuleVideoBufferPolicyTest'
           --tests 'com.nikhil.yt.playback.video.CapsuleVideoSessionTest'
@@ -60,6 +65,7 @@ jobs:
       - name: Verify isolated clip route preference and anti-bot quarantine
         run: >-
           gradle :innertube:test
+          --tests 'com.nikhil.yt.innertube.CapsuleVideoRequestGuardTest'
           --tests 'com.nikhil.yt.innertube.video.CapsuleVideoRoutesTest'
           --tests 'com.nikhil.yt.innertube.video.CapsuleNativeSabrVideoTest'
           --stacktrace --no-daemon --max-workers=2

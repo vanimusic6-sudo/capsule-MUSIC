@@ -77,14 +77,15 @@ internal class CapsuleVideoDirectMediaSourceFactory(
             val config = SabrVideoConfig(
                 sabrUrl = stream.videoStreamUrl,
                 ustreamerConfig = CapsuleSabrVideoSpec.decodeBase64(spec.ustreamerConfigBase64),
-                videoFormat = SabrMessages.Format(spec.videoItag, spec.videoLastModified, spec.videoLength),
-                audioFormat = SabrMessages.Format(spec.audioItag, spec.audioLastModified, spec.audioLength),
+                videoFormat = SabrMessages.Format(spec.videoItag, spec.videoLastModified, spec.videoLength, spec.videoXtags),
+                audioFormat = SabrMessages.Format(spec.audioItag, spec.audioLastModified, spec.audioLength, spec.audioXtags),
                 poToken = if (spec.poTokenBase64.isEmpty()) ByteArray(0)
                     else CapsuleSabrVideoSpec.decodeBase64(spec.poTokenBase64),
                 clientInfo = SabrMessages.ClientInfo(spec.clientName, spec.clientVersion),
                 userAgent = checkNotNull(stream.userAgent) { "Missing VIDEO SABR client identity" },
-                nTransform = { it }, // VisionOS server supplies an already usable URL.
-                streamClientLabel = "Native SABR / VisionOS",
+                nTransform = { it }, // The extractor already applied the matching client n-transform.
+                streamClientLabel = "Native SABR / ${stream.backend}",
+                requestOrigin = spec.requestOrigin,
                 clientKey = stream.backend,
                 durationMs = spec.durationMs,
             )
@@ -108,7 +109,7 @@ internal class CapsuleVideoDirectMediaSourceFactory(
                     .createMediaSource(audioItem),
             )
         }
-        val segmentedUpstream = CapsuleVideoTransportFactory(hlsUpstream, stream.userAgent)
+        val segmentedUpstream = CapsuleVideoTransportFactory(hlsUpstream, stream.userAgent, requestHeaders = stream.requestHeaders)
         if (stream.delivery == CapsuleVideoDelivery.DASH) {
             val xml = checkNotNull(stream.dashManifest) { "Indexed VIDEO manifest missing" }
             check(xml.length in 1..64 * 1024) { "Indexed VIDEO manifest exceeds bounds" }
@@ -138,7 +139,7 @@ internal class CapsuleVideoDirectMediaSourceFactory(
             check(manifest.getPeriod(0).adaptationSets.any { it.type == C.TRACK_TYPE_VIDEO } &&
                 manifest.getPeriod(0).adaptationSets.any { it.type == C.TRACK_TYPE_AUDIO })
             Timber.tag("CapsuleVideo").i("source-direct indexed DASH clip=%s maxHeight=%s", videoId, stream.maxHeight)
-            return DashMediaSource.Factory(CapsuleVideoTransportFactory(hlsUpstream, stream.userAgent, keys))
+            return DashMediaSource.Factory(CapsuleVideoTransportFactory(hlsUpstream, stream.userAgent, keys, stream.requestHeaders))
                 .setLoadErrorHandlingPolicy(errorPolicy).apply { drmProvider?.let(::setDrmSessionManagerProvider) }
                 .createMediaSource(manifest, mediaItem.buildUpon().setMimeType(MimeTypes.APPLICATION_MPD).setCustomCacheKey(null).build())
         }
@@ -151,8 +152,8 @@ internal class CapsuleVideoDirectMediaSourceFactory(
                 .createMediaSource(mediaItem.buildUpon().setUri(stream.videoStreamUrl)
                     .setMimeType(MimeTypes.APPLICATION_M3U8).setCustomCacheKey(null).build())
         }
-        val progressive = if (stream.userAgent.isNullOrBlank()) progressive else
-            ProgressiveMediaSource.Factory(CapsuleVideoTransportFactory(upstream, stream.userAgent))
+        val progressive = if (stream.userAgent.isNullOrBlank() && stream.requestHeaders.isEmpty()) progressive else
+            ProgressiveMediaSource.Factory(CapsuleVideoTransportFactory(upstream, stream.userAgent, requestHeaders = stream.requestHeaders))
                 .setContinueLoadingCheckIntervalBytes(64 * 1024).setLoadErrorHandlingPolicy(errorPolicy)
                 .apply { drmProvider?.let(::setDrmSessionManagerProvider) }
         val isMuxed = stream.audioStreamUrl.isNullOrBlank()
@@ -235,15 +236,16 @@ internal class CapsuleVideoTransportFactory(
     private val upstream: DataSource.Factory,
     private val userAgent: String?,
     private val cacheKeys: Map<String, String> = emptyMap(),
+    private val requestHeaders: Map<String, String> = emptyMap(),
 ) : DataSource.Factory {
     override fun createDataSource(): DataSource = object : DataSource {
         private val source = upstream.createDataSource()
         override fun open(dataSpec: DataSpec): Long {
             val mapped = dataSpec.buildUpon().apply {
                 cacheKeys[dataSpec.uri.toString()]?.let(::setKey)
-                userAgent?.takeIf { it.isNotBlank() }?.let {
-                    setHttpRequestHeaders(dataSpec.httpRequestHeaders + ("User-Agent" to it))
-                }
+                val headers = dataSpec.httpRequestHeaders + requestHeaders +
+                    (userAgent?.takeIf { it.isNotBlank() }?.let { mapOf("User-Agent" to it) } ?: emptyMap())
+                setHttpRequestHeaders(headers)
             }.build()
             return source.open(mapped)
         }

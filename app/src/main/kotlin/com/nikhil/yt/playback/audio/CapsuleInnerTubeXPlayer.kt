@@ -385,6 +385,31 @@ object CapsuleInnerTubeXPlayer {
         }
 
     /**
+     * VIDEO uses the same maintained client/token/cipher contracts as AUDIO, but never
+     * its URL cache, client-failure memory or Media3 source. Foreground audio can
+     * preempt this optional work; a second extractor stack cannot steal first sound.
+     */
+    internal suspend fun resolveVideoStream(videoId: String, maxHeight: Int): ExtractedStream =
+        withTimeout(7_000L) {
+            scheduler.run("video:$videoId", AudioResolvePriority.PREFETCH) {
+                resolveMutex.withLock {
+                    CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
+                    val extractionBundle = bundle()
+                    requireNotNull(extractionBundle.extractor.extract(
+                        videoId = videoId,
+                        hints = ContentHints(
+                            wantVideo = true,
+                            playbackClientOverrideId = "WEB_REMIX",
+                            maxVideoHeight = maxHeight,
+                        ).withStreamCapabilities(allowHls = false, allowSabr = true, allowBoundedRange = true),
+                        audioQuality = InnerTubeXAudioQuality.MP4,
+                        clientPlaybackNonce = generateClientPlaybackNonce(),
+                    )) { "Token-backed VIDEO returned no stream" }
+                }
+            }
+        }
+
+    /**
      * Metrolist-style client resilience with a Capsule-sized request budget.
      * Speculative prefetch never rotates clients. Playback/downloads use a short vetted chain;
      * after a bot-check exactly one different family may be tried before escalation.

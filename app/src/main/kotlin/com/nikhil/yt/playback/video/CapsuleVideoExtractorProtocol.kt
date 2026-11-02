@@ -26,6 +26,8 @@ data class CapsuleResolvedVideo(
     val dashManifest: String? = null,
     val userAgent: String? = null,
     val sabrSpec: CapsuleSabrVideoSpec? = null,
+    /** Main-process maintained extractor only; no credentials enter legacy parser IPC. */
+    val requestHeaders: Map<String, String> = emptyMap(),
 ) {
     val adaptive: Boolean
         get() = !audioUrl.isNullOrBlank()
@@ -129,6 +131,9 @@ internal object CapsuleVideoIpc {
                     putString("client_version", spec.clientVersion)
                     putLong("duration", spec.durationMs)
                     putString("pot", spec.poTokenBase64)
+                    putString("v_xtags", spec.videoXtags)
+                    putString("a_xtags", spec.audioXtags)
+                    putString("origin", spec.requestOrigin)
                 })
             }
         }
@@ -162,6 +167,9 @@ internal object CapsuleVideoIpc {
                 clientVersion = payload.getString("client_version").orEmpty(),
                 durationMs = payload.getLong("duration"),
                 poTokenBase64 = payload.getString("pot").orEmpty(),
+                videoXtags = payload.getString("v_xtags"),
+                audioXtags = payload.getString("a_xtags"),
+                requestOrigin = payload.getString("origin"),
             )
         }
         if (id != expectedVideoId ||

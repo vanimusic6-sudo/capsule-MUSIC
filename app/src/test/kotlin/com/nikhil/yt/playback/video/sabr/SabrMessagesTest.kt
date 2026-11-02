@@ -13,6 +13,18 @@ class SabrMessagesTest {
     private val fmt = SabrMessages.Format(itag = 251, lastModified = 1714585730077579L, contentLength = 5878798L)
     private val client = SabrMessages.ClientInfo(clientName = 101, clientVersion = "1.02", osName = "visionOS")
 
+    @Test fun taggedOriginalAudioKeepsItsExactIdentityInTheWireRequest() {
+        val tagged = SabrMessages.Format(140, 123L, 1000L, "original-tag")
+        val wire = SabrMessages.abrRequest(
+            byteArrayOf(1, 2, 3, 4), tagged, byteArrayOf(8), client, 0,
+            null, null, emptyList(), false,
+        )
+        val id = SabrProto.read(SabrProto.read(wire).bytesAt(16)!!)
+        assertEquals(140L, id.longAt(1))
+        assertEquals(123L, id.longAt(2))
+        assertArrayEquals("original-tag".toByteArray(), id.bytesAt(3))
+    }
+
     @Test
     fun `cold-start request has clientAbrState, ustreamer, preferredAudioFormat, streamerContext, no bufferedRange`() {
         val req = SabrMessages.abrRequest(

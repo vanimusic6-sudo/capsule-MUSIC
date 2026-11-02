@@ -40,9 +40,9 @@ internal data class AudioCdnOpenContext(
  * skipping, which is what it should be measured against — never about 403s.
  */
 internal const val AUDIO_CDN_INITIAL_SETTLE_MS = 250L
-/** Normal foreground requests already passed the player-selection relevance check.
- * Keep the 250ms protective window only for rapid-skip bursts and non-playing loads. */
-internal const val AUDIO_CDN_FOREGROUND_SETTLE_MS = 90L
+/** Foreground requests already passed selection stability; add no second wait.
+ * Rapid-skip bursts and non-playing loads keep the 250ms cancellation window. */
+internal const val AUDIO_CDN_FOREGROUND_SETTLE_MS = 0L
 
 /**
  * What is left of [AUDIO_CDN_INITIAL_SETTLE_MS] for a link resolved [resolvedAtElapsedMs] ago.

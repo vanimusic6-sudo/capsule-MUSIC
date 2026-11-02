@@ -24,6 +24,9 @@ data class CapsuleSabrVideoSpec(
     val clientVersion: String,
     val durationMs: Long,
     val poTokenBase64: String = "",
+    val videoXtags: String? = null,
+    val audioXtags: String? = null,
+    val requestOrigin: String? = null,
 ) {
     fun isValid(): Boolean {
         if (videoItag !in 1..65535 || audioItag !in 1..65535 || videoItag == audioItag ||
@@ -34,6 +37,9 @@ data class CapsuleSabrVideoSpec(
             durationMs !in 1L..86_400_000L ||
             ustreamerConfigBase64.length !in 4..65_536 || poTokenBase64.length > 8192
         ) return false
+        if (listOfNotNull(videoXtags, audioXtags).any { tag ->
+                tag.length > 1024 || tag.any { !(it.isLetterOrDigit() || it in "-_=+") }
+            } || requestOrigin !in setOf(null, "https://music.youtube.com", "https://www.youtube.com", "https://m.youtube.com")) return false
         return runCatching {
             val config = decodeBase64(ustreamerConfigBase64)
             val token = if (poTokenBase64.isBlank()) ByteArray(0) else decodeBase64(poTokenBase64)

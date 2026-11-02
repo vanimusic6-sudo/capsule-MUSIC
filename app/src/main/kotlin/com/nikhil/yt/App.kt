@@ -134,6 +134,9 @@ class App : Application(), SingletonImageLoader.Factory {
                     (!state.poTokenPlayer.isNullOrBlank() && !state.poTokenGvs.isNullOrBlank())
                 ) {
                     webRemixWarmupJob = applicationScope.launch(Dispatchers.IO) {
+                        // Config fetch + JS runtime/player code start before the first tap.
+                        // prewarm starts its independently owned work before awaiting it.
+                        launch { CapsuleAudioEngine.prewarm() }
                         CapsuleAudioEngine.prewarmWebRemixForStartup()
                     }
                 }

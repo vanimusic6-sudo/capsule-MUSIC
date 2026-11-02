@@ -188,13 +188,13 @@ class AudioCdnRedirectFidelityTest {
         assertEquals(REDIRECTED, chain.sent[1].url.toString())
     }
 
-    @Test fun `declining a redirect asks the original link exactly as it was`() {
+    @Test fun `following a cross-group redirect preserves signed query and range headers`() {
         val crossGroup = SIGNED.replace("sn-ajixh5-55", "sn-aj4g55-5o")
         val chain = RecordingChain(signedRequest(), listOf(found(crossGroup), partial()))
 
         AudioCdnRedirectInterceptor(AudioCdnRedirectTargets()).intercept(chain).close()
 
-        assertEquals(SIGNED, chain.sent[1].url.toString())
+        assertEquals(crossGroup, chain.sent[1].url.toString())
         assertEquals(chain.sent[0].headers, chain.sent[1].headers)
     }
 

@@ -134,15 +134,15 @@ class CapsuleVideoRequestGuardTest {
     }
 
     @Test
-    fun old403OnlyCooldownIsMigratedWithoutRemovingRealBotOrRateLimitCooldowns() {
+    fun legacyAnonymousRosterAnd403CooldownsDoNotProhibitNewTokenRouteButRealRateLimitsRemain() {
         val now = 100_000L
         CapsuleVideoRequestGuard.resetForTests { now }
-        for (reason in listOf("repeated stream 403", "http 403", "forbidden")) {
+        for (reason in listOf("repeated stream 403", "http 403", "forbidden", "bot_blocked")) {
             CapsuleVideoRequestGuard.restore(CapsuleVideoRequestGuard.Snapshot(now + 21_600_000L, 3, now, reason))
             assertFalse(CapsuleVideoRequestGuard.isBlocked())
             assertEquals(0, CapsuleVideoRequestGuard.snapshot().escalationLevel)
         }
-        for (reason in listOf("http 429 (stream)", "rate_limited", "bot_blocked", "bot check")) {
+        for (reason in listOf("http 429 (stream)", "rate_limited", "bot check")) {
             CapsuleVideoRequestGuard.restore(CapsuleVideoRequestGuard.Snapshot(now + 600_000L, 1, now, reason))
             assertTrue(CapsuleVideoRequestGuard.isBlocked())
             assertEquals(reason, CapsuleVideoRequestGuard.blockReason())

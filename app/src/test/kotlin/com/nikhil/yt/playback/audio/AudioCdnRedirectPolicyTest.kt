@@ -123,7 +123,6 @@ class AudioCdnRedirectPolicyTest {
             requestFor(ORIGIN),
             listOf(
                 redirectTo(OTHER_GROUP),
-                redirectTo(OTHER_GROUP),
                 { throw timeout },
             ),
         )
@@ -195,13 +194,13 @@ class AudioCdnRedirectPolicyTest {
     }
 
     @Test
-    fun `a redirect out of the group sends us back to the issuing host`() {
+    fun `a healthy cross-group redirect is followed without a duplicate original request`() {
         val chain = ScriptedChain(requestFor(ORIGIN), listOf(redirectTo(OTHER_GROUP), served()))
 
         val response = AudioCdnRedirectInterceptor().intercept(chain)
 
         assertEquals(206, response.code)
-        assertEquals(listOf(ORIGIN, ORIGIN), chain.asked)
+        assertEquals(listOf(ORIGIN, OTHER_GROUP), chain.asked)
     }
 
     @Test
@@ -218,11 +217,14 @@ class AudioCdnRedirectPolicyTest {
                 List(AUDIO_CDN_MAX_REISSUES + 1) { redirectTo(OTHER_GROUP) } + served(),
             )
 
-        val response = AudioCdnRedirectInterceptor().intercept(chain)
+        val health = AudioCdnHostHealth().apply {
+            recordUnresponsiveOpen(OTHER_GROUP.substringAfter("https://").substringBefore('/'))
+        }
+        val response = AudioCdnRedirectInterceptor(health = health).intercept(chain)
 
         assertEquals(206, response.code)
         assertEquals(
-            "the issuing host is asked again once per re-issue, then the redirect is followed",
+            "only a known unresponsive target warrants one reissue",
             List(AUDIO_CDN_MAX_REISSUES + 1) { ORIGIN } + OTHER_GROUP,
             chain.asked,
         )
@@ -415,12 +417,15 @@ class AudioCdnRedirectShortcutTest {
     @Test
     fun `declining a cross-group redirect still asks the true original`() {
         val targets = AudioCdnRedirectTargets()
-        val interceptor = AudioCdnRedirectInterceptor(targets)
+        val health = AudioCdnHostHealth().apply {
+            recordUnresponsiveOpen(OTHER_GROUP.substringAfter("https://").substringBefore('/'))
+        }
+        val interceptor = AudioCdnRedirectInterceptor(targets, health)
 
         val first = ScriptedChain(requestFor(ORIGIN), listOf(redirectTo(SAME_GROUP), served()))
         interceptor.intercept(first).close()
 
-        // Now the remembered link starts sending us out of the group.
+        // Now the remembered link starts sending us to the known unresponsive group.
         val second =
             ScriptedChain(requestFor(ORIGIN), listOf(redirectTo(OTHER_GROUP), served()))
         interceptor.intercept(second).close()

@@ -115,9 +115,10 @@ object CapsuleVideoRequestGuard {
 
     fun restore(snapshot: Snapshot?) {
         snapshot ?: return
-        // Old policy incorrectly promoted ordinary signed-link/client 403s to
-        // a global ban. Migrate only those reasons; real 429/bot verdicts stay.
-        if (snapshot.reason?.lowercase() in setOf("repeated stream 403", "http 403", "forbidden")) {
+        // Old policy promoted ordinary CDN 403s and exhaustion of the anonymous
+        // VIDEO roster (bot_blocked) to a global ban. Neither verdict covers the
+        // new token-backed Web route. Explicit metadata bot checks and 429 stay.
+        if (snapshot.reason?.lowercase() in setOf("repeated stream 403", "http 403", "forbidden", "bot_blocked")) {
             blockedUntilMs = 0L
             escalationLevel = 0
             lastTripAtMs = 0L
