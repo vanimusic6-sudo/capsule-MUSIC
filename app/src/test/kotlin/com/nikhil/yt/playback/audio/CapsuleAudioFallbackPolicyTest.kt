@@ -9,6 +9,17 @@ import org.junit.Test
 
 class CapsuleAudioFallbackPolicyTest {
     @Test
+    fun networkDnsFailureIsSharedAndMustNotQuarantineOneClient() {
+        val root = java.net.UnknownHostException("youtubei.googleapis.com")
+        assertTrue(root.isSharedAudioDnsFailure())
+        assertTrue(java.io.IOException("wrapped", root).isSharedAudioDnsFailure())
+        assertFalse(java.net.SocketTimeoutException("read timed out").isSharedAudioDnsFailure())
+        assertFalse(java.net.SocketException("Connection reset").isSharedAudioDnsFailure())
+        assertFalse(IllegalArgumentException("bad cipher").isSharedAudioDnsFailure())
+    }
+
+
+    @Test
     fun legacySignedOutWebPlaybackKeepsBoundedFallbacks() {
         val plan =
             CapsuleAudioFallbackPolicy.profilePlan(
