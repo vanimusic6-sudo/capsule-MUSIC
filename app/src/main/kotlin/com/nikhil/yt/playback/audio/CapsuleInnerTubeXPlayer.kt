@@ -474,6 +474,17 @@ object CapsuleInnerTubeXPlayer {
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
+                if (failure.isSharedAudioDnsFailure()) {
+                    // A VPN/Wi-Fi route with failing DNS will fail the same host for
+                    // every /player profile. Preserve healthy client identities;
+                    // the outer network recovery will retry after connectivity returns.
+                    Timber.tag(TAG).w(
+                        "AUDIO shared DNS failure id=%s profile=%s; preserving client order",
+                        videoId,
+                        profileId,
+                    )
+                    throw failure
+                }
                 val kind =
                     CapsulePlaybackSafety.classifyFailureSince(
                         error = failure,
