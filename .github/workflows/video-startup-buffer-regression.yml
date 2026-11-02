@@ -6,6 +6,7 @@ on:
       - 'fix/video-startup-buffer-artwork-20261102'
       - 'fix/video-stream-strategy-hq-artwork-20261102'
       - 'feature/native-sabr-video-20261102'
+      - 'fix/sabr-coldstart-liveness-video-20261102'
   workflow_dispatch:
 
 permissions:
