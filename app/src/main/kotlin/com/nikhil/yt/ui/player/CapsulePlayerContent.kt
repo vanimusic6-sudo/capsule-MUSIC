@@ -670,17 +670,27 @@ fun CapsulePlayerContent(
                             if (!artworkLoading || artworkRebind > 0 || requestedArtworkUrl.isNullOrBlank()) {
                                 return@LaunchedEffect
                             }
-                            // Cold image fetches can legitimately be slow.
-                            // Rescue at most once and only while this cover is visible.
-                            delay(if (retainedArtworkPainter != null) 650L else 1_600L)
+                            // A low-resolution preview often arrives before the 960px cover.
+                            // The old 650ms watchdog *cancelled* the high-resolution request
+                            // and pinned the tiny original as the final player artwork. Retry a
+                            // genuinely stuck full-size request only after a realistic network
+                            // deadline. Preserve the visible preview throughout the upgrade.
+                            delay(if (retainedArtworkPainter != null) 8_000L else 5_000L)
                             if (artworkLoading) {
                                 Timber.tag("CapsuleArtwork").w(
-                                    "player-artwork-stalled id=%s original=%s rebind=%s",
+                                    "player-artwork-stalled id=%s original=%s rebind=%s preview=%s",
                                     mediaMetadata.id, useOriginalArtwork, artworkRebind,
+                                    retainedArtworkPainter != null,
                                 )
-                                if (!useOriginalArtwork && originalArtworkUrl != highResArtworkUrl) {
+                                if (retainedArtworkPainter == null &&
+                                    !useOriginalArtwork && originalArtworkUrl != highResArtworkUrl
+                                ) {
+                                    // No visible bitmap after five seconds: unblock the UI.
+                                    // An actual high-res HTTP error is handled by onError.
                                     useOriginalArtwork = true
                                 } else {
+                                    // When a preview exists, never demote it to the final image
+                                    // simply because the full-size CDN request takes >650ms.
                                     artworkRebind++
                                 }
                             }
