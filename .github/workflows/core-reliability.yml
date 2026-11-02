@@ -73,8 +73,10 @@ jobs:
           --tests 'com.nikhil.yt.ui.DestroyedEntryViewModelTest'
           --stacktrace --no-daemon --max-workers=2
       - name: Extractor regression tests
+        if: ${{ !cancelled() }}
         run: gradle :innertube:test :betterlyrics:test --stacktrace --no-daemon --max-workers=2
       - name: Android lint and runtime verification
+        if: ${{ !cancelled() }}
         run: gradle :app:verifyAndroidJsonRuntime :app:lintUniversalDebug --stacktrace --no-daemon --max-workers=2
       - name: Build test APK
         run: gradle :app:assembleUniversalDebug --stacktrace --no-daemon --max-workers=2
