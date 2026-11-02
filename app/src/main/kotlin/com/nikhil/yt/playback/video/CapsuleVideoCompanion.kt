@@ -464,7 +464,12 @@ internal class CapsuleVideoSession(
         if (!ownsSound && catchupPending && rendering && ready && firstFrame) {
             val target = startupSeekTarget()
             if (abs(video.currentPosition - targetPosition()) > 400L) {
-                val bufferedTarget = capsuleClampDecoderSeek(target + 350L, video.duration)
+                // After a slow CDN startup another seek with only 350ms
+                // banked ahead consumed the last decoded frames and left the
+                // player BUFFERING until its watchdog fired (16:15:55 log).
+                // Require a modest 2s runway before a SECOND corrective
+                // seek. MUSIC stays audible until VIDEO is stable.
+                val bufferedTarget = capsuleClampDecoderSeek(target + 2_000L, video.duration)
                 if (video.bufferedPosition < bufferedTarget) {
                     ensureWatchdog()
                     return
