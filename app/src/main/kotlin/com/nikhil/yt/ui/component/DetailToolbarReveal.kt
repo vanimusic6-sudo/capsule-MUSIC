@@ -182,27 +182,33 @@ internal class DetailHeaderMotionState(
                 val region = androidx.compose.ui.geometry.Size(clip.width, clip.height)
                 val position = Offset(clip.left, clip.top)
                 if (rightFade > 0f) {
+                    // Always reach zero opacity at the actual crop boundary.
+                    // Growing the feather itself (rather than dimming only its
+                    // endpoint) avoids a partially bright razor-cut glyph.
+                    val activeFeather = (horizontalFeather * rightFade).coerceAtLeast(.01f)
                     drawRect(
                         Brush.horizontalGradient(
-                            listOf(Color.White, Color.White.copy(alpha = 1f - rightFade)),
-                            startX = clip.width - horizontalFeather,
+                            listOf(Color.White, Color.Transparent),
+                            startX = clip.width - activeFeather,
                             endX = clip.width,
                         ), topLeft = position, size = region, blendMode = BlendMode.DstIn,
                     )
                 }
                 if (leftFade > 0f) {
+                    val activeFeather = (horizontalFeather * leftFade).coerceAtLeast(.01f)
                     drawRect(
                         Brush.horizontalGradient(
-                            listOf(Color.White.copy(alpha = 1f - leftFade), Color.White),
-                            startX = 0f, endX = horizontalFeather,
+                            listOf(Color.Transparent, Color.White),
+                            startX = 0f, endX = activeFeather,
                         ), topLeft = position, size = region, blendMode = BlendMode.DstIn,
                     )
                 }
                 if (lowerFade > 0f) {
+                    val activeFeather = (trailingFeather * lowerFade).coerceAtLeast(.01f)
                     drawRect(
                         Brush.verticalGradient(
-                            listOf(Color.White, Color.White.copy(alpha = 1f - lowerFade)),
-                            startY = clip.height - trailingFeather,
+                            listOf(Color.White, Color.Transparent),
+                            startY = clip.height - activeFeather,
                             endY = clip.height,
                         ), topLeft = position, size = region, blendMode = BlendMode.DstIn,
                     )
@@ -241,9 +247,10 @@ internal class DetailHeaderMotionState(
 }
 
 /**
- * Smoothly introduce a feather only after ink actually crosses the boundary.
- * The same pure function works for forward and reverse scrolling: no timers,
- * opacity restarts, or extra composition invalidations are involved.
+ * Smoothly GROW the feather from zero width as ink crosses the boundary.
+ * The alpha at the edge is always zero; reducing only the endpoint alpha
+ * left conspicuously half-visible chopped glyphs on moderately long titles.
+ * This is reversible scroll geometry, not a clock-based opacity animation.
  */
 internal fun detailTitleFeatherStrength(overlapPx: Float, featherPx: Float): Float {
     if (!overlapPx.isFinite() || overlapPx <= 0f) return 0f
