@@ -30,6 +30,38 @@ class CapsuleVideoViewportTest {
     @Test fun wideFrameKeepsItsScaleAndCentreOnPauseAndExit() = verify(Size(21f, 9f))
     @Test fun squareFrameKeepsItsScaleAndCentreOnPauseAndExit() = verify(Size(1f, 1f))
 
+    @Test fun lateSquareDimensionsReplaceTheColdWideSlotWithoutRecreatingOutput() {
+        val decoder = mutableStateOf<Size?>(null)
+        val metadata = mutableStateOf<Size?>(null)
+        val clip = mutableStateOf("first")
+        var bounds = Rect.Zero
+        var creates = 0
+        compose.setContent {
+            val aspect = rememberCapsuleVideoViewportSize(clip.value, decoder.value, metadata.value, null)
+            Box(Modifier.size(320.dp, 180.dp)) {
+                CapsuleVideoViewport(aspect) {
+                    AndroidView(factory = { creates++; View(it) }, modifier = Modifier.fillMaxSize()
+                        .onGloballyPositioned { bounds = it.boundsInRoot() })
+                }
+            }
+        }
+        compose.waitForIdle()
+        assertEquals(16f / 9f, bounds.width / bounds.height, 0.02f)
+        compose.runOnIdle { metadata.value = Size(720f, 720f) }
+        compose.waitForIdle()
+        assertEquals(1f, bounds.width / bounds.height, 0.02f)
+        compose.runOnIdle { decoder.value = Size(600f, 800f) }
+        compose.waitForIdle()
+        assertEquals(0.75f, bounds.width / bounds.height, 0.02f)
+        compose.runOnIdle { decoder.value = null; metadata.value = null }
+        compose.waitForIdle()
+        assertEquals("A reset preserves the last real dimensions", 0.75f, bounds.width / bounds.height, 0.02f)
+        compose.runOnIdle { clip.value = "next"; metadata.value = Size(1280f, 720f) }
+        compose.waitForIdle()
+        assertEquals(16f / 9f, bounds.width / bounds.height, 0.02f)
+        assertEquals("Changing aspect never replaces the native output", 1, creates)
+    }
+
     private fun verify(aspect: Size) {
         val paused = mutableStateOf(false)
         val active = mutableStateOf(true)

@@ -30,6 +30,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.*
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import timber.log.Timber
@@ -38,6 +39,8 @@ import timber.log.Timber
 internal object CapsuleWebVideoExtractor {
     private val lock = Mutex()
     private var current: Context? = null
+    private val cacheEpoch = AtomicLong()
+    fun invalidateCachedInventory() { cacheEpoch.incrementAndGet() }
     private val logger = InnerTubeLogger { event ->
         if (GlobalLog.isEnabled) Timber.tag("VideoInnerTubeX").d("%s", event.message)
     }
@@ -54,8 +57,23 @@ internal object CapsuleWebVideoExtractor {
                     current = create(identity)
                 }
                 val context = requireNotNull(current)
+                val now = android.os.SystemClock.elapsedRealtime()
+                val epoch = cacheEpoch.get()
+                context.cached?.takeIf { it.epoch == epoch && it.stream.videoId == videoId && now - it.createdAtMs < 60_000L &&
+                    (it.stream.expiresAt?.toEpochMilliseconds() ?: 0L) > System.currentTimeMillis() + 45_000L
+                }?.let { cached ->
+                    val selected = cached.selections[maxHeight] ?: context.selectQuality(cached.stream, cached.inventory, maxHeight)
+                        .also { cached.selections[maxHeight] = it }
+                    Timber.tag("CapsuleVideo").i("VIDEO quality inventory-hit clip=%s requested=%dp selected=%sp", videoId, maxHeight, selected.videoHeight)
+                    if (identity != CapsuleInnerTubeXPlayer.sessionIdentity()) throw CancellationException("VIDEO session changed")
+                    if ((selected.expiresAt?.toEpochMilliseconds() ?: 0L) > System.currentTimeMillis() + 45_000L) {
+                        return@withLock Extraction(selected, cached.index)
+                    }
+                }
+                context.cached = null
                 context.botObserved.set(false)
                 context.index.set(null)
+                context.inventory.set(null)
                 try {
                     val stream = requireNotNull(context.extractor.extract(
                         videoId = videoId,
@@ -65,7 +83,13 @@ internal object CapsuleWebVideoExtractor {
                         clientPlaybackNonce = generateClientPlaybackNonce(),
                     )) { "VIDEO client returned no stream" }
                     if (identity != CapsuleInnerTubeXPlayer.sessionIdentity()) throw CancellationException("VIDEO session changed")
-                    Extraction(stream, context.index.get()?.takeIf { it.videoId == videoId })
+                    val inventory = context.inventory.get()?.takeIf { it.videoId == videoId }
+                    val index = context.index.get()?.takeIf { it.videoId == videoId }
+                    val selected = if (stream.sabrVideoBootstrap == null) context.selectQuality(stream, inventory, maxHeight) else stream
+                    if (stream.sabrVideoBootstrap == null) {
+                        context.cached = Cached(stream, inventory, index, now, epoch).also { it.selections[maxHeight] = selected }
+                    }
+                    Extraction(selected, index)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (failure: Exception) {
@@ -85,6 +109,8 @@ internal object CapsuleWebVideoExtractor {
         val auth = YouTube.authState
         val botObserved = AtomicBoolean(false)
         val index = AtomicReference<CapsuleWebVideoIndex?>(null)
+        val inventory = AtomicReference<CapsuleWebVideoInventory?>(null)
+        val playerUrl = AtomicReference<String?>(null)
         val http = HttpClient(OkHttp) {
             expectSuccess = false
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true; explicitNulls = false; encodeDefaults = true }) }
@@ -107,6 +133,7 @@ internal object CapsuleWebVideoExtractor {
                             val root = runCatching { Json.parseToJsonElement(body) as? JsonObject }.getOrNull()
                             val playability = root?.get("playabilityStatus") as? JsonObject
                             index.set(root?.let(CapsuleWebVideoIndex::fromPlayerResponse))
+                            inventory.set(root?.let(CapsuleWebVideoInventory::fromPlayerResponse))
                             if (YouTubeFailureClassifier.classify(
                                     playabilityStatus = (playability?.get("status") as? JsonPrimitive)?.contentOrNull,
                                     text = playability?.toString(),
@@ -127,11 +154,13 @@ internal object CapsuleWebVideoExtractor {
         val cipher = YouTubeCipherService(http, store, logger)
         val parser = YtConfigParserImpl(http, innerTube, store, logger)
         val tokens = VideoTokens(auth)
-        return Context(identity, http, innerTube, cipher, tokens, botObserved, index, InnerTubeExtractor(
+        return Context(identity, http, innerTube, cipher, tokens, botObserved, index, inventory, playerUrl, InnerTubeExtractor(
             configParser = object : YtConfigParser by parser {
                 override suspend fun fetchConfig(videoId: String, useLoginCookies: Boolean): PlayerConfig = try {
-                    parser.fetchConfig(videoId, useLoginCookies)
-                } catch (_: IllegalStateException) { parser.fetchEmbeddedConfig(videoId, false) }
+                    parser.fetchConfig(videoId, useLoginCookies).also { playerUrl.set(it.playerUrl) }
+                } catch (_: IllegalStateException) {
+                    parser.fetchEmbeddedConfig(videoId, false).also { playerUrl.set(it.playerUrl) }
+                }
             },
             cipherService = cipher, innerTube = innerTube,
             fallbackStrategy = CapsuleAudioClientStrategy, tokenProvider = tokens, logger = logger,
@@ -152,13 +181,30 @@ internal object CapsuleWebVideoExtractor {
         override suspend fun close() = generator.close()
     }
 
+    private class Cached(
+        val stream: ExtractedStream, val inventory: CapsuleWebVideoInventory?,
+        val index: CapsuleWebVideoIndex?, val createdAtMs: Long, val epoch: Long,
+    ) { val selections = mutableMapOf<Int, ExtractedStream>() }
+
     private class Context(
         val identity: Any, val http: HttpClient, val innerTube: InnerTube,
         val cipher: YouTubeCipherService, val tokens: VideoTokens,
         val botObserved: AtomicBoolean, val index: AtomicReference<CapsuleWebVideoIndex?>,
+        val inventory: AtomicReference<CapsuleWebVideoInventory?>, val playerUrl: AtomicReference<String?>,
         val extractor: InnerTubeExtractor,
     ) {
+        var cached: Cached? = null
+        suspend fun selectQuality(stream: ExtractedStream, inventory: CapsuleWebVideoInventory?, maxHeight: Int) =
+            selectWebVideoQuality(stream, inventory, maxHeight) { candidate ->
+                val url = playerUrl.get()
+                // No JS is needed for an already signed, transform-free direct format.
+                if (url == null && candidate.signatureCipher.isNullOrBlank() && candidate.cipher.isNullOrBlank() &&
+                    candidate.url?.let { android.net.Uri.parse(it).getQueryParameter("n") } == null) candidate
+                else url?.let { cipher.processFormats(it, listOf(candidate)).firstOrNull() }
+            }
         suspend fun close() {
+            cached = null
+            inventory.set(null)
             tokens.close()
             cipher.dispose()
             innerTube.close()

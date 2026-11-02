@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,7 +27,6 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.viewinterop.AndroidView
-import kotlinx.coroutines.delay
 import timber.log.Timber
 import androidx.media3.common.Player
 import androidx.media3.ui.compose.modifiers.resizeWithContentScale
@@ -54,23 +53,18 @@ internal fun CapsuleVideoSurface(service: MusicService, modifier: Modifier = Mod
     val presentation = rememberPresentationState(player, keepContentOnReset = state.presentingVideo)
     val frame = still?.takeIf { it.exiting ||
         (!player.playWhenReady && it.mediaId == player.currentMediaItem?.mediaId) }
-    // The captured bitmap has exactly the TextureView's aspect. Use its bounds
-    // through pause/exit even if Media3 resets videoSize while stopping.
-    val sourceSize = frame?.let { Size(it.bitmap.width.toFloat(), it.bitmap.height.toFloat()) }
-        ?: presentation.videoSizeDp
-    // Media3 sometimes reports the real coded dimensions AFTER its first
-    // frame has already appeared. resizeWithContentScale would then recrop
-    // that visible frame a second time. Freeze the first known aspect for
-    // this video (or the initial 16:9 slot if none was reported yet).
-    val videoKey = player.currentMediaItem?.mediaId
-    var lockedViewportSize by remember(videoKey) { mutableStateOf<Size?>(null) }
-    val measuredSize = sourceSize?.takeIf { it.width > 0f && it.height > 0f }
-    LaunchedEffect(videoKey, measuredSize, state.firstFrameReady) {
-        if (lockedViewportSize == null && (measuredSize != null || state.firstFrameReady)) {
-            lockedViewportSize = measuredSize ?: Size(16f, 9f)
-        }
+    // Decoder dimensions can arrive after the first frame. A provisional 16:9
+    // slot must never become a permanent lock for square/portrait clips.
+    val coded = player.videoSize
+    val decoderSize = presentation.videoSizeDp ?: coded.takeIf { it.width > 0 && it.height > 0 }
+        ?.let { Size(it.width * it.pixelWidthHeightRatio, it.height.toFloat()) }
+    val streamSize = state.width?.takeIf { it > 0 }?.let { width ->
+        state.height?.takeIf { it > 0 }?.let { height -> Size(width.toFloat(), height.toFloat()) }
     }
-    val viewportSize = lockedViewportSize ?: measuredSize ?: Size(16f, 9f)
+    val viewportSize = rememberCapsuleVideoViewportSize(
+        player.currentMediaItem?.mediaId, decoderSize, streamSize,
+        frame?.let { Size(it.bitmap.width.toFloat(), it.bitmap.height.toFloat()) },
+    )
     Box(modifier.clipToBounds().background(Color.Black)) {
       CapsuleVideoViewport(viewportSize) {
         if (active) CapsuleVideoTextureOutput(service, player, retention, presentation.coverSurface, state.firstFrameReady)
@@ -84,6 +78,18 @@ internal fun CapsuleVideoSurface(service: MusicService, modifier: Modifier = Mod
         }
       }
     }
+}
+
+/** Real dimensions replace provisional metadata immediately; resets retain only a known size. */
+@Composable
+internal fun rememberCapsuleVideoViewportSize(
+    videoKey: String?, decoderSize: Size?, streamSize: Size?, retainedSize: Size?,
+): Size {
+    fun Size?.valid() = this?.takeIf { it.width.isFinite() && it.height.isFinite() && it.width > 0f && it.height > 0f }
+    var lastKnown by remember(videoKey) { mutableStateOf<Size?>(null) }
+    val measured = decoderSize.valid() ?: streamSize.valid()
+    SideEffect { if (measured != null && measured != lastKnown) lastKnown = measured }
+    return retainedSize.valid() ?: measured ?: lastKnown ?: Size(16f, 9f)
 }
 
 @Composable
@@ -146,37 +152,23 @@ private fun CapsuleVideoTextureOutput(service: MusicService, player: Player, ret
                 retention.retainPausedFrame()
                 retention.unregisterCapture(view)
                 player.removeListener(listener)
-                // ExoPlayer clears only this view, so an old design cannot clear its replacement.
-                player.clearVideoTextureView(view)
             }
         }
-        // Bind Media3 first, then publish the real surface lifetime to the
-        // VIDEO session. TextureView becomes available asynchronously on the
-        // very first opening; subsequent toggles often reuse an already warm
-        // TextureView. Never steal Media3's SurfaceTextureListener.
-        LaunchedEffect(view, player, service, owner) {
-            player.setVideoTextureView(view)
-            repeat(250) {
-                if (view.isAvailable && view.isAttachedToWindow &&
-                    view.width > 0 && view.height > 0
-                ) {
-                    service.attachVideoSurface(owner)
-                    Timber.tag("CapsuleVideo").i(
-                        "VIDEO surface-bound available=true width=%d height=%d",
-                        view.width, view.height,
-                    )
-                    return@LaunchedEffect
-                }
-                delay(32L)
-            }
-            Timber.tag("CapsuleVideo").w(
-                "VIDEO cold surface unavailable after 8s available=%s attached=%s width=%d height=%d",
-                view.isAvailable, view.isAttachedToWindow, view.width, view.height,
-            )
-        }
+        // Observe native attachment/pre-draw once, then sleep. Never poll the
+        // surface every 32 ms, or replace Media3's SurfaceTextureListener.
         DisposableEffect(view, player, service, owner) {
+            player.setVideoTextureView(view)
+            val binding = CapsuleVideoSurfaceBinding(
+                view = view,
+                isReady = { view.isAvailable && view.width > 0 && view.height > 0 },
+                onAttached = {
+                    service.attachVideoSurface(owner)
+                    Timber.tag("CapsuleVideo").i("VIDEO surface-bound available=true width=%d height=%d", view.width, view.height)
+                },
+                onDetached = { service.detachVideoSurface(owner) },
+            )
             onDispose {
-                service.detachVideoSurface(owner)
+                binding.dispose()
                 retention.retainPausedFrame()
                 player.clearVideoTextureView(view)
             }

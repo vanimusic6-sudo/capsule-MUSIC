@@ -25,7 +25,7 @@ internal object CapsuleWebVideoResolver {
     const val BACKEND = "innertubex-web-remix"
     private var session: Any? = null
     private var botRetryAtMs = 0L
-    private val retryAtByClip = LinkedHashMap<String, Long>()
+    private val retryAtByRequest = LinkedHashMap<String, Long>()
 
     // YouTubeVideoResolver's mutex serializes this state and all real attempts.
     suspend fun resolve(videoId: String, quality: CapsuleVideoQuality): CapsuleResolvedVideo? {
@@ -33,26 +33,27 @@ internal object CapsuleWebVideoResolver {
         if (identity != session) {
             session = identity
             botRetryAtMs = 0L
-            retryAtByClip.clear()
+            retryAtByRequest.clear()
         }
         val now = android.os.SystemClock.elapsedRealtime()
-        if (now < botRetryAtMs || now < (retryAtByClip[videoId] ?: 0L)) return null
+        val requestKey = "$videoId:${quality.name}"
+        if (now < botRetryAtMs || now < (retryAtByRequest[requestKey] ?: 0L)) return null
         val started = now
         val epoch = CapsuleVideoRequestGuard.resetEpoch()
         return try {
             val extraction = CapsuleWebVideoExtractor.resolve(videoId, quality.maxHeight ?: 720)
             val resolved = tokenBackedVideo(extraction.stream, quality.maxHeight ?: 720, extraction.index)
-            retryAtByClip.remove(videoId)
+            retryAtByRequest.remove(requestKey)
             Timber.tag("CapsuleVideo").i(
-                "VIDEO web-ready clip=%s elapsedMs=%d delivery=%s height=%d tokenPresent=%s",
-                videoId, android.os.SystemClock.elapsedRealtime() - started,
+                "VIDEO web-ready clip=%s requested=%s elapsedMs=%d delivery=%s height=%d tokenPresent=%s",
+                videoId, quality.name, android.os.SystemClock.elapsedRealtime() - started,
                 resolved.delivery, resolved.height, (resolved.sabrSpec?.poTokenBase64?.isNotEmpty() == true) ||
                     android.net.Uri.parse(resolved.videoUrl).getQueryParameter("pot")?.isNotBlank() == true,
             )
             resolved
         } catch (timeout: TimeoutCancellationException) {
             currentCoroutineContext().ensureActive()
-            retryAtByClip[videoId] = now + 5_000L
+            retryAtByRequest[requestKey] = now + 5_000L
             null
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -67,8 +68,8 @@ internal object CapsuleWebVideoResolver {
                 throw YouTubeVideoResolver.VideoBackendException(CapsuleVideoFailure.RATE_LIMITED, "VIDEO rate limited")
             }
             if (kind == CapsuleVideoRequestGuard.FailureKind.BOT_CHECK) botRetryAtMs = now + 60_000L
-            retryAtByClip[videoId] = now + 30_000L
-            while (retryAtByClip.size > 64) retryAtByClip.remove(retryAtByClip.keys.first())
+            retryAtByRequest[requestKey] = now + 30_000L
+            while (retryAtByRequest.size > 64) retryAtByRequest.remove(retryAtByRequest.keys.first())
             // Exception text may contain a signed URL: diagnostics remain structural.
             Timber.tag("CapsuleVideo").w("VIDEO web-fallback clip=%s kind=%s type=%s elapsedMs=%d",
                 videoId, kind, failure.javaClass.simpleName, android.os.SystemClock.elapsedRealtime() - started)

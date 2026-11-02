@@ -468,6 +468,155 @@ private fun KaraokeWord(
 }
 
 
+@Composable
+private fun ArchiveTuneWord(
+    text: String,
+    startTime: Long,
+    endTime: Long,
+    playbackPosition: State<Long>,
+    isRtl: Boolean,
+    fontSize: TextUnit,
+    textColor: Color,
+    isBackground: Boolean,
+    lineFocus: State<Float>,
+    motionEnabled: Boolean,
+    releaseCompleted: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    // Subscribe inside the word, not its FlowRow, and only while timing can change its paint.
+    val currentTime by remember(playbackPosition, startTime, endTime, releaseCompleted) {
+        derivedStateOf(structuralEqualityPolicy()) {
+            if (releaseCompleted) {
+                Long.MIN_VALUE
+            } else {
+                playbackPosition.value.coerceIn(
+                    minOf(startTime, endTime) - 1L,
+                    maxOf(startTime, endTime),
+                )
+            }
+        }
+    }
+    val duration = (endTime - startTime).coerceAtLeast(1L)
+    val isComplete = releaseCompleted || currentTime >= endTime
+    val isActive = !releaseCompleted && currentTime in startTime until endTime
+    val progress =
+        when {
+            isComplete -> 1f
+            currentTime <= startTime -> 0f
+            else -> ((currentTime - startTime).toFloat() / duration).coerceIn(0f, 1f)
+        }
+    val safeLineFocus = lineFocus.value.coerceIn(0f, 1f)
+    val wave = sin(progress * Math.PI).toFloat()
+    // The word is always measured at its maximum size, so FlowRow never needs to reflow when
+    // focus moves to this line. Only the already-reserved visual layer moves from 96% -> 100%.
+    /*
+     * The previous version fed a new target into two animateFloatAsState instances on every lyric
+     * clock tick. That repeatedly restarted tiny per-word animations and caused occasional frame
+     * spikes on long lines. The wave is already eased, so drawing its sampled value directly is
+     * both smoother under load and much cheaper.
+     */
+    val scale =
+        if (motionEnabled && isActive) {
+            (0.96f + 0.04f * wave * safeLineFocus).coerceIn(0.96f, 1f)
+        } else {
+            0.96f
+        }
+    val lift =
+        if (motionEnabled && isActive) {
+            -3.2f * wave * safeLineFocus
+        } else {
+            0f
+        }
+    val glowProgress = (progress * 2f).coerceAtMost(1f)
+    val glowAlpha =
+        if (motionEnabled && isActive) {
+            glowProgress * 0.34f * safeLineFocus
+        } else {
+            0f
+        }
+    val glowRadius = if (glowAlpha > 0f) glowProgress * 8f else 0f
+    val effectiveFontSize = if (isBackground) fontSize * 0.82f else fontSize
+    // Keep the unfilled layer stable as line focus arrives; only the reveal adds brightness.
+    val restingAlpha = if (isBackground) 0.54f else 0.70f
+    val baseAlpha = restingAlpha
+    val revealAlpha =
+        safeLineFocus * if (isBackground) 0.78f else 1f
+    val fontWeight = FontWeight.Bold
+
+    Box(
+        modifier =
+            modifier.graphicsLayer {
+                clip = false
+                translationY = lift
+                scaleX = scale
+                scaleY = scale
+            },
+    ) {
+        Text(
+            text = text,
+            fontSize = effectiveFontSize,
+            color = textColor.copy(alpha = baseAlpha),
+            fontWeight = fontWeight,
+        )
+
+        if (safeLineFocus > 0.001f && (isComplete || isActive)) {
+            Text(
+                text = text,
+                fontSize = effectiveFontSize,
+                color = textColor.copy(alpha = revealAlpha),
+                fontWeight = fontWeight,
+                style =
+                    LocalTextStyle.current.copy(
+                        shadow =
+                            if (glowAlpha > 0f) {
+                                Shadow(
+                                    color = textColor.copy(alpha = glowAlpha),
+                                    offset = Offset.Zero,
+                                    blurRadius = glowRadius.coerceAtLeast(1f),
+                                )
+                            } else {
+                                null
+                            },
+                    ),
+                modifier =
+                    if (isActive && !isComplete) {
+                        Modifier
+                            .graphicsLayer {
+                                compositingStrategy = CompositingStrategy.Offscreen
+                            }
+                            .drawWithContent {
+                                drawContent()
+                                val edgeWidth = 10.dp.toPx()
+                                val center =
+                                    if (isRtl) {
+                                        size.width - ((size.width + edgeWidth * 2f) * progress - edgeWidth)
+                                    } else {
+                                        (size.width + edgeWidth * 2f) * progress - edgeWidth
+                                    }
+                                drawRect(
+                                    brush =
+                                        Brush.horizontalGradient(
+                                            colors =
+                                                if (isRtl) {
+                                                    listOf(Color.Transparent, Color.Black)
+                                                } else {
+                                                    listOf(Color.Black, Color.Transparent)
+                                                },
+                                            startX = center - edgeWidth,
+                                            endX = center + edgeWidth,
+                                        ),
+                                    blendMode = BlendMode.DstIn,
+                                )
+                            }
+                    } else {
+                        Modifier
+                    },
+            )
+        }
+    }
+}
+
+
 @RequiresApi(Build.VERSION_CODES.M)
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @SuppressLint("UnusedBoxWithConstraintsScope", "StringFormatInvalid")
@@ -1023,20 +1172,16 @@ fun Lyrics(
                 currentLineIndex = newLineIndex
             }
 
-            val activeLineHasWords =
-                lines.getOrNull(newLineIndex)?.words?.isNotEmpty() == true
+            // Line-synced styles also synthesize word progress from this clock.
+            // Their lack of explicit word timestamps must not freeze the reveal.
             val needsFineProgress =
                 lines.getOrNull(newLineIndex)?.isInstrumental == true ||
-                    lyricsAnimationStyle == LyricsAnimationStyle.KARAOKE ||
-                    (
-                        lyricsAnimationStyle != LyricsAnimationStyle.NONE &&
-                            activeLineHasWords
-                    )
+                    lyricsAnimationStyle != LyricsAnimationStyle.NONE
 
             val syncedPosition =
                 (position + wordSyncLeadMs)
                     .coerceAtLeast(0L)
-            if ((needsFineProgress || !isPlaying || seekingNow) && currentPlaybackPosition != syncedPosition) {
+            if (currentPlaybackPosition != syncedPosition) {
                 currentPlaybackPosition = syncedPosition
             }
 

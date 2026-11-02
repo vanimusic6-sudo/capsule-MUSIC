@@ -140,6 +140,7 @@ object YouTubeVideoResolver {
     private var initialized = false
 
     fun invalidate(videoId: String) {
+        CapsuleWebVideoExtractor.invalidateCachedInventory()
         val id = videoId.trim()
         if (id.isBlank()) return
         cache.invalidate(id)
@@ -443,6 +444,7 @@ object YouTubeVideoResolver {
         // Invalidate in the very same remote request that resolves again.
         // An asynchronous invalidate could otherwise erase the new inventory.
         cache.invalidate(failed.videoId)
+        CapsuleWebVideoExtractor.invalidateCachedInventory()
         Result.success(resolveExact(
             failed.sourceMediaId, failed.videoId, quality, muxedOnly,
             failedBackend = failed.backend,
