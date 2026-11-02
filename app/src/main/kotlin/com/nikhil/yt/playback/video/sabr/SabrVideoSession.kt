@@ -138,8 +138,27 @@ internal class SabrVideoSession(
         } catch (e: Exception) {
             // A thread interrupt IS a cancellation (runInterruptible on a cancelled download Job), not
             // a stream failure — no error mark, no stall record; the caller discards the buffers.
-            val interrupted = e is java.io.InterruptedIOException || e is InterruptedException || Thread.currentThread().isInterrupted
-            if (!cancelled && !interrupted) failStream(e.message ?: e.javaClass.simpleName, stall = false)
+            // SocketTimeoutException extends InterruptedIOException! Treating
+            // *every* InterruptedIOException as cancellation used to leave
+            // Media3's reader parked forever after a real CDN timeout.
+            val interrupted = e is InterruptedException || Thread.currentThread().isInterrupted ||
+                (e is java.io.InterruptedIOException && e !is SocketTimeoutException &&
+                    e.message.orEmpty().contains("canceled", ignoreCase = true))
+            if (!cancelled && !interrupted) {
+                val noMedia = videoBuffer.available() == 0L && audioBuffer.available() == 0L
+                val networkFailure = e is SocketTimeoutException ||
+                    e is java.net.UnknownHostException ||
+                    e is java.net.ConnectException ||
+                    e is javax.net.ssl.SSLException
+                Timber.tag(TAG).w(
+                    "SABR drain failed reason=%s noMedia=%s client=%s",
+                    e.javaClass.simpleName, noMedia, config.clientKey,
+                )
+                // No usable first bytes + broken transport must exit to
+                // established VIDEO fallback immediately, not wait for six
+                // identical 20-second retry sessions.
+                failStream(e.javaClass.simpleName, stall = false, terminal = noMedia && networkFailure)
+            }
         }
     }
 
@@ -185,6 +204,7 @@ internal class SabrVideoSession(
                 .build()
             // Every UMP response is BOUNDED. A malicious/buggy media endpoint
             // cannot allocate the size of an hour-long video into JVM heap.
+            val postStartNs = System.nanoTime()
             val call = client.newCall(req)
             activeCall = call
             val bytes = try {
@@ -217,6 +237,11 @@ internal class SabrVideoSession(
                 activeCall = null
             }
             if (cancelled) return
+            if (iter == 1) Timber.tag(TAG).i(
+                "SABR timing first-response elapsedMs=%d bytes=%d clipFormat=v%d+a%d",
+                java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - postStartNs),
+                bytes.size, config.videoFormat.itag, config.audioFormat.itag,
+            )
 
             val parts = SabrUmp.parse(bytes)
             val headers = HashMap<Int, SabrMessages.MediaHeader>()
