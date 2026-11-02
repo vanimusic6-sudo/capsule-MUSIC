@@ -191,55 +191,56 @@ internal class DetailHeaderMotionState(
                 drawText(layout, color = color, alpha = 1f)
             }
             if (needsMask) {
-                // Full-area masks: the shader stays opaque until the last
-                // few pixels, then feathers INTO the clip boundary. Unlike
-                // painting a clipped strip, there is no razor-sharp seam.
+                // Compose shaders use draw-local coordinates. Transform the
+                // entire mask pass into the clipping rectangle's origin, just
+                // like the old 18dp mask's translate() did. A drawRect with a
+                // nonzero topLeft alone may leave a gradient anchored to (0,0),
+                // producing another hard crop on smaller screens.
                 val region = androidx.compose.ui.geometry.Size(clip.width, clip.height)
-                val position = Offset(clip.left, clip.top)
-                if (activeRightFeather > 0f) {
-                    // Fully transparent at the actual text/viewport edge.
-                    // For a hidden second line the edge is the last real
-                    // first-line glyph, not an unrelated rectangle boundary.
-                    val endX = rightFadeEnd - clip.left
-                    val activeFeather = activeRightFeather.coerceAtLeast(.01f)
-                    val mask = Brush.horizontalGradient(
-                        listOf(Color.White, Color.Transparent),
-                        startX = endX - activeFeather,
-                        endX = endX,
-                    )
-                    if (rightFade > 0f) {
-                        drawRect(mask, topLeft = position, size = region,
-                            blendMode = BlendMode.DstIn)
-                    } else {
-                        // A second-line continuation hint must never erase
-                        // the other line horizontally before its own bottom
-                        // feather completes.
-                        clipRect(clip.left, clip.top, clip.right,
-                            minOf(clip.bottom, firstLineBottom)) {
-                            drawRect(mask, topLeft = position, size = region,
-                                blendMode = BlendMode.DstIn)
+                translate(clip.left, clip.top) {
+                    if (activeRightFeather > 0f) {
+                        val endX = rightFadeEnd - clip.left
+                        val activeFeather = activeRightFeather.coerceAtLeast(.01f)
+                        val mask = Brush.horizontalGradient(
+                            listOf(Color.White, Color.Transparent),
+                            startX = endX - activeFeather,
+                            endX = endX,
+                        )
+                        if (rightFade > 0f) {
+                            drawRect(mask, size = region, blendMode = BlendMode.DstIn)
+                        } else {
+                            // A hidden second-line hint belongs ONLY to the
+                            // first line; the second has its own bottom mask.
+                            val firstLineHeight = (firstLineBottom - clip.top)
+                                .coerceIn(0f, clip.height)
+                            if (firstLineHeight > 0f) {
+                                clipRect(0f, 0f, clip.width, firstLineHeight) {
+                                    drawRect(mask, size = region, blendMode = BlendMode.DstIn)
+                                }
+                            }
                         }
                     }
+                    if (leftFade > 0f) {
+                        val activeFeather = (horizontalFeather * leftFade).coerceAtLeast(.01f)
+                        drawRect(
+                            Brush.horizontalGradient(
+                                listOf(Color.Transparent, Color.White),
+                                startX = 0f, endX = activeFeather,
+                            ), size = region, blendMode = BlendMode.DstIn,
+                        )
+                    }
+                    if (lowerFade > 0f) {
+                        val activeFeather = (trailingFeather * lowerFade).coerceAtLeast(.01f)
+                        drawRect(
+                            Brush.verticalGradient(
+                                listOf(Color.White, Color.Transparent),
+                                startY = clip.height - activeFeather,
+                                endY = clip.height,
+                            ), size = region, blendMode = BlendMode.DstIn,
+                        )
+                    }
                 }
-                if (leftFade > 0f) {
-                    val activeFeather = (horizontalFeather * leftFade).coerceAtLeast(.01f)
-                    drawRect(
-                        Brush.horizontalGradient(
-                            listOf(Color.Transparent, Color.White),
-                            startX = 0f, endX = activeFeather,
-                        ), topLeft = position, size = region, blendMode = BlendMode.DstIn,
-                    )
-                }
-                if (lowerFade > 0f) {
-                    val activeFeather = (trailingFeather * lowerFade).coerceAtLeast(.01f)
-                    drawRect(
-                        Brush.verticalGradient(
-                            listOf(Color.White, Color.Transparent),
-                            startY = clip.height - activeFeather,
-                            endY = clip.height,
-                        ), topLeft = position, size = region, blendMode = BlendMode.DstIn,
-                    )
-                }
+
             }
         }
         if (needsMask) drawContext.canvas.restore()
