@@ -30,11 +30,13 @@ import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.util.concurrent.Executors
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 
 object YouTubeVideoResolver {
     private const val TAG = "CapsuleVideo"
     private const val CACHE_SAFETY_MS = 45_000L
     private val processSessionKey = UUID.randomUUID().toString()
+    private val processPrewarmStarted = AtomicBoolean(false)
     private val remoteExecutor = Executors.newFixedThreadPool(2) { task ->
         Thread(task, "capsule-video-ipc").apply { isDaemon = true }
     }
@@ -96,6 +98,33 @@ object YouTubeVideoResolver {
      * YouTube extraction requests. Cache hits never take this lock.
      */
     private val resolveMutex = Mutex()
+
+    /**
+     * Initiate only the isolated VIDEO process while the foreground MUSIC
+     * search runs. Previously its cold Binder/process startup happened
+     * serially AFTER the clip match. This is a single no-network call: it
+     * does not bypass bot guards, prefetch media, or create a second extractor.
+     */
+    private fun startProcessWarmup() {
+        if (!processPrewarmStarted.compareAndSet(false, true)) return
+        remoteExecutor.execute {
+            runCatching {
+                val context = App.instance.applicationContext
+                callVideoExtractor(
+                    context.contentResolver,
+                    Uri.parse("content://${context.packageName}.capsule.video.extractor"),
+                    CapsuleVideoIpc.METHOD_PREPARE,
+                    null,
+                    Bundle().apply {
+                        putString(CapsuleVideoIpc.EXTRA_REQUEST_ID, UUID.randomUUID().toString())
+                    },
+                )
+            }.onFailure { failure ->
+                processPrewarmStarted.set(false)
+                Timber.tag(TAG).d("VIDEO process prewarm deferred (%s)", failure.javaClass.simpleName)
+            }
+        }
+    }
 
     private val songResolves = CapsuleVideoSingleFlight<Result<ResolvedVideo>>()
     // MUSIC media IDs and official clip IDs often differ. A successful match
@@ -164,6 +193,9 @@ object YouTubeVideoResolver {
                 "YouTube VIDEO requests paused for ${CapsuleVideoRequestGuard.remainingBackoffMs() / 1000L}s"
             ))
         }
+        // Only a real clip lookup has a useful parallel window. An already
+        // known exact clip skips this warmup and goes straight to extraction.
+        if (!originalVideo && knownClipId == null) startProcessWarmup()
         val requestKey = "$canonicalId:${quality.name}:${if (originalVideo) "original" else "matched"}"
         return songResolves.run(requestKey) {
             val result =
