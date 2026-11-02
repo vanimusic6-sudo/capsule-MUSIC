@@ -63,7 +63,13 @@ private val immersiveArtworkCache = object : LinkedHashMap<String, ImmersiveArtw
  */
 internal fun immersiveArtworkCandidates(mediaId: String?, original: String?): List<String> {
     if (original.isNullOrBlank()) return emptyList()
-    val base = original.toHighResThumbnail()
+    // The shared toHighResThumbnail() can still leave Google's 120–512px
+    // sources undersized for the full-bleed Immersion photo. The sampled
+    // palette and visible bitmap must use the SAME upgraded URL so their
+    // crop and lower-edge colours remain identical.
+    val libraryHighRes = original.toHighResThumbnail()
+    val base = com.nikhil.yt.ui.component.capsuleArtworkUrl(libraryHighRes, 960)
+        ?: libraryHighRes
     if (mediaId == null || !videoIdPattern.matches(mediaId) ||
         (!original.contains("ytimg.com/vi/", ignoreCase = true) &&
             !original.contains("ytimg.com/vi_webp/", ignoreCase = true))
