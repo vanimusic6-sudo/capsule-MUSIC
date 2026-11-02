@@ -28,7 +28,7 @@ class CapsuleNativeSabrVideoTest {
                  "width":1280,"fps":30,"bitrate":1500000,"contentLength":"48000000",
                  "lastModified":"1700000000000000","approxDurationMs":"240000"},
                 {"itag":140,"mimeType":"audio/mp4; codecs=\"mp4a.40.2\"",
-                 "bitrate":128000,"contentLength":"3840000","lastModified":"1700000000000000"}]}}
+                 "bitrate":128000,"contentLength":"3840000","lastModified":"1700000000000000"}]}
             }
             """.trimIndent(),
         ) as JsonObject
