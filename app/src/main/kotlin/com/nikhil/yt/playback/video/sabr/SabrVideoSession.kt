@@ -10,6 +10,11 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import timber.log.Timber
+import com.nikhil.yt.innertube.video.VideoStreamValidation
+import java.io.IOException
+import java.net.SocketTimeoutException
+import okhttp3.Call
+import java.io.ByteArrayOutputStream
 
 /**
  * Everything one DUAL-TRACK (video + audio) SABR session needs. The video counterpart of [SabrConfig].
@@ -75,7 +80,11 @@ internal class SabrVideoSession(
 ) : Runnable {
 
     @Volatile private var cancelled = false
-    fun cancel() { cancelled = true }
+    @Volatile private var activeCall: Call? = null
+    fun cancel() {
+        cancelled = true
+        activeCall?.cancel()
+    }
 
     // POST-count ceiling — a backstop against a pathological progressing-but-never-completing loop
     // (dry below is the real stall guard); derived from duration so a long video's legitimate drain
@@ -165,16 +174,47 @@ internal class SabrVideoSession(
                 sabrContexts = ctxByType.values.toList(),
                 selected = anySelected,
             )
+            if (!VideoStreamValidation.isSupportedUrl(url)) {
+                failStream("SABR rejected unsafe media endpoint", stall = false, terminal = true)
+                return
+            }
             val req = Request.Builder()
                 .url(url)
                 .header("User-Agent", config.userAgent)
                 .post(body.toRequestBody(protobuf))
                 .build()
-            // An HTTP failure is NOT recorded as a client stall — a 403 is usually an expired URL, not
-            // this client's fault; the error mark surfaces it and the refresh path re-resolves fresh.
-            val bytes = client.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) { failStream("HTTP ${resp.code}", stall = false); return }
-                resp.body?.bytes() ?: ByteArray(0)
+            // Every UMP response is BOUNDED. A malicious/buggy media endpoint
+            // cannot allocate the size of an hour-long video into JVM heap.
+            val call = client.newCall(req)
+            activeCall = call
+            val bytes = try {
+                call.execute().use { resp ->
+                    if (!resp.isSuccessful) {
+                        // A 403/429 or expired signed URL should trigger the
+                        // upper-level backend failover, NOT six identical SABR
+                        // retries against the same blocked endpoint.
+                        failStream("HTTP ${resp.code}", stall = false, terminal = true)
+                        return
+                    }
+                    val bodyStream = resp.body ?: throw IOException("Empty SABR HTTP response")
+                    val capacity = 128 * 1024
+                    val out = ByteArrayOutputStream(capacity)
+                    bodyStream.byteStream().use { input ->
+                        val buf = ByteArray(32 * 1024)
+                        var size = 0
+                        while (!cancelled) {
+                            val n = input.read(buf)
+                            if (n == -1) break
+                            size += n
+                            if (size > MAX_SABR_RESPONSE_BYTES)
+                                throw IOException("SABR response exceeds 16 MiB bound")
+                            out.write(buf, 0, n)
+                        }
+                    }
+                    out.toByteArray()
+                }
+            } finally {
+                activeCall = null
             }
             if (cancelled) return
 
@@ -240,7 +280,16 @@ internal class SabrVideoSession(
             playerTimeMs = maxOf(startTimeMs, minOf(video.bufEndMs.orStartIfEmpty(video), audio.bufEndMs.orStartIfEmpty(audio)))
             onProgress?.invoke(videoBuffer.available() + audioBuffer.available())
 
-            if (redirect != null && !newSeg) { url = prepared(redirect); continue }
+            if (redirect != null && !newSeg) {
+                // UMP redirects are server-controlled input. Do not forward
+                // our video session config or visitor token to arbitrary hosts.
+                if (!VideoStreamValidation.isSupportedUrl(redirect)) {
+                    failStream("SABR redirected outside GoogleVideo CDN", stall = false, terminal = true)
+                    return
+                }
+                url = prepared(redirect)
+                continue
+            }
             dry = if (newSeg || gotContext) 0 else dry + 1
             // Attestation cap (see SabrSession): a client that can't satisfy stream protection is served a
             // free window then only STREAM_PROTECTION_STATUS>=2 — bail fast so the fallback moves on.
@@ -291,5 +340,6 @@ internal class SabrVideoSession(
 
     companion object {
         private const val TAG = "SabrVideoSession"
+        private const val MAX_SABR_RESPONSE_BYTES = 16 * 1024 * 1024
     }
 }
