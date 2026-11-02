@@ -5331,7 +5331,10 @@ class MusicService :
                     artists = sourceArtists,
                     durationSeconds = sourceDurationSeconds,
                     quality = capsuleVideoQuality,
-                    originalVideo = sourceMetadata?.isOriginalVideo == true,
+                    originalVideo = com.nikhil.yt.playback.video.shouldUseCanonicalVideo(
+                        sourceMetadata?.isOriginalVideo == true,
+                        playbackUrlCache.get(canonicalMediaId)?.videoDetails?.musicVideoType,
+                    ),
                 ),
             isRelevant = {
                 player.currentMediaItem?.mediaId == canonicalMediaId &&

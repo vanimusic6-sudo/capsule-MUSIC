@@ -4,6 +4,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CapsuleVideoModeRequestTest {
+    @Test fun playlistWithVerifiedOfficialSourceSkipsRedundantMusicSearch() {
+        assertTrue(shouldUseCanonicalVideo(false, "MUSIC_VIDEO_TYPE_OMV"))
+        assertTrue(shouldUseCanonicalVideo(true, null))
+        assertFalse(shouldUseCanonicalVideo(false, null))
+        assertFalse(shouldUseCanonicalVideo(false, "MUSIC_VIDEO_TYPE_ATV"))
+        assertFalse(shouldUseCanonicalVideo(false, "MUSIC_VIDEO_TYPE_UGC"))
+    }
+
     @Test fun expiredCooldownAndIdleSelectionCanAlwaysBeRetried() {
         for (phase in listOf(CapsuleVideoPhase.REQUEST_ERROR, CapsuleVideoPhase.IDLE, CapsuleVideoPhase.UNAVAILABLE)) {
             val state = CapsuleVideoPlaybackState(preferredMode = CapsulePlaybackMode.VIDEO, phase = phase)

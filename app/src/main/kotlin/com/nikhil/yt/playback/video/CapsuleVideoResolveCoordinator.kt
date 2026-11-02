@@ -18,6 +18,11 @@ internal data class CapsuleVideoResolveRequest(
     val originalVideo: Boolean = false,
 )
 
+/** AUDIO's verified /player response can identify an official source clip even
+ * when an older playlist/library row lost its watch-endpoint type. */
+internal fun shouldUseCanonicalVideo(metadataOriginal: Boolean, verifiedMusicVideoType: String?): Boolean =
+    metadataOriginal || verifiedMusicVideoType == "MUSIC_VIDEO_TYPE_OMV"
+
 /**
  * Owns latest-only VIDEO resolve work. Player replacement and VIDEO/AUDIO state
  * transitions deliberately remain in MusicService.
