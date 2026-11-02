@@ -53,6 +53,7 @@ jobs:
           --tests 'com.nikhil.yt.ui.LyricsUiRegressionTest'
           --tests 'com.nikhil.yt.ui.LyricsSyncQualityTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleLyricsSpringMotionTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleLyricsThemeTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleVideoViewportTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleVideoSurfaceBindingTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleVideoArtworkTransitionTest'

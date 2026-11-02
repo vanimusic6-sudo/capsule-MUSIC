@@ -25,7 +25,7 @@ class LyricsUiRegressionTest {
     @Test
     fun `manual lyric scrolling stays detached until resume is pressed`() {
         val source = source("com/nikhil/yt/ui/component/Lyrics.kt")
-        assertTrue(source.contains("visible = isManualScrolling && scrollLyrics"))
+        assertTrue(Regex("""visible\s*=\s*isManualScrolling\s*&&\s*isSynced\s*&&\s*hasDisplayableLyrics\s*&&\s*scrollLyrics""").containsMatchIn(source))
         assertFalse(source.contains("delay(LyricsPreviewTime)"))
         assertTrue(source.contains("isManualScrolling = false"))
     }
@@ -68,7 +68,8 @@ class LyricsUiRegressionTest {
         val lyrics = source("com/nikhil/yt/ui/component/Lyrics.kt")
         assertTrue(lyrics.contains("findCurrentLineIndex(\n                lines,\n                playerConnection.player.currentPosition"))
         assertTrue(lyrics.contains("initialScrollDone = false"))
-        assertTrue(lyrics.contains("performSmoothPageScroll(currentLineIndex, isSeek = true)"))
+        assertTrue(lyrics.contains("suspend fun anchorLyricLine("))
+        assertTrue(Regex("""anchorLyricLine\(\s*targetIndex = currentLineIndex,\s*animated = false,""").containsMatchIn(lyrics))
     }
 
     @Test
@@ -77,31 +78,31 @@ class LyricsUiRegressionTest {
         assertTrue(lyrics.contains("isManualScrolling = false"))
         assertTrue(lyrics.contains("currentLineIndex = index"))
         assertTrue(lyrics.contains("deferredCurrentLineIndex = index"))
-        assertTrue(lyrics.contains("playerConnection.player.seekTo(item.time)"))
+        assertTrue(lyrics.contains("returnFocusHoldIndex = -1"))
+        assertTrue(lyrics.contains("playerConnection.player.seekTo(seekPosition)"))
+        assertTrue(lyrics.contains("val seekPosition = if (item.isInstrumental)"))
     }
 
     @Test
-    fun `apple lyrics reserve smaller metrics and only render grow to old base`() {
+    fun `apple lyrics measure full glyph bounds and animate within them`() {
         val lyrics = source("com/nikhil/yt/ui/component/Lyrics.kt")
-        assertTrue(lyrics.contains("appleLayoutFontSize = lyricsTextSize.sp * 0.96f"))
+        assertTrue(lyrics.contains("appleLayoutFontSize = lyricsTextSize.sp"))
+        assertFalse(lyrics.contains("appleLayoutFontSize = lyricsTextSize.sp * 0.96f"))
+        assertTrue(lyrics.contains("val appleScaleTarget ="))
+        assertTrue(lyrics.contains("0.96f"))
         assertTrue(lyrics.contains("appleVisualScale"))
         assertTrue(lyrics.contains("scaleX = appleVisualScale"))
         assertFalse(lyrics.contains("appleMusicStyle &&"))
     }
 
     @Test
-    fun `lyrics player has its own five background choices`() {
-        val keys = source("com/nikhil/yt/constants/PreferenceKeys.kt")
+    fun `lyrics renders the selected player theme through the shared background renderer`() {
         val content = source("com/nikhil/yt/ui/player/CapsuleLyricsContent.kt")
-        assertTrue(keys.contains("enum class LyricsBackgroundStyle"))
-        assertTrue(keys.contains("CAPSULE_STAR"))
-        assertTrue(keys.contains("CAPSULE_GLOW"))
-        assertTrue(keys.contains("NEBULA"))
-        assertTrue(keys.contains("ARTWORK_GRADIENT"))
-        assertTrue(content.contains("CapsuleBackgroundEffect.CAPSULE_STAR"))
-        assertTrue(content.contains("CapsuleBackgroundEffect.CAPSULE_GLOW"))
-        assertTrue(content.contains("CapsuleBackgroundEffect.NEBULA"))
-        assertTrue(content.contains("CapsuleBackgroundEffect.MATTE_GRADIENT"))
+        assertTrue(content.contains("is CapsuleLyricsBackdrop.PlayerTheme -> PlayerBackground("))
+        assertTrue(content.contains("playerBackground = backdrop.style"))
+        assertTrue(content.contains("sharedAnimationTime = backdropAnimationTime"))
+        assertTrue(content.contains("CapsuleLyricsBackdrop.ImmersiveColoring ->"))
+        assertTrue(content.contains("animated = isVisible && onScreen && isPlaying"))
     }
 
     @Test
@@ -129,10 +130,11 @@ class LyricsUiRegressionTest {
     }
 
     @Test
-    fun `archive tune words reserve smaller stable metrics and never grow beyond old base`() {
+    fun `archive tune words use full stable glyph bounds and a bounded visual wave`() {
         val lyrics = source("com/nikhil/yt/ui/component/Lyrics.kt")
-        assertTrue(lyrics.contains("archiveTuneFontSize = lyricsTextSize.sp * 0.96f"))
-        assertTrue(lyrics.contains("((1f / 0.96f) - 1f) * wave"))
+        assertTrue(lyrics.contains("archiveTuneMaxFontSize = lyricsTextSize.sp"))
+        assertTrue(lyrics.contains("fontSize = archiveTuneMaxFontSize"))
+        assertTrue(lyrics.contains("(0.96f + 0.04f * wave * safeLineFocus).coerceIn(0.96f, 1f)"))
         assertTrue(lyrics.contains("if (hasWordTimings && item.words != null)"))
         assertTrue(lyrics.contains("val fontWeight = FontWeight.Bold"))
     }
