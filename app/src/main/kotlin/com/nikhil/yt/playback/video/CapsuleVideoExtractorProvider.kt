@@ -74,6 +74,16 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
             )
         }
 
+        // Local-only route preference. It contains a backend name, never an
+        // account token, signed URL or track ID. A measured success overwrites
+        // it; bot/route-health cooldowns still override it automatically.
+        val routePreferences = runCatching {
+            context?.getSharedPreferences("capsule_video_route_health", android.content.Context.MODE_PRIVATE)
+        }.getOrNull()
+        CapsuleNewPipeExtractor.restorePreferredRoute(
+            runCatching { routePreferences?.getString("last_successful_backend", null) }.getOrNull()
+        )
+
         val routeTimings = mutableListOf<String>()
         return runCatching {
             VideoExtractionRequests.withRequest(requestId, CapsuleVideoIpc.EXTRACTION_TIMEOUT_MS) {
@@ -97,6 +107,11 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
             }
         }.fold(
             onSuccess = { resolved ->
+                runCatching {
+                    routePreferences?.edit()
+                        ?.putString("last_successful_backend", resolved.backend)
+                        ?.apply()
+                }
                 CapsuleVideoIpc.successBundle(
                     CapsuleResolvedVideo(
                         videoId = resolved.videoId,
