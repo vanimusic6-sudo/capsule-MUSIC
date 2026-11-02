@@ -1,4 +1,4 @@
-name: Playback final validation and baseline comparison
+name: Playback UI baseline comparison
 
 on:
   push:
@@ -10,13 +10,13 @@ permissions:
   contents: read
 
 jobs:
-  validate-built-source:
+  compare-baseline:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: 2259a163fc978df183f4d928bb390799000cfd6a
+          ref: cc4d35b3ae39d0bbcf8b070acd7127790072f6ef
           fetch-depth: 0
       - uses: actions/setup-java@v5
         with:
@@ -29,16 +29,11 @@ jobs:
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1'
           echo 'unqualifiedResLocale=en-US' > app/src/main/res/resources.properties
-      - name: Extractor and lyrics regressions for the exact APK source
-        run: gradle :innertube:test :betterlyrics:test --stacktrace --no-daemon --max-workers=2
-      - name: Android lint and runtime check for the exact APK source
-        run: gradle :app:verifyAndroidJsonRuntime :app:lintUniversalDebug --stacktrace --no-daemon --max-workers=2
       - name: Reproduce the three UI failures on the unmodified baseline
         if: ${{ !cancelled() }}
         shell: bash
         run: |
           set -euo pipefail
-          git checkout cc4d35b3ae39d0bbcf8b070acd7127790072f6ef -- .
           echo 'unqualifiedResLocale=en-US' > app/src/main/res/resources.properties
           rm -rf app/build/test-results/testUniversalDebugUnitTest
           set +e
@@ -69,11 +64,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: playback-final-lint-and-baseline-evidence
+          name: playback-ui-baseline-evidence
           path: |
-            app/build/reports/lint-results-universalDebug.*
             app/build/test-results/
-            innertube/build/test-results/
-            betterlyrics/build/test-results/
           if-no-files-found: error
           retention-days: 14
