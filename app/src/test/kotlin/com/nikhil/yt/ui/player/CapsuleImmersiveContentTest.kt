@@ -333,7 +333,8 @@ class CapsuleImmersiveContentTest {
         val choices = immersiveArtworkCandidates(id, original)
         assertTrue(choices.first().endsWith("/maxresdefault.jpg"))
         assertTrue(choices.any { it.endsWith("/hq720.jpg") })
-        assertTrue(choices.any { it.endsWith("/hqdefault.jpg") })
+        assertFalse("Immersion must not show a 480px YouTube fallback",
+            choices.any { it.endsWith("/hqdefault.jpg") })
         assertEquals(choices.size, choices.distinct().size)
     }
 
