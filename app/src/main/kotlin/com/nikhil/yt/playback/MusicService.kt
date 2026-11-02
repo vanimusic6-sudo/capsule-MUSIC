@@ -1134,6 +1134,7 @@ class MusicService :
         videoModeSwitchJob?.cancel(); videoModeSwitchJob = null
         videoPauseCollapseJob?.cancel(); videoPauseCollapseJob = null
         videoCompanion?.stopForCompletedClip()
+        com.nikhil.yt.playback.video.sabr.SabrVideoRegistry.remove(endedMediaId)
         videoResolveCoordinator.cancel()
         cancelVideoRecovery()
         restoreMusicAfterVideoFailure()
@@ -1190,6 +1191,7 @@ class MusicService :
         videoPauseCollapseJob = null
         val guard = CapsuleVideoRequestGuard.snapshot().takeIf { it.blockedUntilMs > System.currentTimeMillis() }
         restoreMusicAfterVideoFailure()
+        com.nikhil.yt.playback.video.sabr.SabrVideoRegistry.remove(mediaId)
         Timber.tag("CapsuleVideo").w(failure, "VIDEO session failed; original MUSIC continues")
         videoPlaybackState.value = state.copy(
             preferredMode = CapsulePlaybackMode.AUDIO, mode = CapsulePlaybackMode.AUDIO,
@@ -3793,6 +3795,7 @@ class MusicService :
             videoModeSwitchJob = null
             cancelVideoRecovery()
             videoCompanion?.stop()
+            com.nikhil.yt.playback.video.sabr.SabrVideoRegistry.clear()
             videoReturnGapJob?.cancel()
             videoReturnGapJob = null
             videoReturnGapActive = false
@@ -5206,6 +5209,7 @@ class MusicService :
         cancelVideoRecovery()
         videoResolveCoordinator.cancel()
         videoCompanion?.stop()
+        com.nikhil.yt.playback.video.sabr.SabrVideoRegistry.clear()
         if (!canUseCapsuleVideoForScreen()) {
             val currentId = player.currentMediaItem?.mediaId
             videoPlaybackState.value =
@@ -5356,6 +5360,7 @@ class MusicService :
     }
 
     private fun leaveCapsuleVideoMode() {
+        com.nikhil.yt.playback.video.sabr.SabrVideoRegistry.clear()
         cancelVideoRecovery()
         // The companion invokes the sound-handoff callback itself. Do not
         // instantly restore volume here: it would erase the 150 ms AUDIO
@@ -6088,6 +6093,7 @@ class MusicService :
         videoReturnGapJob?.cancel()
         videoReturnGapJob = null
         cancelVideoRecovery()
+        com.nikhil.yt.playback.video.sabr.SabrVideoRegistry.clear()
         videoCompanion?.release()
         videoCompanion = null
         audioBufferStallWatchJob?.cancel()
