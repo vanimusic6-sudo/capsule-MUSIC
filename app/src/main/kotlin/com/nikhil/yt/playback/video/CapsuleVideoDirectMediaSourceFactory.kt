@@ -21,6 +21,16 @@ import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.dash.manifest.DashManifestParser
 import com.nikhil.yt.innertube.video.CapsuleVideoDelivery
+import com.nikhil.yt.App
+import com.nikhil.yt.innertube.video.CapsuleSabrVideoSpec
+import com.nikhil.yt.playback.video.sabr.SabrMessages
+import com.nikhil.yt.playback.video.sabr.SabrSpool
+import com.nikhil.yt.playback.video.sabr.SabrVideoConfig
+import com.nikhil.yt.playback.video.sabr.SabrVideoRegistry
+import com.nikhil.yt.playback.video.sabr.SabrVideoDataSourceFactory
+import com.nikhil.yt.playback.video.sabr.SabrVideoStream
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import timber.log.Timber
@@ -57,6 +67,46 @@ internal class CapsuleVideoDirectMediaSourceFactory(
         }
         check(com.nikhil.yt.innertube.video.VideoStreamValidation.isFresh(stream.expiresAtMs)) {
             "Resolved VIDEO signed URL is already expired"
+        }
+        if (stream.delivery == CapsuleVideoDelivery.SABR) {
+            // Actual UMP session + two independent MP4 tracks, not a fake URL
+            // routed through ExoPlayer's progressive HTTP DataSource.
+            val spec = checkNotNull(stream.sabrSpec) { "Missing VIDEO SABR metadata" }
+            check(spec.isValid()) { "Invalid VIDEO SABR format contract" }
+            SabrSpool.init(App.instance.applicationContext)
+            val config = SabrVideoConfig(
+                sabrUrl = stream.videoStreamUrl,
+                ustreamerConfig = CapsuleSabrVideoSpec.decodeBase64(spec.ustreamerConfigBase64),
+                videoFormat = SabrMessages.Format(spec.videoItag, spec.videoLastModified, spec.videoLength),
+                audioFormat = SabrMessages.Format(spec.audioItag, spec.audioLastModified, spec.audioLength),
+                poToken = if (spec.poTokenBase64.isEmpty()) ByteArray(0)
+                    else CapsuleSabrVideoSpec.decodeBase64(spec.poTokenBase64),
+                clientInfo = SabrMessages.ClientInfo(spec.clientName, spec.clientVersion),
+                userAgent = checkNotNull(stream.userAgent) { "Missing VIDEO SABR client identity" },
+                nTransform = { it }, // VisionOS server supplies an already usable URL.
+                streamClientLabel = "Native SABR / VisionOS",
+                clientKey = stream.backend,
+                durationMs = spec.durationMs,
+            )
+            val id = mediaItem.mediaId
+            SabrVideoRegistry.put(id, SabrVideoStream(id, config, SABR_MEDIA_CLIENT))
+            val videoItem = MediaItem.Builder()
+                .setMediaId(id).setUri(SabrVideoRegistry.videoUri(id)).build()
+            val audioItem = MediaItem.Builder()
+                .setMediaId("$id:sabr-audio").setUri(SabrVideoRegistry.audioUri(id)).build()
+            Timber.tag("CapsuleVideo").i(
+                "source-native-sabr clip=%s vItag=%s aItag=%s bitrateMethod=dual-track",
+                videoId, spec.videoItag, spec.audioItag,
+            )
+            return MergingMediaSource(
+                true, true,
+                ProgressiveMediaSource.Factory(SabrVideoDataSourceFactory(SABR_MEDIA_CLIENT, true))
+                    .setLoadErrorHandlingPolicy(errorPolicy)
+                    .createMediaSource(videoItem),
+                ProgressiveMediaSource.Factory(SabrVideoDataSourceFactory(SABR_MEDIA_CLIENT, false))
+                    .setLoadErrorHandlingPolicy(errorPolicy)
+                    .createMediaSource(audioItem),
+            )
         }
         val segmentedUpstream = CapsuleVideoTransportFactory(hlsUpstream, stream.userAgent)
         if (stream.delivery == CapsuleVideoDelivery.DASH) {
@@ -145,6 +195,18 @@ internal class CapsuleVideoDirectMediaSourceFactory(
             videoSource,
             progressive.createMediaSource(audioItem),
         )
+    }
+
+    private companion object {
+        // Dedicated native SABR connection pool, never tied to AUDIO's
+        // dispatcher. Call deadline prevents an endless UMP POST on a dead VPN.
+        val SABR_MEDIA_CLIENT = OkHttpClient.Builder()
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .callTimeout(20, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(false)
+            .connectionPool(okhttp3.ConnectionPool(2, 45L, TimeUnit.SECONDS))
+            .build()
     }
 
     override fun getSupportedTypes(): IntArray = intArrayOf(C.CONTENT_TYPE_OTHER, C.CONTENT_TYPE_HLS, C.CONTENT_TYPE_DASH)
