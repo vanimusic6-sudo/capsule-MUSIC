@@ -75,12 +75,11 @@ internal fun immersiveArtworkCandidates(mediaId: String?, original: String?): Li
             !original.contains("ytimg.com/vi_webp/", ignoreCase = true))
     ) return listOf(base)
 
-    return listOf(
-        "https://i.ytimg.com/vi/$mediaId/maxresdefault.jpg",
-        "https://i.ytimg.com/vi/$mediaId/hq720.jpg",
-        // No 480x360 hqdefault preview in the expanded player.
-        // If no high-quality frame exists, retain the neutral canvas.
-        base,
+    return (
+        listOf(
+            "https://i.ytimg.com/vi/$mediaId/maxresdefault.jpg",
+            "https://i.ytimg.com/vi/$mediaId/hq720.jpg",
+        ) + capsuleFullPlayerArtworkCandidates(original)
     ).distinct()
 }
 
