@@ -11,6 +11,8 @@ import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import kotlin.math.sin
@@ -71,8 +73,10 @@ internal fun ArchiveTuneWord(
             )
         }
     }
-    val layout = remember(text) { mutableStateOf<TextLayoutResult?>(null) }
     val effectiveFontSize = if (isBackground) fontSize * 0.82f else fontSize
+    val density = LocalDensity.current
+    val direction = LocalLayoutDirection.current
+    val layout = remember(text, effectiveFontSize, density, direction) { mutableStateOf<TextLayoutResult?>(null) }
     val baseAlpha = if (isBackground) 0.54f else 0.70f
 
     Box(modifier.graphicsLayer {
@@ -82,11 +86,14 @@ internal fun ArchiveTuneWord(
         scaleX = frame.scale
         scaleY = frame.scale
     }) {
-        Text(
-            text = text, fontSize = effectiveFontSize,
-            color = textColor.copy(alpha = baseAlpha), fontWeight = FontWeight.Bold,
-            onTextLayout = { layout.value = it; onTextLayout?.invoke(it) },
-        )
+        // Typography owns the lifetime of the glyph cache. Playback/focus does not.
+        key(text, effectiveFontSize, density, direction) {
+            Text(
+                text = text, fontSize = effectiveFontSize,
+                color = textColor.copy(alpha = baseAlpha), fontWeight = FontWeight.Bold,
+                onTextLayout = { layout.value = it; onTextLayout?.invoke(it) },
+            )
+        }
         Box(Modifier.matchParentSize()
             .graphicsLayer {
                 val frame = paint.value

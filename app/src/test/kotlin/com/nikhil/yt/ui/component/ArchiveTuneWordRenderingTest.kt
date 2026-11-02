@@ -79,6 +79,8 @@ class ArchiveTuneWordRenderingTest {
         // Text layout/draw is driven by Android as well as the Compose clock.
         // Let host passes finish instead of waiting only on virtual animation time.
         compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        snapshotHash()
         compose.waitUntil(timeoutMillis = 5_000L) { textLayouts > baselineLayouts && laidOutFontSize == 48.sp }
         compose.waitForIdle()
         assertTrue("An actual typography change must still invalidate the layout", textLayouts > baselineLayouts)
