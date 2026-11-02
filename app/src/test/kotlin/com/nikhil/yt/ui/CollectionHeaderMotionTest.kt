@@ -237,6 +237,9 @@ class CollectionHeaderMotionTest {
                             x >= clip!!.left - 2 && x <= clip.right + 2 && y >= clip.top - 2 && y <= clip.bottom + 2)
                     }
                 }
+                val file = File("build/reports/ui-previews/title-single-owner-$name.png")
+                file.parentFile.mkdirs()
+                file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
                 if (fadeEnd != null && clip != null) {
                     var tailPeak = 0
                     for (y in clip.top.toInt().coerceAtLeast(0) until clip.bottom.toInt().coerceAtMost(bitmap.height)) {
@@ -244,12 +247,9 @@ class CollectionHeaderMotionTest {
                             tailPeak = maxOf(tailPeak, android.graphics.Color.green(bitmap.getPixel(x, y)))
                         }
                     }
-                    assertTrue("A hidden second line needs a soft continuation edge: tail=$tailPeak body=$peak",
+                    assertTrue("A hidden second line needs a soft continuation edge: tail=$tailPeak body=$peak fadeEnd=$fadeEnd clip=$clip",
                         tailPeak in 1 until peak - 20)
                 }
-                val file = File("build/reports/ui-previews/title-single-owner-$name.png")
-                file.parentFile.mkdirs()
-                file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
                 bitmap.recycle()
             }
             return pixels to peak
@@ -283,6 +283,19 @@ class CollectionHeaderMotionTest {
             edge = minOf(g.clip.right, g.origin.x + layouts.single().getLineRight(0) * g.scale)
         }
         assertTrue(capture("long-compact", edge).first > 30)
+        // Long multi-line captions are the important visual case:
+        // capture the second line as it gradually leaves the toolbar viewport,
+        // not just the already-clipped final layout.
+        for ((label, fraction) in listOf("half" to .5f, "near" to .75f, "edge" to .95f)) {
+            compose.runOnIdle {
+                runBlocking { state.scrollToItem(0, (end * fraction).toInt()) }
+            }
+            val frame = capture("long-$label")
+            assertTrue("Long title disappeared before it reached the toolbar", frame.first > 30)
+            assertTrue("Leading glyphs faded gray alongside the trailing line",
+                frame.second >= original.second - 3)
+        }
+        compose.runOnIdle { runBlocking { state.scrollToItem(0, end) } }
         val semantics = compose.onNodeWithTag("capsule:detail-toolbar-title").fetchSemanticsNode().config
         assertEquals(listOf(title), semantics[SemanticsProperties.ContentDescription])
         compose.runOnIdle { runBlocking { state.scrollToItem(1, 300) } }

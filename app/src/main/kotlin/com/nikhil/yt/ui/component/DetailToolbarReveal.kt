@@ -111,29 +111,139 @@ internal class DetailHeaderMotionState(
             scroll.firstVisibleItemScrollOffset.toFloat(), target)
     }
 
-    fun drawTitle(scope: DrawScope, color: Color, paint: Paint, fade: Brush, fadeWidth: Float) = with(scope) {
+    /**
+     * One opaque paragraph follows the header all the way into the toolbar.
+     * Only glyphs at a genuinely clipped edge receive an alpha mask: the first
+     * line stays solid except for a short continuation hint at its final glyphs.
+     *
+     * Important: DstIn is applied to the entire isolated text layer. Masking
+     * only a tiny strip at the end left a hard-scissored boundary, and the
+     * previous "second line hidden" condition never softened the bottom edge.
+     */
+    fun drawTitle(scope: DrawScope, color: Color, paint: Paint, featherPx: Float) = with(scope) {
         val geometry = geometry() ?: return@with
         val layout = layout() ?: return@with
         val clip = geometry.clip.translate(-overlayOrigin)
         val origin = geometry.origin - overlayOrigin
-        if (clip.width <= 0f || clip.height <= 0f) return@with
-        val tail = origin.x + layout.getLineRight(0) * geometry.scale
-        val hiddenLowerLine = layout.lineCount > 1 &&
-            origin.y + layout.getLineTop(1) * geometry.scale >= clip.bottom - 1f
-        val masked = tail > clip.right + .5f || hiddenLowerLine
-        val fadeEnd = minOf(clip.right, tail)
-        if (masked) drawContext.canvas.saveLayer(clip, paint)
+        if (clip.width <= 1f || clip.height <= 1f || !clip.width.isFinite() ||
+            !clip.height.isFinite()) return@with
+
+        val titleScale = geometry.scale
+        // Calculate horizontal overflow from lines ACTUALLY intersecting the
+        // viewport. An already-disappeared second line cannot dim the first.
+        val visibleLines = (0 until layout.lineCount).filter { line ->
+            origin.y + layout.getLineTop(line) * titleScale < clip.bottom &&
+                origin.y + layout.getLineBottom(line) * titleScale > clip.top
+        }
+        val right = visibleLines.maxOfOrNull { origin.x + layout.getLineRight(it) * titleScale }
+            ?: clip.right
+        val left = visibleLines.minOfOrNull { origin.x + layout.getLineLeft(it) * titleScale }
+            ?: clip.left
+        val horizontalFeather = minOf(featherPx, clip.width * .27f).coerceAtLeast(1f)
+        val rightFade = detailTitleFeatherStrength(right - clip.right, horizontalFeather)
+        val leftFade = detailTitleFeatherStrength(clip.left - left, horizontalFeather)
+
+        // A two-line headline should disappear by its TRAILING line, rather
+        // than slicing a row of pixels off as the title enters the one-line
+        // top bar. Keep the FIRST line at full opacity throughout the handoff.
+        val lastLine = layout.lineCount - 1
+        val lastLineTop = if (lastLine > 0) {
+            origin.y + layout.getLineTop(lastLine) * titleScale
+        } else Float.POSITIVE_INFINITY
+        val lastLineBottom = if (lastLine > 0) {
+            origin.y + layout.getLineBottom(lastLine) * titleScale
+        } else Float.NEGATIVE_INFINITY
+        val firstLineBottom = origin.y + layout.getLineBottom(0) * titleScale
+        val lowerLineVisible = lastLine > 0 && lastLineTop < clip.bottom &&
+            lastLineBottom > clip.top && firstLineBottom < clip.bottom
+        val trailingFeather = if (lowerLineVisible) {
+            minOf(featherPx, (clip.bottom - maxOf(firstLineBottom, lastLineTop)).coerceAtLeast(0f))
+        } else 0f
+        val lowerFade = if (trailingFeather > 0f) {
+            detailTitleFeatherStrength(
+                lastLineBottom - clip.bottom,
+                (lastLineBottom - lastLineTop).coerceAtLeast(1f),
+            )
+        } else 0f
+
+        // Once the second line has folded away, the first line is still
+        // logically truncated EVEN IF it physically fits the top-bar width.
+        // Preserve a 30dp end-of-line continuation feather. The old 18dp
+        // strip tried to do this but was cropped by an opaque hard edge.
+        val continuationFade = if (lastLine > 0) {
+            detailTitleFeatherStrength(
+                lastLineBottom - clip.bottom,
+                (lastLineBottom - lastLineTop).coerceAtLeast(1f),
+            )
+        } else 0f
+        val activeRightFeather = horizontalFeather * maxOf(rightFade, continuationFade)
+        val firstLineTail = origin.x + layout.getLineRight(0) * titleScale
+        val rightFadeEnd = if (rightFade > 0f) clip.right else
+            minOf(clip.right, firstLineTail)
+
+        val needsMask = activeRightFeather > 0f || leftFade > 0f || lowerFade > 0f
+        if (needsMask) drawContext.canvas.saveLayer(clip, paint)
         clipRect(clip.left, clip.top, clip.right, clip.bottom) {
-            withTransform({ translate(origin.x, origin.y); scale(geometry.scale, geometry.scale, Offset.Zero) }) {
+            withTransform({
+                translate(origin.x, origin.y)
+                scale(titleScale, titleScale, Offset.Zero)
+            }) {
                 drawText(layout, color = color, alpha = 1f)
             }
-            if (masked) {
-                translate(fadeEnd - fadeWidth, clip.top) {
-                    drawRect(fade, size = androidx.compose.ui.geometry.Size(fadeWidth, clip.height), blendMode = BlendMode.DstIn)
+            if (needsMask) {
+                // Compose shaders use draw-local coordinates. Transform the
+                // entire mask pass into the clipping rectangle's origin, just
+                // like the old 18dp mask's translate() did. A drawRect with a
+                // nonzero topLeft alone may leave a gradient anchored to (0,0),
+                // producing another hard crop on smaller screens.
+                val region = androidx.compose.ui.geometry.Size(clip.width, clip.height)
+                translate(clip.left, clip.top) {
+                    if (activeRightFeather > 0f) {
+                        val endX = rightFadeEnd - clip.left
+                        val activeFeather = activeRightFeather.coerceAtLeast(.01f)
+                        val mask = Brush.horizontalGradient(
+                            listOf(Color.White, Color.Transparent),
+                            startX = endX - activeFeather,
+                            endX = endX,
+                        )
+                        if (rightFade > 0f) {
+                            drawRect(mask, size = region, blendMode = BlendMode.DstIn)
+                        } else {
+                            // A hidden second-line hint belongs ONLY to the
+                            // first line; the second has its own bottom mask.
+                            val firstLineHeight = (firstLineBottom - clip.top)
+                                .coerceIn(0f, clip.height)
+                            if (firstLineHeight > 0f) {
+                                clipRect(0f, 0f, clip.width, firstLineHeight) {
+                                    drawRect(mask, size = region, blendMode = BlendMode.DstIn)
+                                }
+                            }
+                        }
+                    }
+                    if (leftFade > 0f) {
+                        val activeFeather = (horizontalFeather * leftFade).coerceAtLeast(.01f)
+                        drawRect(
+                            Brush.horizontalGradient(
+                                listOf(Color.Transparent, Color.White),
+                                startX = 0f, endX = activeFeather,
+                            ), size = region, blendMode = BlendMode.DstIn,
+                        )
+                    }
+                    if (lowerFade > 0f) {
+                        val activeFeather = (trailingFeather * lowerFade).coerceAtLeast(.01f)
+                        drawRect(
+                            Brush.verticalGradient(
+                                listOf(Color.White, Color.Transparent),
+                                startY = clip.height - activeFeather,
+                                endY = clip.height,
+                            ), size = region, blendMode = BlendMode.DstIn,
+                        )
+                    }
                 }
+
             }
         }
-        if (masked) drawContext.canvas.restore()
+        if (needsMask) drawContext.canvas.restore()
     }
 
     fun measureArtwork(coordinates: LayoutCoordinates) {
@@ -162,6 +272,18 @@ internal class DetailHeaderMotionState(
     fun toolbarTitleAlpha() = progress
     fun compactTitleAlpha() = if (progress >= 1f) 1f else 0f
     fun coverTitleAlpha() = 1f - compactTitleAlpha()
+}
+
+/**
+ * Smoothly GROW the feather from zero width as ink crosses the boundary.
+ * The alpha at the edge is always zero; reducing only the endpoint alpha
+ * left conspicuously half-visible chopped glyphs on moderately long titles.
+ * This is reversible scroll geometry, not a clock-based opacity animation.
+ */
+internal fun detailTitleFeatherStrength(overlapPx: Float, featherPx: Float): Float {
+    if (!overlapPx.isFinite() || overlapPx <= 0f) return 0f
+    val t = (overlapPx / featherPx.coerceAtLeast(1f)).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
 }
 
 internal data class DetailTitleGeometry(val origin: Offset, val scale: Float, val clip: Rect)
@@ -354,9 +476,10 @@ internal fun DetailTopAppBar(
     val titleColor = StandardChrome.text
     Spacer(Modifier.matchParentSize().drawWithCache {
         val paint = Paint()
-        val edge = 18.dp.toPx()
-        val fade = Brush.horizontalGradient(listOf(Color.White, Color.Transparent), 0f, edge)
-        onDrawBehind { motion.drawTitle(this, titleColor, paint, fade, edge) }
+        // 30dp only on overhanging glyphs: gentle static toolbar truncation
+        // without dimming the intact headline or its photographic backdrop.
+        val feather = 30.dp.toPx()
+        onDrawBehind { motion.drawTitle(this, titleColor, paint, feather) }
     })
     }
 

@@ -45,6 +45,28 @@ class DetailToolbarRevealTest {
         }
     }
 
+    @Test fun longTitleClippingBecomesContinuousFeatherNotAHardCut() {
+        val width = 30f
+        assertEquals(0f, detailTitleFeatherStrength(-2f, width), 0f)
+        assertEquals(0f, detailTitleFeatherStrength(0f, width), 0f)
+        assertEquals(0.5f, detailTitleFeatherStrength(15f, width), .00001f)
+        assertEquals(1f, detailTitleFeatherStrength(30f, width), 0f)
+        assertEquals(1f, detailTitleFeatherStrength(200f, width), 0f)
+
+        val samples = (0..300).map { detailTitleFeatherStrength(it / 10f, width) }
+        assertTrue("Opacity mask must never jump, even at the first trimmed pixel",
+            samples.zipWithNext().all { (a, b) -> b >= a && b - a < 0.01f })
+        assertEquals("Reversing scroll must not retain a stale mask",
+            detailTitleFeatherStrength(12f, width),
+            detailTitleFeatherStrength(12f, width), 0f)
+    }
+
+    @Test fun noOverlapMustKeepOriginalTitleFullyOpaque() {
+        assertEquals(0f, detailTitleFeatherStrength(0f, 1f), 0f)
+        assertEquals(0f, detailTitleFeatherStrength(Float.NaN, 30f), 0f)
+        assertEquals(0f, detailTitleFeatherStrength(Float.NEGATIVE_INFINITY, 30f), 0f)
+    }
+
     @Test fun loadingPortraitIsAHeaderEvenBeforeSongsArrive() {
         assertTrue(albumHasHeroHeader(false, AlbumUiState.Loading))
         assertTrue(albumHasHeroHeader(false, AlbumUiState.Content))
