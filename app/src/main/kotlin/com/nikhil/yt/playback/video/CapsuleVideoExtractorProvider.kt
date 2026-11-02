@@ -128,6 +128,7 @@ class CapsuleVideoExtractorProvider : ContentProvider() {
                         maxHeight = resolved.maxHeight,
                         dashManifest = resolved.dashManifest,
                         userAgent = resolved.userAgent,
+                        sabrSpec = resolved.sabrSpec,
                     ),
                 )
             },
