@@ -157,12 +157,36 @@ class CapsuleVideoSessionTest {
 
     @Test fun indexedDashPreseekFallsBackNearClipEndOrWithoutDuration() {
         val item = indexedVideoItem(seconds = 60)
-        assertEquals(12_000L, capsuleDashVideoInitialPosition(item, 10_000L, true))
-        assertEquals(10_000L, capsuleDashVideoInitialPosition(item, 10_000L, false))
-        assertNull(capsuleDashVideoInitialPosition(item, 58_000L, true))
-        assertNull(capsuleDashVideoInitialPosition(
+        assertEquals(12_000L, capsuleVideoInitialPosition(item, 10_000L, true))
+        assertEquals(10_000L, capsuleVideoInitialPosition(item, 10_000L, false))
+        assertNull(capsuleVideoInitialPosition(item, 58_000L, true))
+        assertNull(capsuleVideoInitialPosition(
             item.buildUpon().setTag(null).build(), 10_000L, true,
         ))
+    }
+
+    @Test fun nativeSabrStartsNearMusicInsteadOfSeekingSeventeenSecondsAfterDecoderPrepare() {
+        val sabrSpec = com.nikhil.yt.innertube.video.CapsuleSabrVideoSpec(
+            ustreamerConfigBase64 = "AQIDBAUGBwg=",
+            videoItag = 136, videoLastModified = 170000000L, videoLength = 48_000_000L,
+            audioItag = 140, audioLastModified = 170000000L, audioLength = 3_840_000L,
+            clientName = 101, clientVersion = "1.2.0", durationMs = 240_000L,
+        )
+        val item = MediaItem.Builder().setMediaId("song").setTag(
+            YouTubeVideoResolver.ResolvedVideo(
+                sourceMediaId = "song", videoId = "abcdefghijk",
+                videoStreamUrl = "https://rr.googlevideo.com/videoplayback?expire=1999999999",
+                videoFormat = YouTubeVideoResolver.StreamFormat(136, 1280, 720, "720p"),
+                expiresAtMs = 1_999_999_999_000L,
+                delivery = com.nikhil.yt.innertube.video.CapsuleVideoDelivery.SABR,
+                sabrSpec = sabrSpec,
+            ),
+        ).build()
+        assertEquals(14_500L, capsuleVideoInitialPosition(item, 10_000L, true))
+        assertEquals(10_000L, capsuleVideoInitialPosition(item, 10_000L, false))
+        assertNull(capsuleVideoInitialPosition(item, 238_000L, true))
+        // Existing DASH A/B retains its distinct 2s timing.
+        assertEquals(12_000L, capsuleVideoInitialPosition(indexedVideoItem(), 10_000L, true))
     }
 
     @Test fun frameReadyTracksOrderingAndShortSeam() = runTest {
