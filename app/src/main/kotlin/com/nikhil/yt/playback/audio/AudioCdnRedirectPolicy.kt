@@ -27,6 +27,12 @@ internal const val AUDIO_CDN_MAX_EXTRA_REQUESTS = 8
  * added 0.8–1.0s and a new socket in the 2026-11-02 device capture. */
 internal const val AUDIO_CDN_MAX_REISSUES = 1
 
+internal const val AUDIO_CDN_INITIAL_HEADERS_TIMEOUT_SECONDS = 6
+
+internal fun isInitialAudioCdnRequest(request: Request): Boolean =
+    request.header("Range")?.startsWith("bytes=0-") == true ||
+        request.url.queryParameter("range")?.startsWith("0-") == true
+
 /**
  * The server group inside a googlevideo host name, or null if there is none to read.
  *
@@ -108,14 +114,17 @@ internal class AudioCdnRedirectInterceptor(
             // so log the attempted hop here too; otherwise the decisive failed hop vanishes.
             val hopStartedAtNs = if (GlobalLog.isEnabled) System.nanoTime() else 0L
             val suspectGroup = health?.isUnresponsiveHost(sent.url.host) == true
-            val networkChain = if (suspectGroup) {
+            val initialOpen = isInitialAudioCdnRequest(sent)
+            val openTimeoutSeconds = if (suspectGroup) CDN_HOST_SUSPECT_OPEN_TIMEOUT_SECONDS.toInt()
+                else AUDIO_CDN_INITIAL_HEADERS_TIMEOUT_SECONDS
+            val networkChain = if (suspectGroup || initialOpen) {
                 // Only the requested hop's group is known to have failed a
                 // previous no-byte open. A new client can be redirected back
                 // onto that SAME route, so select the budget for each hop,
                 // not just the signed URL's original host.
                 chain
-                    .withConnectTimeout(CDN_HOST_SUSPECT_OPEN_TIMEOUT_SECONDS.toInt(), TimeUnit.SECONDS)
-                    .withReadTimeout(CDN_HOST_SUSPECT_OPEN_TIMEOUT_SECONDS.toInt(), TimeUnit.SECONDS)
+                    .withConnectTimeout(openTimeoutSeconds, TimeUnit.SECONDS)
+                    .withReadTimeout(openTimeoutSeconds, TimeUnit.SECONDS)
             } else {
                 chain
             }
@@ -123,8 +132,8 @@ internal class AudioCdnRedirectInterceptor(
                 Timber.tag("AudioCDN").i(
                     "cdn-suspect-open group=%s connectTimeoutSec=%d readTimeoutSec=%d",
                     googlevideoServerGroup(sent.url.host) ?: "unknown",
-                    CDN_HOST_SUSPECT_OPEN_TIMEOUT_SECONDS,
-                    CDN_HOST_SUSPECT_OPEN_TIMEOUT_SECONDS,
+                    openTimeoutSeconds,
+                    openTimeoutSeconds,
                 )
             }
             val response = try {
@@ -162,6 +171,12 @@ internal class AudioCdnRedirectInterceptor(
                     throw AudioCdnFailedHopException(sent.url.host, failure)
                 }
                 throw failure
+            }
+
+            // The short deadline covers connection/headers only. Once the CDN answers,
+            // retain the client's normal read allowance for slow but progressing audio.
+            if ((suspectGroup || initialOpen) && chain.readTimeoutMillis() > 0) {
+                response.body?.source()?.timeout()?.timeout(chain.readTimeoutMillis().toLong(), TimeUnit.MILLISECONDS)
             }
 
             /*

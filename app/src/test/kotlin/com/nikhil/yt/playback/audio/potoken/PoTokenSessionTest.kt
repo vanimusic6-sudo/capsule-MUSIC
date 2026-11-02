@@ -14,6 +14,21 @@ import org.junit.Test
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class PoTokenSessionTest {
+    @Test fun cancelledVideoMintLeavesAudioSessionReadyAndReusable() = runTest {
+        val audioMinter = Minter()
+        val videoMinter = Minter().apply { mint = { delay(20_000); "late" } }
+        val audio = PoTokenSession({ audioMinter })
+        val video = PoTokenSession({ videoMinter })
+        assertTrue(audio.prewarm("visitor"))
+        val request = launch { video.obtain("clip", "visitor") }
+        runCurrent()
+        request.cancelAndJoin()
+        assertTrue(videoMinter.closed)
+        assertFalse(audioMinter.closed)
+        assertTrue(audio.isReady("visitor"))
+        assertNotNull(audio.obtain("next-song", "visitor"))
+    }
+
     private class Minter : PoTokenMinter {
         override var isDead = false
         override var isExpired = false

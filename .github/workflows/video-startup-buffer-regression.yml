@@ -45,6 +45,7 @@ jobs:
           --tests 'com.nikhil.yt.playback.audio.*'
           --tests 'com.nikhil.yt.playback.CapsuleLoadControlTest'
           --tests 'com.nikhil.yt.playback.AudioNetworkSelectionPolicyTest'
+          --tests 'com.nikhil.yt.playback.PlaybackSourceRetryTest'
           --tests 'com.nikhil.yt.playback.video.*'
           --tests 'com.nikhil.yt.playback.video.CapsuleVideoChunkedDataSourceTest'
           --tests 'com.nikhil.yt.playback.video.CapsuleVideoBufferPolicyTest'

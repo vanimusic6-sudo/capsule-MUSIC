@@ -298,20 +298,9 @@ internal const val NORMALIZATION_TARGET_LUFS = -14.0
 internal const val MIN_NORMALIZATION_GAIN_DB = -12.0
 internal const val SIGNED_URL_CIPHER_REFRESH_THRESHOLD_MS = 3_000L
 
-/**
- * A hung CDN TCP/TLS/header open must not monopolize a foreground track for 15 s.
- *
- * The previous 6-second allowance repeatedly cut off a working host, while
- * successful opens in the recorded sessions peaked around 4.1 s. Ten seconds
- * keeps more than twice that measured allowance, but trims five seconds from
- * the failed TLS handshake seen in the November 2 capture.
- *
- * This is a socket connect/read timeout, not a whole-track download deadline.
- * Once it fires, the existing typed no-byte OPEN_FAILURE path asks for a fresh
- * signed URL on a bounded retry. Never shorten it to a speculative 3–6 s or
- * extend the retry/client budget: an unstable VPN benefits from fewer dead
- * waits, not a high-rate request carousel.
- */
+/** Normal socket-read allowance for an established audio response. Initial range
+ * opens have a separate six-second header deadline in AudioCdnRedirectInterceptor;
+ * once headers arrive, restore this allowance so slow body reads keep working. */
 internal const val AUDIO_CDN_TIMEOUT_SECONDS = 10L
 
 /**
@@ -526,7 +515,7 @@ class MusicService :
                 audioFocusVolumeFactor.value = decision.volumeFactor
                 when (decision.playbackAction) {
                     PlaybackFocusPlaybackAction.NONE -> Unit
-                    PlaybackFocusPlaybackAction.PAUSE -> if (player.isPlaying) player.pause()
+                    PlaybackFocusPlaybackAction.PAUSE -> if (player.isPlaying) pausePlaybackFor("audio-focus")
                     PlaybackFocusPlaybackAction.RESUME -> player.play()
                 }
             },
@@ -865,7 +854,7 @@ class MusicService :
             canResolveUpcomingAudioWhile(
                 currentIsPlaying = player.isPlaying,
                 currentPositionMs = player.currentPosition,
-                currentIsVideo = isCurrentCapsuleVideoItem(),
+                currentIsVideo = isCurrentCapsuleVideoItem() || isCompanionVideoRequested(),
             )
 
     private fun isAudioNetworkSelectionRelevant(mediaId: String): Boolean =
@@ -892,6 +881,10 @@ class MusicService :
 
         prefetchScheduleJob?.cancel()
         prefetchScheduleJob = null
+
+        // Optional discovery must yield to VIDEO. Do not cancel Media3's real
+        // next-period demand: its failure can propagate into the current audio.
+        if (isCompanionVideoRequested()) return
 
         val relevantIds =
             buildSet {
@@ -1004,6 +997,10 @@ class MusicService :
      * Normal queue items never use the capsule-video scheme/cache key.
      */
     val videoPlaybackState = MutableStateFlow(CapsuleVideoPlaybackState())
+
+    private fun isCompanionVideoRequested(): Boolean = videoPlaybackState.value.let {
+        it.preferredMode == CapsulePlaybackMode.VIDEO && it.mediaId == player.currentMediaItem?.mediaId
+    }
     // VIDEO has no authority to replace MUSIC queue items or touch AUDIO URLs.
     private var videoCompanion: CapsuleVideoCompanion? = null
     private var videoAudioOwned = false
@@ -1353,7 +1350,7 @@ class MusicService :
                 player.currentMediaItem?.mediaId == mediaId &&
                     player.playbackState == Player.STATE_READY
             },
-            pausePlayback = { player.pause() },
+            pausePlayback = { pausePlaybackFor("network-recovery-exhausted") },
             preparePlayback = { player.prepare() },
             healthyPlaybackDelayMs = HEALTHY_PLAYBACK_RESET_MS,
         )
@@ -2391,9 +2388,13 @@ class MusicService :
         return playbackFocusController.hasFocus
     }
 
-    private fun isDeviceMutedNow(): Boolean {
-        return player.isDeviceMuted || player.deviceVolume <= 0
-    }
+    private fun systemMediaMuteState(): Boolean? = isSystemMediaMuted(
+        volume = runCatching { audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) }.getOrNull(),
+        explicitlyMuted = runCatching { audioManager.isStreamMute(AudioManager.STREAM_MUSIC) }.getOrNull(),
+        volumeFixed = runCatching { audioManager.isVolumeFixed }.getOrDefault(false),
+    )
+
+    private fun isDeviceMutedNow(): Boolean = systemMediaMuteState() == true
 
     private fun isTogetherGuestSession(): Boolean {
         val joined = togetherSessionState.value as? com.nikhil.yt.together.TogetherSessionState.Joined
@@ -2406,7 +2407,10 @@ class MusicService :
             return
         }
 
-        if (isDeviceMutedNow()) {
+        // Media3's cached device volume may briefly be zero while its output
+        // is being reconstructed. Only the actual Android music stream decides.
+        val muted = systemMediaMuteState() ?: return
+        if (muted) {
             val canPauseNow =
                 player.currentMediaItem != null &&
                     player.playWhenReady &&
@@ -2414,8 +2418,8 @@ class MusicService :
                     player.playbackState != Player.STATE_ENDED
 
             if (canPauseNow) {
-                player.pause()
                 wasAutoPausedByDeviceMute = true
+                pausePlaybackFor("device-mute")
             }
             return
         }
@@ -2513,11 +2517,11 @@ class MusicService :
             return
         }
 
-        player.pause()
+        pausePlaybackFor("queue-exhausted-after-error")
     }
 
     private fun stopOnError() {
-        player.pause()
+        pausePlaybackFor("terminal-playback-error")
     }
 
     private fun handleTerminalPlaybackError(
@@ -3739,8 +3743,7 @@ class MusicService :
         // An overlapping crossfade has its own player; pausing the primary alone
         // would let that audio continue after the timer has expired.
         crossfadeAudio?.stop(resetMainFade = true)
-        player.pause()
-        player.playWhenReady = false
+        pausePlaybackFor("sleep-timer")
     }
 
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -4131,6 +4134,24 @@ class MusicService :
     playbackPresenceCoordinator.requestImmediateUpdate()
 }
 
+    private fun pausePlaybackFor(source: String) {
+        Timber.tag("PlaybackIntent").i("pause source=%s id=%s state=%d positionMs=%d",
+            source, player.currentMediaItem?.mediaId, player.playbackState, player.currentPosition)
+        player.pause()
+    }
+
+    override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+        Timber.tag("PlaybackIntent").i(
+            "intent play=%s reason=%d id=%s state=%d positionMs=%d focus=%s " +
+                "deviceVolume=%d deviceMuted=%s systemVolume=%d systemMuted=%s videoOwns=%s",
+            playWhenReady, reason, player.currentMediaItem?.mediaId, player.playbackState,
+            player.currentPosition, playbackFocusController.hasFocus,
+            player.deviceVolume, player.isDeviceMuted,
+            runCatching { audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) }.getOrDefault(-1),
+            runCatching { audioManager.isStreamMute(AudioManager.STREAM_MUSIC) }.getOrNull(), videoAudioOwned,
+        )
+    }
+
     override fun onIsPlayingChanged(isPlaying: Boolean) {
         super.onIsPlayingChanged(isPlaying)
         updateDownloadNetworkPriority()
@@ -4368,7 +4389,7 @@ class MusicService :
         if (player.currentMediaItem?.mediaId?.startsWith(EXPERIMENTAL_MEDIA_PREFIX) == true) {
             // Never classify an external source failure as a YouTube 403/bot check.
             Timber.tag("CapsuleDiscovery").w(error, "External catalog playback failed")
-            player.pause()
+            pausePlaybackFor("external-source-error")
             return
         }
 
@@ -4437,7 +4458,7 @@ class MusicService :
         if (generateSequence<Throwable>(error) { it.cause }.take(8).any { it is AudioFormatChangedException }) {
             if (currentMediaId != null && playbackRecoveryCoordinator.nextRetryDelayMs(currentMediaId) != null) {
                 recreateAudioSources()
-            } else player.pause()
+            } else pausePlaybackFor("audio-format-recovery-exhausted")
             return
         }
 
@@ -4462,7 +4483,7 @@ class MusicService :
                 "YouTube bot-check for $currentMediaId — optional AUDIO requests cooling down",
             )
 
-            player.pause()
+            pausePlaybackFor("audio-bot-check")
             return
         }
 
@@ -4476,7 +4497,7 @@ class MusicService :
             playbackRecoveryCoordinator.cancelNetworkRecovery()
             audioResolveCoordinator.cancelAll()
             currentMediaId?.let(playbackUrlCache::remove)
-            player.pause()
+            pausePlaybackFor("audio-rate-limit")
             return
         }
 
@@ -5693,15 +5714,10 @@ class MusicService :
                     return@launch
                 }
 
-                if (forceRecreateSources) {
-                    // prepare() on an already BUFFERING Media3 item does not necessarily drop
-                    // its current source; rebuild it so the freshly resolved URL is consumed.
-                    recreateAudioSources(retryIndex, retryPosition, retryPlayWhenReady)
-                } else {
-                    player.seekTo(retryIndex, retryPosition)
-                    player.prepare()
-                    player.playWhenReady = retryPlayWhenReady
-                }
+                prepareAudioSourceRetry(
+                    player, retryIndex, retryPosition, retryPlayWhenReady, forceRecreateSources,
+                    recreate = { recreateAudioSources(retryIndex, retryPosition, retryPlayWhenReady) },
+                )
                 Timber.tag("MusicService").i(
                     "Retrying playback for $mediaId after $retryReason",
                 )

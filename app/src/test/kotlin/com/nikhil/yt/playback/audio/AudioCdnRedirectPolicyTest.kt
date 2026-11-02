@@ -87,6 +87,23 @@ private fun requestFor(url: String): Request = Request.Builder().url(url).build(
 
 class AudioCdnRedirectPolicyTest {
     @Test
+    fun `first byte request uses a shorter header deadline`() {
+        val request = requestFor(ORIGIN).newBuilder().header("Range", "bytes=0-1048575").build()
+        val chain = ScriptedChain(request, listOf(redirectTo(SAME_GROUP), served()))
+        AudioCdnRedirectInterceptor().intercept(chain).close()
+        assertEquals(listOf(6_000 to 6_000, 6_000 to 6_000), chain.timeoutsByHop)
+    }
+
+    @Test
+    fun `midstream audio keeps its normal read deadline`() {
+        val request = requestFor(ORIGIN).newBuilder().header("Range", "bytes=1048576-2097151").build()
+        val chain = ScriptedChain(request, listOf(served()))
+        AudioCdnRedirectInterceptor().intercept(chain).close()
+        assertEquals(listOf(null to null), chain.timeoutsByHop)
+        assertFalse(isInitialAudioCdnRequest(request))
+    }
+
+    @Test
     fun `normal CDN groups never inherit shorter timeout from a different suspect group`() {
         val health = AudioCdnHostHealth(now = { 0L })
         health.recordUnresponsiveOpen(host = "rr1---sn-unrelated.googlevideo.com")

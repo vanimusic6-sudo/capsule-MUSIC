@@ -40,7 +40,7 @@ internal object CapsuleWebVideoResolver {
         val started = now
         val epoch = CapsuleVideoRequestGuard.resetEpoch()
         return try {
-            val stream = CapsuleInnerTubeXPlayer.resolveVideoStream(videoId, quality.maxHeight ?: 720)
+            val stream = CapsuleWebVideoExtractor.resolve(videoId, quality.maxHeight ?: 720)
             val resolved = tokenBackedVideo(stream, quality.maxHeight ?: 720)
             retryAtByClip.remove(videoId)
             Timber.tag("CapsuleVideo").i(
@@ -58,7 +58,9 @@ internal object CapsuleWebVideoResolver {
             throw cancelled
         } catch (failure: Exception) {
             currentCoroutineContext().ensureActive()
-            val kind = CapsuleVideoRequestGuard.classify(failure)
+            if (CapsuleVideoRequestGuard.isBlocked()) throw CapsuleVideoRequestGuard.RequestBlockedException("VIDEO cooldown active", failure)
+            val kind = if ((failure as? YouTubeVideoResolver.VideoBackendException)?.failure == CapsuleVideoFailure.BOT_BLOCKED)
+                CapsuleVideoRequestGuard.FailureKind.BOT_CHECK else CapsuleVideoRequestGuard.classify(failure)
             if (kind == CapsuleVideoRequestGuard.FailureKind.RATE_LIMITED ||
                 CapsulePlaybackSafety.isRateLimitedException(failure)) {
                 CapsuleVideoRequestGuard.noteBlockedAfterAllAttempts("rate_limited", epoch)
