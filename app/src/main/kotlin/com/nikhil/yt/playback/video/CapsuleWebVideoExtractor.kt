@@ -31,6 +31,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.*
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import timber.log.Timber
 
 /** No AUDIO scheduler, extractor, HTTP pool, client-health state or minter lifetime is shared. */
@@ -41,7 +42,9 @@ internal object CapsuleWebVideoExtractor {
         if (GlobalLog.isEnabled) Timber.tag("VideoInnerTubeX").d("%s", event.message)
     }
 
-    suspend fun resolve(videoId: String, maxHeight: Int): ExtractedStream = withContext(Dispatchers.IO) {
+    data class Extraction(val stream: ExtractedStream, val index: CapsuleWebVideoIndex?)
+
+    suspend fun resolve(videoId: String, maxHeight: Int): Extraction = withContext(Dispatchers.IO) {
         withTimeout(10_000L) {
             lock.withLock {
                 checkAdmission()
@@ -52,6 +55,7 @@ internal object CapsuleWebVideoExtractor {
                 }
                 val context = requireNotNull(current)
                 context.botObserved.set(false)
+                context.index.set(null)
                 try {
                     val stream = requireNotNull(context.extractor.extract(
                         videoId = videoId,
@@ -61,7 +65,7 @@ internal object CapsuleWebVideoExtractor {
                         clientPlaybackNonce = generateClientPlaybackNonce(),
                     )) { "VIDEO client returned no stream" }
                     if (identity != CapsuleInnerTubeXPlayer.sessionIdentity()) throw CancellationException("VIDEO session changed")
-                    stream
+                    Extraction(stream, context.index.get()?.takeIf { it.videoId == videoId })
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (failure: Exception) {
@@ -80,6 +84,7 @@ internal object CapsuleWebVideoExtractor {
     private fun create(identity: Any): Context {
         val auth = YouTube.authState
         val botObserved = AtomicBoolean(false)
+        val index = AtomicReference<CapsuleWebVideoIndex?>(null)
         val http = HttpClient(OkHttp) {
             expectSuccess = false
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true; explicitNulls = false; encodeDefaults = true }) }
@@ -97,11 +102,11 @@ internal object CapsuleWebVideoExtractor {
                             throw IOException("VIDEO HTTP 429")
                         }
                         if (chain.request().url.encodedPath.endsWith("/player")) {
-                            val body = try { response.peekBody(64 * 1024L).string() }
+                            val body = try { response.peekBody(512 * 1024L).string() }
                             catch (failure: IOException) { response.close(); throw failure }
-                            val playability = runCatching {
-                                (Json.parseToJsonElement(body) as? JsonObject)?.get("playabilityStatus") as? JsonObject
-                            }.getOrNull()
+                            val root = runCatching { Json.parseToJsonElement(body) as? JsonObject }.getOrNull()
+                            val playability = root?.get("playabilityStatus") as? JsonObject
+                            index.set(root?.let(CapsuleWebVideoIndex::fromPlayerResponse))
                             if (YouTubeFailureClassifier.classify(
                                     playabilityStatus = (playability?.get("status") as? JsonPrimitive)?.contentOrNull,
                                     text = playability?.toString(),
@@ -122,7 +127,7 @@ internal object CapsuleWebVideoExtractor {
         val cipher = YouTubeCipherService(http, store, logger)
         val parser = YtConfigParserImpl(http, innerTube, store, logger)
         val tokens = VideoTokens(auth)
-        return Context(identity, http, innerTube, cipher, tokens, botObserved, InnerTubeExtractor(
+        return Context(identity, http, innerTube, cipher, tokens, botObserved, index, InnerTubeExtractor(
             configParser = object : YtConfigParser by parser {
                 override suspend fun fetchConfig(videoId: String, useLoginCookies: Boolean): PlayerConfig = try {
                     parser.fetchConfig(videoId, useLoginCookies)
@@ -150,7 +155,8 @@ internal object CapsuleWebVideoExtractor {
     private class Context(
         val identity: Any, val http: HttpClient, val innerTube: InnerTube,
         val cipher: YouTubeCipherService, val tokens: VideoTokens,
-        val botObserved: AtomicBoolean, val extractor: InnerTubeExtractor,
+        val botObserved: AtomicBoolean, val index: AtomicReference<CapsuleWebVideoIndex?>,
+        val extractor: InnerTubeExtractor,
     ) {
         suspend fun close() {
             tokens.close()

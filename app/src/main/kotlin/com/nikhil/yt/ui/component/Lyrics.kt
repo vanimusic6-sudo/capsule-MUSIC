@@ -90,6 +90,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.animation.core.withInfiniteAnimationFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -1135,8 +1136,8 @@ fun Lyrics(
          * Update first, sleep second. Velune did the opposite, so reopening lyrics or returning
          * from the background could show the stale line until the next polling/animation beat.
          *
-         * Word/note motion gets 25 Hz; line-only tracking gets 10 Hz. Paused playback sleeps
-         * until a player seek, slider change or resume event supplies a new position.
+         * Visible word/note motion follows the display clock. Line-only tracking sleeps
+         * until its next timing boundary; paused playback waits for a player/seek event.
          */
         while (isActive) {
             val sliderPosition = sliderPositionProvider()
@@ -1166,13 +1167,6 @@ fun Lyrics(
                 currentLineIndex = newLineIndex
             }
 
-            val syncedPosition =
-                (position + wordSyncLeadMs)
-                    .coerceAtLeast(0L)
-            if (currentPlaybackPosition != syncedPosition) {
-                currentPlaybackPosition = syncedPosition
-            }
-
             val activeLineHasWords =
                 lines.getOrNull(newLineIndex)?.words?.isNotEmpty() == true
             val needsFineProgress =
@@ -1183,23 +1177,27 @@ fun Lyrics(
                             activeLineHasWords
                     )
 
+            val syncedPosition =
+                (position + wordSyncLeadMs)
+                    .coerceAtLeast(0L)
+            if ((needsFineProgress || !isPlaying || seekingNow) && currentPlaybackPosition != syncedPosition) {
+                currentPlaybackPosition = syncedPosition
+            }
+
             // Seek/listener and slider changes restart this effect with an immediate sample.
             if (!isPlaying) return@LaunchedEffect
 
-            val delayMs =
-                when {
-                    // Manual scrolling intentionally suppresses lyric motion, so a slower clock is
-                    // enough to keep the current-line bookkeeping fresh.
-                    isManualScrolling -> 240L
-                    // Word-synced motion keeps the only fast clock. 25 Hz is enough to remove the
-                    // small stepping visible at 20 Hz, while all non-active lines remain detached
-                    // from currentPlaybackPosition and therefore do not pay for these ticks.
-                    needsFineProgress -> 40L
-                    // Line-only sync does not need a 12.5 Hz poll; 10 Hz still lands well ahead of
-                    // the 500ms+ visual hand-off and saves idle CPU time.
-                    else -> 100L
-                }
-            delay(delayMs)
+            if (needsFineProgress && !isManualScrolling) {
+                withInfiniteAnimationFrameNanos { }
+            } else {
+                // No animated progress consumes this state. Wake at the next line,
+                // rather than ticking/recomposing inactive text on a fixed FPS timer.
+                val next = lines.getOrNull(newLineIndex + 1)
+                val lead = if (next?.isInstrumental == true) userOffsetMs else lineSyncLeadMs
+                val speed = playerConnection.player.playbackParameters.speed.coerceAtLeast(0.1f)
+                val waitMs = next?.let { ((it.time - lead - position) / speed).toLong() } ?: 250L
+                delay(waitMs.coerceIn(1L, 250L))
+            }
         }
     }
 

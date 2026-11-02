@@ -79,6 +79,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: gradle :app:verifyAndroidJsonRuntime :app:lintUniversalDebug --stacktrace --no-daemon --max-workers=2
       - name: Build test APK
+        if: ${{ !cancelled() }}
         run: gradle :app:assembleUniversalDebug --stacktrace --no-daemon --max-workers=2
       - uses: actions/upload-artifact@v4
         if: always()

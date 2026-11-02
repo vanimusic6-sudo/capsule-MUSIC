@@ -33,12 +33,13 @@ data class YouTubeMusicVideoLink(
 object YouTubeMusicVideoLinkResolver {
     private const val VIDEO_FILTER = "EgWKAQIQAWoKEAkQChAFEAMQBA%3D%3D"
     private const val POSITIVE_CACHE_MS = 24 * 60 * 60 * 1000L
-    private const val NEGATIVE_CACHE_MS = 12 * 60 * 60 * 1000L
+    private const val NEGATIVE_CACHE_MS = 5 * 60 * 1000L
     private const val MAX_CACHE_ENTRIES = 600
 
     private data class CacheEntry(
         val link: YouTubeMusicVideoLink?,
         val expiresAtMs: Long,
+        val metadataKey: String? = null,
     )
 
     private data class Candidate(
@@ -74,12 +75,15 @@ object YouTubeMusicVideoLinkResolver {
             val sourceTitle = title.trim()
             val cleanArtists =
                 artists.map { it.trim() }.filter { it.isNotBlank() }
+            val metadataKey = listOf(YouTubeMusicVideoMatcher.normalizeTitle(sourceTitle),
+                cleanArtists.map(YouTubeMusicVideoMatcher::normalizeText).distinct().sorted().joinToString("|"),
+                durationSeconds?.toString().orEmpty()).joinToString(":")
 
             require(sourceId.isNotBlank()) { "Missing YouTube Music track id" }
             require(sourceTitle.isNotBlank()) { "Missing song title" }
 
             cachedOrNull(sourceId)?.let { return@runCatching it }
-            if (isNegativeCached(sourceId)) {
+            if (isNegativeCached(sourceId, metadataKey)) {
                 throw IllegalStateException(
                     "Official music video is unavailable for this song",
                 )
@@ -94,7 +98,7 @@ object YouTubeMusicVideoLinkResolver {
 
             mutex.withLock {
                 cachedOrNull(sourceId)?.let { return@withLock it }
-                if (isNegativeCached(sourceId)) {
+                if (isNegativeCached(sourceId, metadataKey)) {
                     throw IllegalStateException(
                         "Official music video is unavailable for this song",
                     )
@@ -166,6 +170,7 @@ object YouTubeMusicVideoLinkResolver {
                         entry =
                             CacheEntry(
                                 link = null,
+                                metadataKey = metadataKey,
                                 expiresAtMs =
                                     System.currentTimeMillis() + NEGATIVE_CACHE_MS,
                             ),
@@ -294,8 +299,6 @@ object YouTubeMusicVideoLinkResolver {
                     ?.takeIf { it.isNotBlank() }
                 ?: return null
 
-        if (videoId == sourceMediaId) return null
-
         val candidateTitle =
             renderer.flexColumns
                 .firstOrNull()
@@ -327,6 +330,7 @@ object YouTubeMusicVideoLinkResolver {
                 candidateTitle = candidateTitle,
                 secondaryText = secondaryText,
                 sourceDurationSeconds = sourceDurationSeconds,
+                sameOfficialVideo = videoId == sourceMediaId,
             ) ?: return null
 
         return Candidate(
@@ -373,6 +377,9 @@ object YouTubeMusicVideoLinkResolver {
 
         for (row in rows) {
             if (row.expiresAtMs <= now) continue
+            // Older builds persisted 12-hour misses without their source metadata.
+            // Keep verified positive matches; recheck those obsolete negative rows.
+            if (row.videoId.isNullOrBlank()) continue
 
             val link =
                 row.videoId
@@ -426,13 +433,13 @@ object YouTubeMusicVideoLinkResolver {
         return entry.link
     }
 
-    private fun isNegativeCached(sourceId: String): Boolean {
+    private fun isNegativeCached(sourceId: String, metadataKey: String): Boolean {
         val entry = matchCache[sourceId] ?: return false
         if (entry.expiresAtMs <= System.currentTimeMillis()) {
             matchCache.remove(sourceId)
             return false
         }
-        return entry.link == null
+        return entry.link == null && entry.metadataKey == metadataKey
     }
 
     private fun syncSession() {

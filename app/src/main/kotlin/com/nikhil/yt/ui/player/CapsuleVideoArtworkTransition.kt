@@ -31,7 +31,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.max
@@ -40,9 +39,6 @@ import kotlin.math.roundToInt
 import kotlin.math.abs
 import kotlin.math.sin
 import kotlin.math.PI
-import android.app.ActivityManager
-import android.content.Context
-import android.os.PowerManager
 
 internal enum class CapsuleVideoArtworkMotion { SCULPTED, IMMERSIVE }
 
@@ -111,15 +107,6 @@ internal fun CapsuleVideoArtworkTransition(
     val configuration = LocalConfiguration.current
     val windowWidth = with(density) { configuration.screenWidthDp.dp.roundToPx() }
     val windowHeight = with(density) { configuration.screenHeightDp.dp.roundToPx() }
-    val context = LocalContext.current
-    // Never start a second animator or shader-heavy elastic edge in battery
-    // saver or on devices Android identifies as low-RAM.
-    val energySaver = remember(context) {
-        (context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)
-            ?.isLowRamDevice == true ||
-            (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)
-                ?.isPowerSaveMode == true
-    }
     val immersive = motion == CapsuleVideoArtworkMotion.IMMERSIVE
     val target = if (presentingVideo) 1f else 0f
     // Animatable exposes isRunning: a video surface cannot be destroyed for
@@ -144,18 +131,16 @@ internal fun CapsuleVideoArtworkTransition(
     // Both player families now have a leading-edge spring. In Cosmo/Light it
     // is tighter and almost critically damped: enough for attached-edge drag,
     // not the bigger liquid wobble of Immersion.
-    val lead = if (energySaver) body else remember(transitionKey) { Animatable(target) }
-    if (!energySaver) {
-        LaunchedEffect(lead, target, immersive) {
-            if (abs(lead.value - target) > 0.0001f || abs(lead.velocity) > 0.0001f) {
-                lead.animateTo(
-                    targetValue = target,
-                    animationSpec = if (immersive)
-                        spring(dampingRatio = 0.84f, stiffness = 184f, visibilityThreshold = 0.001f)
-                    else
-                        spring(dampingRatio = 0.90f, stiffness = 242f, visibilityThreshold = 0.001f),
-                )
-            }
+    val lead = remember(transitionKey) { Animatable(target) }
+    LaunchedEffect(lead, target, immersive) {
+        if (abs(lead.value - target) > 0.0001f || abs(lead.velocity) > 0.0001f) {
+            lead.animateTo(
+                targetValue = target,
+                animationSpec = if (immersive)
+                    spring(dampingRatio = 0.84f, stiffness = 184f, visibilityThreshold = 0.001f)
+                else
+                    spring(dampingRatio = 0.90f, stiffness = 242f, visibilityThreshold = 0.001f),
+            )
         }
     }
     // Optical reveal is derived directly from body.value inside GPU layers.
@@ -234,14 +219,14 @@ internal fun CapsuleVideoArtworkTransition(
             val base = sharedVideoMorphDimension(coverWidth, videoWidth, p)
             // Immersion is now a stretch-and-dissolve of the VIDEO picture,
             // not a rubber-edged geometric deformation of the viewport.
-            val sticky = if (energySaver || immersive) 0f else sculptedStickyStretch(p, leading)
+            val sticky = if (immersive) 0f else sculptedStickyStretch(p, leading)
             return base * (1f + sticky)
         }
         fun heightAt(p: Float, leading: Float): Float {
             val base = sharedVideoMorphDimension(coverHeight, videoHeight, p)
             // Immersion is now a stretch-and-dissolve of the VIDEO picture,
             // not a rubber-edged geometric deformation of the viewport.
-            val sticky = if (energySaver || immersive) 0f else sculptedStickyStretch(p, leading)
+            val sticky = if (immersive) 0f else sculptedStickyStretch(p, leading)
             return base * (1f - sticky * 0.55f)
         }
         Box(
@@ -252,7 +237,7 @@ internal fun CapsuleVideoArtworkTransition(
                     val leading = lead.value
                     val w = widthAt(p, leading)
                     val h = heightAt(p, leading)
-                    val adhesion = if (energySaver || immersive) 0f
+                    val adhesion = if (immersive) 0f
                         else sculptedEdgeTension(p, leading)
                     val left = (size.width - w) / 2f
                     val top = (size.height - h) / 2f +
@@ -275,7 +260,7 @@ internal fun CapsuleVideoArtworkTransition(
                         addPath(capsuleStickyContourPath(left, top, w, h, radius, pullPx))
                     }
                     clip = true
-                    shadowElevation = if (immersive || energySaver) 0f else shadowPx * smoothVideoStep(p)
+                    shadowElevation = if (immersive) 0f else shadowPx * smoothVideoStep(p)
                     translationY = coverOffset * (1f - p.coerceIn(0f, 1f))
                 }
                 .drawWithContent {
@@ -285,7 +270,7 @@ internal fun CapsuleVideoArtworkTransition(
                         val leading = lead.value
                         val w = widthAt(p, leading)
                         val h = heightAt(p, leading)
-                        val adhesion = if (energySaver || immersive) 0f
+                        val adhesion = if (immersive) 0f
                             else sculptedEdgeTension(p, leading)
                         val left = (size.width - w) / 2f
                         val top = (size.height - h) / 2f +
@@ -336,12 +321,11 @@ internal fun CapsuleVideoArtworkTransition(
                             // A small velocity-correlated mass lag applies to
                             // its GPU layer (not to the native decoder's size).
                             // Keep uniform scale so faces are never stretched.
-                            val lag = if (energySaver) 0f
-                                else capsuleVideoContentLag(p, lead.value, immersive)
+                            val lag = capsuleVideoContentLag(p, lead.value, immersive)
                             // Immersion: VIDEO dissolves while gently growing,
                             // never bending its rectangular window or distorting
                             // the decoded 16:9 frame. Both axes scale together.
-                            val dissolveStretch = if (immersive && !energySaver)
+                            val dissolveStretch = if (immersive)
                                 capsuleImmersionVideoDissolveStretch(capsulePhotoOpacity(p, blendStyle)) else 0f
                             val total = fill * (1f + kotlin.math.abs(lag) * 0.012f + dissolveStretch)
                             scaleX = total
@@ -404,8 +388,7 @@ internal fun CapsuleVideoArtworkTransition(
                                     widthAt(p, lead.value) / coverWidth.toFloat(),
                                     heightAt(p, lead.value) / coverHeight.toFloat(),
                                 ).coerceIn(0.5f, 3f)
-                                val stretch = if (energySaver) 0f
-                                    else sculptedStickyStretch(p, lead.value)
+                                val stretch = sculptedStickyStretch(p, lead.value)
                                 scaleX = fill * (1f + stretch * 0.20f)
                                 scaleY = fill * (1f - stretch * 0.12f)
                             }

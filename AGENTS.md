@@ -8,3 +8,7 @@ For changes to Android animations:
 - Preserve existing audio/video logic, UI color extraction and the original palette.
 - Run Gradle CI, Android lint, focused tests and the Universal Debug APK workflow.
 - Keep visual adjustments in review branches and describe exactly what has/has not been verified on a physical device.
+
+## Performance quality contract
+
+Never reduce animation FPS, media quality, buffering reliability, effects or features as an energy optimization without an explicit user request. Use the display frame clock for visible motion; stop work only when it is invisible or inactive. Optimize allocations, repeated parsing/layout, duplicate requests, resource lifetime and redundant composition instead. Respect user accessibility and system animation settings.

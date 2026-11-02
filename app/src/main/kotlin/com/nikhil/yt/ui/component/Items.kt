@@ -1096,7 +1096,7 @@ fun YouTubeGridItem(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = if (item is ArtistItem) TextAlign.Center else TextAlign.Start,
-            modifier = if (animateTitle) Modifier.basicMarquee().fillMaxWidth() else Modifier.fillMaxWidth()
+            modifier = if (animateTitle) Modifier.fillMaxWidth().basicMarquee() else Modifier.fillMaxWidth()
         )
     },
     subtitle = {

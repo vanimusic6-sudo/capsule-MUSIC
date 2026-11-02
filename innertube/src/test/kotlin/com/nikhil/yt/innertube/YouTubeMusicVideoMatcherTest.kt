@@ -6,6 +6,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class YouTubeMusicVideoMatcherTest {
+    @Test fun exactOfficialClipIsAcceptedWithIncompletePlaylistMetadata() {
+        val result = YouTubeMusicVideoMatcher.scoreCandidate("Playlist title", "playlist title", listOf("playlist author"),
+            "Real artist - Real song", "Real artist • 3:30", 210, sameOfficialVideo = true)
+        assertTrue(requireNotNull(result) >= YouTubeMusicVideoMatcher.STRONG_MATCH_SCORE)
+        assertNull(YouTubeMusicVideoMatcher.scoreCandidate("Playlist title", "playlist title", listOf("playlist author"),
+            "Real artist - Real song", "Real artist • 3:30", 210))
+    }
+
     @Test
     fun strongOfficialVideoPasses() {
         val score =

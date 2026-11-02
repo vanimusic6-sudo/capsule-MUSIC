@@ -11,6 +11,19 @@ import java.lang.reflect.Proxy
 
 @RunWith(RobolectricTestRunner::class)
 class CapsuleVideoSessionTest {
+    @Test fun aRealFrameDuringLongClipStartupExtendsOnlyTheNoProgressDeadline() = runTest {
+        val f = Fixture(this)
+        f.session.setSurfaceAttached(true)
+        f.session.start("song", MediaItem.Builder().setMediaId("song").build(), 0.8f, startupBudgetMs = 8_000L)
+        advanceTimeBy(7_000L); runCurrent()
+        f.clip.frame()
+        advanceTimeBy(1_501L); runCurrent()
+        assertTrue("A frame/alignment is progress; the old absolute 8s deadline killed this clip", f.failures.isEmpty())
+        advanceTimeBy(12_001L); runCurrent()
+        assertEquals("A genuinely stalled source must still terminate", 1, f.failures.size)
+        f.session.stop()
+    }
+
     private class Decoder {
         var item: MediaItem? = MediaItem.Builder().setMediaId("song").build()
         var position = 1_000L

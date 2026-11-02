@@ -19,7 +19,12 @@ internal object YouTubeMusicVideoMatcher {
         candidateTitle: String,
         secondaryText: String,
         sourceDurationSeconds: Int?,
+        sameOfficialVideo: Boolean = false,
     ): Int? {
+        // Playlist rows may omit the video type or carry incomplete artist/title
+        // metadata. A search result explicitly marked OMV for the exact source ID
+        // is already the canonical clip, not a competing title/artist match.
+        if (sameOfficialVideo) return STRONG_MATCH_SCORE + 1
         if (isRejectedVariant(sourceTitle, candidateTitle)) return null
 
         val candidateTitleNorm = normalizeTitle(candidateTitle)

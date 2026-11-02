@@ -777,6 +777,18 @@ class MusicService :
             // preferences and already-playing signed URLs untouched while the app
             // prewarms Web BotGuard/extractor in the background.
             val effectiveClientOrder = selection.clientOrder
+            if (priority == AudioResolvePriority.PLAYBACK) {
+                while (true) {
+                    val waitMs = audioCdnSkipBurstPolicy.resolveDelayMs(mediaId)
+                    if (waitMs <= 0L) break
+                    Timber.tag(CAPSULE_RESOLVE_TAG).i("resolve burst spacing id=%s delayMs=%d", mediaId, waitMs)
+                    delay(waitMs)
+                    if (!withContext(Dispatchers.Main.immediate) { isAudioLoaderSelectionRelevant(mediaId) }) {
+                        throw kotlinx.coroutines.CancellationException("Discarded paced AUDIO resolve")
+                    }
+                }
+                audioCdnSkipBurstPolicy.onResolveStarted()
+            }
             val startedAt = System.currentTimeMillis()
             Timber.tag(CAPSULE_RESOLVE_TAG).i(
                 "resolve start id=%s",
@@ -4814,6 +4826,7 @@ class MusicService :
                         onFirstAudioBytes = { dataSpec ->
                             val context = dataSpec.customData as? AudioCdnOpenContext
                             if (context != null) {
+                                audioCdnSkipBurstPolicy.onFirstByte(context.mediaId)
                                 playbackUrlCache.markDeliveredAudioBytes(
                                     mediaId = context.mediaId,
                                     streamUrl = dataSpec.uri.toString(),

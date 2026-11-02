@@ -6,6 +6,31 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AudioCdnSkipBurstPolicyTest {
+    @Test fun skipsImmediatelyAfterFirstByteArePacedBeforeParsingEvenWithoutReady() {
+        policy.onTransition("a")
+        for ((from, to) in listOf("a" to "b", "b" to "c", "c" to "d")) {
+            policy.onResolveStarted()
+            policy.onFirstByte(from)
+            now += 100L
+            policy.onTransition(to)
+        }
+        assertTrue(policy.isBurst("d"))
+        assertEquals(1_400L, policy.resolveDelayMs("d"))
+        now += 1_400L
+        assertEquals(0L, policy.resolveDelayMs("d"))
+        assertEquals(0L, policy.resolveDelayMs("old"))
+        now += 21_000L
+        assertEquals(0L, policy.resolveDelayMs("d"))
+    }
+
+    @Test fun lateBytesFromDiscardedTrackCannotTurnNormalPlaybackIntoABurst() {
+        policy.onTransition("a")
+        policy.onTransition("b")
+        policy.onFirstByte("a")
+        policy.onTransition("c")
+        assertFalse(policy.isBurst("c"))
+    }
+
     private var now = 10_000L
     private val policy = AudioCdnSkipBurstPolicy { now }
 

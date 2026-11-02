@@ -3,7 +3,7 @@ package com.nikhil.yt.innertube.video
 
 import java.net.URI
 
-internal data class CapsuleDashTrack(
+data class CapsuleDashTrack(
     val url: String, val itag: Int, val mimeType: String, val codecs: String,
     val bitrate: Int, val initStart: Long, val initEnd: Long,
     val indexStart: Long, val indexEnd: Long,
@@ -19,7 +19,7 @@ internal data class CapsuleDashTrack(
 }
 
 /** Sideload the small manifest; Media3 reads the real initialization and SIDX/Cues ranges. */
-internal fun indexedDashVideo(
+fun indexedDashVideo(
     videoId: String, durationMs: Long, videos: List<CapsuleDashTrack>, audios: List<CapsuleDashTrack>,
     quality: CapsuleNewPipeQuality, expiresAtMs: Long, userAgent: String? = null,
 ): CapsuleNewPipeResolved? {

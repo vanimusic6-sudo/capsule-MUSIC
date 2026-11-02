@@ -7,7 +7,6 @@
 package com.nikhil.yt.ui.player
 
 import android.os.Build
-import android.os.SystemClock
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -15,6 +14,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.animation.core.withInfiniteAnimationFrameNanos
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.MotionDurationScale
+import kotlinx.coroutines.flow.collectLatest
+import kotlin.coroutines.coroutineContext
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -43,7 +47,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.nikhil.yt.ui.component.LocalCapsuleBackgroundMotionEnabled
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.math.abs
 import kotlin.math.cos
@@ -74,30 +77,14 @@ internal fun capsuleBackgroundNeedsClock(effect: CapsuleBackgroundEffect): Boole
         -> false
     }
 
-/*
- * These are decorative clocks, and a decorative clock's frame rate is a battery setting.
- *
- * The compact one is the expensive one: it drives the mini-player's background, which is on screen
- * on every page of the app for as long as something is playing. At 15fps it was the last thing
- * keeping the frame clock awake during ordinary use — not enough to feel, enough to warm the SoC
- * over an evening. These effects are slow drifts and washes; nothing in them moves fast enough for
- * the eye to tell 15 from 8, or 24 from 14, which is why the frame rate was the thing to cut
- * rather than the effect.
- */
-private const val COMPACT_BACKGROUND_FPS = 6
-private const val FULL_BACKGROUND_FPS = 12
 private const val STATIC_BACKGROUND_TIME_MS = 6_480L
 
-/**
- * Drive the slow effects at their actual target frame rate and stop the clock
- * while the Activity is not visible. An InfiniteTransition still wakes up at
- * the display refresh rate even when its derived value changes less often.
- */
+/** One display-synchronized timeline. Only visible, requested motion owns a clock;
+ * state is read in drawing so frames do not recompose or remeasure the player. */
 @Composable
 internal fun rememberCapsuleAnimationTime(
     compact: Boolean,
     running: Boolean = true,
-    framesPerSecondOverride: Int? = null,
 ): State<Long> {
     /*
      * This is an animation timeline, not wall-clock time.
@@ -109,27 +96,23 @@ internal fun rememberCapsuleAnimationTime(
     val time = remember { mutableLongStateOf(STATIC_BACKGROUND_TIME_MS) }
     val isVisible = appIsOnScreen()
     val motionEnabled = LocalCapsuleBackgroundMotionEnabled.current
-    val framesPerSecond =
-        (
-            framesPerSecondOverride
-                ?: if (compact) {
-                    COMPACT_BACKGROUND_FPS
-                } else {
-                    FULL_BACKGROUND_FPS
-                }
-        ).coerceIn(1, 60)
-    val frameDelayMs = 1_000L / framesPerSecond
-
-    LaunchedEffect(compact, isVisible, running, framesPerSecond, motionEnabled) {
+    LaunchedEffect(compact, isVisible, running, motionEnabled) {
         if (!isVisible || !running || !motionEnabled) return@LaunchedEffect
-
-        var previousTick = SystemClock.elapsedRealtime()
-        while (isActive) {
-            val now = SystemClock.elapsedRealtime()
-            val delta = (now - previousTick).coerceIn(0L, frameDelayMs * 3L)
-            time.longValue += delta
-            previousTick = now
-            delay(frameDelayMs)
+        val durationScale = coroutineContext[MotionDurationScale]
+        snapshotFlow { durationScale?.scaleFactor ?: 1f }.collectLatest { scale ->
+            // Accessibility is a user/system choice, not an energy heuristic.
+            if (scale <= 0f) return@collectLatest
+            var previousTick: Long? = null
+            var remainderNanos = 0L
+            while (isActive) {
+                withInfiniteAnimationFrameNanos { now ->
+                    val delta = ((now - (previousTick ?: now)).coerceAtLeast(0L) / scale).toLong()
+                    val elapsed = remainderNanos + delta
+                    time.longValue += elapsed / 1_000_000L
+                    remainderNanos = elapsed % 1_000_000L
+                    previousTick = now
+                }
+            }
         }
     }
 
@@ -143,7 +126,6 @@ internal fun CapsuleProceduralBackground(
     colors: List<Color> = emptyList(),
     compact: Boolean = false,
     animated: Boolean = true,
-    animationFps: Int? = null,
     sharedAnimationTime: State<Long>? = null,
 ) {
     val primary = MaterialTheme.colorScheme.primary
@@ -165,7 +147,6 @@ internal fun CapsuleProceduralBackground(
                 ?: rememberCapsuleAnimationTime(
                     compact = compact,
                     running = animated && motionEnabled,
-                    framesPerSecondOverride = animationFps,
                 )
         } else {
             null

@@ -22,6 +22,8 @@ import androidx.media3.datasource.TransferListener
 import java.io.EOFException
 import java.io.IOException
 import java.net.SocketException
+import java.net.SocketTimeoutException
+import com.nikhil.yt.playback.audio.AudioCdnChunkRatePolicy
 import timber.log.Timber
 
 /** Resume only a peer-reset socket, never 403/410/429, DNS, TLS or a cancelled seek. */
@@ -34,6 +36,16 @@ internal fun isRecoverableVideoSocketReset(failure: IOException): Boolean =
                     cause.message?.contains("ECONNRESET", ignoreCase = true) == true)) ||
                 (cause is IOException && cause.javaClass.simpleName == "ConnectionResetException")
         }
+
+internal fun isRecoverableVideoReadFailure(failure: IOException): Boolean {
+    val causes = generateSequence(failure as Throwable?) { it.cause }.take(8).toList()
+    if (Thread.currentThread().isInterrupted || causes.any {
+            it is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException ||
+                it is java.util.concurrent.CancellationException || it is InterruptedException ||
+                (it is java.io.InterruptedIOException && it !is SocketTimeoutException)
+        }) return false
+    return isRecoverableVideoSocketReset(failure) || causes.any { it is SocketTimeoutException || it is EOFException }
+}
 
 
 internal const val CAPSULE_VIDEO_CHUNK_BYTES = 4L * 1024 * 1024
@@ -61,6 +73,16 @@ internal class CapsuleVideoChunkedDataSource(
     private var resourceLength = 0L
     private var opened = false
     private var readResumeAttempted = false
+    private var ratePolicy = newRatePolicy()
+
+    private fun newRatePolicy() = AudioCdnChunkRatePolicy(
+        initialChunkBytes = minOf(chunkBytes, 1024L * 1024),
+        reducedChunkBytes = minOf(chunkBytes, 512L * 1024),
+        maximumChunkBytes = chunkBytes,
+        slowReadMs = 30L,
+        slowBps = 256L * 1024,
+        recoveredBps = 1024L * 1024,
+    )
 
     override fun addTransferListener(transferListener: TransferListener) {
         upstream.addTransferListener(transferListener)
@@ -70,6 +92,7 @@ internal class CapsuleVideoChunkedDataSource(
         check(!opened) { "VIDEO DataSource is already open" }
         opened = true
         readResumeAttempted = false
+        ratePolicy = newRatePolicy()
 
         // Preserve native short-stream playback and pre-windowed signed URLs.
         // A URL with its own range query cannot be sliced beyond that window.
@@ -82,9 +105,9 @@ internal class CapsuleVideoChunkedDataSource(
 
         val firstLength =
             if (dataSpec.length == C.LENGTH_UNSET.toLong()) {
-                chunkBytes
+                minOf(chunkBytes, 512L * 1024)
             } else {
-                minOf(chunkBytes, dataSpec.length)
+                minOf(chunkBytes, dataSpec.length, 512L * 1024)
             }
 
         val firstSpec =
@@ -142,7 +165,7 @@ internal class CapsuleVideoChunkedDataSource(
 
     private fun openNextChunk() {
         val request = requireNotNull(original)
-        val length = minOf(bytesLeft, chunkBytes)
+        val length = minOf(bytesLeft, ratePolicy.onChunkComplete())
         val nextSpec =
             request.buildUpon()
                 .setPosition(nextPosition)
@@ -168,11 +191,13 @@ internal class CapsuleVideoChunkedDataSource(
      */
     private fun readWithOneSocketResume(buffer: ByteArray, offset: Int, length: Int): Int {
         try {
-            return upstream.read(buffer, offset, length)
+            val read = upstream.read(buffer, offset, length)
+            if (read == C.RESULT_END_OF_INPUT && chunkLeft > 0L) throw EOFException("VIDEO range ended early")
+            return read
         } catch (failure: IOException) {
             val source = original ?: throw failure
             if (readResumeAttempted || chunkLeft <= 0L ||
-                !isRecoverableVideoSocketReset(failure)
+                !isRecoverableVideoReadFailure(failure)
             ) throw failure
             readResumeAttempted = true
             val remaining = source.buildUpon()
@@ -193,8 +218,8 @@ internal class CapsuleVideoChunkedDataSource(
                     throw IOException("VIDEO CDN resume returned incompatible Content-Range")
                 }
                 Timber.tag("CapsuleVideo").i(
-                    "video-range-resume position=%d remainingBytes=%d reason=socket-reset",
-                    nextPosition, chunkLeft,
+                    "video-range-resume position=%d remainingBytes=%d reason=%s",
+                    nextPosition, chunkLeft, failure.javaClass.simpleName,
                 )
                 return upstream.read(buffer, offset, length)
             } catch (retryFailure: IOException) {
@@ -214,7 +239,13 @@ internal class CapsuleVideoChunkedDataSource(
             openNextChunk()
         }
 
-        val count = readWithOneSocketResume(buffer, offset, minOf(length.toLong(), chunkLeft).toInt())
+        val requested = minOf(length.toLong(), chunkLeft).toInt()
+        val resumedBefore = readResumeAttempted
+        val readStarted = System.nanoTime()
+        val count = readWithOneSocketResume(buffer, offset, requested)
+        if (readResumeAttempted == resumedBefore) {
+            ratePolicy.observeRead(requested, count, (System.nanoTime() - readStarted) / 1_000_000L)
+        }
         if (count == C.RESULT_END_OF_INPUT) {
             throw EOFException(
                 "VIDEO CDN ended a bounded request early (remaining=$chunkLeft)",

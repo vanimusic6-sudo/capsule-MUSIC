@@ -17,6 +17,42 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class CapsuleVideoChunkedDataSourceTest {
+    @Test fun defaultLongVideoStartsWithSmallRangeAndKeepsOneContinuousByteStream() {
+        val bytes = ByteArray(3 * 1024 * 1024) { (it % 251).toByte() }
+        val cdn = MemoryCdn(bytes)
+        val source = CapsuleVideoChunkedDataSource(cdn)
+        try {
+            assertEquals(bytes.size.toLong(), source.open(DataSpec(uri)))
+            assertArrayEquals(bytes, readAll(source))
+            assertEquals(512L * 1024, cdn.requests.first().length)
+            assertTrue(cdn.requests.all { it.length in 1..CAPSULE_VIDEO_CHUNK_BYTES })
+            assertTrue(cdn.requests.size >= 3)
+        } finally { source.close() }
+    }
+
+    @Test fun midrangeTimeoutResumesMissingBytesWithoutResolvingAnotherClient() {
+        val bytes = ByteArray(4096) { (it % 251).toByte() }
+        val cdn = MemoryCdn(bytes)
+        var timedOut = false
+        var reads = 0
+        val upstream = object : DataSource by cdn {
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                if (++reads == 3 && !timedOut) {
+                    timedOut = true
+                    throw java.io.IOException("wrapped Media3 body error", java.net.SocketTimeoutException("body read timed out"))
+                }
+                return cdn.read(buffer, offset, length)
+            }
+        }
+        val source = CapsuleVideoChunkedDataSource(upstream, chunkBytes = 1024)
+        try {
+            source.open(DataSpec(uri))
+            assertArrayEquals(bytes, readAll(source))
+            assertEquals(600L, cdn.requests[1].position)
+            assertEquals(424L, cdn.requests[1].length)
+        } finally { source.close() }
+    }
+
     private val uri = Uri.parse("https://cdn.example.test/videoplayback")
 
     private class MemoryCdn(

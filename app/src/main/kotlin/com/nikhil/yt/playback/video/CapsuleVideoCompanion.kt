@@ -225,6 +225,7 @@ internal class CapsuleVideoSession(
     // Media3 does not emit another first-frame event for a retained surface.
     private var preparedFrameAvailable = false
     private var firstFrame = false
+    private var renderedFrameRevision = 0L
     private var frameReported = false
     private var ownsSound = false
     private var audible = false
@@ -295,6 +296,7 @@ internal class CapsuleVideoSession(
     }
     private val videoListener = object : Player.Listener {
         override fun onRenderedFirstFrame() {
+            renderedFrameRevision++
             if (id == null || !rendering) return
             seekStartedAtMs?.let {
                 // A network seek can take far longer than a subsequent
@@ -635,28 +637,45 @@ internal class CapsuleVideoSession(
         val lease = generation
         val launched = scope.launch(start = CoroutineStart.LAZY) {
             var startupMs = 0L
+            var startupIdleMs = 0L
             var stallMs = 0L
+            var previousBufferedMs = video.bufferedPosition
+            var previousPositionMs = video.currentPosition
+            var previousFrameRevision = renderedFrameRevision
             while (id == currentId && generation == lease) {
                 delay(500L)
                 if (id != currentId || generation != lease) break
                 if (!needsWatchdog()) break
                 evaluate()
+                val progressed = video.bufferedPosition > previousBufferedMs ||
+                    video.currentPosition > previousPositionMs || renderedFrameRevision != previousFrameRevision
+                previousBufferedMs = video.bufferedPosition
+                previousPositionMs = video.currentPosition
+                previousFrameRevision = renderedFrameRevision
                 // No first-frame timeout with a detached/minimized player.
                 // On the first cold launch the TextureView may never attach.
                 // Do not interpret an absent local Surface as a slow YouTube
                 // server, and never leave the toggle spinning indefinitely.
                 if ((rendering || (foreground && !surfaceEverAttachedForSession)) &&
                     audio.playWhenReady && !frameReported
-                ) startupMs += 500L
-                if (ready && frameReported) startupMs = 0L
-                if ((rendering || committed) && audio.playWhenReady && video.playbackState == Player.STATE_BUFFERING) stallMs += 500L else stallMs = 0L
+                ) {
+                    startupMs += 500L
+                    startupIdleMs = if (progressed) 0L else startupIdleMs + 500L
+                }
+                if (ready && frameReported) { startupMs = 0L; startupIdleMs = 0L }
+                if ((rendering || committed) && audio.playWhenReady &&
+                    video.playbackState == Player.STATE_BUFFERING && !progressed
+                ) stallMs += 500L else stallMs = 0L
                 if (foreground && !surfaceAttached && !surfaceEverAttachedForSession &&
                     startupMs >= 8_000L
                 ) {
                     fail(IllegalStateException("VIDEO output surface unavailable on first opening"))
                     break
                 }
-                if (startupMs >= startupBudgetMs || stallMs >= 12_000L) {
+                // A first frame/alignment seek is real progress. Do not throw away a
+                // healthy long clip at eight seconds while it is still synchronizing.
+                // Keep both the no-progress deadline and a hard overall startup bound.
+                if (startupIdleMs >= startupBudgetMs || startupMs >= 30_000L || stallMs >= 12_000L) {
                     Timber.tag("CapsuleVideo").w(
                         "VIDEO cold startup timeout surface=%s frame=%s selectedAudio=%s videoState=%s playing=%s musicMs=%s videoMs=%s",
                         surfaceAttached, firstFrame, hasAudio, video.playbackState,

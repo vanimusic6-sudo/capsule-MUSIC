@@ -404,13 +404,13 @@ private fun WelcomeContinue(
 /**
  * The Capsule mark: a disc, a ring around it and one point on the ring.
  *
- * Drawn rather than animated. The point sits still — this is a logo, not a clock, and a first-run
- * screen someone reads for ten seconds has no business holding the frame rate at the display's
- * refresh rate to move a dot.
+ * Its orbital point uses the visible display clock. All reads stay in Canvas;
+ * no layout, composition or off-screen timer is driven by the animation.
  */
 @Composable
 private fun CapsuleMark(modifier: Modifier = Modifier) {
     val onSurface = MaterialTheme.colorScheme.onSurface
+    val timeline = com.nikhil.yt.ui.player.rememberCapsuleAnimationTime(compact = true)
     androidx.compose.foundation.Canvas(modifier) {
         val side = minOf(size.width, size.height)
         val centre = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
@@ -428,6 +428,7 @@ private fun CapsuleMark(modifier: Modifier = Modifier) {
 
         val ringWidth = side * 0.74f
         val ringHeight = side * 0.40f
+        val orbit = (timeline.value % 12_000L).toDouble() / 12_000.0 * 2.0 * kotlin.math.PI
         rotate(-24f, centre) {
             drawOval(
                 color = onSurface.copy(alpha = 0.34f),
@@ -444,8 +445,8 @@ private fun CapsuleMark(modifier: Modifier = Modifier) {
                 radius = side * 0.035f,
                 center =
                     androidx.compose.ui.geometry.Offset(
-                        centre.x + ringWidth / 2f,
-                        centre.y,
+                        centre.x + ringWidth / 2f * kotlin.math.cos(orbit).toFloat(),
+                        centre.y + ringHeight / 2f * kotlin.math.sin(orbit).toFloat(),
                     ),
             )
         }

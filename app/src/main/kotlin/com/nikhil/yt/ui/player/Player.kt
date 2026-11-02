@@ -306,22 +306,13 @@ fun BottomSheetPlayer(
             else -> Color.White
         }
 
-    /*
-     * Keep one frozen procedural phase for the entire Lyrics session and both transitions. This
-     * prevents colour drift between player/Lyrics backdrops and avoids redrawing two procedural
-     * backgrounds while the transition itself is already animating.
-     */
+    // Retain the lyrics surface/gesture lease through both closing stages.
+    // Both backdrops share one live timeline, including the lyrics session.
     var freezeBackdropAfterLyricsSettles by remember {
         mutableStateOf(showInlineLyrics)
     }
     LaunchedEffect(showInlineLyrics) {
         if (showInlineLyrics) {
-            /*
-             * Freeze the shared procedural phase immediately. The old path kept the clock running
-             * through the entire opening, forcing both the still-visible player backdrop and the
-             * incoming Lyrics backdrop to redraw every frame. Holding the current phase preserves
-             * the exact colours while making the transition essentially static-background work.
-             */
             freezeBackdropAfterLyricsSettles = true
         }
         // The host releases this freeze only when both closing stages have completed.
@@ -342,8 +333,7 @@ fun BottomSheetPlayer(
             state.shouldLayerAboveCollapsedChrome &&
             onScreen &&
             isPlaying &&
-            playbackState == Player.STATE_READY &&
-            !freezeBackdropAfterLyricsSettles
+            playbackState == Player.STATE_READY
     val sharedBackdropAnimationTime =
         rememberCapsuleAnimationTime(
             compact = false,

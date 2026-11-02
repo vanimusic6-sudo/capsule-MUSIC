@@ -90,6 +90,7 @@ internal class AudioCdnChunkRatePolicy(
     private val slowReadMs: Long = 250L,
     private val slowBps: Long = 48L * 1024,
     private val recoveredBps: Long = 160L * 1024,
+    private val maximumChunkBytes: Long = initialChunkBytes,
 ) {
     var nextChunkBytes: Long = initialChunkBytes
         private set
@@ -116,7 +117,7 @@ internal class AudioCdnChunkRatePolicy(
     fun onChunkComplete(): Long {
         nextChunkBytes = when {
             slowReadSamples >= 3 -> minOf(initialChunkBytes, reducedChunkBytes)
-            nextChunkBytes < initialChunkBytes && fastReadSamples >= 3 -> initialChunkBytes
+            fastReadSamples >= 3 -> minOf(maximumChunkBytes, nextChunkBytes * 2L)
             else -> nextChunkBytes
         }.coerceAtLeast(1L)
         // A single genuinely slow read at the end of one range may accumulate

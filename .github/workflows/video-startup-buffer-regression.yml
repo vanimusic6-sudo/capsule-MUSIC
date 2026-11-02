@@ -46,6 +46,11 @@ jobs:
           --tests 'com.nikhil.yt.playback.CapsuleLoadControlTest'
           --tests 'com.nikhil.yt.playback.AudioNetworkSelectionPolicyTest'
           --tests 'com.nikhil.yt.playback.PlaybackSourceRetryTest'
+          --tests 'com.nikhil.yt.playback.AudioCdnSkipBurstPolicyTest'
+          --tests 'com.nikhil.yt.ui.CapsuleBackgroundMotionTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleBackgroundClockTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleVideoArtworkTransitionTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleVideoMorphPixelsTest'
           --tests 'com.nikhil.yt.playback.video.*'
           --tests 'com.nikhil.yt.playback.video.CapsuleVideoChunkedDataSourceTest'
           --tests 'com.nikhil.yt.playback.video.CapsuleVideoBufferPolicyTest'
@@ -67,6 +72,7 @@ jobs:
         run: >-
           gradle :innertube:test
           --tests 'com.nikhil.yt.innertube.CapsuleVideoRequestGuardTest'
+          --tests 'com.nikhil.yt.innertube.YouTubeMusicVideoMatcherTest'
           --tests 'com.nikhil.yt.innertube.video.CapsuleVideoRoutesTest'
           --tests 'com.nikhil.yt.innertube.video.CapsuleNativeSabrVideoTest'
           --stacktrace --no-daemon --max-workers=2

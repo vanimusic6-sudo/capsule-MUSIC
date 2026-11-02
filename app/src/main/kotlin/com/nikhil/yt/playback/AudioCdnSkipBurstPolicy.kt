@@ -18,14 +18,17 @@ internal class AudioCdnSkipBurstPolicy(
     private var readyAtMs = 0L
     private var quickSwitches = 0
     private var lastQuickSwitchMs = 0L
+    private var firstByteId: String? = null
+    private var firstByteAtMs = 0L
+    private var lastResolveStartedMs: Long? = null
 
     @Synchronized
     fun onTransition(newId: String?) {
         if (newId == currentId) return
         val now = clockMs()
-        val fromRecentlyReady =
-            currentId != null && currentId == readyId &&
-                now - readyAtMs in 0L..QUICK_SKIP_WINDOW_MS
+        val fromRecentlyReady = currentId != null &&
+            ((currentId == firstByteId && now - firstByteAtMs in 0L..QUICK_SKIP_WINDOW_MS) ||
+                (currentId == readyId && now - readyAtMs in 0L..QUICK_SKIP_WINDOW_MS))
         if (fromRecentlyReady) {
             quickSwitches =
                 if (now - lastQuickSwitchMs in 0L..BURST_EXPIRY_MS) quickSwitches + 1 else 1
@@ -38,7 +41,30 @@ internal class AudioCdnSkipBurstPolicy(
         currentId = newId
         readyId = null
         readyAtMs = 0L
+        firstByteId = null
+        firstByteAtMs = 0L
     }
+
+    /** A loader can deliver bytes well before READY, especially during rapid skips. */
+    @Synchronized
+    fun onFirstByte(id: String) {
+        if (id != currentId || firstByteId == id) return
+        firstByteId = id
+        firstByteAtMs = clockMs()
+    }
+
+    /** Pace real /player starts, not just CDN GETs after extraction has already happened.
+     * Network/decoder time already spent between songs counts toward this interval. */
+    @Synchronized
+    fun resolveDelayMs(id: String): Long {
+        if (!isBurst(id)) return 0L
+        val previous = lastResolveStartedMs ?: return 0L
+        val interval = (1_500L + (quickSwitches - BURST_START) * 500L).coerceAtMost(4_000L)
+        return (interval - (clockMs() - previous)).coerceAtLeast(0L)
+    }
+
+    @Synchronized
+    fun onResolveStarted() { lastResolveStartedMs = clockMs() }
 
     @Synchronized
     fun onReady(id: String?, playWhenReady: Boolean) {

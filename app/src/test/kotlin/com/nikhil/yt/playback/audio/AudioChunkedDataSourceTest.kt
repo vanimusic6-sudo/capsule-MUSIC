@@ -26,6 +26,18 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
 class AudioChunkedDataSourceTest {
+    @Test fun videoRangeBudgetGrowsOnRealFastReadsAndContractsOnPacedSocketReads() {
+        val policy = AudioCdnChunkRatePolicy(1024L * 1024, maximumChunkBytes = 4L * 1024 * 1024)
+        repeat(3) { policy.observeRead(8192, 8192, 1L) }
+        assertEquals(2L * 1024 * 1024, policy.onChunkComplete())
+        repeat(3) { policy.observeRead(8192, 8192, 1L) }
+        assertEquals(4L * 1024 * 1024, policy.onChunkComplete())
+        repeat(3) { policy.observeRead(8192, 8192, 1L) }
+        assertEquals(4L * 1024 * 1024, policy.onChunkComplete())
+        repeat(3) { policy.observeRead(8192, 8192, 400L) }
+        assertEquals(512L * 1024, policy.onChunkComplete())
+    }
+
     /** Serves a known pattern and records the bounded requests it was asked for. */
     private class FakeUpstream(
         private val content: ByteArray,

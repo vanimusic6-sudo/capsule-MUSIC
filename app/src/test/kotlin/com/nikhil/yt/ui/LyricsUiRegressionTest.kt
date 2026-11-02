@@ -137,14 +137,8 @@ class LyricsUiRegressionTest {
         assertTrue(lyrics.contains("val fontWeight = FontWeight.Bold"))
     }
 
-    @Test
-    fun `lyrics animation clock is bounded below display refresh rate`() {
-        val lyrics = source("com/nikhil/yt/ui/component/Lyrics.kt")
-        assertFalse(lyrics.contains("withFrameNanos"))
-        assertTrue(lyrics.contains("delay(40L)"))
-        assertTrue(lyrics.contains("delay(100L)"))
-        assertTrue(lyrics.contains("delay(250L)"))
-    }
+    // Display-frame cadence and pause behavior are exercised by CapsuleBackgroundClockTest.
+    // Do not reintroduce the old test that required a visible-motion FPS cap.
 
     @Test
     fun `apple growth is text local and leaves viewport padding intact`() {

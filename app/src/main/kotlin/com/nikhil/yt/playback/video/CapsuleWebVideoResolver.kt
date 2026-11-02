@@ -40,8 +40,8 @@ internal object CapsuleWebVideoResolver {
         val started = now
         val epoch = CapsuleVideoRequestGuard.resetEpoch()
         return try {
-            val stream = CapsuleWebVideoExtractor.resolve(videoId, quality.maxHeight ?: 720)
-            val resolved = tokenBackedVideo(stream, quality.maxHeight ?: 720)
+            val extraction = CapsuleWebVideoExtractor.resolve(videoId, quality.maxHeight ?: 720)
+            val resolved = tokenBackedVideo(extraction.stream, quality.maxHeight ?: 720, extraction.index)
             retryAtByClip.remove(videoId)
             Timber.tag("CapsuleVideo").i(
                 "VIDEO web-ready clip=%s elapsedMs=%d delivery=%s height=%d tokenPresent=%s",
@@ -81,7 +81,7 @@ internal object CapsuleWebVideoResolver {
  * The installed BotGuard provider supports WEB_REMIX direct. Web SABR profiles
  * advertise a different attestation contract; never mislabel that provider to
  * force a token onto an incompatible SABR client. */
-internal fun tokenBackedVideo(stream: ExtractedStream, maxHeight: Int): CapsuleResolvedVideo {
+internal fun tokenBackedVideo(stream: ExtractedStream, maxHeight: Int, index: CapsuleWebVideoIndex? = null): CapsuleResolvedVideo {
     require(stream.videoId.matches(Regex("[A-Za-z0-9_-]{11}")))
     if (stream.sabrVideoBootstrap == null) {
         val videoUrl = requireNotNull(stream.videoUrl)
@@ -94,7 +94,7 @@ internal fun tokenBackedVideo(stream: ExtractedStream, maxHeight: Int): CapsuleR
         require(headers.values.all { it.length <= 2048 && '\r' !in it && '\n' !in it })
         val expires = requireNotNull(stream.expiresAt).toEpochMilliseconds()
         require(com.nikhil.yt.innertube.video.VideoStreamValidation.isFresh(expires))
-        return CapsuleResolvedVideo(
+        val source = CapsuleResolvedVideo(
             videoId = stream.videoId, videoUrl = videoUrl, audioUrl = stream.audioUrl,
             qualityLabel = "${height}p", width = stream.videoWidth ?: 0, height = height,
             videoItag = requireNotNull(stream.videoItag), audioItag = stream.itag,
@@ -102,6 +102,7 @@ internal fun tokenBackedVideo(stream: ExtractedStream, maxHeight: Int): CapsuleR
             maxHeight = maxHeight, userAgent = headers.entries.firstOrNull { it.key.equals("User-Agent", true) }?.value,
             requestHeaders = headers,
         )
+        return index?.indexed(source) ?: source
     }
     var bootstrap = requireNotNull(stream.sabrVideoBootstrap)
     // Capsule's dual-track SABR source consumes MP4. InnerTubeX can also select
