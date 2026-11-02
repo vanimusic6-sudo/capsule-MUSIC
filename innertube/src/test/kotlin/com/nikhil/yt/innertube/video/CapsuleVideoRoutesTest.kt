@@ -223,6 +223,35 @@ class CapsuleVideoRoutesTest {
         assertEquals(1, calls)
     }
 
+    @Test fun twoDifferentBackendsFailingDnsStopTheExtractorCascadeWithoutPoisoningRoutes() {
+        val health = CapsuleVideoRouteHealth()
+        val attempts = mutableListOf<CapsuleVideoRoute>()
+        val thrown = runCatching {
+            resolveVideoRoutes(health = health) { route ->
+                attempts += route
+                throw java.net.UnknownHostException(
+                    if (route == CapsuleVideoRoute.VISIONOS) "www.youtube.com"
+                    else "youtubei.googleapis.com"
+                )
+            }
+        }.exceptionOrNull()!!
+        assertEquals(CapsuleNewPipeFailure.NETWORK, CapsuleNewPipeExtractor.classify(thrown))
+        assertEquals(2, attempts.size)
+        assertEquals(CapsuleVideoRoute.VISIONOS, health.candidates(null).first())
+    }
+
+    @Test fun oneBackendDnsFailureMustNotPreventAnotherBackendFromSucceeding() {
+        val health = CapsuleVideoRouteHealth()
+        val attempts = mutableListOf<CapsuleVideoRoute>()
+        val result = resolveVideoRoutes(health = health) { route ->
+            attempts += route
+            if (attempts.size == 1) throw java.net.UnknownHostException("www.youtube.com")
+            stream
+        }
+        assertEquals(2, attempts.size)
+        assertEquals("direct-android-vr", result.backend)
+    }
+
     @Test fun anInvalidResponseDoesNotMarkTheRouteHealthyOrBlockItsReserve() {
         val health = CapsuleVideoRouteHealth()
         val failed = mutableListOf<CapsuleVideoRoute>()
