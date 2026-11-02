@@ -53,11 +53,13 @@ jobs:
           --tests 'com.nikhil.yt.playback.video.sabr.SabrBufferTest'
           --tests 'com.nikhil.yt.playback.video.sabr.SabrSeekLogicTest'
           --tests 'com.nikhil.yt.playback.video.sabr.SabrProtectionTest'
+          --tests 'com.nikhil.yt.playback.video.CapsuleVideoIpcBoundaryTest'
           --stacktrace --no-daemon --max-workers=2
       - name: Verify isolated clip route preference and anti-bot quarantine
         run: >-
           gradle :innertube:test
           --tests 'com.nikhil.yt.innertube.video.CapsuleVideoRoutesTest'
+          --tests 'com.nikhil.yt.innertube.video.CapsuleNativeSabrVideoTest'
           --stacktrace --no-daemon --max-workers=2
       - name: Save test results
         if: always()
