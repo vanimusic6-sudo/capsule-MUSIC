@@ -56,15 +56,24 @@ internal const val CAPSULE_VIDEO_TARGET_BUFFER_BYTES = 24 * 1024 * 1024
  * discarding that frame and performing two network seeks. Unknown lengths,
  * tiny clips and near-EOF switches retain the original safe start-at-zero path.
  */
-internal fun capsuleDashVideoInitialPosition(
+internal fun capsuleVideoInitialPosition(
     item: MediaItem, audioPositionMs: Long, audioPlaying: Boolean,
 ): Long? {
     val resolved = item.localConfiguration?.tag as? YouTubeVideoResolver.ResolvedVideo ?: return null
-    if (resolved.delivery != CapsuleVideoDelivery.DASH) return null
-    val manifest = resolved.dashManifest?.takeIf { it.length in 1..(64 * 1024) } ?: return null
-    val duration = manifest.substringAfter("mediaPresentationDuration=", "")
-        .substringAfter("PT", "").substringBefore("S", "")
-        .toDoubleOrNull()?.times(1000.0)?.toLong() ?: return null
+    val duration = when (resolved.delivery) {
+        CapsuleVideoDelivery.DASH -> {
+            val manifest = resolved.dashManifest?.takeIf { it.length in 1..(64 * 1024) } ?: return null
+            manifest.substringAfter("mediaPresentationDuration=", "")
+                .substringAfter("PT", "").substringBefore("S", "")
+                .toDoubleOrNull()?.times(1000.0)?.toLong() ?: return null
+        }
+        // SABR's signed /player response provides the clip duration before
+        // the independent progressive Media3 periods become seekable. Use
+        // this to avoid decoding the first 0s frame and then chasing MUSIC
+        // forward by 17s (observed on device at 16:09:57).
+        CapsuleVideoDelivery.SABR -> resolved.sabrSpec?.durationMs ?: return null
+        else -> return null
+    }
     if (duration !in 10_000L..43_200_000L) return null
     val position = audioPositionMs.coerceAtLeast(0L)
     // The clip may be shorter than MUSIC; do not accidentally start beyond EOF.
@@ -74,7 +83,10 @@ internal fun capsuleDashVideoInitialPosition(
     // forcing a second network seek and sometimes a third buffered correction.
     // Predict the measured READY interval, not the earlier first-frame time.
     // Still keep pause, unknown duration and near-EOF paths unchanged.
-    val prediction = if (audioPlaying) 2_000L else 0L
+    val prediction = if (!audioPlaying) 0L else when (resolved.delivery) {
+        CapsuleVideoDelivery.SABR -> 4_500L
+        else -> 2_000L
+    }
     return (position + prediction).coerceAtMost(duration - 3_000L)
 }
 
@@ -572,11 +584,11 @@ internal class CapsuleVideoSession(
                 }
             } else {
                 preparedItem = item
-                // Indexed DASH carries duration already: start decoder near the
+                // Indexed DASH and native SABR carry duration already: begin near the
                 // advancing MUSIC clock, not at byte/frame zero. Media3 gets the
                 // initial position before prepare, skipping a redundant network seek.
                 // Unindexed/short/near-EOF clips keep the proven old path.
-                val initialPosition = capsuleDashVideoInitialPosition(
+                val initialPosition = capsuleVideoInitialPosition(
                     item, audio.currentPosition, audio.isPlaying,
                 )
                 if (initialPosition != null) {
