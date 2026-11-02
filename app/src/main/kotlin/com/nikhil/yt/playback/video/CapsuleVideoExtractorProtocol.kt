@@ -8,6 +8,7 @@ package com.nikhil.yt.playback.video
 import android.os.Bundle
 import com.nikhil.yt.constants.CapsuleVideoQuality
 import com.nikhil.yt.innertube.video.CapsuleVideoDelivery
+import com.nikhil.yt.innertube.video.CapsuleSabrVideoSpec
 
 data class CapsuleResolvedVideo(
     val videoId: String,
@@ -24,6 +25,7 @@ data class CapsuleResolvedVideo(
     val maxHeight: Int = 720,
     val dashManifest: String? = null,
     val userAgent: String? = null,
+    val sabrSpec: CapsuleSabrVideoSpec? = null,
 ) {
     val adaptive: Boolean
         get() = !audioUrl.isNullOrBlank()
@@ -66,6 +68,7 @@ internal object CapsuleVideoIpc {
     const val EXTRA_MAX_HEIGHT = "max_height"
     const val EXTRA_DASH_MANIFEST = "dash_manifest"
     const val EXTRA_USER_AGENT = "user_agent"
+    const val EXTRA_SABR = "sabr_session"
     const val EXTRA_SUCCESS = "success"
     const val EXTRA_VIDEO_URL = "video_url"
     const val EXTRA_AUDIO_URL = "audio_url"
@@ -93,7 +96,10 @@ internal object CapsuleVideoIpc {
     fun successBundle(resolved: CapsuleResolvedVideo): Bundle {
         if (!com.nikhil.yt.innertube.video.VideoStreamValidation.accepts(
                 resolved.videoUrl, resolved.audioUrl, resolved.dashManifest, resolved.userAgent, resolved.delivery, resolved.qualityLabel,
-            )) return failureBundle(CapsuleVideoFailure.UNAVAILABLE, "Unsupported VIDEO extractor response")
+            ) || (resolved.delivery == CapsuleVideoDelivery.SABR) !=
+                (resolved.sabrSpec?.isValid() == true)) {
+            return failureBundle(CapsuleVideoFailure.UNAVAILABLE, "Unsupported VIDEO extractor response")
+        }
         return Bundle().apply {
             putBoolean(EXTRA_SUCCESS, true)
             putString(EXTRA_VIDEO_ID, resolved.videoId)
@@ -110,6 +116,21 @@ internal object CapsuleVideoIpc {
             putInt(EXTRA_MAX_HEIGHT, resolved.maxHeight)
             putString(EXTRA_DASH_MANIFEST, resolved.dashManifest)
             putString(EXTRA_USER_AGENT, resolved.userAgent)
+            resolved.sabrSpec?.let { spec ->
+                putBundle(EXTRA_SABR, Bundle().apply {
+                    putString("ustreamer", spec.ustreamerConfigBase64)
+                    putInt("v_itag", spec.videoItag)
+                    putLong("v_lmt", spec.videoLastModified)
+                    putLong("v_length", spec.videoLength)
+                    putInt("a_itag", spec.audioItag)
+                    putLong("a_lmt", spec.audioLastModified)
+                    putLong("a_length", spec.audioLength)
+                    putInt("client_name", spec.clientName)
+                    putString("client_version", spec.clientVersion)
+                    putLong("duration", spec.durationMs)
+                    putString("pot", spec.poTokenBase64)
+                })
+            }
         }
     }
 
@@ -130,9 +151,23 @@ internal object CapsuleVideoIpc {
         val rawDelivery = bundle.getString(EXTRA_DELIVERY).orEmpty()
         val delivery = if (rawDelivery.isBlank()) CapsuleVideoDelivery.PROGRESSIVE else
             CapsuleVideoDelivery.entries.firstOrNull { it.name == rawDelivery } ?: return null
+        val sabr = bundle.getBundle(EXTRA_SABR)?.let { payload ->
+            CapsuleSabrVideoSpec(
+                ustreamerConfigBase64 = payload.getString("ustreamer").orEmpty(),
+                videoItag = payload.getInt("v_itag"), videoLastModified = payload.getLong("v_lmt"),
+                videoLength = payload.getLong("v_length"),
+                audioItag = payload.getInt("a_itag"), audioLastModified = payload.getLong("a_lmt"),
+                audioLength = payload.getLong("a_length"),
+                clientName = payload.getInt("client_name"),
+                clientVersion = payload.getString("client_version").orEmpty(),
+                durationMs = payload.getLong("duration"),
+                poTokenBase64 = payload.getString("pot").orEmpty(),
+            )
+        }
         if (id != expectedVideoId ||
             !com.nikhil.yt.innertube.video.VideoStreamValidation.accepts(url, audio, manifest, agent, delivery, label) ||
-            !com.nikhil.yt.innertube.video.VideoStreamValidation.isFresh(expiry, nowMs)) return null
+            !com.nikhil.yt.innertube.video.VideoStreamValidation.isFresh(expiry, nowMs) ||
+            (delivery == CapsuleVideoDelivery.SABR) != (sabr?.isValid() == true)) return null
         return CapsuleResolvedVideo(
             videoId = id, videoUrl = requireNotNull(url), audioUrl = audio,
             qualityLabel = label,
@@ -140,7 +175,7 @@ internal object CapsuleVideoIpc {
             videoItag = bundle.getInt(EXTRA_VIDEO_ITAG, -1), audioItag = bundle.getInt(EXTRA_AUDIO_ITAG, -1),
             expiresAtMs = expiry, backend = bundle.getString(EXTRA_BACKEND) ?: "newpipe",
             delivery = delivery, maxHeight = bundle.getInt(EXTRA_MAX_HEIGHT, 720).coerceIn(1, 720),
-            dashManifest = manifest, userAgent = agent,
+            dashManifest = manifest, userAgent = agent, sabrSpec = sabr,
         )
     }
 
