@@ -61,6 +61,26 @@ class CapsuleVideoRoutesTest {
         assertEquals(CapsuleVideoRoute.VISIONOS, health.order(null).first())
     }
 
+    @Test fun restoredHealthyRouteSkipsPreviouslyDeadColdRoutes() {
+        val health = CapsuleVideoRouteHealth()
+        health.restorePreferredRoute("newpipe")
+        assertEquals(CapsuleVideoRoute.NEWPIPE, health.order(null).first())
+        val tried = mutableListOf<CapsuleVideoRoute>()
+        val selected = resolveVideoRoutes(health = health) { route ->
+            tried += route
+            stream
+        }
+        assertEquals(listOf(CapsuleVideoRoute.NEWPIPE), tried)
+        assertEquals("newpipe", selected.backend)
+
+        // Never trust an unknown saved name or revive a currently blocked route.
+        val fresh = CapsuleVideoRouteHealth()
+        fresh.restorePreferredRoute("untrusted-route")
+        assertEquals(CapsuleVideoRoute.VISIONOS, fresh.order(null).first())
+        health.failure(CapsuleVideoRoute.NEWPIPE, CapsuleNewPipeFailure.BOT_BLOCKED)
+        assertFalse(CapsuleVideoRoute.NEWPIPE in health.candidates(null))
+    }
+
     @Test fun nextClipStartsWithSuccessfulRouteWithoutRepeatingDeadEndpoints() {
         val health = CapsuleVideoRouteHealth()
         resolveVideoRoutes(health = health) { route ->
