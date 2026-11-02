@@ -173,6 +173,7 @@ internal class SabrVideoSession(
         var iter = 0
         var dry = 0
         var attestationStalls = 0
+        var lastReportedProtection = -1L
 
         while (!cancelled && iter < maxIter && dry < 6) {
             iter++
@@ -257,7 +258,13 @@ internal class SabrVideoSession(
                 SabrUmp.SABR_ERROR -> sabrError = true
                 SabrUmp.STREAM_PROTECTION_STATUS -> {
                     protStatus = SabrProto.read(p.payload).longAt(1)
-                    Timber.tag(TAG).d("STREAM_PROTECTION_STATUS=$protStatus (1=OK,2=pending,3=attestation-required)")
+                    if (protStatus != lastReportedProtection) {
+                        Timber.tag(TAG).d(
+                            "SABR stream-protection transition %d->%d",
+                            lastReportedProtection, protStatus,
+                        )
+                        lastReportedProtection = protStatus
+                    }
                 }
             }
             if (sabrError) {
@@ -304,6 +311,15 @@ internal class SabrVideoSession(
             // Advance to the least-buffered track, floored at the requested start until both land.
             playerTimeMs = maxOf(startTimeMs, minOf(video.bufEndMs.orStartIfEmpty(video), audio.bufEndMs.orStartIfEmpty(audio)))
             onProgress?.invoke(videoBuffer.available() + audioBuffer.available())
+            // Log only the first few UMP round trips and any newly received
+            // media at the beginning. The previous first-response timer
+            // reported ~900 bytes but not whether these were policy frames
+            // or media; this distinguishes attestation, CDN and parser stalls.
+            if (iter <= 6) Timber.tag(TAG).i(
+                "SABR initial-step iter=%d bodyBytes=%d mediaHeaders=%d newSegment=%s videoReadyBytes=%d audioReadyBytes=%d protection=%d",
+                iter, bytes.size, headers.size, newSeg,
+                videoBuffer.available(), audioBuffer.available(), protStatus,
+            )
 
             if (redirect != null && !newSeg) {
                 // UMP redirects are server-controlled input. Do not forward
