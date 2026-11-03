@@ -3889,10 +3889,10 @@ class MusicService :
 
     crossfadeAudio?.onMediaItemTransition(mediaItem, reason)
 
-    val currentIndex = player.currentMediaItemIndex
-    val queue = player.mediaItems.mapNotNull { it.metadata }
-    if (queue.isNotEmpty()) {
-        lyricsPreloadManager?.onSongChanged(currentIndex, queue)
+    lyricsPreloadManager?.onSongChanged { count ->
+        com.nikhil.yt.lyrics.nextLyricsPreloadItems(
+            player.currentMediaItemIndex, player.mediaItemCount, count,
+        ) { index -> player.getMediaItemAt(index).metadata }
     }
 
     val joined = togetherSessionState.value as? com.nikhil.yt.together.TogetherSessionState.Joined
@@ -6137,6 +6137,8 @@ class MusicService :
         scheduleTogetherShutdown()
         discordPresenceOwner.stop()
         scrobbleCoordinator.destroy()
+        lyricsPreloadManager?.destroy()
+        lyricsPreloadManager = null
         try {
             connectivityObserver.unregister()
         } catch (error: Exception) {

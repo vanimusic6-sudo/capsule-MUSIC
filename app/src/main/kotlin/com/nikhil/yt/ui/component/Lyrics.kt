@@ -190,8 +190,6 @@ import com.nikhil.yt.lyrics.LyricsUtils.isKorean
 import com.nikhil.yt.lyrics.LyricsUtils.isTtml
 import com.nikhil.yt.lyrics.LyricsUtils.parseLyrics
 import com.nikhil.yt.lyrics.LyricsUtils.parseTtml
-import com.nikhil.yt.lyrics.LyricsUtils.romanizeJapanese
-import com.nikhil.yt.lyrics.LyricsUtils.romanizeKorean
 import com.nikhil.yt.ui.component.shimmer.ShimmerHost
 import com.nikhil.yt.ui.component.shimmer.TextPlaceholder
 import com.nikhil.yt.ui.menu.LyricsMenu
@@ -690,102 +688,16 @@ fun Lyrics(
         if (darkTheme == DarkMode.AUTO) isSystemInDarkTheme else darkTheme == DarkMode.ON
     }
 
-    val lines = remember(lyrics, scope, mediaMetadata?.id, mediaMetadata?.duration) {
-        if (lyrics == null || lyrics == LYRICS_NOT_FOUND) {
-            emptyList()
-        } else if (lyrics.startsWith("[")) {
-            val parsedLines = parseLyrics(lyrics)
-            parsedLines.map { entry ->
-                val newEntry = entry
-                if (romanizeJapaneseLyrics) {
-                    if (isJapanese(entry.text) && !isChinese(entry.text)) {
-                        scope.launch {
-                            try {
-                                newEntry.romanizedTextFlow.value = romanizeJapanese(entry.text)
-                            } catch (e: Exception) {
-                                com.nikhil.yt.utils.reportException(e)
-                            }
-                        }
-                    }
-                }
-                if (romanizeKoreanLyrics) {
-                    if (isKorean(entry.text)) {
-                        scope.launch {
-                            try {
-                                newEntry.romanizedTextFlow.value = romanizeKorean(entry.text)
-                            } catch (e: Exception) {
-                                com.nikhil.yt.utils.reportException(e)
-                            }
-                        }
-                    }
-                }
-                newEntry
-            }.let {
+    val lines = remember(lyrics, mediaMetadata?.id, mediaMetadata?.duration) {
+        when {
+            lyrics == null || lyrics == LYRICS_NOT_FOUND -> emptyList()
+            lyrics.startsWith("[") || isTtml(lyrics) -> {
+                val parsed = if (lyrics.startsWith("[")) parseLyrics(lyrics) else parseTtml(lyrics, mediaMetadata?.duration)
                 listOf(LyricsEntry.HEAD_LYRICS_ENTRY) + withInstrumentalBreaks(
-                    it,
-                    songDurationMs = (mediaMetadata?.duration?.toLong() ?: 0L) * 1000L,
+                    parsed, songDurationMs = (mediaMetadata?.duration?.toLong() ?: 0L) * 1000L,
                 )
             }
-        } else if (isTtml(lyrics)) {
-            val parsedLines = parseTtml(lyrics, mediaMetadata?.duration)
-            parsedLines.map { entry ->
-                val newEntry = entry
-                if (romanizeJapaneseLyrics) {
-                    if (isJapanese(entry.text) && !isChinese(entry.text)) {
-                        scope.launch {
-                            try {
-                                newEntry.romanizedTextFlow.value = romanizeJapanese(entry.text)
-                            } catch (e: Exception) {
-                                com.nikhil.yt.utils.reportException(e)
-                            }
-                        }
-                    }
-                }
-                if (romanizeKoreanLyrics) {
-                    if (isKorean(entry.text)) {
-                        scope.launch {
-                            try {
-                                newEntry.romanizedTextFlow.value = romanizeKorean(entry.text)
-                            } catch (e: Exception) {
-                                com.nikhil.yt.utils.reportException(e)
-                            }
-                        }
-                    }
-                }
-                newEntry
-            }.let {
-                listOf(LyricsEntry.HEAD_LYRICS_ENTRY) + withInstrumentalBreaks(
-                    it,
-                    songDurationMs = (mediaMetadata?.duration?.toLong() ?: 0L) * 1000L,
-                )
-            }
-        } else {
-            lyrics.lines().mapIndexed { index, line ->
-                val newEntry = LyricsEntry(index * 100L, line)
-                if (romanizeJapaneseLyrics) {
-                    if (isJapanese(line) && !isChinese(line)) {
-                        scope.launch {
-                            try {
-                                newEntry.romanizedTextFlow.value = romanizeJapanese(line)
-                            } catch (e: Exception) {
-                                com.nikhil.yt.utils.reportException(e)
-                            }
-                        }
-                    }
-                }
-                if (romanizeKoreanLyrics) {
-                    if (isKorean(line)) {
-                        scope.launch {
-                            try {
-                                newEntry.romanizedTextFlow.value = romanizeKorean(line)
-                            } catch (e: Exception) {
-                                com.nikhil.yt.utils.reportException(e)
-                            }
-                        }
-                    }
-                }
-                newEntry
-            }
+            else -> lyrics.lines().mapIndexed { index, line -> LyricsEntry(index * 100L, line) }
         }
     }
     val isSynced =
@@ -872,6 +784,12 @@ fun Lyrics(
 
     var isAppMinimized by rememberSaveable {
         mutableStateOf(false)
+    }
+
+    LaunchedEffect(lines, romanizeJapaneseLyrics, romanizeKoreanLyrics, isVisible, isAppMinimized) {
+        if (isVisible && !isAppMinimized) {
+            com.nikhil.yt.lyrics.prepareLyricsRomanization(lines, romanizeJapaneseLyrics, romanizeKoreanLyrics)
+        }
     }
 
     LyricsFrameDiagnostics(
@@ -2965,7 +2883,7 @@ fun Lyrics(
 
                                 if (hasWordTimings && item.words != null && isActiveLine && effectiveAnimationStyle != LyricsAnimationStyle.NONE && !reduceMotionDuringScroll) {
 
-                                    val romanizedWords = romanized.split(" ")
+                                    val romanizedWords = remember(romanized) { romanized.split(" ") }
                                     val mainWords = item.words
 
                                     val romanizedStyledText = buildAnnotatedString {

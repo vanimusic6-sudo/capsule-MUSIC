@@ -11,11 +11,13 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -25,8 +27,11 @@ import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.pow
 
-internal fun crossfadeIdlePollDelay(remainingMs: Long, preloadWindowMs: Long): Long =
-    ((remainingMs - preloadWindowMs).coerceAtLeast(0L) / 2L).coerceIn(100L, 500L)
+internal fun crossfadeIdlePollDelay(remainingMs: Long, preloadWindowMs: Long, speed: Float = 1f): Long {
+    val safeSpeed = speed.takeIf { it.isFinite() && it > 0f } ?: 1f
+    return ((remainingMs - preloadWindowMs).coerceAtLeast(0L) / (2.0 * safeSpeed))
+        .toLong().coerceIn(100L, 30_000L)
+}
 
 internal class CrossfadeAudio(
     private val player: ExoPlayer,
@@ -40,6 +45,16 @@ internal class CrossfadeAudio(
     private val overlapPlayerFactory: () -> ExoPlayer,
 ) {
     private var loopJob: Job? = null
+    private val eventGate = PlaybackEventGate()
+    private val wakeListener = object : Player.Listener {
+        override fun onEvents(player: Player, events: Player.Events) {
+            if (events.containsAny(Player.EVENT_PLAY_WHEN_READY_CHANGED, Player.EVENT_IS_PLAYING_CHANGED,
+                    Player.EVENT_PLAYBACK_STATE_CHANGED, Player.EVENT_POSITION_DISCONTINUITY,
+                    Player.EVENT_MEDIA_ITEM_TRANSITION, Player.EVENT_TIMELINE_CHANGED,
+                    Player.EVENT_PLAYBACK_PARAMETERS_CHANGED, Player.EVENT_REPEAT_MODE_CHANGED,
+                    Player.EVENT_SHUFFLE_MODE_ENABLED_CHANGED)) eventGate.signal()
+        }
+    }
 
     private var overlapPlayer: ExoPlayer? = null
     private var overlapPrimedIndex: Int = C.INDEX_UNSET
@@ -65,7 +80,15 @@ internal class CrossfadeAudio(
 
     fun start(scope: CoroutineScope) {
         if (loopJob?.isActive == true) return
-        loopJob = scope.launch { runLoop() }
+        loopJob = scope.launch {
+            player.addListener(wakeListener)
+            try {
+                coroutineScope {
+                    launch { crossfadeDurationMs.collect { eventGate.signal() } }
+                    runLoop()
+                }
+            } finally { player.removeListener(wakeListener) }
+        }
     }
 
     fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -83,6 +106,7 @@ internal class CrossfadeAudio(
     }
 
     fun release() {
+        player.removeListener(wakeListener)
         loopJob?.cancel()
         loopJob = null
         stopOverlapCrossfade(resetMainFade = true)
@@ -107,7 +131,7 @@ internal class CrossfadeAudio(
 
             if (!player.playWhenReady) {
                 stopOverlapCrossfade(resetMainFade = true)
-                delay(500)
+                eventGate.awaitChange()
                 continue
             }
 
@@ -119,7 +143,7 @@ internal class CrossfadeAudio(
 
             if (!crossfadeActive && (player.playbackState != Player.STATE_READY || !player.isPlaying)) {
                 stopOverlapCrossfade(resetMainFade = true)
-                delay(500)
+                eventGate.awaitChange()
                 continue
             }
 
@@ -129,13 +153,13 @@ internal class CrossfadeAudio(
 
             if (player.repeatMode == Player.REPEAT_MODE_ONE) {
                 stopOverlapCrossfade(resetMainFade = true)
-                delay(500)
+                eventGate.awaitChange()
                 continue
             }
 
             if (!crossfadeActive && (nextIndex == C.INDEX_UNSET || durationMs <= 0 || durationMs == C.TIME_UNSET)) {
                 stopOverlapCrossfade(resetMainFade = true)
-                delay(500)
+                eventGate.awaitChange()
                 continue
             }
 
@@ -180,9 +204,9 @@ internal class CrossfadeAudio(
             }
 
             if (playbackFadeFactor.value != 1f) playbackFadeFactor.value = 1f
-            // Sleep through the middle of the song. Approach the preload window in smaller
-            // steps so a seek/skip still reacts quickly and the first overlap is not late.
-            delay(crossfadeIdlePollDelay(remainingMs, preloadWindowMs))
+            // Media/speed/seek events interrupt the deadline immediately. No 2 Hz
+            // polling through a long track; near the preload window cadence is unchanged.
+            eventGate.awaitChange(crossfadeIdlePollDelay(remainingMs, preloadWindowMs, player.playbackParameters.speed))
         }
     }
 

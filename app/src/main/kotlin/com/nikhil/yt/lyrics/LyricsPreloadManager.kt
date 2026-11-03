@@ -13,7 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import com.nikhil.yt.constants.PreloadQueueLyricsEnabledKey
@@ -45,75 +45,30 @@ class LyricsPreloadManager @Inject constructor(
      * Called when the current song changes in the player.
      * Triggers pre-loading of lyrics for the next N songs in the queue.
      *
-     * @param currentIndex The index of the currently playing song in the queue
-     * @param queue List of MediaMetadata for songs in the queue
+     * [nextSongs] runs on Main only after admission and receives the configured count.
      */
-    fun onSongChanged(currentIndex: Int, queue: List<MediaMetadata>) {
-        // Cancel any existing preload job
+    fun onSongChanged(nextSongs: (Int) -> List<MediaMetadata>) {
         preloadJob?.cancel()
-        
-        // Check if pre-load is enabled
         preloadJob = scope.launch {
             try {
-                // A queue change cancels this wait before any provider is contacted.
-                delay(PRELOAD_STABILITY_DELAY_MS)
-                val preferences = context.dataStore.data.first()
-                val isEnabled = preferences[PreloadQueueLyricsEnabledKey] ?: true
-                
-                if (!isEnabled) {
-                    Timber.tag(TAG).d("Queue lyrics pre-load is disabled")
-                    return@launch
-                }
-                
-                // Check network connectivity
-                val isNetworkAvailable = try {
-                    networkConnectivity.isCurrentlyConnected()
-                } catch (e: Exception) {
-                    true
-                }
-                
-                if (!isNetworkAvailable) {
-                    Timber.tag(TAG).d("Network unavailable, skipping lyrics pre-load")
-                    return@launch
-                }
-                
-                val preloadCount = preferences[QueueLyricsPreloadCountKey] ?: DEFAULT_PRELOAD_COUNT
-                
-                // Get next N songs after current index
-                val nextSongs = getNextSongs(queue, currentIndex, preloadCount)
-                
-                if (nextSongs.isEmpty()) {
-                    Timber.tag(TAG).d("No songs to pre-load")
-                    return@launch
-                }
-                
-                Timber.tag(TAG).d("Starting pre-load for ${nextSongs.size} songs")
-                preloadLyrics(nextSongs)
-                
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                reportException(e)
+                preloadSettledLyrics(
+                    readCount = {
+                        val preferences = context.dataStore.data.first()
+                        val enabled = preferences[PreloadQueueLyricsEnabledKey] ?: true
+                        val connected = try { networkConnectivity.isCurrentlyConnected() }
+                            catch (_: Exception) { true }
+                        if (enabled && connected) preferences[QueueLyricsPreloadCountKey] ?: DEFAULT_PRELOAD_COUNT else 0
+                    },
+                    // ExoPlayer's queue may only be read on its application thread.
+                    nextSongs = { count -> withContext(Dispatchers.Main.immediate) { nextSongs(count) } },
+                    preload = ::preloadLyrics,
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                reportException(failure)
             }
         }
-    }
-
-    /**
-     * Get the next N songs from the queue after the current index.
-     */
-    private fun getNextSongs(queue: List<MediaMetadata>, currentIndex: Int, count: Int): List<MediaMetadata> {
-        if (queue.isEmpty() || currentIndex < 0) {
-            return emptyList()
-        }
-        
-        val startIndex = currentIndex + 1
-        val endIndex = minOf(startIndex + count, queue.size)
-        
-        if (startIndex >= queue.size) {
-            return emptyList()
-        }
-        
-        return queue.subList(startIndex, endIndex)
     }
 
     /**
@@ -207,7 +162,6 @@ class LyricsPreloadManager @Inject constructor(
     companion object {
         private const val TAG = "LyricsPreloadManager"
         private const val DEFAULT_PRELOAD_COUNT = 1
-        private const val PRELOAD_STABILITY_DELAY_MS = 800L
         private const val PRELOAD_MISS_COOLDOWN_MS = 30 * 60 * 1_000L
     }
 }

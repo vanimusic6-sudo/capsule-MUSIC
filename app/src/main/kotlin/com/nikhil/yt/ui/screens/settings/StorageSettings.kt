@@ -35,7 +35,6 @@ import com.nikhil.yt.constants.SmartTrimmerKey
 import com.nikhil.yt.di.CAPSULE_VIDEO_CACHE_BYTES
 import com.nikhil.yt.di.CAPSULE_VIDEO_CACHE_DIRECTORY
 import com.nikhil.yt.extensions.directorySizeBytes
-import com.nikhil.yt.extensions.tryOrNull
 import com.nikhil.yt.ui.component.ActionPromptDialog
 import com.nikhil.yt.ui.player.appIsOnScreen
 import com.nikhil.yt.ui.utils.formatFileSize
@@ -164,61 +163,23 @@ fun StorageSettings(
         }
     }
 
-    LaunchedEffect(imageDiskCache, onScreen) {
+    // One display refresh and one IO dispatch for all four cache sizes. Empty
+    // caches report a valid zero; only unavailable accounting falls back to disk.
+    LaunchedEffect(imageDiskCache, playerCache, videoCache, downloadCache, onScreen) {
         if (!onScreen) return@LaunchedEffect
         while (isActive) {
-            imageCacheSize = withContext(Dispatchers.IO) { imageDiskCache.size }
-            delay(3_000L)
-        }
-    }
-
-    LaunchedEffect(playerCache, playerCacheDir, onScreen) {
-        if (!onScreen) return@LaunchedEffect
-        while (isActive) {
-            playerCacheSize =
-                withContext(Dispatchers.IO) {
-                    val cacheSpace =
-                        tryOrNull { playerCache.cacheSpace } ?: 0L
-                    if (cacheSpace == 0L) {
-                        playerCacheDir.directorySizeBytes()
-                    } else {
-                        cacheSpace
-                    }
-                }
-            delay(3_000L)
-        }
-    }
-
-    LaunchedEffect(videoCache, videoCacheDir, onScreen) {
-        if (!onScreen) return@LaunchedEffect
-        while (isActive) {
-            videoCacheSize =
-                withContext(Dispatchers.IO) {
-                    val cacheSpace =
-                        tryOrNull { videoCache.cacheSpace } ?: 0L
-                    if (cacheSpace == 0L) {
-                        videoCacheDir.directorySizeBytes()
-                    } else {
-                        cacheSpace
-                    }
-                }
-            delay(3_000L)
-        }
-    }
-
-    LaunchedEffect(downloadCache, downloadCacheDir, onScreen) {
-        if (!onScreen) return@LaunchedEffect
-        while (isActive) {
-            downloadCacheSize =
-                withContext(Dispatchers.IO) {
-                    val cacheSpace =
-                        tryOrNull { downloadCache.cacheSpace } ?: 0L
-                    if (cacheSpace == 0L) {
-                        downloadCacheDir.directorySizeBytes()
-                    } else {
-                        cacheSpace
-                    }
-                }
+            val sizes = withContext(Dispatchers.IO) {
+                StorageCacheSnapshot(
+                    image = imageDiskCache.size,
+                    player = storageCacheBytes({ playerCache.cacheSpace }) { playerCacheDir.directorySizeBytes() },
+                    video = storageCacheBytes({ videoCache.cacheSpace }) { videoCacheDir.directorySizeBytes() },
+                    downloads = storageCacheBytes({ downloadCache.cacheSpace }) { downloadCacheDir.directorySizeBytes() },
+                )
+            }
+            imageCacheSize = sizes.image
+            playerCacheSize = sizes.player
+            videoCacheSize = sizes.video
+            downloadCacheSize = sizes.downloads
             delay(3_000L)
         }
     }
