@@ -283,16 +283,11 @@ internal class DetailHeaderMotionState(
         ) return null
         val distance = restArtworkBottomPx - toolbarBottomPx
         if (distance <= with(density) { 96.dp.toPx() }) return null
-        val revealStart = distance * 0.12f
-        val revealEnd = (distance - 1f).coerceAtLeast(1f)
-        val offset = scroll.firstVisibleItemScrollOffset.toFloat()
-        val safeInset = with(density) { 10.dp.toPx() }
-        if (offset <= revealStart + safeInset || offset >= revealEnd - safeInset) return null
-        return if (offset < revealStart + (revealEnd - revealStart) * 0.48f) {
-            0
-        } else {
-            revealEnd.roundToInt()
-        }
+        return detailHeaderSnapTargetPx(
+            scroll.firstVisibleItemScrollOffset,
+            distance,
+            with(density) { 10.dp.toPx() },
+        )
     }
 
     suspend fun settleHandoffIfNeeded() {
@@ -437,6 +432,25 @@ internal fun rememberDetailHeaderMotion(
     return remember(state, density, contentIdentity) {
         DetailHeaderMotionState(state, density, headerPresence)
     }
+}
+
+/**
+ * Two resting points only: photo fully open or title fully docked.
+ * Do not change a gentle first scroll or normal song-list flings. Returns
+ * null outside the actual measured hero-to-toolbar handoff window.
+ */
+internal fun detailHeaderSnapTargetPx(
+    offsetPx: Int,
+    distancePx: Float,
+    safeInsetPx: Float = 0f,
+): Int? {
+    if (!distancePx.isFinite() || distancePx <= 1f) return null
+    val start = distancePx * 0.12f
+    val end = (distancePx - 1f).coerceAtLeast(1f)
+    val inset = safeInsetPx.coerceAtLeast(0f)
+    if (offsetPx <= start + inset || offsetPx >= end - inset) return null
+    val halfway = start + (end - start) * 0.48f
+    return if (offsetPx < halfway) 0 else end.roundToInt()
 }
 
 /**
