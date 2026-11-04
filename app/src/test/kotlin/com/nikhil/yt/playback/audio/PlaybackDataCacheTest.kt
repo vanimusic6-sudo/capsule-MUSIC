@@ -41,6 +41,21 @@ class PlaybackDataCacheTest {
         assertNull(downloads.getForPlayback("track", 60_000, context = context))
     }
 
+    @Test fun sameWifiAndQualityNeverReusesAnotherAccountOrVisitorSignedUrl() {
+        val cache = PlaybackDataCache(nowMs = { 0L })
+        val connection = "wifi"
+        val audio = "high"
+        val oldAccount = Triple(audio, connection, "account-1/visitor-a")
+        val newAccount = Triple(audio, connection, "account-2/visitor-b")
+        val oldFile = playback()
+        cache.put("private-track", oldFile, context = oldAccount)
+        assertSame(oldFile, cache.getForPlayback("private-track", 60_000, context = oldAccount))
+        assertNull(cache.getForPlayback("private-track", 60_000, context = newAccount))
+        // An old extraction arriving late stays associated with its old session.
+        cache.put("private-track", oldFile, context = oldAccount)
+        assertNull(cache.getForPlayback("private-track", 60_000, context = newAccount))
+    }
+
     @Test fun aPrefetchedTrackRetainsNormalizationHeadersAndHistory() {
         val cache = PlaybackDataCache(nowMs = { 0L })
         val data = playback()

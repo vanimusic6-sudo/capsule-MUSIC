@@ -289,8 +289,8 @@ object CapsuleInnerTubeXPlayer {
         try {
             val download = priority == AudioResolvePriority.DOWNLOAD
             if (download) downloadBotGate.check()
-            val configuredOrder = if (download) AudioDownloadClientPolicy.order
-                else clientOrder.ifEmpty { AudioClientOrder.legacyOrder(streamPolicy) }
+            val configuredOrder =
+                if (download) emptyList() else clientOrder.ifEmpty { AudioClientOrder.legacyOrder(streamPolicy) }
             val baseHints =
                 ContentHints(
                     isUploaded = playlistId == "MLPT" || playlistId?.contains("MLPT") == true,
@@ -324,10 +324,21 @@ object CapsuleInnerTubeXPlayer {
                             if (download) downloadBotGate.check()
                             // Decide after scheduling, using current readiness. A cold minter
                             // starts in an independent job and is never awaited by Vision.
-                            val effectiveOrder = if (download) configuredOrder else
-                                AudioWebStartupClientPolicy.prepareOrder(configuredOrder, isStartupWebReady(), ::requestStartupWarmup)
-                            val primaryProfileId = effectiveOrder.first()
                             val extractionBundle = bundle()
+                            // Decide account entitlement from the SAME immutable session
+                            // the extractor uses. An authorization change while this
+                            // request waits in the background must not select an old plan.
+                            val effectiveOrder =
+                                if (download) {
+                                    AudioDownloadClientPolicy.orderForSession(
+                                        extractionBundle.innerTube.hasSapCookieAuth(),
+                                    )
+                                } else {
+                                    AudioWebStartupClientPolicy.prepareOrder(
+                                        configuredOrder, isStartupWebReady(), ::requestStartupWarmup,
+                                    )
+                                }
+                            val primaryProfileId = effectiveOrder.first()
                             Timber.tag(TAG).i(
                                 "Resolving audio id=%s priority=%s primaryProfile=%s",
                                 videoId,
@@ -752,11 +763,16 @@ object CapsuleInnerTubeXPlayer {
                 innerTube = innerTube,
                 cipherService = cipherService,
                 extractor = extractor,
-                // A separate extractor/config cache with no token provider. It cannot
-                // mint, consume, invalidate or warm the foreground WEB token session.
+                // Preserve a separate download extractor and client-failure cache.
+                // Signed-in-only media needs the same account session (including
+                // its WEB PoToken contract); anonymous downloads remain token-free.
+                // The scheduler still gives playback priority over this extractor.
                 downloadExtractor = InnerTubeExtractor(
                     configParser = configParser, cipherService = cipherService, innerTube = innerTube,
-                    fallbackStrategy = CapsuleAudioClientStrategy, logger = logger,
+                    fallbackStrategy = CapsuleAudioClientStrategy,
+                    tokenProvider =
+                        if (lockedKey.auth.hasLoginCookie) tokenProvider(lockedKey.auth) else null,
+                    logger = logger,
                 ),
             ).also { currentBundle = it }
         }

@@ -31,6 +31,7 @@ import com.nikhil.yt.playback.audio.ResolvingAudioDownloader
 import androidx.media3.exoplayer.offline.DownloadManager
 import androidx.media3.exoplayer.offline.DownloadNotificationHelper
 import com.nikhil.yt.playback.audio.AudioDownloadClientPolicy
+import com.nikhil.yt.playback.audio.CapsuleInnerTubeXPlayer
 import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
 import java.io.IOException
 import com.nikhil.yt.constants.AudioStreamPolicy
@@ -108,7 +109,7 @@ constructor(
     private val connectivityManager = context.getSystemService<ConnectivityManager>()!!
     private suspend fun playbackContext() = AudioPlaybackContext(
         context.dataStore.data.first().effectiveAudioQuality(), AudioStreamPolicy.VISIONOS, connectivityManager.isActiveNetworkMetered,
-        clientOrder = AudioDownloadClientPolicy.order,
+        clientOrder = AudioDownloadClientPolicy.orderForSession(YouTube.authState.hasLoginCookie),
     )
 
     // Download pressure protection. This reacts to transport failures without
@@ -161,7 +162,12 @@ constructor(
         repeat(MAX_DOWNLOAD_RESOLVE_ATTEMPTS) { attempt ->
             awaitDownloadResolveWindow()
             val selection = playbackContext()
-            val resumeContext = selection to connectivityManager.activeNetwork
+            // A signed URL is tied to a YouTube account/visitor as well as
+            // network and quality. Do not reuse it after login/logout or account
+            // switching, even if the connection and audio settings are unchanged.
+            val resumeContext = Triple(
+                selection, connectivityManager.activeNetwork, CapsuleInnerTubeXPlayer.sessionIdentity(),
+            )
             resumeUrls.getForPlayback(mediaId, maxPrefetchedAgeMs = 60_000L, context = resumeContext)
                 ?.let { return it }
             val result =
@@ -171,7 +177,10 @@ constructor(
                     connectivityManager = connectivityManager,
                 )
 
-            if (selection != playbackContext() || resumeContext.second != connectivityManager.activeNetwork) {
+            if (selection != playbackContext() ||
+                resumeContext.second != connectivityManager.activeNetwork ||
+                resumeContext.third != CapsuleInnerTubeXPlayer.sessionIdentity()
+            ) {
                 throw java.io.IOException("Playback context changed during download resolve")
             }
 

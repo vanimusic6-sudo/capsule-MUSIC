@@ -67,14 +67,14 @@ object CapsuleAudioEngine {
     suspend fun refreshAfterStreamRejection(): Boolean =
         CapsuleInnerTubeXPlayer.refreshAfterStreamRejection()
 
-    /** Dedicated download policy/extractor; foreground preferences and tokens are not consumed. */
+    /** Dedicated download policy/extractor; authenticated tracks use the user's own login session. */
     suspend fun resolveDownload(
         videoId: String,
         audioQuality: AudioQuality,
         connectivityManager: ConnectivityManager,
     ): Result<PlaybackData> = resolveStream(
         videoId = videoId, audioQuality = audioQuality, connectivityManager = connectivityManager,
-        clientOrder = AudioDownloadClientPolicy.order, priority = AudioResolvePriority.DOWNLOAD,
+        priority = AudioResolvePriority.DOWNLOAD,
     )
 
     fun downloadCooldownRemainingMs(): Long = CapsuleInnerTubeXPlayer.downloadCooldownRemainingMs()

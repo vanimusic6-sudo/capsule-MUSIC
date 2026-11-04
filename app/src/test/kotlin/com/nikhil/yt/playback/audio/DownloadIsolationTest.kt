@@ -29,6 +29,51 @@ class DownloadIsolationTest {
         }
     }
 
+    @Test fun signedInDownloadsHaveAccountBackedFallbackWithoutChangingAnonymousDownloads() {
+        val order = AudioDownloadClientPolicy.orderForSession(hasLoginCookie = true)
+        assertEquals(
+            listOf(AudioClientOrder.VISIONOS_0_1, AudioClientOrder.WEB_REMIX, AudioClientOrder.WEB_CREATOR),
+            order,
+        )
+        assertEquals(AudioDownloadClientPolicy.order, AudioDownloadClientPolicy.orderForSession(false))
+        assertEquals(order.size, order.distinct().size)
+        val plan = CapsuleAudioFallbackPolicy.profilePlan(
+            order.first(), AudioResolvePriority.DOWNLOAD, authenticated = true,
+            isUploaded = false, excludedProfiles = emptySet(), preferredProfiles = order,
+        )
+        assertEquals(order, plan)
+        val afterVisionLoginRequired = CapsuleAudioFallbackPolicy.profilePlan(
+            order.first(), AudioResolvePriority.DOWNLOAD, authenticated = true,
+            isUploaded = false, excludedProfiles = setOf(AudioClientOrder.VISIONOS_0_1),
+            preferredProfiles = order,
+        )
+        assertEquals(listOf(AudioClientOrder.WEB_REMIX, AudioClientOrder.WEB_CREATOR), afterVisionLoginRequired)
+        assertEquals(
+            listOf(AudioClientOrder.WEB_REMIX, AudioClientOrder.WEB_CREATOR),
+            CapsuleAudioFallbackPolicy.profilePlan(
+                order.first(), AudioResolvePriority.DOWNLOAD, authenticated = true,
+                isUploaded = true, excludedProfiles = emptySet(), preferredProfiles = order,
+            ),
+        )
+    }
+
+    @Test fun signedInDownloadUsesAccountSessionButRetainsDistinctExtractionAndFailureIsolation() {
+        // Structural guards: unit tests cannot make a privileged live YouTube
+        // account request. They prevent accidentally regressing to guest-only
+        // download extraction during future playback refactors.
+        val source = listOf(
+            java.io.File("src/main/kotlin/com/nikhil/yt/playback/audio/CapsuleInnerTubeXPlayer.kt"),
+            java.io.File("app/src/main/kotlin/com/nikhil/yt/playback/audio/CapsuleInnerTubeXPlayer.kt"),
+        ).first(java.io.File::isFile).readText()
+        val extractors = source.substringAfter("ExtractionBundle(").substringBefore(").also { currentBundle = it }")
+        assertTrue(extractors.contains("downloadExtractor = InnerTubeExtractor("))
+        assertTrue(extractors.contains("if (lockedKey.auth.hasLoginCookie) tokenProvider(lockedKey.auth) else null"))
+        assertTrue(source.contains("AudioDownloadClientPolicy.orderForSession("))
+        assertTrue(source.contains("extractionBundle.innerTube.hasSapCookieAuth()"))
+        assertTrue(source.contains("downloadStreamClientFailures = TrackClientFailureCache()"))
+        assertTrue(source.contains("if (download) extractionBundle.downloadExtractor else extractionBundle.extractor"))
+    }
+
     @Test fun downloadRejectionDoesNotQuarantineForegroundClientAndViceVersa() {
         CapsuleInnerTubeXPlayer.markStreamClientFailed("same-track", "VISIONOS_0_1", nowMs = 100L, download = true)
         assertEquals(setOf("VISIONOS_0_1"), CapsuleInnerTubeXPlayer.failedStreamClients("same-track", 101L, true))
