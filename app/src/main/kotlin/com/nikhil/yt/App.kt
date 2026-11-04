@@ -120,11 +120,13 @@ class App : Application(), SingletonImageLoader.Factory {
             dataStore.data.map { it.playbackAuthState() }.distinctUntilChanged().collect { state ->
                 val sessionChanged = YouTube.authState != state
                 YouTube.authState = state
-                CapsuleAnonymousSession.reset()
-                // A visitor/account change supersedes the old session: do not let
-                // a stale BotGuard warmup republish an obsolete visitor binding.
-                webRemixWarmupJob?.cancel()
-                if (sessionChanged) CapsuleAudioEngine.cancelStartupWarmup()
+                // The first DataStore emission can equal the synchronous
+                // PreferenceStore snapshot; don't invalidate the same session.
+                if (sessionChanged) {
+                    CapsuleAnonymousSession.reset()
+                    webRemixWarmupJob?.cancel()
+                    CapsuleAudioEngine.cancelStartupWarmup()
+                }
 
                 // Warm WEB_REMIX even when the selected AUDIO client is VISIONOS.
                 // The visitor observer below obtains missing visitorData and publishes it

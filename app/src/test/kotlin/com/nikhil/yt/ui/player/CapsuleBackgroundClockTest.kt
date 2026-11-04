@@ -21,7 +21,7 @@ import org.robolectric.annotation.Config
 class CapsuleBackgroundClockTest {
     @get:Rule val compose = createComposeRule()
 
-    @Test fun visibleMotionAdvancesEveryDisplayFrameWithoutRecomposingItsOwner() {
+    @Test fun slowAmbientClockRunsWithoutRecomposingItsOwner() {
         compose.mainClock.autoAdvance = false
         val running = mutableStateOf(true)
         lateinit var timeline: State<Long>
@@ -31,27 +31,28 @@ class CapsuleBackgroundClockTest {
             timeline = rememberCapsuleAnimationTime(compact = true, running = running.value)
             Box(Modifier.size(20.dp).drawBehind { timeline.value })
         }
-        repeat(3) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
-        var before = 0L
+        repeat(4) { compose.mainClock.advanceTimeBy(100L); compose.waitForIdle() }
+        var baseline = 0L
         var compositionBaseline = 0
-        compose.runOnIdle { before = timeline.value; compositionBaseline = compositions }
-        repeat(5) {
-            compose.mainClock.advanceTimeByFrame()
+        compose.runOnIdle { baseline = timeline.value; compositionBaseline = compositions }
+        repeat(4) {
+            compose.mainClock.advanceTimeBy(100L)
+            compose.waitForIdle()
             compose.runOnIdle {
-                assertTrue("Visible motion must not repeat the same 6/12fps frame", timeline.value > before)
-                assertTrue(timeline.value - before <= 20L)
-                before = timeline.value
-                assertEquals("Drawing should not recompose the player", compositionBaseline, compositions)
+                assertTrue("Ambient timeline keeps advancing", timeline.value > baseline)
+                assertTrue("Elapsed phase cannot jump", timeline.value - baseline <= 120L)
+                baseline = timeline.value
+                assertEquals("No player recomposition on wallpaper tick", compositionBaseline, compositions)
             }
         }
         compose.runOnIdle { running.value = false }
-        compose.mainClock.advanceTimeByFrame()
-        compose.runOnIdle { before = timeline.value }
+        compose.mainClock.advanceTimeBy(150L)
+        compose.runOnIdle { baseline = timeline.value }
         compose.mainClock.advanceTimeBy(1_000L)
-        compose.runOnIdle { assertEquals(before, timeline.value); running.value = true }
-        compose.waitForIdle()
-        repeat(3) { compose.mainClock.advanceTimeByFrame(); compose.waitForIdle() }
-        compose.runOnIdle { assertTrue("Resume must advance without including paused time: ${timeline.value - before}ms",
-            timeline.value - before in 1L..64L) }
+        compose.runOnIdle { assertEquals(baseline, timeline.value); running.value = true }
+        repeat(3) { compose.mainClock.advanceTimeBy(100L); compose.waitForIdle() }
+        compose.runOnIdle {
+            assertTrue("Resuming must exclude paused time", timeline.value - baseline in 1L..320L)
+        }
     }
 }

@@ -16,6 +16,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.animation.core.withInfiniteAnimationFrameNanos
 import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.delay
 import androidx.compose.ui.MotionDurationScale
 import kotlinx.coroutines.flow.collectLatest
 import kotlin.coroutines.coroutineContext
@@ -80,6 +81,17 @@ internal fun capsuleBackgroundNeedsClock(effect: CapsuleBackgroundEffect): Boole
 
 private const val STATIC_BACKGROUND_TIME_MS = 6_480L
 
+/**
+ * Only long-period wallpaper drift is rate-limited. Gesture springs, video,
+ * lyrics and player/comet animations remain at the native display refresh rate.
+ * Mini-player artwork barely moves in a 70dp slot; a full screen gets more
+ * samples. Elapsed-time integration below avoids slowing the actual waves.
+ */
+internal const val FULL_AMBIENT_FRAME_DELAY_MS = 22L
+internal const val COMPACT_AMBIENT_FRAME_DELAY_MS = 40L
+internal fun capsuleAmbientFrameDelayMs(compact: Boolean) =
+    if (compact) COMPACT_AMBIENT_FRAME_DELAY_MS else FULL_AMBIENT_FRAME_DELAY_MS
+
 /** One display-synchronized timeline. Only visible, requested motion owns a clock;
  * state is read in drawing so frames do not recompose or remeasure the player. */
 @Composable
@@ -109,10 +121,15 @@ internal fun rememberCapsuleAnimationTime(
                 withInfiniteAnimationFrameNanos { now ->
                     val delta = ((now - (previousTick ?: now)).coerceAtLeast(0L) / scale).toLong()
                     val elapsed = remainderNanos + delta
-                    time.longValue += elapsed / 1_000_000L
+                    val wholeMs = elapsed / 1_000_000L
+                    if (wholeMs > 0L) time.longValue += wholeMs
                     remainderNanos = elapsed % 1_000_000L
                     previousTick = now
                 }
+                // Yield between slow wallpaper frames instead of requesting
+                // a full-rate vsync for subpixel changes. Cancellation on
+                // pause/background happens immediately during this delay.
+                delay(capsuleAmbientFrameDelayMs(compact))
             }
         }
     }
@@ -186,6 +203,22 @@ internal fun CapsuleProceduralBackground(
             }
             else -> emptyList()
         }
+        val starInk = if (effect == CapsuleBackgroundEffect.CAPSULE_STAR) {
+            palette.map { lerp(Color.White, it, 0.15f) }
+        } else emptyList()
+        val nebulaSparks = if (effect == CapsuleBackgroundEffect.NEBULA) {
+            List(if (compact) 10 else 24) { i ->
+                NebulaSpark(
+                    Offset(
+                        deterministicFraction(i * 23 + 5) * size.width,
+                        deterministicFraction(i * 41 + 7) * size.height,
+                    ),
+                    lerp(Color.White, palette[i % palette.size], 0.18f),
+                    0.38f + i % 4 * 0.14f,
+                )
+            }
+        } else emptyList()
+        val nebulaBase = deepColor(lerp(palette[0], palette[1], 0.28f), 0.88f)
         val starBloom = if (effect == CapsuleBackgroundEffect.CAPSULE_STAR) {
             Brush.radialGradient(colors = listOf(
                 palette[0].copy(alpha = if (compact) 0.14f else 0.2f),
@@ -224,11 +257,11 @@ internal fun CapsuleProceduralBackground(
                     elapsedMs, movingLights, requireNotNull(baseBrush), requireNotNull(vignette),
                 )
                 CapsuleBackgroundEffect.CAPSULE_STAR -> drawCapsuleStarField(
-                    palette, elapsedMs, compact, requireNotNull(starFields), requireNotNull(baseBrush),
+                    palette, starInk, elapsedMs, compact, requireNotNull(starFields), requireNotNull(baseBrush),
                     requireNotNull(starSweep), requireNotNull(starBloom), requireNotNull(vignette),
                 )
                 CapsuleBackgroundEffect.NEBULA -> drawArtworkNebula(
-                    palette, elapsedMs, compact, movingLights, requireNotNull(vignette),
+                    elapsedMs, movingLights, requireNotNull(vignette), nebulaBase, nebulaSparks,
                 )
             }
         }
@@ -543,6 +576,7 @@ private fun DrawScope.drawSoftColorFlow(
 
 private fun DrawScope.drawCapsuleStarField(
     palette: List<Color>,
+    starInk: List<Color>,
     elapsedMs: Long,
     compact: Boolean,
     fields: CapsuleStarFields,
@@ -564,9 +598,9 @@ private fun DrawScope.drawCapsuleStarField(
 
     val blend = constellationBlend(elapsedMs)
     fields.update(blend.generation)
-    drawConstellation(fields.current, palette, elapsedMs, compact, 1f - blend.nextAlpha)
+    drawConstellation(fields.current, palette, starInk, elapsedMs, compact, 1f - blend.nextAlpha)
     if (blend.nextAlpha > 0f) {
-        drawConstellation(fields.next, palette, elapsedMs, compact, blend.nextAlpha)
+        drawConstellation(fields.next, palette, starInk, elapsedMs, compact, blend.nextAlpha)
     }
     drawRect(vignette)
 }
@@ -589,6 +623,7 @@ private class CapsuleStarFields(private val count: Int) {
 private fun DrawScope.drawConstellation(
     stars: List<CapsuleStar>,
     palette: List<Color>,
+    starInk: List<Color>,
     elapsedMs: Long,
     compact: Boolean,
     opacity: Float,
@@ -606,7 +641,7 @@ private fun DrawScope.drawConstellation(
         val alpha = (0.14f + depth * 0.24f + pulse * 0.09f).coerceAtMost(0.6f) * opacity
         val radius =
             (if (index % 17 == 0) 1.15f else 0.42f + depth * 0.32f) * density
-        val starColor = lerp(Color.White, palette[index % palette.size], 0.15f)
+        val starColor = starInk[index % starInk.size]
 
         if (index % 17 == 0) {
             drawCircle(
@@ -638,15 +673,17 @@ private fun DrawScope.drawConstellation(
 
 }
 
+private data class NebulaSpark(val center: Offset, val color: Color, val radius: Float)
+
 private fun DrawScope.drawArtworkNebula(
-    palette: List<Color>,
     elapsedMs: Long,
-    compact: Boolean,
     lights: List<CachedSoftLight>,
     vignette: Brush,
+    baseColor: Color,
+    sparks: List<NebulaSpark>,
 ) {
     val angle = capsuleBackgroundAngle(elapsedMs) * 0.42
-    drawRect(deepColor(lerp(palette[0], palette[1], 0.28f), 0.88f))
+    drawRect(baseColor)
     lights.forEachIndexed { index, light ->
         val center = when (index) {
             0 -> Offset(size.width * (0.16f + 0.07f * waveCos(angle * 0.36)),
@@ -658,13 +695,12 @@ private fun DrawScope.drawArtworkNebula(
         }
         light.draw(this, center)
     }
-    repeat(if (compact) 10 else 24) { index ->
+    sparks.forEachIndexed { index, spark ->
         val twinkle = 0.08f + 0.09f * ((waveSin(angle * 0.44 + index * 0.91) + 1f) / 2f)
         drawCircle(
-            color = lerp(Color.White, palette[index % palette.size], 0.18f).copy(alpha = twinkle),
-            radius = (0.38f + index % 4 * 0.14f) * density,
-            center = Offset(deterministicFraction(index * 23 + 5) * size.width,
-                deterministicFraction(index * 41 + 7) * size.height),
+            color = spark.color.copy(alpha = twinkle),
+            radius = spark.radius * density,
+            center = spark.center,
         )
     }
     drawRect(vignette)

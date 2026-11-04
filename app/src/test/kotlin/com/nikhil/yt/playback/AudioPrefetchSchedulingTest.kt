@@ -32,13 +32,18 @@ class AudioPrefetchSchedulingTest {
     @Test
     fun pausedOrBufferingTrackOnlySchedulesARecheck() {
         assertEquals(
-            AUDIO_PREFETCH_RECHECK_MS,
+            AUDIO_PREFETCH_PAUSED_RECHECK_MS,
             audioPrefetchWaitMs(
                 durationMs = 180_000L,
                 positionMs = 120_000L,
                 isPlaying = false,
             ),
         )
+    }
+
+    @Test fun idleLookaheadDoesNotPollTwicePerSecond() {
+        assertEquals(20_000L, AUDIO_PREFETCH_RECHECK_MS)
+        assertEquals(30_000L, AUDIO_PREFETCH_PAUSED_RECHECK_MS)
     }
 
     @Test

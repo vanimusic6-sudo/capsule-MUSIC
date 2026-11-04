@@ -342,7 +342,8 @@ internal const val SIGNED_URL_MAX_FRESH_RESOLVE_DELAY_MS = 3_000L
 internal const val SIGNED_URL_REJECTIONS_BEFORE_CLIENT_ROLLOVER = 2
 internal const val AUDIO_PREFETCH_LEAD_TIME_MS = 45_000L
 internal const val AUDIO_PREFETCH_MIN_CURRENT_PROGRESS_MS = 3_000L
-internal const val AUDIO_PREFETCH_RECHECK_MS = 2_000L
+internal const val AUDIO_PREFETCH_RECHECK_MS = 20_000L
+internal const val AUDIO_PREFETCH_PAUSED_RECHECK_MS = 30_000L
 internal const val AUDIO_PREFETCHED_URL_MAX_AGE_MS = 60_000L
 
 internal fun audioPrefetchWaitMs(
@@ -352,7 +353,7 @@ internal fun audioPrefetchWaitMs(
     leadTimeMs: Long = AUDIO_PREFETCH_LEAD_TIME_MS,
     minimumCurrentProgressMs: Long = AUDIO_PREFETCH_MIN_CURRENT_PROGRESS_MS,
 ): Long {
-    if (!isPlaying) return AUDIO_PREFETCH_RECHECK_MS
+    if (!isPlaying) return AUDIO_PREFETCH_PAUSED_RECHECK_MS
 
     val safePositionMs = positionMs.coerceAtLeast(0L)
     val untilPlaybackWarmMs =
@@ -939,7 +940,7 @@ class MusicService :
                  * work never races the current track's first CDN open/first byte.
                  */
                 while (isActive && audioResolveCoordinator.isPrefetchGenerationCurrent(prefetchGeneration)) {
-                    val waitMs =
+                    val (waitMs, playingAtSample) =
                         withContext(Dispatchers.Main.immediate) {
                             val metadataDurationMs =
                                 player.currentMetadata
@@ -952,15 +953,18 @@ class MusicService :
                                     .takeIf { it > 0L && it != C.TIME_UNSET }
                                     ?: metadataDurationMs
                                     ?: C.TIME_UNSET
+                            val isPlayingNow = player.isPlaying
                             audioPrefetchWaitMs(
                                 durationMs = durationMs,
                                 positionMs = player.currentPosition,
-                                isPlaying = player.isPlaying,
-                            )
+                                isPlaying = isPlayingNow,
+                            ) to isPlayingNow
                         }
 
                     if (waitMs <= 0L) break
-                    delay(waitMs.coerceAtMost(AUDIO_PREFETCH_RECHECK_MS))
+                    delay(waitMs.coerceAtMost(
+                        if (playingAtSample) AUDIO_PREFETCH_RECHECK_MS else AUDIO_PREFETCH_PAUSED_RECHECK_MS,
+                    ))
                 }
 
                 if (!isActive || !audioResolveCoordinator.isPrefetchGenerationCurrent(prefetchGeneration)) {
@@ -4166,6 +4170,9 @@ class MusicService :
 
     override fun onIsPlayingChanged(isPlaying: Boolean) {
         super.onIsPlayingChanged(isPlaying)
+        // The paused lookahead can sleep for 30 s. Real audio resuming
+        // re-evaluates its deadline immediately without a wake-up timer.
+        if (isPlaying && prefetchScheduleJob?.isActive == true) prefetchUpcomingAudio()
         updateDownloadNetworkPriority()
         updateVideoPauseCollapse()
         val activeMediaId = player.currentMediaItem?.mediaId
@@ -4203,6 +4210,10 @@ class MusicService :
             playbackPositionGeneration.markDiscontinuity()
             // Native OEM progress UI otherwise sometimes keeps the pre-seek clock.
         }
+        // Seek and playback-speed changes move the next-track preload deadline.
+        if (prefetchScheduleJob?.isActive == true &&
+            events.containsAny(EVENT_POSITION_DISCONTINUITY, Player.EVENT_PLAYBACK_PARAMETERS_CHANGED)
+        ) prefetchUpcomingAudio()
         if (events.containsAny(
                 Player.EVENT_PLAY_WHEN_READY_CHANGED,
                 Player.EVENT_MEDIA_ITEM_TRANSITION,

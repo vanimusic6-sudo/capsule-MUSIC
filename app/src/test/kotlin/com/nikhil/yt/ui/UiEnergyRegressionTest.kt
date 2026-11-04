@@ -42,6 +42,23 @@ class UiEnergyRegressionTest {
         assertTrue(video.contains("capsuleVideoContentLag(p, lead.value, immersive)"))
     }
 
+    @Test fun `optionalWallpapersThrottleFramesButNeverReduceLyricFPS`() {
+        val wallpaper = source("com/nikhil/yt/ui/player/CapsuleBackgroundEffects.kt")
+        assertTrue(wallpaper.contains("delay(capsuleAmbientFrameDelayMs(compact))"))
+        assertTrue(wallpaper.contains("if (!isVisible || !running || !motionEnabled) return@LaunchedEffect"))
+        assertTrue(wallpaper.contains("val nebulaSparks = if (effect == CapsuleBackgroundEffect.NEBULA)"))
+        val lyrics = source("com/nikhil/yt/ui/component/Lyrics.kt")
+        assertTrue(lyrics.contains("withInfiniteAnimationFrameNanos { }"))
+    }
+
+    @Test fun `idleAudioPrefetchSleepsAndWakesOnRealPlayback`() {
+        val service = source("com/nikhil/yt/playback/MusicService.kt")
+        assertTrue(service.contains("AUDIO_PREFETCH_RECHECK_MS = 20_000L"))
+        assertTrue(service.contains("AUDIO_PREFETCH_PAUSED_RECHECK_MS = 30_000L"))
+        assertTrue(service.contains("if (isPlaying && prefetchScheduleJob?.isActive == true) prefetchUpcomingAudio()"))
+        assertTrue(service.contains("Player.EVENT_PLAYBACK_PARAMETERS_CHANGED"))
+    }
+
     @Test
     fun `mini player procedural motion stops when playback is not active`() {
         val source = source("com/nikhil/yt/ui/player/CapsuleMiniPlayer.kt")

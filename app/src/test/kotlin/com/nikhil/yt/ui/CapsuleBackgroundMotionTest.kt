@@ -4,6 +4,9 @@ import com.nikhil.yt.ui.player.CONSTELLATION_PERIOD_MS
 import com.nikhil.yt.ui.player.CapsuleBackgroundEffect
 import com.nikhil.yt.ui.player.capsuleBackgroundAngle
 import com.nikhil.yt.ui.player.capsuleBackgroundNeedsClock
+import com.nikhil.yt.ui.player.capsuleAmbientFrameDelayMs
+import com.nikhil.yt.ui.player.FULL_AMBIENT_FRAME_DELAY_MS
+import com.nikhil.yt.ui.player.COMPACT_AMBIENT_FRAME_DELAY_MS
 import com.nikhil.yt.ui.player.capsuleConstellation
 import com.nikhil.yt.ui.player.capsuleStarDrift
 import com.nikhil.yt.ui.player.constellationBlend
@@ -20,6 +23,13 @@ class CapsuleBackgroundMotionTest {
         assertTrue(capsuleBackgroundNeedsClock(CapsuleBackgroundEffect.COLOR_FLOW))
         assertTrue(capsuleBackgroundNeedsClock(CapsuleBackgroundEffect.CAPSULE_STAR))
         assertTrue(capsuleBackgroundNeedsClock(CapsuleBackgroundEffect.NEBULA))
+    }
+
+    @Test fun ambientWallpaperUsesFewerFramesOnlyInCompactMode() {
+        assertEquals(22L, FULL_AMBIENT_FRAME_DELAY_MS)
+        assertEquals(40L, COMPACT_AMBIENT_FRAME_DELAY_MS)
+        assertEquals(COMPACT_AMBIENT_FRAME_DELAY_MS, capsuleAmbientFrameDelayMs(true))
+        assertEquals(FULL_AMBIENT_FRAME_DELAY_MS, capsuleAmbientFrameDelayMs(false))
     }
 
     @Test fun wavesAndStarDriftDoNotJumpAtTheOldThirtySixSecondReset() {
