@@ -7,6 +7,8 @@
 
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.component.StandardChrome
+import com.nikhil.yt.ui.component.capsuleTopBarHairline
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import androidx.compose.foundation.layout.Column
@@ -199,6 +201,7 @@ fun PrivacySettings(
     }
 
     TopAppBar(
+            modifier = Modifier.capsuleTopBarHairline(StandardChrome.muted),
         title = { Text(stringResource(R.string.privacy)) },
         navigationIcon = {
             IconButton(

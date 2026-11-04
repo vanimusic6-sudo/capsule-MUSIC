@@ -7,6 +7,8 @@
 
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.component.StandardChrome
+import com.nikhil.yt.ui.component.capsuleTopBarHairline
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.VeluneLoader
@@ -240,6 +242,7 @@ fun ThemeCreatorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+            modifier = Modifier.capsuleTopBarHairline(StandardChrome.muted),
                 title = { Text(text = stringResource(R.string.theme_creator_title)) },
                 navigationIcon = {
                     IconButton(

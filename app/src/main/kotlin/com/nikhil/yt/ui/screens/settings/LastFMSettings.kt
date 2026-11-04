@@ -7,6 +7,8 @@
 
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.component.StandardChrome
+import com.nikhil.yt.ui.component.capsuleTopBarHairline
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.VeluneLoader
@@ -517,6 +519,7 @@ fun LastFMSettings(
     }
 
     TopAppBar(
+            modifier = Modifier.capsuleTopBarHairline(StandardChrome.muted),
         title = { Text(stringResource(R.string.lastfm_integration)) },
         navigationIcon = {
             IconButton(

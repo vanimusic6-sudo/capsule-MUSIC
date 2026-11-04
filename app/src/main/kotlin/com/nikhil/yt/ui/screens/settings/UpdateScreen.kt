@@ -5,6 +5,8 @@
  */
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.component.StandardChrome
+import com.nikhil.yt.ui.component.capsuleTopBarHairline
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import android.Manifest
@@ -186,6 +188,7 @@ fun UpdateScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+            modifier = Modifier.capsuleTopBarHairline(StandardChrome.muted),
                 title = { Text("capsule updates") },
                 navigationIcon = {
                     IconButton(
