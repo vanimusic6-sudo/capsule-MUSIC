@@ -2781,6 +2781,19 @@ class MusicService :
                     status.filterExplicit(dataStore.get(HideExplicitKey, false))
                 }
             if (currentQueue !== queue) return@launch
+            // A selected YouTube video is already playing from the immediate
+            // preload. Never let a late /next radio suggestion replace it.
+            // YouTubeQueue anchors the status, and this service-level check
+            // makes the playback invariant explicit if /next changes again.
+            if (queue is YouTubeQueue && queue.preloadItem != null &&
+                initialStatus.items.getOrNull(initialStatus.mediaItemIndex)?.mediaId != queue.preloadItem.id
+            ) {
+                Timber.tag("QueueSelection").w(
+                    "Ignoring late watch-next selection that differs from the tapped item id=%s",
+                    queue.preloadItem.id,
+                )
+                return@launch
+            }
             if (initialStatus.title != null) {
                 queueTitle = initialStatus.title
             }
