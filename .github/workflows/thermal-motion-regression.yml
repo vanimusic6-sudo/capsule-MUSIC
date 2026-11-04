@@ -39,6 +39,8 @@ jobs:
             --tests 'com.nikhil.yt.ui.MotionEnergyStructuralRegressionTest' \
             --tests 'com.nikhil.yt.ui.player.CapsuleLyricsSpringMotionTest' \
             --tests 'com.nikhil.yt.playback.AudioPrefetchSchedulingTest' \
+            --tests 'com.nikhil.yt.playback.presence.DiscordPresenceOwnerTest' \
+            --tests 'com.nikhil.yt.playback.presence.PlaybackPresenceCoordinatorTest' \
             --tests 'com.nikhil.yt.playback.CrossfadeIdlePollTest' \
             --tests 'com.nikhil.yt.ui.MiniPlayerSwipeMotionTest' \
             --stacktrace --no-daemon --max-workers=2

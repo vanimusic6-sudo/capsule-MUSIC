@@ -8,6 +8,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+// The legacy user-token Discord gateway is intentionally unavailable.
+// During playback there must be NO coroutine launch or DataStore read just
+// to repeatedly check an integration that cannot be started.
+internal const val LEGACY_DISCORD_GATEWAY_AVAILABLE = false
+
 internal enum class DiscordPresenceReconcileAction {
     KEEP,
     STOP,
@@ -57,6 +62,12 @@ internal class DiscordPresenceOwner(
     private var activeToken: String? = null
 
     fun ensure() {
+        if (!LEGACY_DISCORD_GATEWAY_AVAILABLE) {
+            // Clean up a possible legacy session once, without creating a
+            // coroutine for every Media3 playback/timeline event.
+            if (DiscordPresenceManager.isRunning()) stop()
+            return
+        }
         scopeProvider().launch {
             try {
                 reconcile()
@@ -92,6 +103,9 @@ internal class DiscordPresenceOwner(
         positionMs: Long,
         isPaused: Boolean,
     ): DiscordPresenceUpdateResult {
+        // ListenBrainz has a separate path. The disabled legacy Discord
+        // protocol must not query credentials or trigger a failed restart.
+        if (!LEGACY_DISCORD_GATEWAY_AVAILABLE) return DiscordPresenceUpdateResult.SKIPPED
         val enabled = enabledProvider()
         val token = tokenProvider().trim()
         if (!enabled || token.isBlank()) {

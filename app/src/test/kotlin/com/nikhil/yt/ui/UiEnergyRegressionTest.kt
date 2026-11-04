@@ -42,6 +42,17 @@ class UiEnergyRegressionTest {
         assertTrue(video.contains("capsuleVideoContentLag(p, lead.value, immersive)"))
     }
 
+    @Test fun `disabledDiscordRPCNeverPollsDataStoreDuringPlayerEvents`() {
+        val owner = source("com/nikhil/yt/playback/presence/DiscordPresenceOwner.kt")
+        assertTrue(owner.contains("LEGACY_DISCORD_GATEWAY_AVAILABLE = false"))
+        assertTrue(owner.contains("if (!LEGACY_DISCORD_GATEWAY_AVAILABLE) return DiscordPresenceUpdateResult.SKIPPED"))
+        val service = source("com/nikhil/yt/playback/MusicService.kt")
+        val onEvents = service.substringAfter("override fun onEvents(player: Player, events: Player.Events) {")
+            .substringBefore("override fun onShuffleModeEnabledChanged(")
+        assertTrue(!onEvents.contains("discordPresenceOwner.ensure()"))
+        assertTrue(service.contains("discordPresenceOwner.reconcile("))
+    }
+
     @Test fun `optionalWallpapersThrottleFramesButNeverReduceLyricFPS`() {
         val wallpaper = source("com/nikhil/yt/ui/player/CapsuleBackgroundEffects.kt")
         assertTrue(wallpaper.contains("delay(capsuleAmbientFrameDelayMs(compact))"))

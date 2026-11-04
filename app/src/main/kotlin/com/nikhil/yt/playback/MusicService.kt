@@ -4327,13 +4327,10 @@ class MusicService :
 
    if (events.containsAny(Player.EVENT_IS_PLAYING_CHANGED)) {
         playbackPersistence.updateProgressCheckpoint(player.isPlaying)
-        discordPresenceOwner.ensure()
         scrobbleCoordinator.onPlayerStateChanged(player.isPlaying, player.currentMetadata, duration = player.duration)
-    } else if (events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION)) {
-        discordPresenceOwner.ensure()
-    } else {
-        discordPresenceOwner.ensure()
     }
+    // Discord is reconciled on preference/current-song changes, not on
+    // every Media3 events batch. The unsupported gateway does no work.
   }
 
 
