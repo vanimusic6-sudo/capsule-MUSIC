@@ -1,0 +1,54 @@
+name: Capsule Thermal / Motion Regression
+
+on:
+  push:
+    branches: ['perf/thermal-idle-render-audio-20261104']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: capsule-thermal-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  motion-and-playback:
+    name: Thermal UI and audio prefetch tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.5.0'
+      - name: Prepare Android SDK and locale
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1'
+          echo 'unqualifiedResLocale=en-US' > app/src/main/res/resources.properties
+      - name: Run thermal, gesture, lyrics and prefetch regressions
+        run: |
+          gradle :app:testUniversalDebugUnitTest \
+            --tests 'com.nikhil.yt.ui.player.CapsuleBackgroundClockTest' \
+            --tests 'com.nikhil.yt.ui.CapsuleBackgroundMotionTest' \
+            --tests 'com.nikhil.yt.ui.UiEnergyRegressionTest' \
+            --tests 'com.nikhil.yt.ui.MotionEnergyStructuralRegressionTest' \
+            --tests 'com.nikhil.yt.ui.player.CapsuleLyricsSpringMotionTest' \
+            --tests 'com.nikhil.yt.playback.AudioPrefetchSchedulingTest' \
+            --tests 'com.nikhil.yt.playback.CrossfadeIdlePollTest' \
+            --tests 'com.nikhil.yt.ui.MiniPlayerSwipeMotionTest' \
+            --stacktrace --no-daemon --max-workers=2
+      - name: Upload focused test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capsule-thermal-test-reports
+          path: |
+            app/build/test-results/testUniversalDebugUnitTest/
+            app/build/reports/tests/testUniversalDebugUnitTest/
+          retention-days: 14
+          if-no-files-found: warn
