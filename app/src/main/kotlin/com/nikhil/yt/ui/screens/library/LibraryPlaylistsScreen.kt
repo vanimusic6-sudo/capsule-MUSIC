@@ -106,7 +106,7 @@ import com.nikhil.yt.constants.PlaylistTagsFilterKey
 import com.nikhil.yt.db.entities.Playlist
 import com.nikhil.yt.db.entities.PlaylistEntity
 import com.nikhil.yt.ui.component.CreatePlaylistDialog
-import com.nikhil.yt.ui.component.HideOnScrollFAB
+import com.nikhil.yt.ui.component.ScrollActionButton
 import com.nikhil.yt.ui.component.LibraryPlaylistGridItem
 import com.nikhil.yt.ui.component.LibraryPlaylistListItem
 import com.nikhil.yt.ui.component.LocalMenuState
@@ -731,8 +731,8 @@ fun LibraryPlaylistsScreen(
                     }
                 }
 
-                HideOnScrollFAB(
-                    lazyListState = lazyListState,
+                ScrollActionButton(
+                    visible = !canReorderPlaylists,
                     icon = R.drawable.add,
                     onClick = {
                         showCreatePlaylistDialog = true
@@ -872,8 +872,8 @@ fun LibraryPlaylistsScreen(
                     }
                 }
 
-                HideOnScrollFAB(
-                    lazyListState = lazyGridState,
+                ScrollActionButton(
+                    visible = !canReorderPlaylists,
                     icon = R.drawable.add,
                     onClick = {
                         showCreatePlaylistDialog = true

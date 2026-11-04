@@ -14,6 +14,7 @@ import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.DetailTopAppBar
 import com.nikhil.yt.ui.component.DetailToolbarTitle
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
+import com.nikhil.yt.ui.component.DetailHeaderMagneticSnap
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
 import com.nikhil.yt.ui.menu.CapsuleCollectionDownloadButton
@@ -173,6 +174,8 @@ fun TopPlaylistScreen(
         hasHeader = songs?.isNotEmpty() == true && !isSearching,
         contentIdentity = name,
     )
+
+    DetailHeaderMagneticSnap(titleMotion, lazyListState)
 
     val surfaceColor = StandardChrome.background
 

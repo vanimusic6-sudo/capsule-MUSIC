@@ -14,6 +14,7 @@ import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.DetailTopAppBar
 import com.nikhil.yt.ui.component.DetailToolbarTitle
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
+import com.nikhil.yt.ui.component.DetailHeaderMagneticSnap
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
 import com.nikhil.yt.ui.menu.CapsuleCollectionDownloadButton
@@ -238,6 +239,8 @@ fun AutoPlaylistScreen(
             hasHeader = (songs?.isNotEmpty() == true || externalSaved.isNotEmpty()) && !isSearching,
             contentIdentity = playlistId,
         )
+
+        DetailHeaderMagneticSnap(titleMotion, lazyListState)
 
         LazyColumn(
             flingBehavior = rememberCapsuleFlingBehavior(),

@@ -16,6 +16,7 @@ import com.nikhil.yt.ui.component.DetailHeroBottomSpacing
 import com.nikhil.yt.ui.component.DetailTopAppBar
 import com.nikhil.yt.ui.component.DetailToolbarTitle
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
+import com.nikhil.yt.ui.component.DetailHeaderMagneticSnap
 import com.nikhil.yt.ui.component.AlbumArtworkTopSpacing
 import com.nikhil.yt.ui.component.AlbumHeaderLayout
 import com.nikhil.yt.ui.component.AlbumHeaderPlaceholder
@@ -176,6 +177,8 @@ fun AlbumScreen(
         hasHeader = albumHasHeroHeader(albumWithSongs?.songs?.isNotEmpty() == true, uiState),
         contentIdentity = viewModel.albumId,
     )
+
+    DetailHeaderMagneticSnap(titleMotion, lazyListState)
 
     AlbumScreenLayout(
         background = surfaceColor,
