@@ -997,14 +997,12 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // For main feeds the greeting is now the first real item
-                    // in the list. Reserve ONLY a *visible* status bar above it.
-                    // systemBarsIgnoringVisibility preserved a tall empty
-                    // notch/status region even when the bar was hidden,
-                    // producing the black band shown in the screenshot.
-                    // Detail/player screens keep their stable ignoringVisibility
-                    // geometry so immersive playback does not jump.
-                    val visibleStatusBarInsets = WindowInsets.statusBars
+                    // Reserve the same physical status-bar height while Immersion
+                    // hides/shows Android chrome. Visibility-aware top insets
+                    // relaid out Home and Library in the middle of player close,
+                    // creating the apparent downward shove recorded on device.
+                    // The expanded player covers this reserved region; only its
+                    // window chrome visibility changes, never a feed's layout.
                     val playerAwareWindowInsets =
                         remember(
                             useRail,
@@ -1024,14 +1022,7 @@ class MainActivity : ComponentActivity() {
                                 if (useRail) WindowInsetsSides.Right
                                 else WindowInsetsSides.Horizontal
                             )
-                            val topInsets =
-                                if (currentRoute in topLevelScreens) {
-                                    // No hidden status-bar reservation, no old
-                                    // Scaffold/AppBar-sized empty strip.
-                                    visibleStatusBarInsets.only(WindowInsetsSides.Top)
-                                } else {
-                                    windowsInsets.only(WindowInsetsSides.Top)
-                                }
+                            val topInsets = windowsInsets.only(WindowInsetsSides.Top)
                             horizontalInsets
                                 .add(topInsets)
                                 // Main destination routes own the fixed

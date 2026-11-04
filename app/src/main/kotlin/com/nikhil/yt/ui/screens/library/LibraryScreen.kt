@@ -34,6 +34,9 @@ import com.nikhil.yt.LocalDatabase
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.ChipSortTypeKey
 import com.nikhil.yt.constants.DisableBlurKey
+import com.nikhil.yt.constants.ReleaseAppearanceDefaults
+import com.nikhil.yt.ui.theme.CapsuleThemeEnabledKey
+import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.constants.LibraryFilter
 import com.nikhil.yt.constants.PlaylistTagsFilterKey
 import com.nikhil.yt.constants.ShowTagsInLibraryKey
@@ -46,6 +49,9 @@ import com.nikhil.yt.utils.rememberPreference
 fun LibraryScreen(navController: NavController) {
     var filterType by rememberEnumPreference(ChipSortTypeKey, LibraryFilter.LIBRARY)
     val (disableBlur) = rememberPreference(DisableBlurKey, true)
+    val (capsuleThemeEnabled) = rememberPreference(
+        CapsuleThemeEnabledKey, ReleaseAppearanceDefaults.capsuleTheme,
+    )
 
     val database = LocalDatabase.current
     val (showTagsInLibrary) = rememberPreference(ShowTagsInLibraryKey, true)
@@ -102,15 +108,18 @@ fun LibraryScreen(navController: NavController) {
     val color3 = MaterialTheme.colorScheme.tertiary
     val color4 = MaterialTheme.colorScheme.primaryContainer
     val color5 = MaterialTheme.colorScheme.secondaryContainer
-    val surfaceColor = MaterialTheme.colorScheme.surface
+    // Library and pinned header must use Home's exact opaque Capsule canvas.
+    val surfaceColor = StandardChrome.background
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(surfaceColor)
     ) {
-        // M3E Mesh gradient background layer at the top
-        if (!disableBlur) {
+        // The six-brush M3 mesh washed Capsule Dark into grey and cost
+        // shader setup on the first screen render. Keep it only for the
+        // original non-Capsule theme when the user opts into the effect.
+        if (!disableBlur && !capsuleThemeEnabled) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()

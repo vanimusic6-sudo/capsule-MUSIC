@@ -22,6 +22,15 @@ class SettingsModeRegressionTest {
         listOf(File("src/main/kotlin/$file"), File("app/src/main/kotlin/$file"))
             .firstOrNull(File::isFile)?.readText() ?: error("Missing $file")
 
+    @Test fun capsuleEditorMatchesThePlayerDefaultBeforeAnyManualSelection() {
+        val editor = source("com/nikhil/yt/ui/screens/settings/CapsuleCustomizeSettings.kt")
+        assertTrue(editor.contains("defaultValue = ReleaseAppearanceDefaults.playerDesign"))
+        assertFalse(editor.contains("defaultValue = CapsulePlayerDesign.SUPER,"))
+        assertTrue(editor.contains("CapsulePlayerDesign.LIGHT -> CapsuleCustomizeTarget.LIGHT"))
+        assertTrue(editor.contains("isEnabled = editAvailable"))
+        assertTrue(editor.contains("onLightEditEnabledChange(target == CapsuleCustomizeTarget.LIGHT)"))
+    }
+
     @Test fun newInstallStartsInUserModeAndExplicitModeSurvives() {
         val settings = emptyPreferences().toMutablePreferences()
         assertFalse(settings[SettingsAdvancedModeKey] ?: false)

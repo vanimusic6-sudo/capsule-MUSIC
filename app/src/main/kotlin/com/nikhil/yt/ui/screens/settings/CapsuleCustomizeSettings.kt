@@ -39,6 +39,7 @@ import com.nikhil.yt.constants.CapsuleCustomizeTarget
 import com.nikhil.yt.constants.CapsuleCustomizeTargetKey
 import com.nikhil.yt.constants.CapsulePlayerDesign
 import com.nikhil.yt.constants.CapsulePlayerDesignKey
+import com.nikhil.yt.constants.ReleaseAppearanceDefaults
 import com.nikhil.yt.constants.CapsuleLightEditEnabledKey
 import com.nikhil.yt.constants.CapsuleLightEditSessionActiveKey
 import com.nikhil.yt.constants.CapsuleLightLyricLineKey
@@ -91,7 +92,9 @@ fun CapsuleCustomizeSettings(
     val (playerDesign, _) =
         rememberEnumPreference(
             CapsulePlayerDesignKey,
-            defaultValue = CapsulePlayerDesign.SUPER,
+            // Same default as the player and Appearance settings: on a fresh
+            // install the selected LIGHT design is editable immediately.
+            defaultValue = ReleaseAppearanceDefaults.playerDesign,
         )
     val context = LocalContext.current
     val importInvalidMessage = stringResource(R.string.capsule_customize_import_invalid)

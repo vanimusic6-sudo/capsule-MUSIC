@@ -10,7 +10,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.only
-import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.systemBarsIgnoringVisibility
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -20,7 +21,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.DropdownMenu
@@ -110,7 +110,7 @@ internal fun NavGraphBuilder.routeComposable(
     val parentInsets = LocalPlayerAwareWindowInsets.current
     val destinationInsets = if (mainDestination) {
         parentInsets.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
-            .add(WindowInsets.statusBars.only(WindowInsetsSides.Top))
+            .add(WindowInsets.systemBarsIgnoringVisibility.only(WindowInsetsSides.Top))
             .add(WindowInsets(top = AppBarHeight))
     } else parentInsets
 
@@ -121,7 +121,10 @@ internal fun NavGraphBuilder.routeComposable(
         CapsuleRouteSurface {
             Box(modifier = Modifier.fillMaxSize()) {
                 Box(
-                    modifier = if (settingsNavigation) Modifier else
+                    // The first cold-start destination is already home: don't
+                    // animate its layout during font, image and shader warm-up.
+                    // Every actual route change retains the original motion.
+                    modifier = if (settingsNavigation || arrival.from == null) Modifier else
                         Modifier.destinationEntrance(motion, arrival.direction),
                 ) {
                     with(contentScope) { content(entry) }
@@ -196,7 +199,7 @@ val LocalCapsulePinnedHeaderVisible = compositionLocalOf { true }
 fun CapsulePinnedHeader(route: String) {
     val navController = LocalCapsuleHeaderNavController.current
     val isHome = route == "home"
-    val base = if (isHome) StandardChrome.background else MaterialTheme.colorScheme.surface
+    val base = if (isHome || route == "library") StandardChrome.background else MaterialTheme.colorScheme.surface
     // Home and its pinned header must paint exactly the same opaque surface.
     // The earlier header-only tonal wash produced a visible horizontal seam.
 
@@ -204,7 +207,7 @@ fun CapsulePinnedHeader(route: String) {
         modifier = Modifier
             .fillMaxWidth()
             .background(base)
-            .statusBarsPadding()
+            .windowInsetsPadding(WindowInsets.systemBarsIgnoringVisibility.only(WindowInsetsSides.Top))
             .height(AppBarHeight)
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
