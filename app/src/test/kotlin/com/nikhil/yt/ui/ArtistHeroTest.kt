@@ -155,6 +155,23 @@ class ArtistHeroTest {
             stops.last().first == 1f && stops.last().second == Color.Black)
     }
 
+    @Test fun livingArtistMattePreservesMorePhotoNearButtonsWithoutChangingTheSeam() {
+        val normal = com.nikhil.yt.ui.component.capsulePortraitMatteForArtist(Color.Black, 0f)
+        val living = com.nikhil.yt.ui.component.capsulePortraitMatteForArtist(Color.Black, 1f)
+        val half = com.nikhil.yt.ui.component.capsulePortraitMatteForArtist(Color.Black, 0.5f)
+        assertEquals(normal.size, living.size)
+        assertEquals(normal.toList(), com.nikhil.yt.ui.component.capsulePortraitMatteStops(Color.Black).toList())
+        assertEquals(Color.Black, living.last().second)
+        assertEquals(Color.Black, half.last().second)
+        assertEquals(0f, living.first().second.alpha, 0f)
+        // At roughly 80% of the portrait, the living matte still lets more
+        // artist colour through; the following 20% still reaches pure black.
+        val baseAt80 = normal.filter { it.first <= 0.80f }.last().second.alpha
+        val livingAt80 = living.filter { it.first <= 0.80f }.last().second.alpha
+        assertTrue(livingAt80 < baseAt80)
+        assertTrue(living.zipWithNext().all { (left, right) -> right.first >= left.first })
+    }
+
     @Test fun artistGradientSoftlyReachesPageInsteadOfHardCuttingAtPhotoEdge() {
         // Reproduces the pyrokinesis regression: the full-size portrait had
         // colour until its final few pixels, then jumped to flat dark surface.

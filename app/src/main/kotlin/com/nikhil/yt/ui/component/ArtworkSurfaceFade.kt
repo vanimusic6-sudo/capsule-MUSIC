@@ -6,6 +6,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import kotlin.math.pow
 
 /**
@@ -50,6 +51,42 @@ internal fun capsulePortraitMatteStops(background: Color): Array<Pair<Float, Col
     }
 }
 
+/**
+ * Optional slightly later, still-seamless matte for living artists. Keeps the
+ * lower portrait richer without changing the full-height photograph, button
+ * positions, or the default album / memorial gradient.
+ */
+internal fun capsuleLivingPortraitMatteStops(background: Color): Array<Pair<Float, Color>> {
+    val steps = 24
+    val start = 0.29f
+    val end = 0.995f
+    return Array(steps + 3) { index ->
+        when (index) {
+            0 -> 0f to Color.Transparent
+            steps + 2 -> 1f to background
+            else -> {
+                val y = start + (end - start) * ((index - 1).toFloat() / steps)
+                val t = ((y - start) / (end - start)).coerceIn(0f, 1f)
+                val ease = t * t * (3f - 2f * t)
+                y to background.copy(alpha = ease.pow(2.5f))
+            }
+        }
+    }
+}
+
+internal fun capsulePortraitMatteForArtist(
+    background: Color, livingStrength: Float,
+): Array<Pair<Float, Color>> {
+    val base = capsulePortraitMatteStops(background)
+    val mix = livingStrength.coerceIn(0f, 1f)
+    if (mix <= 0f) return base
+    val living = capsuleLivingPortraitMatteStops(background)
+    return Array(base.size) { i ->
+        val position = base[i].first + (living[i].first - base[i].first) * mix
+        position to lerp(base[i].second, living[i].second, mix)
+    }
+}
+
 /** The photograph supplies the colour; both headers dissolve into the exact page surface. */
 @Composable
 internal fun ArtworkSurfaceFade(
@@ -58,6 +95,7 @@ internal fun ArtworkSurfaceFade(
     portrait: Boolean = false,
     topScrim: Boolean = true,
     softPortrait: Boolean = false,
+    compactPortraitFadeStrength: Float = 0f,
 ) {
     Box(modifier.drawWithCache {
         val navigationScrim = if (!topScrim) null else if (portrait) Brush.verticalGradient(
@@ -87,7 +125,7 @@ internal fun ArtworkSurfaceFade(
             0.93f to background.copy(alpha = 0.97f),
             1f to background,
         ) else if (portrait) Brush.verticalGradient(
-            *capsulePortraitMatteStops(background),
+            *capsulePortraitMatteForArtist(background, compactPortraitFadeStrength),
         ) else Brush.verticalGradient(
             0f to background.copy(alpha = 0f),
             0.28f to background.copy(alpha = 0f),

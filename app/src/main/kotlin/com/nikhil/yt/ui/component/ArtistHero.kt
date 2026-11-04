@@ -67,6 +67,7 @@ internal fun ArtistHeroLayout(
     topSafePadding: Dp = 0.dp,
     artworkAlpha: () -> Float = { 1f },
     memorialExtraHeight: Dp = ArtistMemorialActionExtraHeight,
+    compactPortraitFadeStrength: Float = 0f,
 ) {
     BoxWithConstraints(modifier.fillMaxWidth().background(background)) {
         // Preserve the full-size portrait. The action rail begins exactly 12dp
@@ -89,6 +90,7 @@ internal fun ArtistHeroLayout(
                 // Match album/playlist: the restrained long matte preserves
                 // portrait colour rather than washing it out halfway down.
                 softPortrait = false,
+                compactPortraitFadeStrength = compactPortraitFadeStrength,
             )
         }
         Column(
@@ -139,6 +141,15 @@ internal fun ArtistHero(
         animationSpec = tween(durationMillis = 260, easing = CapsuleStandardEasing),
         label = "artist-memorial-row-height",
     )
+    // Living artists have no second action row. Keep their photograph visible
+    // lower into the real photo, instead of showing a long flat grey/dark
+    // strip before Subscribe/Shuffle. If a memorial is discovered later,
+    // the matte blends back smoothly; the button anchors never move.
+    val compactPortraitFade by animateFloatAsState(
+        targetValue = if (showCandle) 0f else 1f,
+        animationSpec = tween(durationMillis = 280, easing = CapsuleStandardEasing),
+        label = "artist-living-portrait-matte",
+    )
     val loadingLabel = stringResource(R.string.loading)
 
     val displayedSubscribed = subscribed
@@ -150,6 +161,7 @@ internal fun ArtistHero(
         topSafePadding = topSafePadding,
         artworkAlpha = artworkAlpha,
         memorialExtraHeight = memorialExtraHeight,
+        compactPortraitFadeStrength = compactPortraitFade,
         artwork = {
             /*
              * No figure stands in for a portrait that has not arrived yet.
