@@ -51,6 +51,10 @@ class UiEnergyRegressionTest {
             .substringBefore("override fun onShuffleModeEnabledChanged(")
         assertTrue(!onEvents.contains("discordPresenceOwner.ensure()"))
         assertTrue(service.contains("discordPresenceOwner.reconcile("))
+        val presence = source("com/nikhil/yt/playback/presence/PlaybackPresenceCoordinator.kt")
+        assertTrue(presence.contains("if (!gate.canAttempt()) return"))
+        assertTrue(presence.contains("if (!LEGACY_DISCORD_GATEWAY_AVAILABLE && (!lbEnabled || lbToken.isBlank()))"))
+        assertTrue(presence.contains("val song = songProvider(mediaId)"))
     }
 
     @Test fun `optionalWallpapersThrottleFramesButNeverReduceLyricFPS`() {

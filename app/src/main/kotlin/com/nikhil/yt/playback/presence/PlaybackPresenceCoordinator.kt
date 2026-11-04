@@ -16,6 +16,14 @@ internal class ImmediatePresenceUpdateGate(
     private val lock = Any()
     private var lastAcceptedAtMs: Long? = null
 
+    // Non-mutating fast path for redundant Media3 event bursts. The real
+    // acquire still happens after the song lookup and stale-track check, so
+    // a superseded async lookup never consumes the next track's 20s budget.
+    fun canAttempt(): Boolean = synchronized(lock) {
+        val last = lastAcceptedAtMs ?: return@synchronized true
+        nowMillis() - last > minIntervalMs
+    }
+
     fun tryAcquire(): Boolean = synchronized(lock) {
         val now = nowMillis()
         val previous = lastAcceptedAtMs
@@ -57,12 +65,23 @@ internal class PlaybackPresenceCoordinator(
     private val appContext = context.applicationContext
 
     fun requestImmediateUpdate() {
+        // Most position/timeline events arrive inside a recent accepted
+        // presence window. Do not even spawn an IO coroutine for them.
+        if (!gate.canAttempt()) return
         scopeProvider().launch {
             val mediaId = currentMediaIdProvider()?.trim()?.takeIf(String::isNotBlank)
             val positionMs = positionProvider().coerceAtLeast(0L)
             val isPaused = isPausedProvider()
 
             try {
+                val lbEnabled = listenBrainzEnabledProvider()
+                val lbToken = if (lbEnabled) listenBrainzTokenProvider().trim() else ""
+                if (!LEGACY_DISCORD_GATEWAY_AVAILABLE && (!lbEnabled || lbToken.isBlank())) {
+                    // No external presence integration is active. Avoid even
+                    // looking up the Song in Room for a no-op status update.
+                    return@launch
+                }
+
                 val song = songProvider(mediaId)
 
                 // Never publish a DB result for a track that stopped being current
@@ -84,8 +103,6 @@ internal class PlaybackPresenceCoordinator(
                     discordOwner.restart()
                 }
 
-                val lbEnabled = listenBrainzEnabledProvider()
-                val lbToken = listenBrainzTokenProvider().trim()
                 if (
                     shouldSubmitListenBrainzPlayingNow(
                         enabled = lbEnabled,

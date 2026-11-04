@@ -13,12 +13,17 @@ class PlaybackPresenceCoordinatorTest {
             nowMillis = { now },
         )
 
+        assertTrue(gate.canAttempt())
         assertTrue(gate.tryAcquire())
         now += 1_000L
+        assertFalse(gate.canAttempt())
         assertFalse(gate.tryAcquire())
         now += 19_000L
+        assertFalse(gate.canAttempt())
         assertFalse(gate.tryAcquire())
         now += 1L
+        assertTrue(gate.canAttempt())
+        assertTrue(gate.canAttempt()) // non-mutating precheck
         assertTrue(gate.tryAcquire())
     }
 
