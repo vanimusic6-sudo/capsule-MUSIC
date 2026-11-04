@@ -7,6 +7,8 @@
 
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.component.StandardChrome
+import com.nikhil.yt.ui.component.capsuleTopBarHairline
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import android.annotation.TargetApi
@@ -397,6 +399,7 @@ fun ContentSettings(
     }
 
     TopAppBar(
+            modifier = Modifier.capsuleTopBarHairline(StandardChrome.muted),
         title = { Text(stringResource(R.string.content)) },
         navigationIcon = {
             IconButton(

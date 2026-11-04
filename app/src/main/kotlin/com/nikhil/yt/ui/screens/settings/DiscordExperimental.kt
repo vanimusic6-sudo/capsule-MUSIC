@@ -7,6 +7,8 @@
 
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.component.StandardChrome
+import com.nikhil.yt.ui.component.capsuleTopBarHairline
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import androidx.compose.animation.AnimatedVisibility
@@ -48,6 +50,7 @@ fun DiscordExperimental(
     ) { inner ->
         Column(Modifier.fillMaxSize().padding(inner).consumeWindowInsets(inner)) {
             TopAppBar(
+            modifier = Modifier.capsuleTopBarHairline(StandardChrome.muted),
                 title = { Text(stringResource(R.string.experiment_settings)) },
                 navigationIcon = {
                     IconButton(onClick = navController::navigateUp) {

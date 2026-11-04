@@ -7,6 +7,8 @@
 
 
 package com.nikhil.yt.ui.screens
+import com.nikhil.yt.ui.component.StandardChrome
+import com.nikhil.yt.ui.component.capsuleTopBarHairline
 
 import android.annotation.SuppressLint
 import android.webkit.CookieManager
@@ -163,6 +165,7 @@ fun LoginScreen(
     )
 
     TopAppBar(
+            modifier = Modifier.capsuleTopBarHairline(StandardChrome.muted),
         title = { Text(stringResource(R.string.login)) },
         navigationIcon = {
             IconButton(
