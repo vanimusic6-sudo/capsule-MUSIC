@@ -7,6 +7,8 @@
 
 
 package com.nikhil.yt.ui.screens
+import com.nikhil.yt.ui.component.capsuleTopBarHairline
+import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 // Natural feed header: moves with content, not via a floating offset.
@@ -532,7 +534,8 @@ fun HistoryScreen(
         exit = fadeOut()
     ) {
         TopAppBar(
-        modifier = Modifier.padding(top = com.nikhil.yt.constants.AppBarHeight),
+        modifier = Modifier.padding(top = com.nikhil.yt.constants.AppBarHeight)
+            .capsuleTopBarHairline(StandardChrome.muted),
         title = {
             if (selection) {
                 val count = allWrappedItems.count { it.isSelected }

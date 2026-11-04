@@ -7,6 +7,8 @@
 
 
 package com.nikhil.yt.ui.screens
+import com.nikhil.yt.ui.component.capsuleTopBarHairline
+import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -200,6 +202,7 @@ fun AccountScreen(
     }
 
     TopAppBar(
+        modifier = Modifier.capsuleTopBarHairline(StandardChrome.muted),
         title = { Text(stringResource(R.string.account)) },
         navigationIcon = {
             IconButton(

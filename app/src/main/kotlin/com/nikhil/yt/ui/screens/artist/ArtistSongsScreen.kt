@@ -7,6 +7,8 @@
 
 
 package com.nikhil.yt.ui.screens.artist
+import com.nikhil.yt.ui.component.capsuleTopBarHairline
+import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.capsulePressCombinedClickable
@@ -201,6 +203,7 @@ fun ArtistSongsScreen(
         }
 
         TopAppBar(
+        modifier = Modifier.capsuleTopBarHairline(StandardChrome.muted),
             title = { Text(artist?.artist?.name.orEmpty()) },
             navigationIcon = {
                 IconButton(

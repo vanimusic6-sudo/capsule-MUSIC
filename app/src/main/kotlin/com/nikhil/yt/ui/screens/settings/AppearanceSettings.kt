@@ -5,6 +5,8 @@
  */
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.component.capsuleTopBarHairline
+import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.motion.LocalCapsuleModalClose
@@ -1833,6 +1835,7 @@ fun AppearanceSettings(
     }
 
     TopAppBar(
+        modifier = Modifier.capsuleTopBarHairline(StandardChrome.muted),
         title = {
             Text(
                 stringResource(

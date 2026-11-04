@@ -4,6 +4,8 @@
  */
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.component.capsuleTopBarHairline
+import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import androidx.compose.animation.AnimatedContent
@@ -85,6 +87,7 @@ fun VeluneAccountSettingsScreen(
                 .only(WindowInsetsSides.Horizontal),
         topBar = {
             TopAppBar(
+        modifier = Modifier.capsuleTopBarHairline(StandardChrome.muted),
                 title = { Text("Account", fontWeight = FontWeight.Bold, fontSize = 20.sp) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {

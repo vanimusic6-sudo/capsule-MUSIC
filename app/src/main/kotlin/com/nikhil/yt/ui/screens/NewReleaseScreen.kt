@@ -7,6 +7,8 @@
 
 
 package com.nikhil.yt.ui.screens
+import com.nikhil.yt.ui.component.capsuleTopBarHairline
+import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.capsulePressCombinedClickable
@@ -199,7 +201,8 @@ fun NewReleaseScreen(
         }
 
         TopAppBar(
-            modifier = Modifier.align(Alignment.TopCenter),
+            modifier = Modifier.align(Alignment.TopCenter)
+                .capsuleTopBarHairline(StandardChrome.muted),
             title = { Text(stringResource(R.string.new_release_albums)) },
             navigationIcon = {
                 IconButton(

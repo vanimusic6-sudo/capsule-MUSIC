@@ -3,6 +3,8 @@
  */
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.component.capsuleTopBarHairline
+import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 import com.nikhil.yt.ui.utils.scrollToTopIfIdle
 
@@ -129,6 +131,7 @@ fun VeluneSettingsScreen(
                 .only(WindowInsetsSides.Horizontal),
         topBar = {
             TopAppBar(
+        modifier = Modifier.capsuleTopBarHairline(StandardChrome.muted),
                 title = {
                     Text(
                         text = stringResource(R.string.capsule_settings_title),

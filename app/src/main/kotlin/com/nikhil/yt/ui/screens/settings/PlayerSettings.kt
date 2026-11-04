@@ -5,6 +5,8 @@
  */
 
 package com.nikhil.yt.ui.screens.settings
+import com.nikhil.yt.ui.component.capsuleTopBarHairline
+import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import android.widget.Toast
@@ -748,6 +750,7 @@ fun PlayerSettings(
     }
 
     TopAppBar(
+        modifier = Modifier.capsuleTopBarHairline(StandardChrome.muted),
         title = {
             Text(stringResource(R.string.player_and_audio))
         },

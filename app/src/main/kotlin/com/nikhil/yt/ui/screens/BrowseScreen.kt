@@ -7,6 +7,8 @@
 
 
 package com.nikhil.yt.ui.screens
+import com.nikhil.yt.ui.component.capsuleTopBarHairline
+import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
  
  import androidx.compose.foundation.ExperimentalFoundationApi
@@ -145,6 +147,7 @@ import androidx.compose.foundation.layout.asPaddingValues
      }
  
      TopAppBar(
+        modifier = Modifier.capsuleTopBarHairline(StandardChrome.muted),
          title = { Text(title ?: "") },
          navigationIcon = {
              IconButton(
