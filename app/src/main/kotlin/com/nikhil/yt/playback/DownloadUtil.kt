@@ -87,9 +87,11 @@ internal fun isLikelyDownloadThrottleSignal(exception: Throwable): Boolean {
             append(it)
         }
     }.lowercase()
-    // A socket/client timeout, reset or unavailable network is a transport
-    // failure; only explicit server throttling/quota/refusal belongs here.
-    return listOf("429", "403", "quota", "rate limit", "too many requests")
+    // 403 is commonly an account/entitlement refusal for private tracks,
+    // NOT evidence of rate limiting. Cooling down the entire download queue
+    // after two such tracks made a valid login appear broken. Only explicit
+    // throttling signals should delay unrelated jobs.
+    return listOf("429", "quota", "rate limit", "too many requests")
         .any(message::contains)
 }
 

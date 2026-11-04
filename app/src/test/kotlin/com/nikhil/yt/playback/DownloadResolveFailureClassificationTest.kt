@@ -47,6 +47,8 @@ class DownloadResolveFailureClassificationTest {
         assertTrue(isLikelyDownloadThrottleSignal(IOException("HTTP 429 Too Many Requests")))
         assertTrue(isLikelyDownloadThrottleSignal(IOException("rate limit reached")))
         assertTrue(isLikelyDownloadThrottleSignal(IOException("quota exceeded")))
+        assertFalse(isLikelyDownloadThrottleSignal(IOException("HTTP 403 Forbidden: sign in required")))
+        assertFalse(isLikelyDownloadThrottleSignal(IOException("HTTP 410 Gone")))
         assertFalse(isLikelyDownloadThrottleSignal(IOException("temporarily unavailable")))
         assertFalse(isLikelyDownloadThrottleSignal(IOException("no playable clients")))
         assertFalse(isLikelyDownloadThrottleSignal(IOException("Read timed out")))
