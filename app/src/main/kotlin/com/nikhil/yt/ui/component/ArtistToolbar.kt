@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.font.FontWeight
 import com.nikhil.yt.R
+import com.nikhil.yt.ui.component.capsuleTopBarHairline
 
 internal val ArtistToolbarCompactHeight = 64.dp
 
@@ -75,7 +76,7 @@ internal fun ArtistToolbar(
             drawRect(artistSurfaceColor.copy(
                 alpha = artistToolbarSurfaceAlpha(artworkFadeProvider()),
             ))
-        },
+        }.capsuleTopBarHairline(StandardChrome.muted, artworkFadeProvider),
         // One shared, centred row keeps the name and icons aligned throughout scrolling.
         windowInsets = WindowInsets.safeDrawing.only(
             WindowInsetsSides.Horizontal + WindowInsetsSides.Top,

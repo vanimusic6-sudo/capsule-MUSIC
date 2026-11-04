@@ -1,6 +1,13 @@
 package com.nikhil.yt.ui.component
 
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.animation.core.spring
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.filter
+import kotlin.math.roundToInt
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.isSpecified
@@ -265,6 +272,38 @@ internal class DetailHeaderMotionState(
                 fallback, restArtworkBottomPx, toolbarBottomPx, toolbarHeightPx)
         }
     }
+    /**
+     * Return the nearest fully opened/closed collection-toolbar stop only
+     * when the user releases inside the actual measured hand-off region.
+     * Song-list scrolling and long flings are left completely untouched.
+     */
+    fun idleHandoffSnapOffset(): Int? {
+        if (!headerPresence.value || scroll.firstVisibleItemIndex != 0 ||
+            !restArtworkBottomPx.isFinite() || !toolbarBottomPx.isFinite()
+        ) return null
+        val distance = restArtworkBottomPx - toolbarBottomPx
+        if (distance <= with(density) { 96.dp.toPx() }) return null
+        val revealStart = distance * 0.12f
+        val revealEnd = (distance - 1f).coerceAtLeast(1f)
+        val offset = scroll.firstVisibleItemScrollOffset.toFloat()
+        val safeInset = with(density) { 10.dp.toPx() }
+        if (offset <= revealStart + safeInset || offset >= revealEnd - safeInset) return null
+        return if (offset < revealStart + (revealEnd - revealStart) * 0.48f) {
+            0
+        } else {
+            revealEnd.roundToInt()
+        }
+    }
+
+    suspend fun settleHandoffIfNeeded() {
+        val destination = idleHandoffSnapOffset() ?: return
+        val delta = destination - scroll.firstVisibleItemScrollOffset
+        if (delta != 0) scroll.animateScrollBy(
+            delta.toFloat(),
+            animationSpec = spring(dampingRatio = 0.92f, stiffness = 380f),
+        )
+    }
+
     fun artworkFade() = progress
     // Keep the original photograph: only the static matte and pinned bar own backgrounds.
     // The single moving title is opaque, but the PHOTO retains its original measured scroll dissolve.
@@ -296,15 +335,21 @@ internal fun detailTitleGeometry(
 ): DetailTitleGeometry {
     val p = progress.coerceIn(0f, 1f)
     fun mix(a: Float, b: Float) = a + (b - a) * p
-    val scale = mix(1f, compactScale)
+    // A tiny elastic breath as the same text moves into the compact bar.
+    // Exactly 1x at both anchors; never creates a second title or layout.
+    val stretch = 1f + 0.045f * (4f * p * (1f - p))
+    val scale = mix(1f, compactScale) * stretch
     val source = Offset(sourceCenter.x - width / 2f, sourceCenter.y - height / 2f - scrollOffset)
     val glyphX = mix(source.x + lineLeft, target.left)
     val targetBaseline = target.center.y - lineHeight * compactScale / 2f + baseline * compactScale
     val glyphY = mix(source.y + baseline, targetBaseline)
+    // Extra clip room is temporary, matching the stretch so glyphs do not
+    // look cropped during the magnetic hand-off.
+    val extraClip = width * (stretch - 1f) * 0.5f
     return DetailTitleGeometry(
         Offset(glyphX - lineLeft * scale, glyphY - baseline * scale), scale,
-        Rect(mix(source.x, target.left), mix(source.y, target.top),
-            mix(source.x + width, target.right), mix(source.y + height, target.bottom)),
+        Rect(mix(source.x, target.left) - extraClip, mix(source.y, target.top),
+            mix(source.x + width, target.right) + extraClip, mix(source.y + height, target.bottom)),
     )
 }
 
@@ -394,6 +439,22 @@ internal fun rememberDetailHeaderMotion(
     }
 }
 
+/**
+ * Magnetic hand-off for the original album and all playlist variants.
+ * Observe only the end of the user's gesture/fling. The scroll state itself
+ * remains fully native; programmatic test scrolls using the motion state
+ * without this effect retain exact reversible geometry.
+ */
+@Composable
+internal fun DetailHeaderMagneticSnap(motion: DetailHeaderMotionState, listState: LazyListState, enabled: Boolean = true) {
+    LaunchedEffect(motion, listState, enabled) {
+        if (!enabled) return@LaunchedEffect
+        snapshotFlow { !listState.isScrollInProgress }
+            .filter { it }
+            .collect { motion.settleHandoffIfNeeded() }
+    }
+}
+
 /** Reuse the EXACT artist toolbar surface policy: never double-tint the photo. */
 internal fun detailToolbarBackdropAlpha(
     photoDissolve: Float,
@@ -459,7 +520,10 @@ internal fun DetailTopAppBar(
     Box(modifier.fillMaxSize().onGloballyPositioned { motion.overlayOrigin = it.positionInRoot() }) {
     TopAppBar(
         modifier = Modifier.onGloballyPositioned(motion::measureToolbar)
-            .artistStyleDetailBackdrop(motion, surfaceColor, forceOpaque),
+            .artistStyleDetailBackdrop(motion, surfaceColor, forceOpaque)
+            .capsuleTopBarHairline(StandardChrome.muted) {
+                if (forceOpaque) 1f else motion.artworkFade()
+            },
         windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
         expandedHeight = ArtistToolbarCompactHeight,
         colors = TopAppBarDefaults.topAppBarColors(

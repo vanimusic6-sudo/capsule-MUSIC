@@ -7,6 +7,8 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
@@ -43,6 +45,36 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.nikhil.yt.R
 import com.nikhil.yt.ui.theme.LocalCapsuleLightTheme
+
+/**
+ * One thin, low-contrast rule under pinned navigation across the app.
+ * Reveal follows the existing photograph-to-toolbar progress in detail pages;
+ * no new animation clock, layout passes, or extra overlay surfaces.
+ */
+internal fun capsuleTopBarRuleAlpha(progress: Float): Float {
+    val p = ((progress - 0.62f) / 0.38f).coerceIn(0f, 1f)
+    return p * p * (3f - 2f * p)
+}
+
+internal fun Modifier.capsuleTopBarHairline(
+    color: Color,
+    reveal: () -> Float = { 1f },
+): Modifier = drawBehind {
+    val opacity = capsuleTopBarRuleAlpha(reveal())
+    if (opacity > 0f) {
+        val lineWidth = 1.dp.toPx()
+        val inset = 16.dp.toPx()
+        val y = size.height - lineWidth / 2f
+        if (size.width > inset * 2f && y > 0f) {
+            drawLine(
+                color = color.copy(alpha = 0.23f * opacity),
+                start = Offset(inset, y),
+                end = Offset(size.width - inset, y),
+                strokeWidth = lineWidth,
+            )
+        }
+    }
+}
 
 /** Neutral chrome for the standard layout, independent of Capsule Dock artwork. */
 object StandardChrome {
@@ -96,16 +128,16 @@ fun StandardHeaderTitle(
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier.size(width = 62.dp, height = 40.dp)
-                .clip(RoundedCornerShape(19.dp))
+            modifier = Modifier.size(44.dp)
+                .clip(CircleShape)
                 .clickable(interactionSource = sourceInteraction, indication = null,
                     role = Role.Button, onClick = onAccountClick)
                 .graphicsLayer { scaleX = sourceScale; scaleY = sourceScale }
                 .semantics { contentDescription = accountLabel },
         ) {
             Box(
-                Modifier.size(width = 58.dp, height = 34.dp)
-                    .clip(RoundedCornerShape(17.dp))
+                Modifier.size(40.dp)
+                    .clip(CircleShape)
                     .background(Color(0xFFBC3606)),
                 contentAlignment = Alignment.Center,
             ) {
@@ -139,7 +171,7 @@ fun StandardHeaderTitle(
                         model = if (signedIn) accountImageUrl else null,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(30.dp).clip(CircleShape),
+                        modifier = Modifier.size(40.dp).clip(CircleShape),
                     )
                 }
             }

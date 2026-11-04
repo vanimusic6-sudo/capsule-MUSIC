@@ -52,6 +52,7 @@ import com.nikhil.yt.constants.AppBarHeight
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.ui.component.StandardHeaderTitle
 import com.nikhil.yt.ui.component.StandardChrome
+import com.nikhil.yt.ui.component.capsuleTopBarHairline
 import com.nikhil.yt.constants.HomeFeedSourcesKey
 import com.nikhil.yt.constants.ExperimentalSourcesEnabledKey
 import com.nikhil.yt.discovery.HomeFeedSource
@@ -207,6 +208,7 @@ fun CapsulePinnedHeader(route: String) {
         modifier = Modifier
             .fillMaxWidth()
             .background(base)
+            .capsuleTopBarHairline(StandardChrome.muted)
             .windowInsetsPadding(WindowInsets.systemBarsIgnoringVisibility.only(WindowInsetsSides.Top))
             .height(AppBarHeight)
             .padding(horizontal = 16.dp),
