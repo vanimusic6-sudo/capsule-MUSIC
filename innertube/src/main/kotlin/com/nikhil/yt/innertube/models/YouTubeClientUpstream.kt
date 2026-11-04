@@ -2,7 +2,7 @@
  * GENERATED INPUT FOR Capsule's YouTube client identities.
  *
  * Source: yt-dlp/yt-dlp master, yt_dlp/extractor/youtube/_base.py
- * Source commit: b3b18f8fc606e782ee7c82b0780a40c67b829072
+ * Source commit: 412e7f0a4b0588fe884a02b344ac66a06538475b
  * Snapshot: 2026-11-04
  *
  * Do not hand-edit during normal maintenance. The
@@ -17,7 +17,7 @@ package com.nikhil.yt.innertube.models
 object YouTubeClientUpstream {
     const val SOURCE_REPOSITORY = "yt-dlp/yt-dlp"
     const val SOURCE_PATH = "yt_dlp/extractor/youtube/_base.py"
-    const val SOURCE_COMMIT = "b3b18f8fc606e782ee7c82b0780a40c67b829072"
+    const val SOURCE_COMMIT = "412e7f0a4b0588fe884a02b344ac66a06538475b"
     const val SOURCE_SNAPSHOT = "2026-11-04"
 
     const val WEB_VERSION = "2.20260708.00.00"
