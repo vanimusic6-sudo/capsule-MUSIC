@@ -169,7 +169,7 @@ class ArtistHeroTest {
         val baseAt80 = normal.filter { it.first <= 0.80f }.last().second.alpha
         val livingAt80 = living.filter { it.first <= 0.80f }.last().second.alpha
         assertTrue(livingAt80 < baseAt80)
-        assertTrue(living.zipWithNext().all { (left, right) -> right.first >= left.first })
+        assertTrue(living.asList().zipWithNext().all { (left, right) -> right.first >= left.first })
     }
 
     @Test fun artistGradientSoftlyReachesPageInsteadOfHardCuttingAtPhotoEdge() {
