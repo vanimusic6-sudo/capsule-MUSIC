@@ -9,6 +9,7 @@ import androidx.compose.foundation.gestures.FlingBehavior
 import androidx.compose.foundation.gestures.ScrollScope
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.roundToInt
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -288,7 +289,7 @@ internal class DetailHeaderMotionState(
         return detailHeaderSnapTargetPx(
             scroll.firstVisibleItemScrollOffset,
             distance,
-            with(density) { 10.dp.toPx() },
+            with(density) { 1.dp.toPx() },
         )
     }
 
@@ -445,13 +446,14 @@ internal fun detailHeaderSnapTargetPx(
     if (!distancePx.isFinite() || distancePx <= 1f) return null
     val start = distancePx * 0.12f
     val end = (distancePx - 1f).coerceAtLeast(1f)
-    val inset = safeInsetPx.coerceAtLeast(0f)
+    // Avoid permanently half-docked glyphs even one pixel after motion
+    // begins. No snap is needed while the hero hasn't started collapsing.
+    val inset = safeInsetPx.coerceIn(0f, 1f)
     if (offsetPx <= start + inset || offsetPx >= end) return null
-    // Reaching 99% of the bar is still an unfinished position. The old
-    // "end - safeInset" guard silently abandoned the final ~10dp, leaving a
-    // permanently half-docked title on slow swipes and short flings.
     val halfway = start + (end - start) * 0.48f
-    return if (offsetPx < halfway) 0 else end.roundToInt()
+    // A rounded-down fractional endpoint leaves progress < 1.0 forever.
+    // Ceil guarantees a true final, opaque toolbar title on any density.
+    return if (offsetPx < halfway) 0 else ceil(end).toInt()
 }
 
 /**
