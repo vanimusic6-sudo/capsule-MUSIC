@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.FlingBehavior
 import androidx.compose.foundation.gestures.ScrollScope
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
@@ -280,7 +281,7 @@ internal class DetailHeaderMotionState(
      * when the user releases inside the actual measured hand-off region.
      * Song-list scrolling and long flings are left completely untouched.
      */
-    fun idleHandoffSnapOffset(): Int? {
+    fun idleHandoffSnapOffset(initialVelocity: Float = 0f): Int? {
         if (!headerPresence.value || scroll.firstVisibleItemIndex != 0 ||
             !restArtworkBottomPx.isFinite() || !toolbarBottomPx.isFinite()
         ) return null
@@ -290,13 +291,16 @@ internal class DetailHeaderMotionState(
             scroll.firstVisibleItemScrollOffset,
             distance,
             with(density) { 1.dp.toPx() },
+            initialVelocity,
         )
     }
 
-    // Read after the native fling has finished, inside its ScrollScope;
-    // there is no competing animateScrollBy coroutine or second observer.
-    fun idleHandoffDeltaPx(): Float? =
-        idleHandoffSnapOffset()?.let { (it - scroll.firstVisibleItemScrollOffset).toFloat() }
+    // Decide at finger release, BEFORE the normal spline decay. Waiting for
+    // the native fling to stop then starting a second animation made a visible
+    // pause and separate acceleration, even though both used ScrollScope.
+    fun idleHandoffDeltaPx(initialVelocity: Float): Float? =
+        idleHandoffSnapOffset(initialVelocity)
+            ?.let { (it - scroll.firstVisibleItemScrollOffset).toFloat() }
 
     fun artworkFade() = progress
     // Keep the original photograph: only the static matte and pinned bar own backgrounds.
@@ -442,6 +446,7 @@ internal fun detailHeaderSnapTargetPx(
     offsetPx: Int,
     distancePx: Float,
     safeInsetPx: Float = 0f,
+    initialVelocity: Float = 0f,
 ): Int? {
     if (!distancePx.isFinite() || distancePx <= 1f) return null
     val start = distancePx * 0.12f
@@ -453,20 +458,19 @@ internal fun detailHeaderSnapTargetPx(
     val halfway = start + (end - start) * 0.48f
     // A rounded-down fractional endpoint leaves progress < 1.0 forever.
     // Ceil guarantees a true final, opaque toolbar title on any density.
-    return if (offsetPx < halfway) 0 else ceil(end).toInt()
+    return when {
+        initialVelocity > 420f -> ceil(end).toInt()
+        initialVelocity < -420f -> 0
+        offsetPx < halfway -> 0
+        else -> ceil(end).toInt()
+    }
 }
 
 /**
- * The lazy list owns one uninterrupted scroll mutation from finger release to
- * the final magnetic resting point. The previous snapshotFlow listener started
- * its own animateScrollBy while the fling was finishing; those competing
- * mutations cancelled one another or restarted mid-animation, producing the
- * abrupt, partial snapping reported on device.
- *
- * Native fling runs first. ONLY if it rests between the measured artwork/title
- * anchors do we use the same ScrollScope for one bounded settling animation.
- * A fresh finger gesture cancels the entire mutation automatically. Ordinary
- * song-list flings, reorder drags and programmatic scrolling stay untouched.
+ * Magnet begins on finger release instead of after an entire native fling.
+ * Native decay is kept on ordinary song-list scrolling and fast long flings.
+ * Within the photo/title hand-off, a single critically damped spring inherits
+ * the finger's velocity: no stop, restart, delayed observer or jump.
  */
 internal class DetailHeaderFlingBehavior(
     private val native: FlingBehavior,
@@ -474,31 +478,27 @@ internal class DetailHeaderFlingBehavior(
     private val enabled: () -> Boolean,
 ) : FlingBehavior {
     override suspend fun ScrollScope.performFling(initialVelocity: Float): Float {
-        val remaining = with(native) { performFling(initialVelocity) }
-        if (!enabled()) return remaining
-        val delta = motion.idleHandoffDeltaPx() ?: return remaining
-        if (abs(delta) <= 1f) return remaining
+        if (!enabled() || abs(initialVelocity) > 3_600f) {
+            return with(native) { performFling(initialVelocity) }
+        }
+        val delta = motion.idleHandoffDeltaPx(initialVelocity)
+            ?: return with(native) { performFling(initialVelocity) }
+        if (abs(delta) <= 0.75f) return 0f
 
-        val movement = Animatable(0f)
-        var applied = 0f
-        var reachedBound = false
-        val duration = (260f + abs(delta) * 0.14f).roundToInt().coerceIn(260, 390)
-        movement.animateTo(
+        val animation = Animatable(0f)
+        var consumedTotal = 0f
+        var hitEdge = false
+        animation.animateTo(
             targetValue = delta,
-            animationSpec = tween(
-                durationMillis = duration,
-                easing = CubicBezierEasing(0.22f, 0.0f, 0.18f, 1.0f),
-            ),
+            animationSpec = spring(dampingRatio = 0.98f, stiffness = 220f),
+            initialVelocity = initialVelocity.coerceIn(-1_600f, 1_600f),
         ) {
-            if (reachedBound) return@animateTo
-            val requested = value - applied
-            if (abs(requested) <= 0.001f) return@animateTo
-            val consumed = scrollBy(requested)
-            applied += consumed
-            // Animatable.animateTo's callback is not AnimationScope and
-            // cannot call cancelAnimation(). Guard subsequent frames instead:
-            // no more scroll writes after a native list bound is reached.
-            if (abs(consumed - requested) > 1.25f) reachedBound = true
+            if (hitEdge) return@animateTo
+            val diff = value - consumedTotal
+            if (abs(diff) < .0005f) return@animateTo
+            val consumed = scrollBy(diff)
+            consumedTotal += consumed
+            if (abs(consumed - diff) > 1.25f) hitEdge = true
         }
         return 0f
     }

@@ -62,7 +62,9 @@ internal fun capsuleLivingPortraitMatteStops(background: Color): Array<Pair<Floa
     // almost black on portrait artists before the Subscribe/Shuffle row.
     // For living artists hold photo colour deeper, then dissolve exactly
     // to the page surface at the real bottom edge (no hard seam).
-    val start = 0.70f
+    // Avoid an abrupt final blackout: restore a *long* photo-to-page
+    // dissolution for living artists without the old solid black shelf.
+    val start = 0.40f
     val end = 1f
     return Array(steps + 3) { index ->
         when (index) {
@@ -72,7 +74,7 @@ internal fun capsuleLivingPortraitMatteStops(background: Color): Array<Pair<Floa
                 val y = start + (end - start) * ((index - 1).toFloat() / steps)
                 val t = ((y - start) / (end - start)).coerceIn(0f, 1f)
                 val ease = t * t * (3f - 2f * t)
-                y to background.copy(alpha = ease.pow(2.5f))
+                y to background.copy(alpha = ease.pow(1.48f))
             }
         }
     }

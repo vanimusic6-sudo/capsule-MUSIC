@@ -40,7 +40,12 @@ internal fun artistToolbarSurfaceAlpha(artworkFade: Float): Float {
     // The portrait now completes its dissolve sooner, before buttons reach
     // this bar. A second partial scrim would double-darken the photo and
     // leave a visible horizontal stripe, so only seal once it is gone.
-    return if (artworkFade >= 1f) 1f else 0f
+    // Restore the continuous transition of the photograph into the pinned
+    // bar. The old binary 0->1 switch created a hard dark horizontal edge.
+    // Start after most of the portrait has already faded to avoid stacking
+    // two strong black scrims over still-visible artwork.
+    val t = ((artworkFade.coerceIn(0f, 1f) - .68f) / .32f).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
 }
 
 /** Bare artwork controls at the reference height; their 48 dp touch targets are retained. */
@@ -74,11 +79,9 @@ internal fun ArtistToolbar(
         containerColor = Color.Transparent,
         contentColor = foreground.copy(alpha = if (canShare) 1f else 0.38f),
     )
-    val dividerReveal by animateFloatAsState(
-        targetValue = if (artworkFade >= 0.999f) 1f else 0f,
-        animationSpec = tween(durationMillis = 220),
-        label = "artist-toolbar-hairline",
-    )
+    // The line follows the actual continuous photo hand-off, not a
+    // one-frame Boolean that becomes true only after the photo has gone.
+    val dividerReveal = ((artworkFade - .80f) / .20f).coerceIn(0f, 1f)
     TopAppBar(
         modifier = modifier.drawBehind {
             drawRect(artistSurfaceColor.copy(
