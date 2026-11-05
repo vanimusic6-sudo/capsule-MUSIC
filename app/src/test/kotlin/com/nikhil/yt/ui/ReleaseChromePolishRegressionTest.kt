@@ -24,7 +24,7 @@ class ReleaseChromePolishRegressionTest {
         assertNull(detailHeaderSnapTargetPx(40, 400f, 10f)) // small peek
         assertEquals(0, detailHeaderSnapTargetPx(90, 400f, 10f))
         assertEquals(399, detailHeaderSnapTargetPx(300, 400f, 10f))
-        assertNull(detailHeaderSnapTargetPx(398, 400f, 10f))
+        assertEquals(399, detailHeaderSnapTargetPx(398, 400f, 10f))
         assertNull(detailHeaderSnapTargetPx(600, 400f))
         assertNull(detailHeaderSnapTargetPx(100, Float.NaN))
         assertNull(detailHeaderSnapTargetPx(100, -1f))
@@ -85,6 +85,24 @@ class ReleaseChromePolishRegressionTest {
         assertEquals(2, page.split("visible = !canReorderPlaylists").size - 1)
         assertFalse(page.contains("HideOnScrollFAB("))
         assertTrue(page.contains("showCreatePlaylistDialog = true"))
+    }
+
+    @Test fun bookmarkFabIsOnOnlinePlaylistNotOnlyCreatePlaylistLibrary() {
+        val remote = source("ui/screens/playlist/OnlinePlaylistScreen.kt")
+        val save = remote.substringAfter("val toggleLibraryBookmark: () -> Unit =")
+            .substringBefore("val surfaceColor =")
+        assertTrue("Shared playlist transaction required", save.contains("database.transaction"))
+        assertTrue("Both hero and FAB must share the same bookmark action",
+            remote.contains("onClick = toggleLibraryBookmark,"))
+        assertTrue("The floating save button must stay above nav and mini-player",
+            remote.contains("ScrollActionButton("))
+        assertTrue(remote.contains("R.drawable.library_add_check else R.drawable.library_add"))
+        val container = source("ui/component/AlbumLayout.kt")
+        val album = source("ui/screens/AlbumScreen.kt")
+        assertTrue("Album vertical LazyColumn owns snap", container.contains("flingBehavior = flingBehavior"))
+        assertTrue(album.contains("flingBehavior = rememberDetailHeaderFlingBehavior(titleMotion)"))
+        assertTrue("Album horizontal suggestion shelf must retain normal fling",
+            album.contains("LazyRow(\n") && album.contains("flingBehavior = rememberCapsuleFlingBehavior()"))
     }
 
     @Test fun accountIsCircularAndAllMainAndDetailHeadersUseTheSameRule() {

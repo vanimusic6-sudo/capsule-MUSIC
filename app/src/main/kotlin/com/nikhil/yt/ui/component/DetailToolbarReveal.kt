@@ -446,7 +446,10 @@ internal fun detailHeaderSnapTargetPx(
     val start = distancePx * 0.12f
     val end = (distancePx - 1f).coerceAtLeast(1f)
     val inset = safeInsetPx.coerceAtLeast(0f)
-    if (offsetPx <= start + inset || offsetPx >= end - inset) return null
+    if (offsetPx <= start + inset || offsetPx >= end) return null
+    // Reaching 99% of the bar is still an unfinished position. The old
+    // "end - safeInset" guard silently abandoned the final ~10dp, leaving a
+    // permanently half-docked title on slow swipes and short flings.
     val halfway = start + (end - start) * 0.48f
     return if (offsetPx < halfway) 0 else end.roundToInt()
 }
