@@ -52,7 +52,9 @@ import com.nikhil.yt.ui.theme.LocalCapsuleLightTheme
  * no new animation clock, layout passes, or extra overlay surfaces.
  */
 internal fun capsuleTopBarRuleAlpha(progress: Float): Float {
-    val p = ((progress - 0.62f) / 0.38f).coerceIn(0f, 1f)
+    // The arrival animation is clocked once, on the pin/unpin event,
+    // not fed raw photo scroll pixels. Ease its alpha without a width wipe.
+    val p = progress.coerceIn(0f, 1f)
     return p * p * (3f - 2f * p)
 }
 
@@ -62,14 +64,16 @@ internal fun Modifier.capsuleTopBarHairline(
 ): Modifier = drawBehind {
     val opacity = capsuleTopBarRuleAlpha(reveal())
     if (opacity > 0f) {
-        val lineWidth = 1.dp.toPx()
-        val inset = 16.dp.toPx()
+        // Full-width hairline: 16dp side margins made this look like a
+        // short underline rather than a structural divider. Place it on
+        // the bottom raster edge, never through the bar's title baseline.
+        val lineWidth = 0.75.dp.toPx()
         val y = size.height - lineWidth / 2f
-        if (size.width > inset * 2f && y > 0f) {
+        if (size.width > 0f && y > 0f) {
             drawLine(
-                color = color.copy(alpha = 0.23f * opacity),
-                start = Offset(inset, y),
-                end = Offset(size.width - inset, y),
+                color = color.copy(alpha = 0.18f * opacity),
+                start = Offset(0f, y),
+                end = Offset(size.width, y),
                 strokeWidth = lineWidth,
             )
         }
@@ -136,7 +140,8 @@ fun StandardHeaderTitle(
                 .semantics { contentDescription = accountLabel },
         ) {
             Box(
-                Modifier.size(40.dp)
+                // 44dp accessible touch target; 30dp visual avatar.
+                Modifier.size(30.dp)
                     .clip(CircleShape)
                     .background(Color(0xFFBC3606)),
                 contentAlignment = Alignment.Center,
@@ -146,7 +151,7 @@ fun StandardHeaderTitle(
                         painter = painterResource(guestIcon),
                         contentDescription = null,
                         tint = Color.White,
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(18.dp),
                     )
                 } else {
                     val initial = accountName?.takeUnless { it == "Guest" }
@@ -164,14 +169,14 @@ fun StandardHeaderTitle(
                             painter = painterResource(R.drawable.person),
                             contentDescription = null,
                             tint = Color.White,
-                            modifier = Modifier.size(19.dp),
+                            modifier = Modifier.size(16.dp),
                         )
                     }
                     AsyncImage(
                         model = if (signedIn) accountImageUrl else null,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(40.dp).clip(CircleShape),
+                        modifier = Modifier.size(30.dp).clip(CircleShape),
                     )
                 }
             }

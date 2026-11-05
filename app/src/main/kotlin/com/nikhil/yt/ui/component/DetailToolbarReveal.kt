@@ -1,6 +1,7 @@
 package com.nikhil.yt.ui.component
 
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
@@ -567,13 +568,22 @@ internal fun DetailTopAppBar(
 ) {
     val foreground = if (forceOpaque) StandardChrome.text else
         lerp(Color.White, StandardChrome.text, motion.artworkFade())
+    // Do not show the line while the SAME title is travelling across it.
+    // Observe only docked/undocked state: animation runs once per transition,
+    // not on each scroll pixel, and leaves the title unobstructed in flight.
+    val dividerDocked by remember(motion, forceOpaque) {
+        derivedStateOf { forceOpaque || motion.compactTitleAlpha() == 1f }
+    }
+    val dividerReveal by animateFloatAsState(
+        targetValue = if (dividerDocked) 1f else 0f,
+        animationSpec = tween(durationMillis = 220, easing = CubicBezierEasing(0.2f, 0f, 0.2f, 1f)),
+        label = "detail-toolbar-hairline",
+    )
     Box(modifier.fillMaxSize().onGloballyPositioned { motion.overlayOrigin = it.positionInRoot() }) {
     TopAppBar(
         modifier = Modifier.onGloballyPositioned(motion::measureToolbar)
             .artistStyleDetailBackdrop(motion, surfaceColor, forceOpaque)
-            .capsuleTopBarHairline(StandardChrome.muted) {
-                if (forceOpaque) 1f else motion.artworkFade()
-            },
+            .capsuleTopBarHairline(StandardChrome.muted) { dividerReveal },
         windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
         expandedHeight = ArtistToolbarCompactHeight,
         colors = TopAppBarDefaults.topAppBarColors(

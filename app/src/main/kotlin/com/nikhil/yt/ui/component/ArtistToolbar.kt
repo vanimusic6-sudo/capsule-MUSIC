@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -12,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
@@ -71,12 +74,17 @@ internal fun ArtistToolbar(
         containerColor = Color.Transparent,
         contentColor = foreground.copy(alpha = if (canShare) 1f else 0.38f),
     )
+    val dividerReveal by animateFloatAsState(
+        targetValue = if (artworkFade >= 0.999f) 1f else 0f,
+        animationSpec = tween(durationMillis = 220),
+        label = "artist-toolbar-hairline",
+    )
     TopAppBar(
         modifier = modifier.drawBehind {
             drawRect(artistSurfaceColor.copy(
                 alpha = artistToolbarSurfaceAlpha(artworkFadeProvider()),
             ))
-        }.capsuleTopBarHairline(StandardChrome.muted, artworkFadeProvider),
+        }.capsuleTopBarHairline(StandardChrome.muted) { dividerReveal },
         // One shared, centred row keeps the name and icons aligned throughout scrolling.
         windowInsets = WindowInsets.safeDrawing.only(
             WindowInsetsSides.Horizontal + WindowInsetsSides.Top,

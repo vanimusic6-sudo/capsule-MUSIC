@@ -49,7 +49,7 @@ class ReleaseChromePolishRegressionTest {
 
     @Test fun hairlineIsSubtleAndRevealsSmoothlyWithTheArtwork() {
         assertEquals(0f, capsuleTopBarRuleAlpha(0f), 0f)
-        assertEquals(0f, capsuleTopBarRuleAlpha(.61f), 0f)
+        assertTrue(capsuleTopBarRuleAlpha(.61f) > 0f)
         assertEquals(1f, capsuleTopBarRuleAlpha(1f), 0f)
         val samples = (0..100).map { capsuleTopBarRuleAlpha(it / 100f) }
         assertTrue(samples.zipWithNext().all { (a, b) -> b >= a && b - a < .065f })
@@ -91,7 +91,7 @@ class ReleaseChromePolishRegressionTest {
         val chrome = source("ui/component/StandardChrome.kt")
         val title = chrome.substringAfter("fun StandardHeaderTitle(")
         assertTrue(title.contains("Modifier.size(44.dp)"))
-        assertTrue(title.contains("Modifier.size(40.dp)"))
+        assertTrue(title.contains("Modifier.size(30.dp)"))
         assertTrue(title.contains(".clip(CircleShape)"))
         assertFalse(title.contains(".clip(RoundedCornerShape(19.dp))"))
         val host = source("ui/screens/CapsuleRouteSurface.kt")

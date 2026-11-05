@@ -169,6 +169,8 @@ class ArtistHeroTest {
         val baseAt80 = normal.filter { it.first <= 0.80f }.last().second.alpha
         val livingAt80 = living.filter { it.first <= 0.80f }.last().second.alpha
         assertTrue(livingAt80 < baseAt80)
+        val livingAt90 = living.filter { it.first <= 0.90f }.last().second.alpha
+        assertTrue("Living artist remains visible close to actions", livingAt90 < 0.55f)
         assertTrue(living.asList().zipWithNext().all { (left, right) -> right.first >= left.first })
     }
 

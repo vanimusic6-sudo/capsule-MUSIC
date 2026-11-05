@@ -58,8 +58,12 @@ internal fun capsulePortraitMatteStops(background: Color): Array<Pair<Float, Col
  */
 internal fun capsuleLivingPortraitMatteStops(background: Color): Array<Pair<Float, Color>> {
     val steps = 24
-    val start = 0.29f
-    val end = 0.995f
+    // The previous 29%-start curve still turned the bottom 100px
+    // almost black on portrait artists before the Subscribe/Shuffle row.
+    // For living artists hold photo colour deeper, then dissolve exactly
+    // to the page surface at the real bottom edge (no hard seam).
+    val start = 0.70f
+    val end = 1f
     return Array(steps + 3) { index ->
         when (index) {
             0 -> 0f to Color.Transparent
