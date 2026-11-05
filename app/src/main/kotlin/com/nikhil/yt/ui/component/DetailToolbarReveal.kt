@@ -449,10 +449,13 @@ internal fun detailHeaderSnapTargetPx(
     initialVelocity: Float = 0f,
 ): Int? {
     if (!distancePx.isFinite() || distancePx <= 1f) return null
-    val start = distancePx * 0.12f
+    // Title motion starts immediately with the first scroll pixel. Using the
+    // artwork fade's 12% threshold here left a dead zone with an undocked title.
+    // Keep fade timing independent from magnetic resting positions.
+    val start = 0f
     val end = (distancePx - 1f).coerceAtLeast(1f)
-    // Avoid permanently half-docked glyphs even one pixel after motion
-    // begins. No snap is needed while the hero hasn't started collapsing.
+    // A release after the first visible pixel must settle at an endpoint;
+    // do not require the photograph's opacity transition to have started.
     val inset = safeInsetPx.coerceIn(0f, 1f)
     if (offsetPx < start + inset || offsetPx >= end) return null
     val halfway = start + (end - start) * 0.48f
