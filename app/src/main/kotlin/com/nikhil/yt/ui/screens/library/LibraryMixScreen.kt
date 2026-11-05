@@ -967,6 +967,8 @@ fun LibraryMixScreen(
             visible = !showCreatePlaylistDialog,
             icon = R.drawable.add,
             onClick = { showCreatePlaylistDialog = true },
+            lazyListState = if (viewType == LibraryViewType.LIST) lazyListState else null,
+            lazyGridState = if (viewType == LibraryViewType.GRID) lazyGridState else null,
         )
     }
 }
