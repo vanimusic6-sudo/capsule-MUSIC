@@ -22,7 +22,7 @@ import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.DetailTopAppBar
 import com.nikhil.yt.ui.component.DetailToolbarTitle
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
-import com.nikhil.yt.ui.component.DetailHeaderMagneticSnap
+import com.nikhil.yt.ui.component.rememberDetailHeaderFlingBehavior
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -257,10 +257,9 @@ fun OnlinePlaylistScreen(
             contentIdentity = playlist?.id,
         )
 
-        DetailHeaderMagneticSnap(titleMotion, lazyListState)
 
         LazyColumn(
-            flingBehavior = rememberCapsuleFlingBehavior(),
+            flingBehavior = rememberDetailHeaderFlingBehavior(titleMotion, enabled = !isSearching && !selection),
             overscrollEffect = null,
             state = lazyListState,
             contentPadding =

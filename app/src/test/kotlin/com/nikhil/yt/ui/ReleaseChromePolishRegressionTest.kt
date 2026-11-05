@@ -65,12 +65,17 @@ class ReleaseChromePolishRegressionTest {
             "ui/screens/playlist/TopPlaylistScreen.kt",
         )
         pages.forEach { file ->
-            assertTrue(file, source(file).contains("DetailHeaderMagneticSnap(titleMotion, lazyListState"))
+            assertTrue(file, source(file).contains("rememberDetailHeaderFlingBehavior(titleMotion"))
         }
         assertTrue(source(pages[1]).contains("!reorderableState.isAnyItemDragging"))
         val motion = source("ui/component/DetailToolbarReveal.kt")
-        assertTrue(motion.contains("snapshotFlow { !listState.isScrollInProgress }"))
-        assertTrue(motion.contains("scroll.animateScrollBy("))
+        assertFalse("Observer-driven snapping caused competing scroll mutations",
+            motion.contains("snapshotFlow { !listState.isScrollInProgress }"))
+        assertFalse(motion.contains("scroll.animateScrollBy("))
+        assertTrue(motion.contains("override suspend fun ScrollScope.performFling(initialVelocity: Float)"))
+        assertTrue(motion.contains("val remaining = with(native) { performFling(initialVelocity) }"))
+        assertTrue(motion.contains("val consumed = scrollBy(requested)"))
+        assertTrue(motion.contains("if (abs(consumed - requested) > 1.25f) cancelAnimation()"))
         assertFalse(motion.contains("rememberInfiniteTransition"))
     }
 

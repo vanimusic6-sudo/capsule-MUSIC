@@ -16,7 +16,7 @@ import com.nikhil.yt.ui.component.DetailHeroBottomSpacing
 import com.nikhil.yt.ui.component.DetailTopAppBar
 import com.nikhil.yt.ui.component.DetailToolbarTitle
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
-import com.nikhil.yt.ui.component.DetailHeaderMagneticSnap
+import com.nikhil.yt.ui.component.rememberDetailHeaderFlingBehavior
 import com.nikhil.yt.ui.component.AlbumArtworkTopSpacing
 import com.nikhil.yt.ui.component.AlbumHeaderLayout
 import com.nikhil.yt.ui.component.AlbumHeaderPlaceholder
@@ -178,7 +178,6 @@ fun AlbumScreen(
         contentIdentity = viewModel.albumId,
     )
 
-    DetailHeaderMagneticSnap(titleMotion, lazyListState)
 
     AlbumScreenLayout(
         background = surfaceColor,
@@ -371,7 +370,7 @@ fun AlbumScreen(
                     item(key = "other_versions_list") {
                         LazyRow(
                             modifier = Modifier.fillMaxWidth().height(gridShelfHeight()),
-                            flingBehavior = rememberCapsuleFlingBehavior(),
+                            flingBehavior = rememberDetailHeaderFlingBehavior(titleMotion, enabled = true),
                             
                             overscrollEffect = null,
                         ) {

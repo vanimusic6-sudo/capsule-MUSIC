@@ -1,12 +1,13 @@
 package com.nikhil.yt.ui.component
 
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.snapshotFlow
-import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.animation.core.spring
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.filter
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.FlingBehavior
+import androidx.compose.foundation.gestures.ScrollScope
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -290,14 +291,10 @@ internal class DetailHeaderMotionState(
         )
     }
 
-    suspend fun settleHandoffIfNeeded() {
-        val destination = idleHandoffSnapOffset() ?: return
-        val delta = destination - scroll.firstVisibleItemScrollOffset
-        if (delta != 0) scroll.animateScrollBy(
-            delta.toFloat(),
-            animationSpec = spring(dampingRatio = 0.92f, stiffness = 380f),
-        )
-    }
+    // Read after the native fling has finished, inside its ScrollScope;
+    // there is no competing animateScrollBy coroutine or second observer.
+    fun idleHandoffDeltaPx(): Float? =
+        idleHandoffSnapOffset()?.let { (it - scroll.firstVisibleItemScrollOffset).toFloat() }
 
     fun artworkFade() = progress
     // Keep the original photograph: only the static matte and pinned bar own backgrounds.
@@ -454,18 +451,57 @@ internal fun detailHeaderSnapTargetPx(
 }
 
 /**
- * Magnetic hand-off for the original album and all playlist variants.
- * Observe only the end of the user's gesture/fling. The scroll state itself
- * remains fully native; programmatic test scrolls using the motion state
- * without this effect retain exact reversible geometry.
+ * The lazy list owns one uninterrupted scroll mutation from finger release to
+ * the final magnetic resting point. The previous snapshotFlow listener started
+ * its own animateScrollBy while the fling was finishing; those competing
+ * mutations cancelled one another or restarted mid-animation, producing the
+ * abrupt, partial snapping reported on device.
+ *
+ * Native fling runs first. ONLY if it rests between the measured artwork/title
+ * anchors do we use the same ScrollScope for one bounded settling animation.
+ * A fresh finger gesture cancels the entire mutation automatically. Ordinary
+ * song-list flings, reorder drags and programmatic scrolling stay untouched.
  */
+internal class DetailHeaderFlingBehavior(
+    private val native: FlingBehavior,
+    private val motion: DetailHeaderMotionState,
+    private val enabled: () -> Boolean,
+) : FlingBehavior {
+    override suspend fun ScrollScope.performFling(initialVelocity: Float): Float {
+        val remaining = with(native) { performFling(initialVelocity) }
+        if (!enabled()) return remaining
+        val delta = motion.idleHandoffDeltaPx() ?: return remaining
+        if (abs(delta) <= 1f) return remaining
+
+        val movement = Animatable(0f)
+        var applied = 0f
+        val duration = (260f + abs(delta) * 0.14f).roundToInt().coerceIn(260, 390)
+        movement.animateTo(
+            targetValue = delta,
+            animationSpec = tween(
+                durationMillis = duration,
+                easing = CubicBezierEasing(0.22f, 0.0f, 0.18f, 1.0f),
+            ),
+        ) {
+            val requested = value - applied
+            if (abs(requested) <= 0.001f) return@animateTo
+            val consumed = scrollBy(requested)
+            applied += consumed
+            if (abs(consumed - requested) > 1.25f) cancelAnimation()
+        }
+        return 0f
+    }
+}
+
 @Composable
-internal fun DetailHeaderMagneticSnap(motion: DetailHeaderMotionState, listState: LazyListState, enabled: Boolean = true) {
-    LaunchedEffect(motion, listState, enabled) {
-        if (!enabled) return@LaunchedEffect
-        snapshotFlow { !listState.isScrollInProgress }
-            .filter { it }
-            .collect { motion.settleHandoffIfNeeded() }
+internal fun rememberDetailHeaderFlingBehavior(
+    motion: DetailHeaderMotionState,
+    enabled: Boolean = true,
+): FlingBehavior {
+    val native = rememberCapsuleFlingBehavior()
+    // Recreate only for an actual mode change, never for each scroll pixel.
+    return remember(native, motion, enabled) {
+        DetailHeaderFlingBehavior(native, motion) { enabled }
     }
 }
 
