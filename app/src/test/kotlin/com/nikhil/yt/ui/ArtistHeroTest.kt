@@ -155,6 +155,17 @@ class ArtistHeroTest {
             stops.last().first == 1f && stops.last().second == Color.Black)
     }
 
+    @Test fun livingArtistGradientIsVisibleWellBeforeTheBottomEdge() {
+        val stops = com.nikhil.yt.ui.component.capsuleLivingPortraitMatteStops(Color.Black)
+        fun alphaAt(y: Float) = stops.filter { it.first <= y }.last().second.alpha
+        assertTrue("Matte should be perceptible by 70%, not only at the photo edge", alphaAt(.70f) > .24f)
+        assertTrue("At 85% the portrait must gradually meet the page", alphaAt(.85f) > .65f)
+        assertEquals(1f, stops.last().second.alpha, 0f)
+        assertTrue(stops.zipWithNext().all { (a, b) ->
+            b.first >= a.first && b.second.alpha >= a.second.alpha
+        })
+    }
+
     @Test fun livingArtistMattePreservesMorePhotoNearButtonsWithoutChangingTheSeam() {
         val normal = com.nikhil.yt.ui.component.capsulePortraitMatteForArtist(Color.Black, 0f)
         val living = com.nikhil.yt.ui.component.capsulePortraitMatteForArtist(Color.Black, 1f)
