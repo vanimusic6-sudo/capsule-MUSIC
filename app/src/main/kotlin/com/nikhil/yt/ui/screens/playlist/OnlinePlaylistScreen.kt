@@ -23,8 +23,7 @@ import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.DetailTopAppBar
 import com.nikhil.yt.ui.component.DetailToolbarTitle
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
-import com.nikhil.yt.ui.component.rememberDetailHeaderPreFlingConnection
-import androidx.compose.ui.input.nestedscroll.nestedScroll
+import com.nikhil.yt.ui.component.rememberDetailHeaderFlingBehavior
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -288,9 +287,6 @@ fun OnlinePlaylistScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .nestedScroll(rememberDetailHeaderPreFlingConnection(
-                titleMotion, enabled = !isSearching && !selection,
-            ))
             .background(surfaceColor)
             .pullToRefresh(
                 state = pullRefreshState,
@@ -303,7 +299,7 @@ fun OnlinePlaylistScreen(
 
 
         LazyColumn(
-            flingBehavior = rememberCapsuleFlingBehavior(),
+            flingBehavior = rememberDetailHeaderFlingBehavior(titleMotion, enabled = !isSearching && !selection),
             overscrollEffect = null,
             state = lazyListState,
             contentPadding =

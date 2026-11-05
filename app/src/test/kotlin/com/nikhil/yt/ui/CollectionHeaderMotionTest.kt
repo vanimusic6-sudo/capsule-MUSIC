@@ -39,12 +39,7 @@ import com.nikhil.yt.ui.component.*
 import com.nikhil.yt.ui.screens.albumHasHeroHeader
 import com.nikhil.yt.viewmodels.AlbumUiState
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.test.performTouchInput
 import java.io.File
 import org.junit.Assert.*
 import org.junit.Rule
@@ -60,24 +55,22 @@ import org.robolectric.annotation.GraphicsMode
 class CollectionHeaderMotionTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-    @Test fun titlePreFlingNeverBlocksReverseTouchEvenDuringSpring() {
+    @Test fun artworkSwipeMovesTheListAndReverseSwipeIsResponsive() {
         lateinit var state: LazyListState
-        lateinit var motion: DetailHeaderMotionState
-        lateinit var connection: NestedScrollConnection
         compose.setContent {
             MaterialTheme {
                 CompositionLocalProvider(LocalPlayerAwareWindowInsets provides WindowInsets()) {
                     state = rememberLazyListState()
-                    motion = rememberDetailHeaderMotion(state, hasHeader = true, contentIdentity = "gesture-test")
-                    connection = rememberDetailHeaderPreFlingConnection(motion)
+                    val motion = rememberDetailHeaderMotion(state, true, "artwork-gesture")
                     AlbumScreenLayout(
                         background = Color.Black,
                         state = state,
-                        modifier = Modifier.size(320.dp, 700.dp).nestedScroll(connection),
+                        modifier = Modifier.size(320.dp, 700.dp).testTag("gesture-screen"),
+                        flingBehavior = rememberDetailHeaderFlingBehavior(motion),
                         content = {
                             item(key = "header") {
                                 CapsuleDetailHero(
-                                    title = "Magnetic header",
+                                    title = "An album",
                                     metrics = emptyList(),
                                     artworkAlpha = motion::artworkAlpha,
                                     titleMotion = motion,
@@ -94,28 +87,27 @@ class CollectionHeaderMotionTest {
                 }
             }
         }
-        compose.runOnIdle { runBlocking { state.scrollToItem(0, 120) } }
+        // Reproduces the regression that the previous pre-fling handler
+        // did NOT test: touch actually starts on the fullscreen artwork.
+        compose.onNodeWithTag("capsule:detail-artwork").performTouchInput {
+            swipeUp(startY = size.height * .80f, endY = size.height * .22f, durationMillis = 330)
+        }
+        compose.waitForIdle()
+        var offsetAfter = 0
+        compose.runOnIdle {
+            offsetAfter = if (state.firstVisibleItemIndex > 0) 1500
+                else state.firstVisibleItemScrollOffset
+            assertTrue("Artwork swipe must move the collection", offsetAfter > 20)
+        }
+        // New touch must interrupt docking and restore scroll immediately.
+        compose.onNodeWithTag("gesture-screen").performTouchInput {
+            swipeDown(startY = size.height * .30f, endY = size.height * .75f, durationMillis = 330)
+        }
         compose.waitForIdle()
         compose.runOnIdle {
-            assertNotNull("Header dimensions should be measured", motion.idleHandoffSnapOffset(900f))
-            runBlocking {
-                // Imitate a drag starting on a track row, followed by release.
-                connection.onPostScroll(
-                    Offset(0f, -32f), Offset.Zero, NestedScrollSource.UserInput,
-                )
-                // The old onPreFling awaited the entire spring here and held
-                // up the next finger gesture. New ownership returns promptly.
-                val consumed = withTimeout(500) {
-                    connection.onPreFling(Velocity(0f, -900f))
-                }
-                assertEquals(-900f, consumed.y, 0.01f)
-                // A new downward swipe must be accepted before that spring
-                // finishes, cancelling it ahead of LazyColumn's drag.
-                val reverse = connection.onPreScroll(
-                    Offset(0f, 25f), NestedScrollSource.UserInput,
-                )
-                assertEquals(Offset.Zero, reverse)
-            }
+            val offsetNow = if (state.firstVisibleItemIndex > 0) 1500
+                else state.firstVisibleItemScrollOffset
+            assertTrue("Reverse swipe must not be blocked", offsetNow < offsetAfter)
         }
     }
 

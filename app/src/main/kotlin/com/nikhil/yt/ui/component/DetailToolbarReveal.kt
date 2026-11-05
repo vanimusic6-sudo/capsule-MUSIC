@@ -1,13 +1,9 @@
 package com.nikhil.yt.ui.component
 
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.unit.Velocity
+import androidx.compose.foundation.gestures.FlingBehavior
+import androidx.compose.foundation.gestures.ScrollScope
+import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import kotlin.math.abs
@@ -310,35 +306,11 @@ internal class DetailHeaderMotionState(
         )
     }
 
-    // Decide at finger release, BEFORE the normal spline decay. Waiting for
-    // the native fling to stop then starting a second animation made a visible
-    // pause and separate acceleration, even though both used ScrollScope.
-    /** One cancellable spring, never run inside nested pre-fling callbacks. */
-    suspend fun settleToAnchor(targetPx: Int, initialVelocity: Float = 0f) {
-        val delta = (targetPx - scroll.firstVisibleItemScrollOffset).toFloat()
-        if (abs(delta) <= 0.75f || scroll.firstVisibleItemIndex != 0) return
-        scroll.scroll {
-            val animation = Animatable(0f)
-            var consumedTotal = 0f
-            var hitEdge = false
-            animation.animateTo(
-                targetValue = delta,
-                animationSpec = spring(dampingRatio = 1f, stiffness = 135f),
-                initialVelocity = initialVelocity.coerceIn(-850f, 850f),
-            ) {
-                if (hitEdge) return@animateTo
-                val diff = value - consumedTotal
-                if (abs(diff) < .0005f) return@animateTo
-                val consumed = scrollBy(diff)
-                consumedTotal += consumed
-                if (abs(consumed - diff) > 1.25f) hitEdge = true
-            }
-            if (!hitEdge) {
-                val remainder = delta - consumedTotal
-                if (abs(remainder) > .001f) scrollBy(remainder)
-            }
-        }
-    }
+    /** Read target distance inside LazyColumn's existing fling ScrollScope. */
+    fun distanceToSnapTarget(target: Int): Float? =
+        if (headerPresence.value && scroll.firstVisibleItemIndex == 0)
+            (target - scroll.firstVisibleItemScrollOffset).toFloat()
+        else null
 
     fun artworkFade() = progress
     // Keep the original photograph: only the static matte and pinned bar own backgrounds.
@@ -531,129 +503,96 @@ internal fun detailHeaderSnapTargetPx(
 }
 
 /**
- * Single owner of collection-header snapping.
+ * One owner for all cover and track-list scrolling.
  *
- * The old design ran a custom LazyColumn FlingBehavior AND a nested onPreFling
- * which suspended until its spring completed, delaying reverse gestures.
+ * The previous parent onPreFling started a second scroll.scroll coroutine
+ * while LazyColumn still owned the fling. Both competed for the scroll
+ * mutator, causing the artwork to stop responding to touch.
  *
- * This coordinator only DECIDES ownership before fling and returns at once.
- * The spring runs in a cancellable coroutine at normal scroll priority;
- * a new finger drag can immediately interrupt it. A native track-row fling
- * entering the hero part-way through decay is taken over mid-flight.
+ * The native decay and optional title docking now run inside the SAME
+ * LazyColumn ScrollScope. Android/Compose can cancel it on the next touch.
  */
-internal class DetailHeaderGestureCoordinator(
+internal class DetailHeaderSingleOwnerFlingBehavior(
+    private val native: FlingBehavior,
     private val motion: DetailHeaderMotionState,
-    private val scope: CoroutineScope,
     private val enabled: Boolean,
-) : NestedScrollConnection {
-    private var sawUserDrag = false
-    private var trackingNativeFling = false
-    private var settleJob: Job? = null
+) : FlingBehavior {
+    override suspend fun ScrollScope.performFling(initialVelocity: Float): Float {
+        if (!enabled) return with(native) { performFling(initialVelocity) }
 
-    private fun startSnap(target: Int, velocity: Float) {
-        settleJob?.cancel()
-        settleJob = scope.launch {
-            // Never await this job from onPreFling; preserve touch ownership.
-            motion.settleToAnchor(target, initialVelocity = velocity)
-        }
-    }
-
-    fun dispose() {
-        settleJob?.cancel()
-        trackingNativeFling = false
-        sawUserDrag = false
-    }
-
-    override fun onPreScroll(
-        available: Offset,
-        source: NestedScrollSource,
-    ): Offset {
-        if (source == NestedScrollSource.UserInput && abs(available.y) > 1.5f) {
-            // Pre-scroll runs BEFORE the child row is asked to move, so the
-            // previous Default-priority spring is already cancelled when
-            // the next touch begins. No temporarily unresponsive scrolling.
-            settleJob?.cancel()
-            trackingNativeFling = false
-            sawUserDrag = true
-        }
-        return Offset.Zero
-    }
-
-    override fun onPostScroll(
-        consumed: Offset,
-        available: Offset,
-        source: NestedScrollSource,
-    ): Offset {
-        when (source) {
-            NestedScrollSource.UserInput -> {
-                if (abs(consumed.y) + abs(available.y) > 0.5f) {
-                    settleJob?.cancel()
-                    trackingNativeFling = false
-                    sawUserDrag = true
-                }
+        suspend fun ScrollScope.dock(targetPx: Int, velocityPx: Float) {
+            val distance = motion.distanceToSnapTarget(targetPx) ?: return
+            if (abs(distance) <= .75f) return
+            val springMotion = Animatable(0f)
+            var consumedTotal = 0f
+            var stoppedAtEdge = false
+            springMotion.animateTo(
+                targetValue = distance,
+                animationSpec = spring(dampingRatio = 1f, stiffness = 190f),
+                initialVelocity = velocityPx.coerceIn(-900f, 900f),
+            ) {
+                if (stoppedAtEdge) return@animateTo
+                val delta = value - consumedTotal
+                if (abs(delta) < .0005f) return@animateTo
+                val consumed = scrollBy(delta)
+                consumedTotal += consumed
+                if (abs(consumed - delta) > 1.25f) stoppedAtEdge = true
             }
-            NestedScrollSource.SideEffect -> {
-                if (enabled && trackingNativeFling && abs(consumed.y) > 0.01f) {
-                    // The drag started on songs. Take over from native fling
-                    // as soon as it reaches the partially collapsed artwork.
-                    val directedVelocity = if (consumed.y < 0f) 850f else -850f
-                    val target = motion.idleHandoffSnapOffset(directedVelocity)
-                    if (target != null) {
-                        trackingNativeFling = false
-                        startSnap(target, directedVelocity)
+            if (!stoppedAtEdge) {
+                val remaining = distance - consumedTotal
+                if (abs(remaining) > .001f) scrollBy(remaining)
+            }
+        }
+
+        // On release inside the measured hero, settle directly; never race
+        // a new scroll.scroll coroutine against LazyColumn's active fling.
+        motion.idleHandoffSnapOffset(initialVelocity)?.let { anchor ->
+            dock(anchor, initialVelocity)
+            return 0f
+        }
+
+        // Ordinary song scrolling keeps Capsule's native motion. Only when
+        // a downward fling from tracks ENTERS the partial hero do we switch
+        // to the header spring mid-flight in this SAME ScrollScope.
+        var handoff: Int? = null
+        val watchedScope = object : ScrollScope {
+            override fun scrollBy(pixels: Float): Float {
+                if (handoff != null) return 0f
+                val consumed = this@performFling.scrollBy(pixels)
+                if (initialVelocity < -.5f && consumed < -.001f) {
+                    val anchor = motion.idleHandoffSnapOffset(initialVelocity)
+                    if (anchor != null) {
+                        handoff = anchor
+                        // Signal to native decay that we took over.
+                        return 0f
                     }
                 }
-            }
-            else -> Unit
-        }
-        return Offset.Zero
-    }
-
-    override suspend fun onPreFling(available: Velocity): Velocity {
-        val dragged = sawUserDrag
-        sawUserDrag = false
-        trackingNativeFling = false
-        if (!enabled || !dragged) return Velocity.Zero
-
-        // Nested velocity follows the finger; list velocity has opposite sign.
-        val listVelocity = -available.y
-        val target = motion.idleHandoffSnapOffset(listVelocity)
-        if (target != null) {
-            startSnap(target, listVelocity)
-            // Consume vertical fling only if the header owns this gesture.
-            return Velocity(0f, available.y)
-        }
-        trackingNativeFling = true
-        return Velocity.Zero
-    }
-
-    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-        if (trackingNativeFling) {
-            trackingNativeFling = false
-            // Last-resort safeguard for an aborted native fling, not the
-            // normal trigger (pre-fling or while decay crosses the hero).
-            motion.idleHandoffSnapOffset(-available.y)?.let { target ->
-                startSnap(target, -available.y)
+                return consumed
             }
         }
-        // A parent coordinator never takes additional post-fling velocity.
-        return Velocity.Zero
+        val leftover = with(native) { with(watchedScope) { performFling(initialVelocity) } }
+        handoff?.let { anchor ->
+            dock(anchor, initialVelocity)
+            return 0f
+        }
+        // Rare near-zero velocity endings still settle without a second job.
+        motion.idleHandoffSnapOffset(initialVelocity)?.let { anchor ->
+            dock(anchor, initialVelocity)
+            return 0f
+        }
+        return leftover
     }
 }
 
 @Composable
-internal fun rememberDetailHeaderPreFlingConnection(
+internal fun rememberDetailHeaderFlingBehavior(
     motion: DetailHeaderMotionState,
     enabled: Boolean = true,
-): NestedScrollConnection {
-    val scope = rememberCoroutineScope()
-    val coordinator = remember(motion, enabled, scope) {
-        DetailHeaderGestureCoordinator(motion, scope, enabled)
+): FlingBehavior {
+    val native = rememberCapsuleFlingBehavior()
+    return remember(native, motion, enabled) {
+        DetailHeaderSingleOwnerFlingBehavior(native, motion, enabled)
     }
-    DisposableEffect(coordinator) {
-        onDispose { coordinator.dispose() }
-    }
-    return coordinator
 }
 
 /** Reuse the EXACT artist toolbar surface policy: never double-tint the photo. */
