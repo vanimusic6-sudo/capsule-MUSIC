@@ -1,10 +1,7 @@
 package com.nikhil.yt.ui.component
 
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.FlingBehavior
 import androidx.compose.foundation.gestures.ScrollScope
@@ -115,7 +112,7 @@ internal class DetailHeaderMotionState(
     fun geometry(): DetailTitleGeometry? {
         if (!overlayReady()) return null
         val layout = layout() ?: return null
-        return detailTitleGeometry(progress, compactTitleScale, layout.size.width.toFloat(),
+        return detailTitleGeometry(titleTravelProgress, compactTitleScale, layout.size.width.toFloat(),
             layout.size.height.toFloat(), layout.getLineLeft(0), layout.firstBaseline,
             layout.getLineBottom(0) - layout.getLineTop(0),
             if (sourceCenter.isSpecified) sourceCenter else target.center,
@@ -276,6 +273,20 @@ internal class DetailHeaderMotionState(
                 fallback, restArtworkBottomPx, toolbarBottomPx, toolbarHeightPx)
         }
     }
+    // Text follows actual scroll distance, not the eased photograph opacity.
+    // The old quintic drove a barely moving title followed by a sudden catch-up.
+    private val titleTravelProgress by derivedStateOf {
+        detailTitleTravelFraction(
+            scroll.firstVisibleItemIndex,
+            scroll.firstVisibleItemScrollOffset,
+            restArtworkBottomPx,
+            toolbarBottomPx,
+            !headerPresence.value,
+        )
+    }
+    fun titleTravelProgress() = titleTravelProgress
+    fun hairlineReveal() = detailHeaderHairlineFraction(titleTravelProgress)
+
     /**
      * Return the nearest fully opened/closed collection-toolbar stop only
      * when the user releases inside the actual measured hand-off region.
@@ -307,8 +318,31 @@ internal class DetailHeaderMotionState(
     // The single moving title is opaque, but the PHOTO retains its original measured scroll dissolve.
     fun artworkAlpha() = 1f - progress
     fun toolbarTitleAlpha() = progress
-    fun compactTitleAlpha() = if (progress >= 1f) 1f else 0f
+    fun compactTitleAlpha() = if (titleTravelProgress >= 1f) 1f else 0f
     fun coverTitleAlpha() = 1f - compactTitleAlpha()
+}
+
+/**
+ * Geometry-only progress of the shared title. Reversible mid-gesture and
+ * independently measured from the static, non-linear artwork dissolve.
+ */
+internal fun detailTitleTravelFraction(
+    firstVisibleItemIndex: Int,
+    offsetPx: Int,
+    artworkBottomPx: Float,
+    toolbarBottomPx: Float,
+    forceCompact: Boolean = false,
+): Float {
+    if (forceCompact || firstVisibleItemIndex > 0) return 1f
+    if (!artworkBottomPx.isFinite() || !toolbarBottomPx.isFinite()) return 0f
+    val distance = (artworkBottomPx - toolbarBottomPx - 1f).coerceAtLeast(1f)
+    return (offsetPx.toFloat() / distance).coerceIn(0f, 1f)
+}
+
+/** Reveal across the last 5% of title travel, never on a delayed timer. */
+internal fun detailHeaderHairlineFraction(progress: Float): Float {
+    val t = ((progress.coerceIn(0f, 1f) - .95f) / .05f).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
 }
 
 /**
@@ -581,28 +615,16 @@ internal fun DetailTopAppBar(
 ) {
     val foreground = if (forceOpaque) StandardChrome.text else
         lerp(Color.White, StandardChrome.text, motion.artworkFade())
-    // The moving headline crosses the toolbar's bottom edge on its last
-    // few frames. A scroll-coupled line can strike through its glyphs there.
-    // Only begin a gentle fade after the SAME title has reached the compact
-    // anchor. This no longer adds a separate delay to the title because its
-    // magnet starts immediately with release instead of after native decay.
-    // Reverse scroll interrupts and fades the rule back out smoothly.
-    val dividerDocked by remember(motion, forceOpaque) {
-        derivedStateOf { forceOpaque || motion.compactTitleAlpha() == 1f }
-    }
-    val dividerReveal by animateFloatAsState(
-        targetValue = if (dividerDocked) 1f else 0f,
-        animationSpec = tween(
-            durationMillis = 350,
-            easing = CubicBezierEasing(0.17f, 0.85f, 0.23f, 1f),
-        ),
-        label = "detail-toolbar-hairline",
-    )
+    // The same measured scroll renders the title and the rule. No separate
+    // 350ms post-dock animation, so releasing the finger cannot reveal it late.
+
     Box(modifier.fillMaxSize().onGloballyPositioned { motion.overlayOrigin = it.positionInRoot() }) {
     TopAppBar(
         modifier = Modifier.onGloballyPositioned(motion::measureToolbar)
             .artistStyleDetailBackdrop(motion, surfaceColor, forceOpaque)
-            .capsuleTopBarHairline(StandardChrome.muted) { dividerReveal },
+            .capsuleTopBarHairline(StandardChrome.muted) {
+                if (forceOpaque) 1f else motion.hairlineReveal()
+            },
         windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
         expandedHeight = ArtistToolbarCompactHeight,
         colors = TopAppBarDefaults.topAppBarColors(
