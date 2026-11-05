@@ -103,7 +103,8 @@ class ReleaseChromePolishRegressionTest {
     @Test fun playlistCreateFabIsReachableAtRestInGridAndList() {
         val page = source("ui/screens/library/LibraryPlaylistsScreen.kt")
         assertEquals(1, page.split("PersistentPlaylistAction(").size - 1)
-        assertTrue(page.contains("visible = !canReorderPlaylists && !showCreatePlaylistDialog"))
+        assertTrue(page.contains("visible = !reorderableState.isAnyItemDragging && !showCreatePlaylistDialog"))
+        assertFalse(page.contains("visible = !canReorderPlaylists && !showCreatePlaylistDialog"))
         assertFalse(page.contains("ScrollActionButton("))
         assertFalse(page.contains("HideOnScrollFAB("))
         assertTrue(page.contains("showCreatePlaylistDialog = true"))

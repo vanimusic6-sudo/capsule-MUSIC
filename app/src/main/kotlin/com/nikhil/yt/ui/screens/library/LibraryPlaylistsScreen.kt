@@ -871,9 +871,11 @@ fun LibraryPlaylistsScreen(
         }
 
         // A single root-level FAB works in both grid and list, even when
-        // the user scrolls down. Suppress it only during explicit reordering.
+        // the user scrolls down or simply enables reorder mode. The old FAB
+        // was always available outside an *active* drag; hiding it for the
+        // entire lock/unlock mode made it disappear for some saved states.
         PersistentPlaylistAction(
-            visible = !canReorderPlaylists && !showCreatePlaylistDialog,
+            visible = !reorderableState.isAnyItemDragging && !showCreatePlaylistDialog,
             icon = R.drawable.add,
             onClick = { showCreatePlaylistDialog = true },
         )
