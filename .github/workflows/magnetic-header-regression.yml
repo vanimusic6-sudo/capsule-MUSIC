@@ -1,7 +1,7 @@
 name: Capsule Magnetic Header / FAB Regression
 on:
   push:
-    branches: ['fix/magnetic-chrome-and-library-fab-20261105']
+    branches: ['fix/magnetic-chrome-and-library-fab-20261105', 'fix/pre-player-motion-fab-restoration-20261105']
   workflow_dispatch:
 permissions:
   contents: read
