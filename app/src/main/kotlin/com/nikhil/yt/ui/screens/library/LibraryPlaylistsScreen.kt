@@ -106,7 +106,7 @@ import com.nikhil.yt.constants.PlaylistTagsFilterKey
 import com.nikhil.yt.db.entities.Playlist
 import com.nikhil.yt.db.entities.PlaylistEntity
 import com.nikhil.yt.ui.component.CreatePlaylistDialog
-import com.nikhil.yt.ui.component.ScrollActionButton
+import com.nikhil.yt.ui.component.PersistentPlaylistAction
 import com.nikhil.yt.ui.component.LibraryPlaylistGridItem
 import com.nikhil.yt.ui.component.LibraryPlaylistListItem
 import com.nikhil.yt.ui.component.LocalMenuState
@@ -731,13 +731,7 @@ fun LibraryPlaylistsScreen(
                     }
                 }
 
-                ScrollActionButton(
-                    visible = !canReorderPlaylists,
-                    icon = R.drawable.add,
-                    onClick = {
-                        showCreatePlaylistDialog = true
-                    },
-                )
+
             }
 
             LibraryViewType.GRID -> {
@@ -872,15 +866,17 @@ fun LibraryPlaylistsScreen(
                     }
                 }
 
-                ScrollActionButton(
-                    visible = !canReorderPlaylists,
-                    icon = R.drawable.add,
-                    onClick = {
-                        showCreatePlaylistDialog = true
-                    },
-                )
+
             }
         }
+
+        // A single root-level FAB works in both grid and list, even when
+        // the user scrolls down. Suppress it only during explicit reordering.
+        PersistentPlaylistAction(
+            visible = !canReorderPlaylists && !showCreatePlaylistDialog,
+            icon = R.drawable.add,
+            onClick = { showCreatePlaylistDialog = true },
+        )
 
         PullToRefreshDefaults.Indicator(
             isRefreshing = isRefreshing,

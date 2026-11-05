@@ -19,6 +19,8 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
@@ -112,5 +114,46 @@ internal fun BoxScope.ScrollActionButton(
                 },
             )
         }
+    }
+}
+
+/**
+ * Persistent playlist shortcut, mounted once in the destination's ROOT Box.
+ *
+ * The earlier two AnimatedVisibility FAB instances belonged to the list/grid
+ * branches, and could disappear when the selected layout/scroll mode changed.
+ * This button remains present at rest and during ordinary scrolling. Insets
+ * keep it above the Capsule mini-player and bottom navigation.
+ */
+@Composable
+internal fun BoxScope.PersistentPlaylistAction(
+    visible: Boolean,
+    @DrawableRes icon: Int,
+    onClick: () -> Unit,
+) {
+    if (!visible) return
+    FloatingActionButton(
+        onClick = onClick,
+        modifier = Modifier
+            .align(Alignment.BottomEnd)
+            .windowInsetsPadding(
+                LocalPlayerAwareWindowInsets.current.only(
+                    WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal,
+                ),
+            )
+            .padding(end = 18.dp, bottom = 18.dp)
+            .testTag("capsule:playlist-floating-action"),
+        shape = RoundedCornerShape(18.dp),
+        containerColor = StandardChrome.selected,
+        contentColor = StandardChrome.text,
+    ) {
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = when (icon) {
+                R.drawable.library_add -> stringResource(R.string.action_like)
+                R.drawable.library_add_check -> stringResource(R.string.action_remove_like)
+                else -> stringResource(R.string.create_playlist)
+            },
+        )
     }
 }

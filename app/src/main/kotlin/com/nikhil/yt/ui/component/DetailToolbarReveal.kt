@@ -581,14 +581,12 @@ internal fun DetailTopAppBar(
     // Do not show the line while the SAME title is travelling across it.
     // Observe only docked/undocked state: animation runs once per transition,
     // not on each scroll pixel, and leaves the title unobstructed in flight.
-    val dividerDocked by remember(motion, forceOpaque) {
-        derivedStateOf { forceOpaque || motion.compactTitleAlpha() == 1f }
-    }
-    val dividerReveal by animateFloatAsState(
-        targetValue = if (dividerDocked) 1f else 0f,
-        animationSpec = tween(durationMillis = 220, easing = CubicBezierEasing(0.2f, 0f, 0.2f, 1f)),
-        label = "detail-toolbar-hairline",
-    )
+    // Couple the line to title/cover scroll directly: a Boolean transition
+    // previously began only AFTER docking, looking like a late flash.
+    // The bottom-edge hairline remains almost invisible until the moving title
+    // is safely inside its compact toolbar target.
+    val dividerReveal = if (forceOpaque) 1f
+        else ((motion.artworkFade() - .83f) / .17f).coerceIn(0f, 1f)
     Box(modifier.fillMaxSize().onGloballyPositioned { motion.overlayOrigin = it.positionInRoot() }) {
     TopAppBar(
         modifier = Modifier.onGloballyPositioned(motion::measureToolbar)

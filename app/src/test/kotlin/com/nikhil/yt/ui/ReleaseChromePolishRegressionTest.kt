@@ -83,8 +83,9 @@ class ReleaseChromePolishRegressionTest {
 
     @Test fun playlistCreateFabIsReachableAtRestInGridAndList() {
         val page = source("ui/screens/library/LibraryPlaylistsScreen.kt")
-        assertEquals(2, page.split("ScrollActionButton(").size - 1)
-        assertEquals(2, page.split("visible = !canReorderPlaylists").size - 1)
+        assertEquals(1, page.split("PersistentPlaylistAction(").size - 1)
+        assertTrue(page.contains("visible = !canReorderPlaylists && !showCreatePlaylistDialog"))
+        assertFalse(page.contains("ScrollActionButton("))
         assertFalse(page.contains("HideOnScrollFAB("))
         assertTrue(page.contains("showCreatePlaylistDialog = true"))
     }
@@ -97,7 +98,7 @@ class ReleaseChromePolishRegressionTest {
         assertTrue("Both hero and FAB must share the same bookmark action",
             remote.contains("onClick = toggleLibraryBookmark,"))
         assertTrue("The floating save button must stay above nav and mini-player",
-            remote.contains("ScrollActionButton("))
+            remote.contains("PersistentPlaylistAction("))
         assertTrue(remote.contains("R.drawable.library_add_check else R.drawable.library_add"))
         val container = source("ui/component/AlbumLayout.kt")
         val album = source("ui/screens/AlbumScreen.kt")

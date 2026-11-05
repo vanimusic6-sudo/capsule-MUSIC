@@ -12,7 +12,7 @@ import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.foundation.clickable
 import com.nikhil.yt.playback.queues.ListQueue
 import com.nikhil.yt.ui.component.PlaylistAction
-import com.nikhil.yt.ui.component.ScrollActionButton
+import com.nikhil.yt.ui.component.PersistentPlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
 import com.nikhil.yt.ui.menu.CapsuleCollectionDownloadButton
 import com.nikhil.yt.ui.component.rememberCollectionDownloadState
@@ -717,7 +717,7 @@ fun OnlinePlaylistScreen(
         // Floating SAVE-to-library button belongs on a remote playlist,
         // above the mini-player/navigation chrome (and not in the library's
         // create-playlist list). Always reachable even after a long scroll.
-        ScrollActionButton(
+        PersistentPlaylistAction(
             visible = playlist?.id?.let { it != "LM" } == true &&
                 !isLoading && !selection && !isSearching,
             icon = if (dbPlaylist?.playlist?.bookmarkedAt != null)
