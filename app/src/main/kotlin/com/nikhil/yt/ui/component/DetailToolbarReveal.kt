@@ -320,7 +320,7 @@ internal class DetailHeaderMotionState(
      * Called at the START of a pre-fling handoff, not after the list goes
      * idle. The same spring is used by the direct FlingBehavior as fallback.
      */
-    suspend fun settleMissedRelease(targetPx: Int) {
+    suspend fun settleMissedRelease(targetPx: Int, initialVelocity: Float = 0f) {
         val delta = (targetPx - scroll.firstVisibleItemScrollOffset).toFloat()
         if (abs(delta) <= 0.75f || scroll.firstVisibleItemIndex != 0) return
         scroll.scroll {
@@ -330,6 +330,7 @@ internal class DetailHeaderMotionState(
             animation.animateTo(
                 targetValue = delta,
                 animationSpec = spring(dampingRatio = 1f, stiffness = 135f),
+                initialVelocity = initialVelocity.coerceIn(-850f, 850f),
             ) {
                 if (hitEdge) return@animateTo
                 val diff = value - consumedTotal
@@ -626,7 +627,7 @@ internal fun rememberDetailHeaderPreFlingConnection(
                 ?: return Velocity.Zero
             // The inherited vertical velocity belongs to this one handoff;
             // normal song-list flings go untouched when the title is docked.
-            motion.settleMissedRelease(target)
+            motion.settleMissedRelease(target, initialVelocity = -available.y)
             return Velocity(0f, available.y)
         }
     }
