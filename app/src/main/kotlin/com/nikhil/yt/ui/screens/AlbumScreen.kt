@@ -182,6 +182,7 @@ fun AlbumScreen(
     AlbumScreenLayout(
         background = surfaceColor,
         state = lazyListState,
+        flingBehavior = rememberDetailHeaderFlingBehavior(titleMotion),
         content = {
             val albumWithSongs = albumWithSongs
             val hasSongs = albumWithSongs?.songs?.isNotEmpty() == true
@@ -370,7 +371,7 @@ fun AlbumScreen(
                     item(key = "other_versions_list") {
                         LazyRow(
                             modifier = Modifier.fillMaxWidth().height(gridShelfHeight()),
-                            flingBehavior = rememberDetailHeaderFlingBehavior(titleMotion, enabled = true),
+                            flingBehavior = rememberCapsuleFlingBehavior(),
                             
                             overscrollEffect = null,
                         ) {

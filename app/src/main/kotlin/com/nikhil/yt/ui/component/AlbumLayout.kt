@@ -1,6 +1,7 @@
 package com.nikhil.yt.ui.component
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
+import androidx.compose.foundation.gestures.FlingBehavior
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -36,12 +37,13 @@ internal fun AlbumScreenLayout(
     background: Color,
     state: LazyListState,
     modifier: Modifier = Modifier,
+    flingBehavior: FlingBehavior = rememberCapsuleFlingBehavior(),
     content: LazyListScope.() -> Unit,
     topBar: @Composable BoxScope.() -> Unit,
 ) {
     Box(modifier.fillMaxSize().background(background)) {
         LazyColumn(
-            flingBehavior = rememberCapsuleFlingBehavior(),
+            flingBehavior = flingBehavior,
             overscrollEffect = null,
             state = state,
             contentPadding = LocalPlayerAwareWindowInsets.current
