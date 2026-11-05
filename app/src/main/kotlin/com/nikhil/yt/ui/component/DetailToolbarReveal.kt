@@ -449,7 +449,7 @@ internal fun detailHeaderSnapTargetPx(
     // Avoid permanently half-docked glyphs even one pixel after motion
     // begins. No snap is needed while the hero hasn't started collapsing.
     val inset = safeInsetPx.coerceIn(0f, 1f)
-    if (offsetPx <= start + inset || offsetPx >= end) return null
+    if (offsetPx < start + inset || offsetPx >= end) return null
     val halfway = start + (end - start) * 0.48f
     // A rounded-down fractional endpoint leaves progress < 1.0 forever.
     // Ceil guarantees a true final, opaque toolbar title on any density.
