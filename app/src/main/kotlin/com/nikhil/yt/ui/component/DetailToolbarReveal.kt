@@ -479,6 +479,7 @@ internal class DetailHeaderFlingBehavior(
 
         val movement = Animatable(0f)
         var applied = 0f
+        var reachedBound = false
         val duration = (260f + abs(delta) * 0.14f).roundToInt().coerceIn(260, 390)
         movement.animateTo(
             targetValue = delta,
@@ -487,11 +488,15 @@ internal class DetailHeaderFlingBehavior(
                 easing = CubicBezierEasing(0.22f, 0.0f, 0.18f, 1.0f),
             ),
         ) {
+            if (reachedBound) return@animateTo
             val requested = value - applied
             if (abs(requested) <= 0.001f) return@animateTo
             val consumed = scrollBy(requested)
             applied += consumed
-            if (abs(consumed - requested) > 1.25f) cancelAnimation()
+            // Animatable.animateTo's callback is not AnimationScope and
+            // cannot call cancelAnimation(). Guard subsequent frames instead:
+            // no more scroll writes after a native list bound is reached.
+            if (abs(consumed - requested) > 1.25f) reachedBound = true
         }
         return 0f
     }

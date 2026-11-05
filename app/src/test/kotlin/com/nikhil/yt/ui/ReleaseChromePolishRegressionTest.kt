@@ -75,7 +75,7 @@ class ReleaseChromePolishRegressionTest {
         assertTrue(motion.contains("override suspend fun ScrollScope.performFling(initialVelocity: Float)"))
         assertTrue(motion.contains("val remaining = with(native) { performFling(initialVelocity) }"))
         assertTrue(motion.contains("val consumed = scrollBy(requested)"))
-        assertTrue(motion.contains("if (abs(consumed - requested) > 1.25f) cancelAnimation()"))
+        assertTrue(motion.contains("if (abs(consumed - requested) > 1.25f) reachedBound = true"))
         assertFalse(motion.contains("rememberInfiniteTransition"))
     }
 

@@ -718,8 +718,8 @@ fun OnlinePlaylistScreen(
         // above the mini-player/navigation chrome (and not in the library's
         // create-playlist list). Always reachable even after a long scroll.
         ScrollActionButton(
-            visible = playlist != null && !isLoading && playlist.id != "LM" &&
-                !selection && !isSearching,
+            visible = playlist?.id?.let { it != "LM" } == true &&
+                !isLoading && !selection && !isSearching,
             icon = if (dbPlaylist?.playlist?.bookmarkedAt != null)
                 R.drawable.library_add_check else R.drawable.library_add,
             onClick = toggleLibraryBookmark,
