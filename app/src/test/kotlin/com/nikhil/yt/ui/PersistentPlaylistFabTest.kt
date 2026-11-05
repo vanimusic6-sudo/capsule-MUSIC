@@ -19,7 +19,10 @@ import androidx.compose.ui.unit.dp
 import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.R
 import com.nikhil.yt.ui.component.PersistentPlaylistAction
+import com.nikhil.yt.ui.component.ScrollFabDirectionTracker
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -33,6 +36,17 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PersistentPlaylistFabTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    @Test fun downwardScrollHidesFabAndUpwardScrollRestoresWithJitterProtection() {
+        val tracker = ScrollFabDirectionTracker(12f)
+        assertTrue(tracker.sample(false, 0, 0))
+        assertTrue(tracker.sample(true, 0, 5)) // no flicker before threshold
+        assertFalse(tracker.sample(true, 0, 13)) // down
+        assertFalse(tracker.sample(true, 0, 11)) // tiny reverse
+        assertTrue(tracker.sample(true, 0, 0)) // up
+        assertFalse(tracker.sample(true, 1, 0)) // advancing to next item
+        assertTrue(tracker.sample(false, 1, 0)) // idle returns
+    }
 
     @Test fun createAndSaveActionsAreVisibleAndClickableAboveTheContent() {
         var visible by mutableStateOf(true)
