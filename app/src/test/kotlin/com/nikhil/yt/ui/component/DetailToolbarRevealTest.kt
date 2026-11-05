@@ -13,6 +13,22 @@ class DetailToolbarRevealTest {
     private fun fade(index: Int, offset: Int, bottom: Float = 600f, bar: Float = 100f) =
         detailArtworkFadeLikeArtist(index, offset, bottom, bar)
 
+    @Test fun titleFollowsMeasuredDistanceInsteadOfEasedPhotoAlpha() {
+        assertEquals(0f, detailTitleTravelFraction(0, 0, 601f, 100f), 0f)
+        assertEquals(.20f, detailTitleTravelFraction(0, 100, 601f, 100f), .0001f)
+        assertEquals(.75f, detailTitleTravelFraction(0, 375, 601f, 100f), .0001f)
+        assertEquals(1f, detailTitleTravelFraction(0, 500, 601f, 100f), 0f)
+        assertEquals(1f, detailTitleTravelFraction(1, 0, 601f, 100f), 0f)
+        assertEquals(1f, detailTitleTravelFraction(0, 0, Float.NaN, 100f, true), 0f)
+        assertEquals(0f, detailTitleTravelFraction(0, 100, Float.NaN, 100f), 0f)
+
+        assertEquals(0f, detailHeaderHairlineFraction(.94f), 0f)
+        assertEquals(.5f, detailHeaderHairlineFraction(.975f), .0001f)
+        assertEquals(1f, detailHeaderHairlineFraction(1f), 0f)
+        val samples = (0..100).map { detailHeaderHairlineFraction(it / 100f) }
+        assertTrue(samples.zipWithNext().all { (a, b) -> b >= a })
+    }
+
     @Test fun initialHeaderPresenceNeverDependsOnImageCallbacks() {
         val motion = DetailHeaderMotionState(LazyListState(), Density(1f))
         assertEquals(1f, motion.artworkAlpha(), 0f)
