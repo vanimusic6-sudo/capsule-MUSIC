@@ -578,15 +578,23 @@ internal fun DetailTopAppBar(
 ) {
     val foreground = if (forceOpaque) StandardChrome.text else
         lerp(Color.White, StandardChrome.text, motion.artworkFade())
-    // Do not show the line while the SAME title is travelling across it.
-    // Observe only docked/undocked state: animation runs once per transition,
-    // not on each scroll pixel, and leaves the title unobstructed in flight.
-    // Couple the line to title/cover scroll directly: a Boolean transition
-    // previously began only AFTER docking, looking like a late flash.
-    // The bottom-edge hairline remains almost invisible until the moving title
-    // is safely inside its compact toolbar target.
-    val dividerReveal = if (forceOpaque) 1f
-        else ((motion.artworkFade() - .83f) / .17f).coerceIn(0f, 1f)
+    // The moving headline crosses the toolbar's bottom edge on its last
+    // few frames. A scroll-coupled line can strike through its glyphs there.
+    // Only begin a gentle fade after the SAME title has reached the compact
+    // anchor. This no longer adds a separate delay to the title because its
+    // magnet starts immediately with release instead of after native decay.
+    // Reverse scroll interrupts and fades the rule back out smoothly.
+    val dividerDocked by remember(motion, forceOpaque) {
+        derivedStateOf { forceOpaque || motion.compactTitleAlpha() == 1f }
+    }
+    val dividerReveal by animateFloatAsState(
+        targetValue = if (dividerDocked) 1f else 0f,
+        animationSpec = tween(
+            durationMillis = 350,
+            easing = CubicBezierEasing(0.17f, 0.85f, 0.23f, 1f),
+        ),
+        label = "detail-toolbar-hairline",
+    )
     Box(modifier.fillMaxSize().onGloballyPositioned { motion.overlayOrigin = it.positionInRoot() }) {
     TopAppBar(
         modifier = Modifier.onGloballyPositioned(motion::measureToolbar)

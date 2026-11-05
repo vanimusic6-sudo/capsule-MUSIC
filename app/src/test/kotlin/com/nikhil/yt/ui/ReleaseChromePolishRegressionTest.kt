@@ -96,8 +96,11 @@ class ReleaseChromePolishRegressionTest {
         assertTrue(fade.contains("val start = 0.55f"))
         assertTrue(fade.contains("ease.pow(4.6f)"))
         val bar = source("ui/component/DetailToolbarReveal.kt")
-        assertFalse(bar.contains("val dividerDocked by remember(motion, forceOpaque)"))
-        assertTrue(bar.contains("val dividerReveal = if (forceOpaque) 1f"))
+        assertTrue(bar.contains("val dividerDocked by remember(motion, forceOpaque)"))
+        assertTrue(bar.contains("forceOpaque || motion.compactTitleAlpha() == 1f"))
+        assertTrue(bar.contains("durationMillis = 350"))
+        assertFalse("Line must not follow raw artwork scroll across moving glyphs",
+            bar.contains("val dividerReveal = if (forceOpaque) 1f"))
     }
 
     @Test fun playlistCreateFabIsReachableAtRestInGridAndList() {
