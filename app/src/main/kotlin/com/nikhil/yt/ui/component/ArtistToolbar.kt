@@ -44,7 +44,7 @@ internal fun artistToolbarSurfaceAlpha(artworkFade: Float): Float {
     // bar. The old binary 0->1 switch created a hard dark horizontal edge.
     // Start after most of the portrait has already faded to avoid stacking
     // two strong black scrims over still-visible artwork.
-    val t = ((artworkFade.coerceIn(0f, 1f) - .68f) / .32f).coerceIn(0f, 1f)
+    val t = ((artworkFade.coerceIn(0f, 1f) - .82f) / .18f).coerceIn(0f, 1f)
     return t * t * (3f - 2f * t)
 }
 

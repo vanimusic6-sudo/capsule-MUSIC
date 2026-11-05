@@ -30,6 +30,10 @@ class ReleaseChromePolishRegressionTest {
         assertNull(detailHeaderSnapTargetPx(600, 400f))
         assertNull(detailHeaderSnapTargetPx(100, Float.NaN))
         assertNull(detailHeaderSnapTargetPx(100, -1f))
+        assertEquals("Positive release scroll velocity must dock without pause",
+            399, detailHeaderSnapTargetPx(90, 400f, 1f, 1000f))
+        assertEquals("Reverse release velocity must unfold without pause",
+            0, detailHeaderSnapTargetPx(300, 400f, 1f, -1000f))
     }
 
     @Test fun titleBreathGentlyStretchesOnlyInFlightAndReturnsToExactAnchors() {
@@ -75,10 +79,25 @@ class ReleaseChromePolishRegressionTest {
             motion.contains("snapshotFlow { !listState.isScrollInProgress }"))
         assertFalse(motion.contains("scroll.animateScrollBy("))
         assertTrue(motion.contains("override suspend fun ScrollScope.performFling(initialVelocity: Float)"))
-        assertTrue(motion.contains("val remaining = with(native) { performFling(initialVelocity) }"))
-        assertTrue(motion.contains("val consumed = scrollBy(requested)"))
-        assertTrue(motion.contains("if (abs(consumed - requested) > 1.25f) reachedBound = true"))
+        assertTrue(motion.contains("val delta = motion.idleHandoffDeltaPx(initialVelocity)"))
+        assertTrue(motion.contains("return with(native) { performFling(initialVelocity) }"))
+        assertTrue(motion.contains("initialVelocity = initialVelocity.coerceIn(-1_600f, 1_600f)"))
+        assertTrue(motion.contains("val consumed = scrollBy(diff)"))
+        assertFalse("Native fling must NOT finish before magnet begins",
+            motion.contains("val remaining = with(native) { performFling(initialVelocity) }"))
         assertFalse(motion.contains("rememberInfiniteTransition"))
+    }
+
+    @Test fun photoToToolbarRestoresAContinuousFadeWithoutSuddenBlackBand() {
+        val helper = source("ui/component/ArtistToolbar.kt")
+        assertTrue(helper.contains("val t = ((artworkFade.coerceIn(0f, 1f)"))
+        assertFalse(helper.contains("return if (artworkFade >= 1f) 1f else 0f"))
+        val fade = source("ui/component/ArtworkSurfaceFade.kt")
+        assertTrue(fade.contains("val start = 0.55f"))
+        assertTrue(fade.contains("ease.pow(4.6f)"))
+        val bar = source("ui/component/DetailToolbarReveal.kt")
+        assertFalse(bar.contains("val dividerDocked by remember(motion, forceOpaque)"))
+        assertTrue(bar.contains("val dividerReveal = if (forceOpaque) 1f"))
     }
 
     @Test fun playlistCreateFabIsReachableAtRestInGridAndList() {
