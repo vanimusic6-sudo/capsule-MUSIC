@@ -81,7 +81,7 @@ class ReleaseChromePolishRegressionTest {
         assertTrue(motion.contains("override suspend fun ScrollScope.performFling(initialVelocity: Float)"))
         assertTrue(motion.contains("val delta = motion.idleHandoffDeltaPx(initialVelocity)"))
         assertTrue(motion.contains("return with(native) { performFling(initialVelocity) }"))
-        assertTrue(motion.contains("initialVelocity = initialVelocity.coerceIn(-1_600f, 1_600f)"))
+        assertTrue(motion.contains("initialVelocity = initialVelocity.coerceIn(-850f, 850f)"))
         assertTrue(motion.contains("val consumed = scrollBy(diff)"))
         assertFalse("Native fling must NOT finish before magnet begins",
             motion.contains("val remaining = with(native) { performFling(initialVelocity) }"))
@@ -93,13 +93,14 @@ class ReleaseChromePolishRegressionTest {
         assertTrue(helper.contains("val t = ((artworkFade.coerceIn(0f, 1f)"))
         assertFalse(helper.contains("return if (artworkFade >= 1f) 1f else 0f"))
         val fade = source("ui/component/ArtworkSurfaceFade.kt")
-        assertTrue(fade.contains("val start = 0.55f"))
-        assertTrue(fade.contains("ease.pow(4.6f)"))
+        assertTrue(fade.contains("val start = 0.36f"))
+        assertTrue(fade.contains("ease.pow(1.65f)"))
         val bar = source("ui/component/DetailToolbarReveal.kt")
-        assertTrue(bar.contains("val dividerDocked by remember(motion, forceOpaque)"))
-        assertTrue(bar.contains("forceOpaque || motion.compactTitleAlpha() == 1f"))
-        assertTrue(bar.contains("durationMillis = 350"))
-        assertFalse("Line must not follow raw artwork scroll across moving glyphs",
+        assertTrue(bar.contains("fun hairlineReveal() = detailHeaderHairlineFraction(titleTravelProgress)"))
+        assertTrue(bar.contains("if (forceOpaque) 1f else motion.hairlineReveal()"))
+        assertFalse("A second delayed hairline animation makes the UI feel stuck",
+            bar.contains("durationMillis = 350"))
+        assertFalse("Line must not follow an unrelated artwork-opacity curve",
             bar.contains("val dividerReveal = if (forceOpaque) 1f"))
     }
 
