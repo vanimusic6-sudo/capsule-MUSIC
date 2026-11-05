@@ -40,6 +40,8 @@ import com.nikhil.yt.ui.screens.albumHasHeroHeader
 import com.nikhil.yt.viewmodels.AlbumUiState
 import kotlinx.coroutines.runBlocking
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.swipeDown
 import java.io.File
 import org.junit.Assert.*
 import org.junit.Rule
@@ -90,7 +92,7 @@ class CollectionHeaderMotionTest {
         // Reproduces the regression that the previous pre-fling handler
         // did NOT test: touch actually starts on the fullscreen artwork.
         compose.onNodeWithTag("capsule:detail-artwork").performTouchInput {
-            swipeUp(startY = size.height * .80f, endY = size.height * .22f, durationMillis = 330)
+            swipeUp(startY = height * .80f, endY = height * .22f, durationMillis = 330)
         }
         compose.waitForIdle()
         var offsetAfter = 0
@@ -101,7 +103,7 @@ class CollectionHeaderMotionTest {
         }
         // New touch must interrupt docking and restore scroll immediately.
         compose.onNodeWithTag("gesture-screen").performTouchInput {
-            swipeDown(startY = size.height * .30f, endY = size.height * .75f, durationMillis = 330)
+            swipeDown(startY = height * .30f, endY = height * .75f, durationMillis = 330)
         }
         compose.waitForIdle()
         compose.runOnIdle {
