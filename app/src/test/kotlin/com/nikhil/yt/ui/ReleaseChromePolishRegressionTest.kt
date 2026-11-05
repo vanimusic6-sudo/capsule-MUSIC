@@ -21,7 +21,7 @@ class ReleaseChromePolishRegressionTest {
 
     @Test fun collectionHeaderSettlesOnlyInThePartialHandoffWindow() {
         assertNull(detailHeaderSnapTargetPx(0, 400f, 10f))
-        assertNull(detailHeaderSnapTargetPx(40, 400f, 10f)) // small peek
+        assertEquals(0, detailHeaderSnapTargetPx(40, 400f, 10f)) // small peek settles open
         assertEquals(0, detailHeaderSnapTargetPx(49, 400f, 10f))
         assertEquals(0, detailHeaderSnapTargetPx(90, 400f, 10f))
         assertEquals(399, detailHeaderSnapTargetPx(300, 400f, 10f))
