@@ -19,6 +19,8 @@ import com.nikhil.yt.ui.component.DetailTopAppBar
 import com.nikhil.yt.ui.component.DetailToolbarTitle
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
 import com.nikhil.yt.ui.component.rememberDetailHeaderFlingBehavior
+import com.nikhil.yt.ui.component.rememberDetailHeaderPreFlingConnection
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import android.annotation.SuppressLint
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -367,9 +369,18 @@ fun LocalPlaylistScreen(
 
 
 
+        val titleMotion = rememberDetailHeaderMotion(
+            state = lazyListState,
+            hasHeader = playlist != null && !isSearching,
+            contentIdentity = viewModel.playlistId,
+        )
+
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .nestedScroll(rememberDetailHeaderPreFlingConnection(
+                titleMotion, enabled = !reorderableState.isAnyItemDragging && !isSearching,
+            ))
             .background(surfaceColor)
             .pullToRefresh(
                 state = pullRefreshState,
@@ -379,11 +390,6 @@ fun LocalPlaylistScreen(
     ) {
 
 
-        val titleMotion = rememberDetailHeaderMotion(
-            state = lazyListState,
-            hasHeader = playlist != null && !isSearching,
-            contentIdentity = viewModel.playlistId,
-        )
 
 
         LazyColumn(

@@ -83,8 +83,17 @@ class ReleaseChromePolishRegressionTest {
         assertTrue(motion.contains("return with(native) { performFling(initialVelocity) }"))
         assertFalse("Never bypass the magnet on a very fast row gesture",
             motion.contains("abs(initialVelocity) > 6_000f"))
-        assertTrue("Catch nested child gestures that never deliver a fling callback",
+        assertTrue("Handle row-origin releases BEFORE the child's fling starts",
+            motion.contains("override suspend fun onPreFling(available: Velocity): Velocity"))
+        assertTrue("Handle row-origin drags without waiting for the list to stop",
             motion.contains("motion.settleMissedRelease(target)"))
+        assertFalse("Never schedule title settlement after the list becomes idle",
+            motion.contains("snapshotFlow {"))
+        val pagesWithParentConnection = pages.map(::source)
+        pagesWithParentConnection.forEach { file ->
+            assertTrue("A parent nestedScroll pre-fling connection is required on every page",
+                file.contains("rememberDetailHeaderPreFlingConnection(titleMotion"))
+        }
         assertTrue(motion.contains("initialVelocity = initialVelocity.coerceIn(-850f, 850f)"))
         assertTrue(motion.contains("val consumed = scrollBy(diff)"))
         assertFalse("Native fling must NOT finish before magnet begins",

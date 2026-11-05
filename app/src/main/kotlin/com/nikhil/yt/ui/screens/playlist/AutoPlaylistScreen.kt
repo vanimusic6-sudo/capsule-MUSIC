@@ -15,6 +15,8 @@ import com.nikhil.yt.ui.component.DetailTopAppBar
 import com.nikhil.yt.ui.component.DetailToolbarTitle
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
 import com.nikhil.yt.ui.component.rememberDetailHeaderFlingBehavior
+import com.nikhil.yt.ui.component.rememberDetailHeaderPreFlingConnection
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
 import com.nikhil.yt.ui.menu.CapsuleCollectionDownloadButton
@@ -227,18 +229,20 @@ fun AutoPlaylistScreen(
 
 
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(surfaceColor),
-    ) {
-
-
         val titleMotion = rememberDetailHeaderMotion(
             state = lazyListState,
             hasHeader = (songs?.isNotEmpty() == true || externalSaved.isNotEmpty()) && !isSearching,
             contentIdentity = playlistId,
         )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .nestedScroll(rememberDetailHeaderPreFlingConnection(titleMotion))
+            .background(surfaceColor),
+    ) {
+
+
 
 
         LazyColumn(

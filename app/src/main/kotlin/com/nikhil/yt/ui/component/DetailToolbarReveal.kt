@@ -1,11 +1,9 @@
 package com.nikhil.yt.ui.component
 
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.snapshotFlow
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.collect
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.FlingBehavior
@@ -318,13 +316,9 @@ internal class DetailHeaderMotionState(
         idleHandoffSnapOffset(initialVelocity)
             ?.let { (it - scroll.firstVisibleItemScrollOffset).toFloat() }
 
-    fun isScrolling(): Boolean = scroll.isScrollInProgress
-
     /**
-     * Backup for drag end gestures where a child song-row or nested scroll
-     * consumes the fling before our FlingBehavior sees it. Only runs after
-     * the list is idle and only while the image/title is BETWEEN anchors.
-     * UserInput has higher priority than this Default-priority settle.
+     * Called at the START of a pre-fling handoff, not after the list goes
+     * idle. The same spring is used by the direct FlingBehavior as fallback.
      */
     suspend fun settleMissedRelease(targetPx: Int) {
         val delta = (targetPx - scroll.firstVisibleItemScrollOffset).toFloat()
@@ -592,32 +586,49 @@ internal fun rememberDetailHeaderFlingBehavior(
     enabled: Boolean = true,
 ): FlingBehavior {
     val native = rememberCapsuleFlingBehavior()
-    // Fallback for fling-free row drags / nested child consumption. Native
-    // drag and primary magnet execute before this observer sees an idle list.
-    // A child job is independently cancelled by new touch input and cannot
-    // kill the long-lived observer when the user interrupts the spring.
-    LaunchedEffect(motion, enabled) {
-        if (!enabled) return@LaunchedEffect
-        var lastAttemptedTarget: Int? = null
-        var pendingSettle: Job? = null
-        snapshotFlow {
-            val scrolling = motion.isScrolling()
-            scrolling to if (scrolling) null else motion.idleHandoffSnapOffset()
-        }.collect { (scrolling, target) ->
-            if (scrolling) {
-                // Do not cancel an active settle here: it itself scrolls.
-                // The MutatorMutex cancels its child job on the next gesture.
-            } else if (target == null) {
-                lastAttemptedTarget = null
-            } else if (pendingSettle?.isActive != true && target != lastAttemptedTarget) {
-                lastAttemptedTarget = target
-                pendingSettle = launch { motion.settleMissedRelease(target) }
-            }
-        }
-    }
-    // Recreate only for an actual mode change, never for each scroll pixel.
     return remember(native, motion, enabled) {
         DetailHeaderFlingBehavior(native, motion) { enabled }
+    }
+}
+
+/**
+ * The release must be intercepted before the row or outer list starts its
+ * ordinary spline fling. Waiting for !isScrollInProgress reintroduces the
+ * visible stop-then-catch-up delay. Attach to the PARENT of the LazyColumn
+ * so a gesture starting on any song row reaches this onPreFling.
+ */
+@Composable
+internal fun rememberDetailHeaderPreFlingConnection(
+    motion: DetailHeaderMotionState,
+    enabled: Boolean = true,
+): NestedScrollConnection = remember(motion, enabled) {
+    object : NestedScrollConnection {
+        private var sawUserVerticalScroll = false
+
+        override fun onPostScroll(
+            consumed: Offset,
+            available: Offset,
+            source: NestedScrollSource,
+        ): Offset {
+            if (source == NestedScrollSource.UserInput &&
+                abs(consumed.y) + abs(available.y) > 0.5f
+            ) sawUserVerticalScroll = true
+            return Offset.Zero
+        }
+
+        override suspend fun onPreFling(available: Velocity): Velocity {
+            val hadDrag = sawUserVerticalScroll
+            sawUserVerticalScroll = false
+            if (!enabled || !hadDrag) return Velocity.Zero
+            // NestedScroll velocity is the pointer direction, while LazyList
+            // progress is positive when the finger swipes UP.
+            val target = motion.idleHandoffSnapOffset(initialVelocity = -available.y)
+                ?: return Velocity.Zero
+            // The inherited vertical velocity belongs to this one handoff;
+            // normal song-list flings go untouched when the title is docked.
+            motion.settleMissedRelease(target)
+            return Velocity(0f, available.y)
+        }
     }
 }
 
