@@ -88,6 +88,8 @@ import com.nikhil.yt.ui.component.AlbumGridItem
 import com.nikhil.yt.ui.component.AlbumListItem
 import com.nikhil.yt.ui.component.ArtistGridItem
 import com.nikhil.yt.ui.component.ArtistListItem
+import com.nikhil.yt.ui.component.CreatePlaylistDialog
+import com.nikhil.yt.ui.component.PersistentPlaylistAction
 import com.nikhil.yt.ui.component.LibraryPlaylistGridItem
 import com.nikhil.yt.ui.component.LibraryPlaylistListItem
 import com.nikhil.yt.ui.component.LocalMenuState
@@ -115,6 +117,10 @@ fun LibraryMixScreen(
     filterContent: @Composable () -> Unit,
     viewModel: LibraryMixViewModel = hiltViewModel(),
 ) {
+    var showCreatePlaylistDialog by rememberSaveable { mutableStateOf(false) }
+    if (showCreatePlaylistDialog) {
+        CreatePlaylistDialog(onDismiss = { showCreatePlaylistDialog = false })
+    }
     val menuState = LocalMenuState.current
     val haptic = LocalHapticFeedback.current
     val playerConnection = LocalPlayerConnection.current ?: return
@@ -955,5 +961,12 @@ fun LibraryMixScreen(
                     }
                 }
         }
+        // The default All tab is distinct from the filtered Playlists tab.
+        // Both must provide the same persistent create-playlist shortcut.
+        PersistentPlaylistAction(
+            visible = !showCreatePlaylistDialog,
+            icon = R.drawable.add,
+            onClick = { showCreatePlaylistDialog = true },
+        )
     }
 }
