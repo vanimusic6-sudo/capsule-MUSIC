@@ -29,6 +29,7 @@ jobs:
         run: |
           gradle :app:testUniversalDebugUnitTest \
             --tests 'com.nikhil.yt.ui.ReleaseChromePolishRegressionTest' \
+            --tests 'com.nikhil.yt.ui.PersistentPlaylistFabTest' \
             --tests 'com.nikhil.yt.ui.CollectionHeaderMotionTest' \
             --tests 'com.nikhil.yt.ui.ArtistHeroTest' \
             --tests 'com.nikhil.yt.ui.HomeScrollableHeaderTest' \
