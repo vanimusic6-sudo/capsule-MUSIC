@@ -86,7 +86,7 @@ class ReleaseChromePolishRegressionTest {
         assertTrue("Handle row-origin releases BEFORE the child's fling starts",
             motion.contains("override suspend fun onPreFling(available: Velocity): Velocity"))
         assertTrue("Handle row-origin drags without waiting for the list to stop",
-            motion.contains("motion.settleMissedRelease(target)"))
+            motion.contains("motion.settleMissedRelease(target, initialVelocity = -available.y)"))
         assertFalse("Never schedule title settlement after the list becomes idle",
             motion.contains("snapshotFlow {"))
         val pagesWithParentConnection = pages.map(::source)
