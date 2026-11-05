@@ -31,6 +31,7 @@ jobs:
             --tests 'com.nikhil.yt.ui.ReleaseChromePolishRegressionTest' \
             --tests 'com.nikhil.yt.ui.PersistentPlaylistFabTest' \
             --tests 'com.nikhil.yt.ui.CollectionHeaderMotionTest' \
+            --tests 'com.nikhil.yt.ui.component.DetailToolbarRevealTest' \
             --tests 'com.nikhil.yt.ui.ArtistHeroTest' \
             --tests 'com.nikhil.yt.ui.HomeScrollableHeaderTest' \
             --tests 'com.nikhil.yt.ui.ScrollFlingCatchRegressionTest' \
