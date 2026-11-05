@@ -538,11 +538,6 @@ internal fun detailHeaderSnapTargetPx(
 }
 
 /**
- * The magnet takes priority whenever the title is actually between anchors,
- * regardless of how fast the gesture began or whether it started on a row.
- * Past the handoff, ordinary song-list flings stay completely native.
- */
-/**
  * Single owner of collection-header snapping.
  *
  * The old design ran a custom LazyColumn FlingBehavior AND a nested onPreFling
@@ -624,14 +619,17 @@ internal class DetailHeaderGestureCoordinator(
         return Velocity.Zero
     }
 
-    override suspend fun onPostFling(consumed: Velocity, available: Velocity) {
-        if (!trackingNativeFling) return
-        trackingNativeFling = false
-        // Last-resort safeguard for an aborted native fling; not the usual
-        // trigger (which happens immediately onPreFling / during decay).
-        motion.idleHandoffSnapOffset(-available.y)?.let { target ->
-            startSnap(target, -available.y)
+    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+        if (trackingNativeFling) {
+            trackingNativeFling = false
+            // Last-resort safeguard for an aborted native fling, not the
+            // normal trigger (pre-fling or while decay crosses the hero).
+            motion.idleHandoffSnapOffset(-available.y)?.let { target ->
+                startSnap(target, -available.y)
+            }
         }
+        // A parent coordinator never takes additional post-fling velocity.
+        return Velocity.Zero
     }
 }
 
