@@ -90,6 +90,10 @@ class ReleaseChromePolishRegressionTest {
             motion.contains("trackingNativeFling && abs(consumed.y) > 0.01f"))
         assertTrue("Any reverse touch must cancel the ongoing spring",
             motion.contains("settleJob?.cancel()"))
+        assertTrue("Reverse drag pre-scroll must interrupt the spring before list input",
+            motion.contains("override fun onPreScroll("))
+        assertTrue("The movement belongs to a cancellable coroutine",
+            motion.contains("motion.settleToAnchor(target, initialVelocity = velocity)"))
         assertTrue("Dispose jobs with the destination",
             motion.contains("onDispose { coordinator.dispose() }"))
         assertFalse("An awaited onPreFling animation blocked reverse scrolling",
