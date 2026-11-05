@@ -61,7 +61,7 @@ class ReleaseChromePolishRegressionTest {
         assertTrue(samples.zipWithNext().all { (a, b) -> b >= a && b - a < .065f })
     }
 
-    @Test fun everyCollectionPageHasMagneticHandoffButListDragIsExcluded() {
+    @Test fun singleNonblockingGestureOwnerControlsEveryCollection() {
         val pages = listOf(
             "ui/screens/AlbumScreen.kt",
             "ui/screens/playlist/LocalPlaylistScreen.kt",
@@ -70,35 +70,36 @@ class ReleaseChromePolishRegressionTest {
             "ui/screens/playlist/CachePlaylistScreen.kt",
             "ui/screens/playlist/TopPlaylistScreen.kt",
         )
-        pages.forEach { file ->
-            assertTrue(file, source(file).contains("rememberDetailHeaderFlingBehavior(titleMotion"))
+        pages.forEach { path ->
+            val page = source(path)
+            assertTrue("Parent connection missing from $path",
+                page.contains("rememberDetailHeaderPreFlingConnection("))
+            assertTrue("Native song-list fling must remain responsive: $path",
+                page.contains("flingBehavior = rememberCapsuleFlingBehavior()"))
+            assertFalse("No second custom fling owner: $path",
+                page.contains("rememberDetailHeaderFlingBehavior("))
         }
         assertTrue(source(pages[1]).contains("!reorderableState.isAnyItemDragging"))
         val motion = source("ui/component/DetailToolbarReveal.kt")
-        assertFalse("Observer-driven snapping caused competing scroll mutations",
-            motion.contains("snapshotFlow { !listState.isScrollInProgress }"))
-        assertFalse(motion.contains("scroll.animateScrollBy("))
-        assertTrue(motion.contains("override suspend fun ScrollScope.performFling(initialVelocity: Float)"))
-        assertTrue(motion.contains("val delta = motion.idleHandoffDeltaPx(initialVelocity)"))
-        assertTrue(motion.contains("return with(native) { performFling(initialVelocity) }"))
-        assertFalse("Never bypass the magnet on a very fast row gesture",
-            motion.contains("abs(initialVelocity) > 6_000f"))
-        assertTrue("Handle row-origin releases BEFORE the child's fling starts",
-            motion.contains("override suspend fun onPreFling(available: Velocity): Velocity"))
-        assertTrue("Handle row-origin drags without waiting for the list to stop",
+        assertTrue(motion.contains("class DetailHeaderGestureCoordinator("))
+        assertTrue(motion.contains("override suspend fun onPreFling(available: Velocity): Velocity"))
+        assertTrue("Spring MUST be launched in a coroutine rather than awaited",
+            motion.contains("settleJob = scope.launch {"))
+        assertTrue(motion.contains("startSnap(target, listVelocity)"))
+        assertTrue("A fling starting in the song list must transfer before stopping",
+            motion.contains("trackingNativeFling && abs(consumed.y) > 0.01f"))
+        assertTrue("Any reverse touch must cancel the ongoing spring",
+            motion.contains("settleJob?.cancel()"))
+        assertTrue("Dispose jobs with the destination",
+            motion.contains("onDispose { coordinator.dispose() }"))
+        assertFalse("An awaited onPreFling animation blocked reverse scrolling",
             motion.contains("motion.settleMissedRelease(target, initialVelocity = -available.y)"))
-        assertFalse("Never schedule title settlement after the list becomes idle",
+        assertFalse("Remove old competing fling owner",
+            motion.contains("class DetailHeaderFlingBehavior("))
+        assertFalse("Remove observer which waited for the list to stop",
             motion.contains("snapshotFlow {"))
-        val pagesWithParentConnection = pages.map(::source)
-        pagesWithParentConnection.forEach { file ->
-            assertTrue("A parent nestedScroll pre-fling connection is required on every page",
-                file.contains("rememberDetailHeaderPreFlingConnection("))
-        }
-        assertTrue(motion.contains("initialVelocity = initialVelocity.coerceIn(-850f, 850f)"))
-        assertTrue(motion.contains("val consumed = scrollBy(diff)"))
-        assertFalse("Native fling must NOT finish before magnet begins",
+        assertFalse("No post-native-fling delay before the normal handoff",
             motion.contains("val remaining = with(native) { performFling(initialVelocity) }"))
-        assertFalse(motion.contains("rememberInfiniteTransition"))
     }
 
     @Test fun photoToToolbarRestoresAContinuousFadeWithoutSuddenBlackBand() {
@@ -140,7 +141,7 @@ class ReleaseChromePolishRegressionTest {
         val container = source("ui/component/AlbumLayout.kt")
         val album = source("ui/screens/AlbumScreen.kt")
         assertTrue("Album vertical LazyColumn owns snap", container.contains("flingBehavior = flingBehavior"))
-        assertTrue(album.contains("flingBehavior = rememberDetailHeaderFlingBehavior(titleMotion)"))
+        assertTrue(album.contains("flingBehavior = rememberCapsuleFlingBehavior()"))
         assertTrue("Album horizontal suggestion shelf must retain normal fling",
             album.contains("LazyRow(\n") && album.contains("flingBehavior = rememberCapsuleFlingBehavior()"))
     }

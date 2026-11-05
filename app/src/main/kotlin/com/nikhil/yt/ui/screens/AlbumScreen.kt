@@ -16,7 +16,6 @@ import com.nikhil.yt.ui.component.DetailHeroBottomSpacing
 import com.nikhil.yt.ui.component.DetailTopAppBar
 import com.nikhil.yt.ui.component.DetailToolbarTitle
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
-import com.nikhil.yt.ui.component.rememberDetailHeaderFlingBehavior
 import com.nikhil.yt.ui.component.rememberDetailHeaderPreFlingConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.nikhil.yt.ui.component.AlbumArtworkTopSpacing
@@ -185,7 +184,7 @@ fun AlbumScreen(
         background = surfaceColor,
         state = lazyListState,
         modifier = Modifier.nestedScroll(rememberDetailHeaderPreFlingConnection(titleMotion)),
-        flingBehavior = rememberDetailHeaderFlingBehavior(titleMotion),
+        flingBehavior = rememberCapsuleFlingBehavior(),
         content = {
             val albumWithSongs = albumWithSongs
             val hasSongs = albumWithSongs?.songs?.isNotEmpty() == true

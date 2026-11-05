@@ -23,7 +23,6 @@ import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.DetailTopAppBar
 import com.nikhil.yt.ui.component.DetailToolbarTitle
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
-import com.nikhil.yt.ui.component.rememberDetailHeaderFlingBehavior
 import com.nikhil.yt.ui.component.rememberDetailHeaderPreFlingConnection
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.activity.compose.BackHandler
@@ -304,7 +303,7 @@ fun OnlinePlaylistScreen(
 
 
         LazyColumn(
-            flingBehavior = rememberDetailHeaderFlingBehavior(titleMotion, enabled = !isSearching && !selection),
+            flingBehavior = rememberCapsuleFlingBehavior(),
             overscrollEffect = null,
             state = lazyListState,
             contentPadding =

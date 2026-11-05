@@ -13,6 +13,18 @@ class DetailToolbarRevealTest {
     private fun fade(index: Int, offset: Int, bottom: Float = 600f, bar: Float = 100f) =
         detailArtworkFadeLikeArtist(index, offset, bottom, bar)
 
+    @Test fun swipeFromSongsReachesTheHeroDuringNativeDecayWithoutADeadZone() {
+        val distance = 500f
+        // Same position, opposite finger direction: different endpoint.
+        assertEquals(499, detailHeaderSnapTargetPx(95, distance, 1f, 2800f))
+        assertEquals(0, detailHeaderSnapTargetPx(450, distance, 1f, -2800f))
+        // Initially outside the hero: normal scroll can continue. As soon
+        // as decay reaches the partially-open header, snapping is defined.
+        assertEquals(null, detailHeaderSnapTargetPx(510, distance, 1f, -1500f))
+        assertEquals(0, detailHeaderSnapTargetPx(395, distance, 1f, -850f))
+        assertEquals(499, detailHeaderSnapTargetPx(85, distance, 1f, 850f))
+    }
+
     @Test fun veryFastRowGestureStillHasDeterministicMagnetEndpoint() {
         assertEquals(499, detailHeaderSnapTargetPx(300, 500f, 1f, 8_500f))
         assertEquals(0, detailHeaderSnapTargetPx(300, 500f, 1f, -8_500f))
