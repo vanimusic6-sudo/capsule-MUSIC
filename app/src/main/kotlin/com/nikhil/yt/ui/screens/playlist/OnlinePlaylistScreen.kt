@@ -723,6 +723,7 @@ fun OnlinePlaylistScreen(
             icon = if (dbPlaylist?.playlist?.bookmarkedAt != null)
                 R.drawable.library_add_check else R.drawable.library_add,
             onClick = toggleLibraryBookmark,
+            lazyListState = lazyListState,
         )
 
         PullToRefreshDefaults.Indicator(
