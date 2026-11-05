@@ -81,13 +81,18 @@ internal fun ArtistToolbar(
     )
     // The line follows the actual continuous photo hand-off, not a
     // one-frame Boolean that becomes true only after the photo has gone.
-    val dividerReveal = ((artworkFade - .80f) / .20f).coerceIn(0f, 1f)
+    // Follow portrait draw-state; never wait for a separate title-frame
+    // recomposition before the toolbar rule can become visible.
+    val dividerReveal = {
+        val t = ((artworkFadeProvider() - .66f) / .34f).coerceIn(0f, 1f)
+        t * t * (3f - 2f * t)
+    }
     TopAppBar(
         modifier = modifier.drawBehind {
             drawRect(artistSurfaceColor.copy(
                 alpha = artistToolbarSurfaceAlpha(artworkFadeProvider()),
             ))
-        }.capsuleTopBarHairline(StandardChrome.muted) { dividerReveal },
+        }.capsuleTopBarHairline(StandardChrome.muted, dividerReveal),
         // One shared, centred row keeps the name and icons aligned throughout scrolling.
         windowInsets = WindowInsets.safeDrawing.only(
             WindowInsetsSides.Horizontal + WindowInsetsSides.Top,
