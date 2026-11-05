@@ -313,15 +313,8 @@ internal class DetailHeaderMotionState(
     // Decide at finger release, BEFORE the normal spline decay. Waiting for
     // the native fling to stop then starting a second animation made a visible
     // pause and separate acceleration, even though both used ScrollScope.
-    fun idleHandoffDeltaPx(initialVelocity: Float): Float? =
-        idleHandoffSnapOffset(initialVelocity)
-            ?.let { (it - scroll.firstVisibleItemScrollOffset).toFloat() }
-
-    /**
-     * Invoked by the gesture coordinator without blocking pre-fling dispatch.
-     * Each collection screen shares this one interruptible spring.
-     */
-    suspend fun settleMissedRelease(targetPx: Int, initialVelocity: Float = 0f) {
+    /** One cancellable spring, never run inside nested pre-fling callbacks. */
+    suspend fun settleToAnchor(targetPx: Int, initialVelocity: Float = 0f) {
         val delta = (targetPx - scroll.firstVisibleItemScrollOffset).toFloat()
         if (abs(delta) <= 0.75f || scroll.firstVisibleItemIndex != 0) return
         scroll.scroll {
@@ -561,7 +554,7 @@ internal class DetailHeaderGestureCoordinator(
         settleJob?.cancel()
         settleJob = scope.launch {
             // Never await this job from onPreFling; preserve touch ownership.
-            motion.settleMissedRelease(target, initialVelocity = velocity)
+            motion.settleToAnchor(target, initialVelocity = velocity)
         }
     }
 
@@ -569,6 +562,21 @@ internal class DetailHeaderGestureCoordinator(
         settleJob?.cancel()
         trackingNativeFling = false
         sawUserDrag = false
+    }
+
+    override fun onPreScroll(
+        available: Offset,
+        source: NestedScrollSource,
+    ): Offset {
+        if (source == NestedScrollSource.UserInput && abs(available.y) > 1.5f) {
+            // Pre-scroll runs BEFORE the child row is asked to move, so the
+            // previous Default-priority spring is already cancelled when
+            // the next touch begins. No temporarily unresponsive scrolling.
+            settleJob?.cancel()
+            trackingNativeFling = false
+            sawUserDrag = true
+        }
+        return Offset.Zero
     }
 
     override fun onPostScroll(
