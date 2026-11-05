@@ -12,6 +12,7 @@ import com.nikhil.yt.ui.component.capsulePressCombinedClickable
 import androidx.compose.foundation.clickable
 import com.nikhil.yt.playback.queues.ListQueue
 import com.nikhil.yt.ui.component.PlaylistAction
+import com.nikhil.yt.ui.component.ScrollActionButton
 import com.nikhil.yt.ui.component.PlaylistHero
 import com.nikhil.yt.ui.menu.CapsuleCollectionDownloadButton
 import com.nikhil.yt.ui.component.rememberCollectionDownloadState
@@ -210,6 +211,44 @@ fun OnlinePlaylistScreen(
         songs.sumOf { it.toMediaMetadata().duration.coerceAtLeast(0) }
     }
 
+    // The hero's Save action and the restored floating library shortcut
+    // share exactly one database transaction. Previously a "+" FAB was added
+    // to the library's CREATE page instead of this online playlist's SAVE page.
+    val toggleLibraryBookmark: () -> Unit = {
+        playlist?.takeIf { it.id != "LM" }?.let { selected ->
+            if (dbPlaylist?.playlist == null) {
+                database.transaction {
+                    val entity = PlaylistEntity(
+                        name = selected.title,
+                        browseId = selected.id,
+                        thumbnailUrl = selected.thumbnail,
+                        isEditable = selected.isEditable,
+                        playEndpointParams = selected.playEndpoint?.params,
+                        shuffleEndpointParams = selected.shuffleEndpoint?.params,
+                        radioEndpointParams = selected.radioEndpoint?.params,
+                    ).toggleLike()
+                    insert(entity)
+                    songs.map(SongItem::toMediaMetadata)
+                        .onEach(::insert)
+                        .mapIndexed { index, song ->
+                            PlaylistSongMap(
+                                songId = song.id,
+                                playlistId = entity.id,
+                                position = index,
+                            )
+                        }
+                        .forEach(::insert)
+                }
+            } else {
+                database.transaction {
+                    val existing = dbPlaylist!!.playlist
+                    update(existing, selected)
+                    update(existing.toggleLike())
+                }
+            }
+        }
+    }
+
     val surfaceColor = StandardChrome.background
 
 
@@ -321,49 +360,7 @@ fun OnlinePlaylistScreen(
                                 if (playlist.id != "LM") {
                                     PlaylistAction(
                                         icon = if (dbPlaylist?.playlist?.bookmarkedAt != null) R.drawable.favorite else R.drawable.favorite_border, label = stringResource(if (dbPlaylist?.playlist?.bookmarkedAt != null) R.string.action_remove_like else R.string.action_like),
-                                        onClick = {
-                                            if (dbPlaylist?.playlist == null) {
-                                                database.transaction {
-                                                    val playlistEntity =
-                                                        PlaylistEntity(
-                                                                name = playlist.title,
-                                                                browseId = playlist.id,
-                                                                thumbnailUrl =
-                                                                    playlist.thumbnail,
-                                                                isEditable =
-                                                                    playlist.isEditable,
-                                                                playEndpointParams =
-                                                                    playlist.playEndpoint
-                                                                        ?.params,
-                                                                shuffleEndpointParams =
-                                                                    playlist.shuffleEndpoint
-                                                                        ?.params,
-                                                                radioEndpointParams =
-                                                                    playlist.radioEndpoint
-                                                                        ?.params
-                                                            )
-                                                            .toggleLike()
-                                                    insert(playlistEntity)
-                                                    songs
-                                                        .map(SongItem::toMediaMetadata)
-                                                        .onEach(::insert)
-                                                        .mapIndexed { index, song ->
-                                                            PlaylistSongMap(
-                                                                songId = song.id,
-                                                                playlistId = playlistEntity.id,
-                                                                position = index
-                                                            )
-                                                        }
-                                                        .forEach(::insert)
-                                                }
-                                            } else {
-                                                database.transaction {
-                                                    val currentPlaylist = dbPlaylist!!.playlist
-                                                    update(currentPlaylist, playlist)
-                                                    update(currentPlaylist.toggleLike())
-                                                }
-                                            }
-                                        },
+                                        onClick = toggleLibraryBookmark,
                                         tint = StandardChrome.favorite,
                                     )
                                 }
@@ -715,6 +712,17 @@ fun OnlinePlaylistScreen(
                     }
                 }
             }
+        )
+
+        // Floating SAVE-to-library button belongs on a remote playlist,
+        // above the mini-player/navigation chrome (and not in the library's
+        // create-playlist list). Always reachable even after a long scroll.
+        ScrollActionButton(
+            visible = playlist != null && !isLoading && playlist.id != "LM" &&
+                !selection && !isSearching,
+            icon = if (dbPlaylist?.playlist?.bookmarkedAt != null)
+                R.drawable.library_add_check else R.drawable.library_add,
+            onClick = toggleLibraryBookmark,
         )
 
         PullToRefreshDefaults.Indicator(

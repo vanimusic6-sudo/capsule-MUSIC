@@ -103,7 +103,13 @@ internal fun BoxScope.ScrollActionButton(
         ) {
             Icon(
                 painter = painterResource(icon),
-                contentDescription = if (icon == R.drawable.shuffle) stringResource(R.string.shuffle) else null,
+                contentDescription = when (icon) {
+                    R.drawable.shuffle -> stringResource(R.string.shuffle)
+                    R.drawable.library_add -> stringResource(R.string.action_like)
+                    R.drawable.library_add_check -> stringResource(R.string.action_remove_like)
+                    R.drawable.add -> stringResource(R.string.create_playlist)
+                    else -> null
+                },
             )
         }
     }
