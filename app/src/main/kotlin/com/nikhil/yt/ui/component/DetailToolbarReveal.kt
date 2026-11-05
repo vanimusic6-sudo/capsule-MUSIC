@@ -369,7 +369,7 @@ internal fun detailTitleGeometry(
     fun mix(a: Float, b: Float) = a + (b - a) * p
     // A tiny elastic breath as the same text moves into the compact bar.
     // Exactly 1x at both anchors; never creates a second title or layout.
-    val stretch = 1f + 0.045f * (4f * p * (1f - p))
+    val stretch = 1f + 0.025f * (4f * p * (1f - p))
     val scale = mix(1f, compactScale) * stretch
     val source = Offset(sourceCenter.x - width / 2f, sourceCenter.y - height / 2f - scrollOffset)
     val glyphX = mix(source.x + lineLeft, target.left)
@@ -515,7 +515,7 @@ internal class DetailHeaderFlingBehavior(
     private val enabled: () -> Boolean,
 ) : FlingBehavior {
     override suspend fun ScrollScope.performFling(initialVelocity: Float): Float {
-        if (!enabled() || abs(initialVelocity) > 3_600f) {
+        if (!enabled() || abs(initialVelocity) > 6_000f) {
             return with(native) { performFling(initialVelocity) }
         }
         val delta = motion.idleHandoffDeltaPx(initialVelocity)
@@ -527,8 +527,8 @@ internal class DetailHeaderFlingBehavior(
         var hitEdge = false
         animation.animateTo(
             targetValue = delta,
-            animationSpec = spring(dampingRatio = 0.98f, stiffness = 220f),
-            initialVelocity = initialVelocity.coerceIn(-1_600f, 1_600f),
+            animationSpec = spring(dampingRatio = 1f, stiffness = 135f),
+            initialVelocity = initialVelocity.coerceIn(-850f, 850f),
         ) {
             if (hitEdge) return@animateTo
             val diff = value - consumedTotal
@@ -536,6 +536,12 @@ internal class DetailHeaderFlingBehavior(
             val consumed = scrollBy(diff)
             consumedTotal += consumed
             if (abs(consumed - diff) > 1.25f) hitEdge = true
+        }
+        // Correct the final fractional scroll pixel so the title always
+        // reaches its exact compact anchor instead of stopping at 99.9%.
+        if (!hitEdge) {
+            val remainder = delta - consumedTotal
+            if (abs(remainder) > 0.001f) scrollBy(remainder)
         }
         return 0f
     }
