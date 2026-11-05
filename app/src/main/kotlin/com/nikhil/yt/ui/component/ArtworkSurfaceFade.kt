@@ -58,15 +58,10 @@ internal fun capsulePortraitMatteStops(background: Color): Array<Pair<Float, Col
  */
 internal fun capsuleLivingPortraitMatteStops(background: Color): Array<Pair<Float, Color>> {
     val steps = 24
-    // The previous 29%-start curve still turned the bottom 100px
-    // almost black on portrait artists before the Subscribe/Shuffle row.
-    // For living artists hold photo colour deeper, then dissolve exactly
-    // to the page surface at the real bottom edge (no hard seam).
-    // Avoid an abrupt final blackout: restore a *long* photo-to-page
-    // dissolution for living artists without the old solid black shelf.
-    // Ease in gradually from the middle, keeping the subject visible
-    // through 90% of the portrait; reserve full black for the final edge.
-    val start = 0.55f
+    // The previous 55%-start pow(4.6) matte remained invisible until the
+    // last sliver of the portrait. Blend earlier while keeping more artist
+    // colour than the album matte and reach page colour at the real edge.
+    val start = 0.36f
     val end = 1f
     return Array(steps + 3) { index ->
         when (index) {
@@ -76,7 +71,7 @@ internal fun capsuleLivingPortraitMatteStops(background: Color): Array<Pair<Floa
                 val y = start + (end - start) * ((index - 1).toFloat() / steps)
                 val t = ((y - start) / (end - start)).coerceIn(0f, 1f)
                 val ease = t * t * (3f - 2f * t)
-                y to background.copy(alpha = ease.pow(4.6f))
+                y to background.copy(alpha = ease.pow(1.65f))
             }
         }
     }
