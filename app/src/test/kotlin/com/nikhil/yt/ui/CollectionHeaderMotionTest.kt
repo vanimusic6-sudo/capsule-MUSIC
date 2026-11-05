@@ -39,6 +39,12 @@ import com.nikhil.yt.ui.component.*
 import com.nikhil.yt.ui.screens.albumHasHeroHeader
 import com.nikhil.yt.viewmodels.AlbumUiState
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.Velocity
 import java.io.File
 import org.junit.Assert.*
 import org.junit.Rule
@@ -53,6 +59,65 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class CollectionHeaderMotionTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+    @Test fun titlePreFlingNeverBlocksReverseTouchEvenDuringSpring() {
+        lateinit var state: LazyListState
+        lateinit var motion: DetailHeaderMotionState
+        lateinit var connection: NestedScrollConnection
+        compose.setContent {
+            MaterialTheme {
+                CompositionLocalProvider(LocalPlayerAwareWindowInsets provides WindowInsets()) {
+                    state = rememberLazyListState()
+                    motion = rememberDetailHeaderMotion(state, hasHeader = true, contentIdentity = "gesture-test")
+                    connection = rememberDetailHeaderPreFlingConnection(motion)
+                    AlbumScreenLayout(
+                        background = Color.Black,
+                        state = state,
+                        modifier = Modifier.size(320.dp, 700.dp).nestedScroll(connection),
+                        content = {
+                            item(key = "header") {
+                                CapsuleDetailHero(
+                                    title = "Magnetic header",
+                                    metrics = emptyList(),
+                                    artworkAlpha = motion::artworkAlpha,
+                                    titleMotion = motion,
+                                    artwork = { Box(Modifier.fillMaxSize().background(Color.Red)) },
+                                    actions = {},
+                                )
+                            }
+                            item { Spacer(Modifier.height(1500.dp)) }
+                        },
+                        topBar = {
+                            DetailTopAppBar(motion, Color.Black, false, title = {}, navigationIcon = {})
+                        },
+                    )
+                }
+            }
+        }
+        compose.runOnIdle { runBlocking { state.scrollToItem(0, 120) } }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertNotNull("Header dimensions should be measured", motion.idleHandoffSnapOffset(900f))
+            runBlocking {
+                // Imitate a drag starting on a track row, followed by release.
+                connection.onPostScroll(
+                    Offset(0f, -32f), Offset.Zero, NestedScrollSource.UserInput,
+                )
+                // The old onPreFling awaited the entire spring here and held
+                // up the next finger gesture. New ownership returns promptly.
+                val consumed = withTimeout(500) {
+                    connection.onPreFling(Velocity(0f, -900f))
+                }
+                assertEquals(-900f, consumed.y, 0.01f)
+                // A new downward swipe must be accepted before that spring
+                // finishes, cancelling it ahead of LazyColumn's drag.
+                val reverse = connection.onPreScroll(
+                    Offset(0f, 25f), NestedScrollSource.UserInput,
+                )
+                assertEquals(Offset.Zero, reverse)
+            }
+        }
+    }
 
     @Test fun decodedPixelsReachWindowEdgeAndRemainVisibleBelowToolbarInBothThemes() {
         var decoded by mutableStateOf(false)
