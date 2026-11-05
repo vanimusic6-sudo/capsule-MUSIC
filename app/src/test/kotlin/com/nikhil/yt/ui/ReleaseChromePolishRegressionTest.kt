@@ -81,6 +81,10 @@ class ReleaseChromePolishRegressionTest {
         assertTrue(motion.contains("override suspend fun ScrollScope.performFling(initialVelocity: Float)"))
         assertTrue(motion.contains("val delta = motion.idleHandoffDeltaPx(initialVelocity)"))
         assertTrue(motion.contains("return with(native) { performFling(initialVelocity) }"))
+        assertFalse("Never bypass the magnet on a very fast row gesture",
+            motion.contains("abs(initialVelocity) > 6_000f"))
+        assertTrue("Catch nested child gestures that never deliver a fling callback",
+            motion.contains("motion.settleMissedRelease(target)"))
         assertTrue(motion.contains("initialVelocity = initialVelocity.coerceIn(-850f, 850f)"))
         assertTrue(motion.contains("val consumed = scrollBy(diff)"))
         assertFalse("Native fling must NOT finish before magnet begins",

@@ -1,6 +1,11 @@
 package com.nikhil.yt.ui.component
 
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.FlingBehavior
@@ -313,6 +318,39 @@ internal class DetailHeaderMotionState(
         idleHandoffSnapOffset(initialVelocity)
             ?.let { (it - scroll.firstVisibleItemScrollOffset).toFloat() }
 
+    fun isScrolling(): Boolean = scroll.isScrollInProgress
+
+    /**
+     * Backup for drag end gestures where a child song-row or nested scroll
+     * consumes the fling before our FlingBehavior sees it. Only runs after
+     * the list is idle and only while the image/title is BETWEEN anchors.
+     * UserInput has higher priority than this Default-priority settle.
+     */
+    suspend fun settleMissedRelease(targetPx: Int) {
+        val delta = (targetPx - scroll.firstVisibleItemScrollOffset).toFloat()
+        if (abs(delta) <= 0.75f || scroll.firstVisibleItemIndex != 0) return
+        scroll.scroll {
+            val animation = Animatable(0f)
+            var consumedTotal = 0f
+            var hitEdge = false
+            animation.animateTo(
+                targetValue = delta,
+                animationSpec = spring(dampingRatio = 1f, stiffness = 135f),
+            ) {
+                if (hitEdge) return@animateTo
+                val diff = value - consumedTotal
+                if (abs(diff) < .0005f) return@animateTo
+                val consumed = scrollBy(diff)
+                consumedTotal += consumed
+                if (abs(consumed - diff) > 1.25f) hitEdge = true
+            }
+            if (!hitEdge) {
+                val remainder = delta - consumedTotal
+                if (abs(remainder) > .001f) scrollBy(remainder)
+            }
+        }
+    }
+
     fun artworkFade() = progress
     // Keep the original photograph: only the static matte and pinned bar own backgrounds.
     // The single moving title is opaque, but the PHOTO retains its original measured scroll dissolve.
@@ -504,10 +542,9 @@ internal fun detailHeaderSnapTargetPx(
 }
 
 /**
- * Magnet begins on finger release instead of after an entire native fling.
- * Native decay is kept on ordinary song-list scrolling and fast long flings.
- * Within the photo/title hand-off, a single critically damped spring inherits
- * the finger's velocity: no stop, restart, delayed observer or jump.
+ * The magnet takes priority whenever the title is actually between anchors,
+ * regardless of how fast the gesture began or whether it started on a row.
+ * Past the handoff, ordinary song-list flings stay completely native.
  */
 internal class DetailHeaderFlingBehavior(
     private val native: FlingBehavior,
@@ -515,7 +552,9 @@ internal class DetailHeaderFlingBehavior(
     private val enabled: () -> Boolean,
 ) : FlingBehavior {
     override suspend fun ScrollScope.performFling(initialVelocity: Float): Float {
-        if (!enabled() || abs(initialVelocity) > 6_000f) {
+        // High-speed row gestures are precisely where the title used to stick:
+        // do not skip the magnet based solely on release velocity.
+        if (!enabled()) {
             return with(native) { performFling(initialVelocity) }
         }
         val delta = motion.idleHandoffDeltaPx(initialVelocity)
@@ -553,6 +592,29 @@ internal fun rememberDetailHeaderFlingBehavior(
     enabled: Boolean = true,
 ): FlingBehavior {
     val native = rememberCapsuleFlingBehavior()
+    // Fallback for fling-free row drags / nested child consumption. Native
+    // drag and primary magnet execute before this observer sees an idle list.
+    // A child job is independently cancelled by new touch input and cannot
+    // kill the long-lived observer when the user interrupts the spring.
+    LaunchedEffect(motion, enabled) {
+        if (!enabled) return@LaunchedEffect
+        var lastAttemptedTarget: Int? = null
+        var pendingSettle: Job? = null
+        snapshotFlow {
+            val scrolling = motion.isScrolling()
+            scrolling to if (scrolling) null else motion.idleHandoffSnapOffset()
+        }.collect { (scrolling, target) ->
+            if (scrolling) {
+                // Do not cancel an active settle here: it itself scrolls.
+                // The MutatorMutex cancels its child job on the next gesture.
+            } else if (target == null) {
+                lastAttemptedTarget = null
+            } else if (pendingSettle?.isActive != true && target != lastAttemptedTarget) {
+                lastAttemptedTarget = target
+                pendingSettle = launch { motion.settleMissedRelease(target) }
+            }
+        }
+    }
     // Recreate only for an actual mode change, never for each scroll pixel.
     return remember(native, motion, enabled) {
         DetailHeaderFlingBehavior(native, motion) { enabled }

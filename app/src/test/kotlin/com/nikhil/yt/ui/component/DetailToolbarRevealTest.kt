@@ -13,6 +13,14 @@ class DetailToolbarRevealTest {
     private fun fade(index: Int, offset: Int, bottom: Float = 600f, bar: Float = 100f) =
         detailArtworkFadeLikeArtist(index, offset, bottom, bar)
 
+    @Test fun veryFastRowGestureStillHasDeterministicMagnetEndpoint() {
+        assertEquals(499, detailHeaderSnapTargetPx(300, 500f, 1f, 8_500f))
+        assertEquals(0, detailHeaderSnapTargetPx(300, 500f, 1f, -8_500f))
+        assertEquals(0, detailHeaderSnapTargetPx(30, 500f, 1f, 0f))
+        assertEquals(499, detailHeaderSnapTargetPx(450, 500f, 1f, 0f))
+        assertEquals(null, detailHeaderSnapTargetPx(600, 500f, 1f, 8_500f))
+    }
+
     @Test fun titleFollowsMeasuredDistanceInsteadOfEasedPhotoAlpha() {
         assertEquals(0f, detailTitleTravelFraction(0, 0, 601f, 100f), 0f)
         assertEquals(.20f, detailTitleTravelFraction(0, 100, 601f, 100f), .0001f)
