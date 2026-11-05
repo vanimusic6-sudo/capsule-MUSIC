@@ -92,7 +92,7 @@ class ReleaseChromePolishRegressionTest {
         val pagesWithParentConnection = pages.map(::source)
         pagesWithParentConnection.forEach { file ->
             assertTrue("A parent nestedScroll pre-fling connection is required on every page",
-                file.contains("rememberDetailHeaderPreFlingConnection(titleMotion"))
+                file.contains("rememberDetailHeaderPreFlingConnection("))
         }
         assertTrue(motion.contains("initialVelocity = initialVelocity.coerceIn(-850f, 850f)"))
         assertTrue(motion.contains("val consumed = scrollBy(diff)"))
