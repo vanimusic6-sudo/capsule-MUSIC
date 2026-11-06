@@ -203,7 +203,9 @@ fun ArtistSongsScreen(
         }
 
         TopAppBar(
-        modifier = Modifier.capsuleTopBarHairline(StandardChrome.muted),
+            // Top-tracks uses an opaque Material3 surface, so the shared
+            // separator now draws above its content instead of behind it.
+            modifier = Modifier.capsuleTopBarHairline(StandardChrome.muted),
             title = { Text(artist?.artist?.name.orEmpty()) },
             navigationIcon = {
                 IconButton(

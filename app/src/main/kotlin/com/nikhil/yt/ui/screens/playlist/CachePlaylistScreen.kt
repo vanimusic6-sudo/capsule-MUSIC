@@ -14,7 +14,6 @@ import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.DetailTopAppBar
 import com.nikhil.yt.ui.component.DetailToolbarTitle
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
-import com.nikhil.yt.ui.component.rememberDetailHeaderFlingBehavior
 import com.nikhil.yt.ui.component.PlaylistAction
 import com.nikhil.yt.ui.component.PlaylistHero
 import androidx.activity.compose.BackHandler
@@ -188,7 +187,7 @@ fun CachePlaylistScreen(
 
 
         LazyColumn(
-            flingBehavior = rememberDetailHeaderFlingBehavior(titleMotion),
+            flingBehavior = rememberCapsuleFlingBehavior(),
             overscrollEffect = null,
             state = lazyListState,
             contentPadding = LocalPlayerAwareWindowInsets.current

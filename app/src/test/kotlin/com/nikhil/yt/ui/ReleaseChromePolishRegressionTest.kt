@@ -3,8 +3,6 @@ package com.nikhil.yt.ui
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import com.nikhil.yt.ui.component.capsuleTopBarRuleAlpha
-import com.nikhil.yt.ui.component.detailHeaderSnapTargetPx
-import com.nikhil.yt.ui.component.detailTitleGeometry
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -19,38 +17,32 @@ class ReleaseChromePolishRegressionTest {
             File("app/src/main/kotlin/com/nikhil/yt/$path"),
         ).first { it.isFile }.readText()
 
-    @Test fun collectionHeaderSettlesOnlyInThePartialHandoffWindow() {
-        assertNull(detailHeaderSnapTargetPx(0, 400f, 10f))
-        assertEquals(0, detailHeaderSnapTargetPx(40, 400f, 10f)) // small peek settles open
-        assertEquals(0, detailHeaderSnapTargetPx(49, 400f, 10f))
-        assertEquals(0, detailHeaderSnapTargetPx(90, 400f, 10f))
-        assertEquals(399, detailHeaderSnapTargetPx(300, 400f, 10f))
-        assertEquals(399, detailHeaderSnapTargetPx(398, 400f, 10f))
-        assertEquals(400, detailHeaderSnapTargetPx(300, 400.4f, 10f))
-        assertNull(detailHeaderSnapTargetPx(600, 400f))
-        assertNull(detailHeaderSnapTargetPx(100, Float.NaN))
-        assertNull(detailHeaderSnapTargetPx(100, -1f))
-        assertEquals("Positive release scroll velocity must dock without pause",
-            399, detailHeaderSnapTargetPx(90, 400f, 1f, 1000f))
-        assertEquals("Reverse release velocity must unfold without pause",
-            0, detailHeaderSnapTargetPx(300, 400f, 1f, -1000f))
-    }
-
-    @Test fun titleBreathGentlyStretchesOnlyInFlightAndReturnsToExactAnchors() {
-        val sourceCenter = Offset(200f, 280f)
-        val target = Rect(25f, 55f, 315f, 95f)
-        val args = listOf(300f, 44f, 0f, 30f, 24f)
-        fun at(p: Float) = detailTitleGeometry(
-            progress = p, compactScale = 0.88f,
-            width = args[0], height = args[1],
-            lineLeft = args[2], baseline = args[3], lineHeight = args[4],
-            sourceCenter = sourceCenter, scrollOffset = 0f, target = target,
+    @Test fun magneticDockingAndFlyingCaptionAreRemovedEverywhere() {
+        val screens = listOf(
+            "ui/screens/AlbumScreen.kt",
+            "ui/screens/playlist/LocalPlaylistScreen.kt",
+            "ui/screens/playlist/OnlinePlaylistScreen.kt",
+            "ui/screens/playlist/AutoPlaylistScreen.kt",
+            "ui/screens/playlist/CachePlaylistScreen.kt",
+            "ui/screens/playlist/TopPlaylistScreen.kt",
         )
-        assertEquals(1f, at(0f).scale, 0.0001f)
-        assertEquals(.88f, at(1f).scale, 0.0001f)
-        assertTrue(at(.5f).scale > .94f)
-        assertTrue(at(.5f).scale < 1.02f)
-        assertTrue(at(.5f).clip.width > at(1f).clip.width)
+        screens.forEach { path ->
+            val page = source(path)
+            assertTrue("Native list fling is restored: $path",
+                page.contains("flingBehavior = rememberCapsuleFlingBehavior()"))
+            assertFalse(page.contains("rememberDetailHeaderFlingBehavior"))
+            assertFalse(page.contains("rememberDetailHeaderPreFlingConnection"))
+        }
+        val title = source("ui/component/DetailToolbarReveal.kt")
+        assertFalse(title.contains("Animatable"))
+        assertFalse(title.contains("class DetailHeaderSingleOwnerFlingBehavior"))
+        assertFalse(title.contains("internal fun detailTitleGeometry("))
+        assertFalse(title.contains("fun drawTitle("))
+        assertTrue(title.contains("internal fun detailTitleOcclusionFraction("))
+        val cover = source("ui/component/AlbumArtwork.kt")
+        assertFalse(cover.contains("overlayReady()"))
+        assertTrue(cover.contains("motion?.coverTitleAlpha()"))
+        assertTrue(title.contains("alpha = motion.toolbarTitleAlpha()"))
     }
 
     @Test fun hairlineIsSubtleAndRevealsSmoothlyWithTheArtwork() {
@@ -61,42 +53,6 @@ class ReleaseChromePolishRegressionTest {
         assertTrue(samples.zipWithNext().all { (a, b) -> b >= a && b - a < .065f })
     }
 
-    @Test fun coverAndTracksShareOneScrollOwnerWithNativeSongPhysics() {
-        val pages = listOf(
-            "ui/screens/AlbumScreen.kt",
-            "ui/screens/playlist/LocalPlaylistScreen.kt",
-            "ui/screens/playlist/OnlinePlaylistScreen.kt",
-            "ui/screens/playlist/AutoPlaylistScreen.kt",
-            "ui/screens/playlist/CachePlaylistScreen.kt",
-            "ui/screens/playlist/TopPlaylistScreen.kt",
-        )
-        pages.forEach { path ->
-            val page = source(path)
-            assertTrue("LazyColumn must own one cover/list fling: $path",
-                page.contains("flingBehavior = rememberDetailHeaderFlingBehavior("))
-            assertFalse("No conflicting parent scroll spring: $path",
-                page.contains("rememberDetailHeaderPreFlingConnection("))
-        }
-        assertTrue(source(pages[1]).contains("!reorderableState.isAnyItemDragging"))
-        val motion = source("ui/component/DetailToolbarReveal.kt")
-        assertTrue(motion.contains("class DetailHeaderSingleOwnerFlingBehavior("))
-        assertTrue(motion.contains("override suspend fun ScrollScope.performFling(initialVelocity: Float): Float"))
-        assertTrue("Native decay remains intact for ordinary song-list scrolling",
-            motion.contains("with(native) { with(watchedScope) { performFling(initialVelocity) } }"))
-        assertTrue("Row-origin fling must hand over on the FIRST header pixel",
-            motion.contains("val anchor = motion.idleHandoffSnapOffset(initialVelocity)"))
-        assertTrue("Magnetic motion stays inside the current ScrollScope",
-            motion.contains("suspend fun ScrollScope.dock(targetPx: Int, velocityPx: Float)"))
-        assertFalse("No second scroll.scroll() owner on the artwork",
-            motion.contains("scroll.scroll {"))
-        assertFalse("Parent must never swallow an entire cover fling",
-            motion.contains("override suspend fun onPreFling("))
-        assertFalse("No independent scroll coroutine competing with LazyColumn",
-            motion.contains("scope.launch {"))
-        assertFalse("No callback waiting for the list to stop",
-            motion.contains("snapshotFlow {"))
-    }
-
     @Test fun photoToToolbarRestoresAContinuousFadeWithoutSuddenBlackBand() {
         val helper = source("ui/component/ArtistToolbar.kt")
         assertTrue(helper.contains("val t = ((artworkFade.coerceIn(0f, 1f)"))
@@ -105,7 +61,7 @@ class ReleaseChromePolishRegressionTest {
         assertTrue(fade.contains("val start = 0.36f"))
         assertTrue(fade.contains("ease.pow(1.65f)"))
         val bar = source("ui/component/DetailToolbarReveal.kt")
-        assertTrue(bar.contains("fun hairlineReveal() = detailHeaderHairlineFraction(titleTravelProgress)"))
+        assertTrue(bar.contains("fun hairlineReveal(): Float = photoProgress"))
         assertTrue(bar.contains("if (forceOpaque) 1f else motion.hairlineReveal()"))
         assertFalse("A second delayed hairline animation makes the UI feel stuck",
             bar.contains("durationMillis = 350"))
@@ -135,10 +91,20 @@ class ReleaseChromePolishRegressionTest {
         assertTrue(remote.contains("R.drawable.library_add_check else R.drawable.library_add"))
         val container = source("ui/component/AlbumLayout.kt")
         val album = source("ui/screens/AlbumScreen.kt")
-        assertTrue("Album vertical LazyColumn owns snap", container.contains("flingBehavior = flingBehavior"))
-        assertTrue(album.contains("flingBehavior = rememberDetailHeaderFlingBehavior(titleMotion)"))
+        assertTrue("Album vertical LazyColumn owns native scroll", container.contains("flingBehavior = flingBehavior"))
+        assertTrue(album.contains("flingBehavior = rememberCapsuleFlingBehavior()"))
         assertTrue("Album horizontal suggestion shelf must retain normal fling",
             album.contains("LazyRow(\n") && album.contains("flingBehavior = rememberCapsuleFlingBehavior()"))
+    }
+
+    @Test fun artistTopTracksHairlineDrawsAboveItsOpaqueMaterialBar() {
+        val chrome = source("ui/component/StandardChrome.kt")
+        val songs = source("ui/screens/artist/ArtistSongsScreen.kt")
+        assertTrue(songs.contains("modifier = Modifier.capsuleTopBarHairline(StandardChrome.muted)"))
+        assertTrue("Separator must draw over the opaque Material3 surface",
+            chrome.contains("Modifier = drawWithContent {"))
+        assertTrue(chrome.contains("drawContent()"))
+        assertTrue(chrome.contains("color.copy(alpha = 0.24f * opacity)"))
     }
 
     @Test fun accountIsCircularAndAllMainAndDetailHeadersUseTheSameRule() {

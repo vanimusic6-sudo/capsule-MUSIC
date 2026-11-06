@@ -18,7 +18,6 @@ import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.DetailTopAppBar
 import com.nikhil.yt.ui.component.DetailToolbarTitle
 import com.nikhil.yt.ui.component.rememberDetailHeaderMotion
-import com.nikhil.yt.ui.component.rememberDetailHeaderFlingBehavior
 import android.annotation.SuppressLint
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -388,7 +387,7 @@ fun LocalPlaylistScreen(
 
 
         LazyColumn(
-            flingBehavior = rememberDetailHeaderFlingBehavior(titleMotion, enabled = !reorderableState.isAnyItemDragging && !isSearching),
+            flingBehavior = rememberCapsuleFlingBehavior(),
             overscrollEffect = null,
             state = lazyListState,
             contentPadding = LocalPlayerAwareWindowInsets.current.union(WindowInsets.ime)

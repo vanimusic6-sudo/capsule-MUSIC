@@ -13,59 +13,40 @@ class DetailToolbarRevealTest {
     private fun fade(index: Int, offset: Int, bottom: Float = 600f, bar: Float = 100f) =
         detailArtworkFadeLikeArtist(index, offset, bottom, bar)
 
-    @Test fun springHandoffVelocityNeverKicksOrReversesAtShortDistances() {
-        assertEquals(0f, detailHeaderDockVelocity(15f, -850f), .0001f)
-        assertEquals(0f, detailHeaderDockVelocity(-15f, 850f), .0001f)
-        assertEquals(40.5f, detailHeaderDockVelocity(15f, 850f), .0001f)
-        assertEquals(-40.5f, detailHeaderDockVelocity(-15f, -850f), .0001f)
-        assertEquals(850f, detailHeaderDockVelocity(500f, 1_500f), .0001f)
-        assertEquals(-850f, detailHeaderDockVelocity(-500f, -1_500f), .0001f)
-        assertEquals(50f, detailHeaderDockVelocity(500f, 50f), .0001f)
-        assertEquals(0f, detailHeaderDockVelocity(Float.NaN, 100f), .0001f)
-        assertEquals(0f, detailHeaderDockVelocity(200f, Float.NaN), .0001f)
-        assertEquals(0f, detailHeaderDockVelocity(0f, 900f), .0001f)
-        // Approaching an anchor, the permitted launch speed must continually
-        // decrease, preventing the end-of-transition jerk in the recording.
-        val allowed = listOf(200f, 100f, 50f, 20f, 5f).map {
-            detailHeaderDockVelocity(it, 2_000f)
-        }
-        assertTrue(allowed.zipWithNext().all { (a, b) -> b <= a })
+    @Test fun compactTitleAppearsOnlyAsBarCoversTheOriginalCaption() {
+        val top = 500f
+        val height = 48f
+        val bar = 100f
+        fun alpha(offset: Float) = detailTitleOcclusionFraction(
+            firstVisibleItemIndex = 0, scrollOffsetPx = offset,
+            coverTitleTopPx = top, coverTitleHeightPx = height,
+            toolbarBottomPx = bar,
+        )
+        assertEquals(0f, alpha(0f), 0f)
+        assertEquals(0f, alpha(399f), 0f)
+        assertEquals(0f, alpha(400f), 0f)
+        assertEquals(.5f, alpha(424f), .00001f)
+        assertEquals(1f, alpha(448f), .00001f)
+        assertEquals(1f, alpha(600f), .00001f)
+        assertEquals(1f, detailTitleOcclusionFraction(1, 0f, top, height, bar), 0f)
+        assertEquals(1f, detailTitleOcclusionFraction(0, 0f, top, height, bar, false), 0f)
+        assertEquals(0f, detailTitleOcclusionFraction(0, 100f, Float.NaN, height, bar), 0f)
+        assertEquals(0f, detailTitleOcclusionFraction(0, 100f, top, 0f, bar), 0f)
     }
 
-    @Test fun swipeFromSongsReachesTheHeroDuringNativeDecayWithoutADeadZone() {
-        val distance = 500f
-        // Same position, opposite finger direction: different endpoint.
-        assertEquals(499, detailHeaderSnapTargetPx(95, distance, 1f, 2800f))
-        assertEquals(0, detailHeaderSnapTargetPx(450, distance, 1f, -2800f))
-        // Initially outside the hero: normal scroll can continue. As soon
-        // as decay reaches the partially-open header, snapping is defined.
-        assertEquals(null, detailHeaderSnapTargetPx(510, distance, 1f, -1500f))
-        assertEquals(0, detailHeaderSnapTargetPx(395, distance, 1f, -850f))
-        assertEquals(499, detailHeaderSnapTargetPx(85, distance, 1f, 850f))
-    }
-
-    @Test fun veryFastRowGestureStillHasDeterministicMagnetEndpoint() {
-        assertEquals(499, detailHeaderSnapTargetPx(300, 500f, 1f, 8_500f))
-        assertEquals(0, detailHeaderSnapTargetPx(300, 500f, 1f, -8_500f))
-        assertEquals(0, detailHeaderSnapTargetPx(30, 500f, 1f, 0f))
-        assertEquals(499, detailHeaderSnapTargetPx(450, 500f, 1f, 0f))
-        assertEquals(null, detailHeaderSnapTargetPx(600, 500f, 1f, 8_500f))
-    }
-
-    @Test fun titleFollowsMeasuredDistanceInsteadOfEasedPhotoAlpha() {
-        assertEquals(0f, detailTitleTravelFraction(0, 0, 601f, 100f), 0f)
-        assertEquals(.20f, detailTitleTravelFraction(0, 100, 601f, 100f), .0001f)
-        assertEquals(.75f, detailTitleTravelFraction(0, 375, 601f, 100f), .0001f)
-        assertEquals(1f, detailTitleTravelFraction(0, 500, 601f, 100f), 0f)
-        assertEquals(1f, detailTitleTravelFraction(1, 0, 601f, 100f), 0f)
-        assertEquals(1f, detailTitleTravelFraction(0, 0, Float.NaN, 100f, true), 0f)
-        assertEquals(0f, detailTitleTravelFraction(0, 100, Float.NaN, 100f), 0f)
-
-        assertEquals(0f, detailHeaderHairlineFraction(.94f), 0f)
-        assertEquals(.5f, detailHeaderHairlineFraction(.975f), .0001f)
-        assertEquals(1f, detailHeaderHairlineFraction(1f), 0f)
-        val samples = (0..100).map { detailHeaderHairlineFraction(it / 100f) }
-        assertTrue(samples.zipWithNext().all { (a, b) -> b >= a })
+    @Test fun titleCrossfadeIsMonotonicAndReversibleWithoutAnAnimationClock() {
+        fun alpha(offset: Float) = detailTitleOcclusionFraction(
+            0, offset, 500f, 48f, 100f,
+        )
+        val values = (390..460).map { alpha(it.toFloat()) }
+        assertTrue("The bar title must never jump or fade backward", values.zipWithNext().all { (a, b) ->
+            b >= a && b - a < .04f
+        })
+        assertEquals(alpha(420f), alpha(420f), 0f)
+        assertEquals("The cover caption must remain visible before the bar reaches it",
+            0f, alpha(390f), 0f)
+        assertEquals("After full coverage, only the compact title remains",
+            1f, alpha(460f), 0f)
     }
 
     @Test fun initialHeaderPresenceNeverDependsOnImageCallbacks() {
@@ -79,107 +60,6 @@ class DetailToolbarRevealTest {
         presence.value = true
         assertEquals(1f, empty.artworkAlpha(), 0f)
         assertEquals(0f, empty.toolbarTitleAlpha(), 0f)
-    }
-
-    @Test fun titleFlightJoinsBothAnchorsWithContinuousVelocity() {
-        assertEquals(0f, detailTitleDockProgress(0f), 0f)
-        assertEquals(1f, detailTitleDockProgress(1f), 0f)
-        assertEquals(0f, detailTitleDockProgress(Float.NaN), 0f)
-        val points = (0..1000).map { detailTitleDockProgress(it / 1000f) }
-        assertTrue(points.zipWithNext().all { (a, b) -> b >= a && b - a <= .0012f })
-        val step = points.zipWithNext().map { (a, b) -> b - a }
-        assertTrue("The first pixel must respond to the finger", step.first() > .0007f)
-        assertTrue("Docking must lose velocity gracefully",
-            step.last() < step[500] * .1f)
-        assertTrue("The title should remain responsive in the middle",
-            step[500] > .001f)
-        // No velocity jump where either endpoint easing joins the
-        // near-linear interior: derivative changes must be gradual.
-        for (edge in listOf(60, 930)) {
-            assertTrue(kotlin.math.abs(step[edge] - step[edge-1]) < .00001f)
-        }
-    }
-
-    @Test fun titleFlightDoesNotCountScrollDistanceTwice() {
-        val source = androidx.compose.ui.geometry.Offset(180f, 480f)
-        val target = androidx.compose.ui.geometry.Rect(52f, 28f, 298f, 60f)
-        val baseline = 22f
-        fun geometry(p: Float, offset: Float) = detailTitleGeometry(
-            progress = p, compactScale = .88f, width = 300f, height = 58f,
-            lineLeft = 4f, baseline = baseline, lineHeight = 29f,
-            sourceCenter = source, scrollOffset = offset, target = target,
-        )
-        for (step in 0..20) {
-            val p = step / 20f
-            val a = geometry(p, p * 600f)
-            val b = geometry(p, 0f)
-            // Even while the LazyColumn moves, the source is a stored
-            // unscrolled anchor. Only p may affect the paragraph's flight.
-            assertEquals(b.origin.y, a.origin.y, .001f)
-            assertEquals(b.clip.top, a.clip.top, .001f)
-        }
-
-        val y = (0..4).map { i ->
-            val g = geometry(i / 4f, (i / 4f) * 600f)
-            g.origin.y + baseline * g.scale
-        }
-        val increments = y.zipWithNext().map { (a, b) -> b - a }
-        assertTrue("Title baseline must move monotonically",
-            increments.all { it < 0f })
-        assertTrue("Middle remains close to linear, without a sudden boost",
-            kotlin.math.abs(increments[1] - increments[2]) < 1f)
-        // The last quarter includes a deliberate short ease-out. Previously
-        // the moving title retained full speed right until it hit the bar.
-        val dense = (0..100).map { i ->
-            val g = geometry(i / 100f, i * 6f)
-            g.origin.y + baseline * g.scale
-        }
-        val perFrame = dense.zipWithNext().map { (a,b) -> kotlin.math.abs(b-a) }
-        assertTrue("Start without a sudden full-speed jump",
-            perFrame.first() < perFrame[40])
-        assertTrue("Finish without a full-speed wall impact",
-            perFrame.last() < perFrame[40] * .1f)
-    }
-
-    @Test fun oneParagraphMovesToItsBaselineWithoutChangingGlyphSpacing() {
-        val target = androidx.compose.ui.geometry.Rect(56f, 25f, 300f, 54f)
-        for (height in listOf(29f, 58f)) {
-            val source = androidx.compose.ui.geometry.Offset(180f, 400f)
-            val start = detailTitleGeometry(0f, .88f, 300f, height, 5f, 22f, 29f, source, 0f, target)
-            assertEquals(30f, start.origin.x, .001f)
-            assertEquals(1f, start.scale, 0f)
-            val end = detailTitleGeometry(1f, .88f, 300f, height, 5f, 22f, 29f, source, 300f, target)
-            assertEquals(56f, end.origin.x + 5f * end.scale, .001f)
-            assertEquals(target, end.clip)
-            assertEquals(.88f, end.scale, 0f)
-            for (i in 0..100) {
-                val g = detailTitleGeometry(i / 100f, .88f, 300f, height, 5f, 22f, 29f, source, 100f, target)
-                assertEquals("Every glyph uses the same uniform scale", 80f * g.scale,
-                    (g.origin.x + 85f * g.scale) - (g.origin.x + 5f * g.scale), .0001f)
-            }
-        }
-    }
-
-    @Test fun longTitleClippingBecomesContinuousFeatherNotAHardCut() {
-        val width = 30f
-        assertEquals(0f, detailTitleFeatherStrength(-2f, width), 0f)
-        assertEquals(0f, detailTitleFeatherStrength(0f, width), 0f)
-        assertEquals(0.5f, detailTitleFeatherStrength(15f, width), .00001f)
-        assertEquals(1f, detailTitleFeatherStrength(30f, width), 0f)
-        assertEquals(1f, detailTitleFeatherStrength(200f, width), 0f)
-
-        val samples = (0..300).map { detailTitleFeatherStrength(it / 10f, width) }
-        assertTrue("Opacity mask must never jump, even at the first trimmed pixel",
-            samples.zipWithNext().all { (a, b) -> b >= a && b - a < 0.01f })
-        assertEquals("Reversing scroll must not retain a stale mask",
-            detailTitleFeatherStrength(12f, width),
-            detailTitleFeatherStrength(12f, width), 0f)
-    }
-
-    @Test fun noOverlapMustKeepOriginalTitleFullyOpaque() {
-        assertEquals(0f, detailTitleFeatherStrength(0f, 1f), 0f)
-        assertEquals(0f, detailTitleFeatherStrength(Float.NaN, 30f), 0f)
-        assertEquals(0f, detailTitleFeatherStrength(Float.NEGATIVE_INFINITY, 30f), 0f)
     }
 
     @Test fun loadingPortraitIsAHeaderEvenBeforeSongsArrive() {

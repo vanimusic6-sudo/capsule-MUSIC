@@ -28,7 +28,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -111,19 +110,20 @@ internal fun BoxScope.CapsuleDetailCoverTitle(
         androidx.compose.runtime.derivedStateOf { (motion?.coverTitleAlpha() ?: 1f) <= .5f }
     }
     Box(Modifier.align(Alignment.BottomCenter).padding(horizontal = 28.dp).padding(bottom = 16.dp)) {
-        // This parent owns the untransformed anchor. The moving child never
-        // changes the caption slot or the control capsule's measured geometry.
+        // The original caption stays fixed inside the photograph. Scrolling
+        // moves it normally, rather than drawing a second flying paragraph.
         Box(Modifier.then(if (motion == null) Modifier else
             Modifier.onGloballyPositioned(motion::measureCoverTitle))) {
             Text(
                 text = title,
-                modifier = Modifier.drawWithContent { if (motion?.overlayReady() != true) drawContent() }.testTag("capsule:detail-title")
+                modifier = Modifier
+                    .graphicsLayer { alpha = motion?.coverTitleAlpha() ?: 1f }
+                    .testTag("capsule:detail-title")
                     .semantics { if (hidden) hideFromAccessibility() },
                 color = foreground,
                 style = detailTitleStyle(),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                onTextLayout = { motion?.measureCoverTitleText(it) },
             )
         }
     }

@@ -68,7 +68,7 @@ class CollectionHeaderMotionTest {
                         background = Color.Black,
                         state = state,
                         modifier = Modifier.size(320.dp, 700.dp).testTag("gesture-screen"),
-                        flingBehavior = rememberDetailHeaderFlingBehavior(motion),
+                        flingBehavior = rememberCapsuleFlingBehavior(),
                         content = {
                             item(key = "header") {
                                 CapsuleDetailHero(
@@ -204,7 +204,8 @@ class CollectionHeaderMotionTest {
             compose.runOnIdle {
                 val progress = motion.toolbarTitleAlpha()
                 assertTrue(progress in 0f..1f)
-                assertEquals("Original photograph scroll fade must remain independent of title opacity", 1f - progress, motion.artworkAlpha(), .00001f)
+                assertEquals("Photo fades independently of title crossing the toolbar",
+                    1f - motion.artworkFade(), motion.artworkAlpha(), .00001f)
                 samples[offset]?.let { assertEquals("No direction-dependent lag", it, progress, 0.0001f) }
                 samples[offset] = progress
             }
@@ -223,7 +224,7 @@ class CollectionHeaderMotionTest {
         val observed = mutableListOf<Pair<Boolean, Float>>()
         compose.setContent {
             val motion = rememberDetailHeaderMotion(rememberLazyListState(), header)
-            observed += header to motion.compactTitleAlpha()
+            observed += header to motion.toolbarTitleAlpha()
             Box(Modifier.size(100.dp))
         }
         for (present in listOf(true, false, true)) {
@@ -236,28 +237,23 @@ class CollectionHeaderMotionTest {
         }
     }
 
-    @Test fun actualToolbarGlyphsAppearWithoutRestartAndCaptionMovesIntoTheirAnchor() {
+    @Test fun captionStaysInArtworkWhileTopTitleAppearsOnlyAfterOcclusion() {
         lateinit var state: LazyListState
         lateinit var motion: DetailHeaderMotionState
-        var title by mutableStateOf("Обломки чувств")
-        var loaded by mutableStateOf(false)
         compose.setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 CompositionLocalProvider(LocalPlayerAwareWindowInsets provides WindowInsets()) {
                     state = rememberLazyListState()
-                    motion = rememberDetailHeaderMotion(
-                        state,
-                        albumHasHeroHeader(loaded, if (loaded) AlbumUiState.Content else AlbumUiState.Loading),
-                        "same-open-screen",
-                    )
+                    motion = rememberDetailHeaderMotion(state, true, "independent-titles")
                     AlbumScreenLayout(
                         background = Color.Black,
                         state = state,
                         modifier = Modifier.size(320.dp, 700.dp),
+                        flingBehavior = rememberCapsuleFlingBehavior(),
                         content = {
                             item(key = "header") {
-                                if (!loaded) AlbumHeaderPlaceholder(Color.Black) else CapsuleDetailHero(
-                                    title = title,
+                                CapsuleDetailHero(
+                                    title = "An album",
                                     metrics = emptyList(),
                                     artworkAlpha = motion::artworkAlpha,
                                     titleMotion = motion,
@@ -265,12 +261,12 @@ class CollectionHeaderMotionTest {
                                     actions = {},
                                 )
                             }
-                            item { Spacer(Modifier.height(1000.dp)) }
+                            item { Spacer(Modifier.height(1200.dp)) }
                         },
                         topBar = {
                             DetailTopAppBar(
                                 motion, Color.Black, false,
-                                title = { DetailToolbarTitle(title, motion) },
+                                title = { DetailToolbarTitle("An album", motion) },
                                 navigationIcon = { Box(Modifier.size(48.dp)) },
                             )
                         },
@@ -278,91 +274,27 @@ class CollectionHeaderMotionTest {
                 }
             }
         }
-        fun capture(name: String, fadeEnd: Float? = null): Pair<Int, Int> {
-            var pixels = 0
-            var peak = 0
-            compose.runOnIdle {
-                val bitmap = Bitmap.createBitmap(800, 1800, Bitmap.Config.ARGB_8888)
-                compose.activity.findViewById<View>(android.R.id.content).draw(Canvas(bitmap))
-                val clip = motion.geometry()?.clip
-                for (y in 0 until bitmap.height) for (x in 0 until bitmap.width) {
-                    val pixel = bitmap.getPixel(x, y)
-                    val green = android.graphics.Color.green(pixel)
-                    if (green > 210 && android.graphics.Color.blue(pixel) > 210) {
-                        pixels++
-                        peak = maxOf(peak, green)
-                        assertNotNull("Glyph pixels require a measured single owner", clip)
-                        assertTrue("A second title is painted outside the moving viewport at $x,$y",
-                            x >= clip!!.left - 2 && x <= clip.right + 2 && y >= clip.top - 2 && y <= clip.bottom + 2)
-                    }
-                }
-                val file = File("build/reports/ui-previews/title-single-owner-$name.png")
-                file.parentFile.mkdirs()
-                file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                if (fadeEnd != null && clip != null) {
-                    var tailPeak = 0
-                    for (y in clip.top.toInt().coerceAtLeast(0) until clip.bottom.toInt().coerceAtMost(bitmap.height)) {
-                        for (x in (fadeEnd.toInt() - 24).coerceAtLeast(0) until fadeEnd.toInt().coerceAtMost(bitmap.width)) {
-                            tailPeak = maxOf(tailPeak, android.graphics.Color.green(bitmap.getPixel(x, y)))
-                        }
-                    }
-                    assertTrue("A hidden second line needs a soft continuation edge: tail=$tailPeak body=$peak fadeEnd=$fadeEnd clip=$clip",
-                        tailPeak in 1 until peak - 20)
-                }
-                bitmap.recycle()
-            }
-            return pixels to peak
-        }
-        assertEquals(0, capture("loading").first)
-        compose.runOnIdle { loaded = true }
-        val original = capture("rest")
-        assertTrue("Hero glyphs must paint outside the toolbar's own bounds", original.first > 30)
-        var lo = 0
-        var hi = with(compose.density) { 500.dp.roundToPx() }
-        while (lo < hi) {
-            val offset = (lo + hi) / 2
-            compose.runOnIdle { runBlocking { state.scrollToItem(0, offset) } }
-            var pinned = false
-            compose.runOnIdle { pinned = motion.artworkFade() >= 1f }
-            if (pinned) hi = offset else lo = offset + 1
-        }
-        val end = lo
-        for ((index, offset) in listOf(0, end / 4, end / 2, end * 3 / 4, end - 1, end, end + 10).withIndex()) {
-            compose.runOnIdle { runBlocking { state.scrollToItem(0, offset.coerceAtLeast(0)) } }
-            val rendered = capture("step-$index")
-            assertTrue("Title vanished during handoff at $offset", rendered.first > 30)
-            assertTrue("Title must not dim during transfer at $offset", rendered.second >= original.second - 3)
-        }
-        compose.runOnIdle { title = "Ugly is Beautiful: Shorter, Thicker & Uglier — long album title" }
-        val layouts = mutableListOf<TextLayoutResult>()
-        compose.onNodeWithTag("capsule:detail-title").performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
-        var edge = 0f
+        compose.waitForIdle()
         compose.runOnIdle {
-            val g = motion.geometry()!!
-            edge = minOf(g.clip.right, g.origin.x + layouts.single().getLineRight(0) * g.scale)
+            assertEquals("At rest only the artwork caption is visible",
+                0f, motion.toolbarTitleAlpha(), 0f)
+            assertEquals(1f, motion.coverTitleAlpha(), 0f)
         }
-        assertTrue(capture("long-compact", edge).first > 30)
-        // Long multi-line captions are the important visual case:
-        // capture the second line as it gradually leaves the toolbar viewport,
-        // not just the already-clipped final layout.
-        for ((label, fraction) in listOf("half" to .5f, "near" to .75f, "edge" to .95f)) {
-            compose.runOnIdle {
-                runBlocking { state.scrollToItem(0, (end * fraction).toInt()) }
-            }
-            val frame = capture("long-$label")
-            assertTrue("Long title disappeared before it reached the toolbar", frame.first > 30)
-            assertTrue("Leading glyphs faded gray alongside the trailing line",
-                frame.second >= original.second - 3)
+        compose.onNodeWithTag("capsule:detail-title").assertExists()
+        compose.runOnIdle { runBlocking { state.scrollToItem(1, 0) } }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertEquals("Once covered, the pinned title must show",
+                1f, motion.toolbarTitleAlpha(), 0f)
+            assertEquals(0f, motion.coverTitleAlpha(), 0f)
         }
-        compose.runOnIdle { runBlocking { state.scrollToItem(0, end) } }
-        val semantics = compose.onNodeWithTag("capsule:detail-toolbar-title").fetchSemanticsNode().config
-        assertEquals(listOf(title), semantics[SemanticsProperties.ContentDescription])
-        compose.runOnIdle { runBlocking { state.scrollToItem(1, 300) } }
-        assertTrue("A disposed hero must not remove the pinned title", capture("hero-disposed").first > 30)
         compose.runOnIdle { runBlocking { state.scrollToItem(0, 0) } }
-        assertTrue("Reverse scroll must restore the complete caption", capture("reverse").first > 30)
-        compose.runOnIdle { title = "Обломки чувств" }
-        assertEquals("Returning to rest must restore exact glyph coverage", original.first, capture("restored").first)
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertEquals("Returning to the cover must restore original title",
+                0f, motion.toolbarTitleAlpha(), 0f)
+            assertEquals(1f, motion.coverTitleAlpha(), 0f)
+        }
     }
 
     @Test fun twoLineLargeFontCaptionDoesNotChangeCapsuleBaseline() {

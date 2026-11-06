@@ -7,7 +7,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -61,7 +61,10 @@ internal fun capsuleTopBarRuleAlpha(progress: Float): Float {
 internal fun Modifier.capsuleTopBarHairline(
     color: Color,
     reveal: () -> Float = { 1f },
-): Modifier = drawBehind {
+): Modifier = drawWithContent {
+    drawContent()
+    // The rule must render ABOVE TopAppBar's opaque Material3 background;
+    // previously drawBehind made it invisible on artist top-tracks.
     val opacity = capsuleTopBarRuleAlpha(reveal())
     if (opacity > 0f) {
         // Full-width hairline: 16dp side margins made this look like a
@@ -71,7 +74,7 @@ internal fun Modifier.capsuleTopBarHairline(
         val y = size.height - lineWidth / 2f
         if (size.width > 0f && y > 0f) {
             drawLine(
-                color = color.copy(alpha = 0.18f * opacity),
+                color = color.copy(alpha = 0.24f * opacity),
                 start = Offset(0f, y),
                 end = Offset(size.width, y),
                 strokeWidth = lineWidth,
