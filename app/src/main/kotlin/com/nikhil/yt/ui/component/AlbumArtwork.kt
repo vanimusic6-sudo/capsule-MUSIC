@@ -119,12 +119,16 @@ internal fun BoxScope.CapsuleDetailCoverTitle(
         Text(
             text = title,
             modifier = Modifier
+                .then(
+                    if (motion == null) Modifier
+                    else Modifier.onGloballyPositioned(motion::measureCoverTitle)
+                )
                 .graphicsLayer {
                     val a = (motion?.coverTitleAlpha() ?: 1f).coerceIn(0f, 1f)
                     alpha = a
-                    // Small elastic release toward the toolbar. There is no
-                    // shared moving paragraph, so long names cannot be clipped
-                    // or jerk when the toolbar takes ownership.
+                    // Small elastic release toward the toolbar. Geometry is
+                    // measured before this visual transform, so timing follows
+                    // the real caption edge rather than the animated layer.
                     translationY = -(1f - a) * 7.dp.toPx()
                     val scale = 1f - (1f - a) * .018f
                     scaleX = scale
@@ -136,6 +140,7 @@ internal fun BoxScope.CapsuleDetailCoverTitle(
             style = detailTitleStyle(),
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
+            onTextLayout = { motion?.measureCoverTitleText(it) },
         )
     }
 }
