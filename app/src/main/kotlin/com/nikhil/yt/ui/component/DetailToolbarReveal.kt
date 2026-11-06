@@ -298,15 +298,30 @@ internal class DetailHeaderMotionState(
     fun idleHandoffDeltaPx(): Float? =
         idleHandoffSnapOffset()?.let { (it - scroll.firstVisibleItemScrollOffset).toFloat() }
 
+    private fun titleHandoff(): Float {
+        if (!headerPresence.value || scroll.firstVisibleItemIndex > 0) return 1f
+        val measured = coverLayout ?: return 0f
+        if (!sourceCenter.isSpecified || !toolbarBottomPx.isFinite()) return 0f
+        val currentTop = sourceCenter.y -
+            scroll.firstVisibleItemScrollOffset -
+            measured.size.height * 0.5f
+        return detailTitleOcclusionFraction(
+            titleTopPx = currentTop,
+            toolbarBottomPx = toolbarBottomPx,
+            titleHeightPx = measured.size.height.toFloat(),
+            leadPx = with(density) { 12.dp.toPx() },
+        )
+    }
+
     fun artworkFade() = progress
-    // The photograph keeps its original measured dissolve. Title hand-off is
-    // intentionally separate: two stationary anchors cross-fade around the
-    // middle instead of one paragraph travelling through the toolbar.
+    // Artwork keeps its own measured dissolve. Title hand-off is tied to the
+    // ACTUAL caption edge approaching the pinned toolbar, not an arbitrary
+    // percentage of the cover scroll.
     fun artworkAlpha() = 1f - progress
-    fun toolbarTitleAlpha() = detailToolbarTitleAlpha(progress)
+    fun toolbarTitleAlpha() = detailToolbarTitleAlpha(titleHandoff())
     fun compactTitleAlpha() = toolbarTitleAlpha()
-    fun coverTitleAlpha() = detailCoverTitleAlpha(progress)
-    fun dividerReveal() = detailDividerReveal(progress)
+    fun coverTitleAlpha() = detailCoverTitleAlpha(titleHandoff())
+    fun dividerReveal() = detailDividerReveal(titleHandoff())
 }
 
 /**
@@ -327,19 +342,44 @@ private fun detailSmoothRange(value: Float, start: Float, end: Float): Float {
 }
 
 /**
+ * Geometry-driven hand-off. 0 = caption is still safely below the toolbar.
+ * The dissolve begins only [leadPx] before the caption's top edge reaches the
+ * real toolbar bottom, then completes while the first part of the caption is
+ * physically passing behind the pinned bar.
+ */
+internal fun detailTitleOcclusionFraction(
+    titleTopPx: Float,
+    toolbarBottomPx: Float,
+    titleHeightPx: Float,
+    leadPx: Float,
+): Float {
+    if (!titleTopPx.isFinite() || !toolbarBottomPx.isFinite() ||
+        !titleHeightPx.isFinite() || titleHeightPx <= 0f
+    ) return 0f
+    val lead = leadPx.coerceAtLeast(0f)
+    val startTop = toolbarBottomPx + lead
+    val hideDistance = minOf(titleHeightPx * .62f, titleHeightPx)
+        .coerceAtLeast(1f)
+    val endTop = toolbarBottomPx - hideDistance
+    val raw = ((startTop - titleTopPx) / (startTop - endTop).coerceAtLeast(1f))
+        .coerceIn(0f, 1f)
+    return raw * raw * (3f - 2f * raw)
+}
+
+/**
  * Title hand-off is deliberately NOT a morph. The hero dissolves near the
  * middle; the toolbar title appears from its own anchor with a short overlap.
  * This remains fully scroll-driven, reversible and allocation-free.
  */
-internal fun detailCoverTitleAlpha(progress: Float): Float =
-    1f - detailSmoothRange(progress.coerceIn(0f, 1f), .48f, .78f)
+internal fun detailCoverTitleAlpha(handoff: Float): Float =
+    1f - handoff.coerceIn(0f, 1f)
 
-internal fun detailToolbarTitleAlpha(progress: Float): Float =
-    detailSmoothRange(progress.coerceIn(0f, 1f), .48f, .78f)
+internal fun detailToolbarTitleAlpha(handoff: Float): Float =
+    handoff.coerceIn(0f, 1f)
 
-/** The structural rule arrives only after the later title hand-off is underway. */
-internal fun detailDividerReveal(progress: Float): Float =
-    detailSmoothRange(progress.coerceIn(0f, 1f), .76f, .96f)
+/** The structural rule arrives only after the geometry-driven hand-off is underway. */
+internal fun detailDividerReveal(handoff: Float): Float =
+    detailSmoothRange(handoff.coerceIn(0f, 1f), .68f, 1f)
 
 internal data class DetailTitleGeometry(val origin: Offset, val scale: Float, val clip: Rect)
 
@@ -556,17 +596,17 @@ internal fun DetailToolbarTitle(title: String, motion: DetailHeaderMotionState) 
     Text(
         text = title,
         modifier = Modifier
-            .fillMaxWidth()
             .height(28.dp)
             .graphicsLayer {
                 val a = motion.toolbarTitleAlpha().coerceIn(0f, 1f)
                 alpha = a
-                // The incoming title is nudged from the direction of the
-                // disappearing hero, but never travels between anchors.
-                translationY = (1f - a) * 6.dp.toPx()
-                val scale = .982f + .018f * a
+                // Keep the old side-anchored toolbar geometry; only a tiny
+                // vertical push accompanies the opacity hand-off.
+                translationY = (1f - a) * 5.dp.toPx()
+                val scale = .985f + .015f * a
                 scaleX = scale
                 scaleY = scale
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, .5f)
             }
             .testTag("capsule:detail-toolbar-title")
             .semantics {
@@ -574,10 +614,14 @@ internal fun DetailToolbarTitle(title: String, motion: DetailHeaderMotionState) 
                 if (hidden) hideFromAccessibility()
             },
         color = LocalContentColor.current,
-        style = detailTitleStyle().copy(fontSize = 22.sp, lineHeight = 25.sp),
+        style = detailTitleStyle().copy(
+            fontSize = 22.sp,
+            lineHeight = 25.sp,
+            textAlign = TextAlign.Start,
+        ),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
-        textAlign = TextAlign.Center,
+        textAlign = TextAlign.Start,
     )
 }
 
