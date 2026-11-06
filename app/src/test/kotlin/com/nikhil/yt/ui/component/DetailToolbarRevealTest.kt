@@ -13,6 +13,25 @@ class DetailToolbarRevealTest {
     private fun fade(index: Int, offset: Int, bottom: Float = 600f, bar: Float = 100f) =
         detailArtworkFadeLikeArtist(index, offset, bottom, bar)
 
+    @Test fun springHandoffVelocityNeverKicksOrReversesAtShortDistances() {
+        assertEquals(0f, detailHeaderDockVelocity(15f, -850f), .0001f)
+        assertEquals(0f, detailHeaderDockVelocity(-15f, 850f), .0001f)
+        assertEquals(40.5f, detailHeaderDockVelocity(15f, 850f), .0001f)
+        assertEquals(-40.5f, detailHeaderDockVelocity(-15f, -850f), .0001f)
+        assertEquals(850f, detailHeaderDockVelocity(500f, 1_500f), .0001f)
+        assertEquals(-850f, detailHeaderDockVelocity(-500f, -1_500f), .0001f)
+        assertEquals(50f, detailHeaderDockVelocity(500f, 50f), .0001f)
+        assertEquals(0f, detailHeaderDockVelocity(Float.NaN, 100f), .0001f)
+        assertEquals(0f, detailHeaderDockVelocity(200f, Float.NaN), .0001f)
+        assertEquals(0f, detailHeaderDockVelocity(0f, 900f), .0001f)
+        // Approaching an anchor, the permitted launch speed must continually
+        // decrease, preventing the end-of-transition jerk in the recording.
+        val allowed = listOf(200f, 100f, 50f, 20f, 5f).map {
+            detailHeaderDockVelocity(it, 2_000f)
+        }
+        assertTrue(allowed.zipWithNext().all { (a, b) -> b <= a })
+    }
+
     @Test fun swipeFromSongsReachesTheHeroDuringNativeDecayWithoutADeadZone() {
         val distance = 500f
         // Same position, opposite finger direction: different endpoint.
