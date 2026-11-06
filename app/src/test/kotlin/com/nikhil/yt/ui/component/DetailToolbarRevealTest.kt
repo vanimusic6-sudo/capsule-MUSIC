@@ -26,6 +26,36 @@ class DetailToolbarRevealTest {
         assertEquals(0f, empty.toolbarTitleAlpha(), 0f)
     }
 
+    @Test fun titleHandoffStartsOnlyWhenCaptionActuallyApproachesToolbar() {
+        val toolbarBottom = 100f
+        val titleHeight = 30f
+        val lead = 12f
+
+        assertEquals(0f, detailTitleOcclusionFraction(140f, toolbarBottom, titleHeight, lead), 0f)
+        assertEquals(0f, detailTitleOcclusionFraction(112f, toolbarBottom, titleHeight, lead), 0f)
+
+        val justBeforeContact =
+            detailTitleOcclusionFraction(106f, toolbarBottom, titleHeight, lead)
+        assertTrue("Dissolve may begin only a little before physical contact",
+            justBeforeContact in 0f..0.5f)
+
+        val atContact =
+            detailTitleOcclusionFraction(100f, toolbarBottom, titleHeight, lead)
+        assertTrue("At the toolbar edge the hand-off must be underway, not complete",
+            atContact in 0.2f..0.7f)
+
+        assertEquals(
+            1f,
+            detailTitleOcclusionFraction(
+                toolbarBottom - titleHeight * .62f,
+                toolbarBottom,
+                titleHeight,
+                lead,
+            ),
+            .0001f,
+        )
+    }
+
     @Test fun titleDissolveIsSynchronizedAndNeverDropsCombinedOpacity() {
         for (i in 0..1000) {
             val progress = i / 1000f
