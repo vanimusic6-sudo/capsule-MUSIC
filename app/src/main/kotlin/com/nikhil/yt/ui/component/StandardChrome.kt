@@ -62,18 +62,20 @@ internal fun Modifier.capsuleTopBarHairline(
     color: Color,
     reveal: () -> Float = { 1f },
 ): Modifier = drawBehind {
-    val opacity = capsuleTopBarRuleAlpha(reveal())
-    if (opacity > 0f) {
-        // Full-width hairline: 16dp side margins made this look like a
-        // short underline rather than a structural divider. Place it on
-        // the bottom raster edge, never through the bar's title baseline.
+    val extent = capsuleTopBarRuleAlpha(reveal())
+    if (extent > 0f) {
+        // Reveal symmetrically from the centre, without changing the toolbar
+        // layout or obscuring the moving title. Full opacity is constant;
+        // only the two endpoints travel as the pinned bar arrives.
         val lineWidth = 0.75.dp.toPx()
         val y = size.height - lineWidth / 2f
         if (size.width > 0f && y > 0f) {
+            val halfWidth = size.width * 0.5f * extent
+            val center = size.width * 0.5f
             drawLine(
-                color = color.copy(alpha = 0.18f * opacity),
-                start = Offset(0f, y),
-                end = Offset(size.width, y),
+                color = color.copy(alpha = 0.18f),
+                start = Offset(center - halfWidth, y),
+                end = Offset(center + halfWidth, y),
                 strokeWidth = lineWidth,
             )
         }
