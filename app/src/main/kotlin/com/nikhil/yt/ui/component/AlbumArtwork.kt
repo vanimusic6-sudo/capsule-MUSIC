@@ -108,24 +108,35 @@ internal fun BoxScope.CapsuleDetailCoverTitle(
     if (title.isBlank()) return
     val foreground = StandardChrome.text
     val hidden by remember(motion) {
-        androidx.compose.runtime.derivedStateOf { (motion?.coverTitleAlpha() ?: 1f) <= .5f }
+        androidx.compose.runtime.derivedStateOf { (motion?.coverTitleAlpha() ?: 1f) <= .05f }
     }
-    Box(Modifier.align(Alignment.BottomCenter).padding(horizontal = 28.dp).padding(bottom = 16.dp)) {
-        // This parent owns the untransformed anchor. The moving child never
-        // changes the caption slot or the control capsule's measured geometry.
-        Box(Modifier.then(if (motion == null) Modifier else
-            Modifier.onGloballyPositioned(motion::measureCoverTitle))) {
-            Text(
-                text = title,
-                modifier = Modifier.drawWithContent { if (motion?.overlayReady() != true) drawContent() }.testTag("capsule:detail-title")
-                    .semantics { if (hidden) hideFromAccessibility() },
-                color = foreground,
-                style = detailTitleStyle(),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                onTextLayout = { motion?.measureCoverTitleText(it) },
-            )
-        }
+    Box(
+        Modifier
+            .align(Alignment.BottomCenter)
+            .padding(horizontal = 28.dp)
+            .padding(bottom = 16.dp)
+    ) {
+        Text(
+            text = title,
+            modifier = Modifier
+                .graphicsLayer {
+                    val a = (motion?.coverTitleAlpha() ?: 1f).coerceIn(0f, 1f)
+                    alpha = a
+                    // Small elastic release toward the toolbar. There is no
+                    // shared moving paragraph, so long names cannot be clipped
+                    // or jerk when the toolbar takes ownership.
+                    translationY = -(1f - a) * 7.dp.toPx()
+                    val scale = 1f - (1f - a) * .018f
+                    scaleX = scale
+                    scaleY = scale
+                }
+                .testTag("capsule:detail-title")
+                .semantics { if (hidden) hideFromAccessibility() },
+            color = foreground,
+            style = detailTitleStyle(),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
