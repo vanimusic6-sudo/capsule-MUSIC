@@ -81,6 +81,34 @@ class DetailToolbarRevealTest {
         assertEquals(0f, empty.toolbarTitleAlpha(), 0f)
     }
 
+    @Test fun titleFlightDoesNotCountScrollDistanceTwice() {
+        val source = androidx.compose.ui.geometry.Offset(180f, 480f)
+        val target = androidx.compose.ui.geometry.Rect(52f, 28f, 298f, 60f)
+        val baseline = 22f
+        fun geometry(p: Float, offset: Float) = detailTitleGeometry(
+            progress = p, compactScale = .88f, width = 300f, height = 58f,
+            lineLeft = 4f, baseline = baseline, lineHeight = 29f,
+            sourceCenter = source, scrollOffset = offset, target = target,
+        )
+        for (step in 0..20) {
+            val p = step / 20f
+            val a = geometry(p, p * 600f)
+            val b = geometry(p, 0f)
+            // Even while the LazyColumn moves, the source is a stored
+            // unscrolled anchor. Only p may affect the paragraph's flight.
+            assertEquals(b.origin.y, a.origin.y, .001f)
+            assertEquals(b.clip.top, a.clip.top, .001f)
+        }
+
+        val y = (0..4).map { i ->
+            val g = geometry(i / 4f, (i / 4f) * 600f)
+            g.origin.y + baseline * g.scale
+        }
+        val increments = y.zipWithNext().map { (a, b) -> b - a }
+        assertTrue("Title baseline must move at a uniform rate, not surge mid-transition",
+            increments.all { kotlin.math.abs(it - increments[0]) < .01f })
+    }
+
     @Test fun oneParagraphMovesToItsBaselineWithoutChangingGlyphSpacing() {
         val target = androidx.compose.ui.geometry.Rect(56f, 25f, 300f, 54f)
         for (height in listOf(29f, 58f)) {
