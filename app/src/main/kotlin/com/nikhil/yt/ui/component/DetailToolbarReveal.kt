@@ -332,14 +332,14 @@ private fun detailSmoothRange(value: Float, start: Float, end: Float): Float {
  * This remains fully scroll-driven, reversible and allocation-free.
  */
 internal fun detailCoverTitleAlpha(progress: Float): Float =
-    1f - detailSmoothRange(progress.coerceIn(0f, 1f), .34f, .68f)
+    1f - detailSmoothRange(progress.coerceIn(0f, 1f), .48f, .78f)
 
 internal fun detailToolbarTitleAlpha(progress: Float): Float =
-    detailSmoothRange(progress.coerceIn(0f, 1f), .34f, .68f)
+    detailSmoothRange(progress.coerceIn(0f, 1f), .48f, .78f)
 
-/** The structural rule arrives after the title hand-off has clearly begun. */
+/** The structural rule arrives only after the later title hand-off is underway. */
 internal fun detailDividerReveal(progress: Float): Float =
-    detailSmoothRange(progress.coerceIn(0f, 1f), .66f, .94f)
+    detailSmoothRange(progress.coerceIn(0f, 1f), .76f, .96f)
 
 internal data class DetailTitleGeometry(val origin: Offset, val scale: Float, val clip: Rect)
 
