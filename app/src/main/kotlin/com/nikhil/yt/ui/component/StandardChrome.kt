@@ -58,6 +58,17 @@ internal fun capsuleTopBarRuleAlpha(progress: Float): Float {
     return p * p * (3f - 2f * p)
 }
 
+/**
+ * Divider should appear only after the portrait-to-solid-bar transition.
+ * At photoFade=.97 the bar scrim is already nearly opaque; use the last 3%
+ * of artwork dissolve to fade in the rule without drawing over faces.
+ */
+internal fun capsulePhotoHairlineReveal(photoFade: Float): Float {
+    if (!photoFade.isFinite()) return 0f
+    val t = ((photoFade.coerceIn(0f, 1f) - .97f) / .03f).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
+}
+
 internal fun Modifier.capsuleTopBarHairline(
     color: Color,
     reveal: () -> Float = { 1f },

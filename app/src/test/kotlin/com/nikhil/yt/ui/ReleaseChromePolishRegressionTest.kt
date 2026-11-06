@@ -2,6 +2,7 @@ package com.nikhil.yt.ui
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import com.nikhil.yt.ui.component.capsulePhotoHairlineReveal
 import com.nikhil.yt.ui.component.capsuleTopBarRuleAlpha
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -42,7 +43,43 @@ class ReleaseChromePolishRegressionTest {
         val cover = source("ui/component/AlbumArtwork.kt")
         assertFalse(cover.contains("overlayReady()"))
         assertTrue(cover.contains("motion?.coverTitleAlpha()"))
-        assertTrue(title.contains("alpha = motion.toolbarTitleAlpha()"))
+        assertTrue(title.contains("targetValue = target"))
+        assertTrue(title.contains("durationMillis = if (target > 0f) 230 else 165"))
+        assertFalse(title.contains("alpha = motion.toolbarTitleAlpha()"))
+    }
+
+    @Test fun artistAndAlbumRulesWaitForPortraitsToFadeOut() {
+        assertEquals(0f, capsulePhotoHairlineReveal(0f), 0f)
+        assertEquals(0f, capsulePhotoHairlineReveal(.9f), 0f)
+        assertEquals(0f, capsulePhotoHairlineReveal(.97f), 0f)
+        assertEquals(.5f, capsulePhotoHairlineReveal(.985f), .0001f)
+        assertEquals(1f, capsulePhotoHairlineReveal(1f), 0f)
+        val values = (0..100).map { capsulePhotoHairlineReveal(it / 100f) }
+        assertTrue(values.zipWithNext().all { (a,b) -> b >= a })
+        val artist = source("ui/component/ArtistToolbar.kt")
+        assertTrue(artist.contains("capsulePhotoHairlineReveal(artworkFadeProvider())"))
+        val detail = source("ui/component/DetailToolbarReveal.kt")
+        assertTrue(detail.contains("fun hairlineReveal(): Float = capsulePhotoHairlineReveal(photoProgress)"))
+    }
+
+    @Test fun homeAndCollectionScreensUseTheSameNativeScrollPhysics() {
+        val screens = listOf(
+            "ui/screens/HomeScreen.kt", "ui/screens/AlbumScreen.kt",
+            "ui/screens/artist/ArtistScreen.kt",
+            "ui/screens/playlist/LocalPlaylistScreen.kt",
+            "ui/screens/playlist/OnlinePlaylistScreen.kt",
+            "ui/screens/playlist/AutoPlaylistScreen.kt",
+            "ui/screens/playlist/TopPlaylistScreen.kt",
+            "ui/screens/playlist/CachePlaylistScreen.kt",
+        )
+        screens.forEach { path ->
+            assertTrue("Missing shared native fling policy in $path",
+                source(path).contains("rememberCapsuleFlingBehavior()"))
+        }
+        assertTrue(source("ui/utils/CapsuleScroll.kt")
+            .contains("ScrollableDefaults.flingBehavior()"))
+        assertFalse(source("ui/component/DetailToolbarReveal.kt")
+            .contains("class DetailHeaderSingleOwnerFlingBehavior"))
     }
 
     @Test fun hairlineIsSubtleAndRevealsSmoothlyWithTheArtwork() {
@@ -61,7 +98,7 @@ class ReleaseChromePolishRegressionTest {
         assertTrue(fade.contains("val start = 0.36f"))
         assertTrue(fade.contains("ease.pow(1.65f)"))
         val bar = source("ui/component/DetailToolbarReveal.kt")
-        assertTrue(bar.contains("fun hairlineReveal(): Float = photoProgress"))
+        assertTrue(bar.contains("fun hairlineReveal(): Float = capsulePhotoHairlineReveal(photoProgress)"))
         assertTrue(bar.contains("if (forceOpaque) 1f else motion.hairlineReveal()"))
         assertFalse("A second delayed hairline animation makes the UI feel stuck",
             bar.contains("durationMillis = 350"))

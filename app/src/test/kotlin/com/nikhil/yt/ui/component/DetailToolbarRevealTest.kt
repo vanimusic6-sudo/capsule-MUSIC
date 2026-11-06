@@ -13,6 +13,17 @@ class DetailToolbarRevealTest {
     private fun fade(index: Int, offset: Int, bottom: Float = 600f, bar: Float = 100f) =
         detailArtworkFadeLikeArtist(index, offset, bottom, bar)
 
+    @Test fun pinnedTitleMustWaitUntilOriginalIsFullyHidden() {
+        val original = DetailHeaderMotionState(LazyListState(), Density(1f))
+        assertEquals(0f, original.toolbarTitleAlpha(), 0f)
+        assertEquals(1f, original.coverTitleAlpha(), 0f)
+        val midpoint = detailTitleOcclusionFraction(0, 424f, 500f, 48f, 100f)
+        assertEquals(.5f, midpoint, .00001f)
+        assertTrue(midpoint < .9999f)
+        assertEquals(1f,
+            detailTitleOcclusionFraction(0, 448f, 500f, 48f, 100f), 0f)
+    }
+
     @Test fun compactTitleAppearsOnlyAsBarCoversTheOriginalCaption() {
         val top = 500f
         val height = 48f

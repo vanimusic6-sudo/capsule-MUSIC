@@ -1,5 +1,8 @@
 package com.nikhil.yt.ui.component
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -106,9 +109,11 @@ internal class DetailHeaderMotionState(
 
     fun artworkFade(): Float = photoProgress
     fun artworkAlpha(): Float = 1f - photoProgress
-    fun toolbarTitleAlpha(): Float = titleOcclusion
-    fun coverTitleAlpha(): Float = 1f - titleOcclusion
-    fun hairlineReveal(): Float = photoProgress
+    // The cover title stays fully visible until the bar physically covers it.
+    // Only then reveal the separate pinned title; no overlap or flying glyphs.
+    fun toolbarTitleAlpha(): Float = if (titleOcclusion >= .9999f) 1f else 0f
+    fun coverTitleAlpha(): Float = 1f - toolbarTitleAlpha()
+    fun hairlineReveal(): Float = capsulePhotoHairlineReveal(photoProgress)
 }
 
 /**
@@ -227,16 +232,27 @@ internal fun Modifier.artistStyleDetailBackdrop(
     if (alpha > 0f) drawRect(surfaceColor.copy(alpha = alpha))
 }
 
-/** Separate one-line title, invisible until the original passes under the bar. */
+/**
+ * Independent pinned caption: fade in 230ms AFTER the cover caption is hidden.
+ * Shorter 165ms exit keeps a reverse swipe responsive. This animation
+ * never intercepts scroll, moves text or schedules magnetic settling.
+ */
 @Composable
 internal fun DetailToolbarTitle(title: String, motion: DetailHeaderMotionState) {
-    val hidden by androidx.compose.runtime.remember(motion) {
-        derivedStateOf { motion.toolbarTitleAlpha() <= .01f }
-    }
+    val target = motion.toolbarTitleAlpha()
+    val reveal by animateFloatAsState(
+        targetValue = target,
+        animationSpec = tween(
+            durationMillis = if (target > 0f) 230 else 165,
+            easing = FastOutSlowInEasing,
+        ),
+        label = "detail-pinned-title-fade",
+    )
+    val hidden = reveal <= .01f
     Text(
         text = title,
         modifier = Modifier
-            .graphicsLayer { alpha = motion.toolbarTitleAlpha() }
+            .graphicsLayer { alpha = reveal }
             .testTag("capsule:detail-toolbar-title")
             .semantics {
                 contentDescription = title

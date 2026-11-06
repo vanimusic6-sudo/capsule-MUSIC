@@ -79,14 +79,9 @@ internal fun ArtistToolbar(
         containerColor = Color.Transparent,
         contentColor = foreground.copy(alpha = if (canShare) 1f else 0.38f),
     )
-    // The line follows the actual continuous photo hand-off, not a
-    // one-frame Boolean that becomes true only after the photo has gone.
-    // Follow portrait draw-state; never wait for a separate title-frame
-    // recomposition before the toolbar rule can become visible.
-    val dividerReveal = {
-        val t = ((artworkFadeProvider() - .66f) / .34f).coerceIn(0f, 1f)
-        t * t * (3f - 2f * t)
-    }
+    // Reveal the separator only once portrait content is almost fully gone.
+    // The old .66 trigger visibly drew a line across faces and avatars.
+    val dividerReveal = { capsulePhotoHairlineReveal(artworkFadeProvider()) }
     TopAppBar(
         modifier = modifier.drawBehind {
             drawRect(artistSurfaceColor.copy(
