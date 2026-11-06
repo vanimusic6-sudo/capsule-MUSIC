@@ -26,6 +26,22 @@ class DetailToolbarRevealTest {
         assertEquals(0f, empty.toolbarTitleAlpha(), 0f)
     }
 
+    @Test fun titleDissolveIsSynchronizedAndNeverDropsCombinedOpacity() {
+        for (i in 0..1000) {
+            val progress = i / 1000f
+            val cover = detailCoverTitleAlpha(progress)
+            val toolbar = detailToolbarTitleAlpha(progress)
+            assertEquals("Crossfade owners must stay synchronized at $progress",
+                1f, cover + toolbar, .0001f)
+            assertTrue(cover in 0f..1f)
+            assertTrue(toolbar in 0f..1f)
+        }
+        assertEquals(1f, detailCoverTitleAlpha(0f), 0f)
+        assertEquals(0f, detailToolbarTitleAlpha(0f), 0f)
+        assertEquals(0f, detailCoverTitleAlpha(1f), 0f)
+        assertEquals(1f, detailToolbarTitleAlpha(1f), 0f)
+    }
+
     @Test fun oneParagraphMovesToItsBaselineWithoutChangingGlyphSpacing() {
         val target = androidx.compose.ui.geometry.Rect(56f, 25f, 300f, 54f)
         for (height in listOf(29f, 58f)) {
