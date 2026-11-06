@@ -550,12 +550,21 @@ internal class DetailHeaderSingleOwnerFlingBehavior(
                 animationSpec = spring(dampingRatio = 1f, stiffness = 120f),
                 initialVelocity = detailHeaderDockVelocity(distance, velocityPx),
             ) {
-                if (stoppedAtEdge) return@animateTo
+                if (stoppedAtEdge) {
+                    cancelAnimation()
+                    return@animateTo
+                }
                 val delta = value - consumedTotal
                 if (abs(delta) < .0005f) return@animateTo
                 val consumed = scrollBy(delta)
                 consumedTotal += consumed
-                if (abs(consumed - delta) > 1.25f) stoppedAtEdge = true
+                if (abs(consumed - delta) > 1.25f) {
+                    // At the actual scroll bound, stop the clock too. Merely
+                    // skipping scrollBy for the remaining animation frames
+                    // left the view visibly frozen before the next gesture.
+                    stoppedAtEdge = true
+                    cancelAnimation()
+                }
             }
             if (!stoppedAtEdge) {
                 val remaining = distance - consumedTotal
