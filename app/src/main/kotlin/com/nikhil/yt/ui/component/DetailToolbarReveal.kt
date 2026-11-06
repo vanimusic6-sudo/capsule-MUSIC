@@ -299,12 +299,14 @@ internal class DetailHeaderMotionState(
         idleHandoffSnapOffset()?.let { (it - scroll.firstVisibleItemScrollOffset).toFloat() }
 
     fun artworkFade() = progress
-    // Keep the original photograph: only the static matte and pinned bar own backgrounds.
-    // The single moving title is opaque, but the PHOTO retains its original measured scroll dissolve.
+    // The photograph keeps its original measured dissolve. Title hand-off is
+    // intentionally separate: two stationary anchors cross-fade around the
+    // middle instead of one paragraph travelling through the toolbar.
     fun artworkAlpha() = 1f - progress
-    fun toolbarTitleAlpha() = progress
-    fun compactTitleAlpha() = if (progress >= 1f) 1f else 0f
-    fun coverTitleAlpha() = 1f - compactTitleAlpha()
+    fun toolbarTitleAlpha() = detailToolbarTitleAlpha(progress)
+    fun compactTitleAlpha() = toolbarTitleAlpha()
+    fun coverTitleAlpha() = detailCoverTitleAlpha(progress)
+    fun dividerReveal() = detailDividerReveal(progress)
 }
 
 /**
@@ -318,6 +320,26 @@ internal fun detailTitleFeatherStrength(overlapPx: Float, featherPx: Float): Flo
     val t = (overlapPx / featherPx.coerceAtLeast(1f)).coerceIn(0f, 1f)
     return t * t * (3f - 2f * t)
 }
+
+private fun detailSmoothRange(value: Float, start: Float, end: Float): Float {
+    val t = ((value - start) / (end - start).coerceAtLeast(.001f)).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
+}
+
+/**
+ * Title hand-off is deliberately NOT a morph. The hero dissolves near the
+ * middle; the toolbar title appears from its own anchor with a short overlap.
+ * This remains fully scroll-driven, reversible and allocation-free.
+ */
+internal fun detailCoverTitleAlpha(progress: Float): Float =
+    1f - detailSmoothRange(progress.coerceIn(0f, 1f), .31f, .58f)
+
+internal fun detailToolbarTitleAlpha(progress: Float): Float =
+    detailSmoothRange(progress.coerceIn(0f, 1f), .46f, .73f)
+
+/** The structural rule arrives after the title hand-off has clearly begun. */
+internal fun detailDividerReveal(progress: Float): Float =
+    detailSmoothRange(progress.coerceIn(0f, 1f), .66f, .94f)
 
 internal data class DetailTitleGeometry(val origin: Offset, val scale: Float, val clip: Rect)
 
@@ -506,15 +528,9 @@ internal class DetailHeaderFlingBehavior(
 
 @Composable
 internal fun rememberDetailHeaderFlingBehavior(
-    motion: DetailHeaderMotionState,
-    enabled: Boolean = true,
-): FlingBehavior {
-    val native = rememberCapsuleFlingBehavior()
-    // Recreate only for an actual mode change, never for each scroll pixel.
-    return remember(native, motion, enabled) {
-        DetailHeaderFlingBehavior(native, motion) { enabled }
-    }
-}
+    @Suppress("UNUSED_PARAMETER") motion: DetailHeaderMotionState,
+    @Suppress("UNUSED_PARAMETER") enabled: Boolean = true,
+): FlingBehavior = rememberCapsuleFlingBehavior()
 
 /** Reuse the EXACT artist toolbar surface policy: never double-tint the photo. */
 internal fun detailToolbarBackdropAlpha(
@@ -534,28 +550,35 @@ internal fun Modifier.artistStyleDetailBackdrop(
 
 @Composable
 internal fun DetailToolbarTitle(title: String, motion: DetailHeaderMotionState) {
-    val density = LocalDensity.current
-    val measurer = rememberTextMeasurer()
-    val style = detailTitleStyle()
-    val sourceWidth = with(density) { (LocalConfiguration.current.screenWidthDp.dp - 56.dp).roundToPx().coerceAtLeast(1) }
-    val fallback = remember(title, style, sourceWidth, measurer) {
-        measurer.measure(title, style, maxLines = 2, overflow = TextOverflow.Ellipsis,
-            constraints = Constraints(maxWidth = sourceWidth))
+    val hidden by remember(motion) {
+        derivedStateOf { motion.toolbarTitleAlpha() <= .05f }
     }
-    SideEffect {
-        motion.title = title
-        motion.fallbackLayout = fallback
-        motion.compactTitleScale = with(density) { 22.sp.toPx() / 25.sp.toPx() }
-    }
-    DisposableEffect(motion) {
-        motion.titleAttached = true
-        onDispose { motion.titleAttached = false }
-    }
-    val hidden by remember(motion) { derivedStateOf { motion.compactTitleAlpha() == 0f } }
-    Box(Modifier.fillMaxWidth().height(with(density) { (29f * 22f / 25f).sp.toDp() })
-        .onGloballyPositioned(motion::measureToolbarTitle)
-        .testTag("capsule:detail-toolbar-title")
-        .semantics { contentDescription = title; if (hidden) hideFromAccessibility() })
+    Text(
+        text = title,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(28.dp)
+            .graphicsLayer {
+                val a = motion.toolbarTitleAlpha().coerceIn(0f, 1f)
+                alpha = a
+                // The incoming title is nudged from the direction of the
+                // disappearing hero, but never travels between anchors.
+                translationY = (1f - a) * 6.dp.toPx()
+                val scale = .982f + .018f * a
+                scaleX = scale
+                scaleY = scale
+            }
+            .testTag("capsule:detail-toolbar-title")
+            .semantics {
+                contentDescription = title
+                if (hidden) hideFromAccessibility()
+            },
+        color = LocalContentColor.current,
+        style = detailTitleStyle().copy(fontSize = 22.sp, lineHeight = 25.sp),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        textAlign = TextAlign.Center,
+    )
 }
 
 @Composable
@@ -578,23 +601,17 @@ internal fun DetailTopAppBar(
 ) {
     val foreground = if (forceOpaque) StandardChrome.text else
         lerp(Color.White, StandardChrome.text, motion.artworkFade())
-    // Do not show the line while the SAME title is travelling across it.
-    // Observe only docked/undocked state: animation runs once per transition,
-    // not on each scroll pixel, and leaves the title unobstructed in flight.
-    val dividerDocked by remember(motion, forceOpaque) {
-        derivedStateOf { forceOpaque || motion.compactTitleAlpha() == 1f }
-    }
-    val dividerReveal by animateFloatAsState(
-        targetValue = if (dividerDocked) 1f else 0f,
-        animationSpec = tween(durationMillis = 220, easing = CubicBezierEasing(0.2f, 0f, 0.2f, 1f)),
-        label = "detail-toolbar-hairline",
-    )
-    Box(modifier.fillMaxSize().onGloballyPositioned { motion.overlayOrigin = it.positionInRoot() }) {
+
     TopAppBar(
-        modifier = Modifier.onGloballyPositioned(motion::measureToolbar)
+        modifier = modifier
+            .onGloballyPositioned(motion::measureToolbar)
             .artistStyleDetailBackdrop(motion, surfaceColor, forceOpaque)
-            .capsuleTopBarHairline(StandardChrome.muted) { dividerReveal },
-        windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
+            .capsuleTopBarHairline(StandardChrome.muted) {
+                if (forceOpaque) 1f else motion.dividerReveal()
+            },
+        windowInsets = WindowInsets.safeDrawing.only(
+            WindowInsetsSides.Horizontal + WindowInsetsSides.Top
+        ),
         expandedHeight = ArtistToolbarCompactHeight,
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = Color.Transparent,
@@ -607,14 +624,5 @@ internal fun DetailTopAppBar(
         navigationIcon = navigationIcon,
         actions = actions,
     )
-    val titleColor = StandardChrome.text
-    Spacer(Modifier.matchParentSize().drawWithCache {
-        val paint = Paint()
-        // 30dp only on overhanging glyphs: gentle static toolbar truncation
-        // without dimming the intact headline or its photographic backdrop.
-        val feather = 30.dp.toPx()
-        onDrawBehind { motion.drawTitle(this, titleColor, paint, feather) }
-    })
-    }
-
 }
+
