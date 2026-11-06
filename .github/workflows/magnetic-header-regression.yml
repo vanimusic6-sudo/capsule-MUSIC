@@ -1,7 +1,9 @@
-name: Capsule Magnetic Header / FAB Regression
+name: Capsule Detail Motion / Scroll Regression
 on:
   push:
-    branches: ['fix/magnetic-chrome-and-library-fab-20261105']
+    branches:
+      - 'fix/magnetic-chrome-and-library-fab-20261105'
+      - 'fix/detail-hairline-center-reveal-20261107'
   workflow_dispatch:
 permissions:
   contents: read
@@ -25,11 +27,12 @@ jobs:
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.1'
           echo 'unqualifiedResLocale=en-US' > app/src/main/res/resources.properties
-      - name: Test magnetic handoff, library save, artist matte and chrome
+      - name: Test title dissolve, scroll ownership, library save, artist matte and chrome
         run: |
           gradle :app:testUniversalDebugUnitTest \
             --tests 'com.nikhil.yt.ui.ReleaseChromePolishRegressionTest' \
             --tests 'com.nikhil.yt.ui.CollectionHeaderMotionTest' \
+            --tests 'com.nikhil.yt.ui.component.DetailToolbarRevealTest' \
             --tests 'com.nikhil.yt.ui.ArtistHeroTest' \
             --tests 'com.nikhil.yt.ui.HomeScrollableHeaderTest' \
             --tests 'com.nikhil.yt.ui.ScrollFlingCatchRegressionTest' \
