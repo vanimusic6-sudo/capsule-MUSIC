@@ -358,17 +358,57 @@ internal fun detailTitleFeatherStrength(overlapPx: Float, featherPx: Float): Flo
 
 internal data class DetailTitleGeometry(val origin: Offset, val scale: Float, val clip: Rect)
 
+/**
+ * C2 title-flight motion that remains linked directly to scroll.
+ *
+ * The first 6% travels with the cover (85% of the native rate), and the last
+ * 7% gently loses velocity as glyphs dock in the pinned toolbar. In between,
+ * movement stays almost perfectly linear. Unlike a whole-journey smoothstep,
+ * this does not leave the headline stationary or delayed after finger input.
+ *
+ * Integrals of the smoothstep derivative ramps are used instead of a regular
+ * cubic interpolator, so both the velocity AND acceleration are continuous
+ * where the short edge zones join the main trajectory.
+ */
+internal fun detailTitleDockProgress(rawProgress: Float): Float {
+    if (!rawProgress.isFinite()) return 0f
+    val p = rawProgress.coerceIn(0f, 1f)
+    if (p == 0f || p == 1f) return p
+    val start = 0.06f
+    val finish = 0.07f
+    val initialSlope = 0.85f
+    val middleSlope = (1f - start * initialSlope / 2f) /
+        (1f - (start + finish) / 2f)
+    val startValue = start * (initialSlope + middleSlope) / 2f
+    return when {
+        p < start -> {
+            val t = p / start
+            initialSlope * p + (middleSlope - initialSlope) *
+                start * (t * t * t - .5f * t * t * t * t)
+        }
+        p <= 1f - finish -> startValue + middleSlope * (p - start)
+        else -> {
+            val t = (p - (1f - finish)) / finish
+            val endStart = startValue + middleSlope * (1f - finish - start)
+            (endStart + middleSlope * finish *
+                (t - t * t * t + .5f * t * t * t * t)).coerceIn(0f, 1f)
+        }
+    }
+}
+
 /** One fixed paragraph, one baseline trajectory and a shrinking viewport; no reflow/ellipsis swap. */
 internal fun detailTitleGeometry(
     progress: Float, compactScale: Float, width: Float, height: Float,
     lineLeft: Float, baseline: Float, lineHeight: Float,
     sourceCenter: Offset, scrollOffset: Float, target: Rect,
 ): DetailTitleGeometry {
-    val p = progress.coerceIn(0f, 1f)
+    val p = detailTitleDockProgress(progress)
     fun mix(a: Float, b: Float) = a + (b - a) * p
-    // A tiny elastic breath as the same text moves into the compact bar.
-    // Exactly 1x at both anchors; never creates a second title or layout.
-    val stretch = 1f + 0.025f * (4f * p * (1f - p))
+    // Stretch is a C1 bell with zero derivative at BOTH endpoints. The old
+    // 4*p*(1-p) bell changed scale velocity abruptly at the first and last
+    // scroll pixel, even after the title position itself was corrected.
+    val span = p * (1f - p)
+    val stretch = 1f + .018f * (16f * span * span)
     val scale = mix(1f, compactScale) * stretch
     // sourceCenter is already anchored to the unscrolled hero in
     // measureCoverTitle(). Previously subtracting scrollOffset HERE while

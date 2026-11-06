@@ -81,6 +81,25 @@ class DetailToolbarRevealTest {
         assertEquals(0f, empty.toolbarTitleAlpha(), 0f)
     }
 
+    @Test fun titleFlightJoinsBothAnchorsWithContinuousVelocity() {
+        assertEquals(0f, detailTitleDockProgress(0f), 0f)
+        assertEquals(1f, detailTitleDockProgress(1f), 0f)
+        assertEquals(0f, detailTitleDockProgress(Float.NaN), 0f)
+        val points = (0..1000).map { detailTitleDockProgress(it / 1000f) }
+        assertTrue(points.zipWithNext().all { (a, b) -> b >= a && b - a <= .0012f })
+        val step = points.zipWithNext().map { (a, b) -> b - a }
+        assertTrue("The first pixel must respond to the finger", step.first() > .0007f)
+        assertTrue("Docking must lose velocity gracefully",
+            step.last() < step[500] * .1f)
+        assertTrue("The title should remain responsive in the middle",
+            step[500] > .001f)
+        // No velocity jump where either endpoint easing joins the
+        // near-linear interior: derivative changes must be gradual.
+        for (edge in listOf(60, 930)) {
+            assertTrue(kotlin.math.abs(step[edge] - step[edge-1]) < .00001f)
+        }
+    }
+
     @Test fun titleFlightDoesNotCountScrollDistanceTwice() {
         val source = androidx.compose.ui.geometry.Offset(180f, 480f)
         val target = androidx.compose.ui.geometry.Rect(52f, 28f, 298f, 60f)
@@ -105,8 +124,21 @@ class DetailToolbarRevealTest {
             g.origin.y + baseline * g.scale
         }
         val increments = y.zipWithNext().map { (a, b) -> b - a }
-        assertTrue("Title baseline must move at a uniform rate, not surge mid-transition",
-            increments.all { kotlin.math.abs(it - increments[0]) < .01f })
+        assertTrue("Title baseline must move monotonically",
+            increments.all { it < 0f })
+        assertTrue("Middle remains close to linear, without a sudden boost",
+            kotlin.math.abs(increments[1] - increments[2]) < 1f)
+        // The last quarter includes a deliberate short ease-out. Previously
+        // the moving title retained full speed right until it hit the bar.
+        val dense = (0..100).map { i ->
+            val g = geometry(i / 100f, i * 6f)
+            g.origin.y + baseline * g.scale
+        }
+        val perFrame = dense.zipWithNext().map { (a,b) -> kotlin.math.abs(b-a) }
+        assertTrue("Start without a sudden full-speed jump",
+            perFrame.first() < perFrame[40])
+        assertTrue("Finish without a full-speed wall impact",
+            perFrame.last() < perFrame[40] * .1f)
     }
 
     @Test fun oneParagraphMovesToItsBaselineWithoutChangingGlyphSpacing() {
