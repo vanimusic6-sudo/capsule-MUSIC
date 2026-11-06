@@ -370,7 +370,13 @@ internal fun detailTitleGeometry(
     // Exactly 1x at both anchors; never creates a second title or layout.
     val stretch = 1f + 0.025f * (4f * p * (1f - p))
     val scale = mix(1f, compactScale) * stretch
-    val source = Offset(sourceCenter.x - width / 2f, sourceCenter.y - height / 2f - scrollOffset)
+    // sourceCenter is already anchored to the unscrolled hero in
+    // measureCoverTitle(). Previously subtracting scrollOffset HERE while
+    // also interpolating with progress (which is derived from the SAME
+    // scroll offset) double-counted movement. The resulting quadratic
+    // trajectory surged mid-gesture, then crawled near the toolbar.
+    // Keep the source anchor fixed; the one progress drives the whole path.
+    val source = Offset(sourceCenter.x - width / 2f, sourceCenter.y - height / 2f)
     val glyphX = mix(source.x + lineLeft, target.left)
     val targetBaseline = target.center.y - lineHeight * compactScale / 2f + baseline * compactScale
     val glyphY = mix(source.y + baseline, targetBaseline)
