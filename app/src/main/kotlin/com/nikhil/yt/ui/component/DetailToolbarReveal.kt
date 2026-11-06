@@ -503,6 +503,20 @@ internal fun detailHeaderSnapTargetPx(
 }
 
 /**
+ * Retain the scroll's current direction when the header spring takes over,
+ * but never fire a full fling velocity over a tiny remaining distance.
+ * Opposing-velocity launches are released from rest instead of overshooting
+ * the anchor and bouncing back.
+ */
+internal fun detailHeaderDockVelocity(remainingPx: Float, scrollVelocityPx: Float): Float {
+    if (!remainingPx.isFinite() || !scrollVelocityPx.isFinite() ||
+        abs(remainingPx) <= .5f || remainingPx * scrollVelocityPx <= 0f
+    ) return 0f
+    val cap = minOf(850f, abs(remainingPx) * 2.7f)
+    return scrollVelocityPx.coerceIn(-cap, cap)
+}
+
+/**
  * One owner for all cover and track-list scrolling.
  *
  * The previous parent onPreFling started a second scroll.scroll coroutine
@@ -522,14 +536,19 @@ internal class DetailHeaderSingleOwnerFlingBehavior(
 
         suspend fun ScrollScope.dock(targetPx: Int, velocityPx: Float) {
             val distance = motion.distanceToSnapTarget(targetPx) ?: return
-            if (abs(distance) <= .75f) return
+            if (abs(distance) <= 1.5f) {
+                if (abs(distance) > .001f) scrollBy(distance)
+                return
+            }
             val springMotion = Animatable(0f)
             var consumedTotal = 0f
             var stoppedAtEdge = false
             springMotion.animateTo(
                 targetValue = distance,
-                animationSpec = spring(dampingRatio = 1f, stiffness = 190f),
-                initialVelocity = velocityPx.coerceIn(-900f, 900f),
+                // Critically damped and deliberately softer than the old 190f
+                // spring: no sharp acceleration at mid-cover positions.
+                animationSpec = spring(dampingRatio = 1f, stiffness = 120f),
+                initialVelocity = detailHeaderDockVelocity(distance, velocityPx),
             ) {
                 if (stoppedAtEdge) return@animateTo
                 val delta = value - consumedTotal
@@ -555,6 +574,7 @@ internal class DetailHeaderSingleOwnerFlingBehavior(
         // a downward fling from tracks ENTERS the partial hero do we switch
         // to the header spring mid-flight in this SAME ScrollScope.
         var handoff: Int? = null
+        var velocityAtHandoff = 0f
         val watchedScope = object : ScrollScope {
             override fun scrollBy(pixels: Float): Float {
                 if (handoff != null) return 0f
@@ -563,6 +583,11 @@ internal class DetailHeaderSingleOwnerFlingBehavior(
                     val anchor = motion.idleHandoffSnapOffset(initialVelocity)
                     if (anchor != null) {
                         handoff = anchor
+                        // The old spring reused the ORIGINAL finger velocity,
+                        // even after native decay had slowed for many frames.
+                        // Use the most recent consumed per-frame displacement
+                        // for a gentle continuation instead of a sudden kick.
+                        velocityAtHandoff = (consumed * 60f).coerceIn(-850f, 850f)
                         // Signal to native decay that we took over.
                         return 0f
                     }
@@ -572,7 +597,7 @@ internal class DetailHeaderSingleOwnerFlingBehavior(
         }
         val leftover = with(native) { with(watchedScope) { performFling(initialVelocity) } }
         handoff?.let { anchor ->
-            dock(anchor, initialVelocity)
+            dock(anchor, velocityAtHandoff)
             return 0f
         }
         // Rare near-zero velocity endings still settle without a second job.
