@@ -242,7 +242,7 @@ fun CapsulePlayerContent(
     val (savedArtworkHeightScale, onArtworkHeightScaleChange) =
         rememberPreference(
             CapsuleLightArtworkHeightScaleKey,
-            defaultValue = 1f,
+            defaultValue = CapsuleLightReferenceLayout.artworkHeightScale,
         )
 
     val (lightBlockGapsEncoded, onLightBlockGapsEncodedChange) =
@@ -254,7 +254,7 @@ fun CapsulePlayerContent(
     val (lightCanvasPositionsEncoded, onLightCanvasPositionsEncodedChange) =
         rememberPreference(
             CapsuleLightCanvasPositionsKey,
-            defaultValue = CapsuleLightCanvasPositionsBaseEncoded,
+            defaultValue = CapsuleLightReferenceLayout.canvasPositions,
         )
 
     var lightMetadataOrder by
@@ -1167,8 +1167,7 @@ fun CapsulePlayerContent(
                                             modifier =
                                                 Modifier
                                                     .fillMaxWidth()
-                                                    .clipToBounds()
-                                                    .padding(end = 10.dp),
+                                                    .clipToBounds(),
                                         ) {
                                             CapsuleTrackTitle(
                                                 mediaId = mediaMetadata.id,
@@ -1471,10 +1470,7 @@ fun CapsulePlayerContent(
                         modifier =
                             Modifier
                                 .weight(1f)
-                                .clipToBounds()
-                                .padding(
-                                    end = 10.dp,
-                                ),
+                                .clipToBounds(),
                     ) {
                         CapsuleTrackTitle(
                             mediaId = mediaMetadata.id,
@@ -1883,26 +1879,21 @@ fun CapsulePlayerContent(
                     ),
                 )
 
+                // Preserve Cosmo's original 5dp layout footprint.
+                // The previous 38dp touch wrapper pushed the whole player off its baseline.
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterHorizontally)
-                        .width(160.dp)
-                        .height(38.dp)
+                        .width(132.dp)
+                        .height(5.dp)
+                        .clip(CircleShape)
+                        .background(textColor.copy(alpha = 0.32f))
                         .clickable(
                             interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                             indication = null,
                             onClick = onExpandQueue,
                         ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .width(132.dp)
-                            .height(5.dp)
-                            .clip(CircleShape)
-                            .background(textColor.copy(alpha = 0.32f)),
-                    )
-                }
+                )
 
                 Spacer(
                     Modifier.height(
@@ -2192,8 +2183,13 @@ internal fun CapsuleOrbitButton(
             visible = visible,
         )
 
-    // Orbit remains fully opaque even while paused; only its motion stops.
-    val alpha = 1f
+    // Pause dims the orbit/centre as before, while the little travelling dot
+    // is always solid (it must not look like a translucent glass bubble).
+    val alpha by animateFloatAsState(
+        targetValue = if (isPlaying) 1f else 0.46f,
+        animationSpec = tween(durationMillis = 300),
+        label = "CapsuleOrbitPauseAlpha",
+    )
 
     Box(
         modifier =
@@ -2327,7 +2323,7 @@ internal fun CapsuleOrbitButton(
                         )
 
                     drawLine(
-                        color = orbitColor,
+                        color = orbitColor.copy(alpha = alpha * 0.35f),
                         start =
                             tail,
                         end =
@@ -2338,8 +2334,7 @@ internal fun CapsuleOrbitButton(
                     )
 
                     drawCircle(
-                        color =
-                            orbitColor,
+                        color = color.copy(alpha = 1f),
                         radius =
                             w *
                                 0.052f,

@@ -67,6 +67,7 @@ import com.nikhil.yt.ui.component.PreferenceGroupTitle
 import com.nikhil.yt.ui.component.SwitchPreference
 import com.nikhil.yt.ui.player.CapsuleDesignPreset
 import com.nikhil.yt.ui.player.CapsuleDesignPresetCodec
+import com.nikhil.yt.ui.player.CapsuleLightReferenceLayout
 import com.nikhil.yt.ui.player.CapsuleLightBaseOrderEncoded
 import com.nikhil.yt.ui.player.CapsuleLightBaseGapsEncoded
 import com.nikhil.yt.ui.player.CapsuleLightCanvasPositionsBaseEncoded
@@ -171,7 +172,7 @@ fun CapsuleCustomizeSettings(
     val (artworkHeightScale, onArtworkHeightScaleChange) =
         rememberPreference(
             CapsuleLightArtworkHeightScaleKey,
-            defaultValue = 1f,
+            defaultValue = CapsuleLightReferenceLayout.artworkHeightScale,
         )
     val (blockGaps, onBlockGapsChange) =
         rememberPreference(
@@ -181,13 +182,13 @@ fun CapsuleCustomizeSettings(
     val (canvasPositions, onCanvasPositionsChange) =
         rememberPreference(
             CapsuleLightCanvasPositionsKey,
-            defaultValue = CapsuleLightCanvasPositionsBaseEncoded,
+            defaultValue = CapsuleLightReferenceLayout.canvasPositions,
         )
 
     val (lyricLineEnabled, onLyricLineEnabledChange) =
         rememberPreference(
             CapsuleLightLyricLineKey,
-            defaultValue = true,
+            defaultValue = ReleaseAppearanceDefaults.lightLyricLine,
         )
 
     val (immersiveLayoutOrder, onImmersiveLayoutOrderChange) =
@@ -380,17 +381,9 @@ fun CapsuleCustomizeSettings(
             onClick = {
                 when (effectiveTarget) {
                     CapsuleCustomizeTarget.LIGHT -> {
-                        onLayoutOrderChange(CapsuleLightBaseOrderEncoded)
-                        onMetadataOrderChange(CapsuleLightMetadataBaseOrderEncoded)
-                        onModeOrderChange(CapsuleLightModeBaseOrderEncoded)
-                        onAvOrderChange(CapsuleLightAvBaseOrderEncoded)
-                        onTransportOrderChange(CapsuleLightTransportBaseOrderEncoded)
-                        onArtworkWidthScaleChange(1f)
-                        onArtworkHeightScaleChange(1f)
-                        onBlockGapsChange(CapsuleLightBaseGapsEncoded)
-                        onCanvasPositionsChange(CapsuleLightCanvasPositionsBaseEncoded)
-                        onLightEditEnabledChange(false)
-                        onEditSessionActiveChange(false)
+                        // Reset is now the exact shipped Capsule-light.capsule reference.
+                        // This also applies it to existing installations with old saved geometry.
+                        applyPreset(CapsuleLightReferenceLayout.preset)
                     }
                     CapsuleCustomizeTarget.IMMERSIVE -> {
                         onImmersiveLayoutOrderChange(CapsuleImmersiveBaseOrderEncoded)

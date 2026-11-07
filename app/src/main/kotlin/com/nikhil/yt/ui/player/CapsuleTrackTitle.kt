@@ -15,7 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.runtime.snapshotFlow
 
 internal val CapsulePlayerArtistFontSize = 17.sp
@@ -37,7 +37,7 @@ internal fun CapsuleTrackTitle(
             scroll.scrollTo(0)
             return@LaunchedEffect
         }
-        snapshotFlow { scroll.isScrollInProgress }.collect { moving ->
+        snapshotFlow { scroll.isScrollInProgress }.collectLatest { moving ->
             if (!moving && scroll.value > 0) {
                 delay(3_800L)
                 if (!scroll.isScrollInProgress && scroll.value > 0) {
