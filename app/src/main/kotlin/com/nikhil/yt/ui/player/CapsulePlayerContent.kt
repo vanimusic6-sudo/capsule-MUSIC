@@ -62,6 +62,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -77,6 +78,11 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -485,8 +491,10 @@ fun CapsulePlayerContent(
     val artistCredits = rememberArtistCredits(mediaMetadata.artists)
     val navigableArtists = rememberNavigableArtists(artistCredits)
 
+    // A chooser belongs to the track whose artist row was tapped.
+    // Do not silently retarget an open dialog when autoplay changes tracks.
     var showArtistPicker by
-        remember {
+        remember(mediaMetadata.id) {
             mutableStateOf(false)
         }
 
@@ -2014,9 +2022,29 @@ internal fun CapsuleThinSlider(
                 rangeSize
         ).coerceIn(0f, 1f)
 
+    // A gesture can outlive a recomposition (including song or callback changes).
+    // Always call the latest handlers without restarting an in-progress drag.
+    val latestOnValueChange by rememberUpdatedState(onValueChange)
+    val latestOnValueChangeFinished by rememberUpdatedState(onValueChangeFinished)
+
     Canvas(
         modifier =
             modifier
+                .semantics {
+                    progressBarRangeInfo = ProgressBarRangeInfo(
+                        current = value.coerceIn(valueRange.start, valueRange.endInclusive),
+                        range = valueRange,
+                    )
+                    if (enabled) {
+                        setProgress { next ->
+                            latestOnValueChange(next.coerceIn(valueRange.start, valueRange.endInclusive))
+                            latestOnValueChangeFinished()
+                            true
+                        }
+                    } else {
+                        disabled()
+                    }
+                }
                 .pointerInput(
                     enabled,
                     valueRange.start,
@@ -2040,6 +2068,8 @@ internal fun CapsuleThinSlider(
                                 insetPx * 2f
                         ).coerceAtLeast(1f)
 
+                    var lastSentValue = Float.NaN
+
                     fun updateFromX(
                         x: Float,
                     ) {
@@ -2049,11 +2079,11 @@ internal fun CapsuleThinSlider(
                                     usableWidth
                             ).coerceIn(0f, 1f)
 
-                        onValueChange(
-                            valueRange.start +
-                                rangeSize *
-                                newFraction,
-                        )
+                        val nextValue = valueRange.start + rangeSize * newFraction
+                        if (nextValue != lastSentValue) {
+                            lastSentValue = nextValue
+                            latestOnValueChange(nextValue)
+                        }
                     }
 
                     awaitEachGesture {
@@ -2063,9 +2093,8 @@ internal fun CapsuleThinSlider(
                                     false,
                             )
 
-                        updateFromX(
-                            down.position.x,
-                        )
+                        lastSentValue = Float.NaN
+                        updateFromX(down.position.x)
 
                         down.consume()
 
@@ -2081,17 +2110,16 @@ internal fun CapsuleThinSlider(
                                     }
                                     ?: break
 
-                            if (!change.pressed) {
-                                onValueChangeFinished()
-                                break
-                            }
-
-                            updateFromX(
-                                change.position.x,
-                            )
+                            // The UP event may contain the last finger movement; apply
+                            // it before finishing, even if a parent consumed the gesture.
+                            updateFromX(change.position.x)
+                            if (!change.pressed) break
 
                             change.consume()
                         }
+                        // Also finish when the tracked pointer disappears (multi-touch,
+                        // cancelled pointer stream), not only when UP is delivered.
+                        latestOnValueChangeFinished()
                     }
                 },
     ) {

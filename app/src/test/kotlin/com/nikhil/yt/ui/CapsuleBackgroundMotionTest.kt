@@ -9,6 +9,8 @@ import com.nikhil.yt.ui.player.FULL_AMBIENT_FRAME_DELAY_MS
 import com.nikhil.yt.ui.player.COMPACT_AMBIENT_FRAME_DELAY_MS
 import com.nikhil.yt.ui.player.capsuleConstellation
 import com.nikhil.yt.ui.player.capsuleStarDrift
+import com.nikhil.yt.ui.player.capsuleStarDriftX
+import com.nikhil.yt.ui.player.capsuleStarDriftY
 import com.nikhil.yt.ui.player.constellationBlend
 import org.junit.Assert.*
 import org.junit.Test
@@ -41,6 +43,18 @@ class CapsuleBackgroundMotionTest {
                 val (x1, y1) = capsuleStarDrift(star, time - 1)
                 val (x2, y2) = capsuleStarDrift(star, time + 1)
                 assertTrue(abs(x2 - x1) < 0.001f && abs(y2 - y1) < 0.001f)
+            }
+        }
+    }
+
+    @Test fun starDrawPathKeepsTheReferenceMotionWithoutAllocatingCoordinates() {
+        val stars = capsuleConstellation(generation = 3L, count = 64)
+        for (elapsedMs in listOf(0L, 35_999L, 36_001L, 72_000L, 84_000L, 86_400_000L)) {
+            val frameAngle = capsuleBackgroundAngle(elapsedMs)
+            stars.forEach { star ->
+                val (referenceX, referenceY) = capsuleStarDrift(star, elapsedMs)
+                assertEquals(referenceX, capsuleStarDriftX(star, frameAngle), 0f)
+                assertEquals(referenceY, capsuleStarDriftY(star, frameAngle), 0f)
             }
         }
     }

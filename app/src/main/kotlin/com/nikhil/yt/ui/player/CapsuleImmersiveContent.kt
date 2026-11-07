@@ -488,7 +488,8 @@ internal fun CapsuleImmersiveContent(
      */
     val artistCredits = rememberArtistCredits(mediaMetadata.artists)
     val navigableArtists = rememberNavigableArtists(artistCredits)
-    var showArtistPicker by remember { mutableStateOf(false) }
+    // Match Light/Cosmo: close the chooser rather than retarget it on song change.
+    var showArtistPicker by remember(mediaMetadata.id) { mutableStateOf(false) }
 
     if (showArtistPicker) {
         CapsuleArtistPickerDialog(
