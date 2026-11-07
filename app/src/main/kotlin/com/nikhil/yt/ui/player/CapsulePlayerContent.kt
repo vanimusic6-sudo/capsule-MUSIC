@@ -275,11 +275,15 @@ fun CapsulePlayerContent(
         }
     var lightArtworkWidthScale by
         remember(savedArtworkWidthScale) {
-            mutableFloatStateOf(savedArtworkWidthScale.coerceIn(0.55f, 1.08f))
+            mutableFloatStateOf(
+                savedArtworkWidthScale.takeIf { it.isFinite() }?.coerceIn(0.55f, 1.08f) ?: 1f,
+            )
         }
     var lightArtworkHeightScale by
         remember(savedArtworkHeightScale) {
-            mutableFloatStateOf(savedArtworkHeightScale.coerceIn(0.55f, 1.35f))
+            mutableFloatStateOf(
+                savedArtworkHeightScale.takeIf { it.isFinite() }?.coerceIn(0.55f, 1.35f) ?: 1f,
+            )
         }
 
     var lightBlockGaps by
@@ -311,25 +315,11 @@ fun CapsulePlayerContent(
             CapsuleLightEditorProcessGuard.shouldCheckRecovery() &&
             lightEditSessionActive
         ) {
-            lightOrder = CapsuleLightBaseOrder
-            lightMetadataOrder = CapsuleLightMetadataBaseOrder
-            lightModeOrder = CapsuleLightModeBaseOrder
-            lightAvOrder = CapsuleLightAvBaseOrder
-            lightTransportOrder = CapsuleLightTransportBaseOrder
-            lightArtworkWidthScale = 1f
-            lightArtworkHeightScale = 1f
-            lightBlockGaps = CapsuleLightBaseGaps
-            lightCanvasPositions = emptyMap()
-
-            onLightOrderEncodedChange(CapsuleLightBaseOrderEncoded)
-            onLightMetadataOrderEncodedChange(CapsuleLightMetadataBaseOrderEncoded)
-            onLightModeOrderEncodedChange(CapsuleLightModeBaseOrderEncoded)
-            onLightAvOrderEncodedChange(CapsuleLightAvBaseOrderEncoded)
-            onLightTransportOrderEncodedChange(CapsuleLightTransportBaseOrderEncoded)
-            onArtworkWidthScaleChange(1f)
-            onArtworkHeightScaleChange(1f)
-            onLightBlockGapsEncodedChange(CapsuleLightBaseGapsEncoded)
-            onLightCanvasPositionsEncodedChange(CapsuleLightCanvasPositionsBaseEncoded)
+            // Only the *uncommitted* drag was interrupted. The saved order, gaps,
+            // positions and artwork scales are the last validated transaction.
+            // Erasing them on process death used to wipe a whole custom layout.
+            lightEditInProgress = false
+            artworkResizeActive = false
             onLightEditorEnabledChange(false)
             onLightEditSessionActiveChange(false)
         }
