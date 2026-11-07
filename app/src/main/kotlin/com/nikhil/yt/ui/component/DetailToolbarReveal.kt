@@ -312,7 +312,7 @@ internal class DetailHeaderMotionState(
         val titleHeight = measured.size.height.toFloat()
         if (titleHeight <= 0f) return null
         val lead = with(density) { 12.dp.toPx() }
-        val hideDistance = (titleHeight * 1.12f).coerceAtLeast(1f)
+        val hideDistance = (titleHeight * 1.32f).coerceAtLeast(1f)
         val restTop = sourceCenter.y - titleHeight * .5f
         val startOffset = restTop - (toolbarBottomPx + lead)
         val endOffset = restTop - (toolbarBottomPx - hideDistance)
@@ -387,11 +387,11 @@ internal fun detailTitleOcclusionFraction(
     ) return 0f
     val lead = leadPx.coerceAtLeast(0f)
     val startTop = toolbarBottomPx + lead
-    val hideDistance = (titleHeightPx * 1.12f).coerceAtLeast(1f)
+    val hideDistance = (titleHeightPx * 1.32f).coerceAtLeast(1f)
     val endTop = toolbarBottomPx - hideDistance
     val raw = ((startTop - titleTopPx) / (startTop - endTop).coerceAtLeast(1f))
         .coerceIn(0f, 1f)
-    return raw * raw * (3f - 2f * raw)
+    return raw
 }
 internal fun detailTitleSettleTargetOffset(
     currentOffsetPx: Float,
@@ -405,7 +405,7 @@ internal fun detailTitleSettleTargetOffset(
     val h = handoff.coerceIn(0f, 1f)
     // Near either stable state the user's position is already intentional.
     // Auto-settle only the visibly unfinished middle.
-    if (h !in .24f.. .80f) return null
+    if (h !in 0.24f..0.80f) return null
     if (currentOffsetPx <= startOffsetPx + 1f || currentOffsetPx >= endOffsetPx - 1f) return null
     return if (h < .52f) startOffsetPx else endOffsetPx
 }
@@ -425,11 +425,6 @@ internal fun detailCoverTitleAlpha(handoff: Float): Float =
         DetailTitlePhaseSplit,
     )
 
-private fun detailEaseOut(value: Float): Float {
-    val t = value.coerceIn(0f, 1f)
-    return 1f - (1f - t) * (1f - t)
-}
-
 internal fun detailToolbarTitleAlpha(handoff: Float): Float {
     val h = handoff.coerceIn(0f, 1f)
     if (h < DetailTitlePhaseSplit) return 0f
@@ -442,7 +437,7 @@ internal fun detailToolbarTitleAlpha(handoff: Float): Float {
 
 /** The structural rule follows the toolbar title instead of preceding it. */
 internal fun detailDividerReveal(handoff: Float): Float =
-    detailSmoothRange(handoff.coerceIn(0f, 1f), .60f, 1f)
+    ((handoff.coerceIn(0f, 1f) - .66f) / .34f).coerceIn(0f, 1f)
 
 internal data class DetailTitleGeometry(val origin: Offset, val scale: Float, val clip: Rect)
 
@@ -604,7 +599,7 @@ internal class DetailHeaderFlingBehavior(
 
         // Give the user's release a tiny visual rest. A new pointer gesture
         // cancels this same scroll mutation before the settling phase starts.
-        delay(190L)
+        delay(220L)
 
         // A decisive fling already expresses direction; do not second-guess it
         // with a magnetic correction after the native decay.
@@ -616,12 +611,12 @@ internal class DetailHeaderFlingBehavior(
         val movement = Animatable(0f)
         var applied = 0f
         var reachedBound = false
-        val duration = (360f + abs(delta) * 1.15f).roundToInt().coerceIn(360, 500)
+        val duration = (400f + abs(delta) * 1.25f).roundToInt().coerceIn(400, 540)
         movement.animateTo(
             targetValue = delta,
             animationSpec = tween(
                 durationMillis = duration,
-                easing = CubicBezierEasing(0.20f, 0.72f, 0.24f, 1.0f),
+                easing = CubicBezierEasing(0.22f, 0.0f, 0.18f, 1.0f),
             ),
         ) {
             if (reachedBound) return@animateTo
