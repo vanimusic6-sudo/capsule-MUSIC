@@ -323,22 +323,21 @@ private fun CapsuleLightQueueDock(
     modifier: Modifier = Modifier,
 ) {
     Box(
-        modifier = modifier,
+        // The rail is a visual 132×5dp mark, NOT a 5dp touch target.
+        modifier = modifier.clickable(
+            enabled = enabled,
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            onClick = onExpandQueue,
+        ),
         contentAlignment = Alignment.Center,
     ) {
         Box(
-            modifier =
-                Modifier
-                    .width(132.dp)
-                    .height(5.dp)
-                    .clip(CircleShape)
-                    .background(textColor.copy(alpha = 0.32f))
-                    .clickable(
-                        enabled = enabled,
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onExpandQueue,
-                    ),
+            modifier = Modifier
+                .width(132.dp)
+                .height(5.dp)
+                .clip(CircleShape)
+                .background(textColor.copy(alpha = 0.32f)),
         )
     }
 }

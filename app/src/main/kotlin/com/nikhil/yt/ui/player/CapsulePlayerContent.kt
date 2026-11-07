@@ -1891,31 +1891,25 @@ fun CapsulePlayerContent(
                 )
 
                 Box(
-                    modifier =
-                        Modifier
-                            .align(
-                                Alignment.CenterHorizontally,
-                            )
-                            .width(
-                                132.dp,
-                            )
-                            .height(
-                                5.dp,
-                            )
-                            .clip(
-                                CircleShape,
-                            )
-                            .background(
-                                textColor.copy(
-                                    alpha =
-                                        0.32f,
-                                ),
-                            )
-                            .clickable(
-                                onClick =
-                                    onExpandQueue,
-                            ),
-                )
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .width(160.dp)
+                        .height(38.dp)
+                        .clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null,
+                            onClick = onExpandQueue,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(132.dp)
+                            .height(5.dp)
+                            .clip(CircleShape)
+                            .background(textColor.copy(alpha = 0.32f)),
+                    )
+                }
 
                 Spacer(
                     Modifier.height(
