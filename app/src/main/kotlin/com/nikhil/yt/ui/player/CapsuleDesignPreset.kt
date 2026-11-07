@@ -28,6 +28,36 @@ internal data class CapsuleDesignPreset(
 )
 
 /**
+ * Exact shipped Light reference: Capsule-light.capsule, supplied 7 November 2026.
+ *
+ * Keep these defaults separate from the empty canvas preset used by Immersion.
+ * The normal Light canvas and "Capsule your way" editor read the SAME saved coordinates.
+ * Existing custom layouts must not be overwritten just because an app is upgraded.
+ */
+internal object CapsuleLightReferenceLayout {
+    const val canvasPositions =
+        "ARTWORK=0.00,LYRIC=302.57,METADATA=372.57,PROGRESS=433.71,MODE_SWITCH=508.00,CONTROLS=576.00"
+    const val artworkWidthScale = 1.0f
+    const val artworkHeightScale = 1.081483f
+    const val lyricLineEnabled = false
+
+    val preset: CapsuleDesignPreset
+        get() = CapsuleDesignPreset(
+            target = CapsuleCustomizeTarget.LIGHT,
+            layoutOrder = CapsuleLightBaseOrderEncoded,
+            canvasPositions = canvasPositions,
+            metadataOrder = CapsuleLightMetadataBaseOrderEncoded,
+            modeOrder = CapsuleLightModeBaseOrderEncoded,
+            avOrder = CapsuleLightAvBaseOrderEncoded,
+            transportOrder = CapsuleLightTransportBaseOrderEncoded,
+            artworkWidthScale = artworkWidthScale,
+            artworkHeightScale = artworkHeightScale,
+            blockGaps = CapsuleLightBaseGapsEncoded,
+            lyricLineEnabled = lyricLineEnabled,
+        )
+}
+
+/**
  * Dependency-free, versioned interchange format for community-created Capsule screens.
  *
  * Keep this interchange independent of the Android JSON implementation. Desktop org.json is

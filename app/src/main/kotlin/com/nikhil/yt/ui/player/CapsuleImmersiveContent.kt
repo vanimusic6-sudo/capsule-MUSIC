@@ -1190,7 +1190,7 @@ internal fun CapsuleImmersiveContent(
                                 onValueChangeFinished = onSeekFinished,
                                 modifier = Modifier.fillMaxWidth().height(22.dp),
                                 trackHeight = 8.dp,
-                                thumbRadius = 5.dp,
+                                thumbRadius = 0.dp,
                             )
 
                             Row(

@@ -242,7 +242,7 @@ fun CapsulePlayerContent(
     val (savedArtworkHeightScale, onArtworkHeightScaleChange) =
         rememberPreference(
             CapsuleLightArtworkHeightScaleKey,
-            defaultValue = 1f,
+            defaultValue = CapsuleLightReferenceLayout.artworkHeightScale,
         )
 
     val (lightBlockGapsEncoded, onLightBlockGapsEncodedChange) =
@@ -254,7 +254,7 @@ fun CapsulePlayerContent(
     val (lightCanvasPositionsEncoded, onLightCanvasPositionsEncodedChange) =
         rememberPreference(
             CapsuleLightCanvasPositionsKey,
-            defaultValue = CapsuleLightCanvasPositionsBaseEncoded,
+            defaultValue = CapsuleLightReferenceLayout.canvasPositions,
         )
 
     var lightMetadataOrder by
@@ -275,11 +275,15 @@ fun CapsulePlayerContent(
         }
     var lightArtworkWidthScale by
         remember(savedArtworkWidthScale) {
-            mutableFloatStateOf(savedArtworkWidthScale.coerceIn(0.55f, 1.08f))
+            mutableFloatStateOf(
+                savedArtworkWidthScale.takeIf { it.isFinite() }?.coerceIn(0.55f, 1.08f) ?: 1f,
+            )
         }
     var lightArtworkHeightScale by
         remember(savedArtworkHeightScale) {
-            mutableFloatStateOf(savedArtworkHeightScale.coerceIn(0.55f, 1.35f))
+            mutableFloatStateOf(
+                savedArtworkHeightScale.takeIf { it.isFinite() }?.coerceIn(0.55f, 1.35f) ?: 1f,
+            )
         }
 
     var lightBlockGaps by
@@ -311,25 +315,11 @@ fun CapsulePlayerContent(
             CapsuleLightEditorProcessGuard.shouldCheckRecovery() &&
             lightEditSessionActive
         ) {
-            lightOrder = CapsuleLightBaseOrder
-            lightMetadataOrder = CapsuleLightMetadataBaseOrder
-            lightModeOrder = CapsuleLightModeBaseOrder
-            lightAvOrder = CapsuleLightAvBaseOrder
-            lightTransportOrder = CapsuleLightTransportBaseOrder
-            lightArtworkWidthScale = 1f
-            lightArtworkHeightScale = 1f
-            lightBlockGaps = CapsuleLightBaseGaps
-            lightCanvasPositions = emptyMap()
-
-            onLightOrderEncodedChange(CapsuleLightBaseOrderEncoded)
-            onLightMetadataOrderEncodedChange(CapsuleLightMetadataBaseOrderEncoded)
-            onLightModeOrderEncodedChange(CapsuleLightModeBaseOrderEncoded)
-            onLightAvOrderEncodedChange(CapsuleLightAvBaseOrderEncoded)
-            onLightTransportOrderEncodedChange(CapsuleLightTransportBaseOrderEncoded)
-            onArtworkWidthScaleChange(1f)
-            onArtworkHeightScaleChange(1f)
-            onLightBlockGapsEncodedChange(CapsuleLightBaseGapsEncoded)
-            onLightCanvasPositionsEncodedChange(CapsuleLightCanvasPositionsBaseEncoded)
+            // Only the *uncommitted* drag was interrupted. The saved order, gaps,
+            // positions and artwork scales are the last validated transaction.
+            // Erasing them on process death used to wipe a whole custom layout.
+            lightEditInProgress = false
+            artworkResizeActive = false
             onLightEditorEnabledChange(false)
             onLightEditSessionActiveChange(false)
         }
@@ -442,6 +432,20 @@ fun CapsulePlayerContent(
      * mode so it cannot steal artwork budget.
      */
     val lyricLineConfigured = isLight && showLyricLine
+    // Restore an artwork frame reduced while the lyric row occupied its space,
+    // but ONLY on the actual on -> off transition. Never overwrite a custom
+    // smaller cover when opening a player whose lyric row was already disabled.
+    var previousLyricLineConfigured by remember { mutableStateOf(lyricLineConfigured) }
+    LaunchedEffect(lyricLineConfigured, artworkResizeActive) {
+        if (previousLyricLineConfigured && !lyricLineConfigured &&
+            useClayLayout && !artworkResizeActive && lightArtworkHeightScale < 1f
+        ) {
+            lightArtworkHeightScale = 1f
+            onArtworkHeightScaleChange(1f)
+            lightValidationGeneration += 1
+        }
+        if (!artworkResizeActive) previousLyricLineConfigured = lyricLineConfigured
+    }
     val lyricLineActive = lyricLineConfigured && visible && motionActive
 
     val lyricsEntity by
@@ -482,11 +486,6 @@ fun CapsulePlayerContent(
 
     val density =
         LocalDensity.current
-
-    val swipeThresholdPx =
-        with(density) {
-            64.dp.toPx()
-        }
 
     val artistCredits = rememberArtistCredits(mediaMetadata.artists)
     val navigableArtists = rememberNavigableArtists(artistCredits)
@@ -921,82 +920,7 @@ fun CapsulePlayerContent(
                     bottom =
                         bottomPadding + 4.dp,
                 )
-                /*
-                 * Original Capsule gesture:
-                 * swipe DOWN by 64 dp anywhere on the player to open Queue.
-                 */
-                .pointerInput(
-                    onExpandQueue,
-                    swipeThresholdPx,
-                    isLight,
-                    lightEditorEnabled,
-                ) {
-                    // Reordering owns vertical drags while the Light editor is active.
-                    if (isLight && lightEditorEnabled) return@pointerInput
-
-                    var accumulated =
-                        0f
-
-                    var opened =
-                        false
-
-                    detectVerticalDragGestures(
-                        onDragStart = {
-                            accumulated =
-                                0f
-
-                            opened =
-                                false
-                        },
-                        onVerticalDrag = {
-                                change,
-                                dragAmount,
-                            ->
-                            if (
-                                dragAmount >
-                                0f
-                            ) {
-                                accumulated +=
-                                    dragAmount
-                            } else {
-                                accumulated =
-                                    (
-                                        accumulated +
-                                            dragAmount
-                                    ).coerceAtLeast(
-                                        0f,
-                                    )
-                            }
-
-                            if (
-                                !opened &&
-                                accumulated >=
-                                swipeThresholdPx
-                            ) {
-                                change.consume()
-
-                                opened =
-                                    true
-
-                                onExpandQueue()
-                            }
-                        },
-                        onDragEnd = {
-                            accumulated =
-                                0f
-
-                            opened =
-                                false
-                        },
-                        onDragCancel = {
-                            accumulated =
-                                0f
-
-                            opened =
-                                false
-                        },
-                    )
-                },
+        ,
         lightEditorEnabled = useClayLayout && lightEditorEnabled,
         lightOrder = visibleLightOrder,
         lightCanvasPositionsDp = visibleLightCanvasPositions,
@@ -1025,7 +949,7 @@ fun CapsulePlayerContent(
             val visibleSafePositions =
                 positions
                     .filterKeys { it in CapsuleLightBaseOrder }
-                    .mapValues { (_, value) -> value.coerceAtLeast(0f) }
+                    .mapValues { (_, value) -> if (value.isFinite()) value.coerceIn(0f, 4000f) else 0f }
             val safePositions =
                 if (!lyricLineConfigured) {
                     lightCanvasPositions[CapsuleLightBlock.LYRIC]
@@ -1243,8 +1167,7 @@ fun CapsulePlayerContent(
                                             modifier =
                                                 Modifier
                                                     .fillMaxWidth()
-                                                    .clipToBounds()
-                                                    .padding(end = 10.dp),
+                                                    .clipToBounds(),
                                         ) {
                                             CapsuleTrackTitle(
                                                 mediaId = mediaMetadata.id,
@@ -1312,8 +1235,8 @@ fun CapsulePlayerContent(
                                     inactiveColor = textColor.copy(alpha = 0.24f),
                                     onValueChange = { onSeekPreview(it.toLong()) },
                                     onValueChangeFinished = onSeekFinished,
-                                    trackHeight = 2.dp,
-                                    thumbRadius = 3.dp,
+                                    trackHeight = 8.dp,
+                                    thumbRadius = 0.dp,
                                     modifier = Modifier.fillMaxWidth().height(28.dp),
                                 )
 
@@ -1547,10 +1470,7 @@ fun CapsulePlayerContent(
                         modifier =
                             Modifier
                                 .weight(1f)
-                                .clipToBounds()
-                                .padding(
-                                    end = 10.dp,
-                                ),
+                                .clipToBounds(),
                     ) {
                         CapsuleTrackTitle(
                             mediaId = mediaMetadata.id,
@@ -1654,8 +1574,8 @@ fun CapsulePlayerContent(
                     },
                     onValueChangeFinished =
                         onSeekFinished,
-                    trackHeight = if (isLight) 2.dp else 6.dp,
-                    thumbRadius = if (isLight) 3.dp else 4.dp,
+                    trackHeight = 8.dp,
+                    thumbRadius = 0.dp,
                     modifier =
                         Modifier
                             .fillMaxWidth()
@@ -1959,31 +1879,20 @@ fun CapsulePlayerContent(
                     ),
                 )
 
+                // Preserve Cosmo's original 5dp layout footprint.
+                // The previous 38dp touch wrapper pushed the whole player off its baseline.
                 Box(
-                    modifier =
-                        Modifier
-                            .align(
-                                Alignment.CenterHorizontally,
-                            )
-                            .width(
-                                44.dp,
-                            )
-                            .height(
-                                4.dp,
-                            )
-                            .clip(
-                                CircleShape,
-                            )
-                            .background(
-                                textColor.copy(
-                                    alpha =
-                                        0.22f,
-                                ),
-                            )
-                            .clickable(
-                                onClick =
-                                    onExpandQueue,
-                            ),
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .width(132.dp)
+                        .height(5.dp)
+                        .clip(CircleShape)
+                        .background(textColor.copy(alpha = 0.32f))
+                        .clickable(
+                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            indication = null,
+                            onClick = onExpandQueue,
+                        ),
                 )
 
                 Spacer(
@@ -2059,14 +1968,7 @@ internal fun CapsuleThinSlider(
                             .toFloat()
                             .coerceAtLeast(1f)
 
-                    val insetPx =
-                        thumbRadius.toPx()
-
-                    val usableWidth =
-                        (
-                            widthPx -
-                                insetPx * 2f
-                        ).coerceAtLeast(1f)
+                    val usableWidth = widthPx
 
                     var lastSentValue = Float.NaN
 
@@ -2075,8 +1977,7 @@ internal fun CapsuleThinSlider(
                     ) {
                         val newFraction =
                             (
-                                (x - insetPx) /
-                                    usableWidth
+                                x / usableWidth
                             ).coerceIn(0f, 1f)
 
                         val nextValue = valueRange.start + rangeSize * newFraction
@@ -2123,101 +2024,32 @@ internal fun CapsuleThinSlider(
                     }
                 },
     ) {
-        val centerY =
-            size.height / 2f
-
-        val radiusPx =
-            thumbRadius.toPx()
-
-        val startX =
-            radiusPx
-
-        val endX =
-            (
-                size.width -
-                    radiusPx
-            ).coerceAtLeast(startX)
-
-        val activeEnd =
-            startX +
-                (
-                    endX -
-                        startX
-                ) * fraction
-
-        val resolvedActive =
-            if (enabled) {
-                activeColor
-            } else {
-                activeColor.copy(
-                    alpha =
-                        activeColor.alpha *
-                            0.38f,
-                )
-            }
-
-        val resolvedInactive =
-            if (enabled) {
-                inactiveColor
-            } else {
-                inactiveColor.copy(
-                    alpha =
-                        inactiveColor.alpha *
-                            0.45f,
-                )
-            }
-
-        drawLine(
-            color =
-                resolvedInactive,
-            start =
-                Offset(
-                    startX,
-                    centerY,
-                ),
-            end =
-                Offset(
-                    endX,
-                    centerY,
-                ),
-            strokeWidth =
-                trackHeight.toPx(),
-            cap =
-                StrokeCap.Round,
+        // One continuous pill. The progress is a second rounded region INSIDE
+        // the same silhouette: no dot, halo or layer protrudes above the track.
+        val trackPx = trackHeight.toPx().coerceAtLeast(1f)
+        val halfHeight = trackPx / 2f
+        val topLeft = Offset(0f, (size.height - trackPx) / 2f)
+        val trackSize = Size(size.width, trackPx)
+        val rounding = androidx.compose.ui.geometry.CornerRadius(halfHeight, halfHeight)
+        val inactive = if (enabled) inactiveColor else inactiveColor.copy(alpha = inactiveColor.alpha * 0.45f)
+        val active = if (enabled) activeColor else activeColor.copy(alpha = activeColor.alpha * 0.38f)
+        drawRoundRect(
+            color = inactive,
+            topLeft = topLeft,
+            size = trackSize,
+            cornerRadius = rounding,
         )
-
-        if (activeEnd > startX) {
-            drawLine(
-                color =
-                    resolvedActive,
-                start =
-                    Offset(
-                        startX,
-                        centerY,
-                    ),
-                end =
-                    Offset(
-                        activeEnd,
-                        centerY,
-                    ),
-                strokeWidth =
-                    trackHeight.toPx(),
-                cap =
-                    StrokeCap.Round,
+        val progressWidth = (size.width * fraction).coerceIn(0f, size.width)
+        if (progressWidth > 0f) {
+            drawRoundRect(
+                color = active,
+                topLeft = topLeft,
+                size = Size(progressWidth, trackPx),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(
+                    minOf(halfHeight, progressWidth / 2f),
+                ),
             )
         }
-
-        drawCircle(
-            color =
-                resolvedActive,
-            radius =
-                radiusPx,
-            center =
-                Offset(
-                    activeEnd,
-                    centerY,
-                ),
-        )
     }
 }
 
@@ -2351,22 +2183,13 @@ internal fun CapsuleOrbitButton(
             visible = visible,
         )
 
-    val alpha by
-        animateFloatAsState(
-            targetValue =
-                if (isPlaying) {
-                    1f
-                } else {
-                    0.46f
-                },
-            animationSpec =
-                tween(
-                    durationMillis =
-                        300,
-                ),
-            label =
-                "CapsuleOrbitPauseAlpha",
-        )
+    // Pause dims the orbit/centre as before, while the little travelling dot
+    // is always solid (it must not look like a translucent glass bubble).
+    val alpha by animateFloatAsState(
+        targetValue = if (isPlaying) 1f else 0.46f,
+        animationSpec = tween(durationMillis = 300),
+        label = "CapsuleOrbitPauseAlpha",
+    )
 
     Box(
         modifier =
@@ -2500,12 +2323,7 @@ internal fun CapsuleOrbitButton(
                         )
 
                     drawLine(
-                        color =
-                            orbitColor.copy(
-                                alpha =
-                                    alpha *
-                                        0.35f,
-                            ),
+                        color = orbitColor.copy(alpha = alpha * 0.35f),
                         start =
                             tail,
                         end =
@@ -2516,8 +2334,7 @@ internal fun CapsuleOrbitButton(
                     )
 
                     drawCircle(
-                        color =
-                            orbitColor,
+                        color = color.copy(alpha = 1f),
                         radius =
                             w *
                                 0.052f,
