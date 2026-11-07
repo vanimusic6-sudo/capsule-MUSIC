@@ -56,16 +56,26 @@ class DetailToolbarRevealTest {
         )
     }
 
-    @Test fun titleDissolveIsSynchronizedAndNeverDropsCombinedOpacity() {
+    @Test fun toolbarTitleStartsOnlyAfterHeroTitleIsFullyGone() {
+        var seenToolbar = false
         for (i in 0..1000) {
             val progress = i / 1000f
             val cover = detailCoverTitleAlpha(progress)
             val toolbar = detailToolbarTitleAlpha(progress)
-            assertEquals("Crossfade owners must stay synchronized at $progress",
-                1f, cover + toolbar, .0001f)
             assertTrue(cover in 0f..1f)
             assertTrue(toolbar in 0f..1f)
+
+            if (toolbar > .0001f) {
+                seenToolbar = true
+                assertEquals(
+                    "Toolbar title cannot appear while the hero title is still visible at $progress",
+                    0f,
+                    cover,
+                    .0001f,
+                )
+            }
         }
+        assertTrue("Toolbar title must eventually appear", seenToolbar)
         assertEquals(1f, detailCoverTitleAlpha(0f), 0f)
         assertEquals(0f, detailToolbarTitleAlpha(0f), 0f)
         assertEquals(0f, detailCoverTitleAlpha(1f), 0f)
