@@ -59,12 +59,12 @@ class DetailToolbarRevealTest {
     @Test fun partialTitleHandoffSettlesToNearestMeasuredAnchor() {
         assertEquals(
             100f,
-            detailTitleSettleTargetOffset(118f, 100f, 160f, .30f),
+            detailTitleSettleTargetOffset(118f, 100f, 160f, .30f) ?: Float.NaN,
             .0001f,
         )
         assertEquals(
             160f,
-            detailTitleSettleTargetOffset(142f, 100f, 160f, .70f),
+            detailTitleSettleTargetOffset(142f, 100f, 160f, .70f) ?: Float.NaN,
             .0001f,
         )
         assertEquals(null, detailTitleSettleTargetOffset(100f, 100f, 160f, 0f))
