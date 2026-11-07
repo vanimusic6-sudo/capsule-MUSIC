@@ -318,8 +318,12 @@ internal class DetailHeaderMotionState(
         val endOffset = restTop - (toolbarBottomPx - hideDistance)
         val current = scroll.firstVisibleItemScrollOffset.toFloat()
 
-        if (current <= startOffset + 1f || current >= endOffset - 1f) return null
-        val target = if (titleHandoff() < .5f) startOffset else endOffset
+        val target = detailTitleSettleTargetOffset(
+            currentOffsetPx = current,
+            startOffsetPx = startOffset,
+            endOffsetPx = endOffset,
+            handoff = titleHandoff(),
+        ) ?: return null
         return target - current
     }
 
@@ -390,6 +394,19 @@ internal fun detailTitleOcclusionFraction(
         .coerceIn(0f, 1f)
     return raw * raw * (3f - 2f * raw)
 }
+internal fun detailTitleSettleTargetOffset(
+    currentOffsetPx: Float,
+    startOffsetPx: Float,
+    endOffsetPx: Float,
+    handoff: Float,
+): Float? {
+    if (!currentOffsetPx.isFinite() || !startOffsetPx.isFinite() || !endOffsetPx.isFinite() ||
+        endOffsetPx <= startOffsetPx + 2f
+    ) return null
+    if (currentOffsetPx <= startOffsetPx + 1f || currentOffsetPx >= endOffsetPx - 1f) return null
+    return if (handoff.coerceIn(0f, 1f) < .5f) startOffsetPx else endOffsetPx
+}
+
 
 /**
  * Two strictly sequential phases, still driven by the measured toolbar
