@@ -442,16 +442,19 @@ fun CapsulePlayerContent(
      * mode so it cannot steal artwork budget.
      */
     val lyricLineConfigured = isLight && showLyricLine
-    // When the extra lyric row is removed, reclaim artwork height instead of
-    // carrying a size reduced to make room for that row into the new scene.
+    // Restore an artwork frame reduced while the lyric row occupied its space,
+    // but ONLY on the actual on -> off transition. Never overwrite a custom
+    // smaller cover when opening a player whose lyric row was already disabled.
+    var previousLyricLineConfigured by remember { mutableStateOf(lyricLineConfigured) }
     LaunchedEffect(lyricLineConfigured, artworkResizeActive) {
-        if (useClayLayout && !lyricLineConfigured && !artworkResizeActive &&
-            lightArtworkHeightScale < 1f
+        if (previousLyricLineConfigured && !lyricLineConfigured &&
+            useClayLayout && !artworkResizeActive && lightArtworkHeightScale < 1f
         ) {
             lightArtworkHeightScale = 1f
             onArtworkHeightScaleChange(1f)
             lightValidationGeneration += 1
         }
+        if (!artworkResizeActive) previousLyricLineConfigured = lyricLineConfigured
     }
     val lyricLineActive = lyricLineConfigured && visible && motionActive
 
