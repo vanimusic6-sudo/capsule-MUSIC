@@ -312,7 +312,7 @@ internal class DetailHeaderMotionState(
         val titleHeight = measured.size.height.toFloat()
         if (titleHeight <= 0f) return null
         val lead = with(density) { 12.dp.toPx() }
-        val hideDistance = minOf(titleHeight * .62f, titleHeight).coerceAtLeast(1f)
+        val hideDistance = (titleHeight * 1.12f).coerceAtLeast(1f)
         val restTop = sourceCenter.y - titleHeight * .5f
         val startOffset = restTop - (toolbarBottomPx + lead)
         val endOffset = restTop - (toolbarBottomPx - hideDistance)
@@ -387,8 +387,7 @@ internal fun detailTitleOcclusionFraction(
     ) return 0f
     val lead = leadPx.coerceAtLeast(0f)
     val startTop = toolbarBottomPx + lead
-    val hideDistance = minOf(titleHeightPx * .62f, titleHeightPx)
-        .coerceAtLeast(1f)
+    val hideDistance = (titleHeightPx * 1.12f).coerceAtLeast(1f)
     val endTop = toolbarBottomPx - hideDistance
     val raw = ((startTop - titleTopPx) / (startTop - endTop).coerceAtLeast(1f))
         .coerceIn(0f, 1f)
@@ -403,8 +402,12 @@ internal fun detailTitleSettleTargetOffset(
     if (!currentOffsetPx.isFinite() || !startOffsetPx.isFinite() || !endOffsetPx.isFinite() ||
         endOffsetPx <= startOffsetPx + 2f
     ) return null
+    val h = handoff.coerceIn(0f, 1f)
+    // Near either stable state the user's position is already intentional.
+    // Auto-settle only the visibly unfinished middle.
+    if (h !in .24f.. .80f) return null
     if (currentOffsetPx <= startOffsetPx + 1f || currentOffsetPx >= endOffsetPx - 1f) return null
-    return if (handoff.coerceIn(0f, 1f) < .5f) startOffsetPx else endOffsetPx
+    return if (h < .52f) startOffsetPx else endOffsetPx
 }
 
 
@@ -413,12 +416,12 @@ internal fun detailTitleSettleTargetOffset(
  * occlusion. The hero title MUST reach alpha=0 before the toolbar title gets
  * any opacity; there is no crossfade overlap and no double-title frame.
  */
-private const val DetailTitlePhaseSplit = 0.62f
+private const val DetailTitlePhaseSplit = 0.68f
 
 internal fun detailCoverTitleAlpha(handoff: Float): Float =
     1f - detailSmoothRange(
         handoff.coerceIn(0f, 1f),
-        .50f,
+        .30f,
         DetailTitlePhaseSplit,
     )
 
@@ -430,17 +433,16 @@ private fun detailEaseOut(value: Float): Float {
 internal fun detailToolbarTitleAlpha(handoff: Float): Float {
     val h = handoff.coerceIn(0f, 1f)
     if (h < DetailTitlePhaseSplit) return 0f
-    val t = ((h - DetailTitlePhaseSplit) / (.92f - DetailTitlePhaseSplit))
+    val t = ((h - DetailTitlePhaseSplit) / (1f - DetailTitlePhaseSplit))
         .coerceIn(0f, 1f)
-    // At the exact seam the hero is already fully transparent. A tiny
-    // non-zero toolbar alpha prevents a catchable "no title" frame without
-    // ever allowing both owners to be visible together.
-    return .06f + .94f * detailEaseOut(t)
+    // Keep a microscopic seam floor only after the hero is fully gone, then
+    // spend the rest of the measured travel easing the toolbar title in.
+    return .025f + .975f * detailSmoothRange(t, 0f, 1f)
 }
 
 /** The structural rule follows the toolbar title instead of preceding it. */
 internal fun detailDividerReveal(handoff: Float): Float =
-    detailSmoothRange(handoff.coerceIn(0f, 1f), .76f, .98f)
+    detailSmoothRange(handoff.coerceIn(0f, 1f), .60f, 1f)
 
 internal data class DetailTitleGeometry(val origin: Offset, val scale: Float, val clip: Rect)
 
@@ -602,7 +604,11 @@ internal class DetailHeaderFlingBehavior(
 
         // Give the user's release a tiny visual rest. A new pointer gesture
         // cancels this same scroll mutation before the settling phase starts.
-        delay(110L)
+        delay(190L)
+
+        // A decisive fling already expresses direction; do not second-guess it
+        // with a magnetic correction after the native decay.
+        if (abs(initialVelocity) > 1050f) return remaining
 
         val delta = motion.idleTitleHandoffDeltaPx() ?: return remaining
         if (abs(delta) <= 1f) return remaining
@@ -610,12 +616,12 @@ internal class DetailHeaderFlingBehavior(
         val movement = Animatable(0f)
         var applied = 0f
         var reachedBound = false
-        val duration = (230f + abs(delta) * 0.9f).roundToInt().coerceIn(230, 320)
+        val duration = (360f + abs(delta) * 1.15f).roundToInt().coerceIn(360, 500)
         movement.animateTo(
             targetValue = delta,
             animationSpec = tween(
                 durationMillis = duration,
-                easing = CubicBezierEasing(0.16f, 1.0f, 0.30f, 1.0f),
+                easing = CubicBezierEasing(0.20f, 0.72f, 0.24f, 1.0f),
             ),
         ) {
             if (reachedBound) return@animateTo
