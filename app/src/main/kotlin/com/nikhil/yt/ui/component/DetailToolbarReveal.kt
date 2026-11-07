@@ -11,6 +11,7 @@ import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.isSpecified
@@ -298,6 +299,30 @@ internal class DetailHeaderMotionState(
     fun idleHandoffDeltaPx(): Float? =
         idleHandoffSnapOffset()?.let { (it - scroll.firstVisibleItemScrollOffset).toFloat() }
 
+    /**
+     * Settle ONLY the measured title hand-off, not the whole hero. Anchors are
+     * the exact caption positions where the dissolve begins and ends, so the
+     * correction stays short and cannot yank the user back through the cover.
+     */
+    fun idleTitleHandoffDeltaPx(): Float? {
+        if (!headerPresence.value || scroll.firstVisibleItemIndex != 0) return null
+        val measured = coverLayout ?: return null
+        if (!sourceCenter.isSpecified || !toolbarBottomPx.isFinite()) return null
+
+        val titleHeight = measured.size.height.toFloat()
+        if (titleHeight <= 0f) return null
+        val lead = with(density) { 12.dp.toPx() }
+        val hideDistance = minOf(titleHeight * .62f, titleHeight).coerceAtLeast(1f)
+        val restTop = sourceCenter.y - titleHeight * .5f
+        val startOffset = restTop - (toolbarBottomPx + lead)
+        val endOffset = restTop - (toolbarBottomPx - hideDistance)
+        val current = scroll.firstVisibleItemScrollOffset.toFloat()
+
+        if (current <= startOffset + 1f || current >= endOffset - 1f) return null
+        val target = if (titleHandoff() < .5f) startOffset else endOffset
+        return target - current
+    }
+
     private fun titleHandoff(): Float {
         if (!headerPresence.value || scroll.firstVisibleItemIndex > 0) return 1f
         val measured = coverLayout ?: return 0f
@@ -371,25 +396,30 @@ internal fun detailTitleOcclusionFraction(
  * occlusion. The hero title MUST reach alpha=0 before the toolbar title gets
  * any opacity; there is no crossfade overlap and no double-title frame.
  */
-private const val DetailTitlePhaseSplit = 0.64f
+private const val DetailTitlePhaseSplit = 0.62f
 
 internal fun detailCoverTitleAlpha(handoff: Float): Float =
     1f - detailSmoothRange(
         handoff.coerceIn(0f, 1f),
-        0f,
+        .02f,
         DetailTitlePhaseSplit,
     )
 
-internal fun detailToolbarTitleAlpha(handoff: Float): Float =
-    detailSmoothRange(
-        handoff.coerceIn(0f, 1f),
-        DetailTitlePhaseSplit,
-        1f,
-    )
+private fun detailEaseOut(value: Float): Float {
+    val t = value.coerceIn(0f, 1f)
+    return 1f - (1f - t) * (1f - t)
+}
+
+internal fun detailToolbarTitleAlpha(handoff: Float): Float {
+    val h = handoff.coerceIn(0f, 1f)
+    val t = ((h - DetailTitlePhaseSplit) / (.92f - DetailTitlePhaseSplit))
+        .coerceIn(0f, 1f)
+    return detailEaseOut(t)
+}
 
 /** The structural rule follows the toolbar title instead of preceding it. */
 internal fun detailDividerReveal(handoff: Float): Float =
-    detailSmoothRange(handoff.coerceIn(0f, 1f), .78f, 1f)
+    detailSmoothRange(handoff.coerceIn(0f, 1f), .76f, .98f)
 
 internal data class DetailTitleGeometry(val origin: Offset, val scale: Float, val clip: Rect)
 
@@ -548,18 +578,23 @@ internal class DetailHeaderFlingBehavior(
     override suspend fun ScrollScope.performFling(initialVelocity: Float): Float {
         val remaining = with(native) { performFling(initialVelocity) }
         if (!enabled()) return remaining
-        val delta = motion.idleHandoffDeltaPx() ?: return remaining
+
+        // Give the user's release a tiny visual rest. A new pointer gesture
+        // cancels this same scroll mutation before the settling phase starts.
+        delay(110L)
+
+        val delta = motion.idleTitleHandoffDeltaPx() ?: return remaining
         if (abs(delta) <= 1f) return remaining
 
         val movement = Animatable(0f)
         var applied = 0f
         var reachedBound = false
-        val duration = (260f + abs(delta) * 0.14f).roundToInt().coerceIn(260, 390)
+        val duration = (230f + abs(delta) * 0.9f).roundToInt().coerceIn(230, 320)
         movement.animateTo(
             targetValue = delta,
             animationSpec = tween(
                 durationMillis = duration,
-                easing = CubicBezierEasing(0.22f, 0.0f, 0.18f, 1.0f),
+                easing = CubicBezierEasing(0.16f, 1.0f, 0.30f, 1.0f),
             ),
         ) {
             if (reachedBound) return@animateTo
@@ -578,9 +613,15 @@ internal class DetailHeaderFlingBehavior(
 
 @Composable
 internal fun rememberDetailHeaderFlingBehavior(
-    @Suppress("UNUSED_PARAMETER") motion: DetailHeaderMotionState,
-    @Suppress("UNUSED_PARAMETER") enabled: Boolean = true,
-): FlingBehavior = rememberCapsuleFlingBehavior()
+    motion: DetailHeaderMotionState,
+    enabled: Boolean = true,
+): FlingBehavior {
+    val native = rememberCapsuleFlingBehavior()
+    val enabledState = rememberUpdatedState(enabled)
+    return remember(native, motion) {
+        DetailHeaderFlingBehavior(native, motion) { enabledState.value }
+    }
+}
 
 /** Reuse the EXACT artist toolbar surface policy: never double-tint the photo. */
 internal fun detailToolbarBackdropAlpha(
@@ -612,8 +653,8 @@ internal fun DetailToolbarTitle(title: String, motion: DetailHeaderMotionState) 
                 alpha = a
                 // Keep the old side-anchored toolbar geometry; only a tiny
                 // vertical push accompanies the opacity hand-off.
-                translationY = (1f - a) * 5.dp.toPx()
-                val scale = .985f + .015f * a
+                translationY = (1f - a) * 2.dp.toPx()
+                val scale = .995f + .005f * a
                 scaleX = scale
                 scaleY = scale
                 transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, .5f)
