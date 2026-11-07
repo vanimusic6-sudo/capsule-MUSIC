@@ -630,20 +630,25 @@ private fun DrawScope.drawConstellation(
 ) {
     if (opacity <= 0f) return
     val angle = capsuleBackgroundAngle(elapsedMs)
+    val inset = 8f * density
+    val widthInside = (size.width - 2f * inset).coerceAtLeast(1f)
+    val heightInside = (size.height - 2f * inset).coerceAtLeast(1f)
+    val driftScale = if (compact) 1.1f * density else 3.2f * density
+    val highlightStroke = 0.45f * density
     stars.forEachIndexed { index, star ->
         val depth = star.depth
-        val drift = (depth - 0.32f) * if (compact) 1.1f * density else 3.2f * density
-        val (dx, dy) = capsuleStarDrift(star, elapsedMs)
-        val inset = 8f * density
-        val x = inset + star.x * (size.width - 2f * inset).coerceAtLeast(1f) + dx * drift
-        val y = inset + star.y * (size.height - 2f * inset).coerceAtLeast(1f) + dy * drift
+        val drift = (depth - 0.32f) * driftScale
+        // The angle is shared across all stars in this frame; do not recompute it or
+        // allocate a Pair for every star on every wallpaper redraw.
+        val x = inset + star.x * widthInside + capsuleStarDriftX(star, angle) * drift
+        val y = inset + star.y * heightInside + capsuleStarDriftY(star, angle) * drift
         val pulse = (waveSin(angle * (0.18f + depth * 0.24f) + star.phase) + 1f) / 2f
         val alpha = (0.14f + depth * 0.24f + pulse * 0.09f).coerceAtMost(0.6f) * opacity
-        val radius =
-            (if (index % 17 == 0) 1.15f else 0.42f + depth * 0.32f) * density
+        val highlight = index % 17 == 0
+        val radius = (if (highlight) 1.15f else 0.42f + depth * 0.32f) * density
         val starColor = starInk[index % starInk.size]
 
-        if (index % 17 == 0) {
+        if (highlight) {
             drawCircle(
                 color = palette[index % palette.size].copy(alpha = alpha * 0.13f),
                 radius = radius * 4.4f,
@@ -653,14 +658,14 @@ private fun DrawScope.drawConstellation(
                 color = starColor.copy(alpha = alpha * 0.38f),
                 start = Offset(x - radius * 2.2f, y),
                 end = Offset(x + radius * 2.2f, y),
-                strokeWidth = 0.45f * density,
+                strokeWidth = highlightStroke,
                 cap = StrokeCap.Round,
             )
             drawLine(
                 color = starColor.copy(alpha = alpha * 0.3f),
                 start = Offset(x, y - radius * 2.2f),
                 end = Offset(x, y + radius * 2.2f),
-                strokeWidth = 0.45f * density,
+                strokeWidth = highlightStroke,
                 cap = StrokeCap.Round,
             )
         }
