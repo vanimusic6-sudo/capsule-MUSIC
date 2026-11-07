@@ -509,7 +509,9 @@ private fun DrawScope.drawConstellation(
     stars.forEachIndexed { index, star ->
         val depth = star.depth
         val drift = (depth - 0.32f) * if (compact) 1.1f * density else 3.2f * density
-        val (dx, dy) = capsuleStarDrift(star, elapsedMs)
+        // Reuse the frame angle and avoid allocating a Pair for every star on every draw.
+        val dx = sin(angle * (0.18 + depth * 0.14) + star.phase).toFloat()
+        val dy = cos(angle * (0.15 + depth * 0.11) + star.phase).toFloat()
         val inset = 8f * density
         val x = inset + star.x * (size.width - 2f * inset).coerceAtLeast(1f) + dx * drift
         val y = inset + star.y * (size.height - 2f * inset).coerceAtLeast(1f) + dy * drift
