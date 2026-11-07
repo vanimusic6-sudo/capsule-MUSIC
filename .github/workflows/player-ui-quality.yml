@@ -50,6 +50,7 @@ jobs:
           --tests 'com.nikhil.yt.ui.player.CapsuleVideoMorphPixelsTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveContentTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleLightEditorTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleDesignPresetTest'
           --tests 'com.nikhil.yt.ui.MotionEnergyStructuralRegressionTest'
           --stacktrace --no-daemon --max-workers=2
       - name: Android lint
