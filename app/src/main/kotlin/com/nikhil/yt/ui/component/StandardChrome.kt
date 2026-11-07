@@ -52,10 +52,10 @@ import com.nikhil.yt.ui.theme.LocalCapsuleLightTheme
  * no new animation clock, layout passes, or extra overlay surfaces.
  */
 internal fun capsuleTopBarRuleAlpha(progress: Float): Float {
-    // The arrival animation is clocked once, on the pin/unpin event,
-    // not fed raw photo scroll pixels. Ease its alpha without a width wipe.
+    // Quintic smootherstep keeps both ends almost motionless, avoiding the
+    // "line suddenly shoots out" feeling around the middle of the reveal.
     val p = progress.coerceIn(0f, 1f)
-    return p * p * (3f - 2f * p)
+    return p * p * p * (p * (p * 6f - 15f) + 10f)
 }
 
 internal fun Modifier.capsuleTopBarHairline(
@@ -73,7 +73,7 @@ internal fun Modifier.capsuleTopBarHairline(
             val halfWidth = size.width * 0.5f * extent
             val center = size.width * 0.5f
             drawLine(
-                color = color.copy(alpha = 0.18f),
+                color = color.copy(alpha = 0.18f * extent),
                 start = Offset(center - halfWidth, y),
                 end = Offset(center + halfWidth, y),
                 strokeWidth = lineWidth,
