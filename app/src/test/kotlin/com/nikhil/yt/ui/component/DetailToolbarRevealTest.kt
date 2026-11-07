@@ -69,6 +69,23 @@ class DetailToolbarRevealTest {
         )
         assertEquals(null, detailTitleSettleTargetOffset(100f, 100f, 160f, 0f))
         assertEquals(null, detailTitleSettleTargetOffset(160f, 100f, 160f, 1f))
+        assertEquals(null, detailTitleSettleTargetOffset(108f, 100f, 160f, .10f))
+        assertEquals(null, detailTitleSettleTargetOffset(154f, 100f, 160f, .92f))
+    }
+
+    @Test fun geometryProgressStaysLinearSoVisualEasingIsNotStacked() {
+        val toolbarBottom = 100f
+        val titleHeight = 30f
+        val lead = 12f
+        val startTop = toolbarBottom + lead
+        val endTop = toolbarBottom - titleHeight * 1.32f
+        val midpoint = (startTop + endTop) * .5f
+
+        assertEquals(
+            .5f,
+            detailTitleOcclusionFraction(midpoint, toolbarBottom, titleHeight, lead),
+            .0001f,
+        )
     }
 
     @Test fun toolbarTitleStartsOnlyAfterHeroTitleIsFullyGone() {
