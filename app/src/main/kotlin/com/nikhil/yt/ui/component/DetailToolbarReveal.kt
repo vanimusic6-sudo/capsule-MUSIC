@@ -418,7 +418,7 @@ private const val DetailTitlePhaseSplit = 0.62f
 internal fun detailCoverTitleAlpha(handoff: Float): Float =
     1f - detailSmoothRange(
         handoff.coerceIn(0f, 1f),
-        .02f,
+        .50f,
         DetailTitlePhaseSplit,
     )
 
@@ -429,9 +429,13 @@ private fun detailEaseOut(value: Float): Float {
 
 internal fun detailToolbarTitleAlpha(handoff: Float): Float {
     val h = handoff.coerceIn(0f, 1f)
+    if (h < DetailTitlePhaseSplit) return 0f
     val t = ((h - DetailTitlePhaseSplit) / (.92f - DetailTitlePhaseSplit))
         .coerceIn(0f, 1f)
-    return detailEaseOut(t)
+    // At the exact seam the hero is already fully transparent. A tiny
+    // non-zero toolbar alpha prevents a catchable "no title" frame without
+    // ever allowing both owners to be visible together.
+    return .06f + .94f * detailEaseOut(t)
 }
 
 /** The structural rule follows the toolbar title instead of preceding it. */
