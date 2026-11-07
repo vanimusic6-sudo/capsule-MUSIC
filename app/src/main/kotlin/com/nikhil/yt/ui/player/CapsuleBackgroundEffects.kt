@@ -160,7 +160,11 @@ internal fun CapsuleProceduralBackground(
             null
         }
 
-    val starFields = remember(compact) { CapsuleStarFields(if (compact) 22 else 64) }
+    val starFields = if (effect == CapsuleBackgroundEffect.CAPSULE_STAR) {
+        remember(compact) { CapsuleStarFields(if (compact) 22 else 64) }
+    } else {
+        null
+    }
     Box(modifier = modifier.drawWithCache {
         // These shaders depend on palette/geometry, never on animation time. Reuse them across
         // drift frames instead of allocating identical brushes and shaders at every clock tick.
@@ -209,7 +213,7 @@ internal fun CapsuleProceduralBackground(
                     palette, elapsedMs, compact, requireNotNull(baseBrush), requireNotNull(vignette),
                 )
                 CapsuleBackgroundEffect.CAPSULE_STAR -> drawCapsuleStarField(
-                    palette, elapsedMs, compact, starFields, requireNotNull(baseBrush),
+                    palette, elapsedMs, compact, requireNotNull(starFields), requireNotNull(baseBrush),
                     requireNotNull(starSweep), requireNotNull(vignette),
                 )
                 CapsuleBackgroundEffect.CAPSULE_GLOW -> drawCapsuleGlow(palette, compact)
