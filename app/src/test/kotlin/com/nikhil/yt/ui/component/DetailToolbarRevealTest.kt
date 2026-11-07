@@ -47,7 +47,7 @@ class DetailToolbarRevealTest {
         assertEquals(
             1f,
             detailTitleOcclusionFraction(
-                toolbarBottom - titleHeight * .62f,
+                toolbarBottom - titleHeight * 1.32f,
                 toolbarBottom,
                 titleHeight,
                 lead,
