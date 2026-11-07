@@ -367,19 +367,29 @@ internal fun detailTitleOcclusionFraction(
 }
 
 /**
- * Title hand-off is deliberately NOT a morph. The hero dissolves near the
- * middle; the toolbar title appears from its own anchor with a short overlap.
- * This remains fully scroll-driven, reversible and allocation-free.
+ * Two strictly sequential phases, still driven by the measured toolbar
+ * occlusion. The hero title MUST reach alpha=0 before the toolbar title gets
+ * any opacity; there is no crossfade overlap and no double-title frame.
  */
+private const val DetailTitlePhaseSplit = 0.64f
+
 internal fun detailCoverTitleAlpha(handoff: Float): Float =
-    1f - handoff.coerceIn(0f, 1f)
+    1f - detailSmoothRange(
+        handoff.coerceIn(0f, 1f),
+        0f,
+        DetailTitlePhaseSplit,
+    )
 
 internal fun detailToolbarTitleAlpha(handoff: Float): Float =
-    handoff.coerceIn(0f, 1f)
+    detailSmoothRange(
+        handoff.coerceIn(0f, 1f),
+        DetailTitlePhaseSplit,
+        1f,
+    )
 
-/** The structural rule arrives only after the geometry-driven hand-off is underway. */
+/** The structural rule follows the toolbar title instead of preceding it. */
 internal fun detailDividerReveal(handoff: Float): Float =
-    detailSmoothRange(handoff.coerceIn(0f, 1f), .68f, 1f)
+    detailSmoothRange(handoff.coerceIn(0f, 1f), .78f, 1f)
 
 internal data class DetailTitleGeometry(val origin: Offset, val scale: Float, val clip: Rect)
 
