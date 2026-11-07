@@ -435,7 +435,7 @@ internal fun detailToolbarTitleAlpha(handoff: Float): Float {
         .coerceIn(0f, 1f)
     // Keep a microscopic seam floor only after the hero is fully gone, then
     // spend the rest of the measured travel easing the toolbar title in.
-    return .025f + .975f * detailSmoothRange(t, 0f, 1f)
+    return .055f + .945f * detailSmoothRange(t, 0f, 1f)
 }
 
 /** The structural rule follows the toolbar title instead of preceding it. */
