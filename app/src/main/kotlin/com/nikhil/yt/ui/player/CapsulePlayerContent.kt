@@ -491,8 +491,10 @@ fun CapsulePlayerContent(
     val artistCredits = rememberArtistCredits(mediaMetadata.artists)
     val navigableArtists = rememberNavigableArtists(artistCredits)
 
+    // A chooser belongs to the track whose artist row was tapped.
+    // Do not silently retarget an open dialog when autoplay changes tracks.
     var showArtistPicker by
-        remember {
+        remember(mediaMetadata.id) {
             mutableStateOf(false)
         }
 
