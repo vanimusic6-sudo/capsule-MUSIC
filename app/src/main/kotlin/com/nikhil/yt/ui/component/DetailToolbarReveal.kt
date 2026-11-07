@@ -418,12 +418,15 @@ internal fun detailTitleSettleTargetOffset(
  */
 private const val DetailTitlePhaseSplit = 0.68f
 
-internal fun detailCoverTitleAlpha(handoff: Float): Float =
-    1f - detailSmoothRange(
-        handoff.coerceIn(0f, 1f),
-        .30f,
-        DetailTitlePhaseSplit,
-    )
+internal fun detailCoverTitleAlpha(handoff: Float): Float {
+    val h = handoff.coerceIn(0f, 1f)
+    val t = ((h - .30f) / (DetailTitlePhaseSplit - .30f))
+        .coerceIn(0f, 1f)
+    // Hold readable opacity longer, then finish decisively at the seam.
+    // Unlike smoothstep, this has no long near-zero tail that can look like
+    // "no title" before the toolbar owner is allowed to appear.
+    return 1f - t * t
+}
 
 internal fun detailToolbarTitleAlpha(handoff: Float): Float {
     val h = handoff.coerceIn(0f, 1f)
