@@ -129,8 +129,8 @@ internal fun BoxScope.CapsuleDetailCoverTitle(
                     // Small elastic release toward the toolbar. Geometry is
                     // measured before this visual transform, so timing follows
                     // the real caption edge rather than the animated layer.
-                    translationY = -(1f - a) * 7.dp.toPx()
-                    val scale = 1f - (1f - a) * .018f
+                    translationY = -(1f - a) * 3.dp.toPx()
+                    val scale = 1f - (1f - a) * .007f
                     scaleX = scale
                     scaleY = scale
                 }
