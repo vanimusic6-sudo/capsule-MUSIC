@@ -64,9 +64,9 @@ internal fun Modifier.capsuleTopBarHairline(
 ): Modifier = drawBehind {
     val extent = capsuleTopBarRuleAlpha(reveal())
     if (extent > 0f) {
-        // Reveal symmetrically from the centre, without changing the toolbar
-        // layout or obscuring the moving title. Full opacity is constant;
-        // only the two endpoints travel as the pinned bar arrives.
+        // Reveal symmetrically from the centre without touching layout.
+        // Width and opacity rise together, so the rule grows in softly instead
+        // of appearing at full contrast while its endpoints are still moving.
         val lineWidth = 0.75.dp.toPx()
         val y = size.height - lineWidth / 2f
         if (size.width > 0f && y > 0f) {
