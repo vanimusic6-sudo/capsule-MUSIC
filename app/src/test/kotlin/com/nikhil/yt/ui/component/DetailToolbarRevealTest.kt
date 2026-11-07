@@ -56,8 +56,25 @@ class DetailToolbarRevealTest {
         )
     }
 
+    @Test fun partialTitleHandoffSettlesToNearestMeasuredAnchor() {
+        assertEquals(
+            100f,
+            detailTitleSettleTargetOffset(118f, 100f, 160f, .30f),
+            .0001f,
+        )
+        assertEquals(
+            160f,
+            detailTitleSettleTargetOffset(142f, 100f, 160f, .70f),
+            .0001f,
+        )
+        assertEquals(null, detailTitleSettleTargetOffset(100f, 100f, 160f, 0f))
+        assertEquals(null, detailTitleSettleTargetOffset(160f, 100f, 160f, 1f))
+    }
+
     @Test fun toolbarTitleStartsOnlyAfterHeroTitleIsFullyGone() {
         var seenToolbar = false
+        var longestNearBlankRun = 0
+        var nearBlankRun = 0
         for (i in 0..1000) {
             val progress = i / 1000f
             val cover = detailCoverTitleAlpha(progress)
@@ -74,8 +91,19 @@ class DetailToolbarRevealTest {
                     .0001f,
                 )
             }
+
+            if (cover + toolbar < .05f) {
+                nearBlankRun++
+                longestNearBlankRun = maxOf(longestNearBlankRun, nearBlankRun)
+            } else {
+                nearBlankRun = 0
+            }
         }
         assertTrue("Toolbar title must eventually appear", seenToolbar)
+        assertTrue(
+            "The no-title seam must be extremely narrow, not a catchable dead zone",
+            longestNearBlankRun <= 18,
+        )
         assertEquals(1f, detailCoverTitleAlpha(0f), 0f)
         assertEquals(0f, detailToolbarTitleAlpha(0f), 0f)
         assertEquals(0f, detailCoverTitleAlpha(1f), 0f)
