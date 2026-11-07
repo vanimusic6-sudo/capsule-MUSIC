@@ -19,10 +19,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.RoundRect
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.Path
@@ -194,6 +190,10 @@ internal fun CapsuleVideoArtworkTransition(
         val artworkRadius = with(density) { artworkCornerRadius.toPx() }
         val videoRadius = with(density) { videoCornerRadius.toPx() }
         val shadowPx = with(density) { 6.dp.toPx() }
+        // Fixed per layout; avoid repeated density conversion and Stroke allocation in draw.
+        val contourPullPx = with(density) { (if (immersive) 6.dp else 4.dp).toPx() }
+        val contentLagPx = with(density) { (if (immersive) 1.dp else 2.dp).toPx() }
+        val contourOutlineStroke = Stroke(with(density) { 1.dp.toPx() })
 
         // Immersion is a FULL-BLEED artwork dissolved into a stationary page
         // gradient, not a card. The previous implementation clipped/scaled its
@@ -240,8 +240,7 @@ internal fun CapsuleVideoArtworkTransition(
                     val adhesion = if (immersive) 0f
                         else sculptedEdgeTension(p, leading)
                     val left = (size.width - w) / 2f
-                    val top = (size.height - h) / 2f +
-                        if (immersive) adhesion * with(density) { 9.dp.toPx() } else 0f
+                    val top = (size.height - h) / 2f
                     // Corner radius is *part of* the moving silhouette, not
                     // another smoothstep that stays square for half the travel
                     // then suddenly rounds near the video frame. Light/Cosmo
@@ -253,9 +252,7 @@ internal fun CapsuleVideoArtworkTransition(
                     // throughout the entire motion. Never switch between
                     // RoundRect and an elastic path mid-flight: the change in
                     // corner curvature itself caused an apparent sharp 'pop'.
-                    val pullPx = with(density) {
-                        (if (immersive) 6.dp else 4.dp).toPx()
-                    } * adhesion
+                    val pullPx = contourPullPx * adhesion
                     shape = GenericShape { _, _ ->
                         addPath(capsuleStickyContourPath(left, top, w, h, radius, pullPx))
                     }
@@ -273,17 +270,14 @@ internal fun CapsuleVideoArtworkTransition(
                         val adhesion = if (immersive) 0f
                             else sculptedEdgeTension(p, leading)
                         val left = (size.width - w) / 2f
-                        val top = (size.height - h) / 2f +
-                            if (immersive) adhesion * with(density) { 9.dp.toPx() } else 0f
+                        val top = (size.height - h) / 2f
                         val radius = capsuleMorphCornerRadius(artworkRadius, videoRadius, p)
                             .coerceIn(0f, min(w, h) / 2f)
-                        val pullPx = with(density) {
-                            (if (immersive) 6.dp else 4.dp).toPx()
-                        } * adhesion
+                        val pullPx = contourPullPx * adhesion
                         drawPath(
                             path = capsuleStickyContourPath(left, top, w, h, radius, pullPx),
                             color = outline,
-                            style = Stroke(1.dp.toPx()),
+                            style = contourOutlineStroke,
                         )
                     }
                 }
@@ -339,7 +333,7 @@ internal fun CapsuleVideoArtworkTransition(
                                 1f - capsulePhotoOpacity(p, blendStyle)
                             else
                                 capsuleVideoRenderAlpha(capsulePhotoOpacity(p, blendStyle), blendStyle)
-                            translationY = lag * with(density) { (if (immersive) 1.dp else 2.dp).toPx() }
+                            translationY = lag * contentLagPx,
                         }
                         .background(Color.Black),
                     contentAlignment = Alignment.Center,
