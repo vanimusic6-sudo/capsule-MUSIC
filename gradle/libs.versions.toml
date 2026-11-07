@@ -113,7 +113,7 @@ timber = { module = "com.jakewharton.timber:timber", version.ref = "timber" }
 innertubex = { module = "com.github.MetrolistGroup.innertubex:innertubex", version.ref = "innertubex" }
 
 # Stable, reproducible VIDEO extraction. Never use master-SNAPSHOT in production.
-newpipe-extractor = { module = "com.github.TeamNewPipe:NewPipeExtractor", version = "v0.26.5" }
+newpipe-extractor = { module = "com.github.TeamNewPipe:NewPipeExtractor", version = "v0.27.0" }
 
 kuromoji-ipadic = { module = "com.atilika.kuromoji:kuromoji-ipadic", version.ref = "kuromojiIpadic" }
 multiplatform-markdown = { module = "com.mikepenz:multiplatform-markdown-renderer-m3", version.ref = "multiplatformMarkdown" }

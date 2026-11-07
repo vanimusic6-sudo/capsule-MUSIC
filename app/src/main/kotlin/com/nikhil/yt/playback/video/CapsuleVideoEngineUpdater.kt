@@ -35,7 +35,7 @@ object CapsuleVideoEngineUpdater {
      * .github/workflows/newpipe-extractor-update.yml updates this constant
      * together with gradle/libs.versions.toml before producing an engine build.
      */
-    const val BUNDLED_EXTRACTOR_VERSION = "v0.26.5"
+    const val BUNDLED_EXTRACTOR_VERSION = "v0.27.0"
 
     private const val CapsuleRepository =
         "https://github.com/vanimusic6-sudo/capsule-MUSIC"
