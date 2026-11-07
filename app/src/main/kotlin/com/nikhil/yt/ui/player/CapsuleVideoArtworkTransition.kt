@@ -333,7 +333,7 @@ internal fun CapsuleVideoArtworkTransition(
                                 1f - capsulePhotoOpacity(p, blendStyle)
                             else
                                 capsuleVideoRenderAlpha(capsulePhotoOpacity(p, blendStyle), blendStyle)
-                            translationY = lag * contentLagPx,
+                            translationY = lag * contentLagPx
                         }
                         .background(Color.Black),
                     contentAlignment = Alignment.Center,
