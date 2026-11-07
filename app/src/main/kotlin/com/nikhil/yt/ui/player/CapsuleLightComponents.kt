@@ -202,53 +202,6 @@ internal fun CapsulePlayerLayout(
                     1f
                 }
             val scrollState = rememberScrollState()
-            val openQueue by rememberUpdatedState(onExpandQueue)
-            val queueThreshold = with(LocalDensity.current) { 64.dp.toPx() }
-            // A downward pull past the top keeps Capsule's existing queue gesture.
-            // Scrolling back through the controls must not open the queue.
-            val queueScroll = remember(scrollState, queueThreshold, lightEditorEnabled) {
-                object : NestedScrollConnection {
-                    var pulled = 0f
-                    var opened = false
-
-                    override fun onPostScroll(
-                        consumed: Offset,
-                        available: Offset,
-                        source: NestedScrollSource,
-                    ): Offset {
-                        // Editing owns every drag gesture, including artwork resize handles.
-                        // The queue pull must be completely dormant or it steals downward resize.
-                        if (lightEditorEnabled) {
-                            pulled = 0f
-                            opened = false
-                            return Offset.Zero
-                        }
-                        if (source != NestedScrollSource.UserInput) return Offset.Zero
-                        if (available.y > 0f && scrollState.value == 0) {
-                            pulled += available.y
-                            if (!opened && pulled >= queueThreshold) {
-                                opened = true
-                                openQueue()
-                            }
-                            return Offset(0f, available.y)
-                        }
-                        if (consumed.y != 0f || available.y < 0f) pulled = 0f
-                        return Offset.Zero
-                    }
-
-                    override suspend fun onPreFling(available: Velocity): Velocity {
-                        if (lightEditorEnabled) {
-                            pulled = 0f
-                            opened = false
-                            return Velocity.Zero
-                        }
-                        val wasPulling = pulled > 0f || opened
-                        pulled = 0f
-                        opened = false
-                        return if (wasPulling) Velocity(0f, available.y) else Velocity.Zero
-                    }
-                }
-            }
             if (lightBlockContent != null) {
                 val editableHeight =
                     (maxHeight - CapsuleLightQueueDockHeight)
@@ -326,7 +279,7 @@ internal fun CapsulePlayerLayout(
                 }
             } else {
                 Column(
-                    modifier = Modifier.fillMaxWidth().nestedScroll(queueScroll)
+                    modifier = Modifier.fillMaxWidth()
                         .verticalScroll(scrollState, enabled = scrollState.maxValue > 0,
             flingBehavior = rememberCapsuleFlingBehavior(),
             overscrollEffect = null),
@@ -376,10 +329,10 @@ private fun CapsuleLightQueueDock(
         Box(
             modifier =
                 Modifier
-                    .width(44.dp)
-                    .height(4.dp)
+                    .width(132.dp)
+                    .height(5.dp)
                     .clip(CircleShape)
-                    .background(textColor.copy(alpha = 0.22f))
+                    .background(textColor.copy(alpha = 0.32f))
                     .clickable(
                         enabled = enabled,
                         interactionSource = remember { MutableInteractionSource() },
