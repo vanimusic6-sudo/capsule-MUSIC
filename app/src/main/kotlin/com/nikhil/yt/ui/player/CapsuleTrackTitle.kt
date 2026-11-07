@@ -15,7 +15,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 import androidx.compose.runtime.snapshotFlow
 
 internal val CapsulePlayerArtistFontSize = 17.sp
@@ -37,11 +38,25 @@ internal fun CapsuleTrackTitle(
             scroll.scrollTo(0)
             return@LaunchedEffect
         }
-        snapshotFlow { scroll.isScrollInProgress }.collectLatest { moving ->
-            if (!moving && scroll.value > 0) {
-                delay(3_800L)
-                if (!scroll.isScrollInProgress && scroll.value > 0) {
-                    scroll.animateScrollTo(0, animationSpec = tween(durationMillis = 620))
+        var restoreJob: kotlinx.coroutines.Job? = null
+        var returningToStart = false
+        // Do not collectLatest the animation itself: animated scrolling also flips
+        // isScrollInProgress and previously cancelled its own return after one frame.
+        snapshotFlow { scroll.isScrollInProgress }.collect { moving ->
+            if (moving) {
+                if (!returningToStart) restoreJob?.cancel()
+            } else if (!returningToStart && scroll.value > 0) {
+                restoreJob?.cancel()
+                restoreJob = launch {
+                    delay(3_800L)
+                    if (!scroll.isScrollInProgress && scroll.value > 0) {
+                        returningToStart = true
+                        try {
+                            scroll.animateScrollTo(0, animationSpec = tween(durationMillis = 620))
+                        } finally {
+                            returningToStart = false
+                        }
+                    }
                 }
             }
         }
