@@ -33,9 +33,15 @@ internal fun capsuleConstellation(generation: Long, count: Int): List<CapsuleSta
     }
 }
 
-/** Pure, continuous coordinates; shared by rendering and boundary regression tests. */
+/** Each axis can be sampled from the shared frame angle without allocating a Pair per star. */
+internal fun capsuleStarDriftX(star: CapsuleStar, angle: Double): Float =
+    sin(angle * (0.18 + star.depth * 0.14) + star.phase).toFloat()
+
+internal fun capsuleStarDriftY(star: CapsuleStar, angle: Double): Float =
+    cos(angle * (0.15 + star.depth * 0.11) + star.phase).toFloat()
+
+/** Pure, continuous coordinates; kept as a convenient API for boundary regression tests. */
 internal fun capsuleStarDrift(star: CapsuleStar, elapsedMs: Long): Pair<Float, Float> {
     val angle = capsuleBackgroundAngle(elapsedMs)
-    return sin(angle * (0.18 + star.depth * 0.14) + star.phase).toFloat() to
-        cos(angle * (0.15 + star.depth * 0.11) + star.phase).toFloat()
+    return capsuleStarDriftX(star, angle) to capsuleStarDriftY(star, angle)
 }
