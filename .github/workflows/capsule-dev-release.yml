@@ -130,7 +130,7 @@ jobs:
           name: Capsule-DEV-Release-${{ github.run_number }}
           path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 14
 
       - name: Upload R8 mapping privately for debugging
         uses: actions/upload-artifact@v4
@@ -138,7 +138,7 @@ jobs:
           name: Capsule-DEV-R8-Mapping-${{ github.run_number }}
           path: app/build/outputs/mapping/universalDevRelease/mapping.txt
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
 
       - name: Erase transient development keystore
         if: always()

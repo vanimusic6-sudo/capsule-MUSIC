@@ -65,4 +65,4 @@ jobs:
             app/build/reports/tests/testUniversalDebugUnitTest/
             app/build/reports/lint-results-universalDebug.*
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 7

@@ -3,8 +3,6 @@ name: Capsule Full Regression Tests (manual)
 # Comprehensive legacy/debug regression runner, retained for deeper
 # on-demand testing. Everyday builds are produced by capsule-test-apk.yml.
 on:
-  push:
-    branches: ['refactor/unified-scroll-engine-20261101', 'fix/playback-download-resilience-20261101', 'fix/artwork-header-search-cleanup-20261101', 'cleanup/extractor-boundaries-20261101', 'fix/capsule-app-identity-20261101', 'fix/rollback-search-matte-thermal-20261101', 'fix/search-artwork-collection-motion-20261101', 'fix/underrun-only-stable-20261101', 'fix/collection-title-soft-mask-20261102']
   workflow_dispatch:
 
 permissions:
@@ -78,7 +76,7 @@ jobs:
             app/build/reports/lint-results-universalDebug.*
             app/build/intermediates/lint_intermediate_text_report/universalDebug/lintReportUniversalDebug/*.txt
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 7
 
       - name: Test UI, preferences, Home and player regressions
         if: ${{ !cancelled() }}
@@ -154,7 +152,7 @@ jobs:
             app/build/reports/ui-previews/*.png
             app/build/test-results/testUniversalDebugUnitTest/*.xml
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 7
 
       - name: Test search summary metadata
         if: ${{ !cancelled() }}
@@ -197,4 +195,4 @@ jobs:
           name: capsule-universal-debug
           path: app/build/outputs/apk/universal/debug/*.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7

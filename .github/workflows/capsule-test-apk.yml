@@ -99,4 +99,4 @@ jobs:
           name: Capsule-TEST-Universal-${{ github.run_number }}
           path: ${{ steps.package.outputs.path }}
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7

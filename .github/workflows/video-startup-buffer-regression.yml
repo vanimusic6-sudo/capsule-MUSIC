@@ -1,13 +1,6 @@
 name: Capsule VIDEO Startup and Buffer Regression
 
 on:
-  push:
-    branches:
-      - 'fix/video-startup-buffer-artwork-20261102'
-      - 'fix/video-stream-strategy-hq-artwork-20261102'
-      - 'feature/native-sabr-video-20261102'
-      - 'fix/sabr-coldstart-liveness-video-20261102'
-      - 'fix/playback-fast-recovery-20261102'
   workflow_dispatch:
 
 permissions:
@@ -101,4 +94,4 @@ jobs:
             app/build/reports/tests/
             innertube/build/test-results/
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 7
