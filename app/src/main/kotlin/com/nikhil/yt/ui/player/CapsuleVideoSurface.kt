@@ -5,6 +5,7 @@
 package com.nikhil.yt.ui.player
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.view.TextureView
 import android.view.View
 import androidx.compose.foundation.Image
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -28,6 +30,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.viewinterop.AndroidView
 import timber.log.Timber
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import androidx.media3.common.Player
 import androidx.media3.ui.compose.modifiers.resizeWithContentScale
 import androidx.media3.ui.compose.state.rememberPresentationState
@@ -45,6 +49,8 @@ internal fun CapsuleVideoSurface(service: MusicService, modifier: Modifier = Mod
     val state = service.videoPlaybackState.collectAsState().value
     val player = service.videoRenderPlayer
     val retention = service.videoFrameRetention
+    val ambientEnabled = LocalCapsuleVideoAmbientEnabled.current
+    val ambientSink = LocalCapsuleVideoAmbientSink.current
     if (player == null || retention == null) {
         Box(modifier.background(Color.Black))
         return
@@ -67,7 +73,10 @@ internal fun CapsuleVideoSurface(service: MusicService, modifier: Modifier = Mod
     )
     Box(modifier.clipToBounds().background(Color.Black)) {
       CapsuleVideoViewport(viewportSize) {
-        if (active) CapsuleVideoTextureOutput(service, player, retention, presentation.coverSurface, state.firstFrameReady)
+        if (active) CapsuleVideoTextureOutput(
+            service, player, retention, presentation.coverSurface, state.firstFrameReady,
+            ambientEnabled = ambientEnabled, audioMediaId = state.mediaId, ambientSink = ambientSink,
+        )
         if (frame != null) {
             Image(
                 bitmap = remember(frame.bitmap) { frame.bitmap.asImageBitmap() },
@@ -100,8 +109,16 @@ internal fun CapsuleVideoViewport(sourceSize: Size?, content: @Composable () -> 
 }
 
 @Composable
-private fun CapsuleVideoTextureOutput(service: MusicService, player: Player, retention: CapsuleVideoFrameRetention,
-    coverSurface: Boolean, firstFrameReady: Boolean) {
+private fun CapsuleVideoTextureOutput(
+    service: MusicService,
+    player: Player,
+    retention: CapsuleVideoFrameRetention,
+    coverSurface: Boolean,
+    firstFrameReady: Boolean,
+    ambientEnabled: Boolean,
+    audioMediaId: String?,
+    ambientSink: ((CapsuleVideoAmbientFrame) -> Unit)?,
+) {
     val owner = remember(service, player) { Any() }
     var texture by remember { mutableStateOf<CapsuleFrameTextureView?>(null) }
     val host = LocalView.current
@@ -152,6 +169,45 @@ private fun CapsuleVideoTextureOutput(service: MusicService, player: Player, ret
                 retention.retainPausedFrame()
                 retention.unregisterCapture(view)
                 player.removeListener(listener)
+            }
+        }
+        // A single opt-in, low-rate readback of the decoder's *existing* output.
+        // One 48x28 bitmap is reused; no extra video decoder, loop while hidden,
+        // full-size CPU blur, or allocations on every rendered frame.
+        LaunchedEffect(view, player, ambientEnabled, audioMediaId, firstFrameReady, ambientSink) {
+            val sink = ambientSink ?: return@LaunchedEffect
+            val trackId = audioMediaId?.takeIf(String::isNotBlank) ?: return@LaunchedEffect
+            if (!ambientEnabled || !firstFrameReady) return@LaunchedEffect
+            var previous: List<Color>? = null
+            var consecutiveFailures = 0
+            val buffer = Bitmap.createBitmap(
+                VIDEO_AMBIENT_SAMPLE_WIDTH, VIDEO_AMBIENT_SAMPLE_HEIGHT, Bitmap.Config.ARGB_8888,
+            )
+            try {
+                // Avoid capturing the first black surface swap.
+                delay(800L)
+                while (isActive) {
+                    if (view.isAvailable && view.isShown && view.hasVideoFrame &&
+                        player.isPlaying && player.playbackState == Player.STATE_READY
+                    ) {
+                        try {
+                            view.getBitmap(buffer)
+                            val sample = capsuleVideoAmbientFrameFromBitmap(buffer, trackId)
+                            if (sample != null && capsuleVideoAmbientChanged(previous, sample.bands)) {
+                                sink(sample)
+                                previous = sample.bands
+                            }
+                            consecutiveFailures = 0
+                        } catch (_: RuntimeException) {
+                            // Lost / protected surfaces must not cause hot retry loops.
+                            consecutiveFailures++
+                            if (consecutiveFailures >= 3) break
+                        }
+                    }
+                    delay(VIDEO_AMBIENT_CAPTURE_INTERVAL_MS)
+                }
+            } finally {
+                buffer.recycle()
             }
         }
         // Observe native attachment/pre-draw once, then sleep. Never poll the

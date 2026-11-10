@@ -34,14 +34,11 @@ class PlayerTransitionArchitectureTest {
 
     @Test fun immersiveArtworkHasNoGraphiteTargetOrPressedWhiteOverlay() {
         val immersive = source("com/nikhil/yt/ui/player/CapsuleImmersiveContent.kt")
-        // Spatially sampled floor and photo must use the SAME strip shader.
+        // Both page and photo use one smoothly filtered, cached field.
         assertTrue(immersive.contains(".immersiveSpatialBackdrop("))
         assertTrue(immersive.contains("edgeBands = artworkTone.edgeBands"))
-        assertTrue(immersive.contains("val pageBands = frame?.edgeBands"))
-        assertTrue(immersive.contains("immersiveSpatialBandColor("))
-        assertTrue(immersive.contains("columnCount = 40"))
-        assertTrue(immersive.contains("val left = (columnWidth * index).roundToInt().toFloat()"))
-        assertTrue(immersive.contains("val right = (columnWidth * (index + 1)).roundToInt().toFloat()"))
+        assertTrue(immersive.contains("val artworkBands = frame?.edgeBands"))
+        assertTrue(immersive.contains("videoAmbientBands.isNotEmpty()"))
         assertTrue(immersive.contains("photoOverlay = false"))
         assertTrue(immersive.contains("photoOverlay = true"))
         assertTrue(immersive.contains("immersiveContinuousPageStops("))
@@ -56,6 +53,14 @@ class PlayerTransitionArchitectureTest {
         assertFalse(immersive.contains("ImmersiveSmokyGraphite"))
         assertFalse(immersive.contains("immersiveInkForFloor("))
         assertFalse(immersive.contains(".background(seamColor)"))
+
+        val field = source("com/nikhil/yt/ui/player/CapsuleImmersiveField.kt")
+        assertTrue(field.contains("drawWithCache"))
+        assertTrue(field.contains("drawImage(image = textureBitmap"))
+        assertTrue(field.contains("FilterQuality.Medium"))
+        assertTrue(field.contains("immersiveSoftBandColor("))
+        assertFalse(field.contains("drawRect(brush = brush"))
+        assertFalse(field.contains("columnCount = 40"))
 
         val floor = source("com/nikhil/yt/ui/player/CapsuleImmersiveFloor.kt")
         assertTrue(floor.contains("val rawEdge = image.immersiveBottomBackground(artworkAspect)"))

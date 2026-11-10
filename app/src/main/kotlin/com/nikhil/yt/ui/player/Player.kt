@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.State
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -69,6 +70,7 @@ import com.nikhil.yt.constants.MiniPlayerBackgroundStyle
 import com.nikhil.yt.constants.MiniPlayerBackgroundStyleKey
 import com.nikhil.yt.constants.PlayerBackgroundStyle
 import com.nikhil.yt.constants.PlayerBackgroundStyleKey
+import com.nikhil.yt.constants.CapsuleVideoAmbientBackgroundKey
 import com.nikhil.yt.discovery.ExperimentalArtistRoute
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.models.mergeArtistCredits
@@ -166,6 +168,12 @@ fun BottomSheetPlayer(
     val isPlaying by playerConnection.isPlaying.collectAsState()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val videoPlaybackState by playerConnection.service.videoPlaybackState.collectAsState()
+    val videoAmbientEnabled by rememberPreference(CapsuleVideoAmbientBackgroundKey, false)
+    // Keep only seven colours and a media ID, not captured video bitmaps.
+    var videoAmbientFrame by remember { mutableStateOf<CapsuleVideoAmbientFrame?>(null) }
+    val videoAmbientSink: (CapsuleVideoAmbientFrame) -> Unit = remember {
+        { sample -> videoAmbientFrame = sample }
+    }
     val positionDiscontinuityRevision by playerConnection.positionDiscontinuityRevision.collectAsState()
     val currentSong by playerConnection.currentSong.collectAsState(initial = null)
     val currentSongLiked = currentSong?.song?.liked == true
@@ -298,6 +306,24 @@ fun BottomSheetPlayer(
         }
     }
 
+    // An old frame may never colour a new song or a stopped video.
+    LaunchedEffect(enrichedMetadata?.id, videoAmbientEnabled, videoPlaybackState.presentingVideo) {
+        if (!videoAmbientEnabled || !videoPlaybackState.presentingVideo ||
+            videoPlaybackState.mediaId != enrichedMetadata?.id
+        ) {
+            videoAmbientFrame = null
+        }
+    }
+    val activeVideoAmbientBands = videoAmbientFrame?.takeIf { sample ->
+        videoAmbientEnabled && videoPlaybackState.presentingVideo &&
+            videoPlaybackState.mediaId == enrichedMetadata?.id &&
+            sample.mediaId == enrichedMetadata?.id
+    }?.bands
+    val videoAmbientCaptureActive =
+        videoAmbientEnabled && videoPlaybackState.presentingVideo &&
+            videoPlaybackState.firstFrameReady && onScreen &&
+            state.isExpandedOrExpanding && !showInlineLyrics
+
     val needsArtworkPalette =
         onScreen &&
             enrichedMetadata != null &&
@@ -332,7 +358,8 @@ fun BottomSheetPlayer(
             state.shouldLayerAboveCollapsedChrome &&
             onScreen &&
             isPlaying &&
-            playbackState == Player.STATE_READY
+            playbackState == Player.STATE_READY &&
+            !videoPlaybackState.presentingVideo
     val sharedBackdropAnimationTime =
         rememberCapsuleAnimationTime(
             compact = false,
@@ -419,12 +446,23 @@ fun BottomSheetPlayer(
                         }
                         .background(playerSurfaceColor(useBlackBackground)),
                 ) {
-                    PlayerBackground(
-                        playerBackground = playerBackground,
-                        gradientColors = gradientColors,
-                        animated = backdropTimelineRunning,
-                        sharedAnimationTime = sharedBackdropAnimationTime,
-                    )
+                    if (activeVideoAmbientBands != null) {
+                        // Opt-in ambient field while VIDEO is on screen.
+                        // One static cached shader; never animate art underneath video.
+                        CapsuleProceduralBackground(
+                            effect = CapsuleBackgroundEffect.CAPSULE_GLOW,
+                            colors = activeVideoAmbientBands,
+                            modifier = Modifier.fillMaxSize(),
+                            animated = false,
+                        )
+                    } else {
+                        PlayerBackground(
+                            playerBackground = playerBackground,
+                            gradientColors = gradientColors,
+                            animated = backdropTimelineRunning,
+                            sharedAnimationTime = sharedBackdropAnimationTime,
+                        )
+                    }
                 }
             }
         },
@@ -434,12 +472,19 @@ fun BottomSheetPlayer(
                 Box(
                     modifier = Modifier.fillMaxSize(),
                 ) {
+                    // Same sink works for Light/Cosmo and Immersion without touching
+                    // the Media3 service or starting another renderer.
+                    CompositionLocalProvider(
+                        LocalCapsuleVideoAmbientEnabled provides videoAmbientCaptureActive,
+                        LocalCapsuleVideoAmbientSink provides videoAmbientSink,
+                    ) {
                     CapsulePlayerLyricsHost(
                     design = effectivePlayerDesign,
                     showLyrics = showInlineLyrics,
                     mediaMetadata = metadata,
                     decodedArtworkCache = decodedArtworkCache,
                     playerArtworkColors = gradientColors,
+                    videoAmbientBands = activeVideoAmbientBands.orEmpty(),
                     backdropAnimationTime = sharedBackdropAnimationTime,
                     sliderPosition = sliderPosition,
                     position = position,
@@ -486,6 +531,7 @@ fun BottomSheetPlayer(
                         }
                     },
                     )
+                    }
                 }
             }
         }
@@ -539,6 +585,7 @@ private fun CapsulePlayerLyricsHost(
     mediaMetadata: MediaMetadata,
     decodedArtworkCache: MutableMap<String, Pair<String, Painter>>,
     playerArtworkColors: List<Color>,
+    videoAmbientBands: List<Color>,
     backdropAnimationTime: State<Long>,
     sliderPosition: Long?,
     position: Long,
@@ -677,6 +724,7 @@ private fun CapsulePlayerLyricsHost(
                 CapsuleImmersiveContent(
                     mediaMetadata = mediaMetadata,
                     artworkTone = requireNotNull(immersiveArtworkTone),
+                    videoAmbientBands = videoAmbientBands,
                     sliderPosition = sliderPosition,
                     positionMs = position,
                     durationMs = duration,

@@ -440,6 +440,8 @@ val TopSize = stringPreferencesKey("topSize")
 val HistoryDuration = floatPreferencesKey("historyDuration")
 
 val PlayerBackgroundStyleKey = stringPreferencesKey("playerBackgroundStyle")
+/** False by default: video frame readback is an optional battery trade-off. */
+val CapsuleVideoAmbientBackgroundKey = booleanPreferencesKey("capsuleVideoAmbientBackgroundV1")
 val CapsulePlayerDesignKey = stringPreferencesKey("capsulePlayerDesign")
 val CapsuleLightLyricLineKey = booleanPreferencesKey("capsuleLightLyricLine")
 /** Enables long-press block reordering only on the Capsule Light full player. */

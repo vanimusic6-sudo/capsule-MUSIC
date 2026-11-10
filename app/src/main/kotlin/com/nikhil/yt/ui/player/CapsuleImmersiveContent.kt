@@ -47,9 +47,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -91,7 +88,6 @@ import com.nikhil.yt.ui.component.CapsuleFavoriteColors
 import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
 import com.nikhil.yt.utils.makeTimeString
 import com.nikhil.yt.utils.rememberPreference
-import kotlin.math.roundToInt
 
 /**
  * The outgoing fade is a SINGLE operation for a displayed frame, regardless of how
@@ -413,6 +409,7 @@ internal fun immersiveEditorHeight(
 internal fun CapsuleImmersiveContent(
     mediaMetadata: MediaMetadata,
     artworkTone: ImmersiveArtworkTone,
+    videoAmbientBands: List<Color> = emptyList(),
     sliderPosition: Long?,
     positionMs: Long,
     durationMs: Long,
@@ -764,8 +761,12 @@ internal fun CapsuleImmersiveContent(
             .coerceAtMost((pageHeightPx - coverHeightPx).coerceAtLeast(1f) * 0.38f)
         val tailFraction = (extensionPx / pageHeightPx.coerceAtLeast(1f))
             .coerceIn(0.02f, 0.08f)
-        val pageBands = frame?.edgeBands?.takeIf { it.isNotEmpty() }
-            ?: listOf(seamColor)
+        val artworkBands = frame?.edgeBands?.takeIf { it.isNotEmpty() }
+            ?: remember(seamColor) { listOf(seamColor) }
+        // Live video light is painted only on the FLOOR; album-photo dissolve
+        // retains the exact colours of its own pixels while video morphs in.
+        val pageBands = if (isVideo && videoAmbientBands.isNotEmpty())
+            videoAmbientBands else artworkBands
         val immersiveInk = ImmersiveControlInk
 
         // Preload the NEXT image invisibly. Coil must finish decoding this exact URL
@@ -899,7 +900,7 @@ internal fun CapsuleImmersiveContent(
                     }
                     Box(
                         modifier = Modifier.fillMaxSize().immersiveSpatialBackdrop(
-                            bands = pageBands,
+                            bands = artworkBands,
                             fallbackFloor = pageFloor,
                             coverFraction = coverFraction,
                             tailFraction = tailFraction,
@@ -1444,89 +1445,3 @@ internal fun capsuleImmersiveArtworkOpacity(
     trackFadeAlpha: Float,
 ): Float = if (frameMatchesTrack && hasPresentedVideo) 1f else trackFadeAlpha.coerceIn(0f, 1f)
 
-/**
- * A cached, spatially aware album-edge dissolve.
- *
- * Album art and page share identical x-wise palette interpolation. The artwork
- * overlay has a gradual vertical opacity ramp; the full-page floor extends
- * each column and only then blends it into its subdued counterpart. Hardware
- * draws reusable gradients with no framebuffer blur or per-frame sampling.
- */
-internal fun immersiveSpatialBandColor(bands: List<Color>, fraction: Float): Color {
-    if (bands.isEmpty()) return IMMERSIVE_NEUTRAL_COLOR
-    if (bands.size == 1) return bands[0]
-    val coordinate = fraction.coerceIn(0f, 1f) * (bands.size - 1)
-    val first = coordinate.toInt().coerceIn(0, bands.lastIndex)
-    val next = (first + 1).coerceAtMost(bands.lastIndex)
-    return lerp(bands[first], bands[next], coordinate - first)
-}
-
-private fun Modifier.immersiveSpatialBackdrop(
-    bands: List<Color>,
-    fallbackFloor: Color,
-    coverFraction: Float,
-    tailFraction: Float,
-    texture: Float,
-    landscape: Boolean,
-    nearWhite: Boolean,
-    photoOverlay: Boolean,
-): Modifier = this.drawWithCache {
-    // Columns are near-continuous in colour and cost no intermediate bitmap.
-    // All brushes survive the slow artwork/player animations.
-    val columnCount = 40
-    val columnWidth = size.width / columnCount
-    val active = bands.size > 1
-    val originalFade = immersiveOriginalFadeProfile(texture, landscape)
-    val paleFade = immersiveFadeProfile(texture, landscape)
-    val settled = (coverFraction + 0.44f).coerceAtMost(1f)
-    val brushes = List(columnCount) { index ->
-        val edge = immersiveSpatialBandColor(bands, (index + 0.5f) / columnCount)
-        val floor = if (!active) fallbackFloor else if (nearWhite || edge.isNearWhiteImmersiveBackground()) {
-            edge.immersiveMutedAccent()
-        } else {
-            lerp(edge, Color.Black, 0.10f)
-        }
-        if (!photoOverlay) {
-            if (nearWhite) {
-                Brush.verticalGradient(
-                    colorStops = immersiveContinuousPageStops(
-                        edge, floor, coverFraction, tailFraction,
-                    ), startY = 0f, endY = size.height,
-                )
-            } else {
-                Brush.verticalGradient(0f to edge, coverFraction to edge,
-                    settled to floor, 1f to floor,
-                    startY = 0f, endY = size.height)
-            }
-        } else if (nearWhite) {
-            Brush.verticalGradient(
-                colorStops = immersiveContinuousCoverStops(
-                    edge, floor, coverFraction, tailFraction, paleFade,
-                ), startY = 0f, endY = size.height,
-            )
-        } else {
-            val haze = immersiveUpperHazeColor(edge)
-            Brush.verticalGradient(
-                0f to Color.Transparent,
-                originalFade.start to Color.Transparent,
-                originalFade.firstStop to haze.copy(
-                    alpha = (originalFade.firstAlpha * 0.86f).coerceIn(0f, 1f)),
-                originalFade.secondStop to edge.copy(alpha = originalFade.secondAlpha),
-                originalFade.thirdStop to edge.copy(alpha = originalFade.thirdAlpha),
-                1f to edge,
-                startY = 0f, endY = size.height,
-            )
-        }
-    }
-    onDrawBehind {
-        brushes.forEachIndexed { index, brush ->
-            // Exact integer boundaries: no gaps and, crucially, no extra
-            // alpha compositing at seams between translucent cover columns.
-            val left = (columnWidth * index).roundToInt().toFloat()
-            val right = (columnWidth * (index + 1)).roundToInt().toFloat()
-            drawRect(brush = brush,
-                topLeft = Offset(left, 0f),
-                size = Size((right - left).coerceAtLeast(0f), size.height))
-        }
-    }
-}
