@@ -351,9 +351,10 @@ fun BottomSheetPlayer(
         state = state,
         modifier = modifier,
         backgroundColor = playerSurfaceColor(useBlackBackground),
-        // The compact player opens on tap and Android Back closes the full player.
-        // Never let a vertical swipe move or dismiss the shared player sheet.
+        // Full-player transitions are tap-to-open / Android-Back-to-close.
+        // Only the docked Mini retains its independent swipe-down-to-clear gesture.
         gesturesEnabled = false,
+        compactSwipeDismissEnabled = true,
         allowSwipeDismiss = false,
         dismissOnlyFromCollapsed = true,
         backHandlerEnabled = false,
