@@ -58,7 +58,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -149,6 +148,7 @@ private val CapsuleControlsShape =
 fun CapsulePlayerContent(
     design: CapsulePlayerDesign,
     mediaMetadata: MediaMetadata,
+    decodedArtworkCache: MutableMap<String, Pair<String, Painter>>,
     sliderPosition: Long?,
     positionMs: Long,
     durationMs: Long,
@@ -571,12 +571,9 @@ fun CapsulePlayerContent(
         }
     }
 
-    // Bounded decoded-painter cache lives at player level, not inside the
-    // per-track video/artwork slot. Revisiting a song must not reintroduce a
-    // blank mask while Coil reconnects to an already decoded cover.
-    val decodedArtworkCache = remember {
-        mutableStateMapOf<String, Pair<String, Painter>>()
-    }
+    // Artwork painters are owned by BottomSheetPlayer so Android backgrounding can
+    // unmount this expensive tree without losing the current decoded cover.
+    // Reading the already decoded bitmap on resume avoids an unnecessary 960px refetch.
 
     val artworkContent: @Composable () -> Unit = {
             val currentPlaybackError = playbackError
@@ -761,12 +758,12 @@ fun CapsulePlayerContent(
                                     retainedArtworkPainter = success.painter
                                     retainedArtworkUrl = requestedArtworkUrl
                                     if (!requestedArtworkUrl.isNullOrBlank()) {
-                                        // Five decoded covers max: avoid unbounded bitmap
-                                        // retention during long sessions.
+                                        // Three decoded covers max: current + recent tracks,
+                                        // including across app background/foreground cycles.
                                         decodedArtworkCache.remove(mediaMetadata.id)
                                         decodedArtworkCache[mediaMetadata.id] =
                                             requestedArtworkUrl to success.painter
-                                        while (decodedArtworkCache.size > 5) {
+                                        while (decodedArtworkCache.size > 3) {
                                             decodedArtworkCache.remove(decodedArtworkCache.keys.first())
                                         }
                                     }

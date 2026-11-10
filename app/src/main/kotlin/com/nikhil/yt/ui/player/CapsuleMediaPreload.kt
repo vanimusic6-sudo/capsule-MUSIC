@@ -40,7 +40,10 @@ internal const val CAPSULE_VISUAL_PREFETCH_SETTLE_MS = 420L
  * metadata/API lookup in the background.
  */
 @Composable
-internal fun PreloadCapsuleTrackAssets(mediaMetadata: MediaMetadata?) {
+internal fun PreloadCapsuleTrackAssets(
+    mediaMetadata: MediaMetadata?,
+    skipArtworkPrefetch: Boolean = false,
+) {
     val context = LocalContext.current
     val artworkUrl = remember(mediaMetadata?.id, mediaMetadata?.thumbnailUrl) {
         com.nikhil.yt.ui.component.capsuleArtworkUrl(mediaMetadata?.thumbnailUrl, 960)
@@ -51,7 +54,7 @@ internal fun PreloadCapsuleTrackAssets(mediaMetadata: MediaMetadata?) {
             mutableStateOf(false)
         }
 
-    LaunchedEffect(mediaMetadata?.id, artworkUrl, onScreen) {
+    LaunchedEffect(mediaMetadata?.id, artworkUrl, onScreen, skipArtworkPrefetch) {
         stableEnoughToWarm = false
         if (!onScreen || artworkUrl.isNullOrBlank()) return@LaunchedEffect
 
@@ -63,6 +66,9 @@ internal fun PreloadCapsuleTrackAssets(mediaMetadata: MediaMetadata?) {
          */
         delay(CAPSULE_VISUAL_PREFETCH_SETTLE_MS)
         stableEnoughToWarm = true
+        // The full player's own AsyncImage (or a retained decoded painter) already
+        // owns this visual. Don't enqueue a second 960px decode after app resume.
+        if (skipArtworkPrefetch) return@LaunchedEffect
 
         try {
             context.imageLoader.execute(
