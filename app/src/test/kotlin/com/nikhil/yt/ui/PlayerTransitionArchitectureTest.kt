@@ -96,4 +96,25 @@ class PlayerTransitionArchitectureTest {
         assertFalse(player.contains("foregroundOpacity.animateTo"))
         assertFalse(player.contains("LyricsForegroundOpenDelayMillis"))
     }
+
+    @Test
+    fun playerSheetOpensOnTapAndOnlyAndroidBackClosesIt() {
+        val player = source("com/nikhil/yt/ui/player/Player.kt")
+        val bottomSheet = source("com/nikhil/yt/ui/component/BottomSheet.kt")
+        assertTrue(player.contains("gesturesEnabled = false,"))
+        assertTrue(player.contains("compactSwipeDismissEnabled = true,"))
+        assertTrue(player.contains("allowSwipeDismiss = false,"))
+        assertTrue(player.contains("BackHandler(enabled = state.isExpandedOrExpanding)"))
+        assertTrue(bottomSheet.contains("onClick = state::expandSoft"))
+    }
+
+    @Test
+    fun hidingInlineLyricDoesNotPersistTemporaryArtworkHeight() {
+        val content = source("com/nikhil/yt/ui/player/CapsulePlayerContent.kt")
+        assertTrue(content.contains("val safeArtworkHeightScale ="))
+        assertTrue(content.contains("heightScale = safeArtworkHeightScale,"))
+        assertFalse(content.contains("onArtworkHeightScaleChange(safeArtworkHeightScale)"))
+        // Manual editor resize is still persisted as before.
+        assertTrue(content.contains("onArtworkHeightScaleChange(heightScale)"))
+    }
 }

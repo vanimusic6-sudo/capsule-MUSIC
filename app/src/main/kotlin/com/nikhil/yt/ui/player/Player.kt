@@ -31,7 +31,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -306,18 +305,6 @@ fun BottomSheetPlayer(
             else -> Color.White
         }
 
-    // Retain the lyrics surface/gesture lease through both closing stages.
-    // Both backdrops share one live timeline, including the lyrics session.
-    var freezeBackdropAfterLyricsSettles by remember {
-        mutableStateOf(showInlineLyrics)
-    }
-    LaunchedEffect(showInlineLyrics) {
-        if (showInlineLyrics) {
-            freezeBackdropAfterLyricsSettles = true
-        }
-        // The host releases this freeze only when both closing stages have completed.
-    }
-
     val backdropNeedsClock =
         when (playerBackground) {
             PlayerBackgroundStyle.GLOW_ANIMATED,
@@ -364,10 +351,11 @@ fun BottomSheetPlayer(
         state = state,
         modifier = modifier,
         backgroundColor = playerSurfaceColor(useBlackBackground),
-        gesturesEnabled = !showInlineLyrics && !freezeBackdropAfterLyricsSettles,
-        // Restored original Capsule gesture: pulling the compact player below its dock dismisses
-        // the playback surface and stopAndClearPlayback() clears the active song and queue.
-        allowSwipeDismiss = true,
+        // Full-player transitions are tap-to-open / Android-Back-to-close.
+        // Only the docked Mini retains its independent swipe-down-to-clear gesture.
+        gesturesEnabled = false,
+        compactSwipeDismissEnabled = true,
+        allowSwipeDismiss = false,
         dismissOnlyFromCollapsed = true,
         backHandlerEnabled = false,
         collapsedContentHeight = MiniPlayerHeight,
@@ -465,11 +453,6 @@ fun BottomSheetPlayer(
                     onHideLyrics = {
                         showInlineLyrics = false
                     },
-                    onLyricsCloseSettled = {
-                        if (!showInlineLyrics) {
-                            freezeBackdropAfterLyricsSettles = false
-                        }
-                    },
                     // BottomSheet owns the one transition alpha for every player design.
                     // Immersive keeps this hook for its internal layout, but a second fade here
                     // would square the opacity and desynchronise it from Light/Cosmo.
@@ -556,7 +539,6 @@ private fun CapsulePlayerLyricsHost(
     queueState: BottomSheetState,
     onShowLyrics: () -> Unit,
     onHideLyrics: () -> Unit,
-    onLyricsCloseSettled: () -> Unit,
     transitionForegroundAlpha: () -> Float,
     onShowMenu: () -> Unit,
 ) {
@@ -583,11 +565,6 @@ private fun CapsulePlayerLyricsHost(
         derivedStateOf {
             showLyrics || capsuleLyricsForegroundOpacity(sheetOffset.value) > 0.0001f
         }
-    }
-
-    DisposableEffect(Unit) {
-        // Clearing the current song can remove the host before the transition has completed.
-        onDispose { onLyricsCloseSettled() }
     }
 
     LaunchedEffect(showLyrics) {
@@ -653,7 +630,6 @@ private fun CapsulePlayerLyricsHost(
             }
             lyricsRuntimeActive = false
             lyricsLayerMounted = false
-            onLyricsCloseSettled()
         }
     }
 
