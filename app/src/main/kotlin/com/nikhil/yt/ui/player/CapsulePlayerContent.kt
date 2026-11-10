@@ -1104,21 +1104,9 @@ fun CapsulePlayerContent(
                                         artworkMaxHeightScale.coerceAtLeast(0.55f),
                                     )
 
-                            LaunchedEffect(
-                                artworkMaxHeightScale,
-                                lightArtworkHeightScale,
-                                artworkResizeActive,
-                            ) {
-                                if (
-                                    !artworkResizeActive &&
-                                    kotlin.math.abs(
-                                        safeArtworkHeightScale - lightArtworkHeightScale,
-                                    ) > 0.005f
-                                ) {
-                                    lightArtworkHeightScale = safeArtworkHeightScale
-                                    onArtworkHeightScaleChange(safeArtworkHeightScale)
-                                }
-                            }
+                            // Capacity is a temporary layout constraint, not a user resize.
+                            // Keep the saved preference untouched so hiding the lyric row restores
+                            // the original artwork size automatically on the next measurement.
 
                             Column(
                                 modifier = Modifier.fillMaxWidth(),

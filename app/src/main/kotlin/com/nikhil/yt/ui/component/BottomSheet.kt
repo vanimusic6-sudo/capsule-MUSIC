@@ -297,6 +297,8 @@ fun BottomSheet(
     backgroundColor: Color,
     onDismiss: (() -> Unit)? = null,
     gesturesEnabled: Boolean = true,
+    // Independent downward dismiss for a docked mini-player, even when full-sheet drags are off.
+    compactSwipeDismissEnabled: Boolean = false,
     allowSwipeDismiss: Boolean = true,
     dismissOnlyFromCollapsed: Boolean = false,
     backHandlerEnabled: Boolean = true,
@@ -396,6 +398,19 @@ fun BottomSheet(
                         // Mini visually yields over the same moving frame. Input has its own
                         // progress gate, so an almost-gone Mini cannot steal full-player controls.
                         .zIndex(if (state.compactSurfaceVisible) 2f else 0f)
+                        .then(
+                            if (compactSwipeDismissEnabled && onDismiss != null) {
+                                Modifier.bottomSheetDraggable(
+                                    state = state,
+                                    onDismiss = onDismiss,
+                                    dismissOnlyFromCollapsed = true,
+                                    miniGestureArbiter = miniGestureArbiter,
+                                    compactDismissOnly = true,
+                                )
+                            } else {
+                                Modifier
+                            },
+                        )
                         .clickable(
                             enabled = canReopen,
                             interactionSource = remember { MutableInteractionSource() },
@@ -853,6 +868,7 @@ class BottomSheetState internal constructor(
      */
     internal suspend fun dragUserInput(
         allowDismiss: Boolean,
+        compactDismissOnly: Boolean = false,
         dragPriority: MutatePriority = MutatePriority.UserInput,
         block: suspend BottomSheetDragScope.() -> Unit,
     ) {
@@ -863,7 +879,9 @@ class BottomSheetState internal constructor(
                 } else {
                     anchors.positionOf(SheetAnchor.Collapsed)
                 }
-            val maxOffset = anchors.positionOf(SheetAnchor.Expanded)
+            val maxOffset = anchors.positionOf(
+                if (compactDismissOnly) SheetAnchor.Collapsed else SheetAnchor.Expanded
+            )
 
             val scope =
                 object : BottomSheetDragScope {
@@ -885,6 +903,7 @@ class BottomSheetState internal constructor(
     internal fun dispatchRawUserDelta(
         deltaPx: Float,
         allowDismiss: Boolean,
+        compactDismissOnly: Boolean = false,
     ): Float {
         val minOffset =
             with(density) {
@@ -896,7 +915,9 @@ class BottomSheetState internal constructor(
                     }
                 ).toPx()
             }
-        val maxOffset = with(density) { expandedBound.toPx() }
+        val maxOffset = with(density) {
+            (if (compactDismissOnly) collapsedBound else expandedBound).toPx()
+        }
         val current = anchoredState.requireOffset()
         val next = (current + deltaPx).coerceIn(minOffset, maxOffset)
         return anchoredState.dispatchRawDelta(next - current)
@@ -907,8 +928,9 @@ class BottomSheetState internal constructor(
         velocityThresholdPx: Float,
         allowDismiss: Boolean,
         onDismiss: (() -> Unit)?,
+        compactDismissOnly: Boolean = false,
     ) {
-        val targetId =
+        val proposedTarget =
             resolveBottomSheetTarget(
                 offsetPx = offsetPx(),
                 dismissedPx = with(density) { dismissedBound.toPx() },
@@ -918,6 +940,13 @@ class BottomSheetState internal constructor(
                 velocityThresholdPxPerSecond = velocityThresholdPx,
                 allowDismiss = allowDismiss && onDismiss != null,
             )
+        // Upward drags on Mini must never resolve to Expanded, even on a high-velocity fling.
+        val targetId =
+            if (compactDismissOnly && proposedTarget == EXPANDED_ANCHOR) {
+                COLLAPSED_ANCHOR
+            } else {
+                proposedTarget
+            }
         val target = requestAnchor(legacyAnchor(targetId, hasDismissedAnchor))
 
         animateToAnchor(
@@ -1156,6 +1185,7 @@ internal fun Modifier.bottomSheetDraggable(
     onDismiss: (() -> Unit)? = null,
     dismissOnlyFromCollapsed: Boolean = false,
     miniGestureArbiter: MiniPlayerGestureArbiter? = null,
+    compactDismissOnly: Boolean = false,
 ): Modifier {
     val density = LocalDensity.current
     val velocityThresholdPx = with(density) { BottomSheetVelocityThreshold.toPx() }
@@ -1170,6 +1200,7 @@ internal fun Modifier.bottomSheetDraggable(
                 ) {
                     state.dragUserInput(
                         allowDismiss = gesturePolicy.allowDismiss,
+                        compactDismissOnly = compactDismissOnly,
                         dragPriority = dragPriority,
                     ) {
                         val sheetScope = this
@@ -1197,6 +1228,7 @@ internal fun Modifier.bottomSheetDraggable(
                         state.dispatchRawUserDelta(
                             deltaPx = -delta,
                             allowDismiss = gesturePolicy.allowDismiss,
+                            compactDismissOnly = compactDismissOnly,
                         )
                     }
                 }
@@ -1206,7 +1238,9 @@ internal fun Modifier.bottomSheetDraggable(
     return draggable(
         state = verticalDragState,
         orientation = Orientation.Vertical,
-        enabled = true,
+        enabled = !compactDismissOnly ||
+            (state.compactForegroundAcceptsInput &&
+                state.targetAnchor == COLLAPSED_ANCHOR),
         // Child controls own taps. Vertical drag takes ownership only after touch slop, then
         // AnchoredDraggable cancels the running settle at its current physical offset.
         startDragImmediately = false,
@@ -1242,6 +1276,7 @@ internal fun Modifier.bottomSheetDraggable(
                     velocityThresholdPx = velocityThresholdPx,
                     allowDismiss = allowDismissForGesture,
                     onDismiss = if (allowDismissForGesture) onDismiss else null,
+                    compactDismissOnly = compactDismissOnly,
                 )
             } catch (_: CancellationException) {
                 // A newer touch or authoritative transition owns the same anchored offset.

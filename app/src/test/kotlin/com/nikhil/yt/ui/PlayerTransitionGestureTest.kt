@@ -50,7 +50,7 @@ class PlayerTransitionGestureTest {
     private var mainScreenClicks = 0
     private var compactDockHeight by mutableStateOf(80.dp)
 
-    private fun showSheet() {
+    private fun showSheet(tapOnlyPlayer: Boolean = false) {
         childClicks = 0
         horizontalDistance = 0f
         dismisses = 0
@@ -84,6 +84,8 @@ class PlayerTransitionGestureTest {
                         modifier = Modifier.testTag("sheet"),
                         backgroundColor = Color.Black,
                         onDismiss = { dismisses++ },
+                        gesturesEnabled = !tapOnlyPlayer,
+                        compactSwipeDismissEnabled = tapOnlyPlayer,
                         dismissOnlyFromCollapsed = true,
                         collapsedContentHeight = 80.dp,
                         collapsedContent = {
@@ -462,5 +464,64 @@ class PlayerTransitionGestureTest {
         }
         compose.waitForIdle()
         compose.runOnIdle { assertEquals(1, fullBottomClicks) }
+    }
+
+    @Test fun `tap only player still opens from compact tap`() {
+        showSheet(tapOnlyPlayer = true)
+        miniNode().performTouchInput { down(center); up() }
+        compose.waitForIdle()
+        compose.runOnIdle { assertTrue(state.isExpanded) }
+    }
+
+    @Test fun `swiping up on compact does not open player`() {
+        showSheet(tapOnlyPlayer = true)
+        miniNode().performTouchInput {
+            down(center)
+            advanceEventTime(16)
+            moveBy(Offset(0f, -120f))
+            advanceEventTime(16)
+            moveBy(Offset(0f, -120f))
+            advanceEventTime(16)
+            up()
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertTrue(state.isCollapsed)
+            assertEquals(0, dismisses)
+        }
+    }
+
+    @Test fun `swiping down on compact still clears playback`() {
+        showSheet(tapOnlyPlayer = true)
+        miniNode().performTouchInput {
+            down(center)
+            advanceEventTime(16)
+            moveBy(Offset(0f, 140f))
+            advanceEventTime(16)
+            up()
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertTrue(state.isDismissed)
+            assertEquals(1, dismisses)
+        }
+    }
+
+    @Test fun `swiping down on full player never closes it`() {
+        showSheet(tapOnlyPlayer = true)
+        compose.runOnIdle { state.expandSoft() }
+        compose.waitForIdle()
+        compose.onNodeWithTag("full", useUnmergedTree = true).performTouchInput {
+            down(Offset(center.x, 40f))
+            advanceEventTime(16)
+            moveBy(Offset(0f, 350f))
+            advanceEventTime(16)
+            up()
+        }
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertTrue(state.isExpanded)
+            assertEquals(0, dismisses)
+        }
     }
 }
