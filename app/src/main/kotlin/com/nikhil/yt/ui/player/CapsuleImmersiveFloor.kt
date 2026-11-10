@@ -159,7 +159,8 @@ internal fun rememberImmersiveEdgeColor(
                 }
                 val bottomTexture = image.immersiveBottomTexture(artworkAspect)
                 val edgeBands = image.immersiveBottomEdgeBands(artworkAspect).map { rawBand ->
-                    if (nearWhite) rawBand else rawBand.comfortableImmersiveColor()
+                    if (nearWhite || rawBand.isNearWhiteImmersiveBackground()) rawBand
+                    else rawBand.comfortableImmersiveColor()
                 }
                 ImmersiveArtworkTone(
                     edge = background,

@@ -91,6 +91,7 @@ import com.nikhil.yt.ui.component.CapsuleFavoriteColors
 import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
 import com.nikhil.yt.utils.makeTimeString
 import com.nikhil.yt.utils.rememberPreference
+import kotlin.math.roundToInt
 
 /**
  * The outgoing fade is a SINGLE operation for a displayed frame, regardless of how
@@ -1480,7 +1481,7 @@ private fun Modifier.immersiveSpatialBackdrop(
     val settled = (coverFraction + 0.44f).coerceAtMost(1f)
     val brushes = List(columnCount) { index ->
         val edge = immersiveSpatialBandColor(bands, (index + 0.5f) / columnCount)
-        val floor = if (!active) fallbackFloor else if (nearWhite) {
+        val floor = if (!active) fallbackFloor else if (nearWhite || edge.isNearWhiteImmersiveBackground()) {
             edge.immersiveMutedAccent()
         } else {
             lerp(edge, Color.Black, 0.10f)
@@ -1519,10 +1520,13 @@ private fun Modifier.immersiveSpatialBackdrop(
     }
     onDrawBehind {
         brushes.forEachIndexed { index, brush ->
+            // Exact integer boundaries: no gaps and, crucially, no extra
+            // alpha compositing at seams between translucent cover columns.
+            val left = (columnWidth * index).roundToInt().toFloat()
+            val right = (columnWidth * (index + 1)).roundToInt().toFloat()
             drawRect(brush = brush,
-                topLeft = Offset(columnWidth * index, 0f),
-                // One-pixel overlap hides tile rasterization cracks.
-                size = Size(columnWidth + 1f, size.height))
+                topLeft = Offset(left, 0f),
+                size = Size((right - left).coerceAtLeast(0f), size.height))
         }
     }
 }
