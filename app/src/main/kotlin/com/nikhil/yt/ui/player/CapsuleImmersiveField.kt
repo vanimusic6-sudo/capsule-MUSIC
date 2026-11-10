@@ -70,16 +70,15 @@ private fun smooth5(start: Float, end: Float, value: Float): Float {
     return t * t * t * (t * (t * 6f - 15f) + 10f)
 }
 
-private fun pageTone(
-    edge: Color, floor: Color,
-    pageY: Float, coverFraction: Float, tailFraction: Float,
-): Color {
-    // The same formula applies to the page and to the last pixels of the
-    // artwork overlay. No separate/mismatched seam colour.
-    val start = coverFraction * 0.76f
-    val end = (coverFraction + tailFraction.coerceAtLeast(0.02f) * 2.9f)
-        .coerceAtMost(0.96f).coerceAtLeast(start + 0.04f)
-    return lerp(edge, floor, smooth5(start, end, pageY))
+/**
+ * Near the artwork boundary each side still owns its colour. Farther down,
+ * the hues diffusively converge to the cover's overall tone instead of
+ * growing into long vertical bars over the transport controls.
+ */
+internal fun immersiveSpatialDiffusion(pageY: Float, coverFraction: Float): Float {
+    val start = coverFraction * 0.91f
+    val end = (coverFraction + 0.45f).coerceAtMost(0.995f)
+    return smooth5(start, end, pageY) * 0.84f
 }
 
 internal fun immersiveSpatialFieldBitmap(
@@ -104,17 +103,35 @@ internal fun immersiveSpatialFieldBitmap(
         else if (nearWhite || edge.isNearWhiteImmersiveBackground()) edge.immersiveMutedAccent()
         else lerp(edge, Color.Black, 0.10f)
     }
+    // Global colour is taken from all bands, not the dominant centre object.
+    // It becomes the blurred destination only AFTER each side was extended.
+    val globalEdge = if (hasSpatialColors) Color(
+        bands.sumOf { it.red.toDouble() }.toFloat() / bands.size,
+        bands.sumOf { it.green.toDouble() }.toFloat() / bands.size,
+        bands.sumOf { it.blue.toDouble() }.toFloat() / bands.size,
+    ) else edgeColumn[0]
+    val globalFloor = if (!hasSpatialColors) fallbackFloor
+        else if (nearWhite || globalEdge.isNearWhiteImmersiveBackground())
+            globalEdge.immersiveMutedAccent()
+        else lerp(globalEdge, Color.Black, 0.10f)
+    val startShade = coverFraction * 0.76f
+    val endShade = (coverFraction + tailFraction.coerceAtLeast(0.02f) * 2.9f)
+        .coerceAtMost(0.96f).coerceAtLeast(startShade + 0.04f)
     val pixels = IntArray(FIELD_WIDTH * FIELD_HEIGHT)
     val start = (0.46f - texture.coerceIn(0f, 1f) * 0.085f -
         if (landscape) 0.02f else 0f).coerceAtLeast(0.28f)
     for (y in 0 until FIELD_HEIGHT) {
         val photoY = (y + 0.5f) / FIELD_HEIGHT
         val pageY = if (photoOverlay) photoY * coverFraction else photoY
+        val shade = smooth5(startShade, endShade, pageY)
+        val diffusion = immersiveSpatialDiffusion(pageY, coverFraction)
+        val commonTone = lerp(globalEdge, globalFloor, shade)
         val alpha = if (photoOverlay) {
             if (y == FIELD_HEIGHT - 1) 1f else smooth5(start, 0.985f, photoY)
         } else 1f
         for (x in 0 until FIELD_WIDTH) {
-            val pixel = pageTone(edgeColumn[x], floorColumn[x], pageY, coverFraction, tailFraction)
+            val local = lerp(edgeColumn[x], floorColumn[x], shade)
+            val pixel = lerp(local, commonTone, diffusion)
             pixels[y * FIELD_WIDTH + x] = pixel.copy(alpha = alpha).toArgb()
         }
     }

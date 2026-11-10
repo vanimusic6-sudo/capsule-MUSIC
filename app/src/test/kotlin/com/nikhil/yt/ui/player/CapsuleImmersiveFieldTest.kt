@@ -28,6 +28,13 @@ class CapsuleImmersiveFieldTest {
             largestJump < 0.055f)
     }
 
+    @Test fun coloursMergeOnlyAfterTheCoverHasSafelyExtendedIntoThePage() {
+        val cover = 0.48f
+        assertTrue(immersiveSpatialDiffusion(0.25f, cover) < 0.001f)
+        assertTrue(immersiveSpatialDiffusion(cover, cover) < 0.04f)
+        assertTrue(immersiveSpatialDiffusion(0.9f, cover) > 0.80f)
+    }
+
     @Test fun uniformOrMissingPaletteRemainsStable() {
         val uniform = List(7) { Color(0xFFBDB0AA) }
         assertTrue(abs(immersiveSoftBandColor(uniform, 0.1f).red -
