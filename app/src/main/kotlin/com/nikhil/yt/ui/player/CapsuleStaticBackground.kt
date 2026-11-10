@@ -48,26 +48,37 @@ internal class CapsuleStaticBackground(
                 vignette(if (wide) 0.1f else 0.22f)
             }
             CapsuleBackgroundEffect.AMBIENT_GLOW -> {
-                solid(Color(0xFF07080C))
-                light(palette[0], 0.12f, 0.02f, 0.82f, 0.58f, if (wide) 0.34f else 1.05f)
-                light(palette[1], 0.94f, 0.48f, 0.64f, 0.3f, if (wide) 0.38f else 1.15f)
-                light(palette[2], 0.3f, 0.72f, 0.58f, 0.12f, if (wide) 0.3f else 0.9f)
-                rect(Brush.verticalGradient(0f to Color.Transparent, 0.42f to Color.Transparent,
-                    1f to Color.Black.copy(alpha = if (wide) 0.24f else 0.65f)))
-                vignette(if (wide) 0.12f else 0.22f)
+                // Sunlit halos remain soft and limited; no framebuffer blur.
+                solid(Color(0xFF0B0A0B))
+                val sunlight = lerp(palette[0], Color(0xFFFFE6B9), 0.27f)
+                light(sunlight, 0.14f, 0.01f, 0.86f, 0.68f, if (wide) 0.35f else 1.05f)
+                light(lerp(palette[1], Color.White, 0.20f), 0.94f, 0.44f, 0.68f, 0.36f,
+                    if (wide) 0.38f else 1.14f)
+                light(palette[2], 0.32f, 0.78f, 0.66f, 0.18f,
+                    if (wide) 0.32f else 0.94f)
+                rect(Brush.verticalGradient(0f to Color.Transparent,
+                    0.58f to Color.Transparent,
+                    1f to Color.Black.copy(alpha = if (wide) 0.22f else 0.58f)))
+                vignette(if (wide) 0.09f else 0.17f)
             }
             CapsuleBackgroundEffect.CAPSULE_GLOW -> {
-                solid(Color(0xFF050506))
-                rect(Brush.radialGradient(
-                    0f to palette[0].copy(alpha = 0.72f), 0.42f to palette[0].copy(alpha = 0.34f), 1f to Color.Transparent,
-                    center = Offset(size.width * if (compact) 0.18f else 0.48f, size.height * if (compact) 0.15f else 0.08f),
-                    radius = extent * if (compact) 0.94f else 0.78f))
-                rect(Brush.radialGradient(colors = listOf(palette[1].copy(alpha = 0.34f), Color.Transparent),
-                    center = Offset(size.width * 0.96f, size.height * if (compact) 0.8f else 0.38f),
-                    radius = extent * if (compact) 0.7f else 0.48f))
+                // Premium, spacious album-colour wash (inspired by streaming UI).
+                // Layered diffused colours, a deep lower vignette, no hard-edged circles.
+                rect(Brush.verticalGradient(
+                    0f to deep(lerp(palette[0], palette[1], 0.16f), 0.56f),
+                    0.45f to deep(lerp(palette[1], palette[2], 0.25f), 0.81f),
+                    1f to Color(0xFF09080D)))
+                light(palette[0], if (compact) 0.10f else 0.34f, 0.0f,
+                    1.02f, if (compact) 0.42f else 0.54f, if (wide) 0.34f else 0.90f)
+                light(lerp(palette[1], palette[0], 0.16f), 0.96f, 0.30f,
+                    0.82f, if (compact) 0.28f else 0.37f, if (wide) 0.36f else 1.02f)
+                light(palette[2], 0.26f, 0.76f,
+                    0.68f, if (compact) 0.16f else 0.22f, if (wide) 0.32f else 0.80f)
                 rect(Brush.verticalGradient(0f to Color.Transparent,
-                    0.46f to Color.Black.copy(alpha = if (compact) 0.08f else 0.14f),
-                    1f to Color.Black.copy(alpha = if (compact) 0.4f else 0.94f)))
+                    0.25f to Color.Transparent,
+                    0.70f to Color.Black.copy(alpha = if (compact) 0.19f else 0.33f),
+                    1f to Color.Black.copy(alpha = if (compact) 0.54f else 0.76f)))
+                vignette(if (wide) 0.08f else 0.15f)
             }
             else -> error("Only static effects have a static background cache")
         }

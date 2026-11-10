@@ -37,6 +37,8 @@ internal data class ImmersiveArtworkTone(
     val landscape: Boolean = false,
     val accent: Color = IMMERSIVE_NEUTRAL_COLOR,
     val bottomTexture: Float = 0f,
+    // Seven left-to-right colours from the actual visible artwork crop.
+    val edgeBands: List<Color> = emptyList(),
     // Only genuinely near-white, nearly neutral covers need the new soft
     // seam treatment. Every other album gets the ORIGINAL palette and fade.
     val nearWhiteBackground: Boolean = false,
@@ -156,6 +158,9 @@ internal fun rememberImmersiveEdgeColor(
                     rawEdge.comfortableImmersiveColor()
                 }
                 val bottomTexture = image.immersiveBottomTexture(artworkAspect)
+                val edgeBands = image.immersiveBottomEdgeBands(artworkAspect).map { rawBand ->
+                    if (nearWhite) rawBand else rawBand.comfortableImmersiveColor()
+                }
                 ImmersiveArtworkTone(
                     edge = background,
                     // Restore the original modest 10% darker floor exactly.
@@ -166,6 +171,7 @@ internal fun rememberImmersiveEdgeColor(
                         lerp(background, Color.Black, 0.10f)
                     },
                     bottomTexture = bottomTexture,
+                    edgeBands = edgeBands,
                     nearWhiteBackground = nearWhite,
                     landscape = landscape,
                     displayUrl = url,
@@ -377,4 +383,55 @@ internal fun Color.comfortableImmersiveColor(): Color {
     // In particular, do not manufacture 32% saturation for greyscale artwork.
     hsv[2] = hsv[2].coerceIn(0.17f, 0.44f)
     return Color(android.graphics.Color.HSVToColor(hsv))
+}
+
+/**
+ * Samples the bottom edge of the same centre crop that the player displays.
+ * A 7-column, quantized modal estimator is robust to labels and foreground
+ * objects and retains asymmetric colours that a single RGB average destroys.
+ * Called only once per decoded cover on Dispatchers.Default, never per frame.
+ */
+internal fun Bitmap.immersiveBottomEdgeBands(artworkAspect: Float): List<Color> {
+    if (width <= 0 || height <= 0) return emptyList()
+    val aspect = artworkAspect.coerceIn(0.55f, 2.2f)
+    val natural = width.toFloat() / height
+    val visibleWidth = (if (natural > aspect) height * aspect else width.toFloat()).toInt()
+        .coerceIn(1, width)
+    val visibleHeight = (if (natural < aspect) width / aspect else height.toFloat()).toInt()
+        .coerceIn(1, height)
+    val left = (width - visibleWidth) / 2
+    val top = (height - visibleHeight) / 2
+    val yStart = (top + visibleHeight * 0.73f).toInt().coerceIn(0, height - 1)
+    val yEnd = (top + visibleHeight * 0.96f).toInt().coerceIn(yStart + 1, height)
+    val bandCount = 7
+    return List(bandCount) { band ->
+        val xStart = left + visibleWidth * band / bandCount
+        val xEnd = (left + visibleWidth * (band + 1) / bandCount).coerceAtMost(width)
+        val counts = IntArray(512)
+        val red = LongArray(512)
+        val green = LongArray(512)
+        val blue = LongArray(512)
+        val stepX = ((xEnd - xStart) / 24).coerceAtLeast(1)
+        val stepY = ((yEnd - yStart) / 32).coerceAtLeast(1)
+        for (y in yStart until yEnd step stepY) {
+            for (x in xStart until xEnd.coerceAtLeast(xStart + 1) step stepX) {
+                val pixel = getPixel(x.coerceIn(0, width - 1), y)
+                val r = pixel shr 16 and 255
+                val g = pixel shr 8 and 255
+                val b = pixel and 255
+                val bucket = ((r shr 5) shl 6) or ((g shr 5) shl 3) or (b shr 5)
+                counts[bucket]++
+                red[bucket] += r.toLong()
+                green[bucket] += g.toLong()
+                blue[bucket] += b.toLong()
+            }
+        }
+        val best = counts.indices.maxByOrNull { counts[it] } ?: 0
+        val n = counts[best].coerceAtLeast(1)
+        Color(
+            red = (red[best].toFloat() / n / 255f).coerceIn(0f, 1f),
+            green = (green[best].toFloat() / n / 255f).coerceIn(0f, 1f),
+            blue = (blue[best].toFloat() / n / 255f).coerceIn(0f, 1f),
+        )
+    }
 }

@@ -30,7 +30,6 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -150,12 +149,19 @@ internal fun CapsuleProceduralBackground(
     val secondary = MaterialTheme.colorScheme.secondary
     val tertiary = MaterialTheme.colorScheme.tertiary
     val palette =
-        remember(colors, primary, secondary, tertiary) {
-            listOf(
+        remember(effect, colors, primary, secondary, tertiary) {
+            val artwork = listOf(
                 colors.getOrElse(0) { primary },
                 colors.getOrElse(1) { secondary },
                 colors.getOrElse(2) { tertiary },
-            ).map(::capsuleMutedArtworkColor)
+            )
+            when (effect) {
+                CapsuleBackgroundEffect.CAPSULE_STAR ->
+                    artwork.map { lerp(it, Color(0xFF0B1435), 0.52f) }
+                CapsuleBackgroundEffect.NEBULA ->
+                    artwork.map { lerp(capsuleMutedArtworkColor(it), Color(0xFFECE9FA), 0.31f) }
+                else -> artwork.map(::capsuleMutedArtworkColor)
+            }
         }
     val motionEnabled = LocalCapsuleBackgroundMotionEnabled.current
     val needsClock = capsuleBackgroundNeedsClock(effect)
@@ -179,15 +185,15 @@ internal fun CapsuleProceduralBackground(
         // drift frames instead of allocating identical brushes and shaders at every clock tick.
         val baseBrush = when (effect) {
             CapsuleBackgroundEffect.COLOR_FLOW -> Brush.linearGradient(
-                0f to deepColor(lerp(palette[0], palette[1], 0.18f), 0.58f),
-                0.52f to deepColor(lerp(palette[1], palette[2], 0.35f), 0.7f),
-                1f to deepColor(palette[2], 0.84f),
+                0f to deepColor(lerp(palette[0], palette[1], 0.14f), 0.46f),
+                0.52f to deepColor(lerp(palette[1], palette[2], 0.30f), 0.56f),
+                1f to deepColor(palette[2], 0.75f),
                 start = Offset.Zero, end = Offset(size.width, size.height),
             )
             CapsuleBackgroundEffect.CAPSULE_STAR -> Brush.verticalGradient(
-                0f to deepColor(lerp(palette[0], palette[1], 0.18f), 0.72f),
-                0.54f to deepColor(lerp(palette[0], palette[2], 0.45f), 0.82f),
-                1f to deepColor(lerp(palette[1], palette[2], 0.58f), 0.9f),
+                0f to deepColor(lerp(palette[0], palette[1], 0.18f), 0.79f),
+                0.54f to deepColor(lerp(palette[0], palette[2], 0.45f), 0.87f),
+                1f to deepColor(lerp(palette[1], palette[2], 0.58f), 0.94f),
             )
             else -> null
         }
@@ -195,11 +201,11 @@ internal fun CapsuleProceduralBackground(
         val movingLights = when (effect) {
             CapsuleBackgroundEffect.COLOR_FLOW -> palette.mapIndexed { index, color ->
                 CachedSoftLight(color, extent * (0.78f - index * 0.08f),
-                    if (index == 0) 0.35f else 0.2f, if (compact) 0.34f else 1.1f)
+                    if (index == 0) 0.48f else 0.30f, if (compact) 0.34f else 1.1f)
             }
             CapsuleBackgroundEffect.NEBULA -> palette.mapIndexed { index, color ->
-                CachedSoftLight(color, extent * (0.66f + index * 0.07f),
-                    if (compact) 0.24f else 0.34f, if (compact) 0.36f else 0.72f)
+                CachedSoftLight(lerp(color, Color.White, 0.35f), extent * (0.74f + index * 0.07f),
+                    if (compact) 0.30f else 0.45f, if (compact) 0.36f else 0.82f)
             }
             else -> emptyList()
         }
@@ -207,7 +213,7 @@ internal fun CapsuleProceduralBackground(
             palette.map { lerp(Color.White, it, 0.15f) }
         } else emptyList()
         val nebulaSparks = if (effect == CapsuleBackgroundEffect.NEBULA) {
-            List(if (compact) 10 else 24) { i ->
+            List(if (compact) 5 else 12) { i ->
                 NebulaSpark(
                     Offset(
                         deterministicFraction(i * 23 + 5) * size.width,
@@ -221,8 +227,8 @@ internal fun CapsuleProceduralBackground(
         val nebulaBase = deepColor(lerp(palette[0], palette[1], 0.28f), 0.88f)
         val starBloom = if (effect == CapsuleBackgroundEffect.CAPSULE_STAR) {
             Brush.radialGradient(colors = listOf(
-                palette[0].copy(alpha = if (compact) 0.14f else 0.2f),
-                palette[1].copy(alpha = if (compact) 0.05f else 0.09f), Color.Transparent),
+                palette[0].copy(alpha = if (compact) 0.09f else 0.13f),
+                palette[1].copy(alpha = if (compact) 0.03f else 0.05f), Color.Transparent),
                 center = Offset.Zero, radius = extent * if (compact) 1.14f else 0.7f)
         } else null
         val starSweep = if (effect == CapsuleBackgroundEffect.CAPSULE_STAR) {
@@ -558,16 +564,16 @@ private fun DrawScope.drawSoftColorFlow(
     baseBrush: Brush,
     vignette: Brush,
 ) {
-    val angle = capsuleBackgroundAngle(elapsedMs) * 0.36
+    val angle = capsuleBackgroundAngle(elapsedMs) * 0.68
     drawRect(baseBrush)
     lights.forEachIndexed { index, light ->
         val center = when (index) {
-            0 -> Offset(size.width * (0.12f + 0.13f * waveSin(angle)),
-                size.height * (0.12f + 0.09f * waveCos(angle * 0.72)))
-            1 -> Offset(size.width * (0.88f + 0.11f * waveCos(angle * 0.62)),
-                size.height * (0.52f + 0.12f * waveSin(angle * 0.66)))
-            else -> Offset(size.width * (0.48f + 0.15f * waveSin(angle * 0.48 + 2.2)),
-                size.height * (0.82f + 0.09f * waveCos(angle * 0.52 + 1.4)))
+            0 -> Offset(size.width * (0.18f + 0.22f * waveSin(angle)),
+                size.height * (0.18f + 0.14f * waveCos(angle * 0.72)))
+            1 -> Offset(size.width * (0.80f + 0.17f * waveCos(angle * 0.62)),
+                size.height * (0.48f + 0.16f * waveSin(angle * 0.66)))
+            else -> Offset(size.width * (0.48f + 0.22f * waveSin(angle * 0.48 + 2.2)),
+                size.height * (0.76f + 0.16f * waveCos(angle * 0.52 + 1.4)))
         }
         light.draw(this, center)
     }
@@ -644,33 +650,12 @@ private fun DrawScope.drawConstellation(
         val y = inset + star.y * heightInside + capsuleStarDriftY(star, angle) * drift
         val pulse = (waveSin(angle * (0.18f + depth * 0.24f) + star.phase) + 1f) / 2f
         val alpha = (0.14f + depth * 0.24f + pulse * 0.09f).coerceAtMost(0.6f) * opacity
-        val highlight = index % 17 == 0
-        val radius = (if (highlight) 1.15f else 0.42f + depth * 0.32f) * density
+        // Real, softly twinkling pinpoints only. No crosshair sparkles.
+        val patternStar = depth >= 0.93f
+        val radius = (if (patternStar) 0.88f else 0.38f + depth * 0.34f) * density
         val starColor = starInk[index % starInk.size]
-
-        if (highlight) {
-            drawCircle(
-                color = palette[index % palette.size].copy(alpha = alpha * 0.13f),
-                radius = radius * 4.4f,
-                center = Offset(x, y),
-            )
-            drawLine(
-                color = starColor.copy(alpha = alpha * 0.38f),
-                start = Offset(x - radius * 2.2f, y),
-                end = Offset(x + radius * 2.2f, y),
-                strokeWidth = highlightStroke,
-                cap = StrokeCap.Round,
-            )
-            drawLine(
-                color = starColor.copy(alpha = alpha * 0.3f),
-                start = Offset(x, y - radius * 2.2f),
-                end = Offset(x, y + radius * 2.2f),
-                strokeWidth = highlightStroke,
-                cap = StrokeCap.Round,
-            )
-        }
         drawCircle(
-            color = starColor.copy(alpha = alpha),
+            color = starColor.copy(alpha = if (patternStar) (alpha * 1.28f).coerceAtMost(0.85f) else alpha),
             radius = radius,
             center = Offset(x, y),
         )

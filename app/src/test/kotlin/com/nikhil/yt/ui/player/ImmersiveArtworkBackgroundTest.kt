@@ -18,6 +18,24 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class)
 class ImmersiveArtworkBackgroundTest {
+    @Test fun keepsIndependentLeftAndRightColorsFromTheVisibleCrop() {
+        val image = Bitmap.createBitmap(210, 140, Bitmap.Config.ARGB_8888)
+        for (y in 0 until 140) for (x in 0 until 210) {
+            image.setPixel(x, y,
+                if (x < 105) AndroidColor.rgb(195, 45, 62)
+                else AndroidColor.rgb(25, 75, 203))
+        }
+        val sampled = image.immersiveBottomEdgeBands(1.5f)
+        assertTrue(sampled.size == 7)
+        assertTrue(sampled.first().red > sampled.first().blue * 1.8f)
+        assertTrue(sampled.last().blue > sampled.last().red * 2f)
+        val left = immersiveSpatialBandColor(sampled, 0f)
+        val right = immersiveSpatialBandColor(sampled, 1f)
+        assertTrue(left.red > left.blue)
+        assertTrue(right.blue > right.red)
+        image.recycle()
+    }
+
     @Test fun whiteLowerBackgroundBeatsSmallGreenForegroundAndKeepsNeutralSaturation() {
         val image = Bitmap.createBitmap(180, 100, Bitmap.Config.ARGB_8888)
         image.eraseColor(AndroidColor.WHITE)

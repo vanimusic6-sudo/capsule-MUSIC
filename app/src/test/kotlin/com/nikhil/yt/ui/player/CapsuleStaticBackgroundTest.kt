@@ -36,9 +36,8 @@ class CapsuleStaticBackgroundTest {
         return IntArray(w * h).also { bitmap.getPixels(it, 0, w, 0, 0, w, h); bitmap.recycle() }
     }
 
-    @Test fun everyStaticEffectPreservesTheOriginalPixelsAndReusesItsResourcesAcrossDraws() {
-        val effects = listOf(CapsuleBackgroundEffect.MATTE_GRADIENT, CapsuleBackgroundEffect.TONAL_WASH,
-            CapsuleBackgroundEffect.AMBIENT_GLOW, CapsuleBackgroundEffect.CAPSULE_GLOW)
+    @Test fun untouchedStaticEffectsPreserveTheirOriginalPixelsAndCachedResources() {
+        val effects = listOf(CapsuleBackgroundEffect.MATTE_GRADIENT, CapsuleBackgroundEffect.TONAL_WASH)
         val palettes = listOf(listOf(Color(0xFFA27CCE), Color(0xFF4CB9AE), Color(0xFFB46B75)),
             listOf(Color.White, Color(0xFF777777), Color.Black))
         for (effect in effects) for (size in listOf(Size(80f, 100f), Size(160f, 40f))) {
