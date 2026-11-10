@@ -338,8 +338,11 @@ fun BottomSheetPlayer(
         )
 
     val textColor =
-        when (playerBackground) {
-            PlayerBackgroundStyle.DEFAULT -> MaterialTheme.colorScheme.onBackground
+        when {
+            // Ambient video always paints a dark, derived backdrop even when
+            // the user's ordinary skin uses the light/default theme.
+            activeVideoAmbientBands != null -> Color.White
+            playerBackground == PlayerBackgroundStyle.DEFAULT -> MaterialTheme.colorScheme.onBackground
             else -> Color.White
         }
 
