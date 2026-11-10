@@ -1028,21 +1028,9 @@ fun CapsulePlayerContent(
                                         artworkMaxHeightScale.coerceAtLeast(0.55f),
                                     )
 
-                            LaunchedEffect(
-                                artworkMaxHeightScale,
-                                lightArtworkHeightScale,
-                                artworkResizeActive,
-                            ) {
-                                if (
-                                    !artworkResizeActive &&
-                                    kotlin.math.abs(
-                                        safeArtworkHeightScale - lightArtworkHeightScale,
-                                    ) > 0.005f
-                                ) {
-                                    lightArtworkHeightScale = safeArtworkHeightScale
-                                    onArtworkHeightScaleChange(safeArtworkHeightScale)
-                                }
-                            }
+                            // The line temporarily reduces available height; it must not
+                            // overwrite the user's saved artwork size. When the line is hidden,
+                            // the original dimensions can be measured and restored again.
 
                             Column(
                                 modifier = Modifier.fillMaxWidth(),
