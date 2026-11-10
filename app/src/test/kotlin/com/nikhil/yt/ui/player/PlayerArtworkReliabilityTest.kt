@@ -59,6 +59,21 @@ class PlayerArtworkReliabilityTest {
         assertFalse(preloader.contains("CAPSULE_VISUAL_PREFETCH_SETTLE_MS = 1_200L"))
     }
 
+    @Test fun decodedArtworkSurvivesAppBackgroundWithoutKeepingAnimationTreeAlive() {
+        val player = source("Player.kt")
+        val content = source("CapsulePlayerContent.kt")
+        assertTrue(player.contains("val decodedArtworkCache = remember {"))
+        assertTrue(player.contains("decodedArtworkCache = decodedArtworkCache,"))
+        assertTrue(content.contains("decodedArtworkCache: MutableMap<String, Pair<String, Painter>>"))
+        assertFalse(content.contains("val decodedArtworkCache = remember"))
+        assertTrue(content.contains("while (decodedArtworkCache.size > 3)"))
+        // Keep expensive visual work stopped when the app is backgrounded.
+        assertTrue(content.contains("if (!onScreen || (!open && expansionProgress <= 0.001f))"))
+        assertTrue(player.contains("skipArtworkPrefetch = state.shouldLayerAboveCollapsedChrome"))
+        val preload = source("CapsuleMediaPreload.kt")
+        assertTrue(preload.contains("if (skipArtworkPrefetch) return@LaunchedEffect"))
+    }
+
     @Test fun lightAndCosmoKeepImageFallbackLocalToTheirOwnArtwork() {
         val full = source("CapsulePlayerContent.kt")
         assertTrue(full.contains("val originalArtworkUrl = pinnedArtworkUrl"))

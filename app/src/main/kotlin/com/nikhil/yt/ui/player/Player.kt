@@ -37,6 +37,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -45,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
@@ -217,6 +219,12 @@ fun BottomSheetPlayer(
         }
 
     val onScreen = appIsOnScreen()
+    // Keep already decoded artwork across Android STOP/START and mini/full handoffs.
+    // The full visual tree is still unmounted off-screen to avoid animation/CPU work.
+    // Only a few existing painters remain; no off-screen image requests are made.
+    val decodedArtworkCache = remember {
+        mutableStateMapOf<String, Pair<String, Painter>>()
+    }
 
     /*
      * Start cover + portrait work while the player is collapsed, but never while the whole app is
@@ -224,7 +232,11 @@ fun BottomSheetPlayer(
      * an expand gesture.
      */
     if (onScreen) {
-        PreloadCapsuleTrackAssets(enrichedMetadata)
+        PreloadCapsuleTrackAssets(
+            mediaMetadata = enrichedMetadata,
+            skipArtworkPrefetch = state.shouldLayerAboveCollapsedChrome ||
+                (enrichedMetadata?.id?.let(decodedArtworkCache::containsKey) == true),
+        )
     }
 
     var position by remember(mediaMetadata?.id) {
@@ -426,6 +438,7 @@ fun BottomSheetPlayer(
                     design = effectivePlayerDesign,
                     showLyrics = showInlineLyrics,
                     mediaMetadata = metadata,
+                    decodedArtworkCache = decodedArtworkCache,
                     playerArtworkColors = gradientColors,
                     backdropAnimationTime = sharedBackdropAnimationTime,
                     sliderPosition = sliderPosition,
@@ -524,6 +537,7 @@ private fun CapsulePlayerLyricsHost(
     design: CapsulePlayerDesign,
     showLyrics: Boolean,
     mediaMetadata: MediaMetadata,
+    decodedArtworkCache: MutableMap<String, Pair<String, Painter>>,
     playerArtworkColors: List<Color>,
     backdropAnimationTime: State<Long>,
     sliderPosition: Long?,
@@ -697,6 +711,7 @@ private fun CapsulePlayerLyricsHost(
             CapsulePlayerContent(
                 design = design,
                 mediaMetadata = mediaMetadata,
+                decodedArtworkCache = decodedArtworkCache,
                 sliderPosition = sliderPosition,
                 positionMs = position,
                 durationMs = duration,

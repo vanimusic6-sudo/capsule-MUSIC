@@ -955,7 +955,9 @@ class BottomSheetState internal constructor(
             initialVelocity = velocity,
         )
 
-        if (target == SheetAnchor.Dismissed && isDismissed) {
+        // Use the physical anchor, not a snapshot-derived flag that can lag behind
+        // the final animation frame during a fast compact swipe.
+        if (target == SheetAnchor.Dismissed && isAtSheetAnchor(value, dismissedBound)) {
             onDismiss?.invoke()
         }
     }
@@ -1270,18 +1272,33 @@ internal fun Modifier.bottomSheetDraggable(
             gesturePolicy.allowDismiss = false
             gesturePolicy.startedOnMini = false
             gesturePolicy.horizontalOwned = false
+            var dismissDelivered = false
+            val deliverDismiss: () -> Unit = {
+                if (!dismissDelivered) {
+                    dismissDelivered = true
+                    onDismiss?.invoke()
+                }
+            }
             try {
                 state.settleUserInput(
                     velocity = if (horizontalOwned) 0f else -pointerVelocity,
                     velocityThresholdPx = velocityThresholdPx,
                     allowDismiss = allowDismissForGesture,
-                    onDismiss = if (allowDismissForGesture) onDismiss else null,
+                    onDismiss = if (allowDismissForGesture) deliverDismiss else null,
                     compactDismissOnly = compactDismissOnly,
                 )
             } catch (_: CancellationException) {
                 // A newer touch or authoritative transition owns the same anchored offset.
             } finally {
                 state.setUserGestureInProgress(false)
+                // Even if Compose cancels the settle coroutine at finger-up, don't leave
+                // an already dismissed mini-player with playback still running invisibly.
+                if (allowDismissForGesture &&
+                    state.targetAnchor == DISMISSED_ANCHOR &&
+                    isAtSheetAnchor(state.value, state.dismissedBound)
+                ) {
+                    deliverDismiss()
+                }
             }
         },
     )
