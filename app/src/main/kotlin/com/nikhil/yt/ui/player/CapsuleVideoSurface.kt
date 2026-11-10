@@ -122,6 +122,9 @@ private fun CapsuleVideoTextureOutput(
     val owner = remember(service, player) { Any() }
     var texture by remember { mutableStateOf<CapsuleFrameTextureView?>(null) }
     val host = LocalView.current
+    // Media3 listener pauses the capture coroutine outright, instead of
+    // waking on a timer every four seconds while the video is paused/buffering.
+    var videoActuallyPlaying by remember(player) { mutableStateOf(player.isPlaying) }
     // Surface ownership is registered only after the real TextureView has a
     // SurfaceTexture. Previously this was called at composition time, before
     // AndroidView existed, so a cold decoder could be marked rendering-ready
@@ -131,9 +134,11 @@ private fun CapsuleVideoTextureOutput(
         val listener = object : Player.Listener {
             override fun onEvents(player: Player, events: Player.Events) {
                 host.keepScreenOn = player.playWhenReady && player.currentMediaItem != null
+                videoActuallyPlaying = player.isPlaying
             }
         }
         player.addListener(listener)
+        videoActuallyPlaying = player.isPlaying
         host.keepScreenOn = player.playWhenReady && player.currentMediaItem != null
         onDispose { player.removeListener(listener); host.keepScreenOn = wasKeepingScreenOn }
     }
@@ -174,10 +179,11 @@ private fun CapsuleVideoTextureOutput(
         // A single opt-in, low-rate readback of the decoder's *existing* output.
         // One 48x28 bitmap is reused; no extra video decoder, loop while hidden,
         // full-size CPU blur, or allocations on every rendered frame.
-        LaunchedEffect(view, player, ambientEnabled, audioMediaId, firstFrameReady, ambientSink) {
+        LaunchedEffect(view, player, ambientEnabled, videoActuallyPlaying,
+            audioMediaId, firstFrameReady, ambientSink) {
             val sink = ambientSink ?: return@LaunchedEffect
             val trackId = audioMediaId?.takeIf(String::isNotBlank) ?: return@LaunchedEffect
-            if (!ambientEnabled || !firstFrameReady) return@LaunchedEffect
+            if (!ambientEnabled || !firstFrameReady || !videoActuallyPlaying) return@LaunchedEffect
             var previous: List<Color>? = null
             var consecutiveFailures = 0
             val buffer = Bitmap.createBitmap(
