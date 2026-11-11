@@ -5,6 +5,7 @@ on:
   pull_request:
     paths:
       - 'app/src/main/kotlin/com/nikhil/yt/ui/player/**'
+      - 'app/src/main/kotlin/com/nikhil/yt/ui/component/shimmer/**'
       - 'app/src/test/kotlin/com/nikhil/yt/ui/**'
       - '.github/workflows/player-ui-quality.yml'
   workflow_dispatch:
@@ -42,14 +43,17 @@ jobs:
           gradle :app:testUniversalDebugUnitTest
           --tests 'com.nikhil.yt.ui.CapsuleBackgroundMotionTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleBackgroundClockTest'
-          --tests 'com.nikhil.yt.ui.player.CapsuleColorFieldTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveFieldTest'
+          --tests 'com.nikhil.yt.ui.player.OriginalBackgroundKernelTest'
+          --tests 'com.nikhil.yt.ui.player.ImmersiveVideoArtworkClipRegressionTest'
+          --tests 'com.nikhil.yt.ui.UiEnergyRegressionTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleVideoAmbientTest'
           --tests 'com.nikhil.yt.ui.player.ImmersiveArtworkBackgroundTest'
           --tests 'com.nikhil.yt.ui.CapsuleMotionTest'
           --tests 'com.nikhil.yt.ui.PlayerTransitionGestureTest'
           --tests 'com.nikhil.yt.ui.PlayerTransitionArchitectureTest'
           --tests 'com.nikhil.yt.ui.SearchPresentationRegressionTest'
+          --tests 'com.nikhil.yt.ui.component.LoadingPlaceholderTest'
           --tests 'com.nikhil.yt.ui.SearchBarInsetTest'
           --tests 'com.nikhil.yt.ui.player.PlayerArtworkReliabilityTest'
           --tests 'com.nikhil.yt.ui.MiniPlayerSwipeMotionTest'

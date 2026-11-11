@@ -227,20 +227,6 @@ fun BottomSheetPlayer(
         }
 
     val onScreen = appIsOnScreen()
-    // Sample the current Immersion cover while MINI is still displayed.
-    // Previously colour extraction did not start until the sheet opened;
-    // a quick tap had to wait for multiple sequential image decodes.
-    val warmedImmersiveTone = if (effectivePlayerDesign == CapsulePlayerDesign.IMMERSIVE) {
-        rememberImmersiveEdgeColor(
-            mediaMetadata = enrichedMetadata,
-            // Preload as soon as playback metadata exists, even while the
-            // mini-player is still transitioning out of Dismissed.
-            enabled = onScreen && !enrichedMetadata?.thumbnailUrl.isNullOrBlank(),
-            refreshOnOpen = state.isExpandedOrExpanding,
-            visibleArtworkAspectRatio = configuration.screenWidthDp.toFloat() /
-                immersiveArtworkHeight(configuration.screenHeightDp.dp).value.coerceAtLeast(1f),
-        )
-    } else null
     // Keep already decoded artwork across Android STOP/START and mini/full handoffs.
     // The full visual tree is still unmounted off-screen to avoid animation/CPU work.
     // Only a few existing painters remain; no off-screen image requests are made.
@@ -321,10 +307,10 @@ fun BottomSheetPlayer(
     }
 
     // An old frame may never colour a new song or a stopped video.
-    LaunchedEffect(enrichedMetadata?.id, videoAmbientEnabled) {
-        // Keep only THIS song's seven-colour sample for a soft VIDEO→AUDIO
-        // fade, then release the heavy video surface immediately as before.
-        if (!videoAmbientEnabled || videoAmbientFrame?.mediaId != enrichedMetadata?.id) {
+    LaunchedEffect(enrichedMetadata?.id, videoAmbientEnabled, videoPlaybackState.presentingVideo) {
+        if (!videoAmbientEnabled || !videoPlaybackState.presentingVideo ||
+            videoPlaybackState.mediaId != enrichedMetadata?.id
+        ) {
             videoAmbientFrame = null
         }
     }
@@ -333,29 +319,6 @@ fun BottomSheetPlayer(
             videoPlaybackState.mediaId == enrichedMetadata?.id &&
             sample.mediaId == enrichedMetadata?.id
     }?.bands
-    val retainedVideoAmbient = videoAmbientFrame?.takeIf { frame ->
-        videoAmbientEnabled && frame.mediaId == enrichedMetadata?.id
-    }
-    val retainedVideoAmbientBands = retainedVideoAmbient?.bands
-    val activeVideoAmbientField = retainedVideoAmbient?.takeIf {
-        videoPlaybackState.presentingVideo &&
-            videoPlaybackState.mediaId == enrichedMetadata?.id
-    }?.field
-    val videoAmbientOverlayAlpha = remember { Animatable(0f) }
-    var videoAmbientOverlayMounted by remember { mutableStateOf(false) }
-    LaunchedEffect(activeVideoAmbientBands != null) {
-        if (activeVideoAmbientBands != null) {
-            videoAmbientOverlayMounted = true
-            videoAmbientOverlayAlpha.animateTo(
-                1f, tween(durationMillis = 700),
-            )
-        } else {
-            videoAmbientOverlayAlpha.animateTo(
-                0f, tween(durationMillis = 650),
-            )
-            videoAmbientOverlayMounted = false
-        }
-    }
     val videoAmbientCaptureActive =
         videoAmbientEnabled && videoPlaybackState.presentingVideo &&
             videoPlaybackState.firstFrameReady && onScreen &&
@@ -486,22 +449,21 @@ fun BottomSheetPlayer(
                         }
                         .background(playerSurfaceColor(useBlackBackground)),
                 ) {
-                    // Keep the original artwork backdrop alive under the
-                    // temporary video ambience. Both entry and exit crossfade
-                    // on the GPU; palette samples NEVER replace it abruptly.
-                    PlayerBackground(
-                        playerBackground = playerBackground,
-                        gradientColors = gradientColors,
-                        animated = backdropTimelineRunning,
-                        sharedAnimationTime = sharedBackdropAnimationTime,
-                    )
-                    if (videoAmbientOverlayMounted && retainedVideoAmbientBands != null) {
-                        CapsuleVideoAmbientBackdrop(
-                            bands = retainedVideoAmbientBands,
-                            field = retainedVideoAmbient?.field,
-                            modifier = Modifier.fillMaxSize().graphicsLayer {
-                                alpha = videoAmbientOverlayAlpha.value
-                            },
+                    if (activeVideoAmbientBands != null) {
+                        // Opt-in ambient field while VIDEO is on screen.
+                        // One static cached shader; never animate art underneath video.
+                        CapsuleProceduralBackground(
+                            effect = CapsuleBackgroundEffect.CAPSULE_GLOW,
+                            colors = activeVideoAmbientBands,
+                            modifier = Modifier.fillMaxSize(),
+                            animated = false,
+                        )
+                    } else {
+                        PlayerBackground(
+                            playerBackground = playerBackground,
+                            gradientColors = gradientColors,
+                            animated = backdropTimelineRunning,
+                            sharedAnimationTime = sharedBackdropAnimationTime,
                         )
                     }
                 }
@@ -521,13 +483,11 @@ fun BottomSheetPlayer(
                     ) {
                     CapsulePlayerLyricsHost(
                     design = effectivePlayerDesign,
-                    warmedImmersiveTone = warmedImmersiveTone,
                     showLyrics = showInlineLyrics,
                     mediaMetadata = metadata,
                     decodedArtworkCache = decodedArtworkCache,
                     playerArtworkColors = gradientColors,
                     videoAmbientBands = activeVideoAmbientBands.orEmpty(),
-                    videoAmbientField = activeVideoAmbientField,
                     backdropAnimationTime = sharedBackdropAnimationTime,
                     sliderPosition = sliderPosition,
                     position = position,
@@ -624,13 +584,11 @@ private val LyricsFrameCornerRadius = 18.dp
 @OptIn(ExperimentalLayoutApi::class)
 private fun CapsulePlayerLyricsHost(
     design: CapsulePlayerDesign,
-    warmedImmersiveTone: ImmersiveArtworkTone?,
     showLyrics: Boolean,
     mediaMetadata: MediaMetadata,
     decodedArtworkCache: MutableMap<String, Pair<String, Painter>>,
     playerArtworkColors: List<Color>,
     videoAmbientBands: List<Color>,
-    videoAmbientField: CapsuleColorField?,
     backdropAnimationTime: State<Long>,
     sliderPosition: Long?,
     position: Long,
@@ -744,7 +702,16 @@ private fun CapsulePlayerLyricsHost(
         // Hoisting it also avoids a second decode/extraction when Lyrics opens.
         val onScreen = appIsOnScreen()
         val immersiveArtworkTone =
-            if (design == CapsulePlayerDesign.IMMERSIVE) warmedImmersiveTone else null
+            if (design == CapsulePlayerDesign.IMMERSIVE) {
+                rememberImmersiveEdgeColor(
+                    mediaMetadata = mediaMetadata,
+                    enabled = onScreen && playerState.isExpandedOrExpanding,
+                    visibleArtworkAspectRatio =
+                        maxWidth.value / immersiveArtworkHeight(maxHeight).value.coerceAtLeast(1f),
+                )
+            } else {
+                null
+            }
         Box(
             modifier =
                 Modifier
@@ -761,7 +728,6 @@ private fun CapsulePlayerLyricsHost(
                     mediaMetadata = mediaMetadata,
                     artworkTone = requireNotNull(immersiveArtworkTone),
                     videoAmbientBands = videoAmbientBands,
-                    videoAmbientField = videoAmbientField,
                     sliderPosition = sliderPosition,
                     positionMs = position,
                     durationMs = duration,

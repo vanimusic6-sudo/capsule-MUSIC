@@ -83,11 +83,10 @@ private const val STATIC_BACKGROUND_TIME_MS = 6_480L
 /**
  * Only long-period wallpaper drift is rate-limited. Gesture springs, video,
  * lyrics and player/comet animations remain at the native display refresh rate.
- * Mini-player artwork barely moves in a 70dp slot and can be throttled.
- * Full-screen wallpaper uses the native display frame clock, with NO extra
- * delay that could make the entire expanded player look less fluid.
+ * Mini-player artwork barely moves in a 70dp slot; a full screen gets more
+ * samples. Elapsed-time integration below avoids slowing the actual waves.
  */
-internal const val FULL_AMBIENT_FRAME_DELAY_MS = 0L
+internal const val FULL_AMBIENT_FRAME_DELAY_MS = 22L
 internal const val COMPACT_AMBIENT_FRAME_DELAY_MS = 40L
 internal fun capsuleAmbientFrameDelayMs(compact: Boolean) =
     if (compact) COMPACT_AMBIENT_FRAME_DELAY_MS else FULL_AMBIENT_FRAME_DELAY_MS
@@ -129,7 +128,7 @@ internal fun rememberCapsuleAnimationTime(
                 // Yield between slow wallpaper frames instead of requesting
                 // a full-rate vsync for subpixel changes. Cancellation on
                 // pause/background happens immediately during this delay.
-                if (compact) delay(capsuleAmbientFrameDelayMs(compact))
+                delay(capsuleAmbientFrameDelayMs(compact))
             }
         }
     }

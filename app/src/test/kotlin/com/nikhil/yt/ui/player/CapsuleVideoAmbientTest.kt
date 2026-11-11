@@ -25,24 +25,10 @@ class CapsuleVideoAmbientTest {
         assertNotNull(sampled)
         val bands = requireNotNull(sampled).bands
         assertTrue(bands.first().red > bands.first().blue)
-        assertTrue(sampled.field.width == CAPSULE_FIELD_COLUMNS)
-        assertTrue(sampled.field.height == CAPSULE_FIELD_ROWS)
-        assertTrue(sampled.field.cell(0, 0).red > sampled.field.cell(0, 0).blue)
         assertTrue(bands.last().blue > bands.last().red)
         assertTrue(capsuleVideoAmbientChanged(null, bands))
         assertFalse(capsuleVideoAmbientChanged(bands, bands))
         bitmap.recycle()
-    }
-
-    @Test fun interruptedVideoAmbientTransitionContinuesFromTheVisibleColour() {
-        val warm = listOf(androidx.compose.ui.graphics.Color.Red, androidx.compose.ui.graphics.Color.Yellow)
-        val cool = listOf(androidx.compose.ui.graphics.Color.Blue, androidx.compose.ui.graphics.Color.Cyan)
-        val partlyMixed = capsuleAmbientPaletteAt(warm, cool, 0.25f)
-        val interrupted = capsuleAmbientPaletteAt(partlyMixed, cool, 0f)
-        assertTrue(kotlin.math.abs(partlyMixed[0].red - interrupted[0].red) < 0.0001f)
-        assertTrue(partlyMixed[0].red > cool[0].red)
-        assertTrue(VIDEO_AMBIENT_CAPTURE_INTERVAL_MS in 1_200L..2_000L)
-        assertTrue(VIDEO_AMBIENT_BLEND_DURATION_MS > VIDEO_AMBIENT_CAPTURE_INTERVAL_MS)
     }
 
     @Test fun blackOrInvalidVideoFramesDoNotReplaceExistingPalette() {

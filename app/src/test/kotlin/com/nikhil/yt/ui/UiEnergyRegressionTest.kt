@@ -26,15 +26,8 @@ class UiEnergyRegressionTest {
         val src = source("com/nikhil/yt/ui/player/CapsuleImmersiveContent.kt")
         assertTrue(src.contains("capsuleImmersiveNeedsArtworkPreload(coverImageReady, artworkTone.ready"))
         assertTrue(src.contains("capsuleImmersiveArtworkOpacity("))
-        // Immersion now paints ONE even cheaper opaque pixel-exact album
-        // background instead of its former full-screen gradient shader.
-        // Guard against accidental second full-screen paint in either mode.
-        val solid = src.split("Box(modifier = Modifier.fillMaxSize().background(seamColor))").size - 1
-        val oldGradient = src.split("Box(modifier = Modifier.fillMaxSize().background(pageBackground))").size - 1
-        assertTrue(
-            "exactly one page background layer; no doubled alpha gradient",
-            solid + oldGradient == 1,
-        )
+        assertTrue("Exactly one cached page field", src.split("photoOverlay = false").size - 1 == 1)
+        assertTrue("Exactly one matching photo field", src.split("photoOverlay = true").size - 1 == 1)
         // Keep the real video compositor alive to protect the paused frame;
         // removing its surface for a fake energy saving causes black flashes.
         val video = source("com/nikhil/yt/ui/player/CapsuleVideoArtworkTransition.kt")
@@ -59,8 +52,7 @@ class UiEnergyRegressionTest {
 
     @Test fun `optionalWallpapersThrottleFramesButNeverReduceLyricFPS`() {
         val wallpaper = source("com/nikhil/yt/ui/player/CapsuleBackgroundEffects.kt")
-        assertTrue(wallpaper.contains("if (compact) delay(capsuleAmbientFrameDelayMs(compact))"))
-        assertTrue(wallpaper.contains("FULL_AMBIENT_FRAME_DELAY_MS = 0L"))
+        assertTrue(wallpaper.contains("delay(capsuleAmbientFrameDelayMs(compact))"))
         assertTrue(wallpaper.contains("if (!isVisible || !running || !motionEnabled) return@LaunchedEffect"))
         assertTrue(wallpaper.contains("val nebulaSparks = if (effect == CapsuleBackgroundEffect.NEBULA)"))
         val lyrics = source("com/nikhil/yt/ui/component/Lyrics.kt")
