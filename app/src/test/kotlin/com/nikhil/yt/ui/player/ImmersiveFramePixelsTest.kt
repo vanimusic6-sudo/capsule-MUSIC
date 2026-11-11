@@ -98,6 +98,16 @@ class ImmersiveFramePixelsTest {
         assertTrue("Dark art must retain its blue detail", centre.blue > centre.red + 0.06f)
     }
 
+    @Test fun darkForegroundCannotEraseTexturedBlueInTheDissolveRegion() {
+        val result = frame(cover { x, y ->
+            if (x in 65..135 && y in 105..145)
+                AndroidColor.rgb(15 + x % 12, 55 + y % 35, 100 + (x + y) % 110)
+            else AndroidColor.rgb(12, 13, 15)
+        })
+        val centre = Color(result.page.asAndroidBitmap().getPixel(72, 126))
+        assertTrue("Foreground black must not erase the blue behind it", centre.blue > centre.red + 0.055f)
+    }
+
     @Test fun photoAndPageAgreeAtJoinAndFeatheringIsGradual() {
         val result = frame(cover { _, _ -> AndroidColor.rgb(195, 98, 35) })
         val photo = result.overlay.asAndroidBitmap()

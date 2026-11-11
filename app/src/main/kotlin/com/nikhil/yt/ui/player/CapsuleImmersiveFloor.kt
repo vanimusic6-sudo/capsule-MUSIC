@@ -30,6 +30,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
+import kotlin.math.pow
 
 internal val IMMERSIVE_NEUTRAL_COLOR = Color(0xFF262626)
 private const val ARTWORK_SAMPLE_SIZE = 960
@@ -392,11 +393,22 @@ internal fun Color.comfortableImmersiveColor(): Color {
     return Color(android.graphics.Color.HSVToColor(hsv))
 }
 
+// Average light, not gamma-encoded bytes: dark foreground detail must not
+// overpower the surrounding coloured background simply by occupying one bin.
+private val immersiveLinearChannel = FloatArray(256) { value ->
+    val c = value / 255f
+    if (c <= 0.04045f) c / 12.92f else ((c + 0.055f) / 1.055f).pow(2.4f)
+}
+
+private fun immersiveSrgbChannel(value: Float): Float =
+    (if (value <= 0.0031308f) value * 12.92f
+    else 1.055f * value.pow(1f / 2.4f) - 0.055f).coerceIn(0f, 1f)
+
 /**
- * Samples the bottom edge of the same centre crop that the player displays.
- * A 7-column, quantized modal estimator is robust to labels and foreground
- * objects and retains asymmetric colours that a single RGB average destroys.
- * Called only once per decoded cover on Dispatchers.Default, never per frame.
+ * Seven columns from the visible photo's dissolve region. Area averaging in
+ * linear light keeps textured blue stairs / warm flames visible behind dark
+ * foreground objects; a modal bin used to return black in every column.
+ * Sample the same centre crop as the displayed bitmap, once off the UI thread.
  */
 internal fun Bitmap.immersiveBottomEdgeBands(artworkAspect: Float): List<Color> {
     if (width <= 0 || height <= 0) return emptyList()
@@ -408,37 +420,31 @@ internal fun Bitmap.immersiveBottomEdgeBands(artworkAspect: Float): List<Color> 
         .coerceIn(1, height)
     val left = (width - visibleWidth) / 2
     val top = (height - visibleHeight) / 2
-    val yStart = (top + visibleHeight * 0.73f).toInt().coerceIn(0, height - 1)
-    val yEnd = (top + visibleHeight * 0.96f).toInt().coerceIn(yStart + 1, height)
-    val bandCount = 7
-    return List(bandCount) { band ->
-        val xStart = left + visibleWidth * band / bandCount
-        val xEnd = (left + visibleWidth * (band + 1) / bandCount).coerceAtMost(width)
-        val counts = IntArray(512)
-        val red = LongArray(512)
-        val green = LongArray(512)
-        val blue = LongArray(512)
+    val yStart = (top + visibleHeight * 0.58f).toInt().coerceIn(0, height - 1)
+    val yEnd = (top + visibleHeight * 0.90f).toInt().coerceIn(yStart + 1, height)
+    return List(7) { band ->
+        val xStart = left + visibleWidth * band / 7
+        val xEnd = (left + visibleWidth * (band + 1) / 7).coerceAtMost(width)
         val stepX = ((xEnd - xStart) / 24).coerceAtLeast(1)
         val stepY = ((yEnd - yStart) / 32).coerceAtLeast(1)
+        var red = 0f
+        var green = 0f
+        var blue = 0f
+        var count = 0
         for (y in yStart until yEnd step stepY) {
             for (x in xStart until xEnd.coerceAtLeast(xStart + 1) step stepX) {
                 val pixel = getPixel(x.coerceIn(0, width - 1), y)
-                val r = pixel shr 16 and 255
-                val g = pixel shr 8 and 255
-                val b = pixel and 255
-                val bucket = ((r shr 5) shl 6) or ((g shr 5) shl 3) or (b shr 5)
-                counts[bucket]++
-                red[bucket] += r.toLong()
-                green[bucket] += g.toLong()
-                blue[bucket] += b.toLong()
+                if ((pixel ushr 24 and 255) < 128) continue
+                red += immersiveLinearChannel[pixel shr 16 and 255]
+                green += immersiveLinearChannel[pixel shr 8 and 255]
+                blue += immersiveLinearChannel[pixel and 255]
+                count++
             }
         }
-        val best = counts.indices.maxByOrNull { counts[it] } ?: 0
-        val n = counts[best].coerceAtLeast(1)
-        Color(
-            red = (red[best].toFloat() / n / 255f).coerceIn(0f, 1f),
-            green = (green[best].toFloat() / n / 255f).coerceIn(0f, 1f),
-            blue = (blue[best].toFloat() / n / 255f).coerceIn(0f, 1f),
+        if (count == 0) IMMERSIVE_NEUTRAL_COLOR else Color(
+            immersiveSrgbChannel(red / count),
+            immersiveSrgbChannel(green / count),
+            immersiveSrgbChannel(blue / count),
         )
     }
 }

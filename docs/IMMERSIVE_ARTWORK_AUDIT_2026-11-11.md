@@ -6,7 +6,8 @@ Base: `player-release-11.11.2026`, `76577a9`. Review branch: `fix/immersive-atom
 
 The flat-background result in `b0a8109` was rejected: the visible photo-to-colour transition had largely disappeared. The new `12574.mp4` also identifies the remaining travelling grey wave as search-result placeholders, not the player's artwork renderer.
 
-- Restore the colour-column/Gaussian-feathering approach from `9c641af`, using seven modal colours sampled from the actual visible image crop. Keep the owned display bitmap and atomic frame preparation.
+- Restore the colour-column/Gaussian-feathering approach from `9c641af`, using seven linear-light area colours sampled from the visible dissolve region. Keep the owned display bitmap and atomic frame preparation.
+- A screenshot check showed that quantised modal bins chose almost black in all seven columns. Sample 58–90% of the visible photo with linear-light area averaging so textured colours survive dark foreground detail.
 - Begin the photo dissolve around 60% of its height and complete it before the final scanline. Use the same physical-Y colour on the photo overlay and page.
 - Retain broad left/right colour into the lower background with progressively wider feathering. Collapse an isolated dark minority quickly on near-white art.
 - Replace the shared loading host's travelling shader with one low-amplitude opacity pulse for the entire block. Use `ModulateAlpha` for the separated placeholder shapes, read animation state during drawing, and remove the infinite animation offscreen. Remove the unused moving-shimmer theme/provider.
