@@ -39,6 +39,8 @@ internal data class ImmersiveArtworkTone(
     val bottomTexture: Float = 0f,
     // Seven left-to-right colours from the actual visible artwork crop.
     val edgeBands: List<Color> = emptyList(),
+    // True two-dimensional colour, sampled once from the same decoded crop.
+    val colorField: CapsuleColorField? = null,
     // Only genuinely near-white, nearly neutral covers need the new soft
     // seam treatment. Every other album gets the ORIGINAL palette and fade.
     val nearWhiteBackground: Boolean = false,
@@ -158,10 +160,12 @@ internal fun rememberImmersiveEdgeColor(
                     rawEdge.comfortableImmersiveColor()
                 }
                 val bottomTexture = image.immersiveBottomTexture(artworkAspect)
-                val edgeBands = image.immersiveBottomEdgeBands(artworkAspect).map { rawBand ->
-                    if (nearWhite || rawBand.isNearWhiteImmersiveBackground()) rawBand
-                    else rawBand.comfortableImmersiveColor()
-                }
+                // Unlike seven column histograms, this preserves actual
+                // spatial relationships between sky, subject and shadows.
+                val colorField = image.capsuleColorField(artworkAspect)
+                // Legacy colour bands remain available for old snapshots and
+                // incomplete artwork, but do NOT drive the normal backdrop.
+                val edgeBands = emptyList<Color>()
                 ImmersiveArtworkTone(
                     edge = background,
                     // Restore the original modest 10% darker floor exactly.
@@ -173,6 +177,7 @@ internal fun rememberImmersiveEdgeColor(
                     },
                     bottomTexture = bottomTexture,
                     edgeBands = edgeBands,
+                    colorField = colorField,
                     nearWhiteBackground = nearWhite,
                     landscape = landscape,
                     displayUrl = url,

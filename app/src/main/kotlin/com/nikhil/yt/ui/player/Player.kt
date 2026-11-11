@@ -319,9 +319,14 @@ fun BottomSheetPlayer(
             videoPlaybackState.mediaId == enrichedMetadata?.id &&
             sample.mediaId == enrichedMetadata?.id
     }?.bands
-    val retainedVideoAmbientBands = videoAmbientFrame?.takeIf { frame ->
+    val retainedVideoAmbient = videoAmbientFrame?.takeIf { frame ->
         videoAmbientEnabled && frame.mediaId == enrichedMetadata?.id
-    }?.bands
+    }
+    val retainedVideoAmbientBands = retainedVideoAmbient?.bands
+    val activeVideoAmbientField = retainedVideoAmbient?.takeIf {
+        videoPlaybackState.presentingVideo &&
+            videoPlaybackState.mediaId == enrichedMetadata?.id
+    }?.field
     val videoAmbientOverlayAlpha = remember { Animatable(0f) }
     var videoAmbientOverlayMounted by remember { mutableStateOf(false) }
     LaunchedEffect(activeVideoAmbientBands != null) {
@@ -479,6 +484,7 @@ fun BottomSheetPlayer(
                     if (videoAmbientOverlayMounted && retainedVideoAmbientBands != null) {
                         CapsuleVideoAmbientBackdrop(
                             bands = retainedVideoAmbientBands,
+                            field = retainedVideoAmbient?.field,
                             modifier = Modifier.fillMaxSize().graphicsLayer {
                                 alpha = videoAmbientOverlayAlpha.value
                             },
@@ -506,6 +512,7 @@ fun BottomSheetPlayer(
                     decodedArtworkCache = decodedArtworkCache,
                     playerArtworkColors = gradientColors,
                     videoAmbientBands = activeVideoAmbientBands.orEmpty(),
+                    videoAmbientField = activeVideoAmbientField,
                     backdropAnimationTime = sharedBackdropAnimationTime,
                     sliderPosition = sliderPosition,
                     position = position,
@@ -607,6 +614,7 @@ private fun CapsulePlayerLyricsHost(
     decodedArtworkCache: MutableMap<String, Pair<String, Painter>>,
     playerArtworkColors: List<Color>,
     videoAmbientBands: List<Color>,
+    videoAmbientField: CapsuleColorField?,
     backdropAnimationTime: State<Long>,
     sliderPosition: Long?,
     position: Long,
@@ -746,6 +754,7 @@ private fun CapsulePlayerLyricsHost(
                     mediaMetadata = mediaMetadata,
                     artworkTone = requireNotNull(immersiveArtworkTone),
                     videoAmbientBands = videoAmbientBands,
+                    videoAmbientField = videoAmbientField,
                     sliderPosition = sliderPosition,
                     positionMs = position,
                     durationMs = duration,

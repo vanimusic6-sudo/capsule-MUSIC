@@ -110,6 +110,7 @@ private data class ImmersiveGradientFrame(
     val bottomTexture: Float,
     val nearWhiteBackground: Boolean,
     val edgeBands: List<Color>,
+    val colorField: CapsuleColorField?,
 )
 
 /**
@@ -410,6 +411,7 @@ internal fun CapsuleImmersiveContent(
     mediaMetadata: MediaMetadata,
     artworkTone: ImmersiveArtworkTone,
     videoAmbientBands: List<Color> = emptyList(),
+    videoAmbientField: CapsuleColorField? = null,
     sliderPosition: Long?,
     positionMs: Long,
     durationMs: Long,
@@ -692,6 +694,7 @@ internal fun CapsuleImmersiveContent(
                     bottomTexture = artworkTone.bottomTexture,
                     nearWhiteBackground = artworkTone.nearWhiteBackground,
                     edgeBands = artworkTone.edgeBands,
+                    colorField = artworkTone.colorField,
                 )
             }
             // Also handles reopening the sheet while its previous fade-out was being
@@ -767,6 +770,10 @@ internal fun CapsuleImmersiveContent(
         // retains the exact colours of its own pixels while video morphs in.
         val pageBands = if (isVideo && videoAmbientBands.isNotEmpty())
             videoAmbientBands else artworkBands
+        // The 12x10 two-dimensional source is what actually drives the new
+        // audio/video field. Seven legacy bands are only a fallback.
+        val pageField = if (isVideo && videoAmbientField != null)
+            videoAmbientField else frame?.colorField
         val immersiveInk = ImmersiveControlInk
 
         // Preload the NEXT image invisibly. Coil must finish decoding this exact URL
@@ -805,6 +812,7 @@ internal fun CapsuleImmersiveContent(
         key(frame?.key) {
             CapsuleVideoAmbientBackdrop(
                 bands = pageBands,
+                field = pageField,
                 modifier = Modifier.fillMaxSize(),
                 fallbackFloor = pageFloor,
                 coverFraction = coverFraction,
@@ -917,6 +925,7 @@ internal fun CapsuleImmersiveContent(
                             landscape = frame.landscape,
                             nearWhite = nearWhite,
                             photoOverlay = true,
+                            field = frame.colorField,
                         ),
                     )
                 }

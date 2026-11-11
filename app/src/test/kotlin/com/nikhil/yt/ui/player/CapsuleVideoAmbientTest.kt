@@ -25,6 +25,9 @@ class CapsuleVideoAmbientTest {
         assertNotNull(sampled)
         val bands = requireNotNull(sampled).bands
         assertTrue(bands.first().red > bands.first().blue)
+        assertTrue(sampled.field.width == CAPSULE_FIELD_COLUMNS)
+        assertTrue(sampled.field.height == CAPSULE_FIELD_ROWS)
+        assertTrue(sampled.field.cell(0, 0).red > sampled.field.cell(0, 0).blue)
         assertTrue(bands.last().blue > bands.last().red)
         assertTrue(capsuleVideoAmbientChanged(null, bands))
         assertFalse(capsuleVideoAmbientChanged(bands, bands))

@@ -19,6 +19,7 @@ internal data class CapsuleVideoAmbientFrame(
     // Original audio track ID (not a possibly different chosen official clip ID).
     val mediaId: String,
     val bands: List<Color>,
+    val field: CapsuleColorField,
 )
 
 /** Only the mounted full player provides a sink; all other video surfaces are inert. */
@@ -72,7 +73,10 @@ internal fun capsuleVideoAmbientFrameFromBitmap(bitmap: Bitmap, mediaId: String)
     }
     // Keep the last valid colours during black cuts / unstable first frames.
     if (nonBlack < 4) return null
-    return CapsuleVideoAmbientFrame(mediaId, bands)
+    // The image's Y structure matters just as much as left/right colours.
+    // This small 12x10 grid is our REAL input, not seven painted stripes.
+    val field = bitmap.capsuleColorField(width.toFloat() / height, video = true)
+    return CapsuleVideoAmbientFrame(mediaId, bands, field)
 }
 
 /** Ignore tiny colour noise: refreshing the wallpaper costs more than it adds. */
