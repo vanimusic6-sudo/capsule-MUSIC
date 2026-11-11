@@ -9,6 +9,7 @@ import android.graphics.Bitmap
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -98,6 +99,7 @@ internal fun rememberImmersiveEdgeColor(
     mediaMetadata: MediaMetadata?,
     enabled: Boolean = true,
     visibleArtworkAspectRatio: Float = 1f,
+    refreshOnOpen: Boolean = false,
 ): ImmersiveArtworkTone {
     val context = LocalContext.current
     var pinnedSource by remember(mediaMetadata?.id) { mutableStateOf<String?>(null) }
@@ -108,8 +110,16 @@ internal fun rememberImmersiveEdgeColor(
     var resolved by remember { mutableStateOf<ImmersiveArtworkTone?>(null) }
     var resolvedKey by remember { mutableStateOf<String?>(null) }
     val cached = key?.let { synchronized(immersiveArtworkCache) { immersiveArtworkCache[it] } }
+    var failureRetry by remember(key) { mutableIntStateOf(0) }
+    // A failed decode needs a second chance when the user reopens the
+    // player, but opening during an IN-FLIGHT decode must not cancel it.
+    LaunchedEffect(key, refreshOnOpen) {
+        if (refreshOnOpen && resolvedKey == key && resolved?.ready != true) {
+            failureRetry++
+        }
+    }
 
-    LaunchedEffect(key, sourceUrl, enabled) {
+    LaunchedEffect(key, sourceUrl, enabled, failureRetry) {
         // The player is still composed while its sheet is collapsed. Avoid spending
         // energy (or trying multiple ytimg qualities) for rapidly skipped unseen songs.
         if (!enabled) return@LaunchedEffect

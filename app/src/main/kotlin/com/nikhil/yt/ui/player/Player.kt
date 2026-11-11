@@ -236,6 +236,7 @@ fun BottomSheetPlayer(
             // Preload as soon as playback metadata exists, even while the
             // mini-player is still transitioning out of Dismissed.
             enabled = onScreen && !enrichedMetadata?.thumbnailUrl.isNullOrBlank(),
+            refreshOnOpen = state.isExpandedOrExpanding,
             visibleArtworkAspectRatio = configuration.screenWidthDp.toFloat() /
                 immersiveArtworkHeight(configuration.screenHeightDp.dp).value.coerceAtLeast(1f),
         )
