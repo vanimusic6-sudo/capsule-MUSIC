@@ -14,7 +14,6 @@ import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.IntSize
 import kotlin.math.exp
 import kotlin.math.roundToInt
@@ -43,7 +42,7 @@ internal fun immersiveSoftBandColor(bands: List<Color>, fraction: Float): Color 
     if (bands.isEmpty()) return IMMERSIVE_NEUTRAL_COLOR
     if (bands.size == 1) return bands[0]
     val position = fraction.coerceIn(0f, 1f)
-    val sigma = 0.17f
+    val sigma = 0.29f
     var weightSum = 0f
     var r = 0f
     var g = 0f
@@ -76,9 +75,9 @@ private fun smooth5(start: Float, end: Float, value: Float): Float {
  * growing into long vertical bars over the transport controls.
  */
 internal fun immersiveSpatialDiffusion(pageY: Float, coverFraction: Float): Float {
-    val start = coverFraction * 0.91f
-    val end = (coverFraction + 0.45f).coerceAtMost(0.995f)
-    return smooth5(start, end, pageY) * 0.84f
+    val start = coverFraction * 0.64f
+    val end = (coverFraction + 0.29f).coerceAtMost(0.995f)
+    return smooth5(start, end, pageY) * 0.97f
 }
 
 internal fun immersiveSpatialFieldBitmap(
@@ -114,25 +113,52 @@ internal fun immersiveSpatialFieldBitmap(
         else if (nearWhite || globalEdge.isNearWhiteImmersiveBackground())
             globalEdge.immersiveMutedAccent()
         else lerp(globalEdge, Color.Black, 0.10f)
-    val startShade = coverFraction * 0.76f
-    val endShade = (coverFraction + tailFraction.coerceAtLeast(0.02f) * 2.9f)
-        .coerceAtMost(0.96f).coerceAtLeast(startShade + 0.04f)
+    // Do not darken before the photo/floor interface; the former 76%-start
+    // created a charcoal-looking strip where the artwork became translucent.
+    val startShade = (coverFraction - 0.028f).coerceAtLeast(0f)
+    val endShade = (coverFraction + tailFraction.coerceAtLeast(0.02f) * 3.3f)
+        .coerceAtMost(0.995f).coerceAtLeast(startShade + 0.08f)
     val pixels = IntArray(FIELD_WIDTH * FIELD_HEIGHT)
-    val start = (0.46f - texture.coerceIn(0f, 1f) * 0.085f -
-        if (landscape) 0.02f else 0f).coerceAtLeast(0.28f)
+    // These arrays avoid ~40K Compose Color allocations and shader creation
+    // on the UI thread every time the artwork or video palette changes.
+    val edgeR = FloatArray(FIELD_WIDTH) { edgeColumn[it].red }
+    val edgeG = FloatArray(FIELD_WIDTH) { edgeColumn[it].green }
+    val edgeB = FloatArray(FIELD_WIDTH) { edgeColumn[it].blue }
+    val floorR = FloatArray(FIELD_WIDTH) { floorColumn[it].red }
+    val floorG = FloatArray(FIELD_WIDTH) { floorColumn[it].green }
+    val floorB = FloatArray(FIELD_WIDTH) { floorColumn[it].blue }
+    fun channel(value: Float): Int = (value.coerceIn(0f, 1f) * 255f + 0.5f).toInt()
+    val fadeStart = (0.34f - texture.coerceIn(0f, 1f) * 0.06f -
+        if (landscape) 0.02f else 0f).coerceAtLeast(0.23f)
     for (y in 0 until FIELD_HEIGHT) {
         val photoY = (y + 0.5f) / FIELD_HEIGHT
         val pageY = if (photoOverlay) photoY * coverFraction else photoY
         val shade = smooth5(startShade, endShade, pageY)
-        val diffusion = immersiveSpatialDiffusion(pageY, coverFraction)
-        val commonTone = lerp(globalEdge, globalFloor, shade)
-        val alpha = if (photoOverlay) {
-            if (y == FIELD_HEIGHT - 1) 1f else smooth5(start, 0.985f, photoY)
-        } else 1f
+        val diffuse = immersiveSpatialDiffusion(pageY, coverFraction)
+        val localWeight = 1f - diffuse
+        val commonWeight = diffuse
+        val commonR = globalEdge.red + (globalFloor.red - globalEdge.red) * shade
+        val commonG = globalEdge.green + (globalFloor.green - globalEdge.green) * shade
+        val commonB = globalEdge.blue + (globalFloor.blue - globalEdge.blue) * shade
+        // Photo is already fully coloured before its last scanline.
+        val alpha = if (photoOverlay) smooth5(fadeStart, 0.94f, photoY) else 1f
+        // A restrained haze continues the sampled colour right through the
+        // seam. It is the SAME field on both sides, never an extra horizontal band.
+        val haze = if (nearWhite) 0f else
+            smooth5(coverFraction * 0.48f, coverFraction * 0.92f, pageY) *
+                (1f - smooth5(coverFraction + 0.055f,
+                    (coverFraction + 0.24f).coerceAtMost(0.99f), pageY)) * 0.065f
+        val ink = 1f - haze
+        val pixelA = channel(alpha) shl 24
         for (x in 0 until FIELD_WIDTH) {
-            val local = lerp(edgeColumn[x], floorColumn[x], shade)
-            val pixel = lerp(local, commonTone, diffusion)
-            pixels[y * FIELD_WIDTH + x] = pixel.copy(alpha = alpha).toArgb()
+            val r = (((edgeR[x] + (floorR[x] - edgeR[x]) * shade) *
+                localWeight + commonR * commonWeight) * ink + haze)
+            val g = (((edgeG[x] + (floorG[x] - edgeG[x]) * shade) *
+                localWeight + commonG * commonWeight) * ink + haze)
+            val b = (((edgeB[x] + (floorB[x] - edgeB[x]) * shade) *
+                localWeight + commonB * commonWeight) * ink + haze)
+            pixels[y * FIELD_WIDTH + x] =
+                pixelA or (channel(r) shl 16) or (channel(g) shl 8) or channel(b)
         }
     }
     return Bitmap.createBitmap(FIELD_WIDTH, FIELD_HEIGHT, Bitmap.Config.ARGB_8888)

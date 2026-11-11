@@ -191,7 +191,7 @@ private fun CapsuleVideoTextureOutput(
             )
             try {
                 // Avoid capturing the first black surface swap.
-                delay(800L)
+                delay(350L)
                 while (isActive) {
                     if (view.isAvailable && view.isShown && view.hasVideoFrame &&
                         player.isPlaying && player.playbackState == Player.STATE_READY

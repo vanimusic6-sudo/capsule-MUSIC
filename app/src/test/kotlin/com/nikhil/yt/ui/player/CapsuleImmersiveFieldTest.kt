@@ -31,8 +31,20 @@ class CapsuleImmersiveFieldTest {
     @Test fun coloursMergeOnlyAfterTheCoverHasSafelyExtendedIntoThePage() {
         val cover = 0.48f
         assertTrue(immersiveSpatialDiffusion(0.25f, cover) < 0.001f)
-        assertTrue(immersiveSpatialDiffusion(cover, cover) < 0.04f)
+        assertTrue(immersiveSpatialDiffusion(cover, cover) in 0.15f..0.55f)
         assertTrue(immersiveSpatialDiffusion(0.9f, cover) > 0.80f)
+    }
+
+    @Test fun strongerHorizontalBlurDoesNotDestroySpatialIdentity() {
+        val sample = List(7) { n ->
+            if (n < 3) Color(0xFFD2484C) else Color(0xFF286ED9)
+        }
+        val left = immersiveSoftBandColor(sample, 0f)
+        val right = immersiveSoftBandColor(sample, 1f)
+        val middle = immersiveSoftBandColor(sample, 0.5f)
+        assertTrue(left.red > right.red)
+        assertTrue(right.blue > left.blue)
+        assertTrue(middle.red > 0.05f && middle.blue > 0.05f)
     }
 
     @Test fun uniformOrMissingPaletteRemainsStable() {

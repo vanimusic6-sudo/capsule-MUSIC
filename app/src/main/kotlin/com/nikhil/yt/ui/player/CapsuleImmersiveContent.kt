@@ -799,12 +799,21 @@ internal fun CapsuleImmersiveContent(
         }
 
         // Photo and page continue exactly the same horizontal colour field.
-        Box(modifier = Modifier.fillMaxSize().immersiveSpatialBackdrop(
-            bands = pageBands, fallbackFloor = pageFloor, coverFraction = coverFraction,
-            tailFraction = tailFraction, texture = frame?.bottomTexture ?: 0f,
-            landscape = frame?.landscape ?: false, nearWhite = nearWhite,
-            photoOverlay = false,
-        ))
+        // A single continuity-preserving GPU blend owns *both* audio artwork
+        // and video ambience. A new sample starts from the current on-screen
+        // colour instead of jumping to the previous target.
+        key(frame?.key) {
+            CapsuleVideoAmbientBackdrop(
+                bands = pageBands,
+                modifier = Modifier.fillMaxSize(),
+                fallbackFloor = pageFloor,
+                coverFraction = coverFraction,
+                tailFraction = tailFraction,
+                texture = frame?.bottomTexture ?: 0f,
+                landscape = frame?.landscape ?: false,
+                nearWhite = nearWhite,
+            )
+        }
 
         CapsuleVideoArtworkTransition(
             presentingVideo = isVideo,

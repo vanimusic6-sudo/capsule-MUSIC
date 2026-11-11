@@ -31,6 +31,17 @@ class CapsuleVideoAmbientTest {
         bitmap.recycle()
     }
 
+    @Test fun interruptedVideoAmbientTransitionContinuesFromTheVisibleColour() {
+        val warm = listOf(androidx.compose.ui.graphics.Color.Red, androidx.compose.ui.graphics.Color.Yellow)
+        val cool = listOf(androidx.compose.ui.graphics.Color.Blue, androidx.compose.ui.graphics.Color.Cyan)
+        val partlyMixed = capsuleAmbientPaletteAt(warm, cool, 0.25f)
+        val interrupted = capsuleAmbientPaletteAt(partlyMixed, cool, 0f)
+        assertTrue(kotlin.math.abs(partlyMixed[0].red - interrupted[0].red) < 0.0001f)
+        assertTrue(partlyMixed[0].red > cool[0].red)
+        assertTrue(VIDEO_AMBIENT_CAPTURE_INTERVAL_MS in 1_200L..2_000L)
+        assertTrue(VIDEO_AMBIENT_BLEND_DURATION_MS > VIDEO_AMBIENT_CAPTURE_INTERVAL_MS)
+    }
+
     @Test fun blackOrInvalidVideoFramesDoNotReplaceExistingPalette() {
         val black = Bitmap.createBitmap(48, 28, Bitmap.Config.ARGB_8888)
         black.eraseColor(AndroidColor.BLACK)

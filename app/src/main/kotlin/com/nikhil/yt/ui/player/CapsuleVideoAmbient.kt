@@ -11,7 +11,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import kotlin.math.abs
 
-internal const val VIDEO_AMBIENT_CAPTURE_INTERVAL_MS = 4_000L
+internal const val VIDEO_AMBIENT_CAPTURE_INTERVAL_MS = 1_550L
 internal const val VIDEO_AMBIENT_SAMPLE_WIDTH = 48
 internal const val VIDEO_AMBIENT_SAMPLE_HEIGHT = 28
 
@@ -83,5 +83,5 @@ internal fun capsuleVideoAmbientChanged(previous: List<Color>?, next: List<Color
         val b = next[index]
         (abs(a.red - b.red) + abs(a.green - b.green) + abs(a.blue - b.blue)).toDouble()
     } / (next.size * 3)
-    return average > 0.045
+    return average > 0.018
 }

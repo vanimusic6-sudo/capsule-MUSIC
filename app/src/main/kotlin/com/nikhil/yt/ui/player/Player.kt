@@ -307,10 +307,10 @@ fun BottomSheetPlayer(
     }
 
     // An old frame may never colour a new song or a stopped video.
-    LaunchedEffect(enrichedMetadata?.id, videoAmbientEnabled, videoPlaybackState.presentingVideo) {
-        if (!videoAmbientEnabled || !videoPlaybackState.presentingVideo ||
-            videoPlaybackState.mediaId != enrichedMetadata?.id
-        ) {
+    LaunchedEffect(enrichedMetadata?.id, videoAmbientEnabled) {
+        // Keep only THIS song's seven-colour sample for a soft VIDEO→AUDIO
+        // fade, then release the heavy video surface immediately as before.
+        if (!videoAmbientEnabled || videoAmbientFrame?.mediaId != enrichedMetadata?.id) {
             videoAmbientFrame = null
         }
     }
@@ -319,6 +319,24 @@ fun BottomSheetPlayer(
             videoPlaybackState.mediaId == enrichedMetadata?.id &&
             sample.mediaId == enrichedMetadata?.id
     }?.bands
+    val retainedVideoAmbientBands = videoAmbientFrame?.takeIf { frame ->
+        videoAmbientEnabled && frame.mediaId == enrichedMetadata?.id
+    }?.bands
+    val videoAmbientOverlayAlpha = remember { Animatable(0f) }
+    var videoAmbientOverlayMounted by remember { mutableStateOf(false) }
+    LaunchedEffect(activeVideoAmbientBands != null) {
+        if (activeVideoAmbientBands != null) {
+            videoAmbientOverlayMounted = true
+            videoAmbientOverlayAlpha.animateTo(
+                1f, tween(durationMillis = 700),
+            )
+        } else {
+            videoAmbientOverlayAlpha.animateTo(
+                0f, tween(durationMillis = 650),
+            )
+            videoAmbientOverlayMounted = false
+        }
+    }
     val videoAmbientCaptureActive =
         videoAmbientEnabled && videoPlaybackState.presentingVideo &&
             videoPlaybackState.firstFrameReady && onScreen &&
@@ -449,21 +467,21 @@ fun BottomSheetPlayer(
                         }
                         .background(playerSurfaceColor(useBlackBackground)),
                 ) {
-                    if (activeVideoAmbientBands != null) {
-                        // Opt-in ambient field while VIDEO is on screen.
-                        // One static cached shader; never animate art underneath video.
-                        CapsuleProceduralBackground(
-                            effect = CapsuleBackgroundEffect.CAPSULE_GLOW,
-                            colors = activeVideoAmbientBands,
-                            modifier = Modifier.fillMaxSize(),
-                            animated = false,
-                        )
-                    } else {
-                        PlayerBackground(
-                            playerBackground = playerBackground,
-                            gradientColors = gradientColors,
-                            animated = backdropTimelineRunning,
-                            sharedAnimationTime = sharedBackdropAnimationTime,
+                    // Keep the original artwork backdrop alive under the
+                    // temporary video ambience. Both entry and exit crossfade
+                    // on the GPU; palette samples NEVER replace it abruptly.
+                    PlayerBackground(
+                        playerBackground = playerBackground,
+                        gradientColors = gradientColors,
+                        animated = backdropTimelineRunning,
+                        sharedAnimationTime = sharedBackdropAnimationTime,
+                    )
+                    if (videoAmbientOverlayMounted && retainedVideoAmbientBands != null) {
+                        CapsuleVideoAmbientBackdrop(
+                            bands = retainedVideoAmbientBands,
+                            modifier = Modifier.fillMaxSize().graphicsLayer {
+                                alpha = videoAmbientOverlayAlpha.value
+                            },
                         )
                     }
                 }
