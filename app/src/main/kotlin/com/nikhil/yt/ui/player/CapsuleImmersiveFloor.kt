@@ -32,7 +32,7 @@ import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
 internal val IMMERSIVE_NEUTRAL_COLOR = Color(0xFF262626)
-private const val ARTWORK_SAMPLE_SIZE = 256
+private const val ARTWORK_SAMPLE_SIZE = 960
 private val videoIdPattern = Regex("^[a-zA-Z0-9_-]{11}$")
 
 internal data class ImmersiveArtworkTone(
@@ -40,12 +40,11 @@ internal data class ImmersiveArtworkTone(
     val landscape: Boolean = false,
     val accent: Color = IMMERSIVE_NEUTRAL_COLOR,
     val bottomTexture: Float = 0f,
-    // Seven left-to-right colours from the actual visible artwork crop.
+    // Legacy fallback input for video/palette consumers.
     val edgeBands: List<Color> = emptyList(),
     // True two-dimensional colour, sampled once from the same decoded crop.
     val colorField: CapsuleColorField? = null,
-    // Decoded 256 px preview for the very first frame of an immediate open.
-    // This avoids a second network request before any image can be displayed.
+    // Owned display-quality pixels. Sampling and display share this one decode.
     val preview: ImageBitmap? = null,
     // Only genuinely near-white, nearly neutral covers need the new soft
     // seam treatment. Every other album gets the ORIGINAL palette and fade.
@@ -63,7 +62,7 @@ internal fun canRevealImmersiveArtwork(tone: ImmersiveArtworkTone, imageLoaded: 
 
 private val immersiveArtworkCache = object : LinkedHashMap<String, ImmersiveArtworkTone>(24, 0.75f, true) {
     override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImmersiveArtworkTone>?): Boolean =
-        size > 16
+        size > 3
 }
 
 /**
@@ -90,7 +89,7 @@ internal fun immersiveArtworkCandidates(mediaId: String?, original: String?): Li
         listOf(
             "https://i.ytimg.com/vi/$mediaId/maxresdefault.jpg",
             "https://i.ytimg.com/vi/$mediaId/hq720.jpg",
-        ) + capsuleFullPlayerArtworkCandidates(original)
+        ) + capsuleFullPlayerArtworkCandidates(original) + original
     ).distinct()
 }
 
@@ -139,10 +138,9 @@ internal fun rememberImmersiveEdgeColor(
         if (resolvedKey == key && resolved?.ready == true) return@LaunchedEffect
 
         val candidates = immersiveArtworkCandidates(mediaMetadata.id, sourceUrl)
-        val isYtimg = candidates.size > 1
         var resultTone: ImmersiveArtworkTone? = null
 
-        for ((index, url) in candidates.withIndex()) {
+        for (url in candidates) {
             val image = try {
                 val request = ImageRequest.Builder(context)
                     .data(url)
@@ -160,37 +158,20 @@ internal fun rememberImmersiveEdgeColor(
             val landscape = image.width.toFloat() / image.height.coerceAtLeast(1) >= 4f / 3f
             // maxresdefault/hq720 may return a small 'unavailable thumbnail' image with HTTP
             // 200. Those must not replace the actual song cover or contaminate its palette.
-            if (isYtimg && (!landscape || image.width < 224)) continue
+            if ((url.endsWith("/maxresdefault.jpg") || url.endsWith("/hq720.jpg")) &&
+                (!landscape || image.width < 224)) continue
 
             resultTone = withContext(Dispatchers.Default) {
-                // ORIGINAL Immersion colour extraction: the modal background
-                // in the lower visible centre crop, not a full-artwork palette.
-                // Only near-white, low-saturation covers bypass the original
-                // brightness clamp so the isolated softer fade can eliminate
-                // the noticeable white->grey edge.
-                val rawEdge = image.immersiveBottomBackground(artworkAspect)
-                val nearWhite = rawEdge.isNearWhiteImmersiveBackground()
-                val background = if (nearWhite) {
-                    rawEdge
-                } else {
-                    rawEdge.comfortableImmersiveColor()
-                }
-                val bottomTexture = image.immersiveBottomTexture(artworkAspect)
-                // Unlike seven column histograms, this preserves actual
-                // spatial relationships between sky, subject and shadows.
+                // The same owned image feeds display, crop sampling and Lyrics.
                 val colorField = image.capsuleColorField(artworkAspect)
-                // Legacy colour bands remain available for old snapshots and
-                // incomplete artwork, but do NOT drive the normal backdrop.
+                val rawEdge = capsuleDominantEdgeColor(colorField)
+                val nearWhite = rawEdge.isNearWhiteImmersiveBackground()
+                val background = rawEdge
+                val bottomTexture = image.immersiveBottomTexture(artworkAspect)
                 val edgeBands = emptyList<Color>()
                 ImmersiveArtworkTone(
                     edge = background,
-                    // Restore the original modest 10% darker floor exactly.
-                    // The modern softened colour is used ONLY for white covers.
-                    accent = if (nearWhite) {
-                        rawEdge.immersiveMutedAccent()
-                    } else {
-                        lerp(background, Color.Black, 0.10f)
-                    },
+                    accent = capsuleImmersiveFloorColor(rawEdge),
                     bottomTexture = bottomTexture,
                     edgeBands = edgeBands,
                     colorField = colorField,

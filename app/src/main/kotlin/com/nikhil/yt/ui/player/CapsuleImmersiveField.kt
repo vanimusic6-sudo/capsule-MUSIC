@@ -20,8 +20,6 @@ import kotlin.math.exp
 import kotlin.math.roundToInt
 
 // 192x304 (~228 KiB). Prepared on a worker, never every animation frame.
-private const val FIELD_WIDTH = 192
-private const val FIELD_HEIGHT = 304
 
 /** Compatibility helpers for existing fallback and regression tests. */
 internal fun immersiveSpatialBandColor(bands: List<Color>, fraction: Float): Color {
@@ -71,19 +69,38 @@ private fun smoothEdge(start: Float, end: Float, value: Float): Float {
 }
 
 internal fun capsuleImmersiveBleedEnd(cover: Float, extension: Float): Float =
-    (cover + extension.coerceIn(0.02f, 0.08f) * 1.12f).coerceAtMost(0.985f)
+    (cover + extension.coerceIn(0.02f, 0.06f)).coerceAtMost(0.985f)
 
-/** The isolated dark stripe must NOT change the colour of a mostly pale floor. */
+/** Choose an actual lower-crop colour, with support across the image.
+ * Channel-wise medians could invent a hue absent from the source. A small
+ * quantised mode rejects narrow black borders and sparse bright lettering.
+ */
 internal fun capsuleDominantEdgeColor(field: CapsuleColorField): Color {
-    val cells = (0 until field.width).map { x ->
-        lerp(field.cell(x, field.height - 2),
-             field.cell(x, field.height - 1), 0.78f)
+    val samples = (0 until field.width).flatMap { x ->
+        (maxOf(0, field.height - 4) until field.height).map { y -> field.cell(x, y) }
     }
-    fun median(channel: (Color) -> Float): Float =
-        cells.map(channel).sorted()[cells.size / 2]
-    return Color(median { it.red }, median { it.green }, median { it.blue })
+    fun bucket(c: Color): Int =
+        ((c.red * 7f).roundToInt() shl 6) or
+            ((c.green * 7f).roundToInt() shl 3) or (c.blue * 7f).roundToInt()
+    val groups = samples.groupBy(::bucket)
+    val dominant = groups.values.maxBy { it.size }
+    return Color(dominant.sumOf { it.red.toDouble() }.toFloat() / dominant.size,
+        dominant.sumOf { it.green.toDouble() }.toFloat() / dominant.size,
+        dominant.sumOf { it.blue.toDouble() }.toFloat() / dominant.size)
 }
 
+/** Retain the source hue and dark colours; cap only bright floors for white controls. */
+internal fun capsuleImmersiveFloorColor(edge: Color): Color {
+    val peak = maxOf(edge.red, edge.green, edge.blue)
+    val scale = if (peak > 0.44f) 0.44f / peak else 1f
+    return Color(edge.red * scale, edge.green * scale, edge.blue * scale)
+}
+
+/**
+ * One short dissolve to a coherent lower-crop colour. No per-column rays:
+ * local edge details disappear INSIDE the photo, before reaching the floor.
+ * The page and photo sample exactly the same curve at their shared boundary.
+ */
 internal fun immersiveSpatialFieldBitmap(
     bands: List<Color>,
     fallbackFloor: Color,
@@ -95,95 +112,31 @@ internal fun immersiveSpatialFieldBitmap(
     photoOverlay: Boolean,
     field: CapsuleColorField? = null,
 ): ImageBitmap {
-    val source = field ?: CapsuleColorField(
-        CAPSULE_FIELD_COLUMNS, CAPSULE_FIELD_ROWS,
-        List(CAPSULE_FIELD_COLUMNS * CAPSULE_FIELD_ROWS) { index ->
-            immersiveSoftBandColor(
-                bands.ifEmpty { listOf(fallbackFloor) },
-                (index % CAPSULE_FIELD_COLUMNS + 0.5f) / CAPSULE_FIELD_COLUMNS,
-            )
-        },
-    )
-    val dominant = capsuleDominantEdgeColor(source)
-    val floor = Color(
-        (0.052f + 0.165f * dominant.red).coerceIn(0f, 1f),
-        (0.050f + 0.165f * dominant.green).coerceIn(0f, 1f),
-        (0.057f + 0.165f * dominant.blue).coerceIn(0f, 1f),
-    )
-    val base = (0 until source.width).map { x ->
-        lerp(source.cell(x, source.height - 2),
-             source.cell(x, source.height - 1), 0.78f)
-    }
-    val locals = List(source.width) { x ->
-        val before = base[(x - 1).coerceAtLeast(0)]
-        val after = base[(x + 1).coerceAtMost(base.lastIndex)]
-        lerp(lerp(before, after, 0.5f), base[x], 0.78f)
-    }
-    val support = FloatArray(source.width) { x ->
-        val target = locals[x]
-        var similar = 0
-        for (delta in -3..3) {
-            val other = locals[(x + delta).coerceIn(0, locals.lastIndex)]
-            val distance = kotlin.math.abs(other.red - target.red) +
-                kotlin.math.abs(other.green - target.green) +
-                kotlin.math.abs(other.blue - target.blue)
-            if (distance < 0.42f) similar++
-        }
-        similar / 7f
-    }
-    // Interpolate ONCE per output column, not 25k Compose Color allocations.
-    val edge = Array(EDGE_WIDTH) { column ->
-        immersiveSpatialBandColor(locals, (column + 0.5f) / EDGE_WIDTH)
-    }
-    val edgeSupport = FloatArray(EDGE_WIDTH) { column ->
-        val pos = (column + 0.5f) / EDGE_WIDTH * (support.size - 1)
-        val k = pos.toInt().coerceIn(0, support.lastIndex)
-        val next = (k + 1).coerceAtMost(support.lastIndex)
-        support[k] + (support[next] - support[k]) * (pos - k)
-    }
+    val seam = field?.let(::capsuleDominantEdgeColor)
+        ?: bands.takeIf { it.isNotEmpty() }?.let { immersiveSoftBandColor(it, 0.5f) }
+        ?: fallbackFloor
+    val floor = capsuleImmersiveFloorColor(seam)
     val cover = coverFraction.coerceIn(0.05f, 0.95f)
-    val normalEnd = capsuleImmersiveBleedEnd(cover, tailFraction)
-    val end = if (nearWhite) cover + (normalEnd - cover) * 0.64f else normalEnd
-    // Keep the photograph clean longer; only the last ~20% dissolves.
-    val fadeStart = (0.78f - texture.coerceIn(0f, 1f) * 0.018f -
-        if (landscape) 0.012f else 0f).coerceIn(0.74f, 0.80f)
+    val end = capsuleImmersiveBleedEnd(cover, tailFraction)
     val pixels = IntArray(EDGE_WIDTH * EDGE_HEIGHT)
     fun channel(x: Float): Int = (x.coerceIn(0f, 1f) * 255f + 0.5f).toInt()
-
     for (row in 0 until EDGE_HEIGHT) {
         val y = (row + 0.5f) / EDGE_HEIGHT
         val pageY = if (photoOverlay) y * cover else y
-        val below = (pageY - cover).coerceAtLeast(0f)
-        val floorMix = smoothEdge(cover, end, pageY)
-        val drift = smoothEdge(0f, (end - cover) * 0.65f, below) * 0.48f
-        // Above the photo fade, keep the hidden wallpaper quiet. When a
-        // VIDEO window shrinks inside the large artwork slot, long vertical
-        // edge stripes must not suddenly appear beside the video.
-        val aboveWeight = if (photoOverlay || pageY >= cover) 1f else
-            smoothEdge(cover * 0.59f, cover * 0.91f, pageY)
-        // The overlay starts late, and is fully opaque before the photo ends.
-        // Both renderers read EXACTLY the same local edge at the join.
-        val opacity = if (photoOverlay) smoothEdge(fadeStart, 0.975f, y) else 1f
+        val lowerMix = smoothEdge(cover, end, pageY)
+        // Behind a shrinking video card the hidden upper wallpaper is uniform.
+        val topMix = 1f - smoothEdge(cover * 0.78f, cover, pageY)
+        val colour = lerp(seam, floor, maxOf(lowerMix, topMix))
+        val opacity = if (photoOverlay) smoothEdge(0.86f, 0.995f, y) else 1f
         val alpha = channel(opacity) shl 24
         for (col in 0 until EDGE_WIDTH) {
-            val local = edge[col]
-            val decay = smoothEdge(
-                0f, (end - cover) * (0.21f + 0.68f * edgeSupport[col]), below,
-            )
-            val localWeight = (1f - maxOf(decay, drift)) * aboveWeight
-            // No waves, no 2D projection below the image. A local dark stripe
-            // dissolves shortly after the seam; the majority colour wins.
-            val remaining = 1f - floorMix
-            val r = (dominant.red + (local.red - dominant.red) * localWeight) *
-                remaining + floor.red * floorMix
-            val g = (dominant.green + (local.green - dominant.green) * localWeight) *
-                remaining + floor.green * floorMix
-            val b = (dominant.blue + (local.blue - dominant.blue) * localWeight) *
-                remaining + floor.blue * floorMix
+            // Neutral dither avoids 8-bit banding without adding a coloured tint.
             val d = if (photoOverlay) 0f else
                 ((((col * 71 + row * 137) xor (col * 13 + row * 43)) and 3) - 1.5f) / 1250f
+            // The photo overlay approaches the untouched source hue at its end.
+            val c = if (photoOverlay) seam else colour
             pixels[row * EDGE_WIDTH + col] = alpha or
-                (channel(r + d) shl 16) or (channel(g + d) shl 8) or channel(b + d)
+                (channel(c.red + d) shl 16) or (channel(c.green + d) shl 8) or channel(c.blue + d)
         }
     }
     return Bitmap.createBitmap(EDGE_WIDTH, EDGE_HEIGHT, Bitmap.Config.ARGB_8888)

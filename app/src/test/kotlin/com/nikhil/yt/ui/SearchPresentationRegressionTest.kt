@@ -55,6 +55,8 @@ class SearchPresentationRegressionTest {
         assertTrue(activity.contains("keyboardController?.hide()"))
         assertTrue(activity.contains("openSearchImmediately = false"))
         assertTrue(activity.contains("delay(90L)"))
+        assertTrue(activity.contains("LaunchedEffect(shouldShowSearchBar, openSearchImmediately, playerTakesKeyboardFocus)"))
+        assertTrue(activity.contains("openSearchImmediately && !playerTakesKeyboardFocus"))
     }
 
     @Test

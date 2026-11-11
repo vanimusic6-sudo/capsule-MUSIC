@@ -45,15 +45,14 @@ class PlayerArtworkReliabilityTest {
         assertTrue(source("CapsuleArtworkPalette.kt").contains("refreshOnOpen,"))
         assertTrue(source("CapsuleArtworkPalette.kt").contains("if (cacheKey == resolvedKey) return@LaunchedEffect"))
         val immersive = source("CapsuleImmersiveContent.kt")
-        assertTrue(immersive.contains("coverLoadRetry by remember(mediaMetadata.id, artworkTone.displayUrl)"))
-        assertTrue(immersive.contains("key(mediaMetadata.id, artworkTone.displayUrl, coverLoadRetry)"))
-        assertTrue(immersive.contains("if (coverLoadRetry < 1) coverLoadRetry++"))
-        assertTrue(immersive.contains("decodedCoverPainter = success.painter"))
-        assertTrue(immersive.contains("visibleArtworkRebind"))
-        assertTrue(immersive.contains("onError = { error ->"))
-        assertTrue(immersive.contains(".size(960, 960)"))
-        assertTrue(immersive.contains("decodedCoverPainter?.let { ready ->"))
-        assertTrue(immersive.contains("delay(if (decodedCoverPainter != null) 1_000L else 3_000L)"))
+        assertFalse(immersive.contains("gradientAlpha"))
+        assertFalse(immersive.contains("visibleArtworkRebind"))
+        assertFalse(immersive.contains("decodedCoverPainter"))
+        assertTrue(immersive.contains("bitmap = requireNotNull(displayFrame.tone.preview)"))
+        assertTrue(immersive.contains("frame = readyFrame"))
+        val sampler = source("CapsuleImmersiveFloor.kt")
+        assertTrue(sampler.contains("ARTWORK_SAMPLE_SIZE = 960"))
+        assertTrue(sampler.contains("size > 3"))
     }
 
     @Test fun preloaderUsesShortActualDebounceRatherThanOldSecondLongTimer() {

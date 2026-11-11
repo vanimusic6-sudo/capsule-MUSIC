@@ -24,17 +24,10 @@ class UiEnergyRegressionTest {
     @Test
     fun `immersive video motion keeps a single gradient and disposes invisible preloader`() {
         val src = source("com/nikhil/yt/ui/player/CapsuleImmersiveContent.kt")
-        assertTrue(src.contains("capsuleImmersiveNeedsArtworkPreload(coverImageReady, artworkTone.ready"))
-        assertTrue(src.contains("capsuleImmersiveArtworkOpacity("))
-        // Immersion now paints ONE even cheaper opaque pixel-exact album
-        // background instead of its former full-screen gradient shader.
-        // Guard against accidental second full-screen paint in either mode.
-        val solid = src.split("Box(modifier = Modifier.fillMaxSize().background(seamColor))").size - 1
-        val oldGradient = src.split("Box(modifier = Modifier.fillMaxSize().background(pageBackground))").size - 1
-        assertTrue(
-            "exactly one page background layer; no doubled alpha gradient",
-            solid + oldGradient == 1,
-        )
+        assertTrue(!src.contains("decodedCoverPainter"))
+        assertTrue(!src.contains("gradientAlpha"))
+        assertTrue(!src.contains("graphicsLayer(alpha = 0f)"))
+        assertTrue(src.split("Box(Modifier.fillMaxSize().background(pageFloor))").size - 1 == 1)
         // Keep the real video compositor alive to protect the paused frame;
         // removing its surface for a fake energy saving causes black flashes.
         val video = source("com/nikhil/yt/ui/player/CapsuleVideoArtworkTransition.kt")

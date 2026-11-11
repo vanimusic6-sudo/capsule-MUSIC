@@ -257,6 +257,7 @@ fun BottomSheetPlayer(
         PreloadCapsuleTrackAssets(
             mediaMetadata = enrichedMetadata,
             skipArtworkPrefetch = state.shouldLayerAboveCollapsedChrome ||
+                effectivePlayerDesign == CapsulePlayerDesign.IMMERSIVE ||
                 (enrichedMetadata?.id?.let(decodedArtworkCache::containsKey) == true),
         )
     }

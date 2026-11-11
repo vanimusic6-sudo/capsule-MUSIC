@@ -18,52 +18,6 @@ private val Ceiling: Dp = immersiveArtworkHeight(100_000.dp)
 class CapsuleImmersiveContentTest {
 
     @Test
-    fun `VIDEO to AUDIO never exposes transparent album through track fade`() {
-        // Recorded 9222.mp4: during closing, the thumbnail blended with the
-        // live VIDEO because two independently driven alpha layers multiplied.
-        for (trackFade in listOf(0f, 0.12f, 0.5f, 0.99f, 1f)) {
-            assertEquals(
-                1f,
-                capsuleImmersiveArtworkOpacity(
-                    frameMatchesTrack = true,
-                    hasPresentedVideo = true,
-                    trackFadeAlpha = trackFade,
-                ),
-                0.0001f,
-            )
-        }
-        // The outgoing DIFFERENT song must still fade out on track switches.
-        assertEquals(
-            0.25f,
-            capsuleImmersiveArtworkOpacity(
-                frameMatchesTrack = false,
-                hasPresentedVideo = true,
-                trackFadeAlpha = 0.25f,
-            ),
-            0.0001f,
-        )
-        // Before any VIDEO has been presented, track-fade behaviour is intact.
-        assertEquals(
-            0.6f,
-            capsuleImmersiveArtworkOpacity(
-                frameMatchesTrack = true,
-                hasPresentedVideo = false,
-                trackFadeAlpha = 0.6f,
-            ),
-            0.0001f,
-        )
-    }
-
-    @Test
-    fun `invisible artwork preload ends immediately after first decoded image`() {
-        val url = "https://i.ytimg.com/vi/ABC123def45/maxresdefault.jpg"
-        assertTrue(capsuleImmersiveNeedsArtworkPreload(false, true, url))
-        assertTrue(!capsuleImmersiveNeedsArtworkPreload(true, true, url))
-        assertTrue(!capsuleImmersiveNeedsArtworkPreload(false, false, url))
-        assertTrue(!capsuleImmersiveNeedsArtworkPreload(false, true, null))
-    }
-
-    @Test
     fun `status bar leaves before immersive player reaches the top`() {
         assertTrue(!immersiveStatusBarShouldHide(open = true, expansionProgress = 0f))
         assertTrue(
@@ -286,24 +240,6 @@ class CapsuleImmersiveContentTest {
     }
 
     @Test
-    fun `rapid skips keep one outgoing fade active instead of restarting per incoming track`() {
-        val originalFrame = "track-A|cover-A"
-        // Once B has been selected, A must start leaving before B has decoded anything.
-        assertTrue(shouldFadeOutImmersiveFrame(originalFrame, "track-B|cover-B", visible = true))
-        // Further rapid changes B -> C -> D do not alter the boolean animation key.
-        assertTrue(shouldFadeOutImmersiveFrame(originalFrame, "track-C|cover-C", visible = true))
-        assertTrue(shouldFadeOutImmersiveFrame(originalFrame, "track-D|cover-D", visible = true))
-        // After A has fully left there is no outgoing frame left to restart.
-        assertTrue(!shouldFadeOutImmersiveFrame(null, "track-D|cover-D", visible = true))
-    }
-
-    @Test
-    fun `already selected song does not fade out while its thumbnail is still decoding`() {
-        assertTrue(!shouldFadeOutImmersiveFrame("selected", "selected", visible = true))
-        assertTrue(shouldFadeOutImmersiveFrame("selected", "selected", visible = false))
-    }
-
-    @Test
     fun `raw widescreen thumbnail stays neutral until its geometry and gradient are prepared`() {
         val raw = ImmersiveArtworkTone(displayUrl = null, landscape = false, ready = false)
         assertTrue(!canRevealImmersiveArtwork(raw, imageLoaded = false))
@@ -334,8 +270,7 @@ class CapsuleImmersiveContentTest {
         val choices = immersiveArtworkCandidates(id, original)
         assertTrue(choices.first().endsWith("/maxresdefault.jpg"))
         assertTrue(choices.any { it.endsWith("/hq720.jpg") })
-        assertFalse("Immersion must not show a 480px YouTube fallback",
-            choices.any { it.endsWith("/hqdefault.jpg") })
+        assertEquals("Keep the real metadata image as a last fallback", original, choices.last())
         assertEquals(choices.size, choices.distinct().size)
     }
 

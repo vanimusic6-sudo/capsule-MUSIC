@@ -1813,8 +1813,8 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    LaunchedEffect(shouldShowSearchBar, openSearchImmediately) {
-                        if (shouldShowSearchBar && openSearchImmediately) {
+                    LaunchedEffect(shouldShowSearchBar, openSearchImmediately, playerTakesKeyboardFocus) {
+                        if (shouldShowSearchBar && openSearchImmediately && !playerTakesKeyboardFocus) {
                             onActiveChange(true)
                             try {
                                 delay(100)
