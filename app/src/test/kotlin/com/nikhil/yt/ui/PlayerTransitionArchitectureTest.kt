@@ -80,7 +80,8 @@ class PlayerTransitionArchitectureTest {
 
         val floor = source("com/nikhil/yt/ui/player/CapsuleImmersiveFloor.kt")
         assertTrue(floor.contains("val rawEdge = image.immersiveBottomBackground(artworkAspect)"))
-        assertTrue(floor.contains("image.immersiveBottomEdgeBands(artworkAspect)"))
+        assertTrue(floor.contains("val colorField = image.capsuleColorField(artworkAspect)"))
+        assertFalse(floor.contains("val edgeBands = image.immersiveBottomEdgeBands("))
         assertTrue(floor.contains("val edgeBands: List<Color> = emptyList()"))
         assertTrue(floor.contains("fun Bitmap.immersiveBottomBackground(artworkAspect: Float)"))
         assertFalse(floor.contains("immersiveArtworkBackground("))
