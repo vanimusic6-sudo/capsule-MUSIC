@@ -150,7 +150,6 @@ import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.toBitmap
-import com.valentinilk.shimmer.LocalShimmerTheme
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import dagger.hilt.android.AndroidEntryPoint
@@ -222,7 +221,6 @@ import com.nikhil.yt.ui.component.StarDialog
 import com.nikhil.yt.ui.component.TopSearch
 import com.nikhil.yt.ui.component.rememberBottomSheetState
 import com.nikhil.yt.ui.component.shouldRestoreCompactPlayerAfterPlayback
-import com.nikhil.yt.ui.component.shimmer.ShimmerTheme
 import com.nikhil.yt.ui.menu.YouTubeSongMenu
 import com.nikhil.yt.ui.motion.CapsuleMotion
 import com.nikhil.yt.ui.player.BottomSheetPlayer
@@ -1336,7 +1334,6 @@ class MainActivity : ComponentActivity() {
                         LocalPlayerConnection provides playerConnection,
                         LocalPlayerAwareWindowInsets provides playerAwareWindowInsets,
                         LocalDownloadUtil provides downloadUtil,
-                        LocalShimmerTheme provides ShimmerTheme,
                         LocalSyncUtils provides syncUtils,
                         LocalBottomSheetPageState provides bottomSheetPageState,
                         LocalMenuState provides menuState,

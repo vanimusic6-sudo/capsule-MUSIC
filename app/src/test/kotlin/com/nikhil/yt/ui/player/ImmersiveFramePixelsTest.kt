@@ -30,7 +30,7 @@ class ImmersiveFramePixelsTest {
         assertTrue(result.tone.edge.red > 0.98f)
         assertEquals(result.tone.edge.red, result.tone.edge.blue, 0.001f)
         val page = result.page.asAndroidBitmap()
-        for (y in 0 until page.height) {
+        for (y in (page.height * 0.62f).toInt() until page.height) {
             val left = page.getPixel(2, y)
             val right = page.getPixel(page.width - 3, y)
             assertTrue(kotlin.math.abs(AndroidColor.red(left) - AndroidColor.red(right)) <= 2)
@@ -69,11 +69,41 @@ class ImmersiveFramePixelsTest {
         assertEquals("selected-track", result.key)
     }
 
-    @Test fun photoAndPageAgreeAtJoinAndPhotoRemainsUntouchedUntilLate() {
+    @Test fun restoredColourColumnsRemainVisibleOnBothSidesOfTheJoin() {
+        val result = frame(cover { x, _ ->
+            if (x < 100) AndroidColor.rgb(220, 40, 45) else AndroidColor.rgb(25, 65, 220)
+        })
+        val page = result.page.asAndroidBitmap()
+        val photo = result.overlay.asAndroidBitmap()
+        for (y in listOf(page.height / 2, (page.height * 0.72f).toInt(), page.height - 1)) {
+            val left = Color(page.getPixel(4, y))
+            val right = Color(page.getPixel(page.width - 5, y))
+            assertTrue("Red side must continue as colour, not a flat fill", left.red > right.red + 0.09f)
+            assertTrue("Blue side must continue as colour, not a flat fill", right.blue > left.blue + 0.09f)
+        }
+        for (x in listOf(4, 72, page.width - 5)) {
+            val end = photo.getPixel(x, photo.height - 1)
+            val join = page.getPixel(x, page.height / 2)
+            for (shift in listOf(16, 8, 0)) {
+                assertTrue(kotlin.math.abs((end shr shift and 255) - (join shr shift and 255)) < 8)
+            }
+        }
+    }
+
+    @Test fun smallBlueCentreOnDarkArtStillContinuesIntoTheFloor() {
+        val result = frame(cover { x, _ ->
+            if (x in 65..135) AndroidColor.rgb(25, 80, 155) else AndroidColor.rgb(15, 17, 20)
+        })
+        val centre = Color(result.page.asAndroidBitmap().getPixel(72, 130))
+        assertTrue("Dark art must retain its blue detail", centre.blue > centre.red + 0.06f)
+    }
+
+    @Test fun photoAndPageAgreeAtJoinAndFeatheringIsGradual() {
         val result = frame(cover { _, _ -> AndroidColor.rgb(195, 98, 35) })
         val photo = result.overlay.asAndroidBitmap()
         val page = result.page.asAndroidBitmap()
-        assertEquals(0, AndroidColor.alpha(photo.getPixel(72, (photo.height * 0.84f).toInt())))
+        assertEquals(0, AndroidColor.alpha(photo.getPixel(72, (photo.height * 0.55f).toInt())))
+        assertTrue(AndroidColor.alpha(photo.getPixel(72, (photo.height * 0.80f).toInt())) in 40..220)
         assertEquals(255, AndroidColor.alpha(photo.getPixel(72, photo.height - 1)))
         val end = photo.getPixel(72, photo.height - 1)
         val join = page.getPixel(72, page.height / 2)

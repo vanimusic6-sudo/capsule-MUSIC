@@ -2,6 +2,18 @@
 
 Base: `player-release-11.11.2026`, `76577a9`. Review branch: `fix/immersive-atomic-artwork-20261111`.
 
+## Revision after phone feedback
+
+The flat-background result in `b0a8109` was rejected: the visible photo-to-colour transition had largely disappeared. The new `12574.mp4` also identifies the remaining travelling grey wave as search-result placeholders, not the player's artwork renderer.
+
+- Restore the colour-column/Gaussian-feathering approach from `9c641af`, using seven modal colours sampled from the actual visible image crop. Keep the owned display bitmap and atomic frame preparation.
+- Begin the photo dissolve around 60% of its height and complete it before the final scanline. Use the same physical-Y colour on the photo overlay and page.
+- Retain broad left/right colour into the lower background with progressively wider feathering. Collapse an isolated dark minority quickly on near-white art.
+- Replace the shared loading host's travelling shader with one low-amplitude opacity pulse for the entire block. Use `ModulateAlpha` for the separated placeholder shapes, read animation state during drawing, and remove the infinite animation offscreen. Remove the unused moving-shimmer theme/provider.
+- Add native Compose pixel checks comparing several rows and columns at multiple animation times, plus clock/inactivity checks. Expand production frame tests to require left/right colour continuation and a gradual photo dissolve.
+
+The table below records the earlier audit; its single-colour floor treatment is superseded by this revision. Physical-device appearance remains subject to review.
+
 ## Findings and changes
 
 | Failure | Cause in the previous implementation | Change |

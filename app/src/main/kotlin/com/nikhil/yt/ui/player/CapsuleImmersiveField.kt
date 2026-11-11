@@ -1,8 +1,8 @@
 /*
  * Capsule MUSIC — cinematic, image-derived ambient colour.
  *
- * A short photo dissolve and a coherent floor, prepared off-thread from
- * the same visible crop. Static artwork has no animation clock or rays.
+ * Colour columns and Gaussian diffusion, based on the 9c641af renderer.
+ * Photo and page read the same cached field at the same physical Y.
  */
 package com.nikhil.yt.ui.player
 
@@ -28,7 +28,10 @@ internal fun immersiveSpatialBandColor(bands: List<Color>, fraction: Float): Col
     return lerp(bands[first], bands[(first + 1).coerceAtMost(bands.lastIndex)], position - first)
 }
 
-internal fun immersiveSoftBandColor(bands: List<Color>, fraction: Float): Color {
+internal fun immersiveSoftBandColor(bands: List<Color>, fraction: Float): Color =
+    immersiveBlurredBandColor(bands, fraction, 0.29f)
+
+private fun immersiveBlurredBandColor(bands: List<Color>, fraction: Float, radius: Float): Color {
     if (bands.isEmpty()) return IMMERSIVE_NEUTRAL_COLOR
     val x = fraction.coerceIn(0f, 1f)
     var weight = 0f
@@ -36,7 +39,7 @@ internal fun immersiveSoftBandColor(bands: List<Color>, fraction: Float): Color 
     var g = 0f
     var b = 0f
     bands.forEachIndexed { index, value ->
-        val dx = (x - (index + 0.5f) / bands.size) / 0.29f
+        val dx = (x - (index + 0.5f) / bands.size) / radius
         val w = exp(-0.5f * dx * dx)
         r += value.red * w; g += value.green * w; b += value.blue * w
         weight += w
@@ -93,9 +96,10 @@ internal fun capsuleImmersiveFloorColor(edge: Color): Color {
 }
 
 /**
- * One short dissolve to a coherent lower-crop colour. No per-column rays:
- * local edge details disappear INSIDE the photo, before reaching the floor.
- * The page and photo sample exactly the same curve at their shared boundary.
+ * Restore the previous coloured-column continuation, with progressively wider
+ * Gaussian feathering. The photograph dissolves gradually into this field;
+ * the field retains broad left/right colour rather than becoming one flat fill.
+ * An isolated dark border on pale art loses support shortly below the seam.
  */
 internal fun immersiveSpatialFieldBitmap(
     bands: List<Color>,
@@ -108,31 +112,59 @@ internal fun immersiveSpatialFieldBitmap(
     photoOverlay: Boolean,
     field: CapsuleColorField? = null,
 ): ImageBitmap {
-    val seam = field?.let(::capsuleDominantEdgeColor)
-        ?: bands.takeIf { it.isNotEmpty() }?.let { immersiveSoftBandColor(it, 0.5f) }
-        ?: fallbackFloor
-    val floor = capsuleImmersiveFloorColor(seam)
+    val source = bands.takeIf { it.isNotEmpty() } ?: field?.let { grid ->
+        List(grid.width) { x ->
+            val lower = (maxOf(0, grid.height - 4) until grid.height).map { y -> grid.cell(x, y) }
+            Color(lower.sumOf { it.red.toDouble() }.toFloat() / lower.size,
+                lower.sumOf { it.green.toDouble() }.toFloat() / lower.size,
+                lower.sumOf { it.blue.toDouble() }.toFloat() / lower.size)
+        }
+    } ?: listOf(fallbackFloor)
+    val dominant = field?.let(::capsuleDominantEdgeColor)
+        ?: immersiveSoftBandColor(source, 0.5f)
+    val paleMinority = (nearWhite || dominant.isNearWhiteImmersiveBackground()) &&
+        source.count { maxOf(it.red, it.green, it.blue) < 0.30f } <= source.size / 3
+    val common = if (paleMinority) dominant else Color(
+        source.sumOf { it.red.toDouble() }.toFloat() / source.size,
+        source.sumOf { it.green.toDouble() }.toFloat() / source.size,
+        source.sumOf { it.blue.toDouble() }.toFloat() / source.size,
+    )
+    val commonFloor = capsuleImmersiveFloorColor(common)
+    val local = Array(EDGE_WIDTH) { x ->
+        immersiveBlurredBandColor(source, (x + 0.5f) / EDGE_WIDTH, 0.14f)
+    }
+    val feathered = Array(EDGE_WIDTH) { x ->
+        immersiveSoftBandColor(source, (x + 0.5f) / EDGE_WIDTH)
+    }
     val cover = coverFraction.coerceIn(0.05f, 0.95f)
-    val end = capsuleImmersiveBleedEnd(cover, tailFraction)
+    val tail = tailFraction.coerceIn(0.02f, 0.06f)
+    val shadeStart = cover * 0.88f
+    val shadeEnd = (cover + tail * 1.8f).coerceAtMost(0.995f)
+    val fadeStart = (0.62f - texture.coerceIn(0f, 1f) * 0.035f -
+        if (landscape) 0.015f else 0f).coerceIn(0.56f, 0.62f)
     val pixels = IntArray(EDGE_WIDTH * EDGE_HEIGHT)
     fun channel(x: Float): Int = (x.coerceIn(0f, 1f) * 255f + 0.5f).toInt()
     for (row in 0 until EDGE_HEIGHT) {
         val y = (row + 0.5f) / EDGE_HEIGHT
         val pageY = if (photoOverlay) y * cover else y
-        val lowerMix = smoothEdge(cover, end, pageY)
-        // Behind a shrinking video card the hidden upper wallpaper is uniform.
-        val topMix = 1f - smoothEdge(cover * 0.78f, cover, pageY)
-        val colour = lerp(seam, floor, maxOf(lowerMix, topMix))
-        val opacity = if (photoOverlay) smoothEdge(0.86f, 0.995f, y) else 1f
+        val shade = smoothEdge(shadeStart, shadeEnd, pageY)
+        val spread = smoothEdge(cover * 0.65f, cover + tail * 1.6f, pageY)
+        val diffuse = if (paleMinority) smoothEdge(cover, cover + tail, pageY)
+            else smoothEdge(cover, (cover + 0.28f).coerceAtMost(0.995f), pageY) * 0.60f
+        // The hidden upper page stays quiet beside the smaller video window.
+        val emerge = smoothEdge(cover * 0.52f, cover * 0.90f, pageY)
+        val opacity = if (photoOverlay) smoothEdge(fadeStart, 0.985f, y) else 1f
         val alpha = channel(opacity) shl 24
         for (col in 0 until EDGE_WIDTH) {
-            // Neutral dither avoids 8-bit banding without adding a coloured tint.
-            val d = if (photoOverlay) 0f else
-                ((((col * 71 + row * 137) xor (col * 13 + row * 43)) and 3) - 1.5f) / 1250f
-            // The photo overlay approaches the untouched source hue at its end.
-            val c = if (photoOverlay) seam else colour
+            val edge = lerp(local[col], feathered[col], spread)
+            val own = lerp(edge, capsuleImmersiveFloorColor(edge), shade)
+            val shared = lerp(common, commonFloor, shade)
+            val colour = lerp(commonFloor, lerp(own, shared, diffuse), emerge)
+            // Identical physical-Y colour on photo/page; only photo alpha differs.
+            val d = ((((col * 71 + row * 137) xor (col * 13 + row * 43)) and 3) - 1.5f) / 1250f
             pixels[row * EDGE_WIDTH + col] = alpha or
-                (channel(c.red + d) shl 16) or (channel(c.green + d) shl 8) or channel(c.blue + d)
+                (channel(colour.red + d) shl 16) or
+                (channel(colour.green + d) shl 8) or channel(colour.blue + d)
         }
     }
     return Bitmap.createBitmap(EDGE_WIDTH, EDGE_HEIGHT, Bitmap.Config.ARGB_8888)

@@ -5,6 +5,7 @@ on:
   pull_request:
     paths:
       - 'app/src/main/kotlin/com/nikhil/yt/ui/player/**'
+      - 'app/src/main/kotlin/com/nikhil/yt/ui/component/shimmer/**'
       - 'app/src/test/kotlin/com/nikhil/yt/ui/**'
       - '.github/workflows/player-ui-quality.yml'
   workflow_dispatch:
@@ -53,6 +54,7 @@ jobs:
           --tests 'com.nikhil.yt.ui.PlayerTransitionGestureTest'
           --tests 'com.nikhil.yt.ui.PlayerTransitionArchitectureTest'
           --tests 'com.nikhil.yt.ui.SearchPresentationRegressionTest'
+          --tests 'com.nikhil.yt.ui.component.LoadingPlaceholderTest'
           --tests 'com.nikhil.yt.ui.SearchBarInsetTest'
           --tests 'com.nikhil.yt.ui.player.PlayerArtworkReliabilityTest'
           --tests 'com.nikhil.yt.ui.MiniPlayerSwipeMotionTest'

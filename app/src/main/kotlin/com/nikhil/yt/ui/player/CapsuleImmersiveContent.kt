@@ -105,10 +105,11 @@ internal fun prepareImmersiveFrame(
     val image = requireNotNull(source.preview)
     val field = image.asAndroidBitmap().capsuleColorField(artworkAspect)
     val edge = capsuleDominantEdgeColor(field)
-    val tone = source.copy(colorField = field, edge = edge,
+    val bands = image.asAndroidBitmap().immersiveBottomEdgeBands(artworkAspect)
+    val tone = source.copy(colorField = field, edge = edge, edgeBands = bands,
         accent = capsuleImmersiveFloorColor(edge))
     fun render(overlay: Boolean) = immersiveSpatialFieldBitmap(
-        bands = emptyList(), fallbackFloor = tone.accent,
+        bands = bands, fallbackFloor = tone.accent,
         coverFraction = coverFraction, tailFraction = tailFraction,
         texture = tone.bottomTexture, landscape = tone.landscape,
         nearWhite = tone.nearWhiteBackground, photoOverlay = overlay, field = field,
