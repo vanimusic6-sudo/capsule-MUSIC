@@ -23,7 +23,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
@@ -64,22 +64,21 @@ fun ShimmerHost(
         verticalArrangement = verticalArrangement,
         modifier =
         modifier
+            .then(
+                if (fadeToSurface) Modifier.drawWithCache {
+                    val fade = Brush.verticalGradient(listOf(Color.Transparent, surface))
+                    onDrawWithContent {
+                        drawContent()
+                        drawRect(brush = fade)
+                    }
+                } else Modifier,
+            )
             .graphicsLayer {
                 alpha = opacity.value
-                // Separate skeleton shapes never overlap. Modulate their paint
-                // directly instead of allocating a full-column alpha buffer.
+                // Modulate only the separated shapes. The static fade is outside
+                // this layer, so its opaque bottom cannot become translucent.
                 compositingStrategy = CompositingStrategy.ModulateAlpha
-            }
-            .then(
-                if (fadeToSurface) Modifier.drawWithContent {
-                    drawContent()
-                    drawRect(
-                        brush = Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, surface),
-                        ),
-                    )
-                } else Modifier,
-            ),
+            },
         content = content,
     )
 }

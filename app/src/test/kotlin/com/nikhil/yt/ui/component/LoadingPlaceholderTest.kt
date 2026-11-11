@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.State
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -37,6 +39,18 @@ import org.robolectric.annotation.GraphicsMode
 class LoadingPlaceholderTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
+    private fun capture(): Bitmap {
+        val bounds = compose.onNodeWithTag("loading").fetchSemanticsNode().boundsInRoot
+        lateinit var bitmap: Bitmap
+        compose.runOnIdle {
+            bitmap = Bitmap.createBitmap(bounds.width.roundToInt(), bounds.height.roundToInt(), Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            canvas.translate(-bounds.left, -bounds.top)
+            compose.activity.findViewById<View>(android.R.id.content).draw(canvas)
+        }
+        return bitmap
+    }
+
     @Test fun loadingBlockHasOneBrightnessAcrossAllRowsAndColumns() {
         compose.mainClock.autoAdvance = false
         compose.setContent {
@@ -52,14 +66,7 @@ class LoadingPlaceholderTest {
         repeat(6) {
             compose.mainClock.advanceTimeBy(200)
             compose.waitForIdle()
-            val bounds = compose.onNodeWithTag("loading").fetchSemanticsNode().boundsInRoot
-            lateinit var bitmap: Bitmap
-            compose.runOnIdle {
-                bitmap = Bitmap.createBitmap(bounds.width.roundToInt(), bounds.height.roundToInt(), Bitmap.Config.ARGB_8888)
-                val canvas = Canvas(bitmap)
-                canvas.translate(-bounds.left, -bounds.top)
-                compose.activity.findViewById<View>(android.R.id.content).draw(canvas)
-            }
+            val bitmap = capture()
             val values = listOf(0.1f to 0.2f, 0.9f to 0.2f, 0.1f to 0.8f, 0.9f to 0.8f).map { (x, y) ->
                 AndroidColor.red(bitmap.getPixel((bitmap.width * x).toInt(), (bitmap.height * y).toInt()))
             }
@@ -68,6 +75,28 @@ class LoadingPlaceholderTest {
             bitmap.recycle()
         }
         assertTrue("The whole block still breathes softly", brightness.max() - brightness.min() >= 5)
+    }
+
+    @Test fun bottomFadeRemainsOpaqueAtEveryPulsePhase() {
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            MaterialTheme(colorScheme = darkColorScheme(surface = Color.Black)) {
+                Box(Modifier.background(Color.Black)) {
+                    ShimmerHost(Modifier.testTag("loading")) {
+                        Box(Modifier.size(240.dp, 100.dp).background(Color.White))
+                    }
+                }
+            }
+        }
+        repeat(3) {
+            compose.mainClock.advanceTimeBy(350)
+            compose.waitForIdle()
+            val bitmap = capture()
+            assertTrue(AndroidColor.red(bitmap.getPixel(bitmap.width / 2, bitmap.height / 20)) > 20)
+            assertTrue("The fade must not expose pulsing grey at its bottom",
+                AndroidColor.red(bitmap.getPixel(bitmap.width / 2, bitmap.height - 1)) <= 3)
+            bitmap.recycle()
+        }
     }
 
     @Test fun pulseDoesNotRecomposeItsContentAndStopsWhenInactive() {
