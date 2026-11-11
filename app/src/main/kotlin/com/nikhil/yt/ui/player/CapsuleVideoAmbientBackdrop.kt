@@ -14,6 +14,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
@@ -50,7 +51,10 @@ internal fun CapsuleVideoAmbientBackdrop(
     landscape: Boolean = false,
     nearWhite: Boolean = false,
     field: CapsuleColorField? = null,
+    onFirstTextureReady: (() -> Unit)? = null,
 ) {
+    // A callback change must not cancel a pending texture render.
+    val currentReadyCallback by rememberUpdatedState(onFirstTextureReady)
     var previousBands by remember { mutableStateOf(bands) }
     var targetBands by remember { mutableStateOf(bands) }
     var previousField by remember { mutableStateOf(field) }
@@ -76,6 +80,9 @@ internal fun CapsuleVideoAmbientBackdrop(
             targetField = field
             toTexture = fresh
             blend.snapTo(1f)
+            // At this point the page bitmap and the overlay readiness gate
+            // can be committed together in the next Compose frame.
+            currentReadyCallback?.invoke()
             return@LaunchedEffect
         }
         val currentProgress = blend.value
@@ -101,6 +108,7 @@ internal fun CapsuleVideoAmbientBackdrop(
         targetField = field
         fromTexture = visibleImage
         toTexture = fresh
+        currentReadyCallback?.invoke()
         blend.animateTo(
             1f,
             tween(durationMillis = VIDEO_AMBIENT_BLEND_DURATION_MS,

@@ -11,8 +11,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import kotlin.math.abs
 
-internal const val CAPSULE_FIELD_COLUMNS = 12
-internal const val CAPSULE_FIELD_ROWS = 10
+internal const val CAPSULE_FIELD_COLUMNS = 20
+internal const val CAPSULE_FIELD_ROWS = 16
 
 /**
  * A tiny immutable spatial colour grid, in row-major order. Equality is by
@@ -68,11 +68,20 @@ internal fun Bitmap.capsuleColorField(
         }
         val color = if (n > 0) Color(r / n, g / n, b / n)
             else Color(0xFF18171C)
-        // Keep the atmosphere darker than the actual video/cover, but do NOT
-        // crush its local chroma: different scene regions must stay distinct.
-        if (video) lerp(color, Color(0xFF0C0D13), 0.48f)
+        // Avoid per-cell HSV brightness CLAMPING, which made large clusters
+        // of cells share an identical flat value and resemble coloured cubes.
+        // This continuous shoulder keeps every sampled light/dark gradation.
+        if (video) lerp(color, Color(0xFF0C0D13), 0.43f)
         else if (color.isNearWhiteImmersiveBackground()) color
-        else color.comfortableImmersiveColor()
+        else {
+            val peak = maxOf(color.red, color.green, color.blue)
+            val shoulder = 0.53f / (0.42f + 0.58f * peak)
+            Color(
+                (color.red * shoulder).coerceIn(0f, 1f),
+                (color.green * shoulder).coerceIn(0f, 1f),
+                (color.blue * shoulder).coerceIn(0f, 1f),
+            )
+        }
     }
     return CapsuleColorField(CAPSULE_FIELD_COLUMNS, CAPSULE_FIELD_ROWS, cells)
 }

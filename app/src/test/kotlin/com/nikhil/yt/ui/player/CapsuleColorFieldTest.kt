@@ -30,8 +30,8 @@ class CapsuleColorFieldTest {
             bitmap.setPixel(x, y, pixel)
         }
         val grid = bitmap.capsuleColorField(1.2f)
-        assertEquals(12, grid.width)
-        assertEquals(10, grid.height)
+        assertEquals(20, grid.width)
+        assertEquals(16, grid.height)
         assertTrue(grid.cell(1, 1).red > grid.cell(1, 1).green)
         assertTrue(grid.cell(1, 8).green > grid.cell(1, 8).red)
         assertTrue(grid.cell(10, 5).blue > grid.cell(10, 5).red)

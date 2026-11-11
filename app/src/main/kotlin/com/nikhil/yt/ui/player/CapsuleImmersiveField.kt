@@ -1,7 +1,9 @@
 /*
- * Capsule MUSIC — image-derived, two-dimensional ambient colour field.
- * No columns/strips/shaders: the field is a softened miniature of the
- * ACTUAL visible artwork or video frame, with two-dimensional diffusion.
+ * Capsule MUSIC — cinematic, image-derived ambient colour.
+ *
+ * No bars, no tiled rectangles, no sharp grid cell edges. A small real
+ * image is blurred at two spatial scales, reconstructed with a cubic
+ * B-spline, and drawn as ONE immutable GPU texture.
  */
 package com.nikhil.yt.ui.player
 
@@ -19,127 +21,153 @@ import kotlin.math.exp
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-// Low memory (~55 KB per field). Not a full-screen GPU framebuffer blur.
-private const val FIELD_WIDTH = 96
-private const val FIELD_HEIGHT = 144
+// 192x304 (~228 KiB). Prepared on a worker, never every animation frame.
+private const val FIELD_WIDTH = 192
+private const val FIELD_HEIGHT = 304
 
-/** Retained for other callers/tests, never used for the new 2D photo field. */
+/** Compatibility helpers for existing fallback and regression tests. */
 internal fun immersiveSpatialBandColor(bands: List<Color>, fraction: Float): Color {
     if (bands.isEmpty()) return IMMERSIVE_NEUTRAL_COLOR
     if (bands.size == 1) return bands[0]
-    val p = fraction.coerceIn(0f, 1f) * (bands.size - 1)
-    val index = p.toInt().coerceIn(0, bands.lastIndex)
-    return lerp(bands[index], bands[(index + 1).coerceAtMost(bands.lastIndex)], p - index)
+    val position = fraction.coerceIn(0f, 1f) * (bands.size - 1)
+    val first = position.toInt().coerceIn(0, bands.lastIndex)
+    return lerp(bands[first], bands[(first + 1).coerceAtMost(bands.lastIndex)], position - first)
 }
 
 internal fun immersiveSoftBandColor(bands: List<Color>, fraction: Float): Color {
     if (bands.isEmpty()) return IMMERSIVE_NEUTRAL_COLOR
     val x = fraction.coerceIn(0f, 1f)
-    val sigma = 0.29f
-    var sum = 0f
-    var red = 0f
-    var green = 0f
-    var blue = 0f
-    bands.forEachIndexed { i, c ->
-        val d = (x - (i + 0.5f) / bands.size) / sigma
-        val w = exp(-0.5f * d * d)
-        sum += w
-        red += w * c.red
-        green += w * c.green
-        blue += w * c.blue
+    var weight = 0f
+    var r = 0f
+    var g = 0f
+    var b = 0f
+    bands.forEachIndexed { index, value ->
+        val dx = (x - (index + 0.5f) / bands.size) / 0.29f
+        val w = exp(-0.5f * dx * dx)
+        r += value.red * w; g += value.green * w; b += value.blue * w
+        weight += w
     }
-    return Color(red / sum, green / sum, blue / sum)
+    return Color(r / weight, g / weight, b / weight)
 }
 
-private fun smooth(start: Float, finish: Float, value: Float): Float {
-    val t = ((value - start) / (finish - start).coerceAtLeast(0.001f)).coerceIn(0f, 1f)
+private fun smooth(from: Float, to: Float, value: Float): Float {
+    val t = ((value - from) / (to - from).coerceAtLeast(0.001f)).coerceIn(0f, 1f)
     return t * t * (3f - 2f * t)
 }
 
-/** Continuity near the art edge; slower diffusion below the cover. */
 internal fun immersiveSpatialDiffusion(pageY: Float, coverFraction: Float): Float =
     smooth(coverFraction * 0.64f, (coverFraction + 0.29f).coerceAtMost(0.995f), pageY) * 0.97f
 
 /**
- * A 5x5 separable spatial Gaussian. The 2D source has 120 image-derived
- * samples: the blur removes tiny details while retaining coloured shapes.
- * Runs ONCE per decoded cover/video capture, never on every display frame.
+ * 7-tap separable Gaussian smoothing at the CELL scale; a second pass
+ * gives a broad colour atmosphere. Tiny lettering/subjects are diffused
+ * while region position is kept. No full-resolution bitmap blur or layer.
  */
+private fun gaussianPass(source: FloatArray, width: Int, height: Int): FloatArray {
+    val k = floatArrayOf(0.03008f, 0.10498f, 0.22225f, 0.28538f,
+        0.22225f, 0.10498f, 0.03008f)
+    val tmp = FloatArray(source.size)
+    val out = FloatArray(source.size)
+    for (y in 0 until height) for (x in 0 until width) {
+        val dst = (y * width + x) * 3
+        for (delta in -3..3) {
+            val ix = (y * width + (x + delta).coerceIn(0, width - 1)) * 3
+            val weight = k[delta + 3]
+            tmp[dst] += source[ix] * weight
+            tmp[dst + 1] += source[ix + 1] * weight
+            tmp[dst + 2] += source[ix + 2] * weight
+        }
+    }
+    for (y in 0 until height) for (x in 0 until width) {
+        val dst = (y * width + x) * 3
+        for (delta in -3..3) {
+            val iy = ((y + delta).coerceIn(0, height - 1) * width + x) * 3
+            val weight = k[delta + 3]
+            out[dst] += tmp[iy] * weight
+            out[dst + 1] += tmp[iy + 1] * weight
+            out[dst + 2] += tmp[iy + 2] * weight
+        }
+    }
+    return out
+}
+
 private fun blurredCells(grid: CapsuleColorField): FloatArray {
-    val w = grid.width
-    val h = grid.height
-    val temp = FloatArray(w * h * 3)
-    val dst = FloatArray(w * h * 3)
-    val kernel = floatArrayOf(0.06136f, 0.24477f, 0.38774f, 0.24477f, 0.06136f)
-    for (y in 0 until h) for (x in 0 until w) {
-        val base = (y * w + x) * 3
-        for (k in -2..2) {
-            val col = grid.cell(x + k, y)
-            val weight = kernel[k + 2]
-            temp[base] += col.red * weight
-            temp[base + 1] += col.green * weight
-            temp[base + 2] += col.blue * weight
-        }
+    val source = FloatArray(grid.cells.size * 3)
+    grid.cells.forEachIndexed { index, color ->
+        source[index * 3] = color.red
+        source[index * 3 + 1] = color.green
+        source[index * 3 + 2] = color.blue
     }
-    for (y in 0 until h) for (x in 0 until w) {
-        val base = (y * w + x) * 3
-        for (k in -2..2) {
-            val source = (y + k).coerceIn(0, h - 1) * w * 3 + x * 3
-            val weight = kernel[k + 2]
-            dst[base] += temp[source] * weight
-            dst[base + 1] += temp[source + 1] * weight
-            dst[base + 2] += temp[source + 2] * weight
-        }
+    val fine = gaussianPass(source, grid.width, grid.height)
+    val broad = gaussianPass(fine, grid.width, grid.height)
+    // Perceptually broad, layered ambient lights rather than a pixel-map.
+    return FloatArray(fine.size) { index ->
+        0.22f * fine[index] + 0.78f * broad[index]
     }
-    return dst
 }
 
-/** Bilinear sampling from a 2D image, not horizontal strip interpolation. */
+private fun cubicWeights(t: Float, out: FloatArray) {
+    // Cubic B-spline: smooth first AND second derivative, non-negative
+    // weights and no overshoot/ringing on strongly contrasting artwork.
+    val t2 = t * t
+    val t3 = t2 * t
+    out[0] = (1f - 3f * t + 3f * t2 - t3) / 6f
+    out[1] = (4f - 6f * t2 + 3f * t3) / 6f
+    out[2] = (1f + 3f * t + 3f * t2 - 3f * t3) / 6f
+    out[3] = t3 / 6f
+}
+
+/** Bicubic spatial sampling; bilinear interpolation caused visible cell facets. */
 private fun sample2D(
-    src: FloatArray, width: Int, height: Int,
-    x: Float, y: Float, out: FloatArray,
+    source: FloatArray,
+    width: Int,
+    height: Int,
+    x: Float,
+    y: Float,
+    rgb: FloatArray,
+    wx: FloatArray,
+    wy: FloatArray,
 ) {
-    val fx = x.coerceIn(0f, 1f) * (width - 1)
-    val fy = y.coerceIn(0f, 1f) * (height - 1)
-    val x0 = fx.toInt().coerceIn(0, width - 1)
-    val y0 = fy.toInt().coerceIn(0, height - 1)
-    val x1 = (x0 + 1).coerceAtMost(width - 1)
-    val y1 = (y0 + 1).coerceAtMost(height - 1)
-    val tx = fx - x0
-    val ty = fy - y0
-    val a = (y0 * width + x0) * 3
-    val b = (y0 * width + x1) * 3
-    val c = (y1 * width + x0) * 3
-    val d = (y1 * width + x1) * 3
-    for (k in 0..2) {
-        val upper = src[a + k] + (src[b + k] - src[a + k]) * tx
-        val lower = src[c + k] + (src[d + k] - src[c + k]) * tx
-        out[k] = upper + (lower - upper) * ty
+    val u = x.coerceIn(0f, 1f) * (width - 1)
+    val v = y.coerceIn(0f, 1f) * (height - 1)
+    val ix = u.toInt()
+    val iy = v.toInt()
+    cubicWeights(u - ix, wx)
+    cubicWeights(v - iy, wy)
+    rgb.fill(0f)
+    for (dy in -1..2) {
+        val cy = (iy + dy).coerceIn(0, height - 1)
+        for (dx in -1..2) {
+            val cx = (ix + dx).coerceIn(0, width - 1)
+            val offset = (cy * width + cx) * 3
+            val weight = wy[dy + 1] * wx[dx + 1]
+            rgb[0] += source[offset] * weight
+            rgb[1] += source[offset + 1] * weight
+            rgb[2] += source[offset + 2] * weight
+        }
     }
 }
 
-/**
- * This fallback exists only for incomplete artwork while the actual decoded
- * image loads. Normal audio and video always supply a real 2D field.
- */
+/** Never used for normal decoded art; safe neutral placeholder only. */
 private fun fieldFallback(bands: List<Color>, fallbackFloor: Color): CapsuleColorField {
     val safe = bands.ifEmpty { listOf(fallbackFloor) }
-    val values = List(CAPSULE_FIELD_COLUMNS * CAPSULE_FIELD_ROWS) { index ->
-        val x = (index % CAPSULE_FIELD_COLUMNS + 0.5f) / CAPSULE_FIELD_COLUMNS
-        val y = (index / CAPSULE_FIELD_COLUMNS + 0.5f) / CAPSULE_FIELD_ROWS
-        val shiftedX = (x + 0.18f * sin(y * 5.3f + x * 2.4f))
-            .coerceIn(0f, 1f)
-        lerp(immersiveSoftBandColor(safe, shiftedX), fallbackFloor,
-            (0.19f + 0.18f * y).coerceIn(0f, 1f))
-    }
-    return CapsuleColorField(CAPSULE_FIELD_COLUMNS, CAPSULE_FIELD_ROWS, values)
+    return CapsuleColorField(
+        CAPSULE_FIELD_COLUMNS,
+        CAPSULE_FIELD_ROWS,
+        List(CAPSULE_FIELD_COLUMNS * CAPSULE_FIELD_ROWS) { index ->
+            val x = (index % CAPSULE_FIELD_COLUMNS + 0.5f) / CAPSULE_FIELD_COLUMNS
+            val y = (index / CAPSULE_FIELD_COLUMNS + 0.5f) / CAPSULE_FIELD_ROWS
+            val curved = (x + 0.12f * sin(y * 4.8f + x * 1.9f)).coerceIn(0f, 1f)
+            lerp(immersiveSoftBandColor(safe, curved), fallbackFloor,
+                0.22f + 0.20f * y)
+        },
+    )
 }
 
 /**
- * One cached ImageBitmap: there are no per-column brushes and no huge
- * intermediate textures. The 2D field warps GENTLY away from the image seam
- * and slowly becomes darker lower down. Fixed microdither prevents low-bit
- * colour steps without a noisy animated overlay.
+ * Generates the photo's overlay and the underlying page using the EXACT
+ * same 2D optical coordinates at the cover edge. No extra dark seam.
+ * Bitmap work is requested on Dispatchers.Default by the composables.
  */
 internal fun immersiveSpatialFieldBitmap(
     bands: List<Color>,
@@ -153,63 +181,66 @@ internal fun immersiveSpatialFieldBitmap(
     field: CapsuleColorField? = null,
 ): ImageBitmap {
     val grid = field ?: fieldFallback(bands, fallbackFloor)
-    val source = blurredCells(grid)
-    val out = IntArray(FIELD_WIDTH * FIELD_HEIGHT)
+    val colors = blurredCells(grid)
+    val pixels = IntArray(FIELD_WIDTH * FIELD_HEIGHT)
     val rgb = FloatArray(3)
+    val wx = FloatArray(4)
+    val wy = FloatArray(4)
     val fraction = coverFraction.coerceIn(0.05f, 0.95f)
-    val coverEnd = 0.93f
-    val fadeStart = (0.30f - texture.coerceIn(0f, 1f) * 0.035f -
-        if (landscape) 0.02f else 0f).coerceAtLeast(0.23f)
-    // Complementary image/floor shader at the exact cover line.
-    val mergeStart = (fraction - 0.025f).coerceAtLeast(0f)
-    val mergeEnd = (fraction + tailFraction * 3f).coerceAtMost(0.98f)
-    fun byte(value: Float): Int = (value.coerceIn(0f, 1f) * 255f + 0.5f).toInt()
-    for (iy in 0 until FIELD_HEIGHT) {
-        val imageY = (iy + 0.5f) / FIELD_HEIGHT
-        val pageY = if (photoOverlay) imageY * fraction else imageY
-        val below = ((pageY - fraction) / (1f - fraction).coerceAtLeast(0.01f))
+    val fadeStart = (0.29f - texture.coerceIn(0f, 1f) * 0.04f -
+        if (landscape) 0.02f else 0f).coerceAtLeast(0.21f)
+    fun toByte(value: Float): Int =
+        (value.coerceIn(0f, 1f) * 255f + 0.5f).toInt()
+
+    for (row in 0 until FIELD_HEIGHT) {
+        val photoY = (row + 0.5f) / FIELD_HEIGHT
+        val pageY = if (photoOverlay) photoY * fraction else photoY
+        val extension = ((pageY - fraction) / (1f - fraction).coerceAtLeast(0.01f))
             .coerceIn(0f, 1f)
-        // The same source coordinate reaches both sides of the photo seam.
-        // Under the cover the field curls through the image instead of
-        // extending any column vertically: the crucial non-striped property.
-        val sourceY = if (pageY <= fraction)
-            (pageY / fraction * coverEnd).coerceIn(0f, 1f)
-        else (coverEnd - 0.34f * smooth(0f, 1f, below))
-        val warpAmount = smooth(mergeStart, (fraction + 0.22f).coerceAtMost(0.99f),
-            pageY) * 0.13f
-        val darken = smooth(fraction, 0.99f, pageY) *
-            (if (nearWhite) 0.17f else 0.30f)
-        val neutral = smooth((fraction + 0.08f).coerceAtMost(0.98f), 1f, pageY) * 0.12f
-        val alpha = if (photoOverlay) smooth(fadeStart, 0.92f, imageY) else 1f
-        for (ix in 0 until FIELD_WIDTH) {
-            val nx = (ix + 0.5f) / FIELD_WIDTH
-            val x = nx + warpAmount * (
-                sin(pageY * 7.1f + nx * 2.8f) * 0.75f +
-                    cos(pageY * 4.5f - nx * 5.4f) * 0.25f
-                )
-            sample2D(source, grid.width, grid.height, x, sourceY, rgb)
-            // The blackening starts at the boundary, not halfway into
-            // the image: no dark horizontal gap at the photo seam.
-            val shade = 1f - darken
-            val drift = neutral
-            val noise = (((ix * 131 + iy * 197 + ix * iy * 17) xor
-                (ix * 23 + iy * 51)) and 3) - 1.5f
-            val dither = noise / 700f
-            val r = byte(rgb[0] * shade * (1f - drift) +
-                fallbackFloor.red * drift + dither)
-            val g = byte(rgb[1] * shade * (1f - drift) +
-                fallbackFloor.green * drift + dither)
-            val b = byte(rgb[2] * shade * (1f - drift) +
-                fallbackFloor.blue * drift + dither)
-            out[iy * FIELD_WIDTH + ix] = (byte(alpha) shl 24) or
-                (r shl 16) or (g shl 8) or b
+        val sourceY = if (pageY <= fraction) {
+            (pageY / fraction * 0.92f).coerceIn(0f, 1f)
+        } else {
+            0.92f - 0.29f * smooth(0f, 1f, extension)
+        }
+        val warp = smooth(fraction, (fraction + 0.34f).coerceAtMost(1f), pageY)
+        val shade = 1f - smooth(fraction, 1f, pageY) *
+            (if (nearWhite) 0.19f else 0.33f)
+        val backdropMix = smooth((fraction + tailFraction).coerceAtMost(0.99f),
+            1f, pageY) * 0.14f
+        val alpha = if (photoOverlay) smooth(fadeStart, 0.92f, photoY) else 1f
+        val a = toByte(alpha) shl 24
+        // Precalculate row-only harmonics once, not per pixel.
+        val sinY = sin(pageY * 6.6f)
+        val cosY = cos(pageY * 4.8f)
+        for (column in 0 until FIELD_WIDTH) {
+            val x = (column + 0.5f) / FIELD_WIDTH
+            val offsetX = (sinY * cos(x * 4.1f) * 0.060f +
+                cosY * sin(x * 5.3f) * 0.040f) * warp
+            val offsetY = sin(x * 5.2f + pageY * 2.7f) * warp * 0.053f
+            sample2D(
+                colors, grid.width, grid.height,
+                x + offsetX, sourceY + offsetY,
+                rgb, wx, wy,
+            )
+            // Gentle continuous vignette, not squared clipping.
+            val fromCenter = kotlin.math.abs(x - 0.5f) * 2f
+            val edgeShade = 1f - 0.055f * fromCenter * fromCenter
+            val scale = shade * edgeShade * (1f - backdropMix)
+            val dither = ((((column * 131 + row * 197 + column * row * 17) xor
+                (column * 23 + row * 51)) and 7) - 3.5f) / 1250f
+            val r = toByte(rgb[0] * scale + fallbackFloor.red * backdropMix + dither)
+            val g = toByte(rgb[1] * scale + fallbackFloor.green * backdropMix + dither)
+            val b = toByte(rgb[2] * scale + fallbackFloor.blue * backdropMix + dither)
+            pixels[row * FIELD_WIDTH + column] =
+                a or (r shl 16) or (g shl 8) or b
         }
     }
     return Bitmap.createBitmap(FIELD_WIDTH, FIELD_HEIGHT, Bitmap.Config.ARGB_8888)
-        .apply { setPixels(out, 0, FIELD_WIDTH, 0, 0, FIELD_WIDTH, FIELD_HEIGHT) }
+        .apply { setPixels(pixels, 0, FIELD_WIDTH, 0, 0, FIELD_WIDTH, FIELD_HEIGHT) }
         .asImageBitmap()
 }
 
+/** Compatibility renderer; Immersion's primary path precomputes off-main. */
 internal fun Modifier.immersiveSpatialBackdrop(
     bands: List<Color>,
     fallbackFloor: Color,
@@ -231,8 +262,7 @@ internal fun Modifier.immersiveSpatialBackdrop(
     )
     onDrawBehind {
         drawImage(
-            image = bitmap,
-            dstSize = destination,
+            image = bitmap, dstSize = destination,
             filterQuality = FilterQuality.Medium,
         )
     }

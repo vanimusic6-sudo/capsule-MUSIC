@@ -42,6 +42,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,6 +52,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalDensity
@@ -774,6 +777,36 @@ internal fun CapsuleImmersiveContent(
         // audio/video field. Seven legacy bands are only a fallback.
         val pageField = if (isVideo && videoAmbientField != null)
             videoAmbientField else frame?.colorField
+
+        // The independently decoded cover MUST NOT appear until BOTH its
+        // two-dimensional photo fade and its matching page texture exist.
+        // Waiting for only Coil's onSuccess caused the photo-first flash.
+        val paintKey = remember(frame?.key, coverFraction, tailFraction) {
+            "${frame?.key}|$coverFraction|$tailFraction"
+        }
+        var pageTextureReadyFor by remember(paintKey) { mutableStateOf<String?>(null) }
+        var preparedPhotoOverlay by remember(paintKey) { mutableStateOf<ImageBitmap?>(null) }
+        LaunchedEffect(
+            paintKey, frame?.colorField, frame?.edgeBands,
+            pageFloor, nearWhite, frame?.bottomTexture, frame?.landscape,
+        ) {
+            val currentFrame = frame ?: return@LaunchedEffect
+            preparedPhotoOverlay = withContext(Dispatchers.Default) {
+                immersiveSpatialFieldBitmap(
+                    bands = currentFrame.edgeBands.ifEmpty { listOf(seamColor) },
+                    fallbackFloor = currentFrame.floor,
+                    coverFraction = coverFraction,
+                    tailFraction = tailFraction,
+                    texture = currentFrame.bottomTexture,
+                    landscape = currentFrame.landscape,
+                    nearWhite = currentFrame.nearWhiteBackground,
+                    photoOverlay = true,
+                    field = currentFrame.colorField,
+                )
+            }
+        }
+        val pairReady = frame != null &&
+            preparedPhotoOverlay != null && pageTextureReadyFor == paintKey
         val immersiveInk = ImmersiveControlInk
 
         // Preload the NEXT image invisibly. Coil must finish decoding this exact URL
@@ -813,13 +846,19 @@ internal fun CapsuleImmersiveContent(
             CapsuleVideoAmbientBackdrop(
                 bands = pageBands,
                 field = pageField,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().graphicsLayer {
+                    // Page and photo become visible in the SAME frame.
+                    alpha = if (frame == null || pairReady) 1f else 0f
+                },
                 fallbackFloor = pageFloor,
                 coverFraction = coverFraction,
                 tailFraction = tailFraction,
                 texture = frame?.bottomTexture ?: 0f,
                 landscape = frame?.landscape ?: false,
                 nearWhite = nearWhite,
+                onFirstTextureReady = {
+                    if (frame != null) pageTextureReadyFor = paintKey
+                },
             )
         }
 
@@ -866,7 +905,7 @@ internal fun CapsuleImmersiveContent(
                     // has owned it. Only the *shared* container crossfade can
                     // reveal it; the unrelated song gradient cannot punch holes
                     // through it while VIDEO is closing.
-                    alpha = capsuleImmersiveArtworkOpacity(
+                    alpha = if (!pairReady) 0f else capsuleImmersiveArtworkOpacity(
                         frameMatchesTrack = frame.key == visualKey,
                         hasPresentedVideo = keepVideoReturnArtworkOpaque,
                         trackFadeAlpha = gradientAlpha.value,
@@ -915,19 +954,17 @@ internal fun CapsuleImmersiveContent(
                             ),
                     )
                     }
-                    Box(
-                        modifier = Modifier.fillMaxSize().immersiveSpatialBackdrop(
-                            bands = artworkBands,
-                            fallbackFloor = pageFloor,
-                            coverFraction = coverFraction,
-                            tailFraction = tailFraction,
-                            texture = frame.bottomTexture,
-                            landscape = frame.landscape,
-                            nearWhite = nearWhite,
-                            photoOverlay = true,
-                            field = frame.colorField,
-                        ),
-                    )
+                    // This image was prepared on Dispatchers.Default, never
+                    // in drawWithCache on the animation/UI thread. Same source,
+                    // geometry and bitmap lifetime as the matching page.
+                    preparedPhotoOverlay?.let { overlay ->
+                        Image(
+                            bitmap = overlay,
+                            contentDescription = null,
+                            contentScale = ContentScale.FillBounds,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 }
             }
         }
