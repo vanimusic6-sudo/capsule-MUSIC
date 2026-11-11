@@ -13,6 +13,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -41,6 +43,9 @@ internal data class ImmersiveArtworkTone(
     val edgeBands: List<Color> = emptyList(),
     // True two-dimensional colour, sampled once from the same decoded crop.
     val colorField: CapsuleColorField? = null,
+    // Decoded 256 px preview for the very first frame of an immediate open.
+    // This avoids a second network request before any image can be displayed.
+    val preview: ImageBitmap? = null,
     // Only genuinely near-white, nearly neutral covers need the new soft
     // seam treatment. Every other album gets the ORIGINAL palette and fade.
     val nearWhiteBackground: Boolean = false,
@@ -52,11 +57,12 @@ internal data class ImmersiveArtworkTone(
 
 /** The raw 16:9 image and its coloured floor must become visible in the same frame. */
 internal fun canRevealImmersiveArtwork(tone: ImmersiveArtworkTone, imageLoaded: Boolean): Boolean =
-    tone.ready && !tone.displayUrl.isNullOrBlank() && imageLoaded
+    tone.ready && !tone.displayUrl.isNullOrBlank() &&
+        (imageLoaded || tone.preview != null)
 
 private val immersiveArtworkCache = object : LinkedHashMap<String, ImmersiveArtworkTone>(24, 0.75f, true) {
     override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImmersiveArtworkTone>?): Boolean =
-        size > 64
+        size > 16
 }
 
 /**
@@ -178,6 +184,7 @@ internal fun rememberImmersiveEdgeColor(
                     bottomTexture = bottomTexture,
                     edgeBands = edgeBands,
                     colorField = colorField,
+                    preview = image.asImageBitmap(),
                     nearWhiteBackground = nearWhite,
                     landscape = landscape,
                     displayUrl = url,

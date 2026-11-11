@@ -663,7 +663,7 @@ internal fun CapsuleImmersiveContent(
             shownGradient?.key,
             visualKey,
             visible,
-        )
+        ) && (!visible || coverAndGradientReady)
         LaunchedEffect(fadingOldFrame) {
             if (fadingOldFrame) {
                 gradientAlpha.animateTo(
@@ -773,40 +773,70 @@ internal fun CapsuleImmersiveContent(
         // retains the exact colours of its own pixels while video morphs in.
         val pageBands = if (isVideo && videoAmbientBands.isNotEmpty())
             videoAmbientBands else artworkBands
-        // The 12x10 two-dimensional source is what actually drives the new
-        // audio/video field. Seven legacy bands are only a fallback.
+        // The current image-derived field supplies video ambience; static
+        // audio uses only its lower edge to match the picture.
         val pageField = if (isVideo && videoAmbientField != null)
             videoAmbientField else frame?.colorField
 
-        // The independently decoded cover MUST NOT appear until BOTH its
-        // two-dimensional photo fade and its matching page texture exist.
-        // Waiting for only Coil's onSuccess caused the photo-first flash.
+        // One render result, one commit, one visual key. The previous design
+        // had TWO independent render coroutines and a readiness callback:
+        // one often won by a frame and the other faded in as a visible wave.
         val paintKey = remember(frame?.key, coverFraction, tailFraction) {
             "${frame?.key}|$coverFraction|$tailFraction"
         }
-        var pageTextureReadyFor by remember(paintKey) { mutableStateOf<String?>(null) }
-        var preparedPhotoOverlay by remember(paintKey) { mutableStateOf<ImageBitmap?>(null) }
+        var matchedPaint by remember(paintKey) {
+            mutableStateOf<Pair<ImageBitmap, ImageBitmap>?>(null)
+        }
         LaunchedEffect(
-            paintKey, frame?.colorField, frame?.edgeBands,
-            pageFloor, nearWhite, frame?.bottomTexture, frame?.landscape,
+            paintKey, frame?.colorField, frame?.edgeBands, pageFloor,
+            nearWhite, frame?.bottomTexture, frame?.landscape,
         ) {
-            val currentFrame = frame ?: return@LaunchedEffect
-            preparedPhotoOverlay = withContext(Dispatchers.Default) {
-                immersiveSpatialFieldBitmap(
-                    bands = currentFrame.edgeBands.ifEmpty { listOf(seamColor) },
-                    fallbackFloor = currentFrame.floor,
+            val readyFrame = frame ?: return@LaunchedEffect
+            val colours = readyFrame.edgeBands.ifEmpty { listOf(seamColor) }
+            matchedPaint = withContext(Dispatchers.Default) {
+                val page = immersiveSpatialFieldBitmap(
+                    bands = colours,
+                    fallbackFloor = readyFrame.floor,
                     coverFraction = coverFraction,
                     tailFraction = tailFraction,
-                    texture = currentFrame.bottomTexture,
-                    landscape = currentFrame.landscape,
-                    nearWhite = currentFrame.nearWhiteBackground,
-                    photoOverlay = true,
-                    field = currentFrame.colorField,
+                    texture = readyFrame.bottomTexture,
+                    landscape = readyFrame.landscape,
+                    nearWhite = readyFrame.nearWhiteBackground,
+                    photoOverlay = false,
+                    field = readyFrame.colorField,
                 )
+                val cover = immersiveSpatialFieldBitmap(
+                    bands = colours,
+                    fallbackFloor = readyFrame.floor,
+                    coverFraction = coverFraction,
+                    tailFraction = tailFraction,
+                    texture = readyFrame.bottomTexture,
+                    landscape = readyFrame.landscape,
+                    nearWhite = readyFrame.nearWhiteBackground,
+                    photoOverlay = true,
+                    field = readyFrame.colorField,
+                )
+                page to cover
             }
         }
-        val pairReady = frame != null &&
-            preparedPhotoOverlay != null && pageTextureReadyFor == paintKey
+        val pairReady = frame != null && matchedPaint != null
+        var retainedVideoField by remember(frame?.key) {
+            mutableStateOf<CapsuleColorField?>(null)
+        }
+        var videoTextureReady by remember(frame?.key) { mutableStateOf(false) }
+        val videoLayerAlpha = remember(frame?.key) { Animatable(0f) }
+        LaunchedEffect(isVideo, videoAmbientField) {
+            if (isVideo && videoAmbientField != null) retainedVideoField = videoAmbientField
+        }
+        LaunchedEffect(isVideo, videoTextureReady) {
+            if (isVideo && videoTextureReady) {
+                videoLayerAlpha.animateTo(1f, tween(420))
+            } else if (!isVideo) {
+                videoLayerAlpha.animateTo(0f, tween(330))
+                retainedVideoField = null
+                videoTextureReady = false
+            }
+        }
         val immersiveInk = ImmersiveControlInk
 
         // Preload the NEXT image invisibly. Coil must finish decoding this exact URL
@@ -814,7 +844,9 @@ internal fun CapsuleImmersiveContent(
         // Once this exact artwork has decoded, dispose the invisible Coil
         // preloader. Keeping it alive while VIDEO runs doubled retained image
         // nodes and graphics layers for no visual benefit.
-        if (capsuleImmersiveNeedsArtworkPreload(coverImageReady, artworkTone.ready, artworkTone.displayUrl)) {
+        if (artworkTone.preview == null &&
+            capsuleImmersiveNeedsArtworkPreload(coverImageReady, artworkTone.ready, artworkTone.displayUrl)
+        ) {
             // Restart the Coil painter only after a failed attempt, never each
             // recomposition. The existing sampled URL and palette remain paired.
             key(mediaMetadata.id, artworkTone.displayUrl, coverLoadRetry) {
@@ -838,28 +870,39 @@ internal fun CapsuleImmersiveContent(
             }
         }
 
-        // Photo and page continue exactly the same horizontal colour field.
-        // A single continuity-preserving GPU blend owns *both* audio artwork
-        // and video ambience. A new sample starts from the current on-screen
-        // colour instead of jumping to the previous target.
-        key(frame?.key) {
-            CapsuleVideoAmbientBackdrop(
-                bands = pageBands,
-                field = pageField,
-                modifier = Modifier.fillMaxSize().graphicsLayer {
-                    // Page and photo become visible in the SAME frame.
-                    alpha = if (frame == null || pairReady) 1f else 0f
-                },
-                fallbackFloor = pageFloor,
-                coverFraction = coverFraction,
-                tailFraction = tailFraction,
-                texture = frame?.bottomTexture ?: 0f,
-                landscape = frame?.landscape ?: false,
-                nearWhite = nearWhite,
-                onFirstTextureReady = {
-                    if (frame != null) pageTextureReadyFor = paintKey
-                },
-            )
+        // Static album background: never route it through the 1.85-second
+        // VIDEO palette animation. That caused the delayed wave/flash.
+        Box(Modifier.fillMaxSize().background(if (frame != null) pageFloor
+            else IMMERSIVE_NEUTRAL_COLOR)) {
+            matchedPaint?.first?.let { bitmap ->
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = null,
+                    contentScale = ContentScale.FillBounds,
+                    modifier = Modifier.fillMaxSize().graphicsLayer {
+                        alpha = gradientAlpha.value
+                    },
+                )
+            }
+            val liveField = retainedVideoField
+            if (liveField != null && matchedPaint != null) {
+                key(frame?.key) {
+                    CapsuleVideoAmbientBackdrop(
+                        bands = pageBands,
+                        field = liveField,
+                        modifier = Modifier.fillMaxSize().graphicsLayer {
+                            alpha = videoLayerAlpha.value
+                        },
+                        fallbackFloor = pageFloor,
+                        coverFraction = coverFraction,
+                        tailFraction = tailFraction,
+                        texture = frame?.bottomTexture ?: 0f,
+                        landscape = frame?.landscape ?: false,
+                        nearWhite = nearWhite,
+                        onFirstTextureReady = { videoTextureReady = true },
+                    )
+                }
+            }
         }
 
         CapsuleVideoArtworkTransition(
@@ -893,7 +936,30 @@ internal fun CapsuleImmersiveContent(
             onArtworkClick = onShowLyrics,
             video = { active -> CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active) },
         ) {
-            if (frame != null) {
+            if (!pairReady) {
+                Box(Modifier.fillMaxSize()) {
+                    if (frame?.key == visualKey && artworkTone.preview != null) {
+                        Image(
+                            bitmap = artworkTone.preview,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else if (frame == null && !mediaMetadata.thumbnailUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = mediaMetadata.thumbnailUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
+                        0.62f to Color.Transparent,
+                        1f to (if (frame != null) pageFloor else Color(0xFF151219)),
+                    )))
+                }
+            }
+            if (frame != null && pairReady) {
                 // Wide (16:9) video thumbnails use a 1.06x GPU overscan below.
                 // Without a parent clip, those pixels escape the artwork slot,
                 // continuing UNDER the page's independently sized fade and
@@ -911,6 +977,19 @@ internal fun CapsuleImmersiveContent(
                         trackFadeAlpha = gradientAlpha.value,
                     )
                 }) {
+                    if (frame.key == visualKey) {
+                        artworkTone.preview?.let { preview ->
+                            Image(
+                                bitmap = preview,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize().graphicsLayer(
+                                    scaleX = if (frame.landscape) 1.06f else 1f,
+                                    scaleY = if (frame.landscape) 1.06f else 1f,
+                                ),
+                            )
+                        }
+                    }
                     // The two requests use the same URL/size, but Coil can
                     // cancel the visible one during a player/surface transition.
                     // Show the *already decoded* image, never a neutral square,
@@ -954,10 +1033,8 @@ internal fun CapsuleImmersiveContent(
                             ),
                     )
                     }
-                    // This image was prepared on Dispatchers.Default, never
-                    // in drawWithCache on the animation/UI thread. Same source,
-                    // geometry and bitmap lifetime as the matching page.
-                    preparedPhotoOverlay?.let { overlay ->
+                    // Prepared with page in ONE coroutine, committed atomically.
+                    matchedPaint?.second?.let { overlay ->
                         Image(
                             bitmap = overlay,
                             contentDescription = null,

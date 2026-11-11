@@ -30,11 +30,24 @@ class CapsuleImmersiveFieldTest {
             largestJump < 0.055f)
     }
 
-    @Test fun coloursMergeOnlyAfterTheCoverHasSafelyExtendedIntoThePage() {
+    @Test fun shortBleedNeverExtendsIntoTheTransportControls() {
         val cover = 0.48f
-        assertTrue(immersiveSpatialDiffusion(0.25f, cover) < 0.001f)
-        assertTrue(immersiveSpatialDiffusion(cover, cover) in 0.15f..0.55f)
-        assertTrue(immersiveSpatialDiffusion(0.9f, cover) > 0.80f)
+        val end = capsuleImmersiveBleedEnd(cover, 0.07f)
+        assertTrue(end > cover)
+        assertTrue("Keep the fade shorter than 9% of the sheet", end - cover < 0.09f)
+        assertTrue(capsuleImmersiveBleedEnd(0.50f, 0.08f) < 0.60f)
+    }
+
+    @Test fun isolatedDarkEdgeOnPaleCoverCannotDirtyTheDominantTone() {
+        val white = Color(0xFFF2F2ED)
+        val black = Color(0xFF090909)
+        val grid = CapsuleColorField(20, 16, List(20 * 16) { idx ->
+            if (idx % 20 < 2) black else white
+        })
+        val dominant = capsuleDominantEdgeColor(grid)
+        assertTrue(dominant.red > 0.85f)
+        assertTrue(dominant.green > 0.85f)
+        assertTrue(dominant.blue > 0.80f)
     }
 
     @Test fun strongerHorizontalBlurDoesNotDestroySpatialIdentity() {

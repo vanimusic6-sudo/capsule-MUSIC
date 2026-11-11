@@ -227,6 +227,17 @@ fun BottomSheetPlayer(
         }
 
     val onScreen = appIsOnScreen()
+    // Sample the current Immersion cover while MINI is still displayed.
+    // Previously colour extraction did not start until the sheet opened;
+    // a quick tap had to wait for multiple sequential image decodes.
+    val warmedImmersiveTone = if (effectivePlayerDesign == CapsulePlayerDesign.IMMERSIVE) {
+        rememberImmersiveEdgeColor(
+            mediaMetadata = enrichedMetadata,
+            enabled = onScreen && !state.isDismissed,
+            visibleArtworkAspectRatio = configuration.screenWidthDp.toFloat() /
+                immersiveArtworkHeight(configuration.screenHeightDp.dp).value.coerceAtLeast(1f),
+        )
+    } else null
     // Keep already decoded artwork across Android STOP/START and mini/full handoffs.
     // The full visual tree is still unmounted off-screen to avoid animation/CPU work.
     // Only a few existing painters remain; no off-screen image requests are made.
@@ -507,6 +518,7 @@ fun BottomSheetPlayer(
                     ) {
                     CapsulePlayerLyricsHost(
                     design = effectivePlayerDesign,
+                    warmedImmersiveTone = warmedImmersiveTone,
                     showLyrics = showInlineLyrics,
                     mediaMetadata = metadata,
                     decodedArtworkCache = decodedArtworkCache,
@@ -609,6 +621,7 @@ private val LyricsFrameCornerRadius = 18.dp
 @OptIn(ExperimentalLayoutApi::class)
 private fun CapsulePlayerLyricsHost(
     design: CapsulePlayerDesign,
+    warmedImmersiveTone: ImmersiveArtworkTone?,
     showLyrics: Boolean,
     mediaMetadata: MediaMetadata,
     decodedArtworkCache: MutableMap<String, Pair<String, Painter>>,
@@ -728,16 +741,7 @@ private fun CapsulePlayerLyricsHost(
         // Hoisting it also avoids a second decode/extraction when Lyrics opens.
         val onScreen = appIsOnScreen()
         val immersiveArtworkTone =
-            if (design == CapsulePlayerDesign.IMMERSIVE) {
-                rememberImmersiveEdgeColor(
-                    mediaMetadata = mediaMetadata,
-                    enabled = onScreen && playerState.isExpandedOrExpanding,
-                    visibleArtworkAspectRatio =
-                        maxWidth.value / immersiveArtworkHeight(maxHeight).value.coerceAtLeast(1f),
-                )
-            } else {
-                null
-            }
+            if (design == CapsulePlayerDesign.IMMERSIVE) warmedImmersiveTone else null
         Box(
             modifier =
                 Modifier

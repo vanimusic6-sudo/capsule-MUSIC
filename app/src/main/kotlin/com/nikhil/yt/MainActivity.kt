@@ -113,6 +113,8 @@ import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
@@ -423,7 +425,8 @@ class MainActivity : ComponentActivity() {
     }
 
     @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
-    @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+    @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class,
+        ExperimentalComposeUiApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         restoredTopLevelRoute = savedInstanceState?.getString(STATE_TOP_LEVEL_ROUTE)
@@ -648,6 +651,7 @@ class MainActivity : ComponentActivity() {
                             )
                 ) {
                     val focusManager = LocalFocusManager.current
+                    val keyboardController = LocalSoftwareKeyboardController.current
                     val density = LocalDensity.current
                     // Full-screen surfaces may hide system bars, but the app shell must keep
                     // the same physical geometry. Using visibility-aware insets here made the
@@ -892,6 +896,28 @@ class MainActivity : ComponentActivity() {
                             expandedBound = maxHeight,
                         )
 
+
+                    /*
+                     * Focus/IME ownership changes immediately when mini → player
+                     * starts. A pending SearchBar keyboard request can otherwise
+                     * arrive AFTER the fullscreen player has become visible.
+                     */
+                    val playerTakesKeyboardFocus =
+                        playerBottomSheetState.isExpandedOrExpanding
+                    LaunchedEffect(playerTakesKeyboardFocus) {
+                        if (playerTakesKeyboardFocus) {
+                            active = false
+                            openSearchImmediately = false
+                            focusManager.clearFocus(force = true)
+                            keyboardController?.hide()
+                            // IME show requests already posted by BasicTextField
+                            // can arrive on the next choreographer traversal.
+                            // Repeat once, never poll or delay any player frame.
+                            delay(90L)
+                            focusManager.clearFocus(force = true)
+                            keyboardController?.hide()
+                        }
+                    }
 
                     val capsuleMiniPlayerActuallyVisible =
                         playerConnection != null &&
