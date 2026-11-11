@@ -233,7 +233,9 @@ fun BottomSheetPlayer(
     val warmedImmersiveTone = if (effectivePlayerDesign == CapsulePlayerDesign.IMMERSIVE) {
         rememberImmersiveEdgeColor(
             mediaMetadata = enrichedMetadata,
-            enabled = onScreen && !state.isDismissed,
+            // Preload as soon as playback metadata exists, even while the
+            // mini-player is still transitioning out of Dismissed.
+            enabled = onScreen && !enrichedMetadata?.thumbnailUrl.isNullOrBlank(),
             visibleArtworkAspectRatio = configuration.screenWidthDp.toFloat() /
                 immersiveArtworkHeight(configuration.screenHeightDp.dp).value.coerceAtLeast(1f),
         )

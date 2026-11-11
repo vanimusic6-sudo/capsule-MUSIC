@@ -144,8 +144,9 @@ internal fun immersiveSpatialFieldBitmap(
     val cover = coverFraction.coerceIn(0.05f, 0.95f)
     val normalEnd = capsuleImmersiveBleedEnd(cover, tailFraction)
     val end = if (nearWhite) cover + (normalEnd - cover) * 0.64f else normalEnd
-    val fadeStart = (0.72f - texture.coerceIn(0f, 1f) * 0.025f -
-        if (landscape) 0.015f else 0f).coerceIn(0.66f, 0.78f)
+    // Keep the photograph clean longer; only the last ~20% dissolves.
+    val fadeStart = (0.78f - texture.coerceIn(0f, 1f) * 0.018f -
+        if (landscape) 0.012f else 0f).coerceIn(0.74f, 0.80f)
     val pixels = IntArray(EDGE_WIDTH * EDGE_HEIGHT)
     fun channel(x: Float): Int = (x.coerceIn(0f, 1f) * 255f + 0.5f).toInt()
 

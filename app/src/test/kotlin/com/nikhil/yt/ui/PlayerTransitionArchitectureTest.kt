@@ -49,7 +49,7 @@ class PlayerTransitionArchitectureTest {
         assertFalse(immersive.contains("alpha = if (frame == null || pairReady) 1f else 0f"))
         val player = source("com/nikhil/yt/ui/player/Player.kt")
         assertTrue(player.contains("val warmedImmersiveTone ="))
-        assertTrue(player.contains("enabled = onScreen && !state.isDismissed"))
+        assertTrue(player.contains("enabled = onScreen && !enrichedMetadata?.thumbnailUrl.isNullOrBlank()"))
         assertTrue(player.contains("warmedImmersiveTone = warmedImmersiveTone"))
         val field = source("com/nikhil/yt/ui/player/CapsuleImmersiveField.kt")
         assertTrue(field.contains("fun capsuleDominantEdgeColor("))
