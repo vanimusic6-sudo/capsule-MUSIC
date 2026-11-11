@@ -61,9 +61,8 @@ internal fun CapsuleVideoAmbientBackdrop(
 
     LaunchedEffect(bands, field, fallbackFloor, coverFraction, tailFraction,
         texture, landscape, nearWhite) {
-        if (bands == targetBands && field == targetField && toTexture != null) {
-            return@LaunchedEffect
-        }
+        // Geometry and palette are both LaunchedEffect keys: refresh the
+        // cached texture even if colours are unchanged but viewport changed.
         val fresh = withContext(Dispatchers.Default) {
             immersiveSpatialFieldBitmap(
                 bands, fallbackFloor, coverFraction, tailFraction, texture,
