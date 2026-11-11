@@ -1,9 +1,8 @@
 /*
  * Capsule MUSIC — cinematic, image-derived ambient colour.
  *
- * No bars, no tiled rectangles, no sharp grid cell edges. A small real
- * image is blurred at two spatial scales, reconstructed with a cubic
- * B-spline, and drawn as ONE immutable GPU texture.
+ * A short photo dissolve and a coherent floor, prepared off-thread from
+ * the same visible crop. Static artwork has no animation clock or rays.
  */
 package com.nikhil.yt.ui.player
 
@@ -19,7 +18,6 @@ import androidx.compose.ui.unit.IntSize
 import kotlin.math.exp
 import kotlin.math.roundToInt
 
-// 192x304 (~228 KiB). Prepared on a worker, never every animation frame.
 
 /** Compatibility helpers for existing fallback and regression tests. */
 internal fun immersiveSpatialBandColor(bands: List<Color>, fraction: Float): Color {
@@ -54,12 +52,7 @@ private fun smooth(from: Float, to: Float, value: Float): Float {
 internal fun immersiveSpatialDiffusion(pageY: Float, coverFraction: Float): Float =
     smooth(coverFraction * 0.64f, (coverFraction + 0.29f).coerceAtMost(0.995f), pageY) * 0.97f
 
-/**
- * EDGE-ONLY BLEED. The former 20×16 projected image produced floating
- * squares, long colour rays and dirty black patches. This renderer reads
- * ONLY the lower crop, preserves its x-position at the boundary, and
- * reaches a stable median-derived floor within a short distance.
- */
+/** Small precomputed textures; no full-screen CPU rasterization per frame. */
 private const val EDGE_WIDTH = 144
 private const val EDGE_HEIGHT = 176
 
@@ -71,22 +64,25 @@ private fun smoothEdge(start: Float, end: Float, value: Float): Float {
 internal fun capsuleImmersiveBleedEnd(cover: Float, extension: Float): Float =
     (cover + extension.coerceIn(0.02f, 0.06f)).coerceAtMost(0.985f)
 
-/** Choose an actual lower-crop colour, with support across the image.
- * Channel-wise medians could invent a hue absent from the source. A small
- * quantised mode rejects narrow black borders and sparse bright lettering.
+/** A robust lower-crop representative. Use the actual colour nearest the
+ * channel medians: narrow dark borders cannot win just because a textured
+ * bright background is split across many quantisation buckets.
  */
 internal fun capsuleDominantEdgeColor(field: CapsuleColorField): Color {
     val samples = (0 until field.width).flatMap { x ->
         (maxOf(0, field.height - 4) until field.height).map { y -> field.cell(x, y) }
     }
-    fun bucket(c: Color): Int =
-        ((c.red * 7f).roundToInt() shl 6) or
-            ((c.green * 7f).roundToInt() shl 3) or (c.blue * 7f).roundToInt()
-    val groups = samples.groupBy(::bucket)
-    val dominant = groups.values.maxBy { it.size }
-    return Color(dominant.sumOf { it.red.toDouble() }.toFloat() / dominant.size,
-        dominant.sumOf { it.green.toDouble() }.toFloat() / dominant.size,
-        dominant.sumOf { it.blue.toDouble() }.toFloat() / dominant.size)
+    fun median(channel: (Color) -> Float): Float =
+        samples.map(channel).sorted()[samples.size / 2]
+    val r = median { it.red }
+    val g = median { it.green }
+    val b = median { it.blue }
+    return samples.minBy { c ->
+        val dr = c.red - r
+        val dg = c.green - g
+        val db = c.blue - b
+        dr * dr + dg * dg + db * db
+    }
 }
 
 /** Retain the source hue and dark colours; cap only bright floors for white controls. */

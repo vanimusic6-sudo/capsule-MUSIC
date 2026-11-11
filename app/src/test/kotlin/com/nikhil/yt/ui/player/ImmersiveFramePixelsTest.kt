@@ -40,6 +40,15 @@ class ImmersiveFramePixelsTest {
         assertEquals(floor.red, floor.blue, 0.01f)
     }
 
+    @Test fun texturedBrightMajorityBeatsAUniformDarkMinority() {
+        val result = frame(cover { x, y ->
+            if (x < 60) AndroidColor.BLACK
+            else AndroidColor.rgb(180 + (x + y) % 70, 80 + x % 70, 25 + y % 30)
+        })
+        assertTrue(result.tone.edge.red > 0.6f)
+        assertTrue(result.tone.edge.red > result.tone.edge.blue * 3f)
+    }
+
     @Test fun saturatedOrangeRetainsItsHueAndDarkCoverIsNotArtificiallyTinted() {
         val warm = frame(cover { _, _ -> AndroidColor.rgb(240, 90, 15) })
         val lower = Color(warm.page.asAndroidBitmap().getPixel(72, 160))
