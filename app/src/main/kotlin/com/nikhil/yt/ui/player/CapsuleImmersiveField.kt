@@ -156,6 +156,11 @@ internal fun immersiveSpatialFieldBitmap(
         val below = (pageY - cover).coerceAtLeast(0f)
         val floorMix = smoothEdge(cover, end, pageY)
         val drift = smoothEdge(0f, (end - cover) * 0.65f, below) * 0.48f
+        // Above the photo fade, keep the hidden wallpaper quiet. When a
+        // VIDEO window shrinks inside the large artwork slot, long vertical
+        // edge stripes must not suddenly appear beside the video.
+        val aboveWeight = if (photoOverlay || pageY >= cover) 1f else
+            smoothEdge(cover * 0.59f, cover * 0.91f, pageY)
         // The overlay starts late, and is fully opaque before the photo ends.
         // Both renderers read EXACTLY the same local edge at the join.
         val opacity = if (photoOverlay) smoothEdge(fadeStart, 0.975f, y) else 1f
@@ -165,7 +170,7 @@ internal fun immersiveSpatialFieldBitmap(
             val decay = smoothEdge(
                 0f, (end - cover) * (0.21f + 0.68f * edgeSupport[col]), below,
             )
-            val localWeight = 1f - maxOf(decay, drift)
+            val localWeight = (1f - maxOf(decay, drift)) * aboveWeight
             // No waves, no 2D projection below the image. A local dark stripe
             // dissolves shortly after the seam; the majority colour wins.
             val remaining = 1f - floorMix

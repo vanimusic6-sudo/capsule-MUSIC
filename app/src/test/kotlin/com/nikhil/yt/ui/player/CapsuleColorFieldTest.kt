@@ -66,6 +66,14 @@ class CapsuleColorFieldTest {
             assertTrue("Cover/page join must match without a thin gap",
                 kotlin.math.abs(rgb(bottomPhoto, shift) - rgb(seamPage, shift)) < 26)
         }
+        val upperY = (page.height * 0.17f).toInt()
+        for (shift in listOf(16, 8, 0)) {
+            assertTrue("Hidden upper page must not paint stripes beside video",
+                kotlin.math.abs(
+                    rgb(page.getPixel(2, upperY), shift) -
+                        rgb(page.getPixel(page.width - 3, upperY), shift),
+                ) <= 3)
+        }
         val lowerY = (page.height * 0.90f).toInt()
         val left = page.getPixel(2, lowerY)
         val right = page.getPixel(page.width - 3, lowerY)
