@@ -68,20 +68,12 @@ internal fun Bitmap.capsuleColorField(
         }
         val color = if (n > 0) Color(r / n, g / n, b / n)
             else Color(0xFF18171C)
-        // Avoid per-cell HSV brightness CLAMPING, which made large clusters
-        // of cells share an identical flat value and resemble coloured cubes.
-        // This continuous shoulder keeps every sampled light/dark gradation.
-        if (video) lerp(color, Color(0xFF0C0D13), 0.43f)
-        else if (color.isNearWhiteImmersiveBackground()) color
-        else {
-            val peak = maxOf(color.red, color.green, color.blue)
-            val shoulder = 0.53f / (0.42f + 0.58f * peak)
-            Color(
-                (color.red * shoulder).coerceIn(0f, 1f),
-                (color.green * shoulder).coerceIn(0f, 1f),
-                (color.blue * shoulder).coerceIn(0f, 1f),
-            )
-        }
+        // The photo's actual lower edge must match the page at the seam.
+        // Do NOT tone-map each audio cell before this match: the previous
+        // brightness shoulder turned a genuine warm/orange edge into a muted
+        // look and made the overlay visibly change colour inside the photo.
+        // Darkening happens ONLY below the seam inside the bleed renderer.
+        if (video) lerp(color, Color(0xFF0C0D13), 0.43f) else color
     }
     return CapsuleColorField(CAPSULE_FIELD_COLUMNS, CAPSULE_FIELD_ROWS, cells)
 }

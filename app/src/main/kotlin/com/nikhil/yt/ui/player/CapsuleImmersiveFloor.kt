@@ -184,7 +184,10 @@ internal fun rememberImmersiveEdgeColor(
                     bottomTexture = bottomTexture,
                     edgeBands = edgeBands,
                     colorField = colorField,
-                    preview = image.asImageBitmap(),
+                    // Own the preview pixels independently of Coil's bitmap
+                    // pool. A retained player frame must never point at a
+                    // bitmap that another request can recycle/reuse.
+                    preview = image.copy(Bitmap.Config.ARGB_8888, false).asImageBitmap(),
                     nearWhiteBackground = nearWhite,
                     landscape = landscape,
                     displayUrl = url,

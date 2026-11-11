@@ -3,6 +3,8 @@ package com.nikhil.yt.ui.player
 import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asAndroidBitmap
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -38,6 +40,42 @@ class CapsuleColorFieldTest {
         assertTrue(capsuleFieldChanged(null, grid))
         assertFalse(capsuleFieldChanged(grid, grid))
         bitmap.recycle()
+    }
+
+    @Test fun actualSeamMatchesAndNarrowDarkStripeDoesNotExtendToControls() {
+        val pale = Color(0xFFF6F5F2)
+        val narrowBlack = Color(0xFF070707)
+        val field = CapsuleColorField(20, 16,
+            List(20 * 16) { index ->
+                if (index % 20 < 2) narrowBlack else pale
+            })
+        val floor = Color(0xFF19151C)
+        fun render(overlay: Boolean) = immersiveSpatialFieldBitmap(
+            bands = emptyList(), fallbackFloor = floor,
+            coverFraction = 0.5f, tailFraction = 0.055f, texture = 0f,
+            landscape = false, nearWhite = true, photoOverlay = overlay,
+            field = field,
+        ).asAndroidBitmap()
+        val page = render(false)
+        val photo = render(true)
+        fun rgb(pixel: Int, shift: Int): Int = pixel shr shift and 255
+        val edgeX = page.width / 2
+        val bottomPhoto = photo.getPixel(edgeX, photo.height - 1)
+        val seamPage = page.getPixel(edgeX, page.height / 2)
+        for (shift in listOf(16, 8, 0)) {
+            assertTrue("Cover/page join must match without a thin gap",
+                kotlin.math.abs(rgb(bottomPhoto, shift) - rgb(seamPage, shift)) < 26)
+        }
+        val lowerY = (page.height * 0.90f).toInt()
+        val left = page.getPixel(2, lowerY)
+        val right = page.getPixel(page.width - 3, lowerY)
+        for (shift in listOf(16, 8, 0)) {
+            assertTrue("Isolated dark strip may not cast a long ray",
+                kotlin.math.abs(rgb(left, shift) - rgb(right, shift)) <= 4)
+        }
+        assertTrue(capsuleDominantEdgeColor(field).red > 0.89f)
+        page.recycle()
+        photo.recycle()
     }
 
     @Test fun interruptedFieldTransitionStartsFromCurrentVisibleColours() {
