@@ -59,7 +59,8 @@ class UiEnergyRegressionTest {
 
     @Test fun `optionalWallpapersThrottleFramesButNeverReduceLyricFPS`() {
         val wallpaper = source("com/nikhil/yt/ui/player/CapsuleBackgroundEffects.kt")
-        assertTrue(wallpaper.contains("delay(capsuleAmbientFrameDelayMs(compact))"))
+        assertTrue(wallpaper.contains("if (compact) delay(capsuleAmbientFrameDelayMs(compact))"))
+        assertTrue(wallpaper.contains("FULL_AMBIENT_FRAME_DELAY_MS = 0L"))
         assertTrue(wallpaper.contains("if (!isVisible || !running || !motionEnabled) return@LaunchedEffect"))
         assertTrue(wallpaper.contains("val nebulaSparks = if (effect == CapsuleBackgroundEffect.NEBULA)"))
         val lyrics = source("com/nikhil/yt/ui/component/Lyrics.kt")

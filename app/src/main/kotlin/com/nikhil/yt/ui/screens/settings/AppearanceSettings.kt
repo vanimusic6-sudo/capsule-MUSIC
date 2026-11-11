@@ -75,6 +75,7 @@ import com.nikhil.yt.constants.MiniPlayerBackgroundStyle
 import com.nikhil.yt.constants.MiniPlayerBackgroundStyleKey
 import com.nikhil.yt.constants.PlayerBackgroundStyle
 import com.nikhil.yt.constants.PlayerBackgroundStyleKey
+import com.nikhil.yt.constants.CapsuleVideoAmbientBackgroundKey
 import com.nikhil.yt.constants.PureBlackKey
 import com.nikhil.yt.constants.ShowCachedPlaylistKey
 import com.nikhil.yt.constants.ShowDownloadedPlaylistKey
@@ -195,6 +196,10 @@ fun AppearanceSettings(
             defaultValue =
                 ReleaseAppearanceDefaults.playerBackground,
         )
+
+    // One preference appears in both regular and Developer > Appearance modes.
+    val (videoAmbientEnabled, onVideoAmbientEnabledChange) =
+        rememberPreference(CapsuleVideoAmbientBackgroundKey, defaultValue = false)
 
     val (
         miniPlayerBackground,
@@ -749,6 +754,14 @@ fun AppearanceSettings(
                         stringResource(R.string.background_capsule_glow)
                 }
             },
+        )
+
+        SwitchPreference(
+            title = { Text(stringResource(R.string.capsule_video_ambient_title)) },
+            description = stringResource(R.string.capsule_video_ambient_description),
+            icon = { Icon(painterResource(R.drawable.gradient), contentDescription = null) },
+            checked = videoAmbientEnabled,
+            onCheckedChange = onVideoAmbientEnabledChange,
         )
 
         EnumListPreference(

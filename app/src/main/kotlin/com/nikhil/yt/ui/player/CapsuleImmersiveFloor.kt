@@ -9,10 +9,13 @@ import android.graphics.Bitmap
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -37,6 +40,13 @@ internal data class ImmersiveArtworkTone(
     val landscape: Boolean = false,
     val accent: Color = IMMERSIVE_NEUTRAL_COLOR,
     val bottomTexture: Float = 0f,
+    // Seven left-to-right colours from the actual visible artwork crop.
+    val edgeBands: List<Color> = emptyList(),
+    // True two-dimensional colour, sampled once from the same decoded crop.
+    val colorField: CapsuleColorField? = null,
+    // Decoded 256 px preview for the very first frame of an immediate open.
+    // This avoids a second network request before any image can be displayed.
+    val preview: ImageBitmap? = null,
     // Only genuinely near-white, nearly neutral covers need the new soft
     // seam treatment. Every other album gets the ORIGINAL palette and fade.
     val nearWhiteBackground: Boolean = false,
@@ -48,11 +58,12 @@ internal data class ImmersiveArtworkTone(
 
 /** The raw 16:9 image and its coloured floor must become visible in the same frame. */
 internal fun canRevealImmersiveArtwork(tone: ImmersiveArtworkTone, imageLoaded: Boolean): Boolean =
-    tone.ready && !tone.displayUrl.isNullOrBlank() && imageLoaded
+    tone.ready && !tone.displayUrl.isNullOrBlank() &&
+        (imageLoaded || tone.preview != null)
 
 private val immersiveArtworkCache = object : LinkedHashMap<String, ImmersiveArtworkTone>(24, 0.75f, true) {
     override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImmersiveArtworkTone>?): Boolean =
-        size > 64
+        size > 16
 }
 
 /**
@@ -88,6 +99,7 @@ internal fun rememberImmersiveEdgeColor(
     mediaMetadata: MediaMetadata?,
     enabled: Boolean = true,
     visibleArtworkAspectRatio: Float = 1f,
+    refreshOnOpen: Boolean = false,
 ): ImmersiveArtworkTone {
     val context = LocalContext.current
     var pinnedSource by remember(mediaMetadata?.id) { mutableStateOf<String?>(null) }
@@ -98,8 +110,16 @@ internal fun rememberImmersiveEdgeColor(
     var resolved by remember { mutableStateOf<ImmersiveArtworkTone?>(null) }
     var resolvedKey by remember { mutableStateOf<String?>(null) }
     val cached = key?.let { synchronized(immersiveArtworkCache) { immersiveArtworkCache[it] } }
+    var failureRetry by remember(key) { mutableIntStateOf(0) }
+    // A failed decode needs a second chance when the user reopens the
+    // player, but opening during an IN-FLIGHT decode must not cancel it.
+    LaunchedEffect(key, refreshOnOpen) {
+        if (refreshOnOpen && resolvedKey == key && resolved?.ready != true) {
+            failureRetry++
+        }
+    }
 
-    LaunchedEffect(key, sourceUrl, enabled) {
+    LaunchedEffect(key, sourceUrl, enabled, failureRetry) {
         // The player is still composed while its sheet is collapsed. Avoid spending
         // energy (or trying multiple ytimg qualities) for rapidly skipped unseen songs.
         if (!enabled) return@LaunchedEffect
@@ -156,6 +176,12 @@ internal fun rememberImmersiveEdgeColor(
                     rawEdge.comfortableImmersiveColor()
                 }
                 val bottomTexture = image.immersiveBottomTexture(artworkAspect)
+                // Unlike seven column histograms, this preserves actual
+                // spatial relationships between sky, subject and shadows.
+                val colorField = image.capsuleColorField(artworkAspect)
+                // Legacy colour bands remain available for old snapshots and
+                // incomplete artwork, but do NOT drive the normal backdrop.
+                val edgeBands = emptyList<Color>()
                 ImmersiveArtworkTone(
                     edge = background,
                     // Restore the original modest 10% darker floor exactly.
@@ -166,6 +192,12 @@ internal fun rememberImmersiveEdgeColor(
                         lerp(background, Color.Black, 0.10f)
                     },
                     bottomTexture = bottomTexture,
+                    edgeBands = edgeBands,
+                    colorField = colorField,
+                    // Own the preview pixels independently of Coil's bitmap
+                    // pool. A retained player frame must never point at a
+                    // bitmap that another request can recycle/reuse.
+                    preview = image.copy(Bitmap.Config.ARGB_8888, false).asImageBitmap(),
                     nearWhiteBackground = nearWhite,
                     landscape = landscape,
                     displayUrl = url,
@@ -377,4 +409,55 @@ internal fun Color.comfortableImmersiveColor(): Color {
     // In particular, do not manufacture 32% saturation for greyscale artwork.
     hsv[2] = hsv[2].coerceIn(0.17f, 0.44f)
     return Color(android.graphics.Color.HSVToColor(hsv))
+}
+
+/**
+ * Samples the bottom edge of the same centre crop that the player displays.
+ * A 7-column, quantized modal estimator is robust to labels and foreground
+ * objects and retains asymmetric colours that a single RGB average destroys.
+ * Called only once per decoded cover on Dispatchers.Default, never per frame.
+ */
+internal fun Bitmap.immersiveBottomEdgeBands(artworkAspect: Float): List<Color> {
+    if (width <= 0 || height <= 0) return emptyList()
+    val aspect = artworkAspect.coerceIn(0.55f, 2.2f)
+    val natural = width.toFloat() / height
+    val visibleWidth = (if (natural > aspect) height * aspect else width.toFloat()).toInt()
+        .coerceIn(1, width)
+    val visibleHeight = (if (natural < aspect) width / aspect else height.toFloat()).toInt()
+        .coerceIn(1, height)
+    val left = (width - visibleWidth) / 2
+    val top = (height - visibleHeight) / 2
+    val yStart = (top + visibleHeight * 0.73f).toInt().coerceIn(0, height - 1)
+    val yEnd = (top + visibleHeight * 0.96f).toInt().coerceIn(yStart + 1, height)
+    val bandCount = 7
+    return List(bandCount) { band ->
+        val xStart = left + visibleWidth * band / bandCount
+        val xEnd = (left + visibleWidth * (band + 1) / bandCount).coerceAtMost(width)
+        val counts = IntArray(512)
+        val red = LongArray(512)
+        val green = LongArray(512)
+        val blue = LongArray(512)
+        val stepX = ((xEnd - xStart) / 24).coerceAtLeast(1)
+        val stepY = ((yEnd - yStart) / 32).coerceAtLeast(1)
+        for (y in yStart until yEnd step stepY) {
+            for (x in xStart until xEnd.coerceAtLeast(xStart + 1) step stepX) {
+                val pixel = getPixel(x.coerceIn(0, width - 1), y)
+                val r = pixel shr 16 and 255
+                val g = pixel shr 8 and 255
+                val b = pixel and 255
+                val bucket = ((r shr 5) shl 6) or ((g shr 5) shl 3) or (b shr 5)
+                counts[bucket]++
+                red[bucket] += r.toLong()
+                green[bucket] += g.toLong()
+                blue[bucket] += b.toLong()
+            }
+        }
+        val best = counts.indices.maxByOrNull { counts[it] } ?: 0
+        val n = counts[best].coerceAtLeast(1)
+        Color(
+            red = (red[best].toFloat() / n / 255f).coerceIn(0f, 1f),
+            green = (green[best].toFloat() / n / 255f).coerceIn(0f, 1f),
+            blue = (blue[best].toFloat() / n / 255f).coerceIn(0f, 1f),
+        )
+    }
 }

@@ -8,6 +8,7 @@ import com.nikhil.yt.ui.player.capsuleAmbientFrameDelayMs
 import com.nikhil.yt.ui.player.FULL_AMBIENT_FRAME_DELAY_MS
 import com.nikhil.yt.ui.player.COMPACT_AMBIENT_FRAME_DELAY_MS
 import com.nikhil.yt.ui.player.capsuleConstellation
+import com.nikhil.yt.ui.player.capsuleKnownConstellation
 import com.nikhil.yt.ui.player.capsuleStarDrift
 import com.nikhil.yt.ui.player.capsuleStarDriftX
 import com.nikhil.yt.ui.player.capsuleStarDriftY
@@ -27,8 +28,8 @@ class CapsuleBackgroundMotionTest {
         assertTrue(capsuleBackgroundNeedsClock(CapsuleBackgroundEffect.NEBULA))
     }
 
-    @Test fun ambientWallpaperUsesFewerFramesOnlyInCompactMode() {
-        assertEquals(22L, FULL_AMBIENT_FRAME_DELAY_MS)
+    @Test fun fullPlayerWallpaperKeepsDisplayRefreshAndOnlyMiniIsThrottled() {
+        assertEquals(0L, FULL_AMBIENT_FRAME_DELAY_MS)
         assertEquals(40L, COMPACT_AMBIENT_FRAME_DELAY_MS)
         assertEquals(COMPACT_AMBIENT_FRAME_DELAY_MS, capsuleAmbientFrameDelayMs(true))
         assertEquals(FULL_AMBIENT_FRAME_DELAY_MS, capsuleAmbientFrameDelayMs(false))
@@ -65,6 +66,19 @@ class CapsuleBackgroundMotionTest {
         assertNotEquals(first, capsuleConstellation(8, 82))
         assertEquals(first.take(30), capsuleConstellation(7, 30))
         assertTrue(first.all { it.x in 0f..1f && it.y in 0f..1f })
+    }
+
+    @Test fun namedStarPatternsAppearOnlyOccasionallyAndAreDeterministic() {
+        assertNull(capsuleKnownConstellation(0))
+        assertNull(capsuleKnownConstellation(1))
+        for (generation in listOf(2L, 7L, 12L, 17L)) {
+            val template = requireNotNull(capsuleKnownConstellation(generation))
+            val stars = capsuleConstellation(generation, 64)
+            template.forEachIndexed { index, mark ->
+                assertEquals(mark.first, stars[index].x, 0f)
+                assertEquals(mark.second, stars[index].y, 0f)
+            }
+        }
     }
 
     @Test fun oldAndNewStarsCrossfadeWithoutDisappearingAtThePeriodBoundary() {

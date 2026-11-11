@@ -28,8 +28,14 @@ internal data class CapsuleStar(val x: Float, val y: Float, val depth: Float, va
 
 internal fun capsuleConstellation(generation: Long, count: Int): List<CapsuleStar> {
     val random = Random((generation xor (generation ushr 32)).toInt() xor 0xCA57)
-    return List(count) {
-        CapsuleStar(random.nextFloat(), random.nextFloat(), 0.36f + random.nextFloat() * 0.64f, random.nextFloat() * 6.28f)
+    // Every fifth change, a handful of the stars form a familiar asterism.
+    // The remaining stars still follow the original seeded random sky.
+    val shape = capsuleKnownConstellation(generation)
+    return List(count) { index ->
+        val mark = shape?.getOrNull(index)
+        if (mark == null) CapsuleStar(random.nextFloat(), random.nextFloat(),
+            0.36f + random.nextFloat() * 0.64f, random.nextFloat() * 6.28f)
+        else CapsuleStar(mark.first, mark.second, 0.94f, random.nextFloat() * 6.28f)
     }
 }
 
@@ -44,4 +50,24 @@ internal fun capsuleStarDriftY(star: CapsuleStar, angle: Double): Float =
 internal fun capsuleStarDrift(star: CapsuleStar, elapsedMs: Long): Pair<Float, Float> {
     val angle = capsuleBackgroundAngle(elapsedMs)
     return capsuleStarDriftX(star, angle) to capsuleStarDriftY(star, angle)
+}
+
+/** Familiar real-world constellations, drawn as stars only (no symbols or lines). */
+internal fun capsuleKnownConstellation(generation: Long): List<Pair<Float, Float>>? {
+    if (generation % 5L != 2L) return null
+    val atlas = listOf(
+        // Orion: shoulders, three-star belt, legs.
+        listOf(0.40f to 0.30f, 0.59f to 0.31f, 0.46f to 0.48f,
+            0.50f to 0.49f, 0.54f to 0.50f, 0.42f to 0.70f, 0.60f to 0.72f),
+        // Cassiopeia's W.
+        listOf(0.24f to 0.42f, 0.37f to 0.59f, 0.49f to 0.38f,
+            0.61f to 0.57f, 0.76f to 0.39f),
+        // Ursa Major's Big Dipper.
+        listOf(0.34f to 0.39f, 0.53f to 0.42f, 0.55f to 0.60f,
+            0.36f to 0.57f, 0.27f to 0.44f, 0.18f to 0.40f, 0.11f to 0.33f),
+        // Cygnus (Northern Cross).
+        listOf(0.51f to 0.21f, 0.51f to 0.40f, 0.51f to 0.59f,
+            0.51f to 0.78f, 0.28f to 0.46f, 0.74f to 0.45f),
+    )
+    return atlas[((generation / 5L) % atlas.size).toInt()]
 }

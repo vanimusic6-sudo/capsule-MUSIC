@@ -33,7 +33,14 @@ class PlayerArtworkReliabilityTest {
     }
 
     @Test fun immersiveSamplerRetriesAfterSheetWasCollapsed() {
-        assertTrue(source("Player.kt").contains("enabled = onScreen && playerState.isExpandedOrExpanding"))
+        // Immersion now preloads while MINI is still visible so a rapid
+        // expansion cannot expose a blank image slot.
+        assertTrue(source("Player.kt").contains("val warmedImmersiveTone ="))
+        assertTrue(source("Player.kt").contains("enabled = onScreen && !enrichedMetadata?.thumbnailUrl.isNullOrBlank()"))
+        assertTrue(source("Player.kt").contains("warmedImmersiveTone = warmedImmersiveTone"))
+        assertTrue(source("Player.kt").contains("refreshOnOpen = state.isExpandedOrExpanding"))
+        assertTrue(source("CapsuleImmersiveFloor.kt").contains("if (refreshOnOpen && resolvedKey == key && resolved?.ready != true)"))
+        assertTrue(source("CapsuleImmersiveFloor.kt").contains("LaunchedEffect(key, sourceUrl, enabled, failureRetry)"))
         assertTrue(source("Player.kt").contains("refreshOnOpen = state.isExpandedOrExpanding"))
         assertTrue(source("CapsuleArtworkPalette.kt").contains("refreshOnOpen,"))
         assertTrue(source("CapsuleArtworkPalette.kt").contains("if (cacheKey == resolvedKey) return@LaunchedEffect"))

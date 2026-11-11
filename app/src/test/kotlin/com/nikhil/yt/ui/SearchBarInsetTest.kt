@@ -45,12 +45,12 @@ class SearchBarInsetTest {
         val source =
             source("com/nikhil/yt/ui/screens/search/OnlineSearchResult.kt")
 
+        // Whitespace/line wraps do not change the physical inset
+        // calculation; verify the actual chained call instead.
         assertTrue(
-            "SoundCloud/artist/video chips must stay at a fixed physical top inset",
-            source.contains(
-                "WindowInsets.systemBarsIgnoringVisibility" +
-                    "\n                    .only(WindowInsetsSides.Top)",
-            ),
+            "Search filters must not use visibility-aware status-bar insets",
+            Regex("WindowInsets\\.systemBarsIgnoringVisibility\\s*\\.only\\(WindowInsetsSides\\.Top\\)")
+                .containsMatchIn(source),
         )
     }
     @Test

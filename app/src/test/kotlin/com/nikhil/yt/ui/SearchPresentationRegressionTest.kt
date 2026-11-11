@@ -48,6 +48,16 @@ class SearchPresentationRegressionTest {
     }
 
     @Test
+    fun expandingPlayerCancelsSearchImeAndPendingFocus() {
+        val activity = source("com/nikhil/yt/MainActivity.kt")
+        assertTrue(activity.contains("LaunchedEffect(playerTakesKeyboardFocus)"))
+        assertTrue(activity.contains("focusManager.clearFocus(force = true)"))
+        assertTrue(activity.contains("keyboardController?.hide()"))
+        assertTrue(activity.contains("openSearchImmediately = false"))
+        assertTrue(activity.contains("delay(90L)"))
+    }
+
+    @Test
     fun oneEasedImageRevealHasNoOpaqueUpgradeFlash() {
         val arrival = source("com/nikhil/yt/ui/component/ArtworkArrival.kt")
         val hero = source("com/nikhil/yt/ui/component/AlbumArtwork.kt")
