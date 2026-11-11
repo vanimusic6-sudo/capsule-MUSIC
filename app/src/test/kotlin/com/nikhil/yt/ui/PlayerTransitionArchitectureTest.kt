@@ -67,7 +67,7 @@ class PlayerTransitionArchitectureTest {
         assertFalse(floor.contains("val edgeBands = image.immersiveBottomEdgeBands("))
         assertTrue(floor.contains("val edgeBands: List<Color> = emptyList()"))
         assertTrue(floor.contains("val preview: ImageBitmap? = null"))
-        assertTrue(floor.contains("preview = image.asImageBitmap()"))
+        assertTrue(floor.contains("preview = image.copy(Bitmap.Config.ARGB_8888, false).asImageBitmap()"))
         assertTrue(floor.contains("fun Bitmap.immersiveBottomBackground(artworkAspect: Float)"))
         assertFalse(floor.contains("immersiveArtworkBackground("))
         assertTrue(floor.contains("nearWhiteBackground = nearWhite"))
