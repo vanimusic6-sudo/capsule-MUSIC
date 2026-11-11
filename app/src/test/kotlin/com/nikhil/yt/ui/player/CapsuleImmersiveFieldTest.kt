@@ -12,8 +12,10 @@ class CapsuleImmersiveFieldTest {
         }
         val left = immersiveSoftBandColor(bands, 0f)
         val right = immersiveSoftBandColor(bands, 1f)
-        assertTrue(left.red > left.blue * 2f)
-        assertTrue(right.blue > right.red * 2f)
+        // A wider Gaussian haze deliberately blends colours. The sides must
+        // remain visibly different, but no longer as sharply separated as before.
+        assertTrue(left.red > left.blue + 0.24f)
+        assertTrue(right.blue > right.red + 0.30f)
         var largestJump = 0f
         var previous = immersiveSoftBandColor(bands, 0f)
         for (i in 1..100) {
