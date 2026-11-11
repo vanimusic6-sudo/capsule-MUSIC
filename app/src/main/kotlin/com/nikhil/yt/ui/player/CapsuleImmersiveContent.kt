@@ -35,13 +35,14 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
+import timber.log.Timber
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,11 +50,13 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -86,36 +89,28 @@ import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
 import com.nikhil.yt.utils.makeTimeString
 import com.nikhil.yt.utils.rememberPreference
 
-/** All visible assets belong to one immutable, decoded track/viewport. */
-internal data class ImmersiveGradientFrame(
-    val key: String,
-    val tone: ImmersiveArtworkTone,
-    val page: ImageBitmap,
-    val overlay: ImageBitmap,
-)
+/**
+ * The outgoing fade is a SINGLE operation for a displayed frame, regardless of how
+ * many newer songs arrive while it is running. Explicitly avoid the current song's
+ * readiness here: an unprepared next cover must not delay or restart the fade.
+ */
+internal fun shouldFadeOutImmersiveFrame(
+    displayedKey: String?,
+    selectedKey: String,
+    visible: Boolean,
+): Boolean = displayedKey != null && (!visible || displayedKey != selectedKey)
 
-/** Build and publish only a complete bundle, sampled from the actual viewport. */
-internal fun prepareImmersiveFrame(
-    key: String,
-    source: ImmersiveArtworkTone,
-    artworkAspect: Float,
-    coverFraction: Float,
-    tailFraction: Float,
-): ImmersiveGradientFrame {
-    val image = requireNotNull(source.preview)
-    val field = image.asAndroidBitmap().capsuleColorField(artworkAspect)
-    val edge = capsuleDominantEdgeColor(field)
-    val bands = image.asAndroidBitmap().immersiveBottomEdgeBands(artworkAspect)
-    val tone = source.copy(colorField = field, edge = edge, edgeBands = bands,
-        accent = capsuleImmersiveFloorColor(edge))
-    fun render(overlay: Boolean) = immersiveSpatialFieldBitmap(
-        bands = bands, fallbackFloor = tone.accent,
-        coverFraction = coverFraction, tailFraction = tailFraction,
-        texture = tone.bottomTexture, landscape = tone.landscape,
-        nearWhite = tone.nearWhiteBackground, photoOverlay = overlay, field = field,
-    )
-    return ImmersiveGradientFrame(key, tone, render(false), render(true))
-}
+/** The outgoing gradient survives a media-item change until it has faded to neutral. */
+private data class ImmersiveGradientFrame(
+    val key: String,
+    val edge: Color,
+    val floor: Color,
+    val imageUrl: String,
+    val landscape: Boolean,
+    val bottomTexture: Float,
+    val nearWhiteBackground: Boolean,
+    val edgeBands: List<Color>,
+)
 
 /**
  * Immersion: a seamless dissolve from the original photo into the MUTED,
@@ -415,7 +410,6 @@ internal fun CapsuleImmersiveContent(
     mediaMetadata: MediaMetadata,
     artworkTone: ImmersiveArtworkTone,
     videoAmbientBands: List<Color> = emptyList(),
-    videoAmbientField: CapsuleColorField? = null,
     sliderPosition: Long?,
     positionMs: Long,
     durationMs: Long,
@@ -442,7 +436,6 @@ internal fun CapsuleImmersiveContent(
      */
     expansionProgress: Float = if (open) 1f else 0f,
 ) {
-    var frame by remember { mutableStateOf<ImmersiveGradientFrame?>(null) }
     val onScreen = appIsOnScreen()
     if (!onScreen || (!open && expansionProgress <= 0.001f)) {
         Box(Modifier.fillMaxSize())
@@ -616,71 +609,202 @@ internal fun CapsuleImmersiveContent(
         val artworkHeight = immersiveArtworkHeight(maxHeight)
         // The host samples this exact visible crop once for the player and Lyrics.
         val artworkAspect = maxWidth.value / artworkHeight.value.coerceAtLeast(1f)
+        val edge = artworkTone.edge
+        // Keep the entire fade in the lower background's hue. Never mix in a vibrant
+        // foreground accent (a green logo on white paper is not a green background).
+        val floor = artworkTone.accent
+
+        // Decode + sample the SAME chosen URL before rendering either its thumbnail or
+        // coloured floor. AsyncImage may need its own larger decoded bitmap, so the palette
+        // being ready alone is not proof the actual cover can be drawn yet.
+        var coverImageReady by remember(mediaMetadata.id, artworkTone.displayUrl) {
+            mutableStateOf(false)
+        }
+        // Keep the successful preloader's REAL decoded painter available until
+        // the visible Coil node completes. Previously we discarded the only
+        // proven image, then waited up to six seconds on another painter while
+        // displaying a grey artwork slot.
+        var decodedCoverPainter by remember(mediaMetadata.id) {
+            mutableStateOf<Painter?>(null)
+        }
+        // A transient Coil error previously left the invisible preload mounted
+        // forever with no new request until the entire player was reconstructed.
+        // One retry is permitted per track/URL; a fresh track resets this budget.
+        var coverLoadRetry by remember(mediaMetadata.id, artworkTone.displayUrl) {
+            mutableIntStateOf(0)
+        }
+        val coverAndGradientReady = canRevealImmersiveArtwork(artworkTone, coverImageReady)
+        // The remembered frame contains the PREVIOUS song's actual image and all its
+        // background colours. It remains intact during fade-out even if Media3 has already
+        // switched its metadata to the NEXT song.
+        val visualKey = "${mediaMetadata.id}|${artworkTone.displayUrl}|${artworkAspect}"
+        // A decoded bitmap that has been displayed through VIDEO must remain
+        // opaque on VIDEO -> AUDIO. The track-switch gradient fade is independent
+        // of the cover/video morph and can be interrupted by sheet visibility.
+        // Never multiply the two independently animated opacities: that was
+        // revealing the video underneath as a broken/translucent album photo.
+        var keepVideoReturnArtworkOpaque by remember(visualKey) { mutableStateOf(false) }
+        LaunchedEffect(visualKey, isVideo, needsVideoSurface) {
+            if (isVideo || needsVideoSurface) keepVideoReturnArtworkOpaque = true
+        }
+        var shownGradient by remember { mutableStateOf<ImmersiveGradientFrame?>(null) }
+        var hasShownGradient by remember { mutableStateOf(false) }
+        val gradientAlpha = remember { Animatable(0f) }
+        // Selection changes must START the outgoing fade immediately. Crucially, its
+        // coroutine is keyed only by whether the OLD frame is still on screen, not by
+        // each incoming song id. Rapid A -> B -> C -> D skips therefore cannot restart
+        // the same A -> grey animation four times and keep A visible indefinitely.
+        val fadingOldFrame = shouldFadeOutImmersiveFrame(
+            shownGradient?.key,
+            visualKey,
+            visible,
+        )
+        LaunchedEffect(fadingOldFrame) {
+            if (fadingOldFrame) {
+                gradientAlpha.animateTo(
+                    0f,
+                    animationSpec = tween(durationMillis = 380, easing = FastOutSlowInEasing),
+                )
+                shownGradient = null
+            }
+        }
+        // Only the newest selected song can enter AFTER the old frame has fully
+        // disappeared and its own final bitmap and background are BOTH ready.
+        LaunchedEffect(
+            visualKey,
+            coverAndGradientReady,
+            edge,
+            floor,
+            artworkTone.bottomTexture,
+            artworkTone.displayUrl,
+            visible,
+            fadingOldFrame,
+        ) {
+            if (!visible || !coverAndGradientReady || fadingOldFrame) return@LaunchedEffect
+            val readyUrl = artworkTone.displayUrl ?: return@LaunchedEffect
+            if (shownGradient == null) {
+                shownGradient = ImmersiveGradientFrame(
+                    key = visualKey,
+                    edge = edge,
+                    floor = floor,
+                    imageUrl = readyUrl,
+                    landscape = artworkTone.landscape,
+                    bottomTexture = artworkTone.bottomTexture,
+                    nearWhiteBackground = artworkTone.nearWhiteBackground,
+                    edgeBands = artworkTone.edgeBands,
+                )
+            }
+            // Also handles reopening the sheet while its previous fade-out was being
+            // cancelled. Alpha carries on from its current value, not a new zero.
+            if (shownGradient?.key == visualKey) {
+                if (!hasShownGradient || keepVideoReturnArtworkOpaque) {
+                    // After VIDEO this song's photo is already fully visible.
+                    // Skip a redundant 630ms offscreen alpha animation.
+                    // Track switches reset the guard and still crossfade.
+                    // The first frame has no previous artwork to dissolve from.
+                    // Reveal it directly instead of flashing the neutral sheet.
+                    gradientAlpha.snapTo(1f)
+                } else {
+                    gradientAlpha.animateTo(
+                        1f,
+                        animationSpec = tween(durationMillis = 630, easing = FastOutSlowInEasing),
+                    )
+                }
+                hasShownGradient = true
+            }
+        }
+        // Keep the original background interpolation for normal artwork.
+        // Only near-white, low-saturation covers use the slightly more
+        // diffuse current technique to avoid a harsh white/grey seam.
+        val frame = shownGradient
+        // The offscreen preloader may have decoded this cover successfully,
+        // yet the visible AsyncImage can still lose its own Coil painter
+        // during a GPU/surface lifecycle change. Rebind only that painter
+        // once if its own load hangs or fails, never the whole gradient.
+        var visibleArtworkRebind by remember(frame?.key, frame?.imageUrl) {
+            mutableIntStateOf(0)
+        }
+        var visibleArtworkPending by remember(frame?.key, frame?.imageUrl) {
+            mutableStateOf(false)
+        }
+        LaunchedEffect(frame?.key, frame?.imageUrl, visibleArtworkRebind, visibleArtworkPending) {
+            frame?.takeIf {
+                it.key == visualKey && it.imageUrl.isNotBlank()
+            } ?: return@LaunchedEffect
+            if (!visibleArtworkPending || visibleArtworkRebind > 0) return@LaunchedEffect
+            // The bitmap is already decoded; a stalled second painter must
+            // not hold a blank slot for another six seconds.
+            delay(if (decodedCoverPainter != null) 1_000L else 3_000L)
+            if (visibleArtworkPending && visibleArtworkRebind == 0) {
+                Timber.tag("CapsuleArtwork").w(
+                    "immersive-artwork-stalled id=%s; rebind visible painter", mediaMetadata.id,
+                )
+                visibleArtworkRebind++
+            }
+        }
+        val nearWhite = frame?.nearWhiteBackground == true
+        val pageEdge = frame?.edge ?: IMMERSIVE_NEUTRAL_COLOR
+        val pageFloor = frame?.floor ?: IMMERSIVE_NEUTRAL_COLOR
+        val seamColor = if (nearWhite) {
+            immersiveSeamColor(pageEdge, pageFloor)
+        } else {
+            immersiveOriginalSeamColor(pageEdge, pageFloor)
+        }
         val density = LocalDensity.current
         val pageHeightPx = with(density) { maxHeight.toPx() }
         val coverHeightPx = with(density) { artworkHeight.toPx() }
         val coverFraction = (coverHeightPx / pageHeightPx.coerceAtLeast(1f))
             .coerceIn(0.05f, 0.95f)
-        val tailFraction = (with(density) { 48.dp.toPx() } / pageHeightPx.coerceAtLeast(1f))
-            .coerceIn(0.02f, 0.06f)
-        val visualKey = "${mediaMetadata.id}|${artworkTone.displayUrl}|$artworkAspect|$coverFraction"
-        // Retain the complete previous frame until ALL incoming assets are ready.
-        // Never clear this on collapse or fade through a neutral sheet. The owned
-        // display bitmap also avoids the second Coil painter/lifecycle race.
-        LaunchedEffect(visualKey, artworkTone, visible, tailFraction) {
-            if (!visible || !artworkTone.ready || artworkTone.preview == null) return@LaunchedEffect
-            if (frame?.key == visualKey) return@LaunchedEffect
-            val readyFrame = withContext(Dispatchers.Default) {
-                prepareImmersiveFrame(visualKey, artworkTone, artworkAspect, coverFraction, tailFraction)
-            }
-            // withContext is cancellable: a stale track cannot commit after a skip.
-            frame = readyFrame
-        }
-        val nearWhite = frame?.tone?.nearWhiteBackground == true
-        val pageFloor = frame?.tone?.accent ?: IMMERSIVE_NEUTRAL_COLOR
+        // Exception ONLY for almost-white art: 72dp -> 80dp, with a
+        // one-percentage-point earlier soft curve. Other covers are untouched.
+        val extensionPx = with(density) { 80.dp.toPx() }
+            .coerceAtMost((pageHeightPx - coverHeightPx).coerceAtLeast(1f) * 0.38f)
+        val tailFraction = (extensionPx / pageHeightPx.coerceAtLeast(1f))
+            .coerceIn(0.02f, 0.08f)
+        val artworkBands = frame?.edgeBands?.takeIf { it.isNotEmpty() }
+            ?: remember(seamColor) { listOf(seamColor) }
+        // Live video light is painted only on the FLOOR; album-photo dissolve
+        // retains the exact colours of its own pixels while video morphs in.
         val pageBands = if (isVideo && videoAmbientBands.isNotEmpty())
-            videoAmbientBands else frame?.tone?.edgeBands.orEmpty()
-        var retainedVideoField by remember(frame?.key) {
-            mutableStateOf<CapsuleColorField?>(null)
-        }
-        var videoTextureReady by remember(frame?.key) { mutableStateOf(false) }
-        val videoLayerAlpha = remember(frame?.key) { Animatable(0f) }
-        LaunchedEffect(frame?.key, isVideo, videoAmbientField) {
-            if (isVideo && videoAmbientField != null) retainedVideoField = videoAmbientField
-        }
-        LaunchedEffect(isVideo, videoTextureReady) {
-            if (isVideo && videoTextureReady) {
-                videoLayerAlpha.animateTo(1f, tween(420))
-            } else if (!isVideo) {
-                videoLayerAlpha.animateTo(0f, tween(330))
-                retainedVideoField = null
-                videoTextureReady = false
-            }
-        }
+            videoAmbientBands else artworkBands
         val immersiveInk = ImmersiveControlInk
 
-        // Static artwork is already complete: no separate palette/opacity clock.
-        Box(Modifier.fillMaxSize().background(pageFloor)) {
-            frame?.page?.let { bitmap ->
-                Image(bitmap = bitmap, contentDescription = null,
-                    contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize())
-            }
-            val liveField = retainedVideoField
-            if (liveField != null && frame != null) {
-                key(frame?.key) {
-                    CapsuleVideoAmbientBackdrop(
-                        bands = pageBands, field = liveField,
-                        modifier = Modifier.fillMaxSize().graphicsLayer { alpha = videoLayerAlpha.value },
-                        fallbackFloor = pageFloor, coverFraction = coverFraction,
-                        tailFraction = tailFraction,
-                        texture = frame?.tone?.bottomTexture ?: 0f,
-                        landscape = frame?.tone?.landscape ?: false,
-                        nearWhite = nearWhite,
-                        onFirstTextureReady = { videoTextureReady = true },
-                    )
-                }
+        // Preload the NEXT image invisibly. Coil must finish decoding this exact URL
+        // before the frame is allowed to replace the old one. It is never rendered early.
+        // Once this exact artwork has decoded, dispose the invisible Coil
+        // preloader. Keeping it alive while VIDEO runs doubled retained image
+        // nodes and graphics layers for no visual benefit.
+        if (capsuleImmersiveNeedsArtworkPreload(coverImageReady, artworkTone.ready, artworkTone.displayUrl)) {
+            // Restart the Coil painter only after a failed attempt, never each
+            // recomposition. The existing sampled URL and palette remain paired.
+            key(mediaMetadata.id, artworkTone.displayUrl, coverLoadRetry) {
+                AsyncImage(
+                    model = rememberImmersiveArtworkRequest(artworkTone.displayUrl),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    onSuccess = { success ->
+                        decodedCoverPainter = success.painter
+                        coverImageReady = true
+                    },
+                    onError = {
+                        coverImageReady = false
+                        if (coverLoadRetry < 1) coverLoadRetry++
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(artworkHeight)
+                        .graphicsLayer(alpha = 0f),
+                )
             }
         }
+
+        // Photo and page continue exactly the same horizontal colour field.
+        Box(modifier = Modifier.fillMaxSize().immersiveSpatialBackdrop(
+            bands = pageBands, fallbackFloor = pageFloor, coverFraction = coverFraction,
+            tailFraction = tailFraction, texture = frame?.bottomTexture ?: 0f,
+            landscape = frame?.landscape ?: false, nearWhite = nearWhite,
+            photoOverlay = false,
+        ))
 
         CapsuleVideoArtworkTransition(
             presentingVideo = isVideo,
@@ -702,44 +826,90 @@ internal fun CapsuleImmersiveContent(
             // the separate VIDEO mask grows/shrinks. The previous moving
             // album/matte exposed different edge pixels at the join on close.
             fixedImmersiveArtwork = true,
-            artworkBackground = pageFloor,
+            artworkBackground = if (nearWhite) {
+                immersiveContinuousPageColor(
+                    seamColor, pageFloor, coverFraction, coverFraction, tailFraction,
+                )
+            } else {
+                seamColor
+            },
             artworkClickable = !isVideo,
             onArtworkClick = onShowLyrics,
             video = { active -> CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active) },
         ) {
-            val displayFrame = frame
-            Box(Modifier.fillMaxSize().clipToBounds()) {
-                if (displayFrame != null) {
-                    Image(
-                        bitmap = requireNotNull(displayFrame.tone.preview),
+            if (frame != null) {
+                // Wide (16:9) video thumbnails use a 1.06x GPU overscan below.
+                // Without a parent clip, those pixels escape the artwork slot,
+                // continuing UNDER the page's independently sized fade and
+                // forming a sharp horizontal band below the image in AUDIO mode.
+                // Clip the PHOTO and its existing overlay together: do not
+                // change the source crop, sampled colors or gradient stops.
+                Box(Modifier.fillMaxSize().clipToBounds().graphicsLayer {
+                    // Keep the current song's artwork fully opaque once VIDEO
+                    // has owned it. Only the *shared* container crossfade can
+                    // reveal it; the unrelated song gradient cannot punch holes
+                    // through it while VIDEO is closing.
+                    alpha = capsuleImmersiveArtworkOpacity(
+                        frameMatchesTrack = frame.key == visualKey,
+                        hasPresentedVideo = keepVideoReturnArtworkOpaque,
+                        trackFadeAlpha = gradientAlpha.value,
+                    )
+                }) {
+                    // The two requests use the same URL/size, but Coil can
+                    // cancel the visible one during a player/surface transition.
+                    // Show the *already decoded* image, never a neutral square,
+                    // while only that visible painter retries.
+                    if (visibleArtworkPending && frame.key == visualKey &&
+                        frame.imageUrl == artworkTone.displayUrl
+                    ) {
+                        decodedCoverPainter?.let { ready ->
+                            Image(
+                                painter = ready,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize().graphicsLayer(
+                                    scaleX = if (frame.landscape) 1.06f else 1f,
+                                    scaleY = if (frame.landscape) 1.06f else 1f,
+                                ),
+                            )
+                        }
+                    }
+                    key(frame.key, frame.imageUrl, visibleArtworkRebind) {
+                    AsyncImage(
+                        model = rememberImmersiveArtworkRequest(frame.imageUrl),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
+                        onLoading = { visibleArtworkPending = true },
+                        onSuccess = { visibleArtworkPending = false },
+                        onError = { error ->
+                            visibleArtworkPending = false
+                            Timber.tag("CapsuleArtwork").w(
+                                "immersive-artwork-error id=%s retry=%s type=%s",
+                                mediaMetadata.id, visibleArtworkRebind,
+                                error.result.throwable::class.java.simpleName,
+                            )
+                            if (visibleArtworkRebind == 0) visibleArtworkRebind++
+                        },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer(
+                                scaleX = if (frame.landscape) 1.06f else 1f,
+                                scaleY = if (frame.landscape) 1.06f else 1f,
+                            ),
                     )
-                    Image(
-                        bitmap = displayFrame.overlay,
-                        contentDescription = null,
-                        contentScale = ContentScale.FillBounds,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else {
-                    // First cold open: show the metadata cover while the higher
-                    // resolution bundle prepares. This node never gates readiness.
-                    val decoded = artworkTone.preview
-                    if (decoded != null) {
-                        Image(bitmap = decoded, contentDescription = null,
-                            contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                    } else {
-                        AsyncImage(
-                            model = mediaMetadata.thumbnailUrl,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize(),
-                        )
                     }
-                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
-                        0.86f to Color.Transparent, 1f to IMMERSIVE_NEUTRAL_COLOR,
-                    )))
+                    Box(
+                        modifier = Modifier.fillMaxSize().immersiveSpatialBackdrop(
+                            bands = artworkBands,
+                            fallbackFloor = pageFloor,
+                            coverFraction = coverFraction,
+                            tailFraction = tailFraction,
+                            texture = frame.bottomTexture,
+                            landscape = frame.landscape,
+                            nearWhite = nearWhite,
+                            photoOverlay = true,
+                        ),
+                    )
                 }
             }
         }
@@ -1240,4 +1410,38 @@ internal fun CapsuleImmersiveContent(
         }
     }
 }
+
+/** Stable Coil models prevent progress updates from rebuilding identical image requests. */
+@Composable
+private fun rememberImmersiveArtworkRequest(url: String?): ImageRequest {
+    val context = LocalContext.current
+    return remember(context, url) {
+        ImageRequest.Builder(context)
+            .data(url)
+            // Same decode/cache target for the invisible preload and the
+            // visible frame; avoids a second full-size GPU allocation.
+            .size(960, 960)
+            .crossfade(false)
+            .build()
+    }
+}
+
+
+/** Retire the invisible decoder after preload: no permanently transparent Image node. */
+internal fun capsuleImmersiveNeedsArtworkPreload(
+    imageReady: Boolean,
+    toneReady: Boolean,
+    url: String?,
+): Boolean = !imageReady && toneReady && url != null
+
+/**
+ * Preserve an already shown album photo while VIDEO is morphing back.
+ * A separate track-change dissolve must never multiply its opacity to zero.
+ * Frames from a DIFFERENT song still obey the outgoing-song fade.
+ */
+internal fun capsuleImmersiveArtworkOpacity(
+    frameMatchesTrack: Boolean,
+    hasPresentedVideo: Boolean,
+    trackFadeAlpha: Float,
+): Float = if (frameMatchesTrack && hasPresentedVideo) 1f else trackFadeAlpha.coerceIn(0f, 1f)
 

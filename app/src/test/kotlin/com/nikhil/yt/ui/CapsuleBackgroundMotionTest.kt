@@ -28,8 +28,8 @@ class CapsuleBackgroundMotionTest {
         assertTrue(capsuleBackgroundNeedsClock(CapsuleBackgroundEffect.NEBULA))
     }
 
-    @Test fun fullPlayerWallpaperKeepsDisplayRefreshAndOnlyMiniIsThrottled() {
-        assertEquals(0L, FULL_AMBIENT_FRAME_DELAY_MS)
+    @Test fun ambientWallpaperUsesFewerFramesOnlyInCompactMode() {
+        assertEquals(22L, FULL_AMBIENT_FRAME_DELAY_MS)
         assertEquals(40L, COMPACT_AMBIENT_FRAME_DELAY_MS)
         assertEquals(COMPACT_AMBIENT_FRAME_DELAY_MS, capsuleAmbientFrameDelayMs(true))
         assertEquals(FULL_AMBIENT_FRAME_DELAY_MS, capsuleAmbientFrameDelayMs(false))

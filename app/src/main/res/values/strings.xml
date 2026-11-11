@@ -1035,5 +1035,5 @@ Capsule will only extract your token, and everything else is stored locally.</st
     <string name="artist_candle_local">Your candle is private. You can share these words with others.</string>
     <string name="artist_candle_close">Close</string>
     <string name="capsule_video_ambient_title">Ambient colours from video</string>
-    <string name="capsule_video_ambient_description">Extend the colours of the playing video into the player background. Takes a tiny frame sample roughly every 1.5 seconds, only while visible. Off by default to save battery.</string>
+    <string name="capsule_video_ambient_description">Extend the colours of the playing video into the player background. Takes a tiny frame sample about every 4 seconds, only while visible. Off by default to save battery.</string>
 </resources>

@@ -184,14 +184,14 @@ private fun CapsuleVideoTextureOutput(
             val sink = ambientSink ?: return@LaunchedEffect
             val trackId = audioMediaId?.takeIf(String::isNotBlank) ?: return@LaunchedEffect
             if (!ambientEnabled || !firstFrameReady || !videoActuallyPlaying) return@LaunchedEffect
-            var previous: CapsuleColorField? = null
+            var previous: List<Color>? = null
             var consecutiveFailures = 0
             val buffer = Bitmap.createBitmap(
                 VIDEO_AMBIENT_SAMPLE_WIDTH, VIDEO_AMBIENT_SAMPLE_HEIGHT, Bitmap.Config.ARGB_8888,
             )
             try {
                 // Avoid capturing the first black surface swap.
-                delay(350L)
+                delay(800L)
                 while (isActive) {
                     if (view.isAvailable && view.isShown && view.hasVideoFrame &&
                         player.isPlaying && player.playbackState == Player.STATE_READY
@@ -199,9 +199,9 @@ private fun CapsuleVideoTextureOutput(
                         try {
                             view.getBitmap(buffer)
                             val sample = capsuleVideoAmbientFrameFromBitmap(buffer, trackId)
-                            if (sample != null && capsuleFieldChanged(previous, sample.field)) {
+                            if (sample != null && capsuleVideoAmbientChanged(previous, sample.bands)) {
                                 sink(sample)
-                                previous = sample.field
+                                previous = sample.bands
                             }
                             consecutiveFailures = 0
                         } catch (_: RuntimeException) {
