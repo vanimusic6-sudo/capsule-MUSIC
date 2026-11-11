@@ -42,6 +42,7 @@ jobs:
           gradle :app:testUniversalDebugUnitTest
           --tests 'com.nikhil.yt.ui.CapsuleBackgroundMotionTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleBackgroundClockTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleColorFieldTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveFieldTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleVideoAmbientTest'
           --tests 'com.nikhil.yt.ui.player.ImmersiveArtworkBackgroundTest'
