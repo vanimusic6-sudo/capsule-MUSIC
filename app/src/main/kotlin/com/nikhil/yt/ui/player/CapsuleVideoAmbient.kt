@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.lerp
 import kotlin.math.abs
 
 internal const val VIDEO_AMBIENT_CAPTURE_INTERVAL_MS = 700L
+internal const val VIDEO_AMBIENT_CALM_CAPTURE_INTERVAL_MS = 1_250L
 internal const val VIDEO_AMBIENT_SAMPLE_WIDTH = 48
 internal const val VIDEO_AMBIENT_SAMPLE_HEIGHT = 28
 
@@ -75,7 +76,9 @@ internal fun capsuleVideoAmbientFrameFromBitmap(bitmap: Bitmap, mediaId: String)
     if (nonBlack < 4) return null
     // The image's Y structure matters just as much as left/right colours.
     // This small 12x10 grid is our REAL input, not seven painted stripes.
-    val field = bitmap.capsuleColorField(width.toFloat() / height, video = true)
+    val field = bitmap.capsuleColorField(
+        width.toFloat() / height, video = true, pixelBuffer = pixels,
+    )
     return CapsuleVideoAmbientFrame(mediaId, bands, field)
 }
 
