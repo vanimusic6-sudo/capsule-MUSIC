@@ -140,11 +140,15 @@ internal fun immersiveSpatialFieldBitmap(
         },
     )
     val cover = coverFraction.coerceIn(0.05f, 0.90f)
-    // A cinematic reflection takes more than 60px to settle; a very short
-    // fade looked like an opaque colour strip. It must nevertheless finish
-    // before the transport block so white controls stay fully legible.
-    val dissolve = (tailFraction * 1.7f).coerceIn(0.105f, 0.145f)
-    val end = (cover + dissolve).coerceAtMost(0.90f)
+    // Keep the continuation active across most of the remaining page.
+    // Finishing the blend after only ~10% of screen height caused a visible
+    // second boundary: a short blur followed by a flat solid-colour floor.
+    // The last 7% still converges exactly to fallbackFloor for readability.
+    val end = (cover + (1f - cover) * 0.92f).coerceAtMost(0.99f)
+    // Real photo alpha dissolves over its bottom 5%. The SAME backdrop has
+    // to extend under those pixels, otherwise an offscreen mask would merely
+    // expose a dark rectangle instead of the continuation of the photograph.
+    val photoStart = cover - cover * 0.050f
 
     // We cache only a few increasingly diffused levels. The first one is a
     // near-faithful sample of the *last* visible row; later levels borrow
@@ -188,23 +192,56 @@ internal fun immersiveSpatialFieldBitmap(
     val floorChannels = floatArrayOf(fallbackFloor.red, fallbackFloor.green, fallbackFloor.blue)
     for (py in 0 until height) {
         val y = (py + 0.5f) / height
-        if (y < cover || y >= end) {
+        if (y < photoStart || y >= end) {
             java.util.Arrays.fill(pixels, py * width, (py + 1) * width, floorPixel)
             continue
         }
-        val p = smoothEdge(cover, end, y)
-        // Diffusion spreads quickly at the beginning, while the darkening
-        // converges smoothly toward the floor with zero derivative at end.
+        val withinPhoto = y < cover
+        val p = if (withinPhoto) 0f else smoothEdge(cover, end, y)
+        // Blur radius grows with distance while every coloured region retains
+        // its x-position. Luminance is eased down separately to protect the
+        // title on very bright artwork; real hues are not remixed into grey.
         val levelPosition = kotlin.math.sqrt(p) * (levels.size - 1)
         val lo = levelPosition.toInt().coerceIn(0, levels.lastIndex)
         val hi = (lo + 1).coerceAtMost(levels.lastIndex)
         val mix = levelPosition - lo
+        val illumination = if (withinPhoto) 1f else
+            1f - (if (nearWhite) 0.67f else 0.52f) *
+                smoothEdge(cover, (cover + 0.085f).coerceAtMost(end), y)
+        val photoDistance = if (withinPhoto)
+            smoothEdge(photoStart, cover, y) else 1f
+        val photoRow = (source.height - 1f -
+            (1f - photoDistance) * minOf(4, source.height - 1)).coerceIn(
+            0f, (source.height - 1).toFloat())
+        val photoY0 = photoRow.toInt()
+        val photoY1 = (photoY0 + 1).coerceAtMost(source.height - 1)
+        val photoYmix = photoRow - photoY0
         for (px in 0 until width) {
             val sx = (px + 0.5f) / width * (source.width - 1)
+            val sampleX0 = sx.toInt().coerceIn(0, source.width - 1)
+            val sampleX1 = (sampleX0 + 1).coerceAtMost(source.width - 1)
+            val sampleXmix = sx - sampleX0
             fun value(c: Int): Int {
+                if (withinPhoto) {
+                    fun component(x: Int, y: Int): Float {
+                        val color = source.cell(x, y)
+                        return when (c) {
+                            0 -> color.red
+                            1 -> color.green
+                            else -> color.blue
+                        }
+                    }
+                    val top = component(sampleX0, photoY0) * (1f - sampleXmix) +
+                        component(sampleX1, photoY0) * sampleXmix
+                    val bottom = component(sampleX0, photoY1) * (1f - sampleXmix) +
+                        component(sampleX1, photoY1) * sampleXmix
+                    return byte(top * (1f - photoYmix) + bottom * photoYmix)
+                }
                 val start = channel(lo, sx, c)
                 val blurred = start + (channel(hi, sx, c) - start) * mix
-                return byte(blurred * (1f - p) + floorChannels[c] * p)
+                // The lights fade across the whole lower screen rather than
+                // being snapped to the floor just below the song metadata.
+                return byte(blurred * illumination * (1f - p) + floorChannels[c] * p)
             }
             pixels[py * width + px] = (0xFF shl 24) or
                 (value(0) shl 16) or (value(1) shl 8) or value(2)
