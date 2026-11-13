@@ -160,8 +160,11 @@ internal fun immersiveSpatialFieldBitmap(
         // continuation requested for this design. Diffusion grows from the
         // very first visible continuation row, then spreads to the whole
         // bottom of the image without inventing colours.
-        val rx = 11 + level * 9
-        val ry = (2 + level).coerceAtMost(source.height - 1)
+        // Large features stay visible, but narrow hair/face columns blend
+        // into a soft *cloud* before the first background row. Keep source
+        // hues: this is spatial diffusion, not RGB-to-grey desaturation.
+        val rx = 23 + level * 7
+        val ry = (4 + level).coerceAtMost(source.height - 1)
         FloatArray(source.width * 3).also { output ->
             for (x in 0 until source.width) {
                 var r = 0f
@@ -242,7 +245,14 @@ internal fun immersiveSpatialFieldBitmap(
                         component(sampleX1, photoY0) * sampleXmix
                     val bottom = component(sampleX0, photoY1) * (1f - sampleXmix) +
                         component(sampleX1, photoY1) * sampleXmix
-                    return byte(top * (1f - photoYmix) + bottom * photoYmix)
+                    // At the photo join, the source row and the first blurred
+                    // level MUST be the same. Previously the last source
+                    // row switched to a widened convolution in ONE scanline,
+                    // drawing a visible dark/bright stripe on every cover.
+                    val raw = top * (1f - photoYmix) + bottom * photoYmix
+                    val diffusion = smoothEdge(photoStart, cover, y)
+                    return byte(raw * (1f - diffusion) +
+                        channel(0, sx, c) * diffusion)
                 }
                 val start = channel(lo, sx, c)
                 val blurred = start + (channel(hi, sx, c) - start) * mix
