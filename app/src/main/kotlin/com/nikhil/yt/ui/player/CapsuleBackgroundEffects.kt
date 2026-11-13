@@ -84,11 +84,13 @@ private const val STATIC_BACKGROUND_TIME_MS = 6_480L
  * Only long-period wallpaper drift is rate-limited. Gesture springs, video,
  * lyrics and player/comet animations remain at the native display refresh rate.
  * Mini-player artwork barely moves in a 70dp slot and can be throttled.
- * Full-screen wallpaper uses the native display frame clock, with NO extra
- * delay that could make the entire expanded player look less fluid.
+ * Decorative wallpaper changes by less than one pixel between 33ms frames.
+ * A 30Hz clock is therefore enough for the drifting lights and stars, even on
+ * 120Hz panels. User gestures, lyrics, progress, video and orbit animations
+ * keep their own native display-frame clocks; they are NOT throttled.
  */
-internal const val FULL_AMBIENT_FRAME_DELAY_MS = 0L
-internal const val COMPACT_AMBIENT_FRAME_DELAY_MS = 40L
+internal const val FULL_AMBIENT_FRAME_DELAY_MS = 32L
+internal const val COMPACT_AMBIENT_FRAME_DELAY_MS = 48L
 internal fun capsuleAmbientFrameDelayMs(compact: Boolean) =
     if (compact) COMPACT_AMBIENT_FRAME_DELAY_MS else FULL_AMBIENT_FRAME_DELAY_MS
 
@@ -126,10 +128,11 @@ internal fun rememberCapsuleAnimationTime(
                     remainderNanos = elapsed % 1_000_000L
                     previousTick = now
                 }
-                // Yield between slow wallpaper frames instead of requesting
-                // a full-rate vsync for subpixel changes. Cancellation on
-                // pause/background happens immediately during this delay.
-                if (compact) delay(capsuleAmbientFrameDelayMs(compact))
+                // This clock belongs only to decorative wallpaper. Sleeping
+                // between subpixel changes avoids waking GPU on every vsync
+                // throughout a full song. Cancellation on pause/background
+                // remains immediate, while other animations stay full-rate.
+                delay(capsuleAmbientFrameDelayMs(compact))
             }
         }
     }
