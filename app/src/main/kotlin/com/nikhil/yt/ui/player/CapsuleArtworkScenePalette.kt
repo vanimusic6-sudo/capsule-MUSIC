@@ -81,7 +81,7 @@ internal fun capsuleArtworkScenePalette(bitmap: Bitmap): List<Color> {
         return minOf(distance, 24 - distance) >= 3
     }
     val secondary = present
-        .filter { it != accent && distinct(it, accent) }
+        .filter { it != accent && it != base && distinct(it, accent) }
         .maxByOrNull { strength(it) * (if (it >= 24) 0.85f else 1f) }
         ?: base
     return listOf(buckets[base].color(), buckets[accent].color(), buckets[secondary].color())
