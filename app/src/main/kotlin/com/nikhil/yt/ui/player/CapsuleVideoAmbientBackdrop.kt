@@ -26,8 +26,10 @@ import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.math.cos
 
-internal const val VIDEO_AMBIENT_BLEND_DURATION_MS = 1_850
+internal const val VIDEO_AMBIENT_BLEND_DURATION_MS = 850
 
 /** Retained for callers that also interpolate a legacy seven-colour palette. */
 internal fun capsuleAmbientPaletteAt(
@@ -52,7 +54,11 @@ internal fun CapsuleVideoAmbientBackdrop(
     nearWhite: Boolean = false,
     field: CapsuleColorField? = null,
     onFirstTextureReady: (() -> Unit)? = null,
+    animated: Boolean = true,
 ) {
+    // A draw-only frame clock: the faint reflected light drifts independently
+    // of the 700ms video readback. No image decode or raster work on vsync.
+    val ambientTime = rememberCapsuleAnimationTime(compact = false, running = animated)
     // A callback change must not cancel a pending texture render.
     val currentReadyCallback by rememberUpdatedState(onFirstTextureReady)
     var previousBands by remember { mutableStateOf(bands) }
@@ -68,9 +74,10 @@ internal fun CapsuleVideoAmbientBackdrop(
         // Geometry and palette are both LaunchedEffect keys: refresh the
         // cached texture even if colours are unchanged but viewport changed.
         val fresh = withContext(Dispatchers.Default) {
-            immersiveSpatialFieldBitmap(
+            if (field != null) capsuleVideoSpatialBitmap(field, fallbackFloor)
+            else immersiveSpatialFieldBitmap(
                 bands, fallbackFloor, coverFraction, tailFraction, texture,
-                landscape, nearWhite, photoOverlay = false, field = field,
+                landscape, nearWhite, photoOverlay = false, field = null,
             )
         }
         if (toTexture == null) {
@@ -95,10 +102,11 @@ internal fun CapsuleVideoAmbientBackdrop(
             previousField, targetField, currentProgress,
         )
         val visibleImage = withContext(Dispatchers.Default) {
-            immersiveSpatialFieldBitmap(
+            if (visibleField != null) capsuleVideoSpatialBitmap(visibleField, fallbackFloor)
+            else immersiveSpatialFieldBitmap(
                 visibleBands, fallbackFloor, coverFraction, tailFraction,
                 texture, landscape, nearWhite,
-                photoOverlay = false, field = visibleField,
+                photoOverlay = false, field = null,
             )
         }
         blend.snapTo(0f)
@@ -122,6 +130,10 @@ internal fun CapsuleVideoAmbientBackdrop(
         modifier = modifier.drawWithCache {
             val dst = IntSize(size.width.roundToInt().coerceAtLeast(1),
                 size.height.roundToInt().coerceAtLeast(1))
+            val reflectedLight = CachedSoftLight(
+                lerp(bands.firstOrNull() ?: fallbackFloor, Color.White, 0.22f),
+                maxOf(size.width, size.height) * 0.78f, 0.055f, 0.88f,
+            )
             onDrawBehind {
                 val incoming = toTexture
                 val outgoing = fromTexture
@@ -135,6 +147,13 @@ internal fun CapsuleVideoAmbientBackdrop(
                     drawImage(image = incoming, dstSize = dst,
                         filterQuality = FilterQuality.Medium)
                 }
+                // YouTube-like breathing, without oscillating the entire palette
+                // or restarting the video texture transition.
+                val phase = ambientTime.value / 14_000.0
+                reflectedLight.draw(this, androidx.compose.ui.geometry.Offset(
+                    size.width * (0.43f + 0.13f * sin(phase).toFloat()),
+                    size.height * (0.27f + 0.10f * cos(phase * 0.77).toFloat()),
+                ))
             }
         },
     )
