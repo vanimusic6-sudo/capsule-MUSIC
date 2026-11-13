@@ -49,8 +49,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.lerp
@@ -979,17 +982,35 @@ internal fun CapsuleImmersiveContent(
                 // forming a sharp horizontal band below the image in AUDIO mode.
                 // Clip the PHOTO and its existing overlay together: do not
                 // change the source crop, sampled colors or gradient stops.
-                Box(Modifier.fillMaxSize().clipToBounds().graphicsLayer {
-                    // Keep the current song's artwork fully opaque once VIDEO
-                    // has owned it. Only the *shared* container crossfade can
-                    // reveal it; the unrelated song gradient cannot punch holes
-                    // through it while VIDEO is closing.
-                    alpha = if (!pairReady) 0f else capsuleImmersiveArtworkOpacity(
-                        frameMatchesTrack = frame.key == visualKey,
-                        hasPresentedVideo = keepVideoReturnArtworkOpaque,
-                        trackFadeAlpha = gradientAlpha.value,
-                    )
-                }) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .clipToBounds()
+                        .graphicsLayer {
+                            // One retained GPU composition layer, not a new
+                            // CPU blur per frame. The photo dissolves into
+                            // the matched continuation underneath it.
+                            compositingStrategy = CompositingStrategy.Offscreen
+                            alpha = capsuleImmersiveArtworkOpacity(
+                                frameMatchesTrack = frame.key == visualKey,
+                                hasPresentedVideo = keepVideoReturnArtworkOpaque,
+                                trackFadeAlpha = gradientAlpha.value,
+                            )
+                        }
+                        .then(
+                            if (!isVideo) Modifier.drawWithCache {
+                                val fadeMask = Brush.verticalGradient(
+                                    0f to Color.White,
+                                    0.944f to Color.White,
+                                    1f to Color.Transparent,
+                                )
+                                onDrawWithContent {
+                                    drawContent()
+                                    drawRect(brush = fadeMask, blendMode = BlendMode.DstIn)
+                                }
+                            } else Modifier
+                        )
+                ) {
                     if (frame.key == visualKey) {
                         // The 256px rescue image is required only until
                         // the real full-resolution painter succeeds. Keeping
