@@ -787,8 +787,11 @@ internal fun CapsuleImmersiveContent(
         val paintKey = remember(frame?.key, coverFraction, tailFraction) {
             "${frame?.key}|$coverFraction|$tailFraction"
         }
+        // One prepared page texture for one decoded cover. The previous
+        // pair also built a separate tinted PHOTO overlay, which repeatedly
+        // caused horizontal lines and made the real image look washed out.
         var matchedPaint by remember(paintKey) {
-            mutableStateOf<Pair<ImageBitmap, ImageBitmap>?>(null)
+            mutableStateOf<ImageBitmap?>(null)
         }
         LaunchedEffect(
             paintKey, frame?.colorField, frame?.visibleTail, frame?.edgeBands, pageFloor,
@@ -797,7 +800,7 @@ internal fun CapsuleImmersiveContent(
             val readyFrame = frame ?: return@LaunchedEffect
             val colours = readyFrame.edgeBands.ifEmpty { listOf(seamColor) }
             matchedPaint = withContext(Dispatchers.Default) {
-                val page = immersiveSpatialFieldBitmap(
+                immersiveSpatialFieldBitmap(
                     bands = colours,
                     fallbackFloor = readyFrame.floor,
                     coverFraction = coverFraction,
@@ -809,19 +812,6 @@ internal fun CapsuleImmersiveContent(
                     field = readyFrame.colorField,
                     edgeMap = readyFrame.visibleTail,
                 )
-                val cover = immersiveSpatialFieldBitmap(
-                    bands = colours,
-                    fallbackFloor = readyFrame.floor,
-                    coverFraction = coverFraction,
-                    tailFraction = tailFraction,
-                    texture = readyFrame.bottomTexture,
-                    landscape = readyFrame.landscape,
-                    nearWhite = readyFrame.nearWhiteBackground,
-                    photoOverlay = true,
-                    field = readyFrame.colorField,
-                    edgeMap = readyFrame.visibleTail,
-                )
-                page to cover
             }
         }
         val pairReady = frame != null && matchedPaint != null
@@ -831,7 +821,9 @@ internal fun CapsuleImmersiveContent(
         var videoTextureReady by remember(frame?.key) { mutableStateOf(false) }
         val videoLayerAlpha = remember(frame?.key) { Animatable(0f) }
         LaunchedEffect(isVideo, videoAmbientField) {
-            if (isVideo && videoAmbientField != null) retainedVideoField = videoAmbientField
+            // A disabled VIDEO background must release its former illumination
+            // immediately, even if the VIDEO view itself stays mounted.
+            if (isVideo) retainedVideoField = videoAmbientField
         }
         LaunchedEffect(isVideo, videoTextureReady) {
             if (isVideo && videoTextureReady) {
@@ -875,22 +867,31 @@ internal fun CapsuleImmersiveContent(
             }
         }
 
-        // Static album background: never route it through the 1.85-second
-        // VIDEO palette animation. That caused the delayed wave/flash.
-        Box(Modifier.fillMaxSize().background(if (frame != null) pageFloor
-            else IMMERSIVE_NEUTRAL_COLOR)) {
-            matchedPaint?.first?.let { bitmap ->
+        // AUDIO's colour continuation and VIDEO's backdrop are different
+        // ownership domains. A VIDEO with ambient disabled must be a clean
+        // neutral dark page, never the previous album's muddy colour texture.
+        // On VIDEO handover the old image fades, without a permanent CPU loop.
+        val audioBackdropAlpha = remember { Animatable(if (isVideo) 0f else 1f) }
+        LaunchedEffect(isVideo) {
+            audioBackdropAlpha.animateTo(if (isVideo) 0f else 1f, tween(280))
+        }
+        val videoNeutral = Color(0xFF111116)
+        Box(Modifier.fillMaxSize().background(
+            if (isVideo) videoNeutral else if (frame != null) pageFloor
+            else IMMERSIVE_NEUTRAL_COLOR
+        )) {
+            matchedPaint?.let { bitmap ->
                 Image(
                     bitmap = bitmap,
                     contentDescription = null,
                     contentScale = ContentScale.FillBounds,
                     modifier = Modifier.fillMaxSize().graphicsLayer {
-                        alpha = gradientAlpha.value
+                        alpha = gradientAlpha.value * audioBackdropAlpha.value
                     },
                 )
             }
             val liveField = retainedVideoField
-            if (liveField != null && matchedPaint != null) {
+            if (isVideo && liveField != null && matchedPaint != null) {
                 key(frame?.key) {
                     CapsuleVideoAmbientBackdrop(
                         bands = pageBands,
@@ -1053,15 +1054,10 @@ internal fun CapsuleImmersiveContent(
                             ),
                     )
                     }
-                    // Prepared with page in ONE coroutine, committed atomically.
-                    matchedPaint?.second?.let { overlay ->
-                        Image(
-                            bitmap = overlay,
-                            contentDescription = null,
-                            contentScale = ContentScale.FillBounds,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
+                    // No colour overlay on the photograph. The separate
+                    // continuation begins below the artwork, exactly where
+                    // the real visible crop ends.
+
                 }
             }
         }
