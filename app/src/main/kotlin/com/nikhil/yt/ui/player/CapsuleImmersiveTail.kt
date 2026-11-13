@@ -8,8 +8,8 @@ package com.nikhil.yt.ui.player
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.Color
 
-private const val IMMERSIVE_TAIL_COLUMNS = 64
-private const val IMMERSIVE_TAIL_ROWS = 8
+private const val IMMERSIVE_TAIL_COLUMNS = 96
+private const val IMMERSIVE_TAIL_ROWS = 12
 
 /**
  * ContentScale.Crop is followed by a 1.06x visual overscan for landscape covers.
