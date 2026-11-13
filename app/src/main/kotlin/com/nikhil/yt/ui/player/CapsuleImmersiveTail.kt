@@ -23,7 +23,7 @@ internal fun Bitmap.capsuleImmersiveVisibleTail(
     landscape: Boolean,
     fraction: Float = 0.13f,
 ): CapsuleColorField {
-    val span = fraction.coerceIn(0.05f, 0.3f)
+    val span = fraction.coerceIn(0.05f, 0.45f)
     val rows = (IMMERSIVE_TAIL_ROWS * span / 0.13f).roundToInt().coerceAtLeast(4)
     val target = aspect.coerceIn(0.55f, 2.2f)
     val imageAspect = width.toFloat() / height.coerceAtLeast(1)

@@ -40,11 +40,14 @@ class PlayerTransitionArchitectureTest {
         assertTrue(immersive.contains("matchedPaint?.let { bitmap ->"))
         assertTrue(immersive.contains("if (frame != null) ImmersiveAudioScene("))
         assertFalse("No second tinted photo overlay", immersive.contains("matchedPaint?.second?.let"))
-        assertTrue("A loading placeholder cannot cover a prepared scene",
-            immersive.contains("if (frame == null && outgoingFrame == null && !hasPresentedScene)"))
+        assertFalse("A raw thumbnail cannot flash during foreground restoration",
+            immersive.contains("model = mediaMetadata.thumbnailUrl"))
         assertFalse("The photo must not be faded separately from its track scene",
             immersive.contains("alpha = capsuleImmersiveArtworkOpacity("))
-        assertTrue(immersive.contains("artworkTone.preview"))
+        assertFalse("The palette miniature is not an outgoing fullscreen photo",
+            immersive.contains("painter = frame.preview") || immersive.contains("bitmap = frame.preview"))
+        assertTrue(immersive.contains("painter = frame.painter"))
+        assertTrue(immersive.contains("painter = leaving.painter"))
         assertTrue(immersive.contains("sharedProgress = sharedVideoProgress"))
         assertTrue(immersive.contains("capsuleImmersiveVideoBackplateAlpha(sharedVideoProgress.value)"))
         assertFalse(immersive.contains("pageTextureReadyFor"))

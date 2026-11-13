@@ -67,8 +67,8 @@ private const val EDGE_HEIGHT = 240
 
 // The prepared continuation begins underneath fully opaque photo pixels.
 // Share this geometry with the photo mask, including outgoing track scenes.
-internal const val IMMERSIVE_DIFFUSION_START = 0.80f
-internal const val IMMERSIVE_PHOTO_FEATHER_START = 0.83f
+internal const val IMMERSIVE_DIFFUSION_START = 0.63f
+internal const val IMMERSIVE_PHOTO_FEATHER_START = 0.67f
 
 internal fun immersivePhotoFeatherAlpha(fraction: Float): Float {
     val t = ((fraction - IMMERSIVE_PHOTO_FEATHER_START) /
@@ -156,7 +156,7 @@ internal fun immersiveSpatialFieldBitmap(
     // second boundary: a short blur followed by a flat solid-colour floor.
     // The last 7% still converges exactly to fallbackFloor for readability.
     val end = (cover + (1f - cover) * 0.92f).coerceAtMost(0.99f)
-    // Real photo alpha dissolves over its bottom 17%. The SAME backdrop has
+    // Real photo alpha dissolves over its bottom third. The SAME backdrop has
     // to extend under those pixels, otherwise an offscreen mask would merely
     // expose a dark rectangle instead of the continuation of the photograph.
     // The diffuse photo-colour layer must BEGIN before the photo alpha
@@ -235,49 +235,12 @@ internal fun immersiveSpatialFieldBitmap(
         // A second independent 8.5%-tall brightness ramp made a dark
         // horizontal band and abruptly erased the scene below the title.
         val illumination = if (withinPhoto) 1f else 1f - 0.13f * p
-        val photoDistance = if (withinPhoto)
-            smoothEdge(photoStart, cover, y) else 1f
-        // diffusionTail spans the full overlap of the actual crop. Follow those
-        // rows in physical Y instead of stretching just its last four rows
-        // across the overlap (which repeated small horizontal details).
-        val photoRow = if (edgeMap != null)
-            (((y / cover - IMMERSIVE_DIFFUSION_START) /
-                (1f - IMMERSIVE_DIFFUSION_START)) * source.height - 0.5f)
-                .coerceIn(0f, (source.height - 1).toFloat())
-        else (source.height - 1f -
-            (1f - photoDistance) * minOf(4, source.height - 1)).coerceIn(
-                0f, (source.height - 1).toFloat())
-        val photoY0 = photoRow.toInt()
-        val photoY1 = (photoY0 + 1).coerceAtMost(source.height - 1)
-        val photoYmix = photoRow - photoY0
         for (px in 0 until width) {
             val sx = (px + 0.5f) / width * (source.width - 1)
-            val sampleX0 = sx.toInt().coerceIn(0, source.width - 1)
-            val sampleX1 = (sampleX0 + 1).coerceAtMost(source.width - 1)
-            val sampleXmix = sx - sampleX0
             fun value(c: Int): Int {
-                if (withinPhoto) {
-                    fun component(x: Int, y: Int): Float {
-                        val color = source.cell(x, y)
-                        return when (c) {
-                            0 -> color.red
-                            1 -> color.green
-                            else -> color.blue
-                        }
-                    }
-                    val top = component(sampleX0, photoY0) * (1f - sampleXmix) +
-                        component(sampleX1, photoY0) * sampleXmix
-                    val bottom = component(sampleX0, photoY1) * (1f - sampleXmix) +
-                        component(sampleX1, photoY1) * sampleXmix
-                    // At the photo join, the source row and the first blurred
-                    // level MUST be the same. Previously the last source
-                    // row switched to a widened convolution in ONE scanline,
-                    // drawing a visible dark/bright stripe on every cover.
-                    val raw = top * (1f - photoYmix) + bottom * photoYmix
-                    val diffusion = smoothEdge(photoStart, cover, y)
-                    val blurred = channel(lo, sx, c) * (1f - mix) + channel(hi, sx, c) * mix
-                    return byte(raw * (1f - diffusion) + blurred * diffusion)
-                }
+                // The backdrop carries only diffuse light, never enlarged
+                // photographic cells. All real detail belongs to the retained
+                // full-resolution photo fading above this continuous field.
                 val start = channel(lo, sx, c)
                 val blurred = start + (channel(hi, sx, c) - start) * mix
                 // The lights fade across the whole lower screen rather than

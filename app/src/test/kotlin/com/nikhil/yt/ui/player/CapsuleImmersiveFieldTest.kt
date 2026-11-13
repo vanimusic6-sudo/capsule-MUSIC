@@ -10,7 +10,7 @@ class CapsuleImmersiveFieldTest {
         assertTrue("Backdrop must exist before any photo alpha is removed",
             IMMERSIVE_DIFFUSION_START < IMMERSIVE_PHOTO_FEATHER_START)
         assertTrue("Only the lower portion of the artwork should be softened",
-            IMMERSIVE_PHOTO_FEATHER_START in 0.80f..0.88f)
+            IMMERSIVE_PHOTO_FEATHER_START in 0.62f..0.72f)
         assertTrue(immersivePhotoFeatherAlpha(0f) == 1f)
         assertTrue(immersivePhotoFeatherAlpha(1f) == 0f)
         var previous = 1f
@@ -23,6 +23,14 @@ class CapsuleImmersiveFieldTest {
         }
         assertTrue(immersivePhotoFeatherAlpha(IMMERSIVE_PHOTO_FEATHER_START + 0.001f) > 0.999f)
         assertTrue(immersivePhotoFeatherAlpha(0.999f) < 0.001f)
+    }
+
+    @Test fun photographicDetailDissolvesAcrossTheWholeLowerThird() {
+        assertTrue(immersivePhotoFeatherAlpha(0.65f) == 1f)
+        assertTrue("Half of the fine detail should be gone before the bottom sixth",
+            immersivePhotoFeatherAlpha(0.85f) < 0.5f)
+        assertTrue("The final rows must not leave a visible photo cut",
+            immersivePhotoFeatherAlpha(0.95f) < 0.05f)
     }
 
     @Test fun strongLeftRightPaletteIsPreservedWithoutDiscreteStripeJumps() {
