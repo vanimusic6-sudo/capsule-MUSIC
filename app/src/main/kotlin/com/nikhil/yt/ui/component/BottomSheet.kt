@@ -20,6 +20,8 @@ import androidx.compose.foundation.gestures.DragScope
 import androidx.compose.foundation.gestures.DraggableAnchors
 import androidx.compose.foundation.gestures.DraggableState
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -47,6 +49,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.platform.LocalDensity
@@ -463,7 +466,22 @@ fun BottomSheet(
                             .graphicsLayer {
                                 alpha = surfaceAlpha(state.visualProgress)
                             }
-                            .background(backgroundColor),
+                            .background(backgroundColor)
+                            // The expanded sheet is modal. Its empty/decorative regions must
+                            // own touch input; otherwise a tap lands on settings underneath.
+                            // This is on the BACKGROUND sibling, not the foreground controls:
+                            // progress, video, lyrics, buttons and accessibility remain live.
+                            .pointerInput(renderExpandedContent) {
+                                if (!renderExpandedContent) return@pointerInput
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    down.consume()
+                                    do {
+                                        val event = awaitPointerEvent()
+                                        event.changes.forEach { it.consume() }
+                                    } while (event.changes.any { it.pressed })
+                                }
+                            },
                 ) {
                     backgroundContent()
                 }
