@@ -662,72 +662,35 @@ internal fun CapsuleImmersiveContent(
             if (isVideo || needsVideoSurface) keepVideoReturnArtworkOpaque = true
         }
         var shownGradient by remember { mutableStateOf<ImmersiveGradientFrame?>(null) }
-        var hasShownGradient by remember { mutableStateOf(false) }
-        val gradientAlpha = remember { Animatable(0f) }
-        // Selection changes must START the outgoing fade immediately. Crucially, its
-        // coroutine is keyed only by whether the OLD frame is still on screen, not by
-        // each incoming song id. Rapid A -> B -> C -> D skips therefore cannot restart
-        // the same A -> grey animation four times and keep A visible indefinitely.
-        val fadingOldFrame = shouldFadeOutImmersiveFrame(
-            shownGradient?.key,
-            visualKey,
-            visible,
-        ) && (!visible || coverAndGradientReady)
-        LaunchedEffect(fadingOldFrame) {
-            if (fadingOldFrame) {
-                gradientAlpha.animateTo(
-                    0f,
-                    animationSpec = tween(durationMillis = 380, easing = FastOutSlowInEasing),
-                )
-                shownGradient = null
-            }
-        }
-        // Only the newest selected song can enter AFTER the old frame has fully
-        // disappeared and its own final bitmap and background are BOTH ready.
+        // The last actual photo and page live underneath the next prepared
+        // pair. Never fade to neutral, then mount a new bitmap 630ms later.
+        var outgoingFrame by remember { mutableStateOf<ImmersiveGradientFrame?>(null) }
+        val gradientAlpha = remember { Animatable(1f) }
         LaunchedEffect(
-            visualKey,
-            coverAndGradientReady,
-            edge,
-            floor,
-            artworkTone.bottomTexture,
-            artworkTone.displayUrl,
-            visible,
-            fadingOldFrame,
+            visualKey, coverAndGradientReady, edge, floor,
+            artworkTone.bottomTexture, artworkTone.displayUrl, visible, isVideo,
         ) {
-            if (!visible || !coverAndGradientReady || fadingOldFrame) return@LaunchedEffect
+            if (!visible || !coverAndGradientReady ||
+                shownGradient?.key == visualKey
+            ) return@LaunchedEffect
             val readyUrl = artworkTone.displayUrl ?: return@LaunchedEffect
-            if (shownGradient == null) {
-                shownGradient = ImmersiveGradientFrame(
-                    key = visualKey,
-                    edge = edge,
-                    floor = floor,
-                    imageUrl = readyUrl,
-                    landscape = artworkTone.landscape,
-                    bottomTexture = artworkTone.bottomTexture,
-                    nearWhiteBackground = artworkTone.nearWhiteBackground,
-                    edgeBands = artworkTone.edgeBands,
-                    colorField = artworkTone.colorField,
-                    visibleTail = artworkTone.visibleTail,
-                )
-            }
-            // Also handles reopening the sheet while its previous fade-out was being
-            // cancelled. Alpha carries on from its current value, not a new zero.
-            if (shownGradient?.key == visualKey) {
-                if (!hasShownGradient || keepVideoReturnArtworkOpaque) {
-                    // After VIDEO this song's photo is already fully visible.
-                    // Skip a redundant 630ms offscreen alpha animation.
-                    // Track switches reset the guard and still crossfade.
-                    // The first frame has no previous artwork to dissolve from.
-                    // Reveal it directly instead of flashing the neutral sheet.
-                    gradientAlpha.snapTo(1f)
-                } else {
-                    gradientAlpha.animateTo(
-                        1f,
-                        animationSpec = tween(durationMillis = 630, easing = FastOutSlowInEasing),
-                    )
-                }
-                hasShownGradient = true
-            }
+            val old = shownGradient
+            outgoingFrame = old
+            shownGradient = ImmersiveGradientFrame(
+                key = visualKey,
+                edge = edge,
+                floor = floor,
+                imageUrl = readyUrl,
+                landscape = artworkTone.landscape,
+                bottomTexture = artworkTone.bottomTexture,
+                nearWhiteBackground = artworkTone.nearWhiteBackground,
+                edgeBands = artworkTone.edgeBands,
+                colorField = artworkTone.colorField,
+                visibleTail = artworkTone.visibleTail,
+            )
+            // New background + photo appear together only after their first
+            // render has completed, instead of sequential fade-out/in.
+            gradientAlpha.snapTo(if (old == null || isVideo) 1f else 0f)
         }
         // Keep the original background interpolation for normal artwork.
         // Only near-white, low-saturation covers use the slightly more
@@ -798,6 +761,8 @@ internal fun CapsuleImmersiveContent(
         // One prepared page texture for one decoded cover. The previous
         // pair also built a separate tinted PHOTO overlay, which repeatedly
         // caused horizontal lines and made the real image look washed out.
+        var lastReadyPaint by remember { mutableStateOf<ImageBitmap?>(null) }
+        val outgoingPaint = remember(paintKey) { lastReadyPaint }
         var matchedPaint by remember(paintKey) {
             mutableStateOf<ImageBitmap?>(null)
         }
@@ -820,6 +785,21 @@ internal fun CapsuleImmersiveContent(
                     field = readyFrame.colorField,
                     edgeMap = readyFrame.visibleTail,
                 )
+            }
+            lastReadyPaint = matchedPaint
+        }
+        LaunchedEffect(frame?.key, matchedPaint, isVideo) {
+            if (frame == null || matchedPaint == null ||
+                frame.key != visualKey
+            ) return@LaunchedEffect
+            if (outgoingFrame == null || isVideo) {
+                gradientAlpha.snapTo(1f)
+                outgoingFrame = null
+            } else {
+                gradientAlpha.animateTo(
+                    1f, tween(durationMillis = 330, easing = FastOutSlowInEasing),
+                )
+                outgoingFrame = null
             }
         }
         val pairReady = frame != null && matchedPaint != null
@@ -886,6 +866,20 @@ internal fun CapsuleImmersiveContent(
         Box(Modifier.fillMaxSize().background(
             immersivePageBaseColor(isVideo, frame != null, pageFloor)
         )) {
+            if (!isVideo && outgoingFrame != null &&
+                (matchedPaint == null || gradientAlpha.value < 1f)
+            ) {
+                outgoingPaint?.let { bitmap ->
+                    Image(
+                        bitmap = bitmap,
+                        contentDescription = null,
+                        contentScale = ContentScale.FillBounds,
+                        modifier = Modifier.fillMaxSize().graphicsLayer {
+                            alpha = audioBackdropAlpha.value
+                        },
+                    )
+                }
+            }
             matchedPaint?.let { bitmap ->
                 Image(
                     bitmap = bitmap,
@@ -970,6 +964,23 @@ internal fun CapsuleImmersiveContent(
                         1f to (if (frame != null) pageFloor else Color(0xFF151219)),
                     )))
                 }
+            }
+            // Hold the last *real* album photo until the incoming decoded
+            // cover and its matching colour continuation can overlap.
+            // Existing Coil bitmap cache avoids a second remote fetch.
+            val leaving = outgoingFrame
+            if (!isVideo && leaving != null &&
+                (matchedPaint == null || gradientAlpha.value < 1f)
+            ) {
+                AsyncImage(
+                    model = rememberImmersiveArtworkRequest(leaving.imageUrl),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().graphicsLayer {
+                        scaleX = if (leaving.landscape) 1.06f else 1f
+                        scaleY = if (leaving.landscape) 1.06f else 1f
+                    },
+                )
             }
             if (frame != null && pairReady) {
                 // Wide (16:9) video thumbnails use a 1.06x GPU overscan below.
