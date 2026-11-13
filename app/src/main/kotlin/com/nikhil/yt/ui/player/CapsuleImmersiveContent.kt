@@ -247,9 +247,9 @@ internal fun capsuleImmersiveVideoBackplateAlpha(progress: Float): Float =
     1f - capsulePhotoOpacity(progress, CapsuleVideoBlendStyle.IMMERSION)
 
 /** One cap for artwork and backdrop when a selected track has changed. */
-internal const val IMMERSIVE_STALE_SCENE_FADE_MS = 720
-internal const val IMMERSIVE_TRACK_FADE_MS = 720
-internal val ImmersiveTrackEasing = CubicBezierEasing(0.33f, 0f, 0.67f, 1f)
+internal const val IMMERSIVE_STALE_SCENE_FADE_MS = 420
+internal const val IMMERSIVE_TRACK_FADE_MS = 380
+internal val ImmersiveTrackEasing = CubicBezierEasing(0.25f, 0.12f, 0.60f, 1f)
 internal fun immersiveSceneOpacity(
     displayedKey: String?,
     selectedKey: String,
@@ -825,7 +825,7 @@ internal fun CapsuleImmersiveContent(
             staleSceneAlpha.snapTo(gradientAlpha.value)
             // Give a cached incoming full-size pair time to arrive before
             // dimming the old scene. The total stale lifetime is still bounded.
-            delay(350L)
+            delay(160L)
             staleSceneAlpha.animateTo(
                 0f, tween(durationMillis = IMMERSIVE_STALE_SCENE_FADE_MS),
             )

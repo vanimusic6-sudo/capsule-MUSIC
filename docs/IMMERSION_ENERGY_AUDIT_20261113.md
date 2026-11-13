@@ -1,15 +1,16 @@
 # Immersion background and motion audit — 2026-11-13
 
 Scope: cover continuation, cover blur, track handoff, live video colour capture,
-rendering, pause/resume caches and visible/hidden work. Compared with c485859.
+rendering, pause/resume caches and visible/hidden work. Compared with c485859. Follow-up tuning lowers only the cover blur and shortens
+the track dissolve; the video-light implementation accepted at 818e0af is unchanged.
 This is a source audit plus CI CPU/render checks. It is not a battery or thermal
 measurement on an Android phone.
 
 | Path | Finding | Change / retained bound |
 | --- | --- | --- |
-| Cover blur | Started at 54% and filled a full-cover transparent image; obscured real art too early | Blur begins at 76%, only the bottom 24% is cached/drawn. Same original photo feather and continuation geometry. Three progressively blurred levels instead of four; reduced source-strip work. One preparation per cover/crop on a worker, cache capacity 3. |
+| Cover blur | Started at 54% and filled a full-cover transparent image; obscured real art too early | Blur begins at 84%, only the bottom 16% is cached/drawn. Same original photo feather and continuation geometry. Three progressively blurred levels instead of four; reduced source-strip work. One preparation per cover/crop on a worker, cache capacity 3. |
 | Cover gradient | Source exposure recalculated for every 2D kernel tap | Prepare source colours once. Evaluate the same finite triangular kernels in separable vertical/horizontal passes. Original palette, floor, fade height and image resolution preserved. One cached render per cover/layout. |
-| Track change | Two independent scene scales distorted the image; fast-out easing compressed visible movement; opacity reads invalidated the parent | Remove both scales. 720ms symmetric, soft-endpoint dissolve. Graphics-layer opacity; equal metadata colours use equality-checked derived state. Rapid skips coalesce the pending visual target after the active finite dissolve, rather than snapping a half-visible photo to opaque or stacking more layers. Playback/input remain immediate. |
+| Track change | Two independent scene scales distorted the image; fast-out easing compressed visible movement; opacity reads invalidated the parent | Remove both scales. 380ms responsive dissolve with a short eased finish. Graphics-layer opacity; equal metadata colours use equality-checked derived state. Rapid skips coalesce the pending visual target after the active finite dissolve, rather than snapping a half-visible photo to opaque or stacking more layers. Playback/input remain immediate. |
 | Static audio | Full-page offscreen surface forced even at opacity 1 | Auto group compositing: retain grouped opacity while fading, avoid forcing the extra outer surface when opaque. Photo alpha mask remains isolated for correct blending. No new idle frame clock. |
 | Audio underneath video | Entire cover/mask/continuation still drawn under opaque video | Omit the audio draw tree once video reaches full opacity. Retain prepared assets for immediate reverse handoff. |
 | Video motion | Hue-bin centroid guesses warped colours up to 30% of the source; bins changed discontinuously; 3 GPU inputs rebuilt | Remove guessed optical flow and velocity texture. Spatially filter actual frame regions in both axes, with 220ms frame-driven temporal response. Reuse kernels/scratch; 2 tiny immutable colour inputs, continuous display-clock interpolation. No radial lamps or autonomous wallpaper time. |
@@ -26,7 +27,7 @@ The graphics suite emits native renderer PNGs for the detailed photo join,
 near-zero slider, directional video field, uniform field and alternating-stripe
 input. Tests also cover frame-flash damping, sustained scene following, colour
 region position, interruption from the current visible field, contrast and
-soft-endpoint track timing.
+responsive-start, short-finish track timing.
 
 `energy-preparation.json` reports informational Robolectric-host thread CPU time
 for video filtering/texture construction, one cover blur and one cover-gradient

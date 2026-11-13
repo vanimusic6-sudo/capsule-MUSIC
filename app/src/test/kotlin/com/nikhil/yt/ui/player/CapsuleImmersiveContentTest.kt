@@ -414,7 +414,7 @@ class CapsuleImmersiveContentTest {
             immersiveSceneOpacity(previous, current, 0.95f, 0f), 0.0001f)
         assertEquals(0.95f,
             immersiveSceneOpacity(current, current, 0.95f, 0f), 0.0001f)
-        assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS in 600..800)
+        assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS in 380..460)
     }
     @Test fun metadataTurnsDirtyGreyOnlyOverNearWhiteBackground() {
         val white = immersiveMetadataInk(Color.White)
@@ -429,9 +429,9 @@ class CapsuleImmersiveContentTest {
     }
 
     @Test fun trackRevealIsLongEnoughToReadWithoutHoldingOldArtworkForSeconds() {
-        assertTrue(IMMERSIVE_TRACK_FADE_MS in 680..780)
+        assertTrue(IMMERSIVE_TRACK_FADE_MS in 340..420)
         assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS >= IMMERSIVE_TRACK_FADE_MS)
-        assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS <= 800)
+        assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS <= 460)
     }
 
     @Test fun whiteMetadataKeepsContrastForTitleAndTranslucentArtist() {
@@ -447,7 +447,8 @@ class CapsuleImmersiveContentTest {
         assertEquals(1f, ImmersiveTrackEasing.transform(1f), 0.0001f)
         val steps = (0..100).map { ImmersiveTrackEasing.transform(it / 100f) }
         assertTrue(steps.zipWithNext().all { (a, b) -> b >= a && b - a < 0.018f })
-        assertTrue(steps[5] < 0.015f)
+        assertTrue("The dissolve must start promptly instead of lingering", steps[5] in 0.025f..0.05f)
+        assertTrue(steps[20] > 0.15f)
         assertTrue(steps[95] > 0.985f)
     }
 
