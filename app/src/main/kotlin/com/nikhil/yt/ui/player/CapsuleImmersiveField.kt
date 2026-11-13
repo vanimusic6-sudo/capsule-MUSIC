@@ -154,12 +154,14 @@ internal fun immersiveSpatialFieldBitmap(
     // near-faithful sample of the *last* visible row; later levels borrow
     // from higher rows and further away neighbours in TWO dimensions.
     val levels = Array(8) { level ->
-        // Close to the photo use the true edge; immediately afterwards
-        // spread any tiny black figures, faces or text sideways across a
-        // larger neighbourhood. Previously rx=3..21 was too narrow for
-        // 96 samples and drew tall pixel-coloured "light pillars".
-        val rx = if (level == 0) 0 else 2 + level * 5
-        val ry = if (level == 0) 0 else 1 + level.coerceAtMost(source.height - 2)
+        // Start with a BROAD two-dimensional area even at the seam:
+        // projecting one source pixel below the image produces long striped
+        // shadows of faces/hair rather than the soft cloudy, glass-like
+        // continuation requested for this design. Diffusion grows from the
+        // very first visible continuation row, then spreads to the whole
+        // bottom of the image without inventing colours.
+        val rx = 11 + level * 9
+        val ry = (2 + level).coerceAtMost(source.height - 1)
         FloatArray(source.width * 3).also { output ->
             for (x in 0 until source.width) {
                 var r = 0f
