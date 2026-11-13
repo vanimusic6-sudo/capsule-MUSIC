@@ -357,8 +357,8 @@ fun BottomSheetPlayer(
         videoPlaybackState.presentingVideo &&
             videoPlaybackState.mediaId == enrichedMetadata?.id
     }?.field
-    val videoAmbientOverlayAlpha = remember { Animatable(0f) }
-    var videoAmbientOverlayMounted by remember { mutableStateOf(false) }
+    val videoAmbientOverlayAlpha = remember { Animatable(if (activeVideoAmbientBands != null) 1f else 0f) }
+    var videoAmbientOverlayMounted by remember { mutableStateOf(activeVideoAmbientBands != null) }
     LaunchedEffect(activeVideoAmbientBands != null) {
         if (activeVideoAmbientBands != null) {
             videoAmbientOverlayMounted = true

@@ -944,7 +944,7 @@ internal fun CapsuleImmersiveContent(
             Animatable(if (isVideo) 1f else 0f)
         }
         var retainedVideoField by remember(mediaMetadata.id) {
-            mutableStateOf<CapsuleColorField?>(null)
+            mutableStateOf(if (isVideo) videoAmbientField else null)
         }
         LaunchedEffect(isVideo, videoAmbientField) {
             if (isVideo) retainedVideoField = videoAmbientField

@@ -98,10 +98,22 @@ internal fun CapsuleVideoAmbientBackdrop(
     var previousField by remember { mutableStateOf(target) }
     var targetField by remember { mutableStateOf(target) }
     var motion by remember { mutableStateOf(capsuleVideoColourMotion(target, target)) }
-    var prepared by remember { mutableStateOf<VideoAmbientPaint?>(null) }
-    val blend = remember { Animatable(1f) }
     val modern = Build.VERSION.SDK_INT >= 33
+    var prepared by remember {
+        // Only 320 cells; prepare an already-retained field synchronously so
+        // resume never exposes the neutral backplate for one display frame.
+        val initial = if (modern) {
+            val texture = capsuleVideoFieldTexture(target)
+            VideoAmbientPaint(texture, texture, capsuleVideoMotionTexture(motion), null, null)
+        } else null
+        mutableStateOf(initial)
+    }
+    val blend = remember { Animatable(1f) }
     LaunchedEffect(target, fallbackFloor, animated) {
+        if (prepared != null && target == targetField && blend.value == 1f) {
+            currentReadyCallback?.invoke()
+            return@LaunchedEffect
+        }
         val visible = capsuleAdvectedField(previousField, targetField, motion, blend.value)
         val nextMotion = capsuleVideoColourMotion(visible, target)
         val ready = withContext(Dispatchers.Default) {
