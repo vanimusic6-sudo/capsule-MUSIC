@@ -59,6 +59,19 @@ class CapsuleImmersiveTailTest {
         image.recycle()
     }
 
+    @Test fun sparseWhiteMarkProtectionDoesNotSuppressARealColouredLightSource() {
+        val dark = Color(0xFF121117)
+        val source = CapsuleColorField(96, 34, List(96 * 34) { i ->
+            if (i % 96 >= 85) Color(0xFFFF4810) else dark
+        })
+        val image = immersiveSpatialFieldBitmap(emptyList(), dark,
+            0.55f, 0.06f, 0f, false, false, false, edgeMap = source).asAndroidBitmap()
+        val y = (image.height * 0.58f).toInt()
+        assertTrue("A real red flame must retain its own light; only pale marks are limited",
+            AndroidColor.red(image.getPixel(image.width - 2, y)) > 80)
+        image.recycle()
+    }
+
     @Test fun progressiveSoftArtworkRemovesFineTextureBeforeThePhysicalEdge() {
         val bitmap = Bitmap.createBitmap(320, 280, Bitmap.Config.ARGB_8888)
         for (y in 0 until bitmap.height) for (x in 0 until bitmap.width) {
