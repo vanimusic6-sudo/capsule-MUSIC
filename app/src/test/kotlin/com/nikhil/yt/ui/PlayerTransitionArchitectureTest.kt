@@ -63,7 +63,7 @@ class PlayerTransitionArchitectureTest {
         assertTrue(backdrop.contains("capsuleVideoSpatialBitmap("))
 
         val floor = source("com/nikhil/yt/ui/player/CapsuleImmersiveFloor.kt")
-        assertTrue(floor.contains("val rawEdge = image.immersiveBottomBackground(artworkAspect)"))
+        assertTrue(floor.contains("val rawEdge = capsuleDominantEdgeColor(visibleTail)"))
         assertTrue(floor.contains("val colorField = image.capsuleColorField(artworkAspect)"))
         assertFalse(floor.contains("val edgeBands = image.immersiveBottomEdgeBands("))
         assertTrue(floor.contains("val edgeBands: List<Color> = emptyList()"))
@@ -78,7 +78,7 @@ class PlayerTransitionArchitectureTest {
         // contradicting the now-restored baseline and failing this suite.
         assertTrue(floor.contains("accent = if (nearWhite) {"))
         assertTrue(floor.contains("rawEdge.immersiveMutedAccent()"))
-        assertTrue(floor.contains("lerp(background, Color.Black, 0.10f)"))
+        assertTrue(floor.contains("capsuleCleanImmersiveFloor(visibleTail)"))
         assertFalse(floor.contains("accent = background.immersiveMutedAccent()"))
         assertTrue(floor.contains("fun Color.immersiveMutedAccent()"))
         assertTrue(floor.contains("comfortableImmersiveColor"))

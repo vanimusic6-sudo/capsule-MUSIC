@@ -756,11 +756,9 @@ internal fun CapsuleImmersiveContent(
         val nearWhite = frame?.nearWhiteBackground == true
         val pageEdge = frame?.edge ?: IMMERSIVE_NEUTRAL_COLOR
         val pageFloor = frame?.floor ?: IMMERSIVE_NEUTRAL_COLOR
-        val seamColor = if (nearWhite) {
-            immersiveSeamColor(pageEdge, pageFloor)
-        } else {
-            immersiveOriginalSeamColor(pageEdge, pageFloor)
-        }
+        // The backdrop and video-window filler use the exact same unaltered
+        // lower edge. Mixing 45% dark floor INTO the seam created a 1px band.
+        val seamColor = immersiveSeamColor(pageEdge, pageFloor)
         val density = LocalDensity.current
         val pageHeightPx = with(density) { maxHeight.toPx() }
         val coverHeightPx = with(density) { artworkHeight.toPx() }
@@ -917,7 +915,10 @@ internal fun CapsuleImmersiveContent(
             presentingVideo = isVideo,
             needsSurface = needsVideoSurface,
             transitionKey = mediaMetadata.id,
-            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().height(artworkHeight),
+            // Cover the final resampled pixel of the separate background layer.
+            // A single dp of overlap conceals an otherwise visible sheet seam
+            // without adding a blur/graphics layer or affecting the controls.
+            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().height(artworkHeight + 1.dp),
             fillArtworkSlot = true,
             // Keep the full-bleed artwork, but morph into the same rounded
             // 16:9 video window used by the other player styles.

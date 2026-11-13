@@ -164,7 +164,10 @@ internal fun immersiveSpatialFieldBitmap(
             // Earlier versions faded an OPAQUE flat colour over the bottom
             // 20-25% of the image. That WAS the broad beige strip.
             // Only the final ~3.8% is feathered into the matching edge.
-            val alpha = smoothEdge(0.962f, 1f, y) * 0.95f
+            // The old 95%-opaque edge band showed as a thin dark seam on
+            // light covers. Leave nearly all artwork intact; a narrow, low-
+            // opacity feather only tucks the last pixels into the backdrop.
+            val alpha = smoothEdge(0.982f, 1f, y) * 0.72f
             if (alpha <= 0f) continue
             for (x in 0 until width) {
                 val sx = (x + 0.5f) / width * (source.width - 1)
@@ -190,7 +193,10 @@ internal fun immersiveSpatialFieldBitmap(
             java.util.Arrays.fill(pixels, row * width, (row + 1) * width, fill)
             continue
         }
-        val progress = smoothEdge(cover, end, y)
+        // Start diffusion fractionally beneath the opaque cover. The 1dp
+        // artwork overlap hides resampling gaps without drawing a stripe.
+        val seamStart = (cover - 0.003f).coerceAtLeast(0f)
+        val progress = smoothEdge(seamStart, end, y)
         val levelPos = progress * (levels.size - 1)
         val lo = levelPos.toInt().coerceIn(0, levels.lastIndex)
         val hi = (lo + 1).coerceAtMost(levels.lastIndex)

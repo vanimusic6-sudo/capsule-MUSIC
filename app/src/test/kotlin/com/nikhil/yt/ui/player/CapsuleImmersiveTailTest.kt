@@ -41,7 +41,7 @@ class CapsuleImmersiveTailTest {
         assertTrue("Do not paint beige over the lower fifth of the cover",
             AndroidColor.alpha(overlay.getPixel(overlay.width / 2, overlay.height * 87 / 100)) == 0)
         assertTrue("Feather only the last few pixels",
-            AndroidColor.alpha(overlay.getPixel(overlay.width / 2, overlay.height - 2)) > 180)
+            AndroidColor.alpha(overlay.getPixel(overlay.width / 2, overlay.height - 2)) in 75..190)
     }
 
     @Test fun continuationSettlesIntoExactlyTheExistingControlsFloor() {
@@ -66,5 +66,23 @@ class CapsuleImmersiveTailTest {
             AndroidColor.red(left) > AndroidColor.red(right))
         assertTrue("Blue right-side photo region stays on the right",
             AndroidColor.blue(right) > AndroidColor.blue(left))
+    }
+
+    @Test fun floorUsesLastVisibleArtworkRowsNotHigherSky() {
+        val tail = CapsuleColorField(64, 8, List(64 * 8) { index ->
+            // Distant cool sky above the near-bottom warm desert.
+            if (index / 64 < 5) Color(0xFF68A4C0) else Color(0xFFC99B65)
+        })
+        val floor = capsuleCleanImmersiveFloor(tail)
+        assertTrue("Visible lower sand, not blue sky, must determine floor",
+            floor.red > floor.blue && floor.red > floor.green)
+        assertTrue("Controls must retain contrast", floor.red < 0.34f)
+    }
+
+    @Test fun nearlyGrayscaleLowerCoverCannotTurnBrownOrBlue() {
+        val tail = CapsuleColorField(64, 8, List(64 * 8) { Color(0xFFBDBDBD) })
+        val floor = capsuleCleanImmersiveFloor(tail)
+        assertTrue(abs(floor.red - floor.green) < 0.005f)
+        assertTrue(abs(floor.green - floor.blue) < 0.005f)
     }
 }
