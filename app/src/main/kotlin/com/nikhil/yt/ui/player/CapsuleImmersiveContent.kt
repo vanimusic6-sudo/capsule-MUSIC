@@ -890,6 +890,7 @@ internal fun CapsuleImmersiveContent(
                     CapsuleVideoAmbientBackdrop(
                         bands = pageBands,
                         field = liveField,
+                        animated = isVideo && isPlaying,
                         modifier = Modifier.fillMaxSize().graphicsLayer {
                             alpha = videoLayerAlpha.value
                         },
