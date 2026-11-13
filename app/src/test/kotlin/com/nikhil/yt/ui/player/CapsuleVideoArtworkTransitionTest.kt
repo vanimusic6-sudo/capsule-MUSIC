@@ -444,4 +444,16 @@ class CapsuleVideoArtworkTransitionTest {
         compose.waitForIdle()
         compose.runOnIdle { assertEquals("AUDIO must release the renderer", 1, detaches) }
     }
+
+    @Test fun immersiveBackgroundFollowsExactlyTheCoverVideoOpticalCurve() {
+        for (i in 0..100) {
+            val progress = i / 100f
+            val cover = capsulePhotoOpacity(progress, CapsuleVideoBlendStyle.IMMERSION)
+            val page = capsuleImmersiveVideoBackplateAlpha(progress)
+            assertEquals("VIDEO page and photo must be a single handoff",
+                1f, cover + page, 0.0001f)
+        }
+        assertEquals(0f, capsuleImmersiveVideoBackplateAlpha(0f), 0.0001f)
+        assertEquals(1f, capsuleImmersiveVideoBackplateAlpha(1f), 0.0001f)
+    }
 }
