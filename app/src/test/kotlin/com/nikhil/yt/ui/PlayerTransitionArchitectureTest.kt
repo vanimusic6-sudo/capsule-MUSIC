@@ -41,7 +41,7 @@ class PlayerTransitionArchitectureTest {
         assertTrue(immersive.contains("if (frame != null) ImmersiveAudioScene("))
         assertFalse("No second tinted photo overlay", immersive.contains("matchedPaint?.second?.let"))
         assertTrue("A loading placeholder cannot cover a prepared scene",
-            immersive.contains("if (frame == null && outgoingFrame == null)"))
+            immersive.contains("if (frame == null && outgoingFrame == null && !hasPresentedScene)"))
         assertFalse("The photo must not be faded separately from its track scene",
             immersive.contains("alpha = capsuleImmersiveArtworkOpacity("))
         assertTrue(immersive.contains("artworkTone.preview"))

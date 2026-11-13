@@ -7,6 +7,7 @@ package com.nikhil.yt.ui.player
 
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.Color
+import kotlin.math.roundToInt
 
 private const val IMMERSIVE_TAIL_COLUMNS = 96
 private const val IMMERSIVE_TAIL_ROWS = 12
@@ -20,7 +21,10 @@ private const val IMMERSIVE_TAIL_ROWS = 12
 internal fun Bitmap.capsuleImmersiveVisibleTail(
     aspect: Float,
     landscape: Boolean,
+    fraction: Float = 0.13f,
 ): CapsuleColorField {
+    val span = fraction.coerceIn(0.05f, 0.3f)
+    val rows = (IMMERSIVE_TAIL_ROWS * span / 0.13f).roundToInt().coerceAtLeast(4)
     val target = aspect.coerceIn(0.55f, 2.2f)
     val imageAspect = width.toFloat() / height.coerceAtLeast(1)
     val cropW = (if (imageAspect > target) height * target else width.toFloat())
@@ -33,19 +37,19 @@ internal fun Bitmap.capsuleImmersiveVisibleTail(
     val visibleStart = (1f - 1f / zoom) * 0.5f
     val visibleEnd = 1f - visibleStart
 
-    val cells = List(IMMERSIVE_TAIL_COLUMNS * IMMERSIVE_TAIL_ROWS) { index ->
+    val cells = List(IMMERSIVE_TAIL_COLUMNS * rows) { index ->
         val cx = index % IMMERSIVE_TAIL_COLUMNS
         val cy = index / IMMERSIVE_TAIL_COLUMNS
         var r = 0f
         var g = 0f
         var b = 0f
-        // Last ~13% of the actual on-screen crop, with one tiny area sample
+        // Last requested portion of the actual on-screen crop, with one tiny area sample
         // per cell. The bottommost row is never sampled OUTSIDE the picture.
         for (oy in 0..1) for (ox in 0..1) {
             val fx = visibleStart + ((cx + (ox + 0.5f) / 2f) / IMMERSIVE_TAIL_COLUMNS) /
                 zoom
-            val fy = visibleEnd - 0.13f / zoom +
-                ((cy + (oy + 0.5f) / 2f) / IMMERSIVE_TAIL_ROWS) * 0.13f / zoom
+            val fy = visibleEnd - span / zoom +
+                ((cy + (oy + 0.5f) / 2f) / rows) * span / zoom
             val px = (cropX + cropW * fx).toInt().coerceIn(0, width - 1)
             val py = (cropY + cropH * fy).toInt().coerceIn(0, height - 1)
             val pixel = getPixel(px, py)
@@ -55,5 +59,5 @@ internal fun Bitmap.capsuleImmersiveVisibleTail(
         }
         Color(r / 4f, g / 4f, b / 4f)
     }
-    return CapsuleColorField(IMMERSIVE_TAIL_COLUMNS, IMMERSIVE_TAIL_ROWS, cells)
+    return CapsuleColorField(IMMERSIVE_TAIL_COLUMNS, rows, cells)
 }

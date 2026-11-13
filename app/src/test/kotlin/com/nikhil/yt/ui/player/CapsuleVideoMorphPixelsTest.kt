@@ -6,12 +6,14 @@ import android.graphics.Canvas
 import android.graphics.Color as AndroidColor
 import android.view.View
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
@@ -403,6 +405,47 @@ class CapsuleVideoMorphPixelsTest {
                 assertEquals("VIDEO cannot fade the photo ahead of its floor", floor, photo)
             } finally { bitmap.recycle() }
         }
+    }
+
+    @Test fun busyArtworkAndItsContinuationHaveNoHardPhysicalCut() {
+        val source = Bitmap.createBitmap(320, 280, Bitmap.Config.ARGB_8888)
+        for (y in 0 until source.height) for (x in 0 until source.width) {
+            source.setPixel(x, y, when {
+                (x / 7 + y / 9) % 3 == 0 -> AndroidColor.rgb(18, 20, 25)
+                x < 160 -> AndroidColor.rgb(184, 126, 66)
+                else -> AndroidColor.rgb(46, 98, 145)
+            })
+        }
+        val cover = source.asImageBitmap()
+        val continuation = immersiveSpatialFieldBitmap(
+            bands = emptyList(), fallbackFloor = Color(0xFF19191D),
+            coverFraction = 280f / 440f, tailFraction = 0.06f,
+            texture = 0.9f, landscape = false, nearWhite = false, photoOverlay = false,
+            edgeMap = source.capsuleImmersiveVisibleTail(320f / 280f, false,
+                fraction = 1f - IMMERSIVE_DIFFUSION_START),
+        )
+        compose.setContent {
+            Box(Modifier.size(320.dp, 440.dp).testTag("media-slot")) {
+                ImmersiveAudioScene(continuation, 280.dp, sceneAlpha = { 1f }) {
+                    Image(cover, contentDescription = null, contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize())
+                }
+            }
+        }
+        val image = snapshot("busy-artwork-soft-join")
+        try {
+            val join = (image.height * 280f / 440f).roundToInt()
+            for (x in listOf(image.width / 5, image.width / 2, image.width * 4 / 5)) {
+                for (y in join - 3..join + 3) {
+                    val a = image.getPixel(x, y)
+                    val b = image.getPixel(x, y + 1)
+                    for (shift in listOf(0, 8, 16)) {
+                        assertTrue("No visible cut at x=$x, y=$y",
+                            kotlin.math.abs((a shr shift and 255) - (b shr shift and 255)) < 10)
+                    }
+                }
+            }
+        } finally { image.recycle() }
     }
 
     private fun assertRectangularBlend(name: String) {
