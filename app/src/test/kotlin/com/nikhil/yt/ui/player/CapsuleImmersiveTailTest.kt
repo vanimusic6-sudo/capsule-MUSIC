@@ -142,4 +142,24 @@ class CapsuleImmersiveTailTest {
         assertTrue("The join must preserve the source red before dimming",
             AndroidColor.red(atJoin) > 140)
     }
+
+    @Test fun fineStripedHairBelowPhotoGetsDiffusedRatherThanProjectedVertically() {
+        // This is the screenshot failure: 1px black hair/face fragments at
+        // the bottom edge became dark columns down the whole screen.
+        val stripes = CapsuleColorField(96, 12, List(96 * 12) { i ->
+            if (i % 96 % 6 < 3) Color(0xFF050609) else Color(0xFF637C9E)
+        })
+        val floor = Color(0xFF1B1D23)
+        val continuation = immersiveSpatialFieldBitmap(
+            bands = emptyList(), fallbackFloor = floor,
+            coverFraction = 0.57f, tailFraction = 0.06f,
+            texture = 0.4f, landscape = false,
+            nearWhite = false, photoOverlay = false, edgeMap = stripes,
+        ).asAndroidBitmap()
+        val y = (0.60f * continuation.height).toInt()
+        val left = continuation.getPixel(continuation.width * 5 / 11, y)
+        val right = continuation.getPixel(continuation.width * 6 / 11, y)
+        assertTrue("High-frequency dark bars must not remain visible as vertical beams",
+            kotlin.math.abs(AndroidColor.blue(left) - AndroidColor.blue(right)) < 13)
+    }
 }
