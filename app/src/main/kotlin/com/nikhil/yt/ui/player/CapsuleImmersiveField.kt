@@ -67,8 +67,8 @@ private const val EDGE_HEIGHT = 240
 
 // The prepared continuation begins underneath fully opaque photo pixels.
 // Share this geometry with the photo mask, including outgoing track scenes.
-internal const val IMMERSIVE_DIFFUSION_START = 0.87f
-internal const val IMMERSIVE_PHOTO_FEATHER_START = 0.88f
+internal const val IMMERSIVE_DIFFUSION_START = 0.80f
+internal const val IMMERSIVE_PHOTO_FEATHER_START = 0.83f
 
 internal fun immersivePhotoFeatherAlpha(fraction: Float): Float {
     val t = ((fraction - IMMERSIVE_PHOTO_FEATHER_START) /
@@ -156,7 +156,7 @@ internal fun immersiveSpatialFieldBitmap(
     // second boundary: a short blur followed by a flat solid-colour floor.
     // The last 7% still converges exactly to fallbackFloor for readability.
     val end = (cover + (1f - cover) * 0.92f).coerceAtMost(0.99f)
-    // Real photo alpha dissolves over its bottom 5%. The SAME backdrop has
+    // Real photo alpha dissolves over its bottom 17%. The SAME backdrop has
     // to extend under those pixels, otherwise an offscreen mask would merely
     // expose a dark rectangle instead of the continuation of the photograph.
     // The diffuse photo-colour layer must BEGIN before the photo alpha
@@ -224,7 +224,10 @@ internal fun immersiveSpatialFieldBitmap(
         // Blur radius grows with distance while every coloured region retains
         // its x-position. Luminance is eased down separately to protect the
         // title on very bright artwork; real hues are not remixed into grey.
-        val levelPosition = kotlin.math.sqrt(p) * (levels.size - 1)
+        // Grow the same blur continuously on BOTH sides of the photo edge.
+        // Previously sqrt(p) started at the exact edge, creating a crease in
+        // the vertical slope even though the adjoining rows had equal RGB.
+        val levelPosition = kotlin.math.sqrt(smoothEdge(photoStart, end, y)) * (levels.size - 1)
         val lo = levelPosition.toInt().coerceIn(0, levels.lastIndex)
         val hi = (lo + 1).coerceAtMost(levels.lastIndex)
         val mix = levelPosition - lo
@@ -234,7 +237,7 @@ internal fun immersiveSpatialFieldBitmap(
         val illumination = if (withinPhoto) 1f else 1f - 0.13f * p
         val photoDistance = if (withinPhoto)
             smoothEdge(photoStart, cover, y) else 1f
-        // visibleTail spans the final 13% of the actual crop. Follow those
+        // diffusionTail spans the full overlap of the actual crop. Follow those
         // rows in physical Y instead of stretching just its last four rows
         // across the overlap (which repeated small horizontal details).
         val photoRow = if (edgeMap != null)
@@ -272,8 +275,8 @@ internal fun immersiveSpatialFieldBitmap(
                     // drawing a visible dark/bright stripe on every cover.
                     val raw = top * (1f - photoYmix) + bottom * photoYmix
                     val diffusion = smoothEdge(photoStart, cover, y)
-                    return byte(raw * (1f - diffusion) +
-                        channel(0, sx, c) * diffusion)
+                    val blurred = channel(lo, sx, c) * (1f - mix) + channel(hi, sx, c) * mix
+                    return byte(raw * (1f - diffusion) + blurred * diffusion)
                 }
                 val start = channel(lo, sx, c)
                 val blurred = start + (channel(hi, sx, c) - start) * mix

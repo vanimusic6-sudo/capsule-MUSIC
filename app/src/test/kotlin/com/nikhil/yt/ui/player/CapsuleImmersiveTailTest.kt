@@ -30,6 +30,22 @@ class CapsuleImmersiveTailTest {
         bitmap.recycle()
     }
 
+    @Test fun widerDiffusionUsesMoreArtworkWithoutChangingThePaletteSample() {
+        val image = Bitmap.createBitmap(120, 200, Bitmap.Config.ARGB_8888)
+        for (y in 0 until image.height) for (x in 0 until image.width) {
+            image.setPixel(x, y, if (y < 174) AndroidColor.BLUE else AndroidColor.RED)
+        }
+        val palette = image.capsuleImmersiveVisibleTail(0.6f, false)
+        val overlap = image.capsuleImmersiveVisibleTail(0.6f, false,
+            fraction = 1f - IMMERSIVE_DIFFUSION_START)
+        assertTrue(overlap.height > palette.height)
+        assertTrue(overlap.cell(40, 0).blue > 0.9f)
+        assertTrue(palette.cell(40, 0).red > 0.9f)
+        val floor = capsuleCleanImmersiveFloor(palette)
+        assertTrue("Extra photographic overlap cannot tint the floor blue", floor.red > floor.blue)
+        image.recycle()
+    }
+
     @Test fun photoNeverGetsATintedOverlayOrHardBoundaryStripe() {
         val source = CapsuleColorField(64, 8, List(64 * 8) { Color(0xFFE9B078) })
         val overlay = immersiveSpatialFieldBitmap(

@@ -10,7 +10,7 @@ class CapsuleImmersiveFieldTest {
         assertTrue("Backdrop must exist before any photo alpha is removed",
             IMMERSIVE_DIFFUSION_START < IMMERSIVE_PHOTO_FEATHER_START)
         assertTrue("Only the lower portion of the artwork should be softened",
-            IMMERSIVE_PHOTO_FEATHER_START in 0.85f..0.93f)
+            IMMERSIVE_PHOTO_FEATHER_START in 0.80f..0.88f)
         assertTrue(immersivePhotoFeatherAlpha(0f) == 1f)
         assertTrue(immersivePhotoFeatherAlpha(1f) == 0f)
         var previous = 1f

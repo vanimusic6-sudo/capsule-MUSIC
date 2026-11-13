@@ -56,6 +56,8 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalDensity
@@ -118,6 +120,7 @@ private data class ImmersiveGradientFrame(
     val edgeBands: List<Color>,
     val colorField: CapsuleColorField?,
     val visibleTail: CapsuleColorField?,
+    val diffusionTail: CapsuleColorField?,
     val preview: ImageBitmap?,
     val painter: Painter?,
 )
@@ -131,6 +134,26 @@ private data class ImmersiveGradientFrame(
  * shaders use the same physical screen Y. Keep white controls constant.
  */
 internal val ImmersiveControlInk = Color.White
+
+internal data class ImmersiveMetadataInk(val title: Color, val artist: Color)
+
+/** Change only metadata over near-white pixels; the rest of the controls stay white. */
+internal fun immersiveMetadataInk(background: Color): ImmersiveMetadataInk {
+    val nearWhite = background.luminance() >= 0.70f &&
+        maxOf(background.red, background.green, background.blue) -
+        minOf(background.red, background.green, background.blue) <= 0.16f
+    return if (nearWhite) ImmersiveMetadataInk(Color(0xFF545451), Color(0xFF545451).copy(alpha = 0.82f))
+        else ImmersiveMetadataInk(Color.White, Color.White.copy(alpha = 0.62f))
+}
+
+private fun immersiveMetadataBackground(bitmap: ImageBitmap?, fraction: Float): Color {
+    if (bitmap == null) return IMMERSIVE_NEUTRAL_COLOR
+    val image = bitmap.asAndroidBitmap()
+    // Metadata can be moved in the editor. Sample its actual page position,
+    // not the album's average brightness, once per texture/position change.
+    return Color(image.getPixel(image.width * 3 / 10,
+        (fraction * image.height).toInt().coerceIn(0, image.height - 1)))
+}
 
 /** A track opacity is applied AFTER the photo and its continuation are joined. */
 @Composable
@@ -184,7 +207,8 @@ internal fun capsuleImmersiveVideoBackplateAlpha(progress: Float): Float =
     1f - capsulePhotoOpacity(progress, CapsuleVideoBlendStyle.IMMERSION)
 
 /** One cap for artwork and backdrop when a selected track has changed. */
-internal const val IMMERSIVE_STALE_SCENE_FADE_MS = 230
+internal const val IMMERSIVE_STALE_SCENE_FADE_MS = 520
+internal const val IMMERSIVE_TRACK_FADE_MS = 460
 internal fun immersiveSceneOpacity(
     displayedKey: String?,
     selectedKey: String,
@@ -716,6 +740,7 @@ internal fun CapsuleImmersiveContent(
         var outgoingFrame by remember { mutableStateOf<ImmersiveGradientFrame?>(null) }
         val gradientAlpha = remember { Animatable(1f) }
         val staleSceneAlpha = remember { Animatable(1f) }
+        var hasPresentedScene by remember { mutableStateOf(false) }
         var lastReadyFrame by remember { mutableStateOf<ImmersiveGradientFrame?>(null) }
         var outgoingStartAlpha by remember { mutableFloatStateOf(1f) }
         // The next track may take seconds to decode. Never show a PREVIOUS
@@ -763,12 +788,13 @@ internal fun CapsuleImmersiveContent(
                 edgeBands = artworkTone.edgeBands,
                 colorField = artworkTone.colorField,
                 visibleTail = artworkTone.visibleTail,
+                diffusionTail = artworkTone.diffusionTail,
                 preview = artworkTone.preview,
                 painter = decodedCoverPainter,
             )
             // New background + photo appear together only after their first
             // render has completed, instead of sequential fade-out/in.
-            gradientAlpha.snapTo(if (old == null || isVideo) 1f else 0f)
+            gradientAlpha.snapTo(if (isVideo) 1f else 0f)
         }
         // Keep the original background interpolation for normal artwork.
         // Only near-white, low-saturation covers use the slightly more
@@ -842,7 +868,7 @@ internal fun CapsuleImmersiveContent(
             mutableStateOf<ImageBitmap?>(null)
         }
         LaunchedEffect(
-            paintKey, frame?.colorField, frame?.visibleTail, frame?.edgeBands, pageFloor,
+            paintKey, frame?.colorField, frame?.visibleTail, frame?.diffusionTail, frame?.edgeBands, pageFloor,
             nearWhite, frame?.bottomTexture, frame?.landscape,
         ) {
             val readyFrame = frame ?: return@LaunchedEffect
@@ -858,27 +884,28 @@ internal fun CapsuleImmersiveContent(
                     nearWhite = readyFrame.nearWhiteBackground,
                     photoOverlay = false,
                     field = readyFrame.colorField,
-                    edgeMap = readyFrame.visibleTail,
+                    edgeMap = readyFrame.diffusionTail ?: readyFrame.visibleTail,
                 )
             }
             matchedPaint?.let {
                 lastReadyPaint = readyFrame.key to it
                 lastReadyFrame = readyFrame
+                hasPresentedScene = true
             }
         }
         LaunchedEffect(frame?.key, matchedPaint, isVideo) {
             if (frame == null || matchedPaint == null ||
                 frame.key != visualKey
             ) return@LaunchedEffect
-            if (outgoingFrame == null || isVideo) {
+            if (isVideo) {
                 gradientAlpha.snapTo(1f)
                 outgoingFrame = null
             } else {
-                // Old scene stays only for the short optical handoff. A
-                // 330ms overlap kept a recognisable old-colour ghost after
-                // the next song had already appeared.
+                // Every prepared scene gets a legible, soft reveal, even if
+                // the previous cover already expired while decoding. Never
+                // snap a newly loaded bright image straight onto the screen.
                 gradientAlpha.animateTo(
-                    1f, tween(durationMillis = 210, easing = FastOutSlowInEasing),
+                    1f, tween(durationMillis = IMMERSIVE_TRACK_FADE_MS, easing = FastOutSlowInEasing),
                 )
                 outgoingFrame = null
             }
@@ -896,6 +923,27 @@ internal fun CapsuleImmersiveContent(
             if (isVideo) retainedVideoField = videoAmbientField
         }
         val immersiveInk = ImmersiveControlInk
+        val metadataPageFraction = (coverHeightPx + with(density) {
+            ((immersivePositions[CapsuleLightBlock.METADATA] ?: 0f).dp + 20.dp).toPx()
+        }) / pageHeightPx.coerceAtLeast(1f)
+        val targetMetadataInk = remember(matchedPaint, metadataPageFraction) {
+            immersiveMetadataInk(immersiveMetadataBackground(matchedPaint, metadataPageFraction))
+        }
+        val leavingMetadataInk = remember(outgoingPaint, metadataPageFraction) {
+            immersiveMetadataInk(immersiveMetadataBackground(outgoingPaint, metadataPageFraction))
+        }
+        val metadataTrackProgress = immersiveSceneOpacity(
+            frame?.key, visualKey, gradientAlpha.value, staleSceneAlpha.value,
+        )
+        val metadataVideoProgress = capsuleImmersiveVideoBackplateAlpha(sharedVideoProgress.value)
+        val metadataInk = lerp(
+            lerp(leavingMetadataInk.title, targetMetadataInk.title, metadataTrackProgress),
+            Color.White, metadataVideoProgress,
+        )
+        val metadataArtistInk = lerp(
+            lerp(leavingMetadataInk.artist, targetMetadataInk.artist, metadataTrackProgress),
+            Color.White.copy(alpha = 0.62f), metadataVideoProgress,
+        )
 
         // Preload the NEXT image invisibly. Coil must finish decoding this exact URL
         // before the frame is allowed to replace the old one. It is never rendered early.
@@ -1041,7 +1089,7 @@ internal fun CapsuleImmersiveContent(
                     }
                 }
             }
-            if (frame == null && outgoingFrame == null) {
+            if (frame == null && outgoingFrame == null && !hasPresentedScene) {
                 // The new track's lightweight placeholder never sits above a
                 // ready scene or exposes an unmasked low-resolution edge.
                 Box(Modifier.fillMaxWidth().height(artworkHeight)) {
@@ -1229,7 +1277,7 @@ internal fun CapsuleImmersiveContent(
                                             CapsuleTrackTitle(
                                                 mediaId = mediaMetadata.id,
                                                 title = mediaMetadata.title,
-                                                color = immersiveInk,
+                                                color = metadataInk,
                                                 enabled = !immersiveEditEnabled,
                                                 modifier = Modifier.fillMaxWidth(),
                                             )
@@ -1237,14 +1285,14 @@ internal fun CapsuleImmersiveContent(
                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                 if (mediaMetadata.explicit) {
                                                     ExplicitBadge(
-                                                        color = immersiveInk.copy(alpha = 0.62f),
+                                                        color = metadataArtistInk,
                                                     )
                                                     Spacer(Modifier.width(5.dp))
                                                 }
                                                 Text(
                                                     text =
                                                         artistCredits.joinToString { it.name },
-                                                    color = immersiveInk.copy(alpha = 0.62f),
+                                                    color = metadataArtistInk,
                                                     fontSize = CapsulePlayerArtistFontSize,
                                                     lineHeight = CapsulePlayerArtistLineHeight,
                                                     fontWeight = FontWeight.Normal,
@@ -1305,7 +1353,7 @@ internal fun CapsuleImmersiveContent(
                                                     if (liked) {
                                                         CapsuleFavoriteColors.selected(immersiveInk)
                                                     } else {
-                                                        immersiveInk
+                                                        metadataInk
                                                     },
                                                 modifier = Modifier.size(28.dp),
                                                 userActionToken = favoriteActionToken,

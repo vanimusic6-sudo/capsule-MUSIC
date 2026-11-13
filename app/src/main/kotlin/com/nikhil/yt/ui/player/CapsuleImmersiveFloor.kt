@@ -48,6 +48,8 @@ internal data class ImmersiveArtworkTone(
     // Drives the photo-to-floor dissolve; the coarse all-image grid cannot
     // accurately match the colour at the image's last visible scanline.
     val visibleTail: CapsuleColorField? = null,
+    // Wider photographic overlap; does not participate in palette/floor extraction.
+    val diffusionTail: CapsuleColorField? = null,
     // Decoded 256 px preview for the very first frame of an immediate open.
     // This avoids a second network request before any image can be displayed.
     val preview: ImageBitmap? = null,
@@ -193,6 +195,9 @@ internal fun rememberImmersiveEdgeColor(
                     edgeBands = edgeBands,
                     colorField = colorField,
                     visibleTail = visibleTail,
+                    diffusionTail = image.capsuleImmersiveVisibleTail(
+                        artworkAspect, landscape, fraction = 1f - IMMERSIVE_DIFFUSION_START,
+                    ),
                     // Own the preview pixels independently of Coil's bitmap
                     // pool. A retained player frame must never point at a
                     // bitmap that another request can recycle/reuse.

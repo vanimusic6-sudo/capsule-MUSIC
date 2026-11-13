@@ -1,6 +1,8 @@
 package com.nikhil.yt.ui.player
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
@@ -412,6 +414,32 @@ class CapsuleImmersiveContentTest {
             immersiveSceneOpacity(previous, current, 0.95f, 0f), 0.0001f)
         assertEquals(0.95f,
             immersiveSceneOpacity(current, current, 0.95f, 0f), 0.0001f)
-        assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS in 150..300)
+        assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS in 400..600)
     }
+    @Test fun metadataTurnsDirtyGreyOnlyOverNearWhiteBackground() {
+        val white = immersiveMetadataInk(Color.White)
+        assertTrue(white.title.red in 0.25f..0.40f)
+        assertTrue(white.artist.alpha >= 0.80f)
+        assertEquals(white, immersiveMetadataInk(Color(0xFFF8F6EF)))
+        for (background in listOf(Color.Black, Color(0xFF706C65), Color(0xFF74C6ED), Color.Red)) {
+            val ink = immersiveMetadataInk(background)
+            assertEquals(Color.White, ink.title)
+            assertEquals(0.62f, ink.artist.alpha, 0.001f)
+        }
+    }
+
+    @Test fun trackRevealIsLongEnoughToReadWithoutHoldingOldArtworkForSeconds() {
+        assertTrue(IMMERSIVE_TRACK_FADE_MS in 400..550)
+        assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS >= IMMERSIVE_TRACK_FADE_MS)
+        assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS <= 600)
+    }
+
+    @Test fun whiteMetadataKeepsContrastForTitleAndTranslucentArtist() {
+        val ink = immersiveMetadataInk(Color.White)
+        for (color in listOf(ink.title, ink.artist.compositeOver(Color.White))) {
+            val contrast = 1.05f / (color.luminance() + 0.05f)
+            assertTrue("White artwork must not hide metadata: $contrast", contrast >= 4.5f)
+        }
+    }
+
 }
