@@ -765,8 +765,16 @@ internal fun CapsuleImmersiveContent(
         // One prepared page texture for one decoded cover. The previous
         // pair also built a separate tinted PHOTO overlay, which repeatedly
         // caused horizontal lines and made the real image look washed out.
-        var lastReadyPaint by remember { mutableStateOf<ImageBitmap?>(null) }
-        val outgoingPaint = remember(paintKey) { lastReadyPaint }
+        // In rapid A -> B -> C skips, the latest cached bitmap may belong
+        // to A even if the most recently selected frame is B. Associate
+        // the texture with its actual song so colours never linger as a
+        // mismatched old-gradient layer underneath the new cover.
+        var lastReadyPaint by remember {
+            mutableStateOf<Pair<String, ImageBitmap>?>(null)
+        }
+        val outgoingPaint = remember(paintKey) {
+            lastReadyPaint?.takeIf { it.first == outgoingFrame?.key }?.second
+        }
         var matchedPaint by remember(paintKey) {
             mutableStateOf<ImageBitmap?>(null)
         }
@@ -790,7 +798,7 @@ internal fun CapsuleImmersiveContent(
                     edgeMap = readyFrame.visibleTail,
                 )
             }
-            lastReadyPaint = matchedPaint
+            matchedPaint?.let { lastReadyPaint = readyFrame.key to it }
         }
         LaunchedEffect(frame?.key, matchedPaint, isVideo) {
             if (frame == null || matchedPaint == null ||
@@ -800,8 +808,11 @@ internal fun CapsuleImmersiveContent(
                 gradientAlpha.snapTo(1f)
                 outgoingFrame = null
             } else {
+                // Old scene stays only for the short optical handoff. A
+                // 330ms overlap kept a recognisable old-colour ghost after
+                // the next song had already appeared.
                 gradientAlpha.animateTo(
-                    1f, tween(durationMillis = 330, easing = FastOutSlowInEasing),
+                    1f, tween(durationMillis = 210, easing = FastOutSlowInEasing),
                 )
                 outgoingFrame = null
             }
@@ -813,7 +824,6 @@ internal fun CapsuleImmersiveContent(
         val sharedVideoProgress = remember(mediaMetadata.id) {
             Animatable(if (isVideo) 1f else 0f)
         }
-        val videoBackdropOpacity = capsuleImmersiveVideoBackplateAlpha(sharedVideoProgress.value)
         var retainedVideoField by remember(mediaMetadata.id) {
             mutableStateOf<CapsuleColorField?>(null)
         }
