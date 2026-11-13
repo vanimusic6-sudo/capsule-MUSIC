@@ -395,4 +395,11 @@ class CapsuleImmersiveContentTest {
             previous = height
         }
     }
+
+    @Test fun videoWithoutAmbientNeverInheritsBrightArtworkBase() {
+        val bright = Color(0xFFCA6170)
+        assertEquals(Color(0xFF111116), immersivePageBaseColor(true, true, bright))
+        assertEquals(bright, immersivePageBaseColor(false, true, bright))
+        assertEquals(IMMERSIVE_NEUTRAL_COLOR, immersivePageBaseColor(false, false, bright))
+    }
 }

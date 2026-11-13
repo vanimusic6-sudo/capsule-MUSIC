@@ -16,10 +16,34 @@ class ImmersiveVideoArtworkClipRegressionTest {
             ?: error("Immersive source not found")
         val content = file.readText().substringAfter("if (frame != null) {")
             .substringBefore("/*\n         * Immersive editing")
-        assertTrue(content.contains("Box(Modifier.fillMaxSize().clipToBounds().graphicsLayer"))
+        // The PHOTO now fades into the sampled lower-edge backdrop, not a
+        // tinted overlay. The mask is cached and clipped to the same slot.
+        assertTrue(content.contains(".clipToBounds()"))
+        assertTrue(content.contains("CompositingStrategy.Offscreen"))
+        assertTrue(content.contains("BlendMode.DstIn"))
+        assertTrue(content.contains("0.944f to Color.White"))
         assertTrue(content.contains("scaleX = if (frame.landscape) 1.06f else 1f"))
         assertTrue(content.contains("scaleY = if (frame.landscape) 1.06f else 1f"))
-        assertTrue(content.contains("immersiveContinuousCoverStops("))
-        assertTrue(content.contains("immersiveOriginalFadeProfile("))
+        assertTrue(content.contains("matchedPaint?.let { bitmap ->"))
+        assertTrue(!content.contains("matchedPaint?.second?.let"))
+        assertTrue(content.contains("immersi" + "vePageBaseColor(isVideo, frame != null, pageFloor)"))
+    }
+
+    @Test fun immersiveFixedArtworkCannotHideItsGradientBehindOpaqueMatte() {
+        val relative = "src/main/kotlin/com/nikhil/yt/ui/player/CapsuleVideoArtworkTransition.kt"
+        val file = listOf(File(relative), File("app/$relative")).firstOrNull { it.isFile }
+            ?: error("Video transition source not found")
+        val fixedArtwork = file.readText()
+            .substringAfter("if (fixedImmersiveArtwork) {")
+            .substringBefore("// Geometry is one shared bounds transformation.")
+        assertTrue("Transparent photo pixels must show the page's real gradient",
+            !fixedArtwork.contains(".background(artworkBackground)"))
+        val immersive = listOf(
+            File("src/main/kotlin/com/nikhil/yt/ui/player/CapsuleImmersiveContent.kt"),
+            File("app/src/main/kotlin/com/nikhil/yt/ui/player/CapsuleImmersiveContent.kt"),
+        ).firstOrNull { it.isFile }?.readText()
+            ?: error("Immersive source not found")
+        assertTrue("Immersion should not request another solid matte",
+            immersive.contains("artworkBackground = Color.Transparent"))
     }
 }
