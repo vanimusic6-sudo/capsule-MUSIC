@@ -34,6 +34,7 @@ internal data class CapsuleColorField(
 internal fun Bitmap.capsuleColorField(
     artworkAspect: Float,
     video: Boolean = false,
+    pixelBuffer: IntArray? = null,
 ): CapsuleColorField {
     val ratio = artworkAspect.coerceIn(0.55f, 2.2f)
     val natural = width.toFloat() / height.coerceAtLeast(1)
@@ -57,7 +58,10 @@ internal fun Bitmap.capsuleColorField(
             val fy = (cy + (sy + 0.5f) / 3f) / CAPSULE_FIELD_ROWS
             val px = (left + (fx * croppedWidth).toInt()).coerceIn(0, width - 1)
             val py = (top + (fy * croppedHeight).toInt()).coerceIn(0, height - 1)
-            val argb = getPixel(px, py)
+            // The video path already read all 48x28 pixels once. Reuse that
+            // array instead of making 2,880 native Bitmap.getPixel calls
+            // on every frame-colour capture.
+            val argb = pixelBuffer?.get(py * width + px) ?: getPixel(px, py)
             if ((argb ushr 24 and 255) < 128) continue
             val rr = (argb ushr 16 and 255) / 255f
             val gg = (argb ushr 8 and 255) / 255f
