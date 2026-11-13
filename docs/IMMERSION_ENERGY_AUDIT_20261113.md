@@ -1,15 +1,43 @@
 # Immersion background and motion audit — 2026-11-13
 
-Scope: cover continuation, cover blur, track handoff, live video colour capture,
-rendering, pause/resume caches and visible/hidden work. Compared with c485859. Follow-up tuning lowers only the cover blur and shortens
-the track dissolve; the video-light implementation accepted at 818e0af is unchanged.
-This is a source audit plus CI CPU/render checks. It is not a battery or thermal
-measurement on an Android phone.
+Scope: cover composition, track handoff, live video colour capture, rendering,
+pause/resume caches and visible/hidden work. This revision replaces the narrow
+edge-bleed/blur-strip architecture with an image-backed audio composition.
+The accepted live-video pipeline is unchanged. This is a source audit plus CI
+CPU/render checks, not a battery or thermal measurement on an Android phone.
+
+## Photographic composition reference
+
+Inspected ArchiveTune's actual [ImmersiveBackdrop source](https://github.com/rukamori/ArchiveTune/blob/0c15cc3b468841b72f6b8ddfaa940844830aa957/app/src/main/kotlin/moe/rukamori/archivetune/ui/player/immersive/ImmersivePlayerScreen.kt)
+at pinned commit `0c15cc3b468841b72f6b8ddfaa940844830aa957` (GPL-3.0).
+It combines the cover and a rotated continuation into a full-page blurred source,
+then overlays the sharp cover with a graduated alpha mask and light black scrim.
+There is no separate special brightening blend. Attribution is retained in the
+new renderer. Capsule adapts this composition without introducing live Haze blur.
+
+Audio preparation now area-samples a 32×24 spatial field from the displayed
+centre crop, including the existing uniform landscape overscan. The lower 18%
+of the stage, mostly hidden by the mask, is excluded from palette construction.
+Small isolated pale marks are exposure-limited against image/neighbourhood
+statistics; broad white paper and saturated coloured lights are retained.
+A label outside the crop or in the excluded bottom cannot affect any field cell.
+
+The field becomes a 32×48 page composition with a reversed continuation below
+the cover. A separable Gaussian blur and cubic B-spline reconstruction produce
+one 192×304 immutable page texture, including the lower scrim. It retains spatial
+colour rather than converging to a separately selected single-colour floor.
+Preparation runs once on a worker per cover/layout, with cache capacity 3
+(~228 KiB per page). Full-size artwork no longer needs a software bitmap or a
+second CPU blur pass. The old four-level progressive strip is removed.
+
+The sharp photo stage grows from 55% to 60% of the viewport (200–560dp clamp),
+below ArchiveTune's 64%. It uses uniform `ContentScale.Crop`, never independent
+axis stretching. Controls retain their previous 55% anchor (200–520dp clamp),
+so the taller photo does not push the controls down or change saved editor offsets.
 
 | Path | Finding | Change / retained bound |
 | --- | --- | --- |
-| Cover blur | Independent changes to radius, coverage and photo opacity lost the approved reference appearance | Restore the exact c485859 sequence (sharp, 2/6/14/28) and its original coverage/blur/fade curves. Map the COMPLETE 54–100% reference interval into the existing bottom 16% (84–100%). Photo colour stays opaque while it begins to blur, then fades at the corresponding reference position. Only the final cropped strip is retained/drawn. Four once-per-cover cached blur levels, with 60 source rows of kernel context, computed on a worker; cache capacity 3. This costs more preparation than the reduced 2/5/10 approximation, but no per-frame blur is introduced. |
-| Cover gradient | Source exposure recalculated for every 2D kernel tap | Prepare source colours once. Evaluate the same finite triangular kernels in separable vertical/horizontal passes. Original palette, floor, fade height and image resolution preserved. One cached render per cover/layout. |
+| Cover composition | A narrow blur strip and an independently selected edge colour produced a visible boundary and amplified tiny labels | Replace both runtime paths with the visible-image-backed page described above. One static prepared texture, no live blur or idle clock. The sharp stage uses the same mask/scrim composition for every cover. |
 | Track change | Two independent scene scales distorted the image; fast-out easing compressed visible movement; opacity reads invalidated the parent | Remove both scales. 380ms responsive dissolve with a short eased finish. Graphics-layer opacity; equal metadata colours use equality-checked derived state. Rapid skips coalesce the pending visual target after the active finite dissolve, rather than snapping a half-visible photo to opaque or stacking more layers. Playback/input remain immediate. |
 | Static audio | Full-page offscreen surface forced even at opacity 1 | Auto group compositing: retain grouped opacity while fading, avoid forcing the extra outer surface when opaque. Photo alpha mask remains isolated for correct blending. No new idle frame clock. |
 | Audio underneath video | Entire cover/mask/continuation still drawn under opaque video | Omit the audio draw tree once video reaches full opacity. Retain prepared assets for immediate reverse handoff. |
@@ -23,18 +51,20 @@ measurement on an Android phone.
 
 ## Verification
 
-The graphics suite emits native renderer PNGs for the detailed photo join,
-visible final-scene detail suppression and retained photographic colour at 94% (so low contrast cannot pass by erasing the photograph),
+The graphics suite emits native renderer PNGs for detailed photo joins,
+photographic colour below the stage, round-feature geometry under the taller crop,
 near-zero slider, directional video field, uniform field and alternating-stripe
-input. Tests also cover frame-flash damping, sustained scene following, colour
-region position, interruption from the current visible field, contrast and
-responsive-start, short-finish track timing.
+input. New bitmap checks compare complete results with/without a hidden bottom
+label and out-of-crop marks; check the influence of small visible white labels;
+and preserve white-paper metadata contrast and spatial colour placement.
+Tests also cover frame-flash damping, sustained video scene following, colour
+region position, interruption, track timing and foreground restoration.
 
 `energy-preparation.json` reports informational Robolectric-host thread CPU time
-for video filtering/texture construction, one cover blur and one cover-gradient
-preparation, plus cached strip bytes. These numbers exclude Android GPU readback,
-decoding, display power and phone thermals. They cannot be converted to watts or
-battery percentages. No timing assertion depends on a particular CI machine.
+for video filtering/texture construction and one static photographic backdrop,
+plus cached backdrop bytes. These exclude Android GPU readback, decoding,
+display power and phone thermals. They cannot be converted to watts or battery
+percentages. No timing assertion depends on a particular CI machine.
 
 Phone follow-up: compare audio idle / video playing / video paused / app hidden
 at the same brightness, volume, video quality and refresh mode. Capture a system

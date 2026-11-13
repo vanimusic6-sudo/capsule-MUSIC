@@ -68,19 +68,8 @@ private const val EDGE_HEIGHT = 240
 // The prepared continuation begins underneath fully opaque photo pixels.
 // Share this geometry with the photo mask, including outgoing track scenes.
 internal const val IMMERSIVE_DIFFUSION_START = 0.63f
-internal const val IMMERSIVE_PHOTO_FEATHER_START = 1f - IMMERSIVE_SOFT_ARTWORK_FRACTION +
-    IMMERSIVE_SOFT_ARTWORK_FRACTION * (IMMERSIVE_REFERENCE_FADE_START - IMMERSIVE_REFERENCE_SOFT_START) /
-    (1f - IMMERSIVE_REFERENCE_SOFT_START)
-
-internal fun immersivePhotoFeatherAlpha(fraction: Float): Float {
-    if (fraction >= 1f) return 0f
-    // Opacity and blur use the same compressed reference coordinates. The
-    // photograph stays opaque while it starts to blur, exactly as before.
-    val reference = immersiveReferencePhotoPosition(fraction)
-    val t = ((reference - IMMERSIVE_REFERENCE_FADE_START) /
-        (1f - IMMERSIVE_REFERENCE_FADE_START)).coerceIn(0f, 1f)
-    return (1f - t * t * t * (t * (t * 6f - 15f) + 10f)).coerceIn(0f, 1f)
-}
+// The current image-backed stage uses ArchiveTune's whole-image mask.
+internal const val IMMERSIVE_PHOTO_FEATHER_START = 0.44f
 
 private fun smoothEdge(start: Float, end: Float, value: Float): Float {
     val t = ((value - start) / (end - start).coerceAtLeast(0.001f)).coerceIn(0f, 1f)

@@ -355,12 +355,14 @@ class CapsuleImmersiveContentTest {
     }
 
     @Test
-    fun `an ordinary phone gives the cover about half the sheet`() {
+    fun `cover grows moderately while controls keep their old space`() {
         val height = immersiveArtworkHeight(800.dp)
+        assertEquals(440.dp, immersiveControlsTop(800.dp))
+        assertTrue(height > immersiveControlsTop(800.dp))
 
         assertTrue(
             "800dp phone gave $height, which is not about half of it",
-            height > 320.dp && height < 480.dp,
+            height > 440.dp && height < 512.dp,
         )
     }
 

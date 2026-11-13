@@ -69,8 +69,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil3.request.ImageRequest
 import coil3.request.crossfade
-import coil3.request.allowHardware
-import coil3.toBitmap
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -129,7 +127,6 @@ internal data class ImmersiveGradientFrame(
     val visibleTail: CapsuleColorField?,
     val diffusionTail: CapsuleColorField?,
     val painter: Painter,
-    val softArtwork: ImageBitmap,
 )
 
 internal data class ImmersivePreparedScene(
@@ -146,24 +143,16 @@ private fun immersiveGradientFrame(
     mediaId: String,
     tone: ImmersiveArtworkTone,
     painter: Painter,
-    softArtwork: ImageBitmap,
 ): ImmersiveGradientFrame = ImmersiveGradientFrame(
     key = key, mediaId = mediaId, edge = tone.edge, floor = tone.accent,
     imageUrl = requireNotNull(tone.displayUrl), landscape = tone.landscape,
     bottomTexture = tone.bottomTexture, nearWhiteBackground = tone.nearWhiteBackground,
     edgeBands = tone.edgeBands, colorField = tone.colorField,
     visibleTail = tone.visibleTail, diffusionTail = tone.diffusionTail,
-    painter = painter, softArtwork = softArtwork,
+    painter = painter,
 )
 
-/**
- * Immersion: a seamless dissolve from the original photo into the MUTED,
- * EXTRACTED album colour. Never target black/graphite. That was the cause of
- * the unwanted white->grey->black ramp in user screenshots.
- *
- * The source edge and sampled floor belong to ONE decoded frame, and both
- * shaders use the same physical screen Y. Keep white controls constant.
- */
+/** Image-backed Immersion; metadata contrast is sampled from the prepared page. */
 internal val ImmersiveControlInk = Color.White
 
 internal data class ImmersiveMetadataInk(val title: Color, val artist: Color)
@@ -209,31 +198,24 @@ internal fun ImmersiveAudioScene(
                     compositingStrategy = CompositingStrategy.Offscreen
                 }
                 .drawWithCache {
-                    // Smooth endpoints, not a short linear ramp plus a
-                    // separate bloom stripe. The cached backdrop already
-                    // extends beneath this entire feathered region.
+                    // The mask reveals a full image-backed blur underneath,
+                    // rather than an independently coloured edge continuation.
                     val fadeMask = Brush.verticalGradient(
-                        *Array(49) { index ->
-                            val y = IMMERSIVE_PHOTO_FEATHER_START +
-                                (1f - IMMERSIVE_PHOTO_FEATHER_START) * index / 48f
+                        *Array(65) { index ->
+                            val y = index / 64f
                             y to Color.White.copy(alpha = immersivePhotoFeatherAlpha(y))
                         },
                     )
+                    val stageScrim = Brush.verticalGradient(
+                        0.58f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.12f),
+                    )
                     onDrawWithContent {
                         drawContent()
+                        drawRect(brush = stageScrim)
                         drawRect(brush = fadeMask, blendMode = BlendMode.DstIn)
                     }
                 },
         ) { artwork() }
-    }
-}
-
-/** The cached blur occupies only the existing lower photo transition. */
-@Composable
-internal fun ImmersiveSoftArtwork(bitmap: ImageBitmap, artworkHeight: Dp) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
-        Image(bitmap, contentDescription = null, contentScale = ContentScale.FillBounds,
-            modifier = Modifier.fillMaxWidth().height(artworkHeight * IMMERSIVE_SOFT_ARTWORK_FRACTION))
     }
 }
 
@@ -457,7 +439,7 @@ internal fun immersiveStatusBarShouldHide(
     open &&
         expansionProgress.coerceIn(0f, 1f) >= ImmersiveStatusBarHideProgress
 
-private const val ImmersiveArtworkFraction = 0.55f
+private const val ImmersiveArtworkFraction = 0.60f
 
 /**
  * Where inside the cover the dissolve begins, as a fraction of its height.
@@ -471,7 +453,7 @@ private const val ImmersiveFadeStart = 0.44f
 
 /** Smallest cover that still reads as one; largest that still leaves the controls their room. */
 private val ImmersiveArtworkMin = 200.dp
-private val ImmersiveArtworkMax = 520.dp
+private val ImmersiveArtworkMax = 560.dp
 
 
 /** The grab rail near the bottom, which opens the queue. */
@@ -491,6 +473,10 @@ private val ImmersiveQueueRailTouchHeight = 34.dp
  */
 internal fun immersiveArtworkHeight(available: Dp): Dp =
     (available * ImmersiveArtworkFraction).coerceIn(ImmersiveArtworkMin, ImmersiveArtworkMax)
+
+/** Larger photographic stage, same controls budget and saved editor positions. */
+internal fun immersiveControlsTop(available: Dp): Dp =
+    (available * 0.55f).coerceIn(200.dp, 520.dp)
 
 internal fun immersiveEditorHeight(
     totalHeight: Dp,
@@ -746,6 +732,7 @@ internal fun CapsuleImmersiveContent(
         // Shrinking the whole region to 16:9 used to glue the video to the top edge
         // and prematurely pull the title/controls upwards.
         val artworkHeight = immersiveArtworkHeight(maxHeight)
+        val controlsTop = immersiveControlsTop(maxHeight)
         // The host samples this exact visible crop once for the player and Lyrics.
         val artworkAspect = maxWidth.value / artworkHeight.value.coerceAtLeast(1f)
         val edge = artworkTone.edge
@@ -756,30 +743,13 @@ internal fun CapsuleImmersiveContent(
         val entryScene = remember {
             sceneMemory.prepared?.takeIf { it.frame.mediaId == mediaMetadata.id }
         }
-        val softKey = "${mediaMetadata.id}|${artworkTone.displayUrl}|$artworkAspect"
         val retainedCover = decodedArtworkCache[mediaMetadata.id]
             ?.takeIf { it.first == artworkTone.displayUrl }?.second
-        var softArtwork by remember(softKey) {
-            mutableStateOf(immersiveSoftArtworkCache[softKey] ?: entryScene?.takeIf {
-                it.frame.imageUrl == artworkTone.displayUrl
-            }?.frame?.softArtwork)
-        }
-        var decodedBitmap by remember(softKey) { mutableStateOf<android.graphics.Bitmap?>(null) }
         var coverImageReady by remember(mediaMetadata.id, artworkTone.displayUrl) {
-            mutableStateOf(retainedCover != null && softArtwork != null)
+            mutableStateOf(retainedCover != null)
         }
         var decodedCoverPainter by remember(mediaMetadata.id, artworkTone.displayUrl) {
             mutableStateOf<Painter?>(retainedCover)
-        }
-        LaunchedEffect(decodedBitmap, softKey) {
-            val source = decodedBitmap ?: return@LaunchedEffect
-            if (softArtwork == null) {
-                softArtwork = withContext(Dispatchers.Default) {
-                    capsuleSoftArtwork(source, artworkAspect, artworkTone.landscape)
-                }
-                softArtwork?.let { immersiveSoftArtworkCache[softKey] = it }
-            }
-            coverImageReady = decodedCoverPainter != null && softArtwork != null
         }
         // A transient Coil error previously left the invisible preload mounted
         // forever with no new request until the entire player was reconstructed.
@@ -788,7 +758,7 @@ internal fun CapsuleImmersiveContent(
             mutableIntStateOf(0)
         }
         val coverAndGradientReady = canRevealImmersiveArtwork(artworkTone, coverImageReady) &&
-            decodedCoverPainter != null && softArtwork != null
+            decodedCoverPainter != null
         // The remembered frame contains the PREVIOUS song's actual image and all its
         // background colours. It remains intact during fade-out even if Media3 has already
         // switched its metadata to the NEXT song.
@@ -796,8 +766,8 @@ internal fun CapsuleImmersiveContent(
             entryScene.frame.key else "${mediaMetadata.id}|${artworkTone.displayUrl}|${artworkAspect}"
         val restoredFrame = remember {
             entryScene?.frame ?: retainedCover?.takeIf {
-                artworkTone.ready && artworkTone.displayUrl != null && softArtwork != null
-            }?.let { immersiveGradientFrame(visualKey, mediaMetadata.id, artworkTone, it, requireNotNull(softArtwork)) }
+                artworkTone.ready && artworkTone.displayUrl != null
+            }?.let { immersiveGradientFrame(visualKey, mediaMetadata.id, artworkTone, it) }
         }
         var shownGradient by remember { mutableStateOf(restoredFrame) }
         // The last actual photo and page live underneath the next prepared
@@ -836,7 +806,7 @@ internal fun CapsuleImmersiveContent(
             }
         }
         LaunchedEffect(
-            visualKey, coverAndGradientReady, softArtwork, edge, floor,
+            visualKey, coverAndGradientReady, edge, floor,
             artworkTone.bottomTexture, artworkTone.displayUrl, visible, isVideo,
         ) {
             if (!visible || !coverAndGradientReady ||
@@ -846,7 +816,6 @@ internal fun CapsuleImmersiveContent(
                 snapshotFlow { gradientAlpha.isRunning }.first { !it }
             }
             val readyPainter = decodedCoverPainter ?: return@LaunchedEffect
-            val readySoft = softArtwork ?: return@LaunchedEffect
             // A frame whose continuation is still being prepared has never
             // appeared. Rapid A -> B -> C skips must retain A's matching pair.
             val old = lastReadyFrame?.takeIf { it.key == shownGradient?.key }
@@ -855,14 +824,12 @@ internal fun CapsuleImmersiveContent(
                 outgoingStartAlpha else staleSceneAlpha.value
             val geometryOnly = old?.mediaId == mediaMetadata.id
             outgoingFrame = old.takeUnless { geometryOnly }
-            shownGradient = immersiveGradientFrame(visualKey, mediaMetadata.id, artworkTone, readyPainter, readySoft)
+            shownGradient = immersiveGradientFrame(visualKey, mediaMetadata.id, artworkTone, readyPainter)
             // New background + photo appear together only after their first
             // render has completed, instead of sequential fade-out/in.
             gradientAlpha.snapTo(if (isVideo || geometryOnly) 1f else 0f)
         }
-        // Keep the original background interpolation for normal artwork.
-        // Only near-white, low-saturation covers use the slightly more
-        // diffuse current technique to avoid a harsh white/grey seam.
+        // Every cover uses the same photographic composition.
         val frame = shownGradient
         // A stalled full-resolution decode gets one bounded retry. A
         // 256px palette preview must never become the visible/outgoing photo.
@@ -882,8 +849,7 @@ internal fun CapsuleImmersiveContent(
         val coverHeightPx = with(density) { artworkHeight.toPx() }
         val coverFraction = (coverHeightPx / pageHeightPx.coerceAtLeast(1f))
             .coerceIn(0.05f, 0.95f)
-        // Exception ONLY for almost-white art: 72dp -> 80dp, with a
-        // one-percentage-point earlier soft curve. Other covers are untouched.
+        // Retained only for the older-Android VIDEO fallback below.
         val extensionPx = with(density) { 80.dp.toPx() }
             .coerceAtMost((pageHeightPx - coverHeightPx).coerceAtLeast(1f) * 0.38f)
         val tailFraction = (extensionPx / pageHeightPx.coerceAtLeast(1f))
@@ -891,8 +857,8 @@ internal fun CapsuleImmersiveContent(
         // One render result, one commit, one visual key. The previous design
         // had TWO independent render coroutines and a readiness callback:
         // one often won by a frame and the other faded in as a visible wave.
-        val paintKey = remember(frame?.key, coverFraction, tailFraction) {
-            "${frame?.key}|$coverFraction|$tailFraction"
+        val paintKey = remember(frame?.key, coverFraction) {
+            "image-backed-v2|${frame?.key}|$coverFraction"
         }
         // One prepared page texture for one decoded cover. The previous
         // pair also built a separate tinted PHOTO overlay, which repeatedly
@@ -914,24 +880,12 @@ internal fun CapsuleImmersiveContent(
             }?.bitmap)
         }
         LaunchedEffect(
-            paintKey, frame?.colorField, frame?.visibleTail, frame?.diffusionTail, frame?.edgeBands, pageFloor,
-            nearWhite, frame?.bottomTexture, frame?.landscape,
+            paintKey, frame?.colorField, pageFloor,
         ) {
             val readyFrame = frame ?: return@LaunchedEffect
-            val colours = readyFrame.edgeBands.ifEmpty { listOf(seamColor) }
             if (immersivePaintCache[paintKey] == null) matchedPaint = withContext(Dispatchers.Default) {
-                immersiveSpatialFieldBitmap(
-                    bands = colours,
-                    fallbackFloor = readyFrame.floor,
-                    coverFraction = coverFraction,
-                    tailFraction = tailFraction,
-                    texture = readyFrame.bottomTexture,
-                    landscape = readyFrame.landscape,
-                    nearWhite = readyFrame.nearWhiteBackground,
-                    photoOverlay = false,
-                    field = readyFrame.colorField,
-                    edgeMap = readyFrame.diffusionTail ?: readyFrame.visibleTail,
-                )
+                val visible = readyFrame.colorField ?: CapsuleColorField(1, 1, listOf(readyFrame.floor))
+                capsuleImmersiveImageBackdropBitmap(visible, coverFraction)
             }
             matchedPaint?.let {
                 immersivePaintCache[paintKey] = it
@@ -970,7 +924,7 @@ internal fun CapsuleImmersiveContent(
             if (isVideo) retainedVideoField = videoAmbientField
         }
         val immersiveInk = ImmersiveControlInk
-        val metadataPageFraction = (coverHeightPx + with(density) {
+        val metadataPageFraction = (with(density) { controlsTop.toPx() } + with(density) {
             ((immersivePositions[CapsuleLightBlock.METADATA] ?: 0f).dp + 20.dp).toPx()
         }) / pageHeightPx.coerceAtLeast(1f)
         val targetMetadataInk = remember(matchedPaint, metadataPageFraction) {
@@ -1015,8 +969,7 @@ internal fun CapsuleImmersiveContent(
                     contentScale = ContentScale.Crop,
                     onSuccess = { success ->
                         decodedCoverPainter = success.painter
-                        decodedBitmap = success.result.image.toBitmap()
-                        coverImageReady = softArtwork != null
+                        coverImageReady = true
                         artworkTone.displayUrl?.let { url ->
                             decodedArtworkCache.remove(mediaMetadata.id)
                             decodedArtworkCache[mediaMetadata.id] = url to success.painter
@@ -1059,7 +1012,6 @@ internal fun CapsuleImmersiveContent(
                             painter = leaving.painter, contentDescription = null,
                             contentScale = ContentScale.Crop, modifier = photoModifier,
                         )
-                        ImmersiveSoftArtwork(leaving.softArtwork, artworkHeight)
                     }
                 }
                 matchedPaint?.let { bitmap ->
@@ -1081,7 +1033,6 @@ internal fun CapsuleImmersiveContent(
                                 scaleY = if (frame.landscape) 1.06f else 1f,
                             ),
                         )
-                        ImmersiveSoftArtwork(frame.softArtwork, artworkHeight)
                     }
                 }
             }
@@ -1161,7 +1112,7 @@ internal fun CapsuleImmersiveContent(
         val editorHeight =
             immersiveEditorHeight(
                 totalHeight = maxHeight,
-                artworkHeight = artworkHeight,
+                artworkHeight = controlsTop,
                 bottomPadding = bottomPadding,
             )
 
@@ -1175,7 +1126,7 @@ internal fun CapsuleImmersiveContent(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(top = artworkHeight)
+                    .padding(top = controlsTop)
                     .height(editorHeight)
                     .graphicsLayer {
                         alpha = transitionForegroundAlpha().coerceIn(0f, 1f)
@@ -1659,7 +1610,6 @@ private fun rememberImmersiveArtworkRequest(url: String?): ImageRequest {
             // Same decode/cache target for the invisible preload and the
             // visible frame; avoids a second full-size GPU allocation.
             .size(960, 960)
-            .allowHardware(false)
             .crossfade(false)
             .build()
     }

@@ -72,22 +72,6 @@ class CapsuleImmersiveTailTest {
         image.recycle()
     }
 
-    @Test fun progressiveSoftArtworkRemovesFineTextureBeforeThePhysicalEdge() {
-        val bitmap = Bitmap.createBitmap(320, 280, Bitmap.Config.ARGB_8888)
-        for (y in 0 until bitmap.height) for (x in 0 until bitmap.width) {
-            bitmap.setPixel(x, y, if ((x / 2 + y / 2) % 2 == 0) AndroidColor.WHITE else AndroidColor.BLACK)
-        }
-        val soft = capsuleSoftArtwork(bitmap, 320f / 280f, false).asAndroidBitmap()
-        assertTrue(AndroidColor.alpha(soft.getPixel(30, 0)) == 0)
-        assertTrue("Only the lower join is cached, not a full-cover overlay", soft.height < bitmap.height * 0.18f)
-        val y = (soft.height * 0.75f).toInt()
-        val samples = (40..180).map { AndroidColor.red(soft.getPixel(it, y)) }
-        assertTrue("Dense ink must actually diffuse, rather than just becoming translucent",
-            requireNotNull(samples.maxOrNull()) - requireNotNull(samples.minOrNull()) < 14)
-        assertTrue(AndroidColor.alpha(soft.getPixel(60, y)) > 245)
-        bitmap.recycle(); soft.recycle()
-    }
-
     @Test fun photoNeverGetsATintedOverlayOrHardBoundaryStripe() {
         val source = CapsuleColorField(64, 8, List(64 * 8) { Color(0xFFE9B078) })
         val overlay = immersiveSpatialFieldBitmap(

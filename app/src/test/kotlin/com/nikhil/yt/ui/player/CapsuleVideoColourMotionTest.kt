@@ -145,26 +145,17 @@ class CapsuleVideoColourMotionTest {
             capsuleVideoFieldTexture(filter.apply(source, (i + 21) * 100_000_000L)).recycle()
         }
         val perFrameUs = (cpu.currentThreadCpuTime - start) / 300.0 / 1000.0
-        val bitmap = Bitmap.createBitmap(960, 960, Bitmap.Config.ARGB_8888)
-        bitmap.eraseColor(android.graphics.Color.rgb(126, 83, 51))
-        val blurStart = cpu.currentThreadCpuTime
-        var outputBytes = 0
-        repeat(10) {
-            val strip = capsuleSoftArtwork(bitmap, 0.88f, false)
-            outputBytes = strip.width * strip.height * 4
-            strip.asAndroidBitmap().recycle()
-        }
-        val perCoverMs = (cpu.currentThreadCpuTime - blurStart) / 10.0 / 1_000_000.0
-        bitmap.recycle()
         val fieldStart = cpu.currentThreadCpuTime
+        var outputBytes = 0
         repeat(5) {
-            immersiveSpatialFieldBitmap(emptyList(), Color(0xFF282522), 0.55f, 0.06f,
-                0.8f, false, false, false, field = source).asAndroidBitmap().recycle()
+            val image = capsuleImmersiveImageBackdropBitmap(source, 0.60f)
+            outputBytes = image.width * image.height * 4
+            image.asAndroidBitmap().recycle()
         }
         val perGradientMs = (cpu.currentThreadCpuTime - fieldStart) / 5.0 / 1_000_000.0
         val file = java.io.File("build/video-morph-preview/energy-preparation.json")
         file.parentFile?.mkdirs()
-        file.writeText("""{"scope":"Robolectric host CPU, not phone power","video_filter_and_upload_us":$perFrameUs,"cover_blur_once_ms":$perCoverMs,"cover_gradient_once_ms":$perGradientMs,"cached_blur_strip_bytes":$outputBytes,"capture_limit_per_second":10}""")
+        file.writeText("""{"scope":"Robolectric host CPU, not phone power","video_filter_and_upload_us":$perFrameUs,"cover_gradient_once_ms":$perGradientMs,"cached_image_backdrop_bytes":$outputBytes,"capture_limit_per_second":10}""")
     }
 
 }

@@ -359,27 +359,31 @@ class CapsuleVideoMorphPixelsTest {
                 }
             }
         }
-        for (alpha in listOf(0f, 0.25f, 0.5f, 0.75f, 1f)) {
-            compose.runOnIdle { fade.value = alpha }
-            val bitmap = snapshot("joined-scene-$alpha")
-            try {
-                val reference = bitmap.getPixel(bitmap.width / 2, bitmap.height / 3)
-                val expectedRed = (255 * (1f - alpha)).roundToInt()
-                val expectedBlue = (255 * alpha).roundToInt()
-                assertTrue(kotlin.math.abs(AndroidColor.red(reference) - expectedRed) <= 3)
-                assertTrue(kotlin.math.abs(AndroidColor.blue(reference) - expectedBlue) <= 3)
-                // All photo, overlap and page pixels have identical source
-                // colours. Independent track alpha on the masked photo would
-                // instead make a bright/red stripe inside this exact region.
-                for (row in 0..80) {
-                    val y = ((0.54f + row * 0.002f) * bitmap.height).roundToInt()
-                    val pixel = bitmap.getPixel(bitmap.width / 2, y)
-                    assertTrue("Track alpha $alpha changed colour at feather row $y",
-                        kotlin.math.abs(AndroidColor.red(pixel) - AndroidColor.red(reference)) <= 3 &&
-                            kotlin.math.abs(AndroidColor.blue(pixel) - AndroidColor.blue(reference)) <= 3)
-                }
-            } finally { bitmap.recycle() }
-        }
+        val first = snapshot("joined-endpoint-red")
+        compose.runOnIdle { fade.value = 1f }
+        val second = snapshot("joined-endpoint-blue")
+        try {
+            for (alpha in listOf(0f, 0.25f, 0.5f, 0.75f, 1f)) {
+                compose.runOnIdle { fade.value = alpha }
+                val bitmap = snapshot("joined-scene-$alpha")
+                try {
+                    // Include the stage scrim in each endpoint. Group opacity
+                    // must interpolate the complete scene, including its mask.
+                    for (row in 0..80) {
+                        val y = ((0.34f + row * 0.006f) * bitmap.height).roundToInt()
+                        val x = bitmap.width / 2
+                        val pixel = bitmap.getPixel(x, y)
+                        for (shift in listOf(0, 8, 16)) {
+                            val start = first.getPixel(x, y) ushr shift and 255
+                            val end = second.getPixel(x, y) ushr shift and 255
+                            val expected = (start * (1f - alpha) + end * alpha).roundToInt()
+                            assertTrue("Track alpha $alpha broke group blend at row $y",
+                                kotlin.math.abs((pixel ushr shift and 255) - expected) <= 3)
+                        }
+                    }
+                } finally { bitmap.recycle() }
+            }
+        } finally { first.recycle(); second.recycle() }
     }
 
     @Test fun videoBackplateAttenuatesPhotoAndFloorEqually() {
@@ -417,20 +421,13 @@ class CapsuleVideoMorphPixelsTest {
             })
         }
         val cover = source.asImageBitmap()
-        val continuation = immersiveSpatialFieldBitmap(
-            bands = emptyList(), fallbackFloor = Color(0xFF19191D),
-            coverFraction = 280f / 440f, tailFraction = 0.06f,
-            texture = 0.9f, landscape = false, nearWhite = false, photoOverlay = false,
-            edgeMap = source.capsuleImmersiveVisibleTail(320f / 280f, false,
-                fraction = 1f - IMMERSIVE_DIFFUSION_START),
-        )
-        val softArtwork = capsuleSoftArtwork(source, 320f / 280f, false)
+        val continuation = capsuleImmersiveImageBackdropBitmap(
+            source.capsuleImmersiveVisibleField(320f / 280f, false), 280f / 440f)
         compose.setContent {
             Box(Modifier.size(320.dp, 440.dp).testTag("media-slot")) {
                 ImmersiveAudioScene(continuation, 280.dp, sceneAlpha = { 1f }) {
                     Image(cover, contentDescription = null, contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize())
-                    ImmersiveSoftArtwork(softArtwork, 280.dp)
                 }
             }
         }
@@ -450,82 +447,60 @@ class CapsuleVideoMorphPixelsTest {
         } finally { image.recycle() }
     }
 
-    @Test fun strongBlurRemovesVisibleDetailBeforeThePhotoMaskHidesIt() {
+    @Test fun photographicBackdropKeepsColourWithoutASeparateFeatherStrip() {
         val source = Bitmap.createBitmap(320, 280, Bitmap.Config.ARGB_8888)
-        for (y in 0 until source.height) for (x in 0 until source.width) {
-            source.setPixel(x, y, if ((x / 16) % 2 == 0) AndroidColor.WHITE else AndroidColor.BLACK)
-        }
-        val background = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888).apply {
-            eraseColor(AndroidColor.rgb(86, 86, 86))
-        }.asImageBitmap()
-        val cover = source.asImageBitmap()
-        val soft = capsuleSoftArtwork(source, 320f / 280f, false)
-        val enabled = mutableStateOf(false)
+        source.eraseColor(AndroidColor.rgb(210, 140, 75))
+        val field = source.capsuleImmersiveVisibleField(320f / 280f, false)
+        val background = capsuleImmersiveImageBackdropBitmap(field, 280f / 440f)
         compose.setContent {
             Box(Modifier.size(320.dp, 440.dp).testTag("media-slot")) {
                 ImmersiveAudioScene(background, 280.dp, sceneAlpha = { 1f }) {
-                    Image(cover, contentDescription = null, contentScale = ContentScale.Crop,
+                    Image(source.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize())
-                    if (enabled.value) ImmersiveSoftArtwork(soft, 280.dp)
                 }
             }
         }
-        val before = snapshot("soft-detail-before")
-        compose.runOnIdle { enabled.value = true }
-        val after = snapshot("soft-detail-visible")
-        fun contrast(image: Bitmap): Int {
-            // The strong part of the COMPLETE compressed reference is here;
-            // both blur and photo opacity must still contribute to the scene.
-            val y = (image.height * 281f / 440f * 0.94f).roundToInt()
-            val values = (image.width / 4 until image.width * 3 / 4).map { x ->
-                AndroidColor.red(image.getPixel(x, y))
-            }
-            return requireNotNull(values.maxOrNull()) - requireNotNull(values.minOrNull())
-        }
+        val image = snapshot("image-backed-photographic-colour")
         try {
-            val sharpContrast = contrast(before)
-            assertTrue("The comparison row must still contain visible photo detail", sharpContrast > 20)
-            assertTrue("Strong diffusion must happen before the image becomes transparent",
-                contrast(after) < sharpContrast * 0.60f)
-            val untouchedY = (after.height * 280f / 440f * 0.80f).roundToInt()
-            for (x in after.width / 4 until after.width * 3 / 4) {
-                assertEquals("The blur must not creep upwards", before.getPixel(x, untouchedY),
-                    after.getPixel(x, untouchedY))
+            val belowStage = image.getPixel(image.width / 2, image.height * 3 / 4)
+            assertTrue(AndroidColor.red(belowStage) > AndroidColor.blue(belowStage) + 50)
+            val edge = (image.height * 281f / 440f).roundToInt()
+            for (y in edge - 4..edge + 4) {
+                val a = image.getPixel(image.width / 2, y)
+                val b = image.getPixel(image.width / 2, y + 1)
+                assertTrue(kotlin.math.abs(AndroidColor.red(a) - AndroidColor.red(b)) < 5)
             }
-        } finally { before.recycle(); after.recycle() }
+        } finally { image.recycle() }
     }
 
-    @Test fun lateBlurRetainsPhotographicColourInsteadOfOnlyTheFlatFloor() {
-        val source = Bitmap.createBitmap(320, 280, Bitmap.Config.ARGB_8888)
-        for (y in 0 until source.height) for (x in 0 until source.width) {
-            source.setPixel(x, y, if ((x / 16) % 2 == 0)
-                AndroidColor.rgb(230, 155, 85) else AndroidColor.rgb(190, 125, 65))
-        }
-        val background = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888).apply {
-            eraseColor(AndroidColor.rgb(32, 32, 32))
-        }.asImageBitmap()
-        val cover = source.asImageBitmap()
-        val soft = capsuleSoftArtwork(source, 320f / 280f, false)
+    @Test fun tallerCropKeepsRoundArtworkFeaturesRound() {
+        val source = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(source)
+        canvas.drawColor(AndroidColor.BLACK)
+        canvas.drawCircle(128f, 70f, 26f, android.graphics.Paint().apply { color = AndroidColor.RED })
+        val background = capsuleImmersiveImageBackdropBitmap(
+            source.capsuleImmersiveVisibleField(240f / 300f, false), 300f / 440f)
         compose.setContent {
-            Box(Modifier.size(320.dp, 440.dp).testTag("media-slot")) {
-                ImmersiveAudioScene(background, 280.dp, sceneAlpha = { 1f }) {
-                    Image(cover, contentDescription = null, contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize())
-                    ImmersiveSoftArtwork(soft, 280.dp)
+            Box(Modifier.size(240.dp, 440.dp).testTag("media-slot")) {
+                ImmersiveAudioScene(background, 300.dp, sceneAlpha = { 1f }) {
+                    Image(source.asImageBitmap(), contentDescription = null,
+                        contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                 }
             }
         }
-        val image = snapshot("late-blur-photographic-colour")
+        val image = snapshot("larger-cover-preserves-proportions")
         try {
-            val y = (image.height * 281f / 440f * 0.94f).roundToInt()
-            val colours = (image.width / 4 until image.width * 3 / 4).map { image.getPixel(it, y) }
-            val red = colours.map { AndroidColor.red(it) }.average()
-            val blue = colours.map { AndroidColor.blue(it) }.average()
-            assertTrue("A low-contrast result must still show the blurred photograph, not only the floor",
-                red > 72 && red > blue + 25)
-            val edgeY = (image.height * 283f / 440f).roundToInt()
-            assertEquals("Blur must not extend beyond the original artwork boundary",
-                AndroidColor.rgb(32, 32, 32), image.getPixel(image.width / 2, edgeY))
+            var left = image.width; var right = -1; var top = image.height; var bottom = -1
+            for (y in 0 until image.height / 3) for (x in 0 until image.width) {
+                val pixel = image.getPixel(x, y)
+                if (AndroidColor.red(pixel) > 240 && AndroidColor.green(pixel) < 8 && AndroidColor.blue(pixel) < 8) {
+                    left = minOf(left, x); right = maxOf(right, x)
+                    top = minOf(top, y); bottom = maxOf(bottom, y)
+                }
+            }
+            assertTrue(right > left && bottom > top)
+            assertTrue("Crop must scale both image axes equally",
+                kotlin.math.abs((right - left) - (bottom - top)) <= 3)
         } finally { image.recycle() }
     }
 
