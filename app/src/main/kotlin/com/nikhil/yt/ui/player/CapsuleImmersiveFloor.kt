@@ -188,11 +188,7 @@ internal fun rememberImmersiveEdgeColor(
                     // Do not clamp this colour: a clamped seam is visibly
                     // darker than the last actual row of the artwork.
                     edge = rawEdge,
-                    accent = if (nearWhite) {
-                        rawEdge.immersiveMutedAccent()
-                    } else {
-                        capsuleCleanImmersiveFloor(visibleTail)
-                    },
+                    accent = capsuleCleanImmersiveFloor(visibleTail),
                     bottomTexture = bottomTexture,
                     edgeBands = edgeBands,
                     colorField = colorField,
@@ -250,18 +246,64 @@ internal fun rememberImmersiveEdgeColor(
  * Called just once during off-main artwork preparation, never during drawing.
  */
 internal fun capsuleCleanImmersiveFloor(edgeMap: CapsuleColorField): Color {
-    val lastVisibleRows = capsuleDominantEdgeColor(edgeMap)
-    val hsv = FloatArray(3)
-    android.graphics.Color.colorToHSV(lastVisibleRows.toArgb(), hsv)
-    // Neutral or black covers stay neutral. For saturated covers, darken
-    // in HSV so muddy RGB averaging doesn't shift the palette toward olive.
-    hsv[1] = if (hsv[1] < 0.12f) {
-        hsv[1]
-    } else {
-        (hsv[1] * 0.86f).coerceIn(0.13f, 0.56f)
+    // Scene-specific floor: distinguish black/neutral area from genuine
+    // coloured objects. RGB medians of black + magenta + skin produced a
+    // completely unrelated muddy grey/brown even though no such area existed
+    // in the art. The last four visible rows carry the strongest weight.
+    val scores = FloatArray(24)
+    val red = FloatArray(24)
+    val green = FloatArray(24)
+    val blue = FloatArray(24)
+    val hueSample = FloatArray(3)
+    val neutrals = ArrayList<Float>(edgeMap.width * 4)
+    var weightedChromatic = 0f
+    var weightedTotal = 0f
+    val first = (edgeMap.height - 4).coerceAtLeast(0)
+
+    for (y in first until edgeMap.height) for (x in 0 until edgeMap.width) {
+        val c = edgeMap.cell(x, y)
+        val top = maxOf(c.red, c.green, c.blue)
+        val low = minOf(c.red, c.green, c.blue)
+        val chroma = top - low
+        val sat = if (top > 0.0001f) chroma / top else 0f
+        val rowWeight = (1f + y - first) / (edgeMap.height - first)
+        weightedTotal += rowWeight
+        neutrals.add(top)
+        if (sat < 0.18f || top < 0.15f) continue
+        weightedChromatic += rowWeight
+        android.graphics.Color.colorToHSV(c.toArgb(), hueSample)
+        val bin = (hueSample[0] / 15f).toInt().coerceIn(0, 23)
+        val weight = rowWeight * (0.30f + 0.70f * sat) *
+            (0.45f + 0.55f * top)
+        scores[bin] += weight
+        red[bin] += weight * c.red
+        green[bin] += weight * c.green
+        blue[bin] += weight * c.blue
     }
-    hsv[2] = (0.11f + hsv[2] * 0.23f).coerceIn(0.14f, 0.33f)
-    return Color(android.graphics.Color.HSVToColor(hsv))
+
+    val chromaticCoverage = weightedChromatic / weightedTotal.coerceAtLeast(0.0001f)
+    val winner = scores.indices.maxByOrNull { scores[it] } ?: 0
+    if (chromaticCoverage >= 0.16f && scores[winner] > 0.001f) {
+        // Use a colour that genuinely appears in the image, without combining
+        // unlike hues. Adjust only its luminance and mild saturation for text.
+        val source = Color(
+            red[winner] / scores[winner],
+            green[winner] / scores[winner],
+            blue[winner] / scores[winner],
+        )
+        android.graphics.Color.colorToHSV(source.toArgb(), hueSample)
+        hueSample[1] = (hueSample[1] * 0.78f).coerceIn(0f, 0.62f)
+        hueSample[2] = (0.085f + hueSample[2] * 0.21f).coerceIn(0.095f, 0.285f)
+        return Color(android.graphics.Color.HSVToColor(hueSample))
+    }
+
+    // Black/white artwork must not acquire arbitrary purple or brown.
+    // The lower 40th percentile is resistant to a white logo on black.
+    neutrals.sort()
+    val value = neutrals[(neutrals.size * 0.40f).toInt()
+        .coerceIn(0, neutrals.lastIndex)]
+    val shade = (0.065f + value * 0.17f).coerceIn(0.065f, 0.24f)
+    return Color(shade, shade, shade)
 }
 
 /** Only near-white, nearly neutral backgrounds receive the slightly wider fade. */
