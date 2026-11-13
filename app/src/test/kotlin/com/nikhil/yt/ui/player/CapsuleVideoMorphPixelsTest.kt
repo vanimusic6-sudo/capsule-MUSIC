@@ -474,9 +474,9 @@ class CapsuleVideoMorphPixelsTest {
         compose.runOnIdle { enabled.value = true }
         val after = snapshot("soft-detail-visible")
         fun contrast(image: Bitmap): Int {
-            // 88% is still visibly photographic. Testing the last row alone
-            // used to pass even though the photo mask hid almost all blur.
-            val y = (image.height * 281f / 440f * 0.88f).roundToInt()
+            // The strong part of the COMPLETE compressed reference is here;
+            // both blur and photo opacity must still contribute to the scene.
+            val y = (image.height * 281f / 440f * 0.94f).roundToInt()
             val values = (image.width / 4 until image.width * 3 / 4).map { x ->
                 AndroidColor.red(image.getPixel(x, y))
             }

@@ -68,22 +68,17 @@ private const val EDGE_HEIGHT = 240
 // The prepared continuation begins underneath fully opaque photo pixels.
 // Share this geometry with the photo mask, including outgoing track scenes.
 internal const val IMMERSIVE_DIFFUSION_START = 0.63f
-internal const val IMMERSIVE_PHOTO_FEATHER_START = 0.67f
+internal const val IMMERSIVE_PHOTO_FEATHER_START = 1f - IMMERSIVE_SOFT_ARTWORK_FRACTION +
+    IMMERSIVE_SOFT_ARTWORK_FRACTION * (IMMERSIVE_REFERENCE_FADE_START - IMMERSIVE_REFERENCE_SOFT_START) /
+    (1f - IMMERSIVE_REFERENCE_SOFT_START)
 
 internal fun immersivePhotoFeatherAlpha(fraction: Float): Float {
-    val y = fraction.coerceIn(0f, 1f)
-    if (y >= 1f) return 0f
-    val softStart = 1f - IMMERSIVE_SOFT_ARTWORK_FRACTION
-    // The old mask removed almost all photographic colour while the blur
-    // was strongest. Change only opacity INSIDE the existing soft strip.
-    // h'(u) = (3u - 1)^2: monotone, matching the old slope at the join;
-    // no opacity rebound/bright stripe, no shifted gradient or larger radius.
-    val sourceY = if (y <= softStart) y else {
-        val u = ((y - softStart) / IMMERSIVE_SOFT_ARTWORK_FRACTION).coerceIn(0f, 1f)
-        softStart + IMMERSIVE_SOFT_ARTWORK_FRACTION * (u - 3f * u * u * (1f - u))
-    }
-    val t = ((sourceY - IMMERSIVE_PHOTO_FEATHER_START) /
-        (1f - IMMERSIVE_PHOTO_FEATHER_START)).coerceIn(0f, 1f)
+    if (fraction >= 1f) return 0f
+    // Opacity and blur use the same compressed reference coordinates. The
+    // photograph stays opaque while it starts to blur, exactly as before.
+    val reference = immersiveReferencePhotoPosition(fraction)
+    val t = ((reference - IMMERSIVE_REFERENCE_FADE_START) /
+        (1f - IMMERSIVE_REFERENCE_FADE_START)).coerceIn(0f, 1f)
     return (1f - t * t * t * (t * (t * 6f - 15f) + 10f)).coerceIn(0f, 1f)
 }
 

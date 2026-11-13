@@ -8,7 +8,7 @@ measurement on an Android phone.
 
 | Path | Finding | Change / retained bound |
 | --- | --- | --- |
-| Cover blur | Started at 54% and filled a full-cover transparent image; obscured real art too early | Blur begins at 84%, only the bottom 16% is cached/drawn. Full strength is reached by 88.8% and coverage by 87.5%, before the existing photo mask hides the effect. Original fade above 84% and continuation geometry preserved. Within the existing bottom 16%, the photo mask retains the blurred photograph's opacity longer, then reaches zero at the same edge; it no longer suppresses blur into the flat floor. Kernel radii remain 2/5/10 and the cached strip is unchanged. Three progressively blurred levels instead of four; reduced source-strip work. One preparation per cover/crop on a worker, cache capacity 3. |
+| Cover blur | Independent changes to radius, coverage and photo opacity lost the approved reference appearance | Restore the exact c485859 sequence (sharp, 2/6/14/28) and its original coverage/blur/fade curves. Map the COMPLETE 54–100% reference interval into the existing bottom 16% (84–100%). Photo colour stays opaque while it begins to blur, then fades at the corresponding reference position. Only the final cropped strip is retained/drawn. Four once-per-cover cached blur levels, with 60 source rows of kernel context, computed on a worker; cache capacity 3. This costs more preparation than the reduced 2/5/10 approximation, but no per-frame blur is introduced. |
 | Cover gradient | Source exposure recalculated for every 2D kernel tap | Prepare source colours once. Evaluate the same finite triangular kernels in separable vertical/horizontal passes. Original palette, floor, fade height and image resolution preserved. One cached render per cover/layout. |
 | Track change | Two independent scene scales distorted the image; fast-out easing compressed visible movement; opacity reads invalidated the parent | Remove both scales. 380ms responsive dissolve with a short eased finish. Graphics-layer opacity; equal metadata colours use equality-checked derived state. Rapid skips coalesce the pending visual target after the active finite dissolve, rather than snapping a half-visible photo to opaque or stacking more layers. Playback/input remain immediate. |
 | Static audio | Full-page offscreen surface forced even at opacity 1 | Auto group compositing: retain grouped opacity while fading, avoid forcing the extra outer surface when opaque. Photo alpha mask remains isolated for correct blending. No new idle frame clock. |
@@ -24,7 +24,7 @@ measurement on an Android phone.
 ## Verification
 
 The graphics suite emits native renderer PNGs for the detailed photo join,
-visible final-scene detail suppression at 88%, plus retained photographic colour at 94% (so low contrast cannot pass by erasing the photograph),
+visible final-scene detail suppression and retained photographic colour at 94% (so low contrast cannot pass by erasing the photograph),
 near-zero slider, directional video field, uniform field and alternating-stripe
 input. Tests also cover frame-flash damping, sustained scene following, colour
 region position, interruption from the current visible field, contrast and

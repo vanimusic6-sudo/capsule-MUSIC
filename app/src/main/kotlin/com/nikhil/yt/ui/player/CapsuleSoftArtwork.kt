@@ -10,6 +10,27 @@ import kotlin.math.roundToInt
 
 /** Once per cover, on a worker: progressively diffuse real photo detail before its alpha feather. */
 internal const val IMMERSIVE_SOFT_ARTWORK_FRACTION = 0.16f
+internal const val IMMERSIVE_REFERENCE_SOFT_START = 0.54f
+internal const val IMMERSIVE_REFERENCE_FADE_START = 0.67f
+
+/** Move the COMPLETE approved long effect into the short bottom strip. */
+internal fun immersiveReferencePhotoPosition(fraction: Float): Float {
+    if (fraction >= 1f) return 1f
+    val start = 1f - IMMERSIVE_SOFT_ARTWORK_FRACTION
+    val progress = ((fraction - start) / IMMERSIVE_SOFT_ARTWORK_FRACTION).coerceIn(0f, 1f)
+    return IMMERSIVE_REFERENCE_SOFT_START + (1f - IMMERSIVE_REFERENCE_SOFT_START) * progress
+}
+
+private fun referenceSmooth(value: Float): Float {
+    val t = value.coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
+}
+
+internal fun immersiveSoftLevelProgress(fraction: Float): Float =
+    referenceSmooth((immersiveReferencePhotoPosition(fraction) - IMMERSIVE_REFERENCE_SOFT_START) / 0.40f)
+
+internal fun immersiveSoftCoverage(fraction: Float): Float =
+    referenceSmooth((immersiveReferencePhotoPosition(fraction) - IMMERSIVE_REFERENCE_SOFT_START) / 0.17f)
 
 internal fun capsuleSoftArtwork(source: Bitmap, aspect: Float, landscape: Boolean): ImageBitmap {
     val width = 256
@@ -24,9 +45,9 @@ internal fun capsuleSoftArtwork(source: Bitmap, aspect: Float, landscape: Boolea
         Paint(Paint.FILTER_BITMAP_FLAG))
     val softStart = 1f - IMMERSIVE_SOFT_ARTWORK_FRACTION
     val outputStart = (height * softStart).toInt()
-    // Two radius-10 passes need source pixels above the visible strip.
-    // Keep fixed kernel padding rather than blurring another third of the art.
-    val begin = (outputStart - 24).coerceAtLeast(0)
+    // Restore the reference kernels. Two radius-28 passes require 56 rows
+    // of context; only the final short strip is retained or drawn.
+    val begin = (outputStart - 60).coerceAtLeast(0)
     val stripHeight = height - begin
     val original = IntArray(width * stripHeight)
     scaled.getPixels(original, 0, width, 0, begin, width, stripHeight)
@@ -67,24 +88,17 @@ internal fun capsuleSoftArtwork(source: Bitmap, aspect: Float, landscape: Boolea
         }
         return from
     }
-    // Coverage already blends against the sharp original underneath. Keeping
-    // an additional sharp level here delayed the actual diffusion a second time.
-    val levels = listOf(blur(original, 2), blur(original, 5), blur(original, 10))
+    // Exact kernel sequence from the user-approved c485859 reference.
+    val levels = listOf(original, blur(original, 2), blur(original, 6), blur(original, 14), blur(original, 28))
     val outputHeight = height - outputStart
     val output = IntArray(width * outputHeight)
     for (y in outputStart until height) {
         val fraction = (y + 0.5f) / height
-        val t = ((fraction - softStart) / (IMMERSIVE_SOFT_ARTWORK_FRACTION * 0.30f)).coerceIn(0f, 1f)
-        val eased = t * t * (3f - 2f * t)
-        val level = eased * (levels.size - 1)
+        val level = immersiveSoftLevelProgress(fraction) * (levels.size - 1)
         val lo = level.toInt().coerceAtMost(levels.lastIndex)
         val hi = (lo + 1).coerceAtMost(levels.lastIndex)
         val mix = level - lo
-        // Rounding outputStart down can put the first pixel centre just past
-        // softStart. Keep the raster's actual top endpoint transparent too.
-        val alpha = if (y == outputStart) 0f else
-            (((fraction - softStart) / (IMMERSIVE_SOFT_ARTWORK_FRACTION * 0.22f)).coerceIn(0f, 1f))
-                .let { it * it * (3f - 2f * it) }
+        val alpha = if (y == outputStart) 0f else immersiveSoftCoverage(fraction)
         for (x in 0 until width) {
             val index = (y - begin) * width + x
             var pixel = (alpha * 255f).roundToInt() shl 24

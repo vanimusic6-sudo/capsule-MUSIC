@@ -10,7 +10,7 @@ class CapsuleImmersiveFieldTest {
         assertTrue("Backdrop must exist before any photo alpha is removed",
             IMMERSIVE_DIFFUSION_START < IMMERSIVE_PHOTO_FEATHER_START)
         assertTrue("Only the lower portion of the artwork should be softened",
-            IMMERSIVE_PHOTO_FEATHER_START in 0.62f..0.72f)
+            IMMERSIVE_PHOTO_FEATHER_START in 0.87f..0.90f)
         assertTrue(immersivePhotoFeatherAlpha(0f) == 1f)
         assertTrue(immersivePhotoFeatherAlpha(1f) == 0f)
         var previous = 1f
@@ -25,21 +25,28 @@ class CapsuleImmersiveFieldTest {
         assertTrue(immersivePhotoFeatherAlpha(0.999f) < 0.001f)
     }
 
-    @Test fun sharpDetailFadesWhileBlurredPhotoKeepsItsColour() {
-        assertTrue(immersivePhotoFeatherAlpha(0.65f) == 1f)
-        assertTrue("Half of the fine detail should be gone before the bottom sixth",
-            immersivePhotoFeatherAlpha(0.85f) < 0.5f)
-        assertTrue("The soft photograph must remain visible inside its own strip",
-            immersivePhotoFeatherAlpha(0.94f) in 0.25f..0.40f)
-        assertTrue("The photo must still finish at its original boundary",
-            immersivePhotoFeatherAlpha(0.999f) < 0.001f)
-        for (i in 0..840) {
-            val y = i / 1000f
-            val t = ((y - IMMERSIVE_PHOTO_FEATHER_START) /
-                (1f - IMMERSIVE_PHOTO_FEATHER_START)).coerceIn(0f, 1f)
-            val original = 1f - t * t * t * (t * (t * 6f - 15f) + 10f)
-            assertTrue("Opacity above the blur strip must remain unchanged",
-                abs(immersivePhotoFeatherAlpha(y) - original) < 0.000001f)
+    @Test fun photographStartsBlurringBeforeItsOpacityFalls() {
+        assertTrue(immersivePhotoFeatherAlpha(0.85f) == 1f)
+        assertTrue(immersiveSoftCoverage(0.87f) > 0f)
+        assertTrue(immersivePhotoFeatherAlpha(0.94f) > 0.45f)
+        assertTrue(immersivePhotoFeatherAlpha(0.999f) < 0.001f)
+    }
+
+    @Test fun shortEffectKeepsTheCompleteApprovedReferenceProfile() {
+        fun smooth(value: Float): Float {
+            val t = value.coerceIn(0f, 1f)
+            return t * t * (3f - 2f * t)
+        }
+        for (i in 0..100) {
+            val progress = i / 100f
+            val y = 1f - IMMERSIVE_SOFT_ARTWORK_FRACTION + IMMERSIVE_SOFT_ARTWORK_FRACTION * progress
+            val reference = 0.54f + (1f - 0.54f) * progress
+            assertTrue(abs(immersiveSoftLevelProgress(y) - smooth((reference - 0.54f) / 0.40f)) < 0.00001f)
+            assertTrue(abs(immersiveSoftCoverage(y) - smooth((reference - 0.54f) / 0.17f)) < 0.00001f)
+            val t = ((reference - 0.67f) / (1f - 0.67f)).coerceIn(0f, 1f)
+            val alpha = (1f - t * t * t * (t * (t * 6f - 15f) + 10f)).coerceIn(0f, 1f)
+            assertTrue("Photo fade must follow the same reference position as blur",
+                abs(immersivePhotoFeatherAlpha(y) - alpha) < 0.00001f)
         }
     }
 
