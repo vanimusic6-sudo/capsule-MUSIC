@@ -21,12 +21,16 @@ class ImmersiveVideoArtworkClipRegressionTest {
         assertTrue(content.contains(".clipToBounds()"))
         assertTrue(content.contains("CompositingStrategy.Offscreen"))
         assertTrue(content.contains("BlendMode.DstIn"))
-        assertTrue(content.contains("0.944f to Color.White"))
+        assertTrue("Photo feather must stay enabled during the video morph",
+            !content.contains("if (!isVideo) Modifier.drawWithCache"))
+        assertTrue("The same blurred frame should gently reach onto the artwork",
+            content.contains("seamBloomMask"))
+        assertTrue(content.contains("0.928f to Color.White"))
         assertTrue(content.contains("scaleX = if (frame.landscape) 1.06f else 1f"))
         assertTrue(content.contains("scaleY = if (frame.landscape) 1.06f else 1f"))
         assertTrue(content.contains("matchedPaint?.let { bitmap ->"))
         assertTrue(!content.contains("matchedPaint?.second?.let"))
-        assertTrue(content.contains("immersivePageBaseColor(false, frame != null, pageFloor)"))
+        assertTrue(content.contains("immersivePageBaseColor(false, frame?.key == visualKey, pageFloor)"))
     }
 
     @Test fun immersiveFixedArtworkCannotHideItsGradientBehindOpaqueMatte() {
