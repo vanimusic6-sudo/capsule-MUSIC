@@ -37,10 +37,13 @@ class PlayerTransitionArchitectureTest {
         // The old two-coroutine readiness gate, tall ray projection and
         // independent audio fade must never return.
         assertTrue(immersive.contains("matchedPaint = withContext(Dispatchers.Default)"))
-        assertTrue(immersive.contains("val pairReady = frame != null && matchedPaint != null"))
         assertTrue(immersive.contains("matchedPaint?.let { bitmap ->"))
+        assertTrue(immersive.contains("if (frame != null) ImmersiveAudioScene("))
         assertFalse("No second tinted photo overlay", immersive.contains("matchedPaint?.second?.let"))
-        assertTrue(immersive.contains("if (!pairReady)"))
+        assertTrue("A loading placeholder cannot cover a prepared scene",
+            immersive.contains("if (frame == null && outgoingFrame == null)"))
+        assertFalse("The photo must not be faded separately from its track scene",
+            immersive.contains("alpha = capsuleImmersiveArtworkOpacity("))
         assertTrue(immersive.contains("artworkTone.preview"))
         assertTrue(immersive.contains("sharedProgress = sharedVideoProgress"))
         assertTrue(immersive.contains("capsuleImmersiveVideoBackplateAlpha(sharedVideoProgress.value)"))
