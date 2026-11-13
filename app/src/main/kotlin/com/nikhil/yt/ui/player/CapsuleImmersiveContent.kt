@@ -118,6 +118,8 @@ private data class ImmersiveGradientFrame(
     val edgeBands: List<Color>,
     val colorField: CapsuleColorField?,
     val visibleTail: CapsuleColorField?,
+    val preview: ImageBitmap?,
+    val painter: Painter?,
 )
 
 /**
@@ -129,6 +131,48 @@ private data class ImmersiveGradientFrame(
  * shaders use the same physical screen Y. Keep white controls constant.
  */
 internal val ImmersiveControlInk = Color.White
+
+/** A track opacity is applied AFTER the photo and its continuation are joined. */
+@Composable
+internal fun ImmersiveAudioScene(
+    background: ImageBitmap,
+    artworkHeight: Dp,
+    sceneAlpha: () -> Float,
+    artwork: @Composable () -> Unit,
+) {
+    Box(Modifier.fillMaxSize().graphicsLayer {
+        compositingStrategy = CompositingStrategy.Offscreen
+        alpha = sceneAlpha()
+    }) {
+        Image(
+            bitmap = background, contentDescription = null,
+            contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize(),
+        )
+        Box(
+            Modifier.fillMaxWidth().height(artworkHeight + 1.dp)
+                .clipToBounds()
+                .graphicsLayer {
+                    compositingStrategy = CompositingStrategy.Offscreen
+                }
+                .drawWithCache {
+                    // Smooth endpoints, not a short linear ramp plus a
+                    // separate bloom stripe. The cached backdrop already
+                    // extends beneath this entire feathered region.
+                    val fadeMask = Brush.verticalGradient(
+                        *Array(49) { index ->
+                            val y = IMMERSIVE_PHOTO_FEATHER_START +
+                                (1f - IMMERSIVE_PHOTO_FEATHER_START) * index / 48f
+                            y to Color.White.copy(alpha = immersivePhotoFeatherAlpha(y))
+                        },
+                    )
+                    onDrawWithContent {
+                        drawContent()
+                        drawRect(brush = fadeMask, blendMode = BlendMode.DstIn)
+                    }
+                },
+        ) { artwork() }
+    }
+}
 
 /** VIDEO never inherits album-derived wallpaper when its own ambient mode is off. */
 internal fun immersivePageBaseColor(presentingVideo: Boolean, hasArtwork: Boolean, floor: Color): Color =
@@ -666,37 +710,31 @@ internal fun CapsuleImmersiveContent(
         // background colours. It remains intact during fade-out even if Media3 has already
         // switched its metadata to the NEXT song.
         val visualKey = "${mediaMetadata.id}|${artworkTone.displayUrl}|${artworkAspect}"
-        // A decoded bitmap that has been displayed through VIDEO must remain
-        // opaque on VIDEO -> AUDIO. The track-switch gradient fade is independent
-        // of the cover/video morph and can be interrupted by sheet visibility.
-        // Never multiply the two independently animated opacities: that was
-        // revealing the video underneath as a broken/translucent album photo.
-        var keepVideoReturnArtworkOpaque by remember(visualKey) { mutableStateOf(false) }
-        LaunchedEffect(visualKey, isVideo, needsVideoSurface) {
-            if (isVideo || needsVideoSurface) keepVideoReturnArtworkOpaque = true
-        }
         var shownGradient by remember { mutableStateOf<ImmersiveGradientFrame?>(null) }
         // The last actual photo and page live underneath the next prepared
         // pair. Never fade to neutral, then mount a new bitmap 630ms later.
         var outgoingFrame by remember { mutableStateOf<ImmersiveGradientFrame?>(null) }
         val gradientAlpha = remember { Animatable(1f) }
         val staleSceneAlpha = remember { Animatable(1f) }
+        var lastReadyFrame by remember { mutableStateOf<ImmersiveGradientFrame?>(null) }
+        var outgoingStartAlpha by remember { mutableFloatStateOf(1f) }
         // The next track may take seconds to decode. Never show a PREVIOUS
         // song's gradient for that whole time. Fade both old photo and its
         // page together, then show the new track's lightweight placeholder.
-        LaunchedEffect(visualKey) {
+        LaunchedEffect(shownGradient?.key, shownGradient?.key == visualKey) {
             val previous = shownGradient?.key
             if (previous == null || previous == visualKey) {
                 staleSceneAlpha.snapTo(1f)
                 return@LaunchedEffect
             }
-            staleSceneAlpha.snapTo(1f)
+            staleSceneAlpha.snapTo(gradientAlpha.value)
             staleSceneAlpha.animateTo(
                 0f, tween(durationMillis = IMMERSIVE_STALE_SCENE_FADE_MS),
             )
             if (shownGradient?.key == previous && previous != visualKey) {
                 shownGradient = null
                 outgoingFrame = null
+                lastReadyFrame = null
             }
         }
         LaunchedEffect(
@@ -707,7 +745,12 @@ internal fun CapsuleImmersiveContent(
                 shownGradient?.key == visualKey
             ) return@LaunchedEffect
             val readyUrl = artworkTone.displayUrl ?: return@LaunchedEffect
-            val old = shownGradient
+            // A frame whose continuation is still being prepared has never
+            // appeared. Rapid A -> B -> C skips must retain A's matching pair.
+            val old = lastReadyFrame?.takeIf { it.key == shownGradient?.key }
+                ?: outgoingFrame
+            outgoingStartAlpha = if (old?.key == outgoingFrame?.key)
+                outgoingStartAlpha else staleSceneAlpha.value
             outgoingFrame = old
             shownGradient = ImmersiveGradientFrame(
                 key = visualKey,
@@ -720,6 +763,8 @@ internal fun CapsuleImmersiveContent(
                 edgeBands = artworkTone.edgeBands,
                 colorField = artworkTone.colorField,
                 visibleTail = artworkTone.visibleTail,
+                preview = artworkTone.preview,
+                painter = decodedCoverPainter,
             )
             // New background + photo appear together only after their first
             // render has completed, instead of sequential fade-out/in.
@@ -729,9 +774,6 @@ internal fun CapsuleImmersiveContent(
         // Only near-white, low-saturation covers use the slightly more
         // diffuse current technique to avoid a harsh white/grey seam.
         val frame = shownGradient
-        val displayedSceneAlpha = immersiveSceneOpacity(
-            frame?.key, visualKey, gradientAlpha.value, staleSceneAlpha.value,
-        )
         // The offscreen preloader may have decoded this cover successfully,
         // yet the visible AsyncImage can still lose its own Coil painter
         // during a GPU/surface lifecycle change. Rebind only that painter
@@ -777,17 +819,6 @@ internal fun CapsuleImmersiveContent(
             .coerceAtMost((pageHeightPx - coverHeightPx).coerceAtLeast(1f) * 0.38f)
         val tailFraction = (extensionPx / pageHeightPx.coerceAtLeast(1f))
             .coerceIn(0.02f, 0.08f)
-        val artworkBands = frame?.edgeBands?.takeIf { it.isNotEmpty() }
-            ?: remember(seamColor) { listOf(seamColor) }
-        // Live video light is painted only on the FLOOR; album-photo dissolve
-        // retains the exact colours of its own pixels while video morphs in.
-        val pageBands = if (isVideo && videoAmbientBands.isNotEmpty())
-            videoAmbientBands else artworkBands
-        // The current image-derived field supplies video ambience; static
-        // audio uses only its lower edge to match the picture.
-        val pageField = if (isVideo && videoAmbientField != null)
-            videoAmbientField else frame?.colorField
-
         // One render result, one commit, one visual key. The previous design
         // had TWO independent render coroutines and a readiness callback:
         // one often won by a frame and the other faded in as a visible wave.
@@ -804,7 +835,7 @@ internal fun CapsuleImmersiveContent(
         var lastReadyPaint by remember {
             mutableStateOf<Pair<String, ImageBitmap>?>(null)
         }
-        val outgoingPaint = remember(paintKey) {
+        val outgoingPaint = remember(paintKey, outgoingFrame?.key) {
             lastReadyPaint?.takeIf { it.first == outgoingFrame?.key }?.second
         }
         var matchedPaint by remember(paintKey) {
@@ -830,7 +861,10 @@ internal fun CapsuleImmersiveContent(
                     edgeMap = readyFrame.visibleTail,
                 )
             }
-            matchedPaint?.let { lastReadyPaint = readyFrame.key to it }
+            matchedPaint?.let {
+                lastReadyPaint = readyFrame.key to it
+                lastReadyFrame = readyFrame
+            }
         }
         LaunchedEffect(frame?.key, matchedPaint, isVideo) {
             if (frame == null || matchedPaint == null ||
@@ -849,7 +883,6 @@ internal fun CapsuleImmersiveContent(
                 outgoingFrame = null
             }
         }
-        val pairReady = frame != null && matchedPaint != null
         // The VIDEO window and its entire backdrop use the same spring.
         // Independent 220/280/290ms fades made the backing vanish while the
         // photo was still visible (or vice versa) on reverse transitions.
@@ -895,181 +928,56 @@ internal fun CapsuleImmersiveContent(
             }
         }
 
-        // The AUDIO page is stable underneath the morph. The VIDEO page
-        // rises from it at exactly the same optical progress as the cover,
-        // with no hard base-colour jump when 'isVideo' flips.
-        Box(Modifier.fillMaxSize().background(
-            immersivePageBaseColor(false, frame?.key == visualKey, pageFloor)
-        )) {
-            if (!isVideo && outgoingFrame != null &&
+        // Compose each photo and its continuation into ONE scene before
+        // applying track opacity. Independent alpha layers mix the old photo
+        // with the new floor most strongly at the feather, drawing a stripe.
+        Box(Modifier.fillMaxSize().background(IMMERSIVE_NEUTRAL_COLOR)) {
+            val leaving = outgoingFrame
+            if (leaving != null && outgoingPaint != null &&
                 (matchedPaint == null || gradientAlpha.value < 1f)
             ) {
-                outgoingPaint?.let { bitmap ->
-                    Image(
-                        bitmap = bitmap,
-                        contentDescription = null,
-                        contentScale = ContentScale.FillBounds,
-                        modifier = Modifier.fillMaxSize().graphicsLayer {
-                            alpha = 1f
-                        },
+                ImmersiveAudioScene(
+                    background = outgoingPaint,
+                    artworkHeight = artworkHeight,
+                    sceneAlpha = { outgoingStartAlpha },
+                ) {
+                    val photoModifier = Modifier.fillMaxSize().graphicsLayer(
+                        scaleX = if (leaving.landscape) 1.06f else 1f,
+                        scaleY = if (leaving.landscape) 1.06f else 1f,
                     )
+                    when {
+                        leaving.painter != null -> Image(
+                            painter = leaving.painter, contentDescription = null,
+                            contentScale = ContentScale.Crop, modifier = photoModifier,
+                        )
+                        leaving.preview != null -> Image(
+                            bitmap = leaving.preview, contentDescription = null,
+                            contentScale = ContentScale.Crop, modifier = photoModifier,
+                        )
+                        else -> AsyncImage(
+                            model = rememberImmersiveArtworkRequest(leaving.imageUrl),
+                            contentDescription = null, contentScale = ContentScale.Crop,
+                            modifier = photoModifier,
+                        )
+                    }
                 }
             }
             matchedPaint?.let { bitmap ->
-                Image(
-                    bitmap = bitmap,
-                    contentDescription = null,
-                    contentScale = ContentScale.FillBounds,
-                    modifier = Modifier.fillMaxSize().graphicsLayer {
-                        alpha = displayedSceneAlpha
+                if (frame != null) ImmersiveAudioScene(
+                    background = bitmap,
+                    artworkHeight = artworkHeight,
+                    sceneAlpha = {
+                        immersiveSceneOpacity(
+                            frame.key, visualKey, gradientAlpha.value, staleSceneAlpha.value,
+                        )
                     },
-                )
-            }
-            // VIDEO owns ONE neutral/ambient page above AUDIO, including
-            // while its sampled frame is being prepared. The shared spring
-            // controls this layer just like the VIDEO image itself.
-            Box(
-                Modifier.fillMaxSize().graphicsLayer {
-                    alpha = capsuleImmersiveVideoBackplateAlpha(sharedVideoProgress.value)
-                }.background(Color(0xFF111116)),
-            ) {
-                val liveField = retainedVideoField
-                if (liveField != null && (isVideo || sharedVideoProgress.value > 0.001f)) {
-                    key(mediaMetadata.id) {
-                        CapsuleVideoAmbientBackdrop(
-                            bands = if (isVideo) videoAmbientBands else emptyList(),
-                            field = liveField,
-                            animated = isVideo && isPlaying,
-                            modifier = Modifier.fillMaxSize(),
-                            fallbackFloor = Color(0xFF111116),
-                            coverFraction = coverFraction,
-                            tailFraction = tailFraction,
-                            texture = frame?.bottomTexture ?: 0f,
-                            landscape = frame?.landscape ?: false,
-                            nearWhite = nearWhite,
-                        )
-                    }
-                }
-            }
-        }
-
-        CapsuleVideoArtworkTransition(
-            presentingVideo = isVideo,
-            needsSurface = needsVideoSurface,
-            transitionKey = mediaMetadata.id,
-            sharedProgress = sharedVideoProgress,
-            // Cover the final resampled pixel of the separate background layer.
-            // A single dp of overlap conceals an otherwise visible sheet seam
-            // without adding a blur/graphics layer or affecting the controls.
-            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().height(artworkHeight + 1.dp),
-            fillArtworkSlot = true,
-            // Keep the full-bleed artwork, but morph into the same rounded
-            // 16:9 video window used by the other player styles.
-            artworkCornerRadius = 0.dp,
-            // Smaller circular finish; radius now grows continuously with
-            // the container instead of jumping near the end of the morph.
-            videoCornerRadius = 16.dp,
-            videoSidePadding = 12.dp,
-            videoWidthScale = 1.04f,
-            motion = CapsuleVideoArtworkMotion.IMMERSIVE,
-            blendStyle = CapsuleVideoBlendStyle.IMMERSION,
-            // A static album remains joined to its page gradient while only
-            // the separate VIDEO mask grows/shrinks. The previous moving
-            // album/matte exposed different edge pixels at the join on close.
-            fixedImmersiveArtwork = true,
-            // Never place a solid matté under the photo's transparent edge:
-            // the actual long diffuse background must show through.
-            artworkBackground = Color.Transparent,
-            artworkClickable = !isVideo,
-            onArtworkClick = onShowLyrics,
-            video = { active -> CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active) },
-        ) {
-            if (!pairReady) {
-                Box(Modifier.fillMaxSize()) {
-                    if (frame?.key == visualKey && artworkTone.preview != null) {
-                        Image(
-                            bitmap = artworkTone.preview,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    } else if (frame == null && !mediaMetadata.thumbnailUrl.isNullOrBlank()) {
-                        AsyncImage(
-                            model = mediaMetadata.thumbnailUrl,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
-                        0.62f to Color.Transparent,
-                        1f to (if (frame != null) pageFloor else Color(0xFF151219)),
-                    )))
-                }
-            }
-            // Hold the last *real* album photo until the incoming decoded
-            // cover and its matching colour continuation can overlap.
-            // Existing Coil bitmap cache avoids a second remote fetch.
-            val leaving = outgoingFrame
-            if (!isVideo && leaving != null &&
-                (matchedPaint == null || gradientAlpha.value < 1f)
-            ) {
-                AsyncImage(
-                    model = rememberImmersiveArtworkRequest(leaving.imageUrl),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().graphicsLayer {
-                        scaleX = if (leaving.landscape) 1.06f else 1f
-                        scaleY = if (leaving.landscape) 1.06f else 1f
-                    },
-                )
-            }
-            if (frame != null && pairReady) {
-                // Wide (16:9) video thumbnails use a 1.06x GPU overscan below.
-                // Without a parent clip, those pixels escape the artwork slot,
-                // continuing UNDER the page's independently sized fade and
-                // forming a sharp horizontal band below the image in AUDIO mode.
-                // Clip the PHOTO and its existing overlay together: do not
-                // change the source crop, sampled colors or gradient stops.
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .clipToBounds()
-                        .graphicsLayer {
-                            // One retained GPU composition layer, not a new
-                            // CPU blur per frame. The photo dissolves into
-                            // the matched continuation underneath it.
-                            compositingStrategy = CompositingStrategy.Offscreen
-                            alpha = capsuleImmersiveArtworkOpacity(
-                                frameMatchesTrack = frame.key == visualKey,
-                                hasPresentedVideo = keepVideoReturnArtworkOpaque,
-                                trackFadeAlpha = displayedSceneAlpha,
-                            )
-                        }
-                        // Don't switch this mask OFF the instant VIDEO is
-                        // selected: that previously revealed a hard stripe
-                        // halfway through the cover/video spring. The same
-                        // photo feather must exist for the whole morph.
-                        .drawWithCache {
-                            val fadeMask = Brush.verticalGradient(
-                                0f to Color.White,
-                                // The matching diffuse backdrop is already
-                                // present from 0.91 of the photo height.
-                                0.928f to Color.White,
-                                1f to Color.Transparent,
-                            )
-                            onDrawWithContent {
-                                drawContent()
-                                drawRect(brush = fadeMask, blendMode = BlendMode.DstIn)
-                            }
-                        }
                 ) {
                     if (frame.key == visualKey) {
                         // The 256px rescue image is required only until
                         // the real full-resolution painter succeeds. Keeping
                         // BOTH full-screen images mounted for the entire song
                         // wasted GPU blends and memory bandwidth.
-                        if (!visibleArtworkDecoded) artworkTone.preview?.let { preview ->
+                        if (!visibleArtworkDecoded) frame.preview?.let { preview ->
                             Image(
                                 bitmap = preview,
                                 contentDescription = null,
@@ -1131,51 +1039,85 @@ internal fun CapsuleImmersiveContent(
                             ),
                     )
                     }
-                    // No colour overlay on the photograph. The separate
-                    // continuation begins below the artwork, exactly where
-                    // the real visible crop ends.
-
+                }
+            }
+            if (frame == null && outgoingFrame == null) {
+                // The new track's lightweight placeholder never sits above a
+                // ready scene or exposes an unmasked low-resolution edge.
+                Box(Modifier.fillMaxWidth().height(artworkHeight)) {
+                    AsyncImage(
+                        model = mediaMetadata.thumbnailUrl, contentDescription = null,
+                        contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                    )
+                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
+                        0.62f to Color.Transparent, 1f to IMMERSIVE_NEUTRAL_COLOR,
+                    )))
+                }
+            }
+            // VIDEO's one full-page opacity attenuates the whole audio
+            // scene equally. Do not also fade its photo: multiplying two
+            // opacities made the artwork disappear before its background.
+            // VIDEO owns ONE neutral/ambient page above AUDIO, including
+            // while its sampled frame is being prepared. The shared spring
+            // controls this layer just like the VIDEO image itself.
+            Box(
+                Modifier.fillMaxSize().graphicsLayer {
+                    alpha = capsuleImmersiveVideoBackplateAlpha(sharedVideoProgress.value)
+                }.background(Color(0xFF111116)),
+            ) {
+                val liveField = retainedVideoField
+                if (liveField != null && (isVideo || sharedVideoProgress.value > 0.001f)) {
+                    key(mediaMetadata.id) {
+                        CapsuleVideoAmbientBackdrop(
+                            bands = if (isVideo) videoAmbientBands else emptyList(),
+                            field = liveField,
+                            animated = isVideo && isPlaying,
+                            modifier = Modifier.fillMaxSize(),
+                            fallbackFloor = Color(0xFF111116),
+                            coverFraction = coverFraction,
+                            tailFraction = tailFraction,
+                            texture = frame?.bottomTexture ?: 0f,
+                            landscape = frame?.landscape ?: false,
+                            nearWhite = nearWhite,
+                        )
+                    }
                 }
             }
         }
 
-        // Softly blur the LAST few percent of the photo with the SAME
-        // continuation texture, instead of a second arbitrary tinted bar.
-        // The fade rises above the edge and dies away again beneath it.
-        // It shares the morphing photo opacity, so it cannot flash at
-        // AUDIO/VIDEO transitions. Bitmap is already cached off-main.
-        // Keep the seam bloom attached to the outgoing photo while its
-        // whole scene fades. Dropping just this layer on mediaId change
-        // would cause one frame of visible hard-edged artwork.
-        if (frame != null) matchedPaint?.let { bitmap ->
-            Image(
-                bitmap = bitmap,
-                contentDescription = null,
-                contentScale = ContentScale.FillBounds,
-                modifier = Modifier.fillMaxSize()
-                    .graphicsLayer {
-                        compositingStrategy = CompositingStrategy.Offscreen
-                        alpha = displayedSceneAlpha * capsulePhotoOpacity(
-                            sharedVideoProgress.value, CapsuleVideoBlendStyle.IMMERSION,
-                        )
-                    }
-                    .drawWithCache {
-                        val join = coverFraction.coerceIn(0.05f, 0.95f)
-                        val seamBloomMask = Brush.verticalGradient(
-                            0f to Color.Transparent,
-                            (join * 0.89f) to Color.Transparent,
-                            (join * 0.951f) to Color.White.copy(alpha = 0.32f),
-                            (join * 0.991f) to Color.White.copy(alpha = 0.56f),
-                            (join + 0.012f).coerceAtMost(1f) to Color.White.copy(alpha = 0.24f),
-                            (join + 0.038f).coerceAtMost(1f) to Color.Transparent,
-                            1f to Color.Transparent,
-                        )
-                        onDrawWithContent {
-                            drawContent()
-                            drawRect(brush = seamBloomMask, blendMode = BlendMode.DstIn)
-                        }
-                    },
-            )
+        CapsuleVideoArtworkTransition(
+            presentingVideo = isVideo,
+            needsSurface = needsVideoSurface,
+            transitionKey = mediaMetadata.id,
+            sharedProgress = sharedVideoProgress,
+            // Cover the final resampled pixel of the separate background layer.
+            // A single dp of overlap conceals an otherwise visible sheet seam
+            // without adding a blur/graphics layer or affecting the controls.
+            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().height(artworkHeight + 1.dp),
+            fillArtworkSlot = true,
+            // Keep the full-bleed artwork, but morph into the same rounded
+            // 16:9 video window used by the other player styles.
+            artworkCornerRadius = 0.dp,
+            // Smaller circular finish; radius now grows continuously with
+            // the container instead of jumping near the end of the morph.
+            videoCornerRadius = 16.dp,
+            videoSidePadding = 12.dp,
+            videoWidthScale = 1.04f,
+            motion = CapsuleVideoArtworkMotion.IMMERSIVE,
+            blendStyle = CapsuleVideoBlendStyle.IMMERSION,
+            // A static album remains joined to its page gradient while only
+            // the separate VIDEO mask grows/shrinks. The previous moving
+            // album/matte exposed different edge pixels at the join on close.
+            fixedImmersiveArtwork = true,
+            // Never place a solid matté under the photo's transparent edge:
+            // the actual long diffuse background must show through.
+            artworkBackground = Color.Transparent,
+            artworkClickable = !isVideo,
+            onArtworkClick = onShowLyrics,
+            video = { active -> CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active) },
+        ) {
+            // The stationary photo is already part of its full-page audio
+            // scene. Only VIDEO geometry is owned by this transition.
         }
 
         /*

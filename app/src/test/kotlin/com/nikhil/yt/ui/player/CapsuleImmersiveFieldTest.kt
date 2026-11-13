@@ -6,6 +6,25 @@ import org.junit.Test
 import kotlin.math.abs
 
 class CapsuleImmersiveFieldTest {
+    @Test fun featherRevealsPreparedBackdropWithSmoothEndpoints() {
+        assertTrue("Backdrop must exist before any photo alpha is removed",
+            IMMERSIVE_DIFFUSION_START < IMMERSIVE_PHOTO_FEATHER_START)
+        assertTrue("Only the lower portion of the artwork should be softened",
+            IMMERSIVE_PHOTO_FEATHER_START in 0.85f..0.93f)
+        assertTrue(immersivePhotoFeatherAlpha(0f) == 1f)
+        assertTrue(immersivePhotoFeatherAlpha(1f) == 0f)
+        var previous = 1f
+        for (i in 0..1000) {
+            val y = i / 1000f
+            val next = immersivePhotoFeatherAlpha(y)
+            assertTrue("Feather cannot form a second opaque stripe", next <= previous + 0.00001f)
+            assertTrue("No sharp scanline in the dissolve", previous - next < 0.017f)
+            previous = next
+        }
+        assertTrue(immersivePhotoFeatherAlpha(IMMERSIVE_PHOTO_FEATHER_START + 0.001f) > 0.999f)
+        assertTrue(immersivePhotoFeatherAlpha(0.999f) < 0.001f)
+    }
+
     @Test fun strongLeftRightPaletteIsPreservedWithoutDiscreteStripeJumps() {
         val bands = List(7) { index ->
             if (index < 3) Color(0xFFD2484C) else Color(0xFF286ED9)

@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.testTag
@@ -337,6 +339,70 @@ class CapsuleVideoMorphPixelsTest {
         }
         compose.mainClock.autoAdvance = true
         compose.waitForIdle()
+    }
+
+    @Test fun joinedTrackScenesNeverExposeASeparateFeatherStripe() {
+        val fade = mutableStateOf(0f)
+        val red = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888)
+            .apply { eraseColor(AndroidColor.RED) }.asImageBitmap()
+        val blue = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888)
+            .apply { eraseColor(AndroidColor.BLUE) }.asImageBitmap()
+        compose.setContent {
+            Box(Modifier.size(320.dp, 440.dp).testTag("media-slot")) {
+                ImmersiveAudioScene(red, 280.dp, sceneAlpha = { 1f }) {
+                    Box(Modifier.fillMaxSize().background(Color.Red))
+                }
+                ImmersiveAudioScene(blue, 280.dp, sceneAlpha = { fade.value }) {
+                    Box(Modifier.fillMaxSize().background(Color.Blue))
+                }
+            }
+        }
+        for (alpha in listOf(0f, 0.25f, 0.5f, 0.75f, 1f)) {
+            compose.runOnIdle { fade.value = alpha }
+            val bitmap = snapshot("joined-scene-$alpha")
+            try {
+                val reference = bitmap.getPixel(bitmap.width / 2, bitmap.height / 3)
+                val expectedRed = (255 * (1f - alpha)).roundToInt()
+                val expectedBlue = (255 * alpha).roundToInt()
+                assertTrue(kotlin.math.abs(AndroidColor.red(reference) - expectedRed) <= 3)
+                assertTrue(kotlin.math.abs(AndroidColor.blue(reference) - expectedBlue) <= 3)
+                // All photo, overlap and page pixels have identical source
+                // colours. Independent track alpha on the masked photo would
+                // instead make a bright/red stripe inside this exact region.
+                for (row in 0..80) {
+                    val y = ((0.54f + row * 0.002f) * bitmap.height).roundToInt()
+                    val pixel = bitmap.getPixel(bitmap.width / 2, y)
+                    assertTrue("Track alpha $alpha changed colour at feather row $y",
+                        kotlin.math.abs(AndroidColor.red(pixel) - AndroidColor.red(reference)) <= 3 &&
+                            kotlin.math.abs(AndroidColor.blue(pixel) - AndroidColor.blue(reference)) <= 3)
+                }
+            } finally { bitmap.recycle() }
+        }
+    }
+
+    @Test fun videoBackplateAttenuatesPhotoAndFloorEqually() {
+        val progress = mutableStateOf(0f)
+        val red = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888)
+            .apply { eraseColor(AndroidColor.RED) }.asImageBitmap()
+        compose.setContent {
+            Box(Modifier.size(320.dp, 440.dp).testTag("media-slot")) {
+                ImmersiveAudioScene(red, 280.dp, sceneAlpha = { 1f }) {
+                    Box(Modifier.fillMaxSize().background(Color.Red))
+                }
+                Box(Modifier.fillMaxSize().graphicsLayer {
+                    alpha = capsuleImmersiveVideoBackplateAlpha(progress.value)
+                }.background(Color.Blue))
+            }
+        }
+        for (p in listOf(0f, 0.2f, 0.4f, 0.6f, 0.8f, 1f, 0.6f, 0f)) {
+            compose.runOnIdle { progress.value = p }
+            val bitmap = snapshot("whole-scene-video-$p")
+            try {
+                val photo = bitmap.getPixel(bitmap.width / 2, bitmap.height / 4)
+                val floor = bitmap.getPixel(bitmap.width / 2, bitmap.height * 4 / 5)
+                assertEquals("VIDEO cannot fade the photo ahead of its floor", floor, photo)
+            } finally { bitmap.recycle() }
+        }
     }
 
     private fun assertRectangularBlend(name: String) {
