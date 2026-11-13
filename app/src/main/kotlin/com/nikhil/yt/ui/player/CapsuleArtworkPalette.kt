@@ -31,7 +31,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
-private const val ARTWORK_PALETTE_TRANSITION_MS = 1_400
+// The old 1.4s RGB morph kept repainting after the NEW cover was visible.
+// A short shared colour handoff feels tied to the artwork, not a late wave.
+private const val ARTWORK_PALETTE_TRANSITION_MS = 420
 
 internal class ArtworkPaletteCache(private val maxEntries: Int = 32) {
     // Bounded stripes also keep waiters on the same lock after a failed decode.
