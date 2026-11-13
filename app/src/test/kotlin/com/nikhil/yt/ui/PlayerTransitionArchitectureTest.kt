@@ -72,12 +72,10 @@ class PlayerTransitionArchitectureTest {
         assertTrue(floor.contains("fun Bitmap.immersiveBottomBackground(artworkAspect: Float)"))
         assertFalse(floor.contains("immersiveArtworkBackground("))
         assertTrue(floor.contains("nearWhiteBackground = nearWhite"))
-        // Non-white artwork deliberately keeps the original gentle 10% darkening;
-        // only near-white artwork uses the stronger muted-accent algorithm.
-        // Earlier regression text assumed ALL artwork used the same muted accent,
-        // contradicting the now-restored baseline and failing this suite.
+        // Every cover now selects its floor from the SAME visible lower crop;
+        // no independent whitening/clamping or artificial colour adjustment.
         assertTrue(floor.contains("accent = capsuleCleanImmersiveFloor(visibleTail)"))
-        assertTrue(floor.contains("rawEdge.immersiveMutedAccent()"))
+        assertFalse(floor.contains("rawEdge.immersiveMutedAccent()"))
         assertTrue(floor.contains("capsuleCleanImmersiveFloor(visibleTail)"))
         assertFalse(floor.contains("accent = background.immersiveMutedAccent()"))
         assertTrue(floor.contains("fun Color.immersiveMutedAccent()"))
