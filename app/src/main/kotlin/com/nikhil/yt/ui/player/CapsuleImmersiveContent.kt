@@ -134,7 +134,7 @@ internal val ImmersiveControlInk = Color.White
 
 /** A track opacity is applied AFTER the photo and its continuation are joined. */
 @Composable
-private fun ImmersiveAudioScene(
+internal fun ImmersiveAudioScene(
     background: ImageBitmap,
     artworkHeight: Dp,
     sceneAlpha: () -> Float,
@@ -727,7 +727,7 @@ internal fun CapsuleImmersiveContent(
                 staleSceneAlpha.snapTo(1f)
                 return@LaunchedEffect
             }
-            staleSceneAlpha.snapTo(1f)
+            staleSceneAlpha.snapTo(gradientAlpha.value)
             staleSceneAlpha.animateTo(
                 0f, tween(durationMillis = IMMERSIVE_STALE_SCENE_FADE_MS),
             )
@@ -748,7 +748,7 @@ internal fun CapsuleImmersiveContent(
             // A frame whose continuation is still being prepared has never
             // appeared. Rapid A -> B -> C skips must retain A's matching pair.
             val old = lastReadyFrame?.takeIf { it.key == shownGradient?.key }
-                ?: outgoingFrame ?: shownGradient
+                ?: outgoingFrame
             outgoingStartAlpha = if (old?.key == outgoingFrame?.key)
                 outgoingStartAlpha else staleSceneAlpha.value
             outgoingFrame = old
@@ -819,17 +819,6 @@ internal fun CapsuleImmersiveContent(
             .coerceAtMost((pageHeightPx - coverHeightPx).coerceAtLeast(1f) * 0.38f)
         val tailFraction = (extensionPx / pageHeightPx.coerceAtLeast(1f))
             .coerceIn(0.02f, 0.08f)
-        val artworkBands = frame?.edgeBands?.takeIf { it.isNotEmpty() }
-            ?: remember(seamColor) { listOf(seamColor) }
-        // Live video light is painted only on the FLOOR; album-photo dissolve
-        // retains the exact colours of its own pixels while video morphs in.
-        val pageBands = if (isVideo && videoAmbientBands.isNotEmpty())
-            videoAmbientBands else artworkBands
-        // The current image-derived field supplies video ambience; static
-        // audio uses only its lower edge to match the picture.
-        val pageField = if (isVideo && videoAmbientField != null)
-            videoAmbientField else frame?.colorField
-
         // One render result, one commit, one visual key. The previous design
         // had TWO independent render coroutines and a readiness callback:
         // one often won by a frame and the other faded in as a visible wave.

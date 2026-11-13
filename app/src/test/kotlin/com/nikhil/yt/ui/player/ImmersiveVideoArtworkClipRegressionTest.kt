@@ -15,7 +15,7 @@ class ImmersiveVideoArtworkClipRegressionTest {
         val file = listOf(File(relative), File("app/$relative")).firstOrNull { it.isFile }
             ?: error("Immersive source not found")
         val content = file.readText()
-        val scene = content.substringAfter("private fun ImmersiveAudioScene(")
+        val scene = content.substringAfter("internal fun ImmersiveAudioScene(")
             .substringBefore("/** VIDEO never inherits")
         assertTrue(scene.contains(".clipToBounds()"))
         assertTrue(scene.contains("CompositingStrategy.Offscreen"))
