@@ -9,6 +9,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import kotlin.math.roundToInt
 
 /** Once per cover, on a worker: progressively diffuse real photo detail before its alpha feather. */
+internal const val IMMERSIVE_SOFT_ARTWORK_FRACTION = 0.24f
+
 internal fun capsuleSoftArtwork(source: Bitmap, aspect: Float, landscape: Boolean): ImageBitmap {
     val width = 256
     val height = (width / aspect.coerceIn(0.55f, 2.2f)).roundToInt()
@@ -20,7 +22,7 @@ internal fun capsuleSoftArtwork(source: Bitmap, aspect: Float, landscape: Boolea
     Canvas(scaled).drawBitmap(source, null,
         RectF((width - w) / 2f, (height - h) / 2f, (width + w) / 2f, (height + h) / 2f),
         Paint(Paint.FILTER_BITMAP_FLAG))
-    val begin = (height * 0.50f).toInt()
+    val begin = (height * 0.68f).toInt()
     val stripHeight = height - begin
     val original = IntArray(width * stripHeight)
     scaled.getPixels(original, 0, width, 0, begin, width, stripHeight)
@@ -61,17 +63,19 @@ internal fun capsuleSoftArtwork(source: Bitmap, aspect: Float, landscape: Boolea
         }
         return from
     }
-    val levels = listOf(original, blur(original, 2), blur(original, 6), blur(original, 14), blur(original, 28))
-    val output = IntArray(width * height)
-    for (y in begin until height) {
+    val levels = listOf(original, blur(original, 2), blur(original, 5), blur(original, 10))
+    val outputStart = (height * (1f - IMMERSIVE_SOFT_ARTWORK_FRACTION)).toInt()
+    val outputHeight = height - outputStart
+    val output = IntArray(width * outputHeight)
+    for (y in outputStart until height) {
         val fraction = (y + 0.5f) / height
-        val t = ((fraction - 0.54f) / 0.40f).coerceIn(0f, 1f)
+        val t = ((fraction - 0.76f) / 0.20f).coerceIn(0f, 1f)
         val eased = t * t * (3f - 2f * t)
         val level = eased * (levels.size - 1)
         val lo = level.toInt().coerceAtMost(levels.lastIndex)
         val hi = (lo + 1).coerceAtMost(levels.lastIndex)
         val mix = level - lo
-        val alpha = (((fraction - 0.54f) / 0.17f).coerceIn(0f, 1f)).let { it * it * (3f - 2f * it) }
+        val alpha = (((fraction - 0.76f) / 0.12f).coerceIn(0f, 1f)).let { it * it * (3f - 2f * it) }
         for (x in 0 until width) {
             val index = (y - begin) * width + x
             var pixel = (alpha * 255f).roundToInt() shl 24
@@ -80,11 +84,11 @@ internal fun capsuleSoftArtwork(source: Bitmap, aspect: Float, landscape: Boolea
                 val b = levels[hi][index] shr (c * 8) and 255
                 pixel = pixel or ((a + (b - a) * mix).roundToInt() shl (c * 8))
             }
-            output[y * width + x] = pixel
+            output[(y - outputStart) * width + x] = pixel
         }
     }
-    return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply {
-        setPixels(output, 0, width, 0, 0, width, height)
+    return Bitmap.createBitmap(width, outputHeight, Bitmap.Config.ARGB_8888).apply {
+        setPixels(output, 0, width, 0, 0, width, outputHeight)
     }.asImageBitmap()
 }
 

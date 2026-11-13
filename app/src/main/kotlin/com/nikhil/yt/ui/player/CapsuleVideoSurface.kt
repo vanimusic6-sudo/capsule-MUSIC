@@ -191,6 +191,7 @@ private fun CapsuleVideoTextureOutput(
             val trackId = audioMediaId?.takeIf(String::isNotBlank) ?: return@LaunchedEffect
             if (!ambientEnabled) return@LaunchedEffect
             var previous: CapsuleColorField? = null
+            val lightFilter = CapsuleVideoLightFilter()
             val buffer = Bitmap.createBitmap(VIDEO_AMBIENT_SAMPLE_WIDTH,
                 VIDEO_AMBIENT_SAMPLE_HEIGHT, Bitmap.Config.ARGB_8888)
             val frames = Channel<Long>(Channel.CONFLATED)
@@ -212,7 +213,7 @@ private fun CapsuleVideoTextureOutput(
                 // GPU readback stays on the view thread. Extraction is tiny and off-main.
                 view.getBitmap(buffer)
                 val sample = withContext(Dispatchers.Default) {
-                    capsuleVideoAmbientFrameFromBitmap(buffer, trackId)
+                    capsuleVideoAmbientFrameFromBitmap(buffer, trackId, lightFilter)
                 } ?: return false
                 if (capsuleFieldChanged(previous, sample.field, threshold = 0.0045f)) {
                     previous = sample.field
@@ -230,7 +231,7 @@ private fun CapsuleVideoTextureOutput(
                             VIDEO_AMBIENT_SAMPLE_WIDTH, VIDEO_AMBIENT_SAMPLE_HEIGHT, true)
                         try {
                             withContext(Dispatchers.Default) {
-                                capsuleVideoAmbientFrameFromBitmap(reduced, trackId)
+                                capsuleVideoAmbientFrameFromBitmap(reduced, trackId, lightFilter)
                             }?.let { sink(it); previous = it.field }
                         } finally { if (reduced !== retained) reduced.recycle() }
                     }

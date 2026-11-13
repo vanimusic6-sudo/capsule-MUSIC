@@ -430,8 +430,7 @@ class CapsuleVideoMorphPixelsTest {
                 ImmersiveAudioScene(continuation, 280.dp, sceneAlpha = { 1f }) {
                     Image(cover, contentDescription = null, contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize())
-                    Image(softArtwork, contentDescription = null, contentScale = ContentScale.FillBounds,
-                        modifier = Modifier.fillMaxSize())
+                    ImmersiveSoftArtwork(softArtwork, 280.dp)
                 }
             }
         }

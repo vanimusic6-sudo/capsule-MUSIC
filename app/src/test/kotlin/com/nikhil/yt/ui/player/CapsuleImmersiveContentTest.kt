@@ -429,7 +429,7 @@ class CapsuleImmersiveContentTest {
     }
 
     @Test fun trackRevealIsLongEnoughToReadWithoutHoldingOldArtworkForSeconds() {
-        assertTrue(IMMERSIVE_TRACK_FADE_MS in 500..650)
+        assertTrue(IMMERSIVE_TRACK_FADE_MS in 680..780)
         assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS >= IMMERSIVE_TRACK_FADE_MS)
         assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS <= 800)
     }
@@ -440,6 +440,15 @@ class CapsuleImmersiveContentTest {
             val contrast = 1.05f / (color.luminance() + 0.05f)
             assertTrue("White artwork must not hide metadata: $contrast", contrast >= 4.5f)
         }
+    }
+
+    @Test fun trackDissolveHasSoftEndpointsWithoutAnAggressiveMiddleBurst() {
+        assertEquals(0f, ImmersiveTrackEasing.transform(0f), 0.0001f)
+        assertEquals(1f, ImmersiveTrackEasing.transform(1f), 0.0001f)
+        val steps = (0..100).map { ImmersiveTrackEasing.transform(it / 100f) }
+        assertTrue(steps.zipWithNext().all { (a, b) -> b >= a && b - a < 0.018f })
+        assertTrue(steps[5] < 0.015f)
+        assertTrue(steps[95] > 0.985f)
     }
 
 }

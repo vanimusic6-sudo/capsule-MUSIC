@@ -7,6 +7,7 @@ import android.graphics.PixelFormat
 import android.graphics.RenderNode
 import android.media.ImageReader
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asAndroidBitmap
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -70,31 +71,52 @@ class CapsuleVideoColourMotionTest {
         return x / weight
     }
 
-    @Test fun colourSourceMovesBetweenCoordinatesRatherThanCrossfadingInPlace() {
-        val old = scene(2); val next = scene(8)
-        val motion = capsuleVideoColourMotion(old, next)
-        val middle = capsuleAdvectedField(old, next, motion, 0.5f)
-        assertTrue(motion.dx.average() > 0.20)
-        assertTrue(abs(centre(middle) - (centre(old) + centre(next)) / 2f) < 0.035f)
-        assertTrue("The moving light keeps its strength instead of splitting into two ghosts",
-            middle.cells.maxOf { it.red } > 0.95f)
-        val interrupted = capsuleAdvectedField(middle, scene(10), capsuleVideoColourMotion(middle, scene(10)), 0f)
-        assertEquals(middle, interrupted)
+    @Test fun actualColourRegionMovesSmoothlyWithoutInventedWarp() {
+        val filter = CapsuleVideoLightFilter()
+        val left = filter.apply(scene(2), 1_000_000_000L)
+        val before = centre(left)
+        var next = filter.apply(scene(8), 1_100_000_000L)
+        assertTrue(centre(next) > before)
+        assertTrue(centre(next) < centre(scene(8)))
+        for (i in 2..8) next = filter.apply(scene(8), 1_000_000_000L + i * 100_000_000L)
+        assertTrue(centre(next) > before + 0.15f)
+        assertEquals(next, capsuleFieldAt(next, scene(10), 0f))
     }
 
-    @Test fun unrelatedSceneCutDoesNotInventSpatialMovement() {
-        val red = CapsuleColorField(20, 16, List(320) { Color.Red })
-        val blue = CapsuleColorField(20, 16, List(320) { Color.Blue })
-        val motion = capsuleVideoColourMotion(red, blue)
-        assertTrue(motion.dx.all { it == 0f } && motion.dy.all { it == 0f })
+    @Test fun stripesAndTheirPhaseChangesCannotBecomeWallpaperBars() {
+        val filter = CapsuleVideoLightFilter()
+        fun stripes(phase: Int) = CapsuleColorField(20, 16, List(320) {
+            if ((it % 20 + it / 20 + phase) % 2 == 0) Color.White else Color.Black
+        })
+        val first = filter.apply(stripes(0), 1_000_000_000L)
+        val second = filter.apply(stripes(1), 1_100_000_000L)
+        assertTrue(first.cells.maxOf { it.red } - first.cells.minOf { it.red } < 0.04f)
+        assertTrue(first.cells.indices.maxOf { abs(first.cells[it].red - second.cells[it].red) } < 0.03f)
+        val engine = CapsuleVideoMotionShader()
+        engine.bind(capsuleVideoFieldTexture(first), capsuleVideoFieldTexture(second), Color(0xFF111116))
+        engine.dimensions(160f, 240f, 0.5f)
+        render(engine, "live-video-no-stripes").recycle()
+    }
+
+    @Test fun oneFrameFlashIsDampedButASustainedSceneStillFollows() {
+        val filter = CapsuleVideoLightFilter()
+        val dark = CapsuleColorField(20, 16, List(320) { Color.Black })
+        val light = CapsuleColorField(20, 16, List(320) { Color.White })
+        filter.apply(dark, 1_000_000_000L)
+        val flash = filter.apply(light, 1_100_000_000L)
+        assertTrue(flash.cells.maxOf { it.red } < 0.45f)
+        val back = filter.apply(dark, 1_200_000_000L)
+        assertTrue(back.cells.maxOf { it.red } < flash.cells.first().red)
+        var sustained = back
+        for (i in 3..10) sustained = filter.apply(light, 1_000_000_000L + i * 100_000_000L)
+        assertTrue(sustained.cells.minOf { it.red } > 0.95f)
     }
 
     @Test fun nativeMotionShaderCompilesAndRendersDirectionalColours() {
         val old = CapsuleColorField(20, 16, List(320) { if (it % 20 < 10) Color.Red else Color.Blue })
-        val motion = capsuleVideoColourMotion(old, old)
+        val smooth = CapsuleVideoLightFilter().apply(old, 1_000_000_000L)
         val engine = CapsuleVideoMotionShader()
-        engine.bind(capsuleVideoFieldTexture(old), capsuleVideoFieldTexture(old),
-            capsuleVideoMotionTexture(motion), Color(0xFF111116))
+        engine.bind(capsuleVideoFieldTexture(smooth), capsuleVideoFieldTexture(smooth), Color(0xFF111116))
         engine.dimensions(160f, 240f, 0.5f)
         val image = render(engine, "live-video-spatial-shader")
         val left = image.getPixel(24, 90); val right = image.getPixel(136, 90)
@@ -106,12 +128,43 @@ class CapsuleVideoColourMotionTest {
     @Test fun uniformShaderHasNoRadialLampOrAutonomousMovement() {
         val field = CapsuleColorField(20, 16, List(320) { Color(0xFF8AB1D6) })
         val engine = CapsuleVideoMotionShader()
-        engine.bind(capsuleVideoFieldTexture(field), capsuleVideoFieldTexture(field),
-            capsuleVideoMotionTexture(capsuleVideoColourMotion(field, field)), Color(0xFF111116))
+        engine.bind(capsuleVideoFieldTexture(field), capsuleVideoFieldTexture(field), Color(0xFF111116))
         engine.dimensions(160f, 240f, 0.4f)
         val image = render(engine, "live-video-uniform-shader")
         assertEquals(image.getPixel(20, 100), image.getPixel(80, 100))
         assertEquals(image.getPixel(80, 100), image.getPixel(140, 100))
         image.recycle()
     }
+    @Test fun reportPreparationCostWithoutTreatingHostTimingAsPhonePower() {
+        val filter = CapsuleVideoLightFilter()
+        val source = scene(4)
+        repeat(20) { filter.apply(source, (it + 1) * 100_000_000L) }
+        val cpu = java.lang.management.ManagementFactory.getThreadMXBean()
+        val start = cpu.currentThreadCpuTime
+        repeat(300) { i ->
+            capsuleVideoFieldTexture(filter.apply(source, (i + 21) * 100_000_000L)).recycle()
+        }
+        val perFrameUs = (cpu.currentThreadCpuTime - start) / 300.0 / 1000.0
+        val bitmap = Bitmap.createBitmap(960, 960, Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(android.graphics.Color.rgb(126, 83, 51))
+        val blurStart = cpu.currentThreadCpuTime
+        var outputBytes = 0
+        repeat(10) {
+            val strip = capsuleSoftArtwork(bitmap, 0.88f, false)
+            outputBytes = strip.width * strip.height * 4
+            strip.asAndroidBitmap().recycle()
+        }
+        val perCoverMs = (cpu.currentThreadCpuTime - blurStart) / 10.0 / 1_000_000.0
+        bitmap.recycle()
+        val fieldStart = cpu.currentThreadCpuTime
+        repeat(5) {
+            immersiveSpatialFieldBitmap(emptyList(), Color(0xFF282522), 0.55f, 0.06f,
+                0.8f, false, false, false, field = source).asAndroidBitmap().recycle()
+        }
+        val perGradientMs = (cpu.currentThreadCpuTime - fieldStart) / 5.0 / 1_000_000.0
+        val file = java.io.File("build/video-morph-preview/energy-preparation.json")
+        file.parentFile?.mkdirs()
+        file.writeText("""{"scope":"Robolectric host CPU, not phone power","video_filter_and_upload_us":$perFrameUs,"cover_blur_once_ms":$perCoverMs,"cover_gradient_once_ms":$perGradientMs,"cached_blur_strip_bytes":$outputBytes,"capture_limit_per_second":10}""")
+    }
+
 }

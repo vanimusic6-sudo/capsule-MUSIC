@@ -25,7 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
-internal const val VIDEO_AMBIENT_BLEND_DURATION_MS = 120
+internal const val VIDEO_AMBIENT_BLEND_DURATION_MS = 180
 
 internal fun capsuleAmbientPaletteAt(previous: List<Color>, currentTarget: List<Color>, progress: Float): List<Color> {
     if (previous.size != currentTarget.size) return currentTarget
@@ -35,7 +35,6 @@ internal fun capsuleAmbientPaletteAt(previous: List<Color>, currentTarget: List<
 internal const val CAPSULE_VIDEO_MOTION_SHADER = """
 uniform shader previous;
 uniform shader current;
-uniform shader velocity;
 uniform float2 resolution;
 uniform float2 grid;
 uniform float progress;
@@ -43,10 +42,7 @@ layout(color) uniform half4 floorColor;
 half4 main(float2 point) {
     float2 uv = clamp(point / resolution, 0.0, 1.0);
     float2 source = float2(uv.x, 0.16 + 0.64 * uv.y);
-    float2 displacement = (velocity.eval(source * grid).rg - float2(128.0 / 255.0)) * 0.6;
-    float2 oldPoint = clamp(source - progress * displacement, 0.0, 1.0);
-    float2 newPoint = clamp(source + (1.0 - progress) * displacement, 0.0, 1.0);
-    half3 light = mix(previous.eval(oldPoint * grid).rgb, current.eval(newPoint * grid).rgb, progress);
+    half3 light = mix(previous.eval(source * grid).rgb, current.eval(source * grid).rgb, progress);
     float settle = uv.y * uv.y * (3.0 - 2.0 * uv.y);
     float amount = 0.48 * (1.0 - settle) + 0.12;
     half3 base = half3(0.042, 0.045, 0.050) + floorColor.rgb * 0.12;
@@ -58,13 +54,12 @@ half4 main(float2 point) {
 internal class CapsuleVideoMotionShader {
     val shader = RuntimeShader(CAPSULE_VIDEO_MOTION_SHADER)
     val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply { this.shader = this@CapsuleVideoMotionShader.shader; isDither = true }
-    fun bind(previous: Bitmap, current: Bitmap, flow: Bitmap, floor: Color) {
+    fun bind(previous: Bitmap, current: Bitmap, floor: Color) {
         fun input(bitmap: Bitmap) = BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply {
             setFilterMode(BitmapShader.FILTER_MODE_LINEAR)
         }
         shader.setInputShader("previous", input(previous))
         shader.setInputShader("current", input(current))
-        shader.setInputBuffer("velocity", input(flow))
         shader.setFloatUniform("grid", current.width.toFloat(), current.height.toFloat())
         shader.setColorUniform("floorColor", floor.toArgb())
     }
@@ -75,7 +70,7 @@ internal class CapsuleVideoMotionShader {
 }
 
 private data class VideoAmbientPaint(
-    val previous: Bitmap, val current: Bitmap, val motion: Bitmap,
+    val previous: Bitmap, val current: Bitmap,
     val fallbackFrom: ImageBitmap?, val fallbackTo: ImageBitmap?,
 )
 
@@ -97,14 +92,13 @@ internal fun CapsuleVideoAmbientBackdrop(
     }
     var previousField by remember { mutableStateOf(target) }
     var targetField by remember { mutableStateOf(target) }
-    var motion by remember { mutableStateOf(capsuleVideoColourMotion(target, target)) }
     val modern = Build.VERSION.SDK_INT >= 33
     var prepared by remember {
         // Only 320 cells; prepare an already-retained field synchronously so
         // resume never exposes the neutral backplate for one display frame.
         val initial = if (modern) {
             val texture = capsuleVideoFieldTexture(target)
-            VideoAmbientPaint(texture, texture, capsuleVideoMotionTexture(motion), null, null)
+            VideoAmbientPaint(texture, texture, null, null)
         } else null
         mutableStateOf(initial)
     }
@@ -114,31 +108,31 @@ internal fun CapsuleVideoAmbientBackdrop(
             currentReadyCallback?.invoke()
             return@LaunchedEffect
         }
-        val visible = capsuleAdvectedField(previousField, targetField, motion, blend.value)
-        val nextMotion = capsuleVideoColourMotion(visible, target)
+        val visible = requireNotNull(capsuleFieldAt(previousField, targetField, blend.value))
         val ready = withContext(Dispatchers.Default) {
             VideoAmbientPaint(capsuleVideoFieldTexture(visible), capsuleVideoFieldTexture(target),
-                capsuleVideoMotionTexture(nextMotion),
-                if (modern) null else capsuleVideoSpatialBitmap(visible, fallbackFloor),
-                if (modern) null else capsuleVideoSpatialBitmap(target, fallbackFloor))
+                if (modern) null else capsuleVideoSpatialBitmap(visible, fallbackFloor, alreadyDiffused = true),
+                if (modern) null else capsuleVideoSpatialBitmap(target, fallbackFloor, alreadyDiffused = true))
         }
         val first = prepared == null
         previousField = visible
         targetField = target
-        motion = nextMotion
         prepared = ready
         blend.snapTo(if (first || !animated) 1f else 0f)
         currentReadyCallback?.invoke()
         if (!first && animated) blend.animateTo(1f, tween(VIDEO_AMBIENT_BLEND_DURATION_MS, easing = LinearEasing))
     }
     val engine = if (Build.VERSION.SDK_INT >= 33) remember { CapsuleVideoMotionShader() } else null
-    SideEffect {
+    // Rebind only for new immutable textures, never for progress ticks,
+    // seekbar updates or unrelated recompositions of Player.
+    DisposableEffect(engine, prepared, fallbackFloor) {
         if (Build.VERSION.SDK_INT >= 33) prepared?.let {
-            engine?.bind(it.previous, it.current, it.motion, fallbackFloor)
+            engine?.bind(it.previous, it.current, fallbackFloor)
         }
+        onDispose { }
     }
     // The light field is low-frequency. A small GPU layer carries smooth
-    // display-clock advection without shading every physical screen pixel.
+    // display-clock interpolation without shading every physical screen pixel.
     BoxWithConstraints(modifier.clipToBounds()) {
         val widthPx = constraints.maxWidth.coerceAtLeast(1)
         val heightPx = constraints.maxHeight.coerceAtLeast(1)

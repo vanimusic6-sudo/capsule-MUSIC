@@ -78,8 +78,9 @@ class CapsuleImmersiveTailTest {
             bitmap.setPixel(x, y, if ((x / 2 + y / 2) % 2 == 0) AndroidColor.WHITE else AndroidColor.BLACK)
         }
         val soft = capsuleSoftArtwork(bitmap, 320f / 280f, false).asAndroidBitmap()
-        assertTrue(AndroidColor.alpha(soft.getPixel(30, soft.height / 3)) == 0)
-        val y = (soft.height * 0.83f).toInt()
+        assertTrue(AndroidColor.alpha(soft.getPixel(30, 0)) == 0)
+        assertTrue("Only the lower join is cached, not a full-cover overlay", soft.height < bitmap.height * 0.30f)
+        val y = (soft.height * 0.75f).toInt()
         val samples = (40..180).map { AndroidColor.red(soft.getPixel(it, y)) }
         assertTrue("Dense ink must actually diffuse, rather than just becoming translucent",
             requireNotNull(samples.maxOrNull()) - requireNotNull(samples.minOrNull()) < 14)

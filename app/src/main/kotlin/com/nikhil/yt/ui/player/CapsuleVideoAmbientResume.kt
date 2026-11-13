@@ -42,7 +42,9 @@ internal object CapsuleVideoAmbientResume {
         } catch (_: NumberFormatException) {
             return null
         }
-        val field = CapsuleColorField(CAPSULE_FIELD_COLUMNS, CAPSULE_FIELD_ROWS, colors)
+        val rawField = CapsuleColorField(CAPSULE_FIELD_COLUMNS, CAPSULE_FIELD_ROWS, colors)
+        val field = if (preferences.getBoolean("filtered_v2", false)) rawField
+            else CapsuleVideoLightFilter().apply(rawField, System.nanoTime())
         return CapsuleVideoAmbientFrame(mediaId, capsuleBandsFromField(field), field)
             .also { recent[mediaId] = it }
     }
@@ -66,7 +68,7 @@ internal object CapsuleVideoAmbientResume {
         }
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(MEDIA_KEY, frame.mediaId)
-            .putString(FIELD_KEY, encoded).apply()
+            .putString(FIELD_KEY, encoded).putBoolean("filtered_v2", true).apply()
     }
 
     /** Only used by tests; does not change persistent SharedPreferences. */
@@ -78,7 +80,7 @@ internal object CapsuleVideoAmbientResume {
     }
 }
 
-private fun capsuleBandsFromField(field: CapsuleColorField): List<Color> = List(7) { band ->
+internal fun capsuleBandsFromField(field: CapsuleColorField): List<Color> = List(7) { band ->
     val begin = band * field.width / 7
     val end = ((band + 1) * field.width / 7).coerceAtLeast(begin + 1)
     var rr = 0f
