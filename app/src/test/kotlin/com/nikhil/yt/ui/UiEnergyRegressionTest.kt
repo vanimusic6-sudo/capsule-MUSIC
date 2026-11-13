@@ -29,8 +29,8 @@ class UiEnergyRegressionTest {
         // Immersion now paints ONE even cheaper opaque pixel-exact album
         // background instead of its former full-screen gradient shader.
         // Guard against accidental second full-screen paint in either mode.
-        assertTrue("exactly one prepared artwork continuation",
-            src.split("matchedPaint?.let { bitmap ->").size - 1 == 1)
+        assertTrue("calculate only one artwork continuation per decoded cover",
+            src.split("matchedPaint = withContext(Dispatchers.Default)").size - 1 == 1)
         assertTrue("no second tinted bitmap over the real photograph",
             !src.contains("matchedPaint?.second?.let { overlay ->"))
         assertTrue("VIDEO must use a neutral fallback when ambient is off",
