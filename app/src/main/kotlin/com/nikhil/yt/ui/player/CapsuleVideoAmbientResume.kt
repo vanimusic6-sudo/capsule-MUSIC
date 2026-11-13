@@ -37,7 +37,7 @@ internal object CapsuleVideoAmbientResume {
         val colors = try {
             List(size) { i ->
                 val rgb = encoded.substring(i * 6, (i + 1) * 6).toInt(16)
-                Color((0xFF000000 or rgb).toInt())
+                Color(0xFF000000.toInt() or rgb)
             }
         } catch (_: NumberFormatException) {
             return null
