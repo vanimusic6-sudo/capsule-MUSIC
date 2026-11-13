@@ -1053,6 +1053,8 @@ internal fun CapsuleImmersiveContent(
                         .drawWithCache {
                             val fadeMask = Brush.verticalGradient(
                                 0f to Color.White,
+                                // The matching diffuse backdrop is already
+                                // present from 0.91 of the photo height.
                                 0.928f to Color.White,
                                 1f to Color.Transparent,
                             )
