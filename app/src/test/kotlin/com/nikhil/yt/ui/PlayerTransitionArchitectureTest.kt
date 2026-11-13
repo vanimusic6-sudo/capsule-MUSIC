@@ -57,12 +57,6 @@ class PlayerTransitionArchitectureTest {
         assertTrue(player.contains("val warmedImmersiveTone ="))
         assertTrue(player.contains("enabled = onScreen && !enrichedMetadata?.thumbnailUrl.isNullOrBlank()"))
         assertTrue(player.contains("warmedImmersiveTone = warmedImmersiveTone"))
-        val field = source("com/nikhil/yt/ui/player/CapsuleImmersiveField.kt")
-        assertTrue(field.contains("fun capsuleDominantEdgeColor("))
-        assertTrue(field.contains("fun capsuleImmersiveBleedEnd("))
-        assertTrue(field.contains("EDGE_WIDTH = 192"))
-        assertFalse(field.contains("cubicWeights("))
-        assertFalse(field.contains("sin(pageY"))
         val backdrop = source("com/nikhil/yt/ui/player/CapsuleVideoAmbientBackdrop.kt")
         assertTrue(backdrop.contains("onFirstTextureReady"))
         assertTrue(backdrop.contains("blend.animateTo("))
@@ -80,15 +74,8 @@ class PlayerTransitionArchitectureTest {
         assertTrue(floor.contains("fun Bitmap.immersiveBottomBackground(artworkAspect: Float)"))
         assertFalse(floor.contains("immersiveArtworkBackground("))
         assertTrue(floor.contains("nearWhiteBackground = nearWhite"))
-        // Every cover now selects its floor from the SAME visible lower crop;
-        // no independent whitening/clamping or artificial colour adjustment.
-        assertTrue(floor.contains("accent = capsuleCleanImmersiveFloor(visibleTail)"))
-        assertFalse(floor.contains("rawEdge.immersiveMutedAccent()"))
-        assertTrue(floor.contains("capsuleCleanImmersiveFloor(visibleTail)"))
-        assertFalse(floor.contains("accent = background.immersiveMutedAccent()"))
-        assertTrue(floor.contains("fun Color.immersiveMutedAccent()"))
-        assertTrue(floor.contains("comfortableImmersiveColor"))
-        assertTrue(floor.contains("0.44f"))
+        // Palette and crop behaviour are covered with native bitmap inputs in
+        // CapsuleImmersiveImageBackdropTest, not obsolete extraction strings.
 
         val videoArtwork = source("com/nikhil/yt/ui/player/CapsuleVideoArtworkTransition.kt")
         assertTrue(videoArtwork.contains("interactionSource = artworkTapInteraction"))

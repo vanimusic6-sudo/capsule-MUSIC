@@ -18,8 +18,8 @@ new renderer. Capsule adapts this composition without introducing live Haze blur
 Audio preparation now area-samples a 32×24 spatial field from the displayed
 centre crop, including the existing uniform landscape overscan. The lower 18%
 of the stage, mostly hidden by the mask, is excluded from palette construction.
-Small isolated pale marks are exposure-limited against image/neighbourhood
-statistics; broad white paper and saturated coloured lights are retained.
+Small isolated pale marks are blended toward the surrounding image material
+using image/neighbourhood statistics; broad white paper and saturated coloured lights are retained.
 A label outside the crop or in the excluded bottom cannot affect any field cell.
 
 The field becomes a 32×48 page composition with a reversed continuation below

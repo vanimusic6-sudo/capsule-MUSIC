@@ -64,26 +64,31 @@ private fun capsuleImmersiveRejectSmallMarks(field: CapsuleColorField): CapsuleC
             maxOf(it.red, it.green, it.blue) - minOf(it.red, it.green, it.blue) < 0.15f
     }.toFloat() / field.cells.size
     if (whiteArea >= 0.20f || median >= 0.65f) return field
+    val markThreshold = maxOf(0.55f, median + 0.20f)
+    val marks = field.cells.map { c ->
+        val high = maxOf(c.red, c.green, c.blue)
+        high > markThreshold && high - minOf(c.red, c.green, c.blue) < 0.20f
+    }
+    val material = field.cells.filterIndexed { index, _ -> !marks[index] }
+    if (material.isEmpty()) return field
+    fun medianColor(colours: List<Color>): Color {
+        val mid = colours.size / 2
+        return Color(colours.map { it.red }.sorted()[mid],
+            colours.map { it.green }.sorted()[mid], colours.map { it.blue }.sorted()[mid])
+    }
+    val fallback = medianColor(material)
     return field.copy(cells = field.cells.mapIndexed { index, color ->
-        val high = maxOf(color.red, color.green, color.blue)
-        if (high < 0.75f || high - minOf(color.red, color.green, color.blue) >= 0.15f) color else {
-            val neighbours = ArrayList<Float>(9)
-            for (dy in -1..1) for (dx in -1..1) {
+        if (!marks[index]) color else {
+            val neighbours = ArrayList<Color>(25)
+            for (dy in -2..2) for (dx in -2..2) {
                 val x = index % field.width + dx; val y = index / field.width + dy
                 if (x !in 0 until field.width || y !in 0 until field.height) continue
-                val c = field.cell(x, y)
-                val neighbourHigh = maxOf(c.red, c.green, c.blue)
-                // A label's white centre cannot validate its own exposure.
-                // Estimate surrounding material from non-label cells only.
-                if (neighbourHigh < 0.75f ||
-                    neighbourHigh - minOf(c.red, c.green, c.blue) >= 0.15f
-                ) neighbours += neighbourHigh
+                if (!marks[y * field.width + x]) neighbours += field.cell(x, y)
             }
-            neighbours.sort()
-            val localMedian = neighbours.getOrNull(neighbours.size / 2) ?: median
-            val limit = maxOf(0.30f, median + 0.15f, localMedian + 0.15f).coerceAtMost(1f)
-            val exposure = (limit / high).coerceAtMost(1f)
-            Color(color.red * exposure, color.green * exposure, color.blue * exposure)
+            // Preserve a little of the real highlight, but use surrounding
+            // RGB material, not a grey exposure cap that creates a pale lamp.
+            val local = if (neighbours.isEmpty()) fallback else medianColor(neighbours)
+            androidx.compose.ui.graphics.lerp(local, color, 0.20f)
         }
     })
 }
