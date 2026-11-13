@@ -32,7 +32,7 @@ class PlayerTransitionArchitectureTest {
         assertFalse(menu.contains("rememberDraggableState"))
     }
 
-    @Test fun immersiveArtworkHasNoGraphiteTargetOrPressedWhiteOverlay() {
+    @Test fun immersiveArtworkUsesOnePhotographicBackgroundAndNoPressedWhiteOverlay() {
         val immersive = source("com/nikhil/yt/ui/player/CapsuleImmersiveContent.kt")
         // The old two-coroutine readiness gate, tall ray projection and
         // independent audio fade must never return.
@@ -69,8 +69,10 @@ class PlayerTransitionArchitectureTest {
         assertTrue(backdrop.contains("capsuleVideoSpatialBitmap("))
 
         val floor = source("com/nikhil/yt/ui/player/CapsuleImmersiveFloor.kt")
-        assertTrue(floor.contains("val rawEdge = capsuleDominantEdgeColor(visibleTail)"))
-        assertTrue(floor.contains("val colorField = image.capsuleColorField(artworkAspect)"))
+        assertTrue(floor.contains("val visibleField = image.capsuleImmersiveVisibleField(artworkAspect, landscape)"))
+        assertFalse(floor.contains("val rawEdge = capsuleDominantEdgeColor(visibleTail)"))
+        assertFalse(immersive.contains("immersiveSpatialFieldBitmap("))
+        assertFalse(immersive.contains("ImmersiveSoftArtwork("))
         assertFalse(floor.contains("val edgeBands = image.immersiveBottomEdgeBands("))
         assertTrue(floor.contains("val edgeBands: List<Color> = emptyList()"))
         assertTrue(floor.contains("val preview: ImageBitmap? = null"))

@@ -264,9 +264,9 @@ class CapsuleImmersiveContentTest {
     }
 
     @org.junit.Test
-    fun editorWorkspaceStopsAtArtworkAndQueueRail() {
+    fun editorWorkspaceKeepsItsOriginalControlsAnchorAndQueueRail() {
         val total = 851.dp
-        val artwork = immersiveArtworkHeight(total)
+        val artwork = immersiveControlsTop(total)
         val workspace =
             immersiveEditorHeight(
                 totalHeight = total,
