@@ -495,6 +495,40 @@ class CapsuleVideoMorphPixelsTest {
         } finally { before.recycle(); after.recycle() }
     }
 
+    @Test fun lateBlurRetainsPhotographicColourInsteadOfOnlyTheFlatFloor() {
+        val source = Bitmap.createBitmap(320, 280, Bitmap.Config.ARGB_8888)
+        for (y in 0 until source.height) for (x in 0 until source.width) {
+            source.setPixel(x, y, if ((x / 16) % 2 == 0)
+                AndroidColor.rgb(230, 155, 85) else AndroidColor.rgb(190, 125, 65))
+        }
+        val background = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(AndroidColor.rgb(32, 32, 32))
+        }.asImageBitmap()
+        val cover = source.asImageBitmap()
+        val soft = capsuleSoftArtwork(source, 320f / 280f, false)
+        compose.setContent {
+            Box(Modifier.size(320.dp, 440.dp).testTag("media-slot")) {
+                ImmersiveAudioScene(background, 280.dp, sceneAlpha = { 1f }) {
+                    Image(cover, contentDescription = null, contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize())
+                    ImmersiveSoftArtwork(soft, 280.dp)
+                }
+            }
+        }
+        val image = snapshot("late-blur-photographic-colour")
+        try {
+            val y = (image.height * 281f / 440f * 0.94f).roundToInt()
+            val colours = (image.width / 4 until image.width * 3 / 4).map { image.getPixel(it, y) }
+            val red = colours.map { AndroidColor.red(it) }.average()
+            val blue = colours.map { AndroidColor.blue(it) }.average()
+            assertTrue("A low-contrast result must still show the blurred photograph, not only the floor",
+                red > 72 && red > blue + 25)
+            val edgeY = (image.height * 283f / 440f).roundToInt()
+            assertEquals("Blur must not extend beyond the original artwork boundary",
+                AndroidColor.rgb(32, 32, 32), image.getPixel(image.width / 2, edgeY))
+        } finally { image.recycle() }
+    }
+
     @Test fun tinyProgressCannotProtrudeOutsideTheEmptyCapsuleSilhouette() {
         val position = mutableStateOf(0f)
         compose.setContent {

@@ -25,12 +25,22 @@ class CapsuleImmersiveFieldTest {
         assertTrue(immersivePhotoFeatherAlpha(0.999f) < 0.001f)
     }
 
-    @Test fun photographicDetailDissolvesAcrossTheWholeLowerThird() {
+    @Test fun sharpDetailFadesWhileBlurredPhotoKeepsItsColour() {
         assertTrue(immersivePhotoFeatherAlpha(0.65f) == 1f)
         assertTrue("Half of the fine detail should be gone before the bottom sixth",
             immersivePhotoFeatherAlpha(0.85f) < 0.5f)
-        assertTrue("The final rows must not leave a visible photo cut",
-            immersivePhotoFeatherAlpha(0.95f) < 0.05f)
+        assertTrue("The soft photograph must remain visible inside its own strip",
+            immersivePhotoFeatherAlpha(0.94f) in 0.25f..0.40f)
+        assertTrue("The photo must still finish at its original boundary",
+            immersivePhotoFeatherAlpha(0.999f) < 0.001f)
+        for (i in 0..840) {
+            val y = i / 1000f
+            val t = ((y - IMMERSIVE_PHOTO_FEATHER_START) /
+                (1f - IMMERSIVE_PHOTO_FEATHER_START)).coerceIn(0f, 1f)
+            val original = 1f - t * t * t * (t * (t * 6f - 15f) + 10f)
+            assertTrue("Opacity above the blur strip must remain unchanged",
+                abs(immersivePhotoFeatherAlpha(y) - original) < 0.000001f)
+        }
     }
 
     @Test fun strongLeftRightPaletteIsPreservedWithoutDiscreteStripeJumps() {
