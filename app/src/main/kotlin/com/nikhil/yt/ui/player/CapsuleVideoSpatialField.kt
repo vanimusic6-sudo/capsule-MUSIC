@@ -9,8 +9,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 
-private const val VIDEO_LIGHT_WIDTH = 144
-private const val VIDEO_LIGHT_HEIGHT = 216
+// The light field has only 12 broad emitters. 112x176 is ample for smooth
+// bilinear upsampling, saving 37% of per-readback raster work and texture bytes.
+private const val VIDEO_LIGHT_WIDTH = 112
+private const val VIDEO_LIGHT_HEIGHT = 176
 
 private data class VideoLight(
     val x: Float, val y: Float,
