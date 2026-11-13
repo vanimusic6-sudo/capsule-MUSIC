@@ -68,12 +68,12 @@ internal class CapsuleStaticBackground(
                     0f to deep(lerp(palette[0], palette[1], 0.16f), 0.56f),
                     0.45f to deep(lerp(palette[1], palette[2], 0.25f), 0.81f),
                     1f to Color(0xFF09080D)))
-                light(palette[0], if (compact) 0.10f else 0.34f, 0.0f,
-                    1.02f, if (compact) 0.42f else 0.54f, if (wide) 0.34f else 0.90f)
-                light(lerp(palette[1], palette[0], 0.16f), 0.96f, 0.30f,
-                    0.82f, if (compact) 0.28f else 0.37f, if (wide) 0.36f else 1.02f)
+                light(lerp(palette[0], Color.White, 0.13f), if (compact) 0.10f else 0.34f, 0.0f,
+                    1.04f, if (compact) 0.48f else 0.67f, if (wide) 0.34f else 0.90f)
+                light(lerp(palette[1], Color.White, 0.10f), 0.96f, 0.30f,
+                    0.86f, if (compact) 0.32f else 0.46f, if (wide) 0.36f else 1.02f)
                 light(palette[2], 0.26f, 0.76f,
-                    0.68f, if (compact) 0.16f else 0.22f, if (wide) 0.32f else 0.80f)
+                    0.72f, if (compact) 0.18f else 0.27f, if (wide) 0.32f else 0.80f)
                 rect(Brush.verticalGradient(0f to Color.Transparent,
                     0.25f to Color.Transparent,
                     0.70f to Color.Black.copy(alpha = if (compact) 0.19f else 0.33f),
