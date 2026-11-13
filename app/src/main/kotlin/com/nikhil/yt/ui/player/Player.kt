@@ -499,6 +499,7 @@ fun BottomSheetPlayer(
                         CapsuleVideoAmbientBackdrop(
                             bands = retainedVideoAmbientBands,
                             field = retainedVideoAmbient?.field,
+                            animated = videoPlaybackState.presentingVideo && isPlaying,
                             modifier = Modifier.fillMaxSize().graphicsLayer {
                                 alpha = videoAmbientOverlayAlpha.value
                             },
