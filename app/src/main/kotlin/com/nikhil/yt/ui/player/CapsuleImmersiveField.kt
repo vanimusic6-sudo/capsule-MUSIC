@@ -148,7 +148,10 @@ internal fun immersiveSpatialFieldBitmap(
     // Real photo alpha dissolves over its bottom 5%. The SAME backdrop has
     // to extend under those pixels, otherwise an offscreen mask would merely
     // expose a dark rectangle instead of the continuation of the photograph.
-    val photoStart = cover - cover * 0.050f
+    // The diffuse photo-colour layer must BEGIN before the photo alpha
+    // mask starts. Otherwise transparent photo pixels expose a uniform dark
+    // floor and produce an artificial horizontal seam just above the blur.
+    val photoStart = cover - cover * 0.090f
 
     // We cache only a few increasingly diffused levels. The first one is a
     // near-faithful sample of the *last* visible row; later levels borrow
