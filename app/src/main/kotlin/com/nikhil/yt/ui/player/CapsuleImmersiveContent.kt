@@ -1263,6 +1263,7 @@ internal fun CapsuleImmersiveContent(
                                 enabled =
                                     safeDuration > 0L &&
                                         !immersiveEditEnabled,
+                                smoothPlayback = isPlaying && sliderPosition == null,
                                 activeColor = immersiveInk,
                                 inactiveColor = immersiveInk.copy(alpha = 0.22f),
                                 onValueChange = { onSeekPreview(it.toLong()) },
