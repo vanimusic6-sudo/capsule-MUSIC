@@ -152,9 +152,11 @@ internal fun CapsuleProceduralBackground(
     // Do not tint near-black covers navy. A real black sleeve deserves a
     // near-black sky and a few distinctly brighter, softly twinkling stars.
     val blackArtwork = effect == CapsuleBackgroundEffect.CAPSULE_STAR &&
-        colors.isNotEmpty() && colors.take(3).all { c ->
+        colors.firstOrNull()?.let { c ->
+            // The dominant/background colour decides whether this is a black
+            // sleeve. Small bright artwork accents must not brighten the sky.
             c.red * 0.2126f + c.green * 0.7152f + c.blue * 0.0722f < 0.13f
-        }
+        } == true
     val palette =
         remember(effect, colors, primary, secondary, tertiary, blackArtwork) {
             val artwork = listOf(
