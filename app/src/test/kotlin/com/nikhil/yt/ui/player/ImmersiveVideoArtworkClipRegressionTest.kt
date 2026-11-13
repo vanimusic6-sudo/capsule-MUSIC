@@ -19,7 +19,8 @@ class ImmersiveVideoArtworkClipRegressionTest {
         assertTrue(content.contains("Box(Modifier.fillMaxSize().clipToBounds().graphicsLayer"))
         assertTrue(content.contains("scaleX = if (frame.landscape) 1.06f else 1f"))
         assertTrue(content.contains("scaleY = if (frame.landscape) 1.06f else 1f"))
-        assertTrue(content.contains("immersiveContinuousCoverStops("))
-        assertTrue(content.contains("immersiveOriginalFadeProfile("))
+        assertTrue(content.contains("matchedPaint?.let { bitmap ->"))
+        assertTrue(!content.contains("matchedPaint?.second?.let"))
+        assertTrue(content.contains("immersi" + "vePageBaseColor(isVideo, frame != null, pageFloor)"))
     }
 }

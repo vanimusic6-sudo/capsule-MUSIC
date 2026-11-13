@@ -127,6 +127,11 @@ private data class ImmersiveGradientFrame(
  */
 internal val ImmersiveControlInk = Color.White
 
+/** VIDEO never inherits album-derived wallpaper when its own ambient mode is off. */
+internal fun immersivePageBaseColor(presentingVideo: Boolean, hasArtwork: Boolean, floor: Color): Color =
+    if (presentingVideo) Color(0xFF111116)
+    else if (hasArtwork) floor else IMMERSIVE_NEUTRAL_COLOR
+
 /** The source colour is the actual sampled lower crop. Never recolour its seam. */
 internal fun immersiveSeamColor(edge: Color, floor: Color): Color = edge
 
@@ -875,10 +880,8 @@ internal fun CapsuleImmersiveContent(
         LaunchedEffect(isVideo) {
             audioBackdropAlpha.animateTo(if (isVideo) 0f else 1f, tween(280))
         }
-        val videoNeutral = Color(0xFF111116)
         Box(Modifier.fillMaxSize().background(
-            if (isVideo) videoNeutral else if (frame != null) pageFloor
-            else IMMERSIVE_NEUTRAL_COLOR
+            immersivePageBaseColor(isVideo, frame != null, pageFloor)
         )) {
             matchedPaint?.let { bitmap ->
                 Image(

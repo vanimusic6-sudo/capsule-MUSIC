@@ -38,12 +38,12 @@ class PlayerTransitionArchitectureTest {
         // independent audio fade must never return.
         assertTrue(immersive.contains("matchedPaint = withContext(Dispatchers.Default)"))
         assertTrue(immersive.contains("val pairReady = frame != null && matchedPaint != null"))
-        assertTrue(immersive.contains("matchedPaint?.first?.let { bitmap ->"))
-        assertTrue(immersive.contains("matchedPaint?.second?.let { overlay ->"))
+        assertTrue(immersive.contains("matchedPaint?.let { bitmap ->"))
+        assertFalse("No second tinted photo overlay", immersive.contains("matchedPaint?.second?.let"))
         assertTrue(immersive.contains("if (!pairReady)"))
         assertTrue(immersive.contains("artworkTone.preview"))
         assertTrue(immersive.contains("onFirstTextureReady = { videoTextureReady = true }"))
-        assertTrue(immersive.contains("if (liveField != null && matchedPaint != null)"))
+        assertTrue(immersive.contains("if (isVideo && liveField != null && matchedPaint != null)"))
         assertFalse(immersive.contains("pageTextureReadyFor"))
         assertFalse(immersive.contains("preparedPhotoOverlay"))
         assertFalse(immersive.contains("alpha = if (frame == null || pairReady) 1f else 0f"))
@@ -76,7 +76,7 @@ class PlayerTransitionArchitectureTest {
         // only near-white artwork uses the stronger muted-accent algorithm.
         // Earlier regression text assumed ALL artwork used the same muted accent,
         // contradicting the now-restored baseline and failing this suite.
-        assertTrue(floor.contains("accent = if (nearWhite) {"))
+        assertTrue(floor.contains("accent = capsuleCleanImmersiveFloor(visibleTail)"))
         assertTrue(floor.contains("rawEdge.immersiveMutedAccent()"))
         assertTrue(floor.contains("capsuleCleanImmersiveFloor(visibleTail)"))
         assertFalse(floor.contains("accent = background.immersiveMutedAccent()"))

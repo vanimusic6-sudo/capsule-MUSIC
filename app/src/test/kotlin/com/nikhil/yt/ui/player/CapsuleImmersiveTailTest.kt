@@ -30,7 +30,7 @@ class CapsuleImmersiveTailTest {
         bitmap.recycle()
     }
 
-    @Test fun photoOverlayOnlyFeathersLastFourPercentNotWholeLowerQuarter() {
+    @Test fun photoNeverGetsATintedOverlayOrHardBoundaryStripe() {
         val source = CapsuleColorField(64, 8, List(64 * 8) { Color(0xFFE9B078) })
         val overlay = immersiveSpatialFieldBitmap(
             bands = emptyList(), fallbackFloor = Color(0xFF29251D),
@@ -40,8 +40,8 @@ class CapsuleImmersiveTailTest {
         ).asAndroidBitmap()
         assertTrue("Do not paint beige over the lower fifth of the cover",
             AndroidColor.alpha(overlay.getPixel(overlay.width / 2, overlay.height * 87 / 100)) == 0)
-        assertTrue("Feather only the last few pixels",
-            AndroidColor.alpha(overlay.getPixel(overlay.width / 2, overlay.height - 2)) in 75..190)
+        assertTrue("The lower edge must not be repainted or washed out",
+            AndroidColor.alpha(overlay.getPixel(overlay.width / 2, overlay.height - 2)) == 0)
     }
 
     @Test fun continuationSettlesIntoExactlyTheExistingControlsFloor() {
@@ -84,5 +84,26 @@ class CapsuleImmersiveTailTest {
         val floor = capsuleCleanImmersiveFloor(tail)
         assertTrue(abs(floor.red - floor.green) < 0.005f)
         assertTrue(abs(floor.green - floor.blue) < 0.005f)
+    }
+
+    @Test fun blackSleeveWithWhiteLogoKeepsTrueNeutralDarkFloor() {
+        val source = CapsuleColorField(64, 12, List(64 * 12) { index ->
+            if (index % 64 in 20..40 && index / 64 in 8..9) Color.White
+            else Color(0xFF080809)
+        })
+        val floor = capsuleCleanImmersiveFloor(source)
+        assertTrue("White text cannot turn a black cover into grey fog", floor.red < 0.15f)
+        assertTrue(abs(floor.red - floor.green) < 0.004f)
+    }
+
+    @Test fun fireRedNearBottomKeepsItsColourInsteadOfMixingToMud() {
+        val source = CapsuleColorField(64, 12, List(64 * 12) { index ->
+            if (index / 64 >= 8 && index % 64 < 52) Color(0xFFE52411)
+            else Color(0xFF060607)
+        })
+        val floor = capsuleCleanImmersiveFloor(source)
+        assertTrue("Real fire must produce a dark red light, not muddy grey",
+            floor.red > floor.green * 1.6f && floor.red > floor.blue * 1.3f)
+        assertTrue(floor.red < 0.32f)
     }
 }
