@@ -78,6 +78,9 @@ internal fun CapsuleVideoArtworkTransition(
     needsSurface: Boolean,
     modifier: Modifier = Modifier,
     transitionKey: Any? = null,
+    // Immersion shares the same physical spring with its background.
+    // The other skins still own their motion as before.
+    sharedProgress: Animatable<Float, androidx.compose.animation.core.AnimationVector1D>? = null,
     fillArtworkSlot: Boolean = false,
     artworkCornerRadius: Dp = 24.dp,
     videoCornerRadius: Dp = 24.dp,
@@ -109,7 +112,7 @@ internal fun CapsuleVideoArtworkTransition(
     // one frame when an underdamped closing spring crosses zero and rebounds.
     // animateTo() maintains velocity on target reversal (including mid-flight).
     // Each mediaId gets its own starting position without carry-over.
-    val body = remember(transitionKey) { Animatable(target) }
+    val body = sharedProgress ?: remember(transitionKey) { Animatable(target) }
     LaunchedEffect(body, target, immersive) {
         // An initial AUDIO placeholder already sits at zero. Starting a
         // no-op spring there can momentarily mark isRunning=true and mount

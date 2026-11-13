@@ -26,7 +26,7 @@ class ImmersiveVideoArtworkClipRegressionTest {
         assertTrue(content.contains("scaleY = if (frame.landscape) 1.06f else 1f"))
         assertTrue(content.contains("matchedPaint?.let { bitmap ->"))
         assertTrue(!content.contains("matchedPaint?.second?.let"))
-        assertTrue(content.contains("immersi" + "vePageBaseColor(isVideo, frame != null, pageFloor)"))
+        assertTrue(content.contains("immersivePageBaseColor(false, frame != null, pageFloor)"))
     }
 
     @Test fun immersiveFixedArtworkCannotHideItsGradientBehindOpaqueMatte() {
