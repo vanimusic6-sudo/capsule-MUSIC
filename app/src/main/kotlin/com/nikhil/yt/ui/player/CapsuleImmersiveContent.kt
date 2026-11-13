@@ -941,13 +941,9 @@ internal fun CapsuleImmersiveContent(
             // the separate VIDEO mask grows/shrinks. The previous moving
             // album/matte exposed different edge pixels at the join on close.
             fixedImmersiveArtwork = true,
-            artworkBackground = if (nearWhite) {
-                immersiveContinuousPageColor(
-                    seamColor, pageFloor, coverFraction, coverFraction, tailFraction,
-                )
-            } else {
-                seamColor
-            },
+            // Never place a solid matté under the photo's transparent edge:
+            // the actual long diffuse background must show through.
+            artworkBackground = Color.Transparent,
             artworkClickable = !isVideo,
             onArtworkClick = onShowLyrics,
             video = { active -> CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active) },

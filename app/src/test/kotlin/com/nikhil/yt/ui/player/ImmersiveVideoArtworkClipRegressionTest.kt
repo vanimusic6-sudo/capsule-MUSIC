@@ -28,4 +28,22 @@ class ImmersiveVideoArtworkClipRegressionTest {
         assertTrue(!content.contains("matchedPaint?.second?.let"))
         assertTrue(content.contains("immersi" + "vePageBaseColor(isVideo, frame != null, pageFloor)"))
     }
+
+    @Test fun immersiveFixedArtworkCannotHideItsGradientBehindOpaqueMatte() {
+        val relative = "src/main/kotlin/com/nikhil/yt/ui/player/CapsuleVideoArtworkTransition.kt"
+        val file = listOf(File(relative), File("app/$relative")).firstOrNull { it.isFile }
+            ?: error("Video transition source not found")
+        val fixedArtwork = file.readText()
+            .substringAfter("if (fixedImmersiveArtwork) {")
+            .substringBefore("// Geometry is one shared bounds transformation.")
+        assertTrue("Transparent photo pixels must show the page's real gradient",
+            !fixedArtwork.contains(".background(artworkBackground)"))
+        val immersive = listOf(
+            File("src/main/kotlin/com/nikhil/yt/ui/player/CapsuleImmersiveContent.kt"),
+            File("app/src/main/kotlin/com/nikhil/yt/ui/player/CapsuleImmersiveContent.kt"),
+        ).firstOrNull { it.isFile }?.readText()
+            ?: error("Immersive source not found")
+        assertTrue("Immersion should not request another solid matte",
+            immersive.contains("artworkBackground = Color.Transparent"))
+    }
 }

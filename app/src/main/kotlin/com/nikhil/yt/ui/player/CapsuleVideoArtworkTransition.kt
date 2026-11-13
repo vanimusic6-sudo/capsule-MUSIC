@@ -202,11 +202,14 @@ internal fun CapsuleVideoArtworkTransition(
         // the poster + its lower fade pinned to the screen, and morph ONLY the
         // VIDEO window above it. Both layers use the same spring progress.
         if (fixedImmersiveArtwork) {
+            // A colour matte behind the photo used to show through its alpha
+            // feather, hiding the actual scene continuation behind it. This
+            // fixed artwork layer MUST remain transparent outside the bitmap.
+            // Light/Cosmo keep the separate opaque protective matte below.
             Box(
                 Modifier
                     .requiredSize(coverWidthDp, coverHeightDp)
-                    .graphicsLayer { alpha = capsulePhotoOpacity(body.value, blendStyle) }
-                    .background(artworkBackground),
+                    .graphicsLayer { alpha = capsulePhotoOpacity(body.value, blendStyle) },
                 contentAlignment = Alignment.Center,
             ) { artwork() }
         }
