@@ -149,8 +149,14 @@ internal fun CapsuleProceduralBackground(
     val primary = MaterialTheme.colorScheme.primary
     val secondary = MaterialTheme.colorScheme.secondary
     val tertiary = MaterialTheme.colorScheme.tertiary
+    // Do not tint near-black covers navy. A real black sleeve deserves a
+    // near-black sky and a few distinctly brighter, softly twinkling stars.
+    val blackArtwork = effect == CapsuleBackgroundEffect.CAPSULE_STAR &&
+        colors.isNotEmpty() && colors.take(3).all { c ->
+            c.red * 0.2126f + c.green * 0.7152f + c.blue * 0.0722f < 0.13f
+        }
     val palette =
-        remember(effect, colors, primary, secondary, tertiary) {
+        remember(effect, colors, primary, secondary, tertiary, blackArtwork) {
             val artwork = listOf(
                 colors.getOrElse(0) { primary },
                 colors.getOrElse(1) { secondary },
@@ -158,7 +164,9 @@ internal fun CapsuleProceduralBackground(
             )
             when (effect) {
                 CapsuleBackgroundEffect.CAPSULE_STAR ->
-                    artwork.map { lerp(it, Color(0xFF0B1435), 0.52f) }
+                    if (blackArtwork) listOf(
+                        Color(0xFF010103), Color(0xFF030306), Color(0xFF05060B),
+                    ) else artwork.map { lerp(it, Color(0xFF0B1435), 0.52f) }
                 CapsuleBackgroundEffect.NEBULA ->
                     artwork.map { lerp(capsuleMutedArtworkColor(it), Color(0xFFECE9FA), 0.31f) }
                 else -> artwork.map(::capsuleMutedArtworkColor)
@@ -191,11 +199,16 @@ internal fun CapsuleProceduralBackground(
                 1f to deepColor(palette[2], 0.75f),
                 start = Offset.Zero, end = Offset(size.width, size.height),
             )
-            CapsuleBackgroundEffect.CAPSULE_STAR -> Brush.verticalGradient(
-                0f to deepColor(lerp(palette[0], palette[1], 0.18f), 0.79f),
-                0.54f to deepColor(lerp(palette[0], palette[2], 0.45f), 0.87f),
-                1f to deepColor(lerp(palette[1], palette[2], 0.58f), 0.94f),
-            )
+            CapsuleBackgroundEffect.CAPSULE_STAR ->
+                if (blackArtwork) Brush.verticalGradient(
+                    0f to Color.Black,
+                    0.5f to Color(0xFF010103),
+                    1f to Color(0xFF020205),
+                ) else Brush.verticalGradient(
+                    0f to deepColor(lerp(palette[0], palette[1], 0.18f), 0.79f),
+                    0.54f to deepColor(lerp(palette[0], palette[2], 0.45f), 0.87f),
+                    1f to deepColor(lerp(palette[1], palette[2], 0.58f), 0.94f),
+                )
             else -> null
         }
         val extent = max(size.width, size.height)
@@ -211,7 +224,8 @@ internal fun CapsuleProceduralBackground(
             else -> emptyList()
         }
         val starInk = if (effect == CapsuleBackgroundEffect.CAPSULE_STAR) {
-            palette.map { lerp(Color.White, it, 0.15f) }
+            if (blackArtwork) listOf(Color.White, Color(0xFFE4ECFF), Color(0xFFFFF4E7))
+            else palette.map { lerp(Color.White, it, 0.15f) }
         } else emptyList()
         val nebulaSparks = if (effect == CapsuleBackgroundEffect.NEBULA) {
             List(if (compact) 5 else 12) { i ->
@@ -264,7 +278,8 @@ internal fun CapsuleProceduralBackground(
                     elapsedMs, movingLights, requireNotNull(baseBrush), requireNotNull(vignette),
                 )
                 CapsuleBackgroundEffect.CAPSULE_STAR -> drawCapsuleStarField(
-                    palette, starInk, elapsedMs, compact, requireNotNull(starFields), requireNotNull(baseBrush),
+                    palette, starInk, elapsedMs, compact, blackArtwork,
+                    requireNotNull(starFields), requireNotNull(baseBrush),
                     requireNotNull(starSweep), requireNotNull(starBloom), requireNotNull(vignette),
                 )
                 CapsuleBackgroundEffect.NEBULA -> drawArtworkNebula(
@@ -565,7 +580,7 @@ private fun DrawScope.drawSoftColorFlow(
     baseBrush: Brush,
     vignette: Brush,
 ) {
-    val angle = capsuleBackgroundAngle(elapsedMs) * 0.68
+    val angle = capsuleBackgroundAngle(elapsedMs) * 1.55
     drawRect(baseBrush)
     lights.forEachIndexed { index, light ->
         val center = when (index) {
@@ -586,6 +601,7 @@ private fun DrawScope.drawCapsuleStarField(
     starInk: List<Color>,
     elapsedMs: Long,
     compact: Boolean,
+    blackArtwork: Boolean,
     fields: CapsuleStarFields,
     baseBrush: Brush,
     sweepBrush: Brush,
@@ -605,9 +621,11 @@ private fun DrawScope.drawCapsuleStarField(
 
     val blend = constellationBlend(elapsedMs)
     fields.update(blend.generation)
-    drawConstellation(fields.current, palette, starInk, elapsedMs, compact, 1f - blend.nextAlpha)
+    drawConstellation(fields.current, palette, starInk, elapsedMs, compact, blackArtwork,
+        1f - blend.nextAlpha)
     if (blend.nextAlpha > 0f) {
-        drawConstellation(fields.next, palette, starInk, elapsedMs, compact, blend.nextAlpha)
+        drawConstellation(fields.next, palette, starInk, elapsedMs, compact, blackArtwork,
+            blend.nextAlpha)
     }
     drawRect(vignette)
 }
@@ -633,6 +651,7 @@ private fun DrawScope.drawConstellation(
     starInk: List<Color>,
     elapsedMs: Long,
     compact: Boolean,
+    blackArtwork: Boolean,
     opacity: Float,
 ) {
     if (opacity <= 0f) return
@@ -650,13 +669,28 @@ private fun DrawScope.drawConstellation(
         val x = inset + star.x * widthInside + capsuleStarDriftX(star, angle) * drift
         val y = inset + star.y * heightInside + capsuleStarDriftY(star, angle) * drift
         val pulse = (waveSin(angle * (0.18f + depth * 0.24f) + star.phase) + 1f) / 2f
-        val alpha = (0.14f + depth * 0.24f + pulse * 0.09f).coerceAtMost(0.6f) * opacity
+        val alpha = (if (blackArtwork) {
+            0.24f + depth * 0.39f + pulse * 0.15f
+        } else {
+            0.14f + depth * 0.24f + pulse * 0.09f
+        }).coerceAtMost(if (blackArtwork) 0.87f else 0.6f) * opacity
         // Real, softly twinkling pinpoints only. No crosshair sparkles.
         val patternStar = depth >= 0.93f
-        val radius = (if (patternStar) 0.88f else 0.38f + depth * 0.34f) * density
+        val radius = (if (patternStar) {
+            if (blackArtwork) 1.12f else 0.88f
+        } else {
+            if (blackArtwork) 0.48f + depth * 0.44f else 0.38f + depth * 0.34f
+        }) * density
         val starColor = starInk[index % starInk.size]
+        if (blackArtwork && patternStar) {
+            drawCircle(
+                color = starColor.copy(alpha = alpha * 0.16f),
+                radius = radius * 2.6f,
+                center = Offset(x, y),
+            )
+        }
         drawCircle(
-            color = starColor.copy(alpha = if (patternStar) (alpha * 1.28f).coerceAtMost(0.85f) else alpha),
+            color = starColor.copy(alpha = if (patternStar) (alpha * 1.28f).coerceAtMost(0.95f) else alpha),
             radius = radius,
             center = Offset(x, y),
         )
