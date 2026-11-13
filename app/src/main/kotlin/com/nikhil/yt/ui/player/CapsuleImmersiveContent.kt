@@ -1144,7 +1144,10 @@ internal fun CapsuleImmersiveContent(
         // The fade rises above the edge and dies away again beneath it.
         // It shares the morphing photo opacity, so it cannot flash at
         // AUDIO/VIDEO transitions. Bitmap is already cached off-main.
-        if (frame?.key == visualKey) matchedPaint?.let { bitmap ->
+        // Keep the seam bloom attached to the outgoing photo while its
+        // whole scene fades. Dropping just this layer on mediaId change
+        // would cause one frame of visible hard-edged artwork.
+        if (frame != null) matchedPaint?.let { bitmap ->
             Image(
                 bitmap = bitmap,
                 contentDescription = null,
