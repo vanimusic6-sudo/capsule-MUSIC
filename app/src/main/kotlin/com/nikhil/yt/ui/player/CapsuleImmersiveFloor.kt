@@ -44,6 +44,10 @@ internal data class ImmersiveArtworkTone(
     val edgeBands: List<Color> = emptyList(),
     // True two-dimensional colour, sampled once from the same decoded crop.
     val colorField: CapsuleColorField? = null,
+    // Accurate, spatially sampled lower edge of the displayed (overscanned) crop.
+    // Drives the photo-to-floor dissolve; the coarse all-image grid cannot
+    // accurately match the colour at the image's last visible scanline.
+    val visibleTail: CapsuleColorField? = null,
     // Decoded 256 px preview for the very first frame of an immediate open.
     // This avoids a second network request before any image can be displayed.
     val preview: ImageBitmap? = null,
@@ -168,32 +172,31 @@ internal fun rememberImmersiveEdgeColor(
                 // Only near-white, low-saturation covers bypass the original
                 // brightness clamp so the isolated softer fade can eliminate
                 // the noticeable white->grey edge.
-                val rawEdge = image.immersiveBottomBackground(artworkAspect)
+                // The visible BOTTOM of the displayed crop (including overscan)
+                // must drive both the seam and the entire controls floor.
+                // Sampling 72–95% of the source used to pick the distant sky or
+                // mid-artwork, creating an unrelated muddy brown on the bottom.
+                val visibleTail = image.capsuleImmersiveVisibleTail(artworkAspect, landscape)
+                val rawEdge = capsuleDominantEdgeColor(visibleTail)
                 val nearWhite = rawEdge.isNearWhiteImmersiveBackground()
-                val background = if (nearWhite) {
-                    rawEdge
-                } else {
-                    rawEdge.comfortableImmersiveColor()
-                }
                 val bottomTexture = image.immersiveBottomTexture(artworkAspect)
-                // Unlike seven column histograms, this preserves actual
-                // spatial relationships between sky, subject and shadows.
                 val colorField = image.capsuleColorField(artworkAspect)
                 // Legacy colour bands remain available for old snapshots and
                 // incomplete artwork, but do NOT drive the normal backdrop.
                 val edgeBands = emptyList<Color>()
                 ImmersiveArtworkTone(
-                    edge = background,
-                    // Restore the original modest 10% darker floor exactly.
-                    // The modern softened colour is used ONLY for white covers.
+                    // Do not clamp this colour: a clamped seam is visibly
+                    // darker than the last actual row of the artwork.
+                    edge = rawEdge,
                     accent = if (nearWhite) {
                         rawEdge.immersiveMutedAccent()
                     } else {
-                        lerp(background, Color.Black, 0.10f)
+                        capsuleCleanImmersiveFloor(visibleTail)
                     },
                     bottomTexture = bottomTexture,
                     edgeBands = edgeBands,
                     colorField = colorField,
+                    visibleTail = visibleTail,
                     // Own the preview pixels independently of Coil's bitmap
                     // pool. A retained player frame must never point at a
                     // bitmap that another request can recycle/reuse.
@@ -237,6 +240,28 @@ internal fun rememberImmersiveEdgeColor(
         displayUrl = if (readyForCurrentTrack) target.displayUrl else null,
         ready = readyForCurrentTrack,
     )
+}
+
+/**
+ * A clean, readable controls floor derived exclusively from the last two
+ * rows of the *visible* cover. Preserve the real hue, avoid mixing unrelated
+ * sky/subject RGB samples or artificially forcing warm/cold colour families.
+ *
+ * Called just once during off-main artwork preparation, never during drawing.
+ */
+internal fun capsuleCleanImmersiveFloor(edgeMap: CapsuleColorField): Color {
+    val lastVisibleRows = capsuleDominantEdgeColor(edgeMap)
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(lastVisibleRows.toArgb(), hsv)
+    // Neutral or black covers stay neutral. For saturated covers, darken
+    // in HSV so muddy RGB averaging doesn't shift the palette toward olive.
+    hsv[1] = if (hsv[1] < 0.12f) {
+        hsv[1]
+    } else {
+        (hsv[1] * 0.86f).coerceIn(0.13f, 0.56f)
+    }
+    hsv[2] = (0.11f + hsv[2] * 0.23f).coerceIn(0.14f, 0.33f)
+    return Color(android.graphics.Color.HSVToColor(hsv))
 }
 
 /** Only near-white, nearly neutral backgrounds receive the slightly wider fade. */

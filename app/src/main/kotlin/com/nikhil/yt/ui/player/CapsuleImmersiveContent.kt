@@ -114,6 +114,7 @@ private data class ImmersiveGradientFrame(
     val nearWhiteBackground: Boolean,
     val edgeBands: List<Color>,
     val colorField: CapsuleColorField?,
+    val visibleTail: CapsuleColorField?,
 )
 
 /**
@@ -698,6 +699,7 @@ internal fun CapsuleImmersiveContent(
                     nearWhiteBackground = artworkTone.nearWhiteBackground,
                     edgeBands = artworkTone.edgeBands,
                     colorField = artworkTone.colorField,
+                    visibleTail = artworkTone.visibleTail,
                 )
             }
             // Also handles reopening the sheet while its previous fade-out was being
@@ -733,6 +735,9 @@ internal fun CapsuleImmersiveContent(
         var visibleArtworkPending by remember(frame?.key, frame?.imageUrl) {
             mutableStateOf(false)
         }
+        var visibleArtworkDecoded by remember(frame?.key, frame?.imageUrl) {
+            mutableStateOf(false)
+        }
         LaunchedEffect(frame?.key, frame?.imageUrl, visibleArtworkRebind, visibleArtworkPending) {
             frame?.takeIf {
                 it.key == visualKey && it.imageUrl.isNotBlank()
@@ -751,11 +756,9 @@ internal fun CapsuleImmersiveContent(
         val nearWhite = frame?.nearWhiteBackground == true
         val pageEdge = frame?.edge ?: IMMERSIVE_NEUTRAL_COLOR
         val pageFloor = frame?.floor ?: IMMERSIVE_NEUTRAL_COLOR
-        val seamColor = if (nearWhite) {
-            immersiveSeamColor(pageEdge, pageFloor)
-        } else {
-            immersiveOriginalSeamColor(pageEdge, pageFloor)
-        }
+        // The backdrop and video-window filler use the exact same unaltered
+        // lower edge. Mixing 45% dark floor INTO the seam created a 1px band.
+        val seamColor = immersiveSeamColor(pageEdge, pageFloor)
         val density = LocalDensity.current
         val pageHeightPx = with(density) { maxHeight.toPx() }
         val coverHeightPx = with(density) { artworkHeight.toPx() }
@@ -788,7 +791,7 @@ internal fun CapsuleImmersiveContent(
             mutableStateOf<Pair<ImageBitmap, ImageBitmap>?>(null)
         }
         LaunchedEffect(
-            paintKey, frame?.colorField, frame?.edgeBands, pageFloor,
+            paintKey, frame?.colorField, frame?.visibleTail, frame?.edgeBands, pageFloor,
             nearWhite, frame?.bottomTexture, frame?.landscape,
         ) {
             val readyFrame = frame ?: return@LaunchedEffect
@@ -804,6 +807,7 @@ internal fun CapsuleImmersiveContent(
                     nearWhite = readyFrame.nearWhiteBackground,
                     photoOverlay = false,
                     field = readyFrame.colorField,
+                    edgeMap = readyFrame.visibleTail,
                 )
                 val cover = immersiveSpatialFieldBitmap(
                     bands = colours,
@@ -815,6 +819,7 @@ internal fun CapsuleImmersiveContent(
                     nearWhite = readyFrame.nearWhiteBackground,
                     photoOverlay = true,
                     field = readyFrame.colorField,
+                    edgeMap = readyFrame.visibleTail,
                 )
                 page to cover
             }
@@ -910,7 +915,10 @@ internal fun CapsuleImmersiveContent(
             presentingVideo = isVideo,
             needsSurface = needsVideoSurface,
             transitionKey = mediaMetadata.id,
-            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().height(artworkHeight),
+            // Cover the final resampled pixel of the separate background layer.
+            // A single dp of overlap conceals an otherwise visible sheet seam
+            // without adding a blur/graphics layer or affecting the controls.
+            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth().height(artworkHeight + 1.dp),
             fillArtworkSlot = true,
             // Keep the full-bleed artwork, but morph into the same rounded
             // 16:9 video window used by the other player styles.
@@ -979,7 +987,11 @@ internal fun CapsuleImmersiveContent(
                     )
                 }) {
                     if (frame.key == visualKey) {
-                        artworkTone.preview?.let { preview ->
+                        // The 256px rescue image is required only until
+                        // the real full-resolution painter succeeds. Keeping
+                        // BOTH full-screen images mounted for the entire song
+                        // wasted GPU blends and memory bandwidth.
+                        if (!visibleArtworkDecoded) artworkTone.preview?.let { preview ->
                             Image(
                                 bitmap = preview,
                                 contentDescription = null,
@@ -1015,10 +1027,17 @@ internal fun CapsuleImmersiveContent(
                         model = rememberImmersiveArtworkRequest(frame.imageUrl),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        onLoading = { visibleArtworkPending = true },
-                        onSuccess = { visibleArtworkPending = false },
+                        onLoading = {
+                            visibleArtworkPending = true
+                            visibleArtworkDecoded = false
+                        },
+                        onSuccess = {
+                            visibleArtworkPending = false
+                            visibleArtworkDecoded = true
+                        },
                         onError = { error ->
                             visibleArtworkPending = false
+                            visibleArtworkDecoded = false
                             Timber.tag("CapsuleArtwork").w(
                                 "immersive-artwork-error id=%s retry=%s type=%s",
                                 mediaMetadata.id, visibleArtworkRebind,

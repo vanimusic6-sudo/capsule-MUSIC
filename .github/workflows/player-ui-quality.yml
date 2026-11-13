@@ -45,6 +45,7 @@ jobs:
           --tests 'com.nikhil.yt.ui.player.CapsuleColorFieldTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleScenePaletteTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveFieldTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveTailTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleVideoAmbientTest'
           --tests 'com.nikhil.yt.ui.player.ImmersiveArtworkBackgroundTest'
           --tests 'com.nikhil.yt.ui.CapsuleMotionTest'
@@ -60,6 +61,7 @@ jobs:
           --tests 'com.nikhil.yt.ui.player.CapsuleLightEditorTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleDesignPresetTest'
           --tests 'com.nikhil.yt.ui.MotionEnergyStructuralRegressionTest'
+          --tests 'com.nikhil.yt.ui.UiEnergyRegressionTest'
           --stacktrace --no-daemon --max-workers=2
       - name: Android lint
         run: gradle :app:lintUniversalDebug --no-daemon --max-workers=2
