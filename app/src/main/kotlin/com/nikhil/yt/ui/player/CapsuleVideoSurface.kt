@@ -186,6 +186,7 @@ private fun CapsuleVideoTextureOutput(
             if (!ambientEnabled || !firstFrameReady || !videoActuallyPlaying) return@LaunchedEffect
             var previous: CapsuleColorField? = null
             var consecutiveFailures = 0
+            var unchangedFrames = 0
             val buffer = Bitmap.createBitmap(
                 VIDEO_AMBIENT_SAMPLE_WIDTH, VIDEO_AMBIENT_SAMPLE_HEIGHT, Bitmap.Config.ARGB_8888,
             )
@@ -199,9 +200,14 @@ private fun CapsuleVideoTextureOutput(
                         try {
                             view.getBitmap(buffer)
                             val sample = capsuleVideoAmbientFrameFromBitmap(buffer, trackId)
-                            if (sample != null && capsuleFieldChanged(previous, sample.field)) {
-                                sink(sample)
-                                previous = sample.field
+                            if (sample != null) {
+                                if (capsuleFieldChanged(previous, sample.field)) {
+                                    sink(sample)
+                                    previous = sample.field
+                                    unchangedFrames = 0
+                                } else {
+                                    unchangedFrames = (unchangedFrames + 1).coerceAtMost(8)
+                                }
                             }
                             consecutiveFailures = 0
                         } catch (_: RuntimeException) {
@@ -210,7 +216,13 @@ private fun CapsuleVideoTextureOutput(
                             if (consecutiveFailures >= 3) break
                         }
                     }
-                    delay(VIDEO_AMBIENT_CAPTURE_INTERVAL_MS)
+                    // Static clips, paused-looking scenes and title cards
+                    // need fewer GPU-to-CPU readbacks. Motion returns to the
+                    // 700ms cadence as soon as a changed field is detected.
+                    delay(
+                        if (unchangedFrames >= 3) VIDEO_AMBIENT_CALM_CAPTURE_INTERVAL_MS
+                        else VIDEO_AMBIENT_CAPTURE_INTERVAL_MS,
+                    )
                 }
             } finally {
                 buffer.recycle()
