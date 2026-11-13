@@ -169,11 +169,24 @@ fun BottomSheetPlayer(
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val videoPlaybackState by playerConnection.service.videoPlaybackState.collectAsState()
     val videoAmbientEnabled by rememberPreference(CapsuleVideoAmbientBackgroundKey, false)
-    // Keep only seven colours and a media ID, not captured video bitmaps.
-    var videoAmbientFrame by remember { mutableStateOf<CapsuleVideoAmbientFrame?>(null) }
-    val videoAmbientSink: (CapsuleVideoAmbientFrame) -> Unit = remember {
-        { sample -> videoAmbientFrame = sample }
+    // Read the last real video colour field BEFORE the video surface resumes.
+    // A process/Activity restart must not show the ordinary album wallpaper
+    // until the user presses Play. Persist only a 20x16 colour field, not video.
+    var videoAmbientFrame by remember(mediaMetadata?.id) {
+        mutableStateOf(
+            if (videoAmbientEnabled) CapsuleVideoAmbientResume.get(context, mediaMetadata?.id)
+            else null,
+        )
     }
+    val videoAmbientSink: (CapsuleVideoAmbientFrame) -> Unit =
+        remember(context, mediaMetadata?.id) {
+            { sample ->
+                if (sample.mediaId == mediaMetadata?.id) {
+                    videoAmbientFrame = sample
+                    CapsuleVideoAmbientResume.put(context, sample)
+                }
+            }
+        }
     val positionDiscontinuityRevision by playerConnection.positionDiscontinuityRevision.collectAsState()
     val currentSong by playerConnection.currentSong.collectAsState(initial = null)
     val currentSongLiked = currentSong?.song?.liked == true
@@ -320,12 +333,13 @@ fun BottomSheetPlayer(
         }
     }
 
-    // An old frame may never colour a new song or a stopped video.
+    // A matching saved sample is usable as soon as VIDEO returns, even
+    // paused. Different-track colours must never leak into the next song.
     LaunchedEffect(enrichedMetadata?.id, videoAmbientEnabled) {
-        // Keep only THIS song's seven-colour sample for a soft VIDEO→AUDIO
-        // fade, then release the heavy video surface immediately as before.
-        if (!videoAmbientEnabled || videoAmbientFrame?.mediaId != enrichedMetadata?.id) {
+        if (!videoAmbientEnabled) {
             videoAmbientFrame = null
+        } else if (videoAmbientFrame?.mediaId != enrichedMetadata?.id) {
+            videoAmbientFrame = CapsuleVideoAmbientResume.get(context, enrichedMetadata?.id)
         }
     }
     val activeVideoAmbientBands = videoAmbientFrame?.takeIf { sample ->
@@ -347,18 +361,17 @@ fun BottomSheetPlayer(
         if (activeVideoAmbientBands != null) {
             videoAmbientOverlayMounted = true
             videoAmbientOverlayAlpha.animateTo(
-                1f, tween(durationMillis = 700),
+                1f, tween(durationMillis = 300),
             )
         } else {
             videoAmbientOverlayAlpha.animateTo(
-                0f, tween(durationMillis = 650),
+                0f, tween(durationMillis = 240),
             )
             videoAmbientOverlayMounted = false
         }
     }
     val videoAmbientCaptureActive =
-        videoAmbientEnabled && videoPlaybackState.presentingVideo &&
-            videoPlaybackState.firstFrameReady && onScreen &&
+        videoAmbientEnabled && videoPlaybackState.presentingVideo && onScreen &&
             state.isExpandedOrExpanding && !showInlineLyrics
 
     val needsArtworkPalette =
