@@ -16,9 +16,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
-import androidx.palette.graphics.Palette
 import coil3.imageLoader
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
@@ -182,17 +180,9 @@ internal fun rememberArtworkGradientColors(
                     val artworkBitmap = withContext(Dispatchers.IO) {
                         context.imageLoader.execute(request)
                     }.image?.toBitmap() ?: return@getOrExtract null
-                    val palette =
-                        withContext(Dispatchers.Default) {
-                            Palette.from(artworkBitmap)
-                                .maximumColorCount(PlayerColorExtractor.Config.MAX_COLOR_COUNT)
-                                .resizeBitmapArea(PlayerColorExtractor.Config.BITMAP_AREA)
-                                .generate()
-                        }
-                    PlayerColorExtractor.extractGradientColors(
-                        palette = palette,
-                        fallbackColor = surface.toArgb(),
-                    )
+                    withContext(Dispatchers.Default) {
+                        capsuleArtworkScenePalette(artworkBitmap)
+                    }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (failure: Exception) {
