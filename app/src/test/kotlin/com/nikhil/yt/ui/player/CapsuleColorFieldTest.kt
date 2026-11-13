@@ -5,7 +5,6 @@ import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.graphics.toArgb
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -61,16 +60,17 @@ class CapsuleColorFieldTest {
         val photo = render(true)
         fun rgb(pixel: Int, shift: Int): Int = pixel shr shift and 255
         val edgeX = page.width / 2
-        // Compare the new page texture to the ACTUAL lower photo pixels.
-        // The former test compared it to an invented tinted photo overlay.
-        // That overlay is now intentionally fully transparent.
-        val bottomPhoto = field.cell(field.width / 2, field.height - 1).toArgb()
-        val seamPage = page.getPixel(edgeX, page.height / 2)
-        assertEquals("No colour overlay is allowed on the actual artwork",
+        // The new design deliberately diffuses the last photo pixels
+        // BEFORE the visible photo edge. Comparing it to one untouched pixel
+        // falsely rejects correct blurring, especially on black + white art.
+        // The relevant seam invariant is continuity BETWEEN nearby rows.
+        val above = page.getPixel(edgeX, page.height / 2 - 1)
+        val below = page.getPixel(edgeX, page.height / 2)
+        assertEquals("Never paint a separate colour overlay on the photo",
             0, AndroidColor.alpha(photo.getPixel(edgeX, photo.height - 1)))
         for (shift in listOf(16, 8, 0)) {
-            assertTrue("Cover/page join must match the source edge, not a tinted overlay",
-                kotlin.math.abs(rgb(bottomPhoto, shift) - rgb(seamPage, shift)) < 26)
+            assertTrue("The blurred continuation cannot jump at the join",
+                kotlin.math.abs(rgb(above, shift) - rgb(below, shift)) < 13)
         }
         val upperY = (page.height * 0.17f).toInt()
         for (shift in listOf(16, 8, 0)) {

@@ -402,4 +402,16 @@ class CapsuleImmersiveContentTest {
         assertEquals(bright, immersivePageBaseColor(false, true, bright))
         assertEquals(IMMERSIVE_NEUTRAL_COLOR, immersivePageBaseColor(false, false, bright))
     }
+
+    @Test fun previousTrackColoursFadeWhileNewArtworkIsStillLoading() {
+        val current = "song-B|cover"
+        val previous = "song-A|cover"
+        assertEquals(0.42f,
+            immersiveSceneOpacity(previous, current, 0.95f, 0.42f), 0.0001f)
+        assertEquals(0f,
+            immersiveSceneOpacity(previous, current, 0.95f, 0f), 0.0001f)
+        assertEquals(0.95f,
+            immersiveSceneOpacity(current, current, 0.95f, 0f), 0.0001f)
+        assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS in 150..300)
+    }
 }

@@ -139,6 +139,16 @@ internal fun immersivePageBaseColor(presentingVideo: Boolean, hasArtwork: Boolea
 internal fun capsuleImmersiveVideoBackplateAlpha(progress: Float): Float =
     1f - capsulePhotoOpacity(progress, CapsuleVideoBlendStyle.IMMERSION)
 
+/** One cap for artwork and backdrop when a selected track has changed. */
+internal const val IMMERSIVE_STALE_SCENE_FADE_MS = 230
+internal fun immersiveSceneOpacity(
+    displayedKey: String?,
+    selectedKey: String,
+    incomingAlpha: Float,
+    staleAlpha: Float,
+): Float = (if (displayedKey == selectedKey) incomingAlpha else staleAlpha)
+    .coerceIn(0f, 1f)
+
 /** The source colour is the actual sampled lower crop. Never recolour its seam. */
 internal fun immersiveSeamColor(edge: Color, floor: Color): Color = edge
 
@@ -670,6 +680,25 @@ internal fun CapsuleImmersiveContent(
         // pair. Never fade to neutral, then mount a new bitmap 630ms later.
         var outgoingFrame by remember { mutableStateOf<ImmersiveGradientFrame?>(null) }
         val gradientAlpha = remember { Animatable(1f) }
+        val staleSceneAlpha = remember { Animatable(1f) }
+        // The next track may take seconds to decode. Never show a PREVIOUS
+        // song's gradient for that whole time. Fade both old photo and its
+        // page together, then show the new track's lightweight placeholder.
+        LaunchedEffect(visualKey) {
+            val previous = shownGradient?.key
+            if (previous == null || previous == visualKey) {
+                staleSceneAlpha.snapTo(1f)
+                return@LaunchedEffect
+            }
+            staleSceneAlpha.snapTo(1f)
+            staleSceneAlpha.animateTo(
+                0f, tween(durationMillis = IMMERSIVE_STALE_SCENE_FADE_MS),
+            )
+            if (shownGradient?.key == previous && previous != visualKey) {
+                shownGradient = null
+                outgoingFrame = null
+            }
+        }
         LaunchedEffect(
             visualKey, coverAndGradientReady, edge, floor,
             artworkTone.bottomTexture, artworkTone.displayUrl, visible, isVideo,
@@ -700,6 +729,9 @@ internal fun CapsuleImmersiveContent(
         // Only near-white, low-saturation covers use the slightly more
         // diffuse current technique to avoid a harsh white/grey seam.
         val frame = shownGradient
+        val displayedSceneAlpha = immersiveSceneOpacity(
+            frame?.key, visualKey, gradientAlpha.value, staleSceneAlpha.value,
+        )
         // The offscreen preloader may have decoded this cover successfully,
         // yet the visible AsyncImage can still lose its own Coil painter
         // during a GPU/surface lifecycle change. Rebind only that painter
@@ -867,7 +899,7 @@ internal fun CapsuleImmersiveContent(
         // rises from it at exactly the same optical progress as the cover,
         // with no hard base-colour jump when 'isVideo' flips.
         Box(Modifier.fillMaxSize().background(
-            immersivePageBaseColor(false, frame != null, pageFloor)
+            immersivePageBaseColor(false, frame?.key == visualKey, pageFloor)
         )) {
             if (!isVideo && outgoingFrame != null &&
                 (matchedPaint == null || gradientAlpha.value < 1f)
@@ -889,7 +921,7 @@ internal fun CapsuleImmersiveContent(
                     contentDescription = null,
                     contentScale = ContentScale.FillBounds,
                     modifier = Modifier.fillMaxSize().graphicsLayer {
-                        alpha = gradientAlpha.value
+                        alpha = displayedSceneAlpha
                     },
                 )
             }
@@ -1011,22 +1043,26 @@ internal fun CapsuleImmersiveContent(
                             alpha = capsuleImmersiveArtworkOpacity(
                                 frameMatchesTrack = frame.key == visualKey,
                                 hasPresentedVideo = keepVideoReturnArtworkOpaque,
-                                trackFadeAlpha = gradientAlpha.value,
+                                trackFadeAlpha = displayedSceneAlpha,
                             )
                         }
-                        .then(
-                            if (!isVideo) Modifier.drawWithCache {
-                                val fadeMask = Brush.verticalGradient(
-                                    0f to Color.White,
-                                    0.944f to Color.White,
-                                    1f to Color.Transparent,
-                                )
-                                onDrawWithContent {
-                                    drawContent()
-                                    drawRect(brush = fadeMask, blendMode = BlendMode.DstIn)
-                                }
-                            } else Modifier
-                        )
+                        // Don't switch this mask OFF the instant VIDEO is
+                        // selected: that previously revealed a hard stripe
+                        // halfway through the cover/video spring. The same
+                        // photo feather must exist for the whole morph.
+                        .drawWithCache {
+                            val fadeMask = Brush.verticalGradient(
+                                0f to Color.White,
+                                // The matching diffuse backdrop is already
+                                // present from 0.91 of the photo height.
+                                0.928f to Color.White,
+                                1f to Color.Transparent,
+                            )
+                            onDrawWithContent {
+                                drawContent()
+                                drawRect(brush = fadeMask, blendMode = BlendMode.DstIn)
+                            }
+                        }
                 ) {
                     if (frame.key == visualKey) {
                         // The 256px rescue image is required only until
@@ -1101,6 +1137,45 @@ internal fun CapsuleImmersiveContent(
 
                 }
             }
+        }
+
+        // Softly blur the LAST few percent of the photo with the SAME
+        // continuation texture, instead of a second arbitrary tinted bar.
+        // The fade rises above the edge and dies away again beneath it.
+        // It shares the morphing photo opacity, so it cannot flash at
+        // AUDIO/VIDEO transitions. Bitmap is already cached off-main.
+        // Keep the seam bloom attached to the outgoing photo while its
+        // whole scene fades. Dropping just this layer on mediaId change
+        // would cause one frame of visible hard-edged artwork.
+        if (frame != null) matchedPaint?.let { bitmap ->
+            Image(
+                bitmap = bitmap,
+                contentDescription = null,
+                contentScale = ContentScale.FillBounds,
+                modifier = Modifier.fillMaxSize()
+                    .graphicsLayer {
+                        compositingStrategy = CompositingStrategy.Offscreen
+                        alpha = displayedSceneAlpha * capsulePhotoOpacity(
+                            sharedVideoProgress.value, CapsuleVideoBlendStyle.IMMERSION,
+                        )
+                    }
+                    .drawWithCache {
+                        val join = coverFraction.coerceIn(0.05f, 0.95f)
+                        val seamBloomMask = Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            (join * 0.89f) to Color.Transparent,
+                            (join * 0.951f) to Color.White.copy(alpha = 0.32f),
+                            (join * 0.991f) to Color.White.copy(alpha = 0.56f),
+                            (join + 0.012f).coerceAtMost(1f) to Color.White.copy(alpha = 0.24f),
+                            (join + 0.038f).coerceAtMost(1f) to Color.Transparent,
+                            1f to Color.Transparent,
+                        )
+                        onDrawWithContent {
+                            drawContent()
+                            drawRect(brush = seamBloomMask, blendMode = BlendMode.DstIn)
+                        }
+                    },
+            )
         }
 
         /*

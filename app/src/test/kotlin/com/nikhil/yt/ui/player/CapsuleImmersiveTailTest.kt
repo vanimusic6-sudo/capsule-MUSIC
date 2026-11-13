@@ -162,4 +162,32 @@ class CapsuleImmersiveTailTest {
         assertTrue("High-frequency dark bars must not remain visible as vertical beams",
             kotlin.math.abs(AndroidColor.blue(left) - AndroidColor.blue(right)) < 13)
     }
+
+    @Test fun realPhotoToBlurTransitionHasNoSingleRowColourJump() {
+        val source = CapsuleColorField(96, 12, List(96 * 12) { i ->
+            val x = i % 96
+            when {
+                x < 31 -> Color(0xFF080B15)
+                x < 69 -> Color(0xFF557598)
+                else -> Color(0xFFAA4D65)
+            }
+        })
+        val image = immersiveSpatialFieldBitmap(
+            bands = emptyList(),
+            fallbackFloor = Color(0xFF1A1C22),
+            coverFraction = 0.55f, tailFraction = 0.06f,
+            texture = 0.3f, landscape = false,
+            nearWhite = false, photoOverlay = false, edgeMap = source,
+        ).asAndroidBitmap()
+        val before = (0.55f * image.height).toInt() - 1
+        val after = before + 1
+        for (x in listOf(8, image.width / 2, image.width - 9)) {
+            val above = image.getPixel(x, before)
+            val below = image.getPixel(x, after)
+            assertTrue("No abrupt switch from unblurred photo row to diffuse page",
+                abs(AndroidColor.red(above) - AndroidColor.red(below)) < 13)
+            assertTrue("No blue-channel seam at album boundary",
+                abs(AndroidColor.blue(above) - AndroidColor.blue(below)) < 13)
+        }
+    }
 }

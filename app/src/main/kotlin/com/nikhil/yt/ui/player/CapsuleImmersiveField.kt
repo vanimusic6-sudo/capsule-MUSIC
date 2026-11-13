@@ -148,7 +148,10 @@ internal fun immersiveSpatialFieldBitmap(
     // Real photo alpha dissolves over its bottom 5%. The SAME backdrop has
     // to extend under those pixels, otherwise an offscreen mask would merely
     // expose a dark rectangle instead of the continuation of the photograph.
-    val photoStart = cover - cover * 0.050f
+    // The diffuse photo-colour layer must BEGIN before the photo alpha
+    // mask starts. Otherwise transparent photo pixels expose a uniform dark
+    // floor and produce an artificial horizontal seam just above the blur.
+    val photoStart = cover - cover * 0.090f
 
     // We cache only a few increasingly diffused levels. The first one is a
     // near-faithful sample of the *last* visible row; later levels borrow
@@ -160,8 +163,11 @@ internal fun immersiveSpatialFieldBitmap(
         // continuation requested for this design. Diffusion grows from the
         // very first visible continuation row, then spreads to the whole
         // bottom of the image without inventing colours.
-        val rx = 11 + level * 9
-        val ry = (2 + level).coerceAtMost(source.height - 1)
+        // Large features stay visible, but narrow hair/face columns blend
+        // into a soft *cloud* before the first background row. Keep source
+        // hues: this is spatial diffusion, not RGB-to-grey desaturation.
+        val rx = 23 + level * 7
+        val ry = (4 + level).coerceAtMost(source.height - 1)
         FloatArray(source.width * 3).also { output ->
             for (x in 0 until source.width) {
                 var r = 0f
@@ -242,7 +248,14 @@ internal fun immersiveSpatialFieldBitmap(
                         component(sampleX1, photoY0) * sampleXmix
                     val bottom = component(sampleX0, photoY1) * (1f - sampleXmix) +
                         component(sampleX1, photoY1) * sampleXmix
-                    return byte(top * (1f - photoYmix) + bottom * photoYmix)
+                    // At the photo join, the source row and the first blurred
+                    // level MUST be the same. Previously the last source
+                    // row switched to a widened convolution in ONE scanline,
+                    // drawing a visible dark/bright stripe on every cover.
+                    val raw = top * (1f - photoYmix) + bottom * photoYmix
+                    val diffusion = smoothEdge(photoStart, cover, y)
+                    return byte(raw * (1f - diffusion) +
+                        channel(0, sx, c) * diffusion)
                 }
                 val start = channel(lo, sx, c)
                 val blurred = start + (channel(hi, sx, c) - start) * mix
