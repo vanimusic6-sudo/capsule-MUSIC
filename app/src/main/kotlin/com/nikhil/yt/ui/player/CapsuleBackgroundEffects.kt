@@ -169,7 +169,10 @@ internal fun CapsuleProceduralBackground(
                     ) else artwork.map { lerp(it, Color(0xFF0B1435), 0.52f) }
                 CapsuleBackgroundEffect.NEBULA ->
                     artwork.map { lerp(capsuleMutedArtworkColor(it), Color(0xFFECE9FA), 0.31f) }
-                else -> artwork.map(::capsuleMutedArtworkColor)
+                // The scene palette already represents actual cover pixels.
+                // Further desaturation and mixing with artificial grey makes
+                // red/green/white sleeves indistinguishable on the wallpaper.
+                else -> artwork
             }
         }
     val motionEnabled = LocalCapsuleBackgroundMotionEnabled.current
@@ -194,9 +197,9 @@ internal fun CapsuleProceduralBackground(
         // drift frames instead of allocating identical brushes and shaders at every clock tick.
         val baseBrush = when (effect) {
             CapsuleBackgroundEffect.COLOR_FLOW -> Brush.linearGradient(
-                0f to deepColor(lerp(palette[0], palette[1], 0.14f), 0.46f),
-                0.52f to deepColor(lerp(palette[1], palette[2], 0.30f), 0.56f),
-                1f to deepColor(palette[2], 0.75f),
+                0f to deepColor(palette[0], 0.68f),
+                0.52f to deepColor(palette[0], 0.80f),
+                1f to deepColor(palette[0], 0.93f),
                 start = Offset.Zero, end = Offset(size.width, size.height),
             )
             CapsuleBackgroundEffect.CAPSULE_STAR ->
@@ -213,9 +216,11 @@ internal fun CapsuleProceduralBackground(
         }
         val extent = max(size.width, size.height)
         val movingLights = when (effect) {
-            CapsuleBackgroundEffect.COLOR_FLOW -> palette.mapIndexed { index, color ->
-                CachedSoftLight(color, extent * (0.78f - index * 0.08f),
-                    if (index == 0) 0.48f else 0.30f, if (compact) 0.34f else 1.1f)
+            CapsuleBackgroundEffect.COLOR_FLOW -> listOf(
+                palette[1], palette[2], palette[0],
+            ).mapIndexed { index, color ->
+                CachedSoftLight(color, extent * (0.76f - index * 0.08f),
+                    if (index == 0) 0.59f else 0.29f, if (compact) 0.34f else 1.1f)
             }
             CapsuleBackgroundEffect.NEBULA -> palette.mapIndexed { index, color ->
                 CachedSoftLight(lerp(color, Color.White, 0.35f), extent * (0.74f + index * 0.07f),
