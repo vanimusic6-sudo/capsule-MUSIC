@@ -13,19 +13,24 @@ private class SceneBucket {
     var red = 0f
     var green = 0f
     var blue = 0f
+    var totalWeight = 0f
     var saturated = 0f
     var brightness = 0f
 
     fun add(red: Float, green: Float, blue: Float, sat: Float, value: Float) {
         count++
-        this.red += red
-        this.green += green
-        this.blue += blue
+        // A highlighted real red petal should retain more influence than
+        // a shadowy brown pixel in the SAME hue family. Still no invented hue.
+        val weight = if (sat >= 0.17f) 0.52f + sat * 0.92f + value * 0.48f else 1f
+        this.red += red * weight
+        this.green += green * weight
+        this.blue += blue * weight
+        totalWeight += weight
         saturated += sat
         brightness += value
     }
 
-    fun color() = Color(red / count, green / count, blue / count)
+    fun color() = Color(red / totalWeight, green / totalWeight, blue / totalWeight)
     val saturation get() = saturated / count.coerceAtLeast(1)
     val value get() = brightness / count.coerceAtLeast(1)
 }
