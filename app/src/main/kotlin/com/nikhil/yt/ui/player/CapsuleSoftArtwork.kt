@@ -80,7 +80,11 @@ internal fun capsuleSoftArtwork(source: Bitmap, aspect: Float, landscape: Boolea
         val lo = level.toInt().coerceAtMost(levels.lastIndex)
         val hi = (lo + 1).coerceAtMost(levels.lastIndex)
         val mix = level - lo
-        val alpha = (((fraction - softStart) / (IMMERSIVE_SOFT_ARTWORK_FRACTION * 0.22f)).coerceIn(0f, 1f)).let { it * it * (3f - 2f * it) }
+        // Rounding outputStart down can put the first pixel centre just past
+        // softStart. Keep the raster's actual top endpoint transparent too.
+        val alpha = if (y == outputStart) 0f else
+            (((fraction - softStart) / (IMMERSIVE_SOFT_ARTWORK_FRACTION * 0.22f)).coerceIn(0f, 1f))
+                .let { it * it * (3f - 2f * it) }
         for (x in 0 until width) {
             val index = (y - begin) * width + x
             var pixel = (alpha * 255f).roundToInt() shl 24
