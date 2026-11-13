@@ -95,6 +95,17 @@ internal fun capsuleDominantEdgeColor(field: CapsuleColorField): Color {
  * Two tiny textures are computed once on Dispatchers.Default when the cover
  * changes. No fragment/bitmap blur runs while the song is playing.
  */
+/**
+ * SCENE CONTINUATION v3.
+ *
+ * This is deliberately NOT a palette gradient or a colour overlay on the
+ * photo. The backdrop takes the last visible rows of the real cropped image,
+ * spreads them spatially as the distance grows, and converges on the scene's
+ * separate, coherent dark floor. The actual album picture remains untouched.
+ *
+ * One low-resolution bitmap per selected cover, computed on a worker thread.
+ * No dynamic blur, hidden Canvas layers, GPU readbacks or per-frame work.
+ */
 internal fun immersiveSpatialFieldBitmap(
     bands: List<Color>,
     fallbackFloor: Color,
@@ -107,6 +118,18 @@ internal fun immersiveSpatialFieldBitmap(
     field: CapsuleColorField? = null,
     edgeMap: CapsuleColorField? = null,
 ): ImageBitmap {
+    val width = EDGE_WIDTH
+    val height = EDGE_HEIGHT
+    val pixels = IntArray(width * height)
+
+    // Old callers can request a photographic overlay. Deliberately return
+    // transparent pixels: tinting the photo itself was the recurring stripe.
+    if (photoOverlay) {
+        return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            .apply { setPixels(pixels, 0, width, 0, 0, width, height) }
+            .asImageBitmap()
+    }
+
     val source = edgeMap ?: field ?: CapsuleColorField(
         CAPSULE_FIELD_COLUMNS, CAPSULE_FIELD_ROWS,
         List(CAPSULE_FIELD_COLUMNS * CAPSULE_FIELD_ROWS) { index ->
@@ -116,114 +139,75 @@ internal fun immersiveSpatialFieldBitmap(
             )
         },
     )
-    val cover = coverFraction.coerceIn(0.05f, 0.95f)
-    val regularEnd = capsuleImmersiveBleedEnd(cover, tailFraction)
-    val end = if (nearWhite) cover + (regularEnd - cover) * 0.76f else regularEnd
+    val cover = coverFraction.coerceIn(0.05f, 0.90f)
+    // A cinematic reflection takes more than 60px to settle; a very short
+    // fade looked like an opaque colour strip. It must nevertheless finish
+    // before the transport block so white controls stay fully legible.
+    val dissolve = (tailFraction * 1.7f).coerceIn(0.105f, 0.145f)
+    val end = (cover + dissolve).coerceAtMost(0.90f)
 
-    val width = EDGE_WIDTH
-    val height = EDGE_HEIGHT
-    val pixels = IntArray(width * height)
-    fun byte(v: Float): Int = (v.coerceIn(0f, 1f) * 255f + 0.5f).toInt()
-
-    // The edge map is already sampled from the visible, overscanned crop.
-    // Convolve a progressively larger 2D area into just SEVEN cached levels.
-    // Each result is reused across all output rows rather than blurred again.
-    val levels = if (photoOverlay) emptyArray<FloatArray>() else Array(7) { level ->
-        val rx = 1 + level * 2
-        val ry = level.coerceAtMost(source.height - 1)
+    // We cache only a few increasingly diffused levels. The first one is a
+    // near-faithful sample of the *last* visible row; later levels borrow
+    // from higher rows and further away neighbours in TWO dimensions.
+    val levels = Array(8) { level ->
+        val rx = level * 3
+        val ry = (level + 1) / 2
         FloatArray(source.width * 3).also { output ->
             for (x in 0 until source.width) {
-                var red = 0f
-                var green = 0f
-                var blue = 0f
+                var r = 0f
+                var g = 0f
+                var b = 0f
                 var total = 0f
-                for (dx in -rx..rx) for (dy in 0..ry) {
-                    val cell = source.cell(x + dx, source.height - 1 - dy)
-                    val weight = (rx + 1 - kotlin.math.abs(dx)).toFloat() *
-                        (ry + 1 - dy).toFloat()
-                    red += cell.red * weight
-                    green += cell.green * weight
-                    blue += cell.blue * weight
-                    total += weight
+                for (dy in 0..ry) for (dx in -rx..rx) {
+                    val sample = source.cell(x + dx, source.height - 1 - dy)
+                    val horizontal = (rx + 1 - kotlin.math.abs(dx)).toFloat()
+                    val vertical = (ry + 1 - dy).toFloat()
+                    val w = horizontal * vertical
+                    r += sample.red * w
+                    g += sample.green * w
+                    b += sample.blue * w
+                    total += w
                 }
-                output[x * 3] = red / total
-                output[x * 3 + 1] = green / total
-                output[x * 3 + 2] = blue / total
+                output[3 * x] = r / total
+                output[3 * x + 1] = g / total
+                output[3 * x + 2] = b / total
             }
         }
     }
-
-    // The first colour below the photo is its real lower edge. The median
-    // is used only to calm small isolated lines deeper in the continuation.
-    val dominant = capsuleDominantEdgeColor(source)
-    val firstRow = source.height - 1
-
-    for (row in 0 until height) {
-        val y = (row + 0.5f) / height
-        if (photoOverlay) {
-            // Earlier versions faded an OPAQUE flat colour over the bottom
-            // 20-25% of the image. That WAS the broad beige strip.
-            // Only the final ~3.8% is feathered into the matching edge.
-            // The old 95%-opaque edge band showed as a thin dark seam on
-            // light covers. Leave nearly all artwork intact; a narrow, low-
-            // opacity feather only tucks the last pixels into the backdrop.
-            val alpha = smoothEdge(0.982f, 1f, y) * 0.72f
-            if (alpha <= 0f) continue
-            for (x in 0 until width) {
-                val sx = (x + 0.5f) / width * (source.width - 1)
-                val x0 = sx.toInt().coerceIn(0, source.width - 1)
-                val x1 = (x0 + 1).coerceAtMost(source.width - 1)
-                val t = sx - x0
-                val a = source.cell(x0, firstRow)
-                val b = source.cell(x1, firstRow)
-                pixels[row * width + x] = (byte(alpha) shl 24) or
-                    (byte(a.red + (b.red - a.red) * t) shl 16) or
-                    (byte(a.green + (b.green - a.green) * t) shl 8) or
-                    byte(a.blue + (b.blue - a.blue) * t)
-            }
+    fun channel(level: Int, pos: Float, c: Int): Float {
+        val x0 = pos.toInt().coerceIn(0, source.width - 1)
+        val x1 = (x0 + 1).coerceAtMost(source.width - 1)
+        val frac = pos - x0
+        val row = levels[level]
+        return row[3 * x0 + c] * (1f - frac) + row[3 * x1 + c] * frac
+    }
+    fun byte(value: Float) = (value.coerceIn(0f, 1f) * 255f + 0.5f).toInt()
+    val floorPixel = (0xFF shl 24) or
+        (byte(fallbackFloor.red) shl 16) or
+        (byte(fallbackFloor.green) shl 8) or byte(fallbackFloor.blue)
+    val floorChannels = floatArrayOf(fallbackFloor.red, fallbackFloor.green, fallbackFloor.blue)
+    for (py in 0 until height) {
+        val y = (py + 0.5f) / height
+        if (y < cover || y >= end) {
+            java.util.Arrays.fill(pixels, py * width, (py + 1) * width, floorPixel)
             continue
         }
-
-        // Everything above the cover is occluded by the photo. Use its
-        // eventual floor colour rather than computing hidden soft lights.
-        if (y < cover) {
-            val fill = (0xFF shl 24) or
-                (byte(fallbackFloor.red) shl 16) or
-                (byte(fallbackFloor.green) shl 8) or byte(fallbackFloor.blue)
-            java.util.Arrays.fill(pixels, row * width, (row + 1) * width, fill)
-            continue
-        }
-        // Start diffusion fractionally beneath the opaque cover. The 1dp
-        // artwork overlap hides resampling gaps without drawing a stripe.
-        val seamStart = (cover - 0.003f).coerceAtLeast(0f)
-        val progress = smoothEdge(seamStart, end, y)
-        val levelPos = progress * (levels.size - 1)
-        val lo = levelPos.toInt().coerceIn(0, levels.lastIndex)
+        val p = smoothEdge(cover, end, y)
+        // Diffusion spreads quickly at the beginning, while the darkening
+        // converges smoothly toward the floor with zero derivative at end.
+        val levelPosition = kotlin.math.sqrt(p) * (levels.size - 1)
+        val lo = levelPosition.toInt().coerceIn(0, levels.lastIndex)
         val hi = (lo + 1).coerceAtMost(levels.lastIndex)
-        val mix = levelPos - lo
-        val softened = progress * 0.46f
-
-        for (x in 0 until width) {
-            val sx = (x + 0.5f) / width * (source.width - 1)
-            val x0 = sx.toInt().coerceIn(0, source.width - 1)
-            val x1 = (x0 + 1).coerceAtMost(source.width - 1)
-            val t = sx - x0
-            fun colour(channel: Int, average: Float, target: Float): Int {
-                val a = levels[lo][x0 * 3 + channel] * (1f - t) +
-                    levels[lo][x1 * 3 + channel] * t
-                val b = levels[hi][x0 * 3 + channel] * (1f - t) +
-                    levels[hi][x1 * 3 + channel] * t
-                val local = a + (b - a) * mix
-                val diffused = local * (1f - softened) + average * softened
-                // Start at the photo edge, end at the EXACT background
-                // colour already used by Box: there cannot be a floor seam.
-                return byte(diffused * (1f - progress) + target * progress)
+        val mix = levelPosition - lo
+        for (px in 0 until width) {
+            val sx = (px + 0.5f) / width * (source.width - 1)
+            fun value(c: Int): Int {
+                val start = channel(lo, sx, c)
+                val blurred = start + (channel(hi, sx, c) - start) * mix
+                return byte(blurred * (1f - p) + floorChannels[c] * p)
             }
-            val r = colour(0, dominant.red, fallbackFloor.red)
-            val g = colour(1, dominant.green, fallbackFloor.green)
-            val b = colour(2, dominant.blue, fallbackFloor.blue)
-            pixels[row * width + x] = (0xFF shl 24) or
-                (r shl 16) or (g shl 8) or b
+            pixels[py * width + px] = (0xFF shl 24) or
+                (value(0) shl 16) or (value(1) shl 8) or value(2)
         }
     }
     return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
