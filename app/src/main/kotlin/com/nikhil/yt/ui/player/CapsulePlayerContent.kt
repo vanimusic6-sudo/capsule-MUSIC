@@ -64,6 +64,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
@@ -1939,6 +1940,8 @@ internal fun CapsuleThinSlider(
     val latestOnValueChange by rememberUpdatedState(onValueChange)
     val latestOnValueChangeFinished by rememberUpdatedState(onValueChangeFinished)
 
+    val sliderClip = remember { androidx.compose.ui.graphics.Path() }
+    val sliderClipSize = remember { floatArrayOf(-1f, -1f, -1f) }
     Canvas(
         modifier =
             modifier
@@ -2045,14 +2048,22 @@ internal fun CapsuleThinSlider(
         val displayFraction = if (smoothPlayback) smoothProgress.value else fraction
         val progressWidth = (size.width * displayFraction).coerceIn(0f, size.width)
         if (progressWidth > 0f) {
-            drawRoundRect(
-                color = active,
-                topLeft = topLeft,
-                size = Size(progressWidth, trackPx),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(
-                    minOf(halfHeight, progressWidth / 2f),
-                ),
-            )
+            if (sliderClipSize[0] != size.width || sliderClipSize[1] != trackPx || sliderClipSize[2] != size.height) {
+                sliderClip.reset()
+                sliderClip.addRoundRect(androidx.compose.ui.geometry.RoundRect(
+                    androidx.compose.ui.geometry.Rect(topLeft, trackSize), rounding,
+                ))
+                sliderClipSize[0] = size.width
+                sliderClipSize[1] = trackPx
+                sliderClipSize[2] = size.height
+            }
+            clipPath(sliderClip) {
+                drawRoundRect(
+                    color = active, topLeft = topLeft,
+                    size = Size(progressWidth, trackPx),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(minOf(halfHeight, progressWidth / 2f)),
+                )
+            }
         }
     }
 }

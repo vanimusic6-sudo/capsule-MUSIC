@@ -424,10 +424,13 @@ class CapsuleVideoMorphPixelsTest {
             edgeMap = source.capsuleImmersiveVisibleTail(320f / 280f, false,
                 fraction = 1f - IMMERSIVE_DIFFUSION_START),
         )
+        val softArtwork = capsuleSoftArtwork(source, 320f / 280f, false)
         compose.setContent {
             Box(Modifier.size(320.dp, 440.dp).testTag("media-slot")) {
                 ImmersiveAudioScene(continuation, 280.dp, sceneAlpha = { 1f }) {
                     Image(cover, contentDescription = null, contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize())
+                    Image(softArtwork, contentDescription = null, contentScale = ContentScale.FillBounds,
                         modifier = Modifier.fillMaxSize())
                 }
             }
@@ -446,6 +449,29 @@ class CapsuleVideoMorphPixelsTest {
                 }
             }
         } finally { image.recycle() }
+    }
+
+    @Test fun tinyProgressCannotProtrudeOutsideTheEmptyCapsuleSilhouette() {
+        val position = mutableStateOf(0f)
+        compose.setContent {
+            Box(Modifier.size(320.dp, 80.dp).testTag("media-slot")) {
+                CapsuleThinSlider(value = position.value, valueRange = 0f..1f, enabled = true,
+                    activeColor = Color.White, inactiveColor = Color.Gray,
+                    onValueChange = {}, onValueChangeFinished = {},
+                    modifier = Modifier.fillMaxSize(), trackHeight = 8.dp)
+            }
+        }
+        val empty = snapshot("slider-empty-cap")
+        compose.runOnIdle { position.value = 0.006f }
+        val tiny = snapshot("slider-tiny-progress")
+        try {
+            for (y in 0 until empty.height) for (x in 0 until 12) {
+                if (AndroidColor.alpha(empty.getPixel(x, y)) == 0) {
+                    assertTrue("Tiny progress must share the track's original rounded outline",
+                        AndroidColor.alpha(tiny.getPixel(x, y)) <= 1)
+                }
+            }
+        } finally { empty.recycle(); tiny.recycle() }
     }
 
     private fun assertRectangularBlend(name: String) {

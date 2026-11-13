@@ -99,6 +99,7 @@ internal fun capsuleFieldAt(
 internal fun capsuleFieldChanged(
     from: CapsuleColorField?,
     to: CapsuleColorField,
+    threshold: Float = 0.018f,
 ): Boolean {
     if (from == null || from.width != to.width || from.height != to.height) return true
     var delta = 0f
@@ -107,5 +108,5 @@ internal fun capsuleFieldChanged(
         val b = to.cells[i]
         delta += abs(a.red - b.red) + abs(a.green - b.green) + abs(a.blue - b.blue)
     }
-    return delta / (from.cells.size * 3f) > 0.018f
+    return delta / (from.cells.size * 3f) > threshold
 }

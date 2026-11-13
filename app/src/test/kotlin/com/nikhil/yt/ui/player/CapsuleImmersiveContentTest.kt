@@ -414,7 +414,7 @@ class CapsuleImmersiveContentTest {
             immersiveSceneOpacity(previous, current, 0.95f, 0f), 0.0001f)
         assertEquals(0.95f,
             immersiveSceneOpacity(current, current, 0.95f, 0f), 0.0001f)
-        assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS in 400..600)
+        assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS in 600..800)
     }
     @Test fun metadataTurnsDirtyGreyOnlyOverNearWhiteBackground() {
         val white = immersiveMetadataInk(Color.White)
@@ -429,9 +429,9 @@ class CapsuleImmersiveContentTest {
     }
 
     @Test fun trackRevealIsLongEnoughToReadWithoutHoldingOldArtworkForSeconds() {
-        assertTrue(IMMERSIVE_TRACK_FADE_MS in 400..550)
+        assertTrue(IMMERSIVE_TRACK_FADE_MS in 500..650)
         assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS >= IMMERSIVE_TRACK_FADE_MS)
-        assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS <= 600)
+        assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS <= 800)
     }
 
     @Test fun whiteMetadataKeepsContrastForTitleAndTranslucentArtist() {

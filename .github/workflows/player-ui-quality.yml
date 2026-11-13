@@ -48,6 +48,7 @@ jobs:
           --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveTailTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleVideoAmbientTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleVideoAmbientResumeTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleVideoColourMotionTest'
           --tests 'com.nikhil.yt.ui.player.ImmersiveArtworkBackgroundTest'
           --tests 'com.nikhil.yt.ui.player.ImmersiveVideoArtworkClipRegressionTest'
           --tests 'com.nikhil.yt.ui.CapsuleMotionTest'

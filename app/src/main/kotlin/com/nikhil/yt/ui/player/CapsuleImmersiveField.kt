@@ -167,6 +167,15 @@ internal fun immersiveSpatialFieldBitmap(
     // We cache only a few increasingly diffused levels. The first one is a
     // near-faithful sample of the *last* visible row; later levels borrow
     // from higher rows and further away neighbours in TWO dimensions.
+    val edgeLight = (0 until source.width).flatMap { x ->
+        (0 until minOf(8, source.height)).map { dy ->
+            val c = source.cell(x, source.height - 1 - dy)
+            maxOf(c.red, c.green, c.blue)
+        }
+    }.sorted()
+    val medianLight = edgeLight[edgeLight.size / 2]
+    val brightCoverage = edgeLight.count { it > 0.82f }.toFloat() / edgeLight.size
+    val suppressMarks = medianLight < 0.5f && brightCoverage < 0.18f
     val levels = Array(8) { level ->
         // Start with a BROAD two-dimensional area even at the seam:
         // projecting one source pixel below the image produces long striped
@@ -186,7 +195,13 @@ internal fun immersiveSpatialFieldBitmap(
                 var b = 0f
                 var total = 0f
                 for (dy in 0..ry) for (dx in -rx..rx) {
-                    val sample = source.cell(x + dx, source.height - 1 - dy)
+                    val sx = x + dx
+                    if (sx !in 0 until source.width) continue
+                    val raw = source.cell(sx, source.height - 1 - dy)
+                    val light = maxOf(raw.red, raw.green, raw.blue)
+                    val limit = if (suppressMarks) maxOf(0.28f, medianLight + 0.20f) else 1f
+                    val exposure = if (light > limit) limit / light else 1f
+                    val sample = Color(raw.red * exposure, raw.green * exposure, raw.blue * exposure)
                     val horizontal = (rx + 1 - kotlin.math.abs(dx)).toFloat()
                     val vertical = (ry + 1 - dy).toFloat()
                     val w = horizontal * vertical

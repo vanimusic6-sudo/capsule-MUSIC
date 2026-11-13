@@ -1,7 +1,7 @@
 /*
  * Capsule MUSIC — opt-in live video ambient colours.
- * No second Media3 decoder, network request, frame listener or continuous GPU
- * blur: the existing TextureView is sampled as a tiny bitmap only when visible.
+ * The existing decoder signals new frames. One tiny reused readback buffer
+ * supplies spatial colour motion only while the full player is visible.
  */
 package com.nikhil.yt.ui.player
 
@@ -11,8 +11,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import kotlin.math.abs
 
-internal const val VIDEO_AMBIENT_CAPTURE_INTERVAL_MS = 700L
-internal const val VIDEO_AMBIENT_CALM_CAPTURE_INTERVAL_MS = 1_250L
+internal const val VIDEO_AMBIENT_CAPTURE_INTERVAL_MS = 100L
 internal const val VIDEO_AMBIENT_SAMPLE_WIDTH = 48
 internal const val VIDEO_AMBIENT_SAMPLE_HEIGHT = 28
 
@@ -75,7 +74,7 @@ internal fun capsuleVideoAmbientFrameFromBitmap(bitmap: Bitmap, mediaId: String)
     // Keep the last valid colours during black cuts / unstable first frames.
     if (nonBlack < 4) return null
     // The image's Y structure matters just as much as left/right colours.
-    // This small 12x10 grid is our REAL input, not seven painted stripes.
+    // This small 20x16 grid is our REAL input, not seven painted stripes.
     val field = bitmap.capsuleColorField(
         width.toFloat() / height, video = true, pixelBuffer = pixels,
     )
