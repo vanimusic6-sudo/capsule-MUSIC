@@ -67,18 +67,20 @@ internal fun capsuleSoftArtwork(source: Bitmap, aspect: Float, landscape: Boolea
         }
         return from
     }
-    val levels = listOf(original, blur(original, 2), blur(original, 5), blur(original, 10))
+    // Coverage already blends against the sharp original underneath. Keeping
+    // an additional sharp level here delayed the actual diffusion a second time.
+    val levels = listOf(blur(original, 2), blur(original, 5), blur(original, 10))
     val outputHeight = height - outputStart
     val output = IntArray(width * outputHeight)
     for (y in outputStart until height) {
         val fraction = (y + 0.5f) / height
-        val t = ((fraction - softStart) / (IMMERSIVE_SOFT_ARTWORK_FRACTION * 0.90f)).coerceIn(0f, 1f)
+        val t = ((fraction - softStart) / (IMMERSIVE_SOFT_ARTWORK_FRACTION * 0.30f)).coerceIn(0f, 1f)
         val eased = t * t * (3f - 2f * t)
         val level = eased * (levels.size - 1)
         val lo = level.toInt().coerceAtMost(levels.lastIndex)
         val hi = (lo + 1).coerceAtMost(levels.lastIndex)
         val mix = level - lo
-        val alpha = (((fraction - softStart) / (IMMERSIVE_SOFT_ARTWORK_FRACTION * 0.65f)).coerceIn(0f, 1f)).let { it * it * (3f - 2f * it) }
+        val alpha = (((fraction - softStart) / (IMMERSIVE_SOFT_ARTWORK_FRACTION * 0.22f)).coerceIn(0f, 1f)).let { it * it * (3f - 2f * it) }
         for (x in 0 until width) {
             val index = (y - begin) * width + x
             var pixel = (alpha * 255f).roundToInt() shl 24

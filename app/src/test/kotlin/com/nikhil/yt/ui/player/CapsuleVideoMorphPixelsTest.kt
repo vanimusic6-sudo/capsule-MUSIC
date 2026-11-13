@@ -450,6 +450,51 @@ class CapsuleVideoMorphPixelsTest {
         } finally { image.recycle() }
     }
 
+    @Test fun strongBlurRemovesVisibleDetailBeforeThePhotoMaskHidesIt() {
+        val source = Bitmap.createBitmap(320, 280, Bitmap.Config.ARGB_8888)
+        for (y in 0 until source.height) for (x in 0 until source.width) {
+            source.setPixel(x, y, if ((x / 16) % 2 == 0) AndroidColor.WHITE else AndroidColor.BLACK)
+        }
+        val background = Bitmap.createBitmap(2, 2, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(AndroidColor.rgb(86, 86, 86))
+        }.asImageBitmap()
+        val cover = source.asImageBitmap()
+        val soft = capsuleSoftArtwork(source, 320f / 280f, false)
+        val enabled = mutableStateOf(false)
+        compose.setContent {
+            Box(Modifier.size(320.dp, 440.dp).testTag("media-slot")) {
+                ImmersiveAudioScene(background, 280.dp, sceneAlpha = { 1f }) {
+                    Image(cover, contentDescription = null, contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize())
+                    if (enabled.value) ImmersiveSoftArtwork(soft, 280.dp)
+                }
+            }
+        }
+        val before = snapshot("soft-detail-before")
+        compose.runOnIdle { enabled.value = true }
+        val after = snapshot("soft-detail-visible")
+        fun contrast(image: Bitmap): Int {
+            // 88% is still visibly photographic. Testing the last row alone
+            // used to pass even though the photo mask hid almost all blur.
+            val y = (image.height * 281f / 440f * 0.88f).roundToInt()
+            val values = (image.width / 4 until image.width * 3 / 4).map { x ->
+                AndroidColor.red(image.getPixel(x, y))
+            }
+            return requireNotNull(values.maxOrNull()) - requireNotNull(values.minOrNull())
+        }
+        try {
+            val sharpContrast = contrast(before)
+            assertTrue("The comparison row must still contain visible photo detail", sharpContrast > 20)
+            assertTrue("Strong diffusion must happen before the image becomes transparent",
+                contrast(after) < sharpContrast * 0.60f)
+            val untouchedY = (after.height * 280f / 440f * 0.80f).roundToInt()
+            for (x in after.width / 4 until after.width * 3 / 4) {
+                assertEquals("The blur must not creep upwards", before.getPixel(x, untouchedY),
+                    after.getPixel(x, untouchedY))
+            }
+        } finally { before.recycle(); after.recycle() }
+    }
+
     @Test fun tinyProgressCannotProtrudeOutsideTheEmptyCapsuleSilhouette() {
         val position = mutableStateOf(0f)
         compose.setContent {
