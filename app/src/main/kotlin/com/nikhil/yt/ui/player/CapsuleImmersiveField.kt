@@ -154,8 +154,12 @@ internal fun immersiveSpatialFieldBitmap(
     // near-faithful sample of the *last* visible row; later levels borrow
     // from higher rows and further away neighbours in TWO dimensions.
     val levels = Array(8) { level ->
-        val rx = level * 3
-        val ry = (level + 1) / 2
+        // Close to the photo use the true edge; immediately afterwards
+        // spread any tiny black figures, faces or text sideways across a
+        // larger neighbourhood. Previously rx=3..21 was too narrow for
+        // 96 samples and drew tall pixel-coloured "light pillars".
+        val rx = if (level == 0) 0 else 2 + level * 5
+        val ry = if (level == 0) 0 else 1 + level.coerceAtMost(source.height - 2)
         FloatArray(source.width * 3).also { output ->
             for (x in 0 until source.width) {
                 var r = 0f
@@ -205,9 +209,10 @@ internal fun immersiveSpatialFieldBitmap(
         val lo = levelPosition.toInt().coerceIn(0, levels.lastIndex)
         val hi = (lo + 1).coerceAtMost(levels.lastIndex)
         val mix = levelPosition - lo
-        val illumination = if (withinPhoto) 1f else
-            1f - (if (nearWhite) 0.67f else 0.52f) *
-                smoothEdge(cover, (cover + 0.085f).coerceAtMost(end), y)
+        // One slow luminous falloff shared with the colour continuation.
+        // A second independent 8.5%-tall brightness ramp made a dark
+        // horizontal band and abruptly erased the scene below the title.
+        val illumination = if (withinPhoto) 1f else 1f - 0.13f * p
         val photoDistance = if (withinPhoto)
             smoothEdge(photoStart, cover, y) else 1f
         val photoRow = (source.height - 1f -
