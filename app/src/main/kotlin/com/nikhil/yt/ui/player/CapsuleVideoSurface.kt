@@ -195,11 +195,14 @@ private fun CapsuleVideoTextureOutput(
                 VIDEO_AMBIENT_SAMPLE_HEIGHT, Bitmap.Config.ARGB_8888)
             val frames = Channel<Long>(Channel.CONFLATED)
             val decoder = player as? ExoPlayer
+            // Snapshot ownership for this effect. On pause the Compose state
+            // already reads false while the cancelled effect runs its finally.
+            val listeningForFrames = videoActuallyPlaying
             val metadata = VideoFrameMetadataListener { _, releaseTimeNs, _, _ ->
                 frames.trySend(releaseTimeNs)
             }
             val draws = ViewTreeObserver.OnDrawListener { frames.trySend(System.nanoTime()) }
-            if (videoActuallyPlaying) {
+            if (listeningForFrames) {
                 if (decoder != null) decoder.setVideoFrameMetadataListener(metadata)
                 else view.viewTreeObserver.addOnDrawListener(draws)
             }
@@ -218,7 +221,7 @@ private fun CapsuleVideoTextureOutput(
                 return true
             }
             try {
-                if (!videoActuallyPlaying) {
+                if (!listeningForFrames) {
                     val retained = retention.frame.value?.takeIf {
                         it.mediaId == player.currentMediaItem?.mediaId
                     }?.bitmap
@@ -257,7 +260,7 @@ private fun CapsuleVideoTextureOutput(
                     }
                 }
             } finally {
-                if (videoActuallyPlaying) {
+                if (listeningForFrames) {
                     if (decoder != null) decoder.clearVideoFrameMetadataListener(metadata)
                     else if (view.viewTreeObserver.isAlive) view.viewTreeObserver.removeOnDrawListener(draws)
                 }
