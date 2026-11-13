@@ -806,8 +806,14 @@ internal fun CapsuleImmersiveContent(
         var retainedVideoField by remember(frame?.key) {
             mutableStateOf<CapsuleColorField?>(null)
         }
-        var videoTextureReady by remember(frame?.key) { mutableStateOf(false) }
-        val videoLayerAlpha = remember(frame?.key) { Animatable(0f) }
+        // Restored cached VIDEO colours already belong to the visible frame.
+        // Do not start at zero and wait for a new Play-triggered readback.
+        var videoTextureReady by remember(frame?.key) {
+            mutableStateOf(isVideo && videoAmbientField != null)
+        }
+        val videoLayerAlpha = remember(frame?.key) {
+            Animatable(if (isVideo && videoAmbientField != null) 1f else 0f)
+        }
         LaunchedEffect(isVideo, videoAmbientField) {
             // A disabled VIDEO background must release its former illumination
             // immediately, even if the VIDEO view itself stays mounted.
@@ -815,9 +821,9 @@ internal fun CapsuleImmersiveContent(
         }
         LaunchedEffect(isVideo, videoTextureReady) {
             if (isVideo && videoTextureReady) {
-                videoLayerAlpha.animateTo(1f, tween(420))
+                videoLayerAlpha.animateTo(1f, tween(290))
             } else if (!isVideo) {
-                videoLayerAlpha.animateTo(0f, tween(330))
+                videoLayerAlpha.animateTo(0f, tween(220))
                 retainedVideoField = null
                 videoTextureReady = false
             }
