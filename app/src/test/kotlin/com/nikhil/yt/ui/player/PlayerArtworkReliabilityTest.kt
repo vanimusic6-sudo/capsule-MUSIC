@@ -49,11 +49,12 @@ class PlayerArtworkReliabilityTest {
         assertTrue(immersive.contains("key(mediaMetadata.id, artworkTone.displayUrl, coverLoadRetry)"))
         assertTrue(immersive.contains("if (coverLoadRetry < 1) coverLoadRetry++"))
         assertTrue(immersive.contains("decodedCoverPainter = success.painter"))
-        assertTrue(immersive.contains("visibleArtworkRebind"))
         assertTrue(immersive.contains("onError = { error ->"))
         assertTrue(immersive.contains(".size(960, 960)"))
-        assertTrue(immersive.contains("decodedCoverPainter?.let { ready ->"))
-        assertTrue(immersive.contains("delay(if (decodedCoverPainter != null) 1_000L else 3_000L)"))
+        assertTrue("Full-size decode must complete before committing the next scene",
+            immersive.contains("decodedCoverPainter != null"))
+        assertTrue(immersive.contains("val readyPainter = decodedCoverPainter ?: return@LaunchedEffect"))
+        assertTrue(immersive.contains("delay(8_000L)"))
     }
 
     @Test fun preloaderUsesShortActualDebounceRatherThanOldSecondLongTimer() {
@@ -79,6 +80,21 @@ class PlayerArtworkReliabilityTest {
         assertTrue(player.contains("skipArtworkPrefetch = state.shouldLayerAboveCollapsedChrome"))
         val preload = source("CapsuleMediaPreload.kt")
         assertTrue(preload.contains("if (skipArtworkPrefetch) return@LaunchedEffect"))
+    }
+
+    @Test fun immersiveForegroundUsesRetainedFullSizeArtworkAndPreparedBackdrop() {
+        val content = source("CapsuleImmersiveContent.kt")
+        val player = source("Player.kt")
+        assertTrue(player.substringAfter("CapsuleImmersiveContent(")
+            .substringBefore("CapsulePlayerContent(").contains("decodedArtworkCache = decodedArtworkCache"))
+        assertTrue(content.contains("decodedArtworkCache[mediaMetadata.id]"))
+        assertTrue(content.contains("it.first == artworkTone.displayUrl"))
+        assertTrue(content.contains("mutableStateOf(restoredFrame)"))
+        assertTrue(content.contains("restoredFrame?.key == frame.key && outgoingFrame == null"))
+        assertTrue(content.contains("mutableStateOf(immersivePaintCache[paintKey])"))
+        assertTrue(content.contains("decodedArtworkCache[mediaMetadata.id] = url to success.painter"))
+        assertFalse(content.contains("bitmap = leaving.preview"))
+        assertFalse(content.contains("model = mediaMetadata.thumbnailUrl"))
     }
 
     @Test fun lightAndCosmoKeepImageFallbackLocalToTheirOwnArtwork() {

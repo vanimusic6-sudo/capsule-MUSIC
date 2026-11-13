@@ -774,6 +774,7 @@ private fun CapsulePlayerLyricsHost(
                 CapsuleImmersiveContent(
                     mediaMetadata = mediaMetadata,
                     artworkTone = requireNotNull(immersiveArtworkTone),
+                    decodedArtworkCache = decodedArtworkCache,
                     videoAmbientBands = videoAmbientBands,
                     videoAmbientField = videoAmbientField,
                     sliderPosition = sliderPosition,

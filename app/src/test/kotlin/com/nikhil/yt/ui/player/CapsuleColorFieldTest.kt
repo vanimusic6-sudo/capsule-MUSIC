@@ -5,6 +5,9 @@ import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -90,6 +93,22 @@ class CapsuleColorFieldTest {
         assertTrue(capsuleDominantEdgeColor(field).red > 0.89f)
         page.recycle()
         photo.recycle()
+    }
+
+    @Test fun preparedContinuationSurvivesForegroundRemountWithBoundedMemory() {
+        val cache = CapsuleImmersivePaintCache(3)
+        fun texture(color: Int) = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888)
+            .apply { eraseColor(color) }.asImageBitmap()
+        val first = texture(AndroidColor.RED)
+        cache["A|portrait"] = first
+        cache["B|portrait"] = texture(AndroidColor.BLUE)
+        cache["C|portrait"] = texture(AndroidColor.GREEN)
+        assertSame("Returning to the same scene must not rebuild a neutral backdrop",
+            first, cache["A|portrait"])
+        assertNull("Different crop geometry must not reuse the portrait continuation", cache["A|landscape"])
+        cache["D|portrait"] = texture(AndroidColor.WHITE)
+        assertSame(first, cache["A|portrait"])
+        assertNull("Old textures are bounded; do not retain one per played track", cache["B|portrait"])
     }
 
     @Test fun interruptedFieldTransitionStartsFromCurrentVisibleColours() {
