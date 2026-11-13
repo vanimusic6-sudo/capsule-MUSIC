@@ -105,34 +105,27 @@ internal fun immersiveSpatialFieldBitmap(
         },
     )
     val dominant = capsuleDominantEdgeColor(source)
-    // Use several actual rows of the visible artwork, not one sampled edge
-    // line. A dark twig/logo in the bottommost row cannot become a long bar.
-    val edge = Array(source.width) { x ->
-        val row0 = source.cell(x, (source.height - 4).coerceAtLeast(0))
-        val row1 = source.cell(x, (source.height - 3).coerceAtLeast(0))
-        val row2 = source.cell(x, (source.height - 2).coerceAtLeast(0))
-        val row3 = source.cell(x, source.height - 1)
-        Color(
-            row0.red * 0.10f + row1.red * 0.22f + row2.red * 0.36f + row3.red * 0.32f,
-            row0.green * 0.10f + row1.green * 0.22f + row2.green * 0.36f + row3.green * 0.32f,
-            row0.blue * 0.10f + row1.blue * 0.22f + row2.blue * 0.36f + row3.blue * 0.32f,
-        )
-    }
-    // Multi-scale horizontal diffusion: blur radius grows with distance
-    // from the artwork. This is a true convolution on real source colours,
-    // not a scaled 20-column stripe map. Only ~120 pixels are filtered.
+    // Real 2D convolution, not a duplicated bottom row. With increasing
+    // distance below the cover, use a wider area of its lower visible image.
+    // A twig, face or letter becomes a diffused colour cloud, not a tall ray.
+    // 7 scales × 20 columns × a small source neighbourhood, computed once.
     val levels = Array(7) { level ->
-        val radius = 1 + level
+        val radiusX = 1 + level
+        val radiusY = (2 + level / 2).coerceAtMost(source.height - 1)
         FloatArray(source.width * 3).also { output ->
             for (x in 0 until source.width) {
                 var red = 0f; var green = 0f; var blue = 0f; var total = 0f
-                for (dx in -radius..radius) {
-                    val sample = edge[(x + dx).coerceIn(0, edge.lastIndex)]
-                    val w = (radius + 1 - kotlin.math.abs(dx)).toFloat()
-                    red += sample.red * w
-                    green += sample.green * w
-                    blue += sample.blue * w
-                    total += w
+                for (dx in -radiusX..radiusX) for (dy in 0..radiusY) {
+                    val sample = source.cell(
+                        x + dx, source.height - 1 - dy,
+                    )
+                    val xWeight = (radiusX + 1 - kotlin.math.abs(dx)).toFloat()
+                    val yWeight = (radiusY + 1 - dy).toFloat()
+                    val weight = xWeight * yWeight
+                    red += sample.red * weight
+                    green += sample.green * weight
+                    blue += sample.blue * weight
+                    total += weight
                 }
                 output[x * 3] = red / total
                 output[x * 3 + 1] = green / total
