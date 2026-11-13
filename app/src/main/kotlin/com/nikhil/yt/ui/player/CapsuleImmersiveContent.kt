@@ -135,6 +135,10 @@ internal fun immersivePageBaseColor(presentingVideo: Boolean, hasArtwork: Boolea
     if (presentingVideo) Color(0xFF111116)
     else if (hasArtwork) floor else IMMERSIVE_NEUTRAL_COLOR
 
+/** Single optical handoff for both the VIDEO image and its entire page. */
+internal fun capsuleImmersiveVideoBackplateAlpha(progress: Float): Float =
+    1f - capsulePhotoOpacity(progress, CapsuleVideoBlendStyle.IMMERSION)
+
 /** The source colour is the actual sampled lower crop. Never recolour its seam. */
 internal fun immersiveSeamColor(edge: Color, floor: Color): Color = edge
 
@@ -803,30 +807,18 @@ internal fun CapsuleImmersiveContent(
             }
         }
         val pairReady = frame != null && matchedPaint != null
-        var retainedVideoField by remember(frame?.key) {
+        // The VIDEO window and its entire backdrop use the same spring.
+        // Independent 220/280/290ms fades made the backing vanish while the
+        // photo was still visible (or vice versa) on reverse transitions.
+        val sharedVideoProgress = remember(mediaMetadata.id) {
+            Animatable(if (isVideo) 1f else 0f)
+        }
+        val videoBackdropOpacity = capsuleImmersiveVideoBackplateAlpha(sharedVideoProgress.value)
+        var retainedVideoField by remember(mediaMetadata.id) {
             mutableStateOf<CapsuleColorField?>(null)
         }
-        // Restored cached VIDEO colours already belong to the visible frame.
-        // Do not start at zero and wait for a new Play-triggered readback.
-        var videoTextureReady by remember(frame?.key) {
-            mutableStateOf(isVideo && videoAmbientField != null)
-        }
-        val videoLayerAlpha = remember(frame?.key) {
-            Animatable(if (isVideo && videoAmbientField != null) 1f else 0f)
-        }
         LaunchedEffect(isVideo, videoAmbientField) {
-            // A disabled VIDEO background must release its former illumination
-            // immediately, even if the VIDEO view itself stays mounted.
             if (isVideo) retainedVideoField = videoAmbientField
-        }
-        LaunchedEffect(isVideo, videoTextureReady) {
-            if (isVideo && videoTextureReady) {
-                videoLayerAlpha.animateTo(1f, tween(290))
-            } else if (!isVideo) {
-                videoLayerAlpha.animateTo(0f, tween(220))
-                retainedVideoField = null
-                videoTextureReady = false
-            }
         }
         val immersiveInk = ImmersiveControlInk
 
@@ -861,16 +853,11 @@ internal fun CapsuleImmersiveContent(
             }
         }
 
-        // AUDIO's colour continuation and VIDEO's backdrop are different
-        // ownership domains. A VIDEO with ambient disabled must be a clean
-        // neutral dark page, never the previous album's muddy colour texture.
-        // On VIDEO handover the old image fades, without a permanent CPU loop.
-        val audioBackdropAlpha = remember { Animatable(if (isVideo) 0f else 1f) }
-        LaunchedEffect(isVideo) {
-            audioBackdropAlpha.animateTo(if (isVideo) 0f else 1f, tween(280))
-        }
+        // The AUDIO page is stable underneath the morph. The VIDEO page
+        // rises from it at exactly the same optical progress as the cover,
+        // with no hard base-colour jump when 'isVideo' flips.
         Box(Modifier.fillMaxSize().background(
-            immersivePageBaseColor(isVideo, frame != null, pageFloor)
+            immersivePageBaseColor(false, frame != null, pageFloor)
         )) {
             if (!isVideo && outgoingFrame != null &&
                 (matchedPaint == null || gradientAlpha.value < 1f)
@@ -881,7 +868,7 @@ internal fun CapsuleImmersiveContent(
                         contentDescription = null,
                         contentScale = ContentScale.FillBounds,
                         modifier = Modifier.fillMaxSize().graphicsLayer {
-                            alpha = audioBackdropAlpha.value
+                            alpha = 1f
                         },
                     )
                 }
@@ -892,28 +879,34 @@ internal fun CapsuleImmersiveContent(
                     contentDescription = null,
                     contentScale = ContentScale.FillBounds,
                     modifier = Modifier.fillMaxSize().graphicsLayer {
-                        alpha = gradientAlpha.value * audioBackdropAlpha.value
+                        alpha = gradientAlpha.value
                     },
                 )
             }
-            val liveField = retainedVideoField
-            if (isVideo && liveField != null && matchedPaint != null) {
-                key(frame?.key) {
-                    CapsuleVideoAmbientBackdrop(
-                        bands = pageBands,
-                        field = liveField,
-                        animated = isVideo && isPlaying,
-                        modifier = Modifier.fillMaxSize().graphicsLayer {
-                            alpha = videoLayerAlpha.value
-                        },
-                        fallbackFloor = pageFloor,
-                        coverFraction = coverFraction,
-                        tailFraction = tailFraction,
-                        texture = frame?.bottomTexture ?: 0f,
-                        landscape = frame?.landscape ?: false,
-                        nearWhite = nearWhite,
-                        onFirstTextureReady = { videoTextureReady = true },
-                    )
+            // VIDEO owns ONE neutral/ambient page above AUDIO, including
+            // while its sampled frame is being prepared. The shared spring
+            // controls this layer just like the VIDEO image itself.
+            Box(
+                Modifier.fillMaxSize().graphicsLayer {
+                    alpha = capsuleImmersiveVideoBackplateAlpha(sharedVideoProgress.value)
+                }.background(Color(0xFF111116)),
+            ) {
+                val liveField = retainedVideoField
+                if (liveField != null && (isVideo || sharedVideoProgress.value > 0.001f)) {
+                    key(mediaMetadata.id) {
+                        CapsuleVideoAmbientBackdrop(
+                            bands = if (isVideo) videoAmbientBands else emptyList(),
+                            field = liveField,
+                            animated = isVideo && isPlaying,
+                            modifier = Modifier.fillMaxSize(),
+                            fallbackFloor = Color(0xFF111116),
+                            coverFraction = coverFraction,
+                            tailFraction = tailFraction,
+                            texture = frame?.bottomTexture ?: 0f,
+                            landscape = frame?.landscape ?: false,
+                            nearWhite = nearWhite,
+                        )
+                    }
                 }
             }
         }
@@ -922,6 +915,7 @@ internal fun CapsuleImmersiveContent(
             presentingVideo = isVideo,
             needsSurface = needsVideoSurface,
             transitionKey = mediaMetadata.id,
+            sharedProgress = sharedVideoProgress,
             // Cover the final resampled pixel of the separate background layer.
             // A single dp of overlap conceals an otherwise visible sheet seam
             // without adding a blur/graphics layer or affecting the controls.
