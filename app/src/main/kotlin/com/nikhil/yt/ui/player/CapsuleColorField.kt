@@ -73,7 +73,7 @@ internal fun Bitmap.capsuleColorField(
         // brightness shoulder turned a genuine warm/orange edge into a muted
         // look and made the overlay visibly change colour inside the photo.
         // Darkening happens ONLY below the seam inside the bleed renderer.
-        if (video) lerp(color, Color(0xFF0C0D13), 0.43f) else color
+        if (video) lerp(color, Color(0xFF0C0D13), 0.06f) else color
     }
     return CapsuleColorField(CAPSULE_FIELD_COLUMNS, CAPSULE_FIELD_ROWS, cells)
 }
