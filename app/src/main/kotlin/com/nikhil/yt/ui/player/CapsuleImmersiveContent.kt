@@ -827,7 +827,7 @@ internal fun CapsuleImmersiveContent(
             // dimming the old scene. The total stale lifetime is still bounded.
             delay(160L)
             staleSceneAlpha.animateTo(
-                0f, tween(durationMillis = IMMERSIVE_STALE_SCENE_FADE_MS),
+                0f, tween(durationMillis = IMMERSIVE_STALE_SCENE_FADE_MS, easing = ImmersiveTrackEasing),
             )
             if (shownGradient?.key == previous && previous != visualKey) {
                 shownGradient = null
