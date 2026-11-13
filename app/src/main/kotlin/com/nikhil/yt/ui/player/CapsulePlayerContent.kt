@@ -1216,6 +1216,7 @@ fun CapsulePlayerContent(
                                     value = displayPosition.toFloat(),
                                     valueRange = 0f..safeDuration.coerceAtLeast(1L).toFloat(),
                                     enabled = canSeek && safeDuration > 0L && !lightEditorEnabled,
+                                    smoothPlayback = isPlaying && sliderPosition == null,
                                     activeColor = textColor.copy(alpha = 0.96f),
                                     inactiveColor = textColor.copy(alpha = 0.24f),
                                     onValueChange = { onSeekPreview(it.toLong()) },
@@ -1544,6 +1545,7 @@ fun CapsulePlayerContent(
                         canSeek &&
                             safeDuration >
                             0L,
+                    smoothPlayback = isPlaying && sliderPosition == null,
                     activeColor =
                         textColor.copy(
                             alpha = 0.96f,
@@ -1901,6 +1903,7 @@ internal fun CapsuleThinSlider(
     onValueChange: (Float) -> Unit,
     onValueChangeFinished: () -> Unit,
     modifier: Modifier = Modifier,
+    smoothPlayback: Boolean = false,
     trackHeight: Dp = 4.dp,
     thumbRadius: Dp = 4.dp,
 ) {
@@ -1915,6 +1918,21 @@ internal fun CapsuleThinSlider(
             (value - valueRange.start) /
                 rangeSize
         ).coerceIn(0f, 1f)
+
+    // The player polls Media3 every 300ms to avoid rebuilding the whole screen
+    // on each vsync. Only the thin track interpolates those samples at display
+    // refresh rate, while any finger-controlled seek draws immediately.
+    val smoothProgress = remember { Animatable(fraction) }
+    LaunchedEffect(fraction, smoothPlayback) {
+        if (!smoothPlayback || kotlin.math.abs(smoothProgress.value - fraction) > 0.015f) {
+            smoothProgress.snapTo(fraction)
+        } else {
+            smoothProgress.animateTo(
+                fraction,
+                tween(durationMillis = 275, easing = LinearEasing),
+            )
+        }
+    }
 
     // A gesture can outlive a recomposition (including song or callback changes).
     // Always call the latest handlers without restarting an in-progress drag.
@@ -2024,7 +2042,8 @@ internal fun CapsuleThinSlider(
             size = trackSize,
             cornerRadius = rounding,
         )
-        val progressWidth = (size.width * fraction).coerceIn(0f, size.width)
+        val displayFraction = if (smoothPlayback) smoothProgress.value else fraction
+        val progressWidth = (size.width * displayFraction).coerceIn(0f, size.width)
         if (progressWidth > 0f) {
             drawRoundRect(
                 color = active,

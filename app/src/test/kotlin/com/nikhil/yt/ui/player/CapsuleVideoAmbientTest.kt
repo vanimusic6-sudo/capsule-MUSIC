@@ -41,7 +41,7 @@ class CapsuleVideoAmbientTest {
         val interrupted = capsuleAmbientPaletteAt(partlyMixed, cool, 0f)
         assertTrue(kotlin.math.abs(partlyMixed[0].red - interrupted[0].red) < 0.0001f)
         assertTrue(partlyMixed[0].red > cool[0].red)
-        assertTrue(VIDEO_AMBIENT_CAPTURE_INTERVAL_MS in 1_200L..2_000L)
+        assertTrue(VIDEO_AMBIENT_CAPTURE_INTERVAL_MS in 550L..850L)
         assertTrue(VIDEO_AMBIENT_BLEND_DURATION_MS > VIDEO_AMBIENT_CAPTURE_INTERVAL_MS)
     }
 

@@ -62,8 +62,8 @@ internal fun immersiveSpatialDiffusion(pageY: Float, coverFraction: Float): Floa
  * ONLY the lower crop, preserves its x-position at the boundary, and
  * reaches a stable median-derived floor within a short distance.
  */
-private const val EDGE_WIDTH = 144
-private const val EDGE_HEIGHT = 176
+private const val EDGE_WIDTH = 192
+private const val EDGE_HEIGHT = 240
 
 private fun smoothEdge(start: Float, end: Float, value: Float): Float {
     val t = ((value - start) / (end - start).coerceAtLeast(0.001f)).coerceIn(0f, 1f)
@@ -114,10 +114,24 @@ internal fun immersiveSpatialFieldBitmap(
         lerp(source.cell(x, source.height - 2),
              source.cell(x, source.height - 1), 0.78f)
     }
+    // Real spatial blur across neighbouring source columns. The former
+    // 78%-original / 22%-neighbours mix preserved visible pixel stripes
+    // even when upsampled to the full display resolution.
+    val kernel = floatArrayOf(1f, 2f, 3f, 4f, 3f, 2f, 1f)
     val locals = List(source.width) { x ->
-        val before = base[(x - 1).coerceAtLeast(0)]
-        val after = base[(x + 1).coerceAtMost(base.lastIndex)]
-        lerp(lerp(before, after, 0.5f), base[x], 0.78f)
+        var r = 0f
+        var g = 0f
+        var b = 0f
+        var total = 0f
+        for (offset in -3..3) {
+            val sample = base[(x + offset).coerceIn(0, base.lastIndex)]
+            val weight = kernel[offset + 3]
+            r += sample.red * weight
+            g += sample.green * weight
+            b += sample.blue * weight
+            total += weight
+        }
+        Color(r / total, g / total, b / total)
     }
     val support = FloatArray(source.width) { x ->
         val target = locals[x]

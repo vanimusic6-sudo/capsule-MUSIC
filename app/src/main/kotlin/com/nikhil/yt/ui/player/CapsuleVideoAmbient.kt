@@ -11,7 +11,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import kotlin.math.abs
 
-internal const val VIDEO_AMBIENT_CAPTURE_INTERVAL_MS = 1_550L
+internal const val VIDEO_AMBIENT_CAPTURE_INTERVAL_MS = 700L
 internal const val VIDEO_AMBIENT_SAMPLE_WIDTH = 48
 internal const val VIDEO_AMBIENT_SAMPLE_HEIGHT = 28
 

@@ -54,12 +54,13 @@ class PlayerTransitionArchitectureTest {
         val field = source("com/nikhil/yt/ui/player/CapsuleImmersiveField.kt")
         assertTrue(field.contains("fun capsuleDominantEdgeColor("))
         assertTrue(field.contains("fun capsuleImmersiveBleedEnd("))
-        assertTrue(field.contains("EDGE_WIDTH = 144"))
+        assertTrue(field.contains("EDGE_WIDTH = 192"))
         assertFalse(field.contains("cubicWeights("))
         assertFalse(field.contains("sin(pageY"))
         val backdrop = source("com/nikhil/yt/ui/player/CapsuleVideoAmbientBackdrop.kt")
         assertTrue(backdrop.contains("onFirstTextureReady"))
         assertTrue(backdrop.contains("blend.animateTo("))
+        assertTrue(backdrop.contains("capsuleVideoSpatialBitmap("))
 
         val floor = source("com/nikhil/yt/ui/player/CapsuleImmersiveFloor.kt")
         assertTrue(floor.contains("val rawEdge = image.immersiveBottomBackground(artworkAspect)"))
@@ -121,6 +122,8 @@ class PlayerTransitionArchitectureTest {
         assertTrue(player.contains("allowSwipeDismiss = false,"))
         assertTrue(player.contains("BackHandler(enabled = state.isExpandedOrExpanding)"))
         assertTrue(bottomSheet.contains("onClick = state::expandSoft"))
+        assertTrue("Expanded player must swallow taps outside controls",
+            bottomSheet.contains(".pointerInput(renderExpandedContent)"))
     }
 
     @Test
