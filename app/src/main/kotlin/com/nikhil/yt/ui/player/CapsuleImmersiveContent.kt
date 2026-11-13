@@ -735,6 +735,9 @@ internal fun CapsuleImmersiveContent(
         var visibleArtworkPending by remember(frame?.key, frame?.imageUrl) {
             mutableStateOf(false)
         }
+        var visibleArtworkDecoded by remember(frame?.key, frame?.imageUrl) {
+            mutableStateOf(false)
+        }
         LaunchedEffect(frame?.key, frame?.imageUrl, visibleArtworkRebind, visibleArtworkPending) {
             frame?.takeIf {
                 it.key == visualKey && it.imageUrl.isNotBlank()
@@ -983,7 +986,11 @@ internal fun CapsuleImmersiveContent(
                     )
                 }) {
                     if (frame.key == visualKey) {
-                        artworkTone.preview?.let { preview ->
+                        // The 256px rescue image is required only until
+                        // the real full-resolution painter succeeds. Keeping
+                        // BOTH full-screen images mounted for the entire song
+                        // wasted GPU blends and memory bandwidth.
+                        if (!visibleArtworkDecoded) artworkTone.preview?.let { preview ->
                             Image(
                                 bitmap = preview,
                                 contentDescription = null,
@@ -1019,10 +1026,17 @@ internal fun CapsuleImmersiveContent(
                         model = rememberImmersiveArtworkRequest(frame.imageUrl),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        onLoading = { visibleArtworkPending = true },
-                        onSuccess = { visibleArtworkPending = false },
+                        onLoading = {
+                            visibleArtworkPending = true
+                            visibleArtworkDecoded = false
+                        },
+                        onSuccess = {
+                            visibleArtworkPending = false
+                            visibleArtworkDecoded = true
+                        },
                         onError = { error ->
                             visibleArtworkPending = false
+                            visibleArtworkDecoded = false
                             Timber.tag("CapsuleArtwork").w(
                                 "immersive-artwork-error id=%s retry=%s type=%s",
                                 mediaMetadata.id, visibleArtworkRebind,
