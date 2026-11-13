@@ -1,6 +1,7 @@
 /*
- * Capsule MUSIC — spatial light cast by the visible video, not a stretched
- * copy of its pixels. A few local regions illuminate nearby wallpaper.
+ * Capsule MUSIC — ambient video diffusion, not circular lamp sprites.
+ * Stable, source-coloured light across the entire canvas. A tiny blurred
+ * field is computed only when a sampled video frame actually changes.
  */
 package com.nikhil.yt.ui.player
 
@@ -8,91 +9,86 @@ import android.graphics.Bitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import kotlin.math.abs
 
-// The light field has only 12 broad emitters. 112x176 is ample for smooth
-// bilinear upsampling, saving 37% of per-readback raster work and texture bytes.
-private const val VIDEO_LIGHT_WIDTH = 112
-private const val VIDEO_LIGHT_HEIGHT = 176
-
-private data class VideoLight(
-    val x: Float, val y: Float,
-    val red: Float, val green: Float, val blue: Float,
-    val energy: Float,
-)
+private const val VIDEO_DIFFUSE_WIDTH = 112
+private const val VIDEO_DIFFUSE_HEIGHT = 176
 
 /**
- * Preserve the red object on the LEFT and blue sky on the RIGHT. No full-page
- * colour averaging, no copying a 20x16 grid to the entire page, no hard blocks.
+ * A low-frequency two-dimensional video colour field.
  *
- * 4x3 spatial patches become soft finite light sources anchored to the actual
- * video window. The bottom controls sit on a naturally dark, stable floor.
+ * The old design placed 12 point lights under the player. Their radial
+ * inverse-square falloff formed bright circular halos, even when the real
+ * video contained a uniform sky or a straight horizon. This version diffuses
+ * existing scene pixels (both axes), not synthetic lamps.
+ *
+ * A dark floor and broad, directional projection retain the colour of
+ * left/right objects without circles, rings, vertical hard strips or glare.
  */
 internal fun capsuleVideoSpatialBitmap(
     field: CapsuleColorField,
     fallbackFloor: Color,
 ): ImageBitmap {
-    val lights = ArrayList<VideoLight>(12)
-    for (gy in 0 until 3) for (gx in 0 until 4) {
-        val x0 = gx * field.width / 4
-        val x1 = ((gx + 1) * field.width / 4).coerceAtLeast(x0 + 1)
-        val y0 = gy * field.height / 3
-        val y1 = ((gy + 1) * field.height / 3).coerceAtLeast(y0 + 1)
-        var red = 0f; var green = 0f; var blue = 0f
-        var count = 0
-        for (cy in y0 until y1) for (cx in x0 until x1) {
-            val c = field.cell(cx, cy)
-            red += c.red; green += c.green; blue += c.blue
-            count++
+    val sw = field.width
+    val sh = field.height
+    val smoothed = FloatArray(sw * sh * 3)
+
+    // Blur every source pixel with a fixed 9x7 triangular kernel. This is
+    // only ~63 * 320 operations per accepted readback, never per display
+    // frame. Wide spatial support suppresses hard vertical colour bars.
+    for (cy in 0 until sh) for (cx in 0 until sw) {
+        var rr = 0f
+        var gg = 0f
+        var bb = 0f
+        var sum = 0f
+        for (dy in -3..3) for (dx in -4..4) {
+            val weight = (4 - abs(dy)) * (5 - abs(dx)).toFloat()
+            val color = field.cell(cx + dx, cy + dy)
+            rr += color.red * weight
+            gg += color.green * weight
+            bb += color.blue * weight
+            sum += weight
         }
-        val r = red / count; val g = green / count; val b = blue / count
-        val peak = maxOf(r, g, b)
-        // Dark objects are not light emitters. Never turn letterboxing into
-        // a grey block or add fake saturation to neutral cinematography.
-        val energy = ((peak - 0.065f) / 0.65f).coerceIn(0f, 1f)
-        lights.add(
-            VideoLight(
-                x = (gx + 0.5f) / 4f,
-                y = 0.16f + (gy + 0.5f) / 3f * 0.36f,
-                red = r, green = g, blue = b, energy = energy,
-            ),
-        )
+        val i = (cy * sw + cx) * 3
+        smoothed[i] = rr / sum
+        smoothed[i + 1] = gg / sum
+        smoothed[i + 2] = bb / sum
     }
 
-    val w = VIDEO_LIGHT_WIDTH
-    val h = VIDEO_LIGHT_HEIGHT
+    val w = VIDEO_DIFFUSE_WIDTH
+    val h = VIDEO_DIFFUSE_HEIGHT
     val pixels = IntArray(w * h)
-    fun byte(v: Float): Int = (v.coerceIn(0f, 1f) * 255f + 0.5f).toInt()
-    // A dark stable paper underneath the video. Derived colour lives only in
-    // its soft local illuminations, not in an always-on fullscreen tint.
-    val groundR = 0.045f + fallbackFloor.red * 0.18f
-    val groundG = 0.046f + fallbackFloor.green * 0.18f
-    val groundB = 0.052f + fallbackFloor.blue * 0.18f
+    val baseR = 0.042f + fallbackFloor.red * 0.12f
+    val baseG = 0.045f + fallbackFloor.green * 0.12f
+    val baseB = 0.050f + fallbackFloor.blue * 0.12f
+    fun byte(v: Float) = (v.coerceIn(0f, 1f) * 255f + 0.5f).toInt()
+    fun sample(sx: Float, sy: Float, channel: Int): Float {
+        val x0 = sx.toInt().coerceIn(0, sw - 1)
+        val y0 = sy.toInt().coerceIn(0, sh - 1)
+        val x1 = (x0 + 1).coerceAtMost(sw - 1)
+        val y1 = (y0 + 1).coerceAtMost(sh - 1)
+        val fx = sx - x0
+        val fy = sy - y0
+        val top = smoothed[(y0 * sw + x0) * 3 + channel] * (1f - fx) +
+            smoothed[(y0 * sw + x1) * 3 + channel] * fx
+        val bottom = smoothed[(y1 * sw + x0) * 3 + channel] * (1f - fx) +
+            smoothed[(y1 * sw + x1) * 3 + channel] * fx
+        return top * (1f - fy) + bottom * fy
+    }
 
     for (py in 0 until h) {
         val y = (py + 0.5f) / h
-        val floorFade = (1f - (y - 0.54f).coerceAtLeast(0f) * 1.55f).coerceIn(0.30f, 1f)
+        // Continuous, non-circular gradient: even a still frame with one
+        // bright centre cannot create a spotlight beneath the VIDEO window.
+        val settle = y * y * (3f - 2f * y)
+        val alpha = 0.48f * (1f - settle) + 0.12f
+        val sy = (0.16f + y * 0.64f) * (sh - 1)
         for (px in 0 until w) {
             val x = (px + 0.5f) / w
-            var wr = 0f; var wg = 0f; var wb = 0f; var sum = 0f
-            for (light in lights) {
-                if (light.energy < 0.015f) continue
-                val dx = (x - light.x) / 0.31f
-                val dy = (y - light.y) / 0.31f
-                // Finite, smooth falloff without allocating blur buffers or
-                // computing expensive exponentials for every video sample.
-                val spread = 1f / (1f + dx * dx + dy * dy)
-                val weight = spread * spread * light.energy
-                wr += light.red * weight
-                wg += light.green * weight
-                wb += light.blue * weight
-                sum += weight
-            }
-            // Local colour stays where the subject is. No arbitrary colour
-            // synthesis: the RGB ratios come only from the actual video.
-            val glow = (sum / 2.25f).coerceIn(0f, 0.93f) * floorFade
-            val r = groundR + if (sum > 0f) wr / sum * glow else 0f
-            val g = groundG + if (sum > 0f) wg / sum * glow else 0f
-            val b = groundB + if (sum > 0f) wb / sum * glow else 0f
+            val sx = x * (sw - 1)
+            val r = baseR * (1f - alpha) + sample(sx, sy, 0) * alpha
+            val g = baseG * (1f - alpha) + sample(sx, sy, 1) * alpha
+            val b = baseB * (1f - alpha) + sample(sx, sy, 2) * alpha
             pixels[py * w + px] = (0xFF shl 24) or
                 (byte(r) shl 16) or (byte(g) shl 8) or byte(b)
         }

@@ -183,7 +183,7 @@ private fun CapsuleVideoTextureOutput(
             audioMediaId, firstFrameReady, ambientSink) {
             val sink = ambientSink ?: return@LaunchedEffect
             val trackId = audioMediaId?.takeIf(String::isNotBlank) ?: return@LaunchedEffect
-            if (!ambientEnabled || !firstFrameReady || !videoActuallyPlaying) return@LaunchedEffect
+            if (!ambientEnabled) return@LaunchedEffect
             var previous: CapsuleColorField? = null
             var consecutiveFailures = 0
             var unchangedFrames = 0
@@ -191,11 +191,40 @@ private fun CapsuleVideoTextureOutput(
                 VIDEO_AMBIENT_SAMPLE_WIDTH, VIDEO_AMBIENT_SAMPLE_HEIGHT, Bitmap.Config.ARGB_8888,
             )
             try {
-                // Avoid capturing the first black surface swap.
-                delay(350L)
+                // A paused video already has a real retained frame. Extract its
+                // colours ONCE on return, without forcing Play or re-decoding.
+                // This also works when the recreated TextureView has not yet
+                // received its first onRenderedFirstFrame callback.
+                if (!videoActuallyPlaying) {
+                    retention.frame.value?.takeIf {
+                        it.mediaId == player.currentMediaItem?.mediaId
+                    }?.bitmap?.let { retained ->
+                        val reduced = Bitmap.createScaledBitmap(
+                            retained, VIDEO_AMBIENT_SAMPLE_WIDTH,
+                            VIDEO_AMBIENT_SAMPLE_HEIGHT, true,
+                        )
+                        try {
+                            capsuleVideoAmbientFrameFromBitmap(reduced, trackId)?.let {
+                                sink(it)
+                                previous = it.field
+                            }
+                        } finally {
+                            if (reduced !== retained) reduced.recycle()
+                        }
+                    }
+                }
+                if (!firstFrameReady && previous == null && !videoActuallyPlaying) {
+                    return@LaunchedEffect
+                }
+                // The first available frame may still be black during a
+                // surface swap. Paused frames get only a few bounded attempts
+                // and then sleep: no background polling or thermal regression.
+                delay(if (videoActuallyPlaying) 280L else 120L)
+                var pausedAttempts = 0
                 while (isActive) {
                     if (view.isAvailable && view.isShown && view.hasVideoFrame &&
-                        player.isPlaying && player.playbackState == Player.STATE_READY
+                        (player.isPlaying || !videoActuallyPlaying) &&
+                        player.playbackState != Player.STATE_IDLE
                     ) {
                         try {
                             view.getBitmap(buffer)
@@ -208,6 +237,7 @@ private fun CapsuleVideoTextureOutput(
                                 } else {
                                     unchangedFrames = (unchangedFrames + 1).coerceAtMost(8)
                                 }
+                                if (!videoActuallyPlaying) break
                             }
                             consecutiveFailures = 0
                         } catch (_: RuntimeException) {
@@ -216,11 +246,10 @@ private fun CapsuleVideoTextureOutput(
                             if (consecutiveFailures >= 3) break
                         }
                     }
-                    // Static clips, paused-looking scenes and title cards
-                    // need fewer GPU-to-CPU readbacks. Motion returns to the
-                    // 700ms cadence as soon as a changed field is detected.
+                    if (!videoActuallyPlaying && ++pausedAttempts >= 4) break
                     delay(
-                        if (unchangedFrames >= 3) VIDEO_AMBIENT_CALM_CAPTURE_INTERVAL_MS
+                        if (!videoActuallyPlaying) 180L
+                        else if (unchangedFrames >= 3) VIDEO_AMBIENT_CALM_CAPTURE_INTERVAL_MS
                         else VIDEO_AMBIENT_CAPTURE_INTERVAL_MS,
                     )
                 }
