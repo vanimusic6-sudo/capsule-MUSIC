@@ -34,7 +34,7 @@ class UiEnergyRegressionTest {
         assertTrue("no second tinted bitmap over the real photograph",
             !src.contains("matchedPaint?.second?.let { overlay ->"))
         assertTrue("VIDEO must use a neutral fallback when ambient is off",
-            src.contains("immersivePageBaseColor(false, frame != null, pageFloor)"))
+            src.contains("immersivePageBaseColor(false, frame?.key == visualKey, pageFloor)"))
         // Keep the real video compositor alive to protect the paused frame;
         // removing its surface for a fake energy saving causes black flashes.
         val video = source("com/nikhil/yt/ui/player/CapsuleVideoArtworkTransition.kt")
