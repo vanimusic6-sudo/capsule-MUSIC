@@ -114,6 +114,7 @@ private data class ImmersiveGradientFrame(
     val nearWhiteBackground: Boolean,
     val edgeBands: List<Color>,
     val colorField: CapsuleColorField?,
+    val visibleTail: CapsuleColorField?,
 )
 
 /**
@@ -698,6 +699,7 @@ internal fun CapsuleImmersiveContent(
                     nearWhiteBackground = artworkTone.nearWhiteBackground,
                     edgeBands = artworkTone.edgeBands,
                     colorField = artworkTone.colorField,
+                    visibleTail = artworkTone.visibleTail,
                 )
             }
             // Also handles reopening the sheet while its previous fade-out was being
@@ -788,7 +790,7 @@ internal fun CapsuleImmersiveContent(
             mutableStateOf<Pair<ImageBitmap, ImageBitmap>?>(null)
         }
         LaunchedEffect(
-            paintKey, frame?.colorField, frame?.edgeBands, pageFloor,
+            paintKey, frame?.colorField, frame?.visibleTail, frame?.edgeBands, pageFloor,
             nearWhite, frame?.bottomTexture, frame?.landscape,
         ) {
             val readyFrame = frame ?: return@LaunchedEffect
@@ -804,6 +806,7 @@ internal fun CapsuleImmersiveContent(
                     nearWhite = readyFrame.nearWhiteBackground,
                     photoOverlay = false,
                     field = readyFrame.colorField,
+                    edgeMap = readyFrame.visibleTail,
                 )
                 val cover = immersiveSpatialFieldBitmap(
                     bands = colours,
@@ -815,6 +818,7 @@ internal fun CapsuleImmersiveContent(
                     nearWhite = readyFrame.nearWhiteBackground,
                     photoOverlay = true,
                     field = readyFrame.colorField,
+                    edgeMap = readyFrame.visibleTail,
                 )
                 page to cover
             }
