@@ -44,6 +44,10 @@ internal data class ImmersiveArtworkTone(
     val edgeBands: List<Color> = emptyList(),
     // True two-dimensional colour, sampled once from the same decoded crop.
     val colorField: CapsuleColorField? = null,
+    // Accurate, spatially sampled lower edge of the displayed (overscanned) crop.
+    // Drives the photo-to-floor dissolve; the coarse all-image grid cannot
+    // accurately match the colour at the image's last visible scanline.
+    val visibleTail: CapsuleColorField? = null,
     // Decoded 256 px preview for the very first frame of an immediate open.
     // This avoids a second network request before any image can be displayed.
     val preview: ImageBitmap? = null,
@@ -179,6 +183,7 @@ internal fun rememberImmersiveEdgeColor(
                 // Unlike seven column histograms, this preserves actual
                 // spatial relationships between sky, subject and shadows.
                 val colorField = image.capsuleColorField(artworkAspect)
+                val visibleTail = image.capsuleImmersiveVisibleTail(artworkAspect, landscape)
                 // Legacy colour bands remain available for old snapshots and
                 // incomplete artwork, but do NOT drive the normal backdrop.
                 val edgeBands = emptyList<Color>()
@@ -194,6 +199,7 @@ internal fun rememberImmersiveEdgeColor(
                     bottomTexture = bottomTexture,
                     edgeBands = edgeBands,
                     colorField = colorField,
+                    visibleTail = visibleTail,
                     // Own the preview pixels independently of Coil's bitmap
                     // pool. A retained player frame must never point at a
                     // bitmap that another request can recycle/reuse.
