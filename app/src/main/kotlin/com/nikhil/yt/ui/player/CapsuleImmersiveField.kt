@@ -65,6 +65,17 @@ internal fun immersiveSpatialDiffusion(pageY: Float, coverFraction: Float): Floa
 private const val EDGE_WIDTH = 192
 private const val EDGE_HEIGHT = 240
 
+// The prepared continuation begins underneath fully opaque photo pixels.
+// Share this geometry with the photo mask, including outgoing track scenes.
+internal const val IMMERSIVE_DIFFUSION_START = 0.87f
+internal const val IMMERSIVE_PHOTO_FEATHER_START = 0.88f
+
+internal fun immersivePhotoFeatherAlpha(fraction: Float): Float {
+    val t = ((fraction - IMMERSIVE_PHOTO_FEATHER_START) /
+        (1f - IMMERSIVE_PHOTO_FEATHER_START)).coerceIn(0f, 1f)
+    return 1f - t * t * t * (t * (t * 6f - 15f) + 10f)
+}
+
 private fun smoothEdge(start: Float, end: Float, value: Float): Float {
     val t = ((value - start) / (end - start).coerceAtLeast(0.001f)).coerceIn(0f, 1f)
     return t * t * (3f - 2f * t)
@@ -151,7 +162,7 @@ internal fun immersiveSpatialFieldBitmap(
     // The diffuse photo-colour layer must BEGIN before the photo alpha
     // mask starts. Otherwise transparent photo pixels expose a uniform dark
     // floor and produce an artificial horizontal seam just above the blur.
-    val photoStart = cover - cover * 0.090f
+    val photoStart = cover * IMMERSIVE_DIFFUSION_START
 
     // We cache only a few increasingly diffused levels. The first one is a
     // near-faithful sample of the *last* visible row; later levels borrow
@@ -223,9 +234,16 @@ internal fun immersiveSpatialFieldBitmap(
         val illumination = if (withinPhoto) 1f else 1f - 0.13f * p
         val photoDistance = if (withinPhoto)
             smoothEdge(photoStart, cover, y) else 1f
-        val photoRow = (source.height - 1f -
+        // visibleTail spans the final 13% of the actual crop. Follow those
+        // rows in physical Y instead of stretching just its last four rows
+        // across the overlap (which repeated small horizontal details).
+        val photoRow = if (edgeMap != null)
+            (((y / cover - IMMERSIVE_DIFFUSION_START) /
+                (1f - IMMERSIVE_DIFFUSION_START)) * source.height - 0.5f)
+                .coerceIn(0f, (source.height - 1).toFloat())
+        else (source.height - 1f -
             (1f - photoDistance) * minOf(4, source.height - 1)).coerceIn(
-            0f, (source.height - 1).toFloat())
+                0f, (source.height - 1).toFloat())
         val photoY0 = photoRow.toInt()
         val photoY1 = (photoY0 + 1).coerceAtMost(source.height - 1)
         val photoYmix = photoRow - photoY0

@@ -14,23 +14,25 @@ class ImmersiveVideoArtworkClipRegressionTest {
         val relative = "src/main/kotlin/com/nikhil/yt/ui/player/CapsuleImmersiveContent.kt"
         val file = listOf(File(relative), File("app/$relative")).firstOrNull { it.isFile }
             ?: error("Immersive source not found")
-        val content = file.readText().substringAfter("if (frame != null) {")
-            .substringBefore("/*\n         * Immersive editing")
-        // The PHOTO now fades into the sampled lower-edge backdrop, not a
-        // tinted overlay. The mask is cached and clipped to the same slot.
-        assertTrue(content.contains(".clipToBounds()"))
-        assertTrue(content.contains("CompositingStrategy.Offscreen"))
-        assertTrue(content.contains("BlendMode.DstIn"))
-        assertTrue("Photo feather must stay enabled during the video morph",
-            !content.contains("if (!isVideo) Modifier.drawWithCache"))
-        assertTrue("The same blurred frame should gently reach onto the artwork",
-            content.contains("seamBloomMask"))
-        assertTrue(content.contains("0.928f to Color.White"))
+        val content = file.readText()
+        val scene = content.substringAfter("private fun ImmersiveAudioScene(")
+            .substringBefore("/** VIDEO never inherits")
+        assertTrue(scene.contains(".clipToBounds()"))
+        assertTrue(scene.contains("CompositingStrategy.Offscreen"))
+        assertTrue(scene.contains("BlendMode.DstIn"))
+        assertTrue("Incoming and outgoing tracks must use the same joined scene",
+            content.split("ImmersiveAudioScene(").size - 1 == 3)
+        assertTrue("The overlap must reveal the cached backdrop continuously",
+            scene.contains("immersivePhotoFeatherAlpha(y)"))
+        assertTrue("A second independently faded bloom would recreate the stripe",
+            !content.contains("seamBloomMask"))
         assertTrue(content.contains("scaleX = if (frame.landscape) 1.06f else 1f"))
         assertTrue(content.contains("scaleY = if (frame.landscape) 1.06f else 1f"))
         assertTrue(content.contains("matchedPaint?.let { bitmap ->"))
-        assertTrue(!content.contains("matchedPaint?.second?.let"))
-        assertTrue(content.contains("immersivePageBaseColor(false, frame?.key == visualKey, pageFloor)"))
+        assertTrue("Artwork must not be attenuated twice during VIDEO morph",
+            !scene.contains("capsulePhotoOpacity("))
+        assertTrue("VIDEO must attenuate the joined audio scene as a whole",
+            content.contains("alpha = capsuleImmersiveVideoBackplateAlpha(sharedVideoProgress.value)"))
     }
 
     @Test fun immersiveFixedArtworkCannotHideItsGradientBehindOpaqueMatte() {
