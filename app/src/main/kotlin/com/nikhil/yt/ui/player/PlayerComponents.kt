@@ -14,16 +14,21 @@ import androidx.compose.ui.graphics.Color
 import com.nikhil.yt.constants.PlayerBackgroundStyle
 
 @Composable
-fun PlayerBackground(
+internal fun PlayerBackground(
     playerBackground: PlayerBackgroundStyle,
     gradientColors: List<Color>,
     animated: Boolean = true,
     sharedAnimationTime: State<Long>? = null,
+    artworkField: CapsuleColorField? = null,
 ) {
     val modifier = Modifier.fillMaxSize()
 
     when (playerBackground) {
         PlayerBackgroundStyle.DEFAULT -> Unit
+
+        PlayerBackgroundStyle.SCENE_LIGHT -> CapsuleVideoAmbientBackdrop(
+            bands = gradientColors, field = artworkField, modifier = modifier, animated = animated,
+        )
 
         PlayerBackgroundStyle.CAPSULE_GLOW ->
             CapsuleProceduralBackground(

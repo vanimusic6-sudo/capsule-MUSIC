@@ -382,12 +382,14 @@ fun BottomSheetPlayer(
             (miniPlayerBackground != MiniPlayerBackgroundStyle.THEME ||
                 (effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
                     playerBackground != PlayerBackgroundStyle.DEFAULT))
-    val gradientColors =
-        rememberCapsuleArtworkColors(
+    val artworkScene =
+        rememberCapsuleArtworkScene(
             mediaMetadata = enrichedMetadata,
             enabled = needsArtworkPalette,
             refreshOnOpen = state.isExpandedOrExpanding,
         )
+
+    val gradientColors = artworkScene.colors
 
     val textColor =
         when {
@@ -504,12 +506,21 @@ fun BottomSheetPlayer(
                     // Keep the original artwork backdrop alive under the
                     // temporary video ambience. Both entry and exit crossfade
                     // on the GPU; palette samples NEVER replace it abruptly.
-                    PlayerBackground(
-                        playerBackground = playerBackground,
-                        gradientColors = gradientColors,
-                        animated = backdropTimelineRunning,
-                        sharedAnimationTime = sharedBackdropAnimationTime,
-                    )
+                    // Keep the prepared artwork scene for reversal, but do not
+                    // shade another full-page layer beneath opaque video light.
+                    Box(Modifier.fillMaxSize().drawWithContent {
+                        if (!videoAmbientOverlayMounted || retainedVideoAmbientBands == null ||
+                            videoAmbientOverlayAlpha.value < 0.999f) drawContent()
+                    }) {
+                        PlayerBackground(
+                            playerBackground = playerBackground,
+                            gradientColors = gradientColors,
+                            artworkField = artworkScene.field,
+                            animated = if (playerBackground == PlayerBackgroundStyle.SCENE_LIGHT)
+                                onScreen && state.shouldLayerAboveCollapsedChrome else backdropTimelineRunning,
+                            sharedAnimationTime = sharedBackdropAnimationTime,
+                        )
+                    }
                     if (videoAmbientOverlayMounted && retainedVideoAmbientBands != null) {
                         CapsuleVideoAmbientBackdrop(
                             bands = retainedVideoAmbientBands,

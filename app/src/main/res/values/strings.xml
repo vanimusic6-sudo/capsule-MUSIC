@@ -1036,4 +1036,5 @@ Capsule will only extract your token, and everything else is stored locally.</st
     <string name="artist_candle_close">Close</string>
     <string name="capsule_video_ambient_title">Ambient colours from video</string>
     <string name="capsule_video_ambient_description">Video colours extend into the player background and follow movement in the scene. Active only while the video is visible.</string>
+    <string name="background_scene_light">Scene light</string>
 </resources>

@@ -957,4 +957,5 @@
     <string name="artist_candle_close">Закрыть</string>
     <string name="capsule_video_ambient_title">Фон из цветов видео</string>
     <string name="capsule_video_ambient_description">Цветовые области видео плавно продолжаются в фоне плеера и следуют за движением в кадре. Работает только при видимом видео.</string>
+    <string name="background_scene_light">Свет сцены</string>
 </resources>

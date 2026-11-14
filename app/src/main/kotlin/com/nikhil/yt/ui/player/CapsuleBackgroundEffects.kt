@@ -170,10 +170,8 @@ internal fun CapsuleProceduralBackground(
             when (effect) {
                 CapsuleBackgroundEffect.CAPSULE_STAR ->
                     if (blackArtwork) listOf(
-                        Color(0xFF010103), Color(0xFF030306), Color(0xFF05060B),
-                    ) else artwork.map { lerp(it, Color(0xFF0B1435), 0.52f) }
-                CapsuleBackgroundEffect.NEBULA ->
-                    artwork.map { lerp(capsuleMutedArtworkColor(it), Color(0xFFECE9FA), 0.31f) }
+                        Color(0xFF010101), Color(0xFF030303), Color(0xFF050505),
+                    ) else artwork
                 // The scene palette already represents actual cover pixels.
                 // Further desaturation and mixing with artificial grey makes
                 // red/green/white sleeves indistinguishable on the wallpaper.
@@ -227,14 +225,14 @@ internal fun CapsuleProceduralBackground(
                 CachedSoftLight(color, extent * (0.76f - index * 0.08f),
                     if (index == 0) 0.59f else 0.29f, if (compact) 0.34f else 1.1f)
             }
-            CapsuleBackgroundEffect.NEBULA -> palette.mapIndexed { index, color ->
-                CachedSoftLight(lerp(color, Color.White, 0.35f), extent * (0.74f + index * 0.07f),
+            CapsuleBackgroundEffect.NEBULA -> listOf(palette[1], palette[2], palette[0]).mapIndexed { index, color ->
+                CachedSoftLight(color, extent * (0.74f + index * 0.07f),
                     if (compact) 0.30f else 0.45f, if (compact) 0.36f else 0.82f)
             }
             else -> emptyList()
         }
         val starInk = if (effect == CapsuleBackgroundEffect.CAPSULE_STAR) {
-            if (blackArtwork) listOf(Color.White, Color(0xFFE4ECFF), Color(0xFFFFF4E7))
+            if (blackArtwork) listOf(Color.White, Color(0xFFEBEBEB), Color(0xFFF5F5F5))
             else palette.map { lerp(Color.White, it, 0.15f) }
         } else emptyList()
         val nebulaSparks = if (effect == CapsuleBackgroundEffect.NEBULA) {
@@ -244,7 +242,7 @@ internal fun CapsuleProceduralBackground(
                         deterministicFraction(i * 23 + 5) * size.width,
                         deterministicFraction(i * 41 + 7) * size.height,
                     ),
-                    lerp(Color.White, palette[i % palette.size], 0.18f),
+                    lerp(palette[i % palette.size], Color.White, 0.10f),
                     0.38f + i % 4 * 0.14f,
                 )
             }
@@ -555,7 +553,7 @@ internal fun capsuleDockIndicatorColor(
 private fun deepColor(
     color: Color,
     amount: Float,
-): Color = lerp(color, Color(0xFF03040A), amount.coerceIn(0f, 1f))
+): Color = lerp(color, Color(0xFF030303), amount.coerceIn(0f, 1f))
 
 /** Same light profile and geometry as drawSoftLight. Translate a cached shader
  * instead of constructing three radial gradients and color-stop arrays per frame. */
