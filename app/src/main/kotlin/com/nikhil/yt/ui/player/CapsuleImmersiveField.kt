@@ -68,13 +68,8 @@ private const val EDGE_HEIGHT = 240
 // The prepared continuation begins underneath fully opaque photo pixels.
 // Share this geometry with the photo mask, including outgoing track scenes.
 internal const val IMMERSIVE_DIFFUSION_START = 0.63f
-internal const val IMMERSIVE_PHOTO_FEATHER_START = 0.67f
-
-internal fun immersivePhotoFeatherAlpha(fraction: Float): Float {
-    val t = ((fraction - IMMERSIVE_PHOTO_FEATHER_START) /
-        (1f - IMMERSIVE_PHOTO_FEATHER_START)).coerceIn(0f, 1f)
-    return 1f - t * t * t * (t * (t * 6f - 15f) + 10f)
-}
+// The current image-backed stage uses ArchiveTune's whole-image mask.
+internal const val IMMERSIVE_PHOTO_FEATHER_START = 0.44f
 
 private fun smoothEdge(start: Float, end: Float, value: Float): Float {
     val t = ((value - start) / (end - start).coerceAtLeast(0.001f)).coerceIn(0f, 1f)
@@ -167,37 +162,51 @@ internal fun immersiveSpatialFieldBitmap(
     // We cache only a few increasingly diffused levels. The first one is a
     // near-faithful sample of the *last* visible row; later levels borrow
     // from higher rows and further away neighbours in TWO dimensions.
+    val edgeColours = (0 until source.width).flatMap { x ->
+        (0 until minOf(8, source.height)).map { dy -> source.cell(x, source.height - 1 - dy) }
+    }
+    val edgeLight = edgeColours.map { maxOf(it.red, it.green, it.blue) }.sorted()
+    val medianLight = edgeLight[edgeLight.size / 2]
+    val whiteCoverage = edgeColours.count {
+        val high = maxOf(it.red, it.green, it.blue)
+        high > 0.65f && high - minOf(it.red, it.green, it.blue) < 0.18f
+    }.toFloat() / edgeColours.size
+    val suppressMarks = medianLight < 0.5f && whiteCoverage < 0.22f
+    // Exposure is a property of a source cell, not of every convolution tap.
+    // Prepare it once, then evaluate the same triangular 2D kernel as two
+    // separable passes. This preserves the palette and finite boundaries.
+    val samples = source.cells.map { raw ->
+        val light = maxOf(raw.red, raw.green, raw.blue)
+        val nearNeutral = light - minOf(raw.red, raw.green, raw.blue) < 0.18f
+        val limit = if (suppressMarks && nearNeutral) maxOf(0.28f, medianLight + 0.20f) else 1f
+        val exposure = if (light > limit) limit / light else 1f
+        Color(raw.red * exposure, raw.green * exposure, raw.blue * exposure)
+    }
     val levels = Array(8) { level ->
-        // Start with a BROAD two-dimensional area even at the seam:
-        // projecting one source pixel below the image produces long striped
-        // shadows of faces/hair rather than the soft cloudy, glass-like
-        // continuation requested for this design. Diffusion grows from the
-        // very first visible continuation row, then spreads to the whole
-        // bottom of the image without inventing colours.
-        // Large features stay visible, but narrow hair/face columns blend
-        // into a soft *cloud* before the first background row. Keep source
-        // hues: this is spatial diffusion, not RGB-to-grey desaturation.
         val rx = 23 + level * 7
         val ry = (4 + level).coerceAtMost(source.height - 1)
+        val vertical = FloatArray(source.width * 3)
+        val verticalTotal = ((ry + 1) * (ry + 2) / 2).toFloat()
+        for (x in 0 until source.width) {
+            for (dy in 0..ry) {
+                val sample = samples[(source.height - 1 - dy) * source.width + x]
+                val weight = (ry + 1 - dy) / verticalTotal
+                vertical[3 * x] += sample.red * weight
+                vertical[3 * x + 1] += sample.green * weight
+                vertical[3 * x + 2] += sample.blue * weight
+            }
+        }
         FloatArray(source.width * 3).also { output ->
             for (x in 0 until source.width) {
-                var r = 0f
-                var g = 0f
-                var b = 0f
                 var total = 0f
-                for (dy in 0..ry) for (dx in -rx..rx) {
-                    val sample = source.cell(x + dx, source.height - 1 - dy)
-                    val horizontal = (rx + 1 - kotlin.math.abs(dx)).toFloat()
-                    val vertical = (ry + 1 - dy).toFloat()
-                    val w = horizontal * vertical
-                    r += sample.red * w
-                    g += sample.green * w
-                    b += sample.blue * w
-                    total += w
+                for (sx in (x - rx).coerceAtLeast(0)..(x + rx).coerceAtMost(source.width - 1)) {
+                    val weight = (rx + 1 - kotlin.math.abs(sx - x)).toFloat()
+                    output[3 * x] += vertical[3 * sx] * weight
+                    output[3 * x + 1] += vertical[3 * sx + 1] * weight
+                    output[3 * x + 2] += vertical[3 * sx + 2] * weight
+                    total += weight
                 }
-                output[3 * x] = r / total
-                output[3 * x + 1] = g / total
-                output[3 * x + 2] = b / total
+                for (channel in 0..2) output[3 * x + channel] /= total
             }
         }
     }

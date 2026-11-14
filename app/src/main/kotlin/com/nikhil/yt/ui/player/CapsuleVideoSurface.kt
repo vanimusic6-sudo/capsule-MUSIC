@@ -32,6 +32,13 @@ import androidx.compose.ui.viewinterop.AndroidView
 import timber.log.Timber
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import androidx.compose.runtime.withFrameNanos
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.video.VideoFrameMetadataListener
+import android.view.ViewTreeObserver
 import androidx.media3.common.Player
 import androidx.media3.ui.compose.modifiers.resizeWithContentScale
 import androidx.media3.ui.compose.state.rememberPresentationState
@@ -176,84 +183,89 @@ private fun CapsuleVideoTextureOutput(
                 player.removeListener(listener)
             }
         }
-        // A single opt-in, low-rate readback of the decoder's *existing* output.
-        // One 48x28 bitmap is reused; no extra video decoder, loop while hidden,
-        // full-size CPU blur, or allocations on every rendered frame.
+        // Decoder frame callbacks drive capture; there is no wallpaper timer
+        // and no replacement of Media3's SurfaceTextureListener.
         LaunchedEffect(view, player, ambientEnabled, videoActuallyPlaying,
             audioMediaId, firstFrameReady, ambientSink) {
             val sink = ambientSink ?: return@LaunchedEffect
             val trackId = audioMediaId?.takeIf(String::isNotBlank) ?: return@LaunchedEffect
             if (!ambientEnabled) return@LaunchedEffect
             var previous: CapsuleColorField? = null
-            var consecutiveFailures = 0
-            var unchangedFrames = 0
-            val buffer = Bitmap.createBitmap(
-                VIDEO_AMBIENT_SAMPLE_WIDTH, VIDEO_AMBIENT_SAMPLE_HEIGHT, Bitmap.Config.ARGB_8888,
-            )
+            val lightFilter = CapsuleVideoLightFilter()
+            val buffer = Bitmap.createBitmap(VIDEO_AMBIENT_SAMPLE_WIDTH,
+                VIDEO_AMBIENT_SAMPLE_HEIGHT, Bitmap.Config.ARGB_8888)
+            val frames = Channel<Long>(Channel.CONFLATED)
+            val decoder = player as? ExoPlayer
+            // Snapshot ownership for this effect. On pause the Compose state
+            // already reads false while the cancelled effect runs its finally.
+            val listeningForFrames = videoActuallyPlaying
+            val metadata = VideoFrameMetadataListener { _, releaseTimeNs, _, _ ->
+                frames.trySend(releaseTimeNs)
+            }
+            val draws = ViewTreeObserver.OnDrawListener { frames.trySend(System.nanoTime()) }
+            if (listeningForFrames) {
+                if (decoder != null) decoder.setVideoFrameMetadataListener(metadata)
+                else view.viewTreeObserver.addOnDrawListener(draws)
+            }
+            suspend fun capture(): Boolean {
+                if (!view.isAvailable || !view.isShown || !view.hasVideoFrame ||
+                    player.playbackState == Player.STATE_IDLE) return false
+                // GPU readback stays on the view thread. Extraction is tiny and off-main.
+                view.getBitmap(buffer)
+                val sample = withContext(Dispatchers.Default) {
+                    capsuleVideoAmbientFrameFromBitmap(buffer, trackId, lightFilter)
+                } ?: return false
+                if (capsuleFieldChanged(previous, sample.field, threshold = 0.0045f)) {
+                    previous = sample.field
+                    sink(sample)
+                }
+                return true
+            }
             try {
-                // A paused video already has a real retained frame. Extract its
-                // colours ONCE on return, without forcing Play or re-decoding.
-                // This also works when the recreated TextureView has not yet
-                // received its first onRenderedFirstFrame callback.
-                if (!videoActuallyPlaying) {
-                    retention.frame.value?.takeIf {
+                if (!listeningForFrames) {
+                    val retained = retention.frame.value?.takeIf {
                         it.mediaId == player.currentMediaItem?.mediaId
-                    }?.bitmap?.let { retained ->
-                        val reduced = Bitmap.createScaledBitmap(
-                            retained, VIDEO_AMBIENT_SAMPLE_WIDTH,
-                            VIDEO_AMBIENT_SAMPLE_HEIGHT, true,
-                        )
+                    }?.bitmap
+                    if (retained != null) {
+                        val reduced = Bitmap.createScaledBitmap(retained,
+                            VIDEO_AMBIENT_SAMPLE_WIDTH, VIDEO_AMBIENT_SAMPLE_HEIGHT, true)
                         try {
-                            capsuleVideoAmbientFrameFromBitmap(reduced, trackId)?.let {
-                                sink(it)
-                                previous = it.field
-                            }
-                        } finally {
-                            if (reduced !== retained) reduced.recycle()
+                            withContext(Dispatchers.Default) {
+                                capsuleVideoAmbientFrameFromBitmap(reduced, trackId, lightFilter)
+                            }?.let { sink(it); previous = it.field }
+                        } finally { if (reduced !== retained) reduced.recycle() }
+                    }
+                    if (previous == null && firstFrameReady) {
+                        for (attempt in 0 until 4) {
+                            withFrameNanos { }
+                            if (runCatching { capture() }.getOrDefault(false)) break
+                            delay(120L)
                         }
                     }
-                }
-                if (!firstFrameReady && previous == null && !videoActuallyPlaying) {
                     return@LaunchedEffect
                 }
-                // The first available frame may still be black during a
-                // surface swap. Paused frames get only a few bounded attempts
-                // and then sleep: no background polling or thermal regression.
-                delay(if (videoActuallyPlaying) 280L else 120L)
-                var pausedAttempts = 0
-                while (isActive) {
-                    if (view.isAvailable && view.isShown && view.hasVideoFrame &&
-                        (player.isPlaying || !videoActuallyPlaying) &&
-                        player.playbackState != Player.STATE_IDLE
-                    ) {
-                        try {
-                            view.getBitmap(buffer)
-                            val sample = capsuleVideoAmbientFrameFromBitmap(buffer, trackId)
-                            if (sample != null) {
-                                if (capsuleFieldChanged(previous, sample.field)) {
-                                    sink(sample)
-                                    previous = sample.field
-                                    unchangedFrames = 0
-                                } else {
-                                    unchangedFrames = (unchangedFrames + 1).coerceAtMost(8)
-                                }
-                                if (!videoActuallyPlaying) break
-                            }
-                            consecutiveFailures = 0
-                        } catch (_: RuntimeException) {
-                            // Lost / protected surfaces must not cause hot retry loops.
-                            consecutiveFailures++
-                            if (consecutiveFailures >= 3) break
-                        }
+                frames.trySend(System.nanoTime())
+                var lastCaptureNs = 0L
+                var failures = 0
+                for (signal in frames) {
+                    if (!isActive) break
+                    val now = System.nanoTime()
+                    if (now - lastCaptureNs < VIDEO_AMBIENT_CAPTURE_INTERVAL_MS * 1_000_000L) continue
+                    // Metadata precedes presentation: wait for the next display frame
+                    // before reading the already-rendered TextureView.
+                    withFrameNanos { }
+                    try {
+                        if (capture()) { lastCaptureNs = now; failures = 0 }
+                    } catch (_: RuntimeException) {
+                        if (++failures >= 3) break
                     }
-                    if (!videoActuallyPlaying && ++pausedAttempts >= 4) break
-                    delay(
-                        if (!videoActuallyPlaying) 180L
-                        else if (unchangedFrames >= 3) VIDEO_AMBIENT_CALM_CAPTURE_INTERVAL_MS
-                        else VIDEO_AMBIENT_CAPTURE_INTERVAL_MS,
-                    )
                 }
             } finally {
+                if (listeningForFrames) {
+                    if (decoder != null) decoder.clearVideoFrameMetadataListener(metadata)
+                    else if (view.viewTreeObserver.isAlive) view.viewTreeObserver.removeOnDrawListener(draws)
+                }
+                frames.close()
                 buffer.recycle()
             }
         }

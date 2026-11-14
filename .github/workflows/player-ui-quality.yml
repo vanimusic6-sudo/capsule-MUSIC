@@ -45,9 +45,11 @@ jobs:
           --tests 'com.nikhil.yt.ui.player.CapsuleColorFieldTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleScenePaletteTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveFieldTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveImageBackdropTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveTailTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleVideoAmbientTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleVideoAmbientResumeTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleVideoColourMotionTest'
           --tests 'com.nikhil.yt.ui.player.ImmersiveArtworkBackgroundTest'
           --tests 'com.nikhil.yt.ui.player.ImmersiveVideoArtworkClipRegressionTest'
           --tests 'com.nikhil.yt.ui.CapsuleMotionTest'
@@ -65,6 +67,16 @@ jobs:
           --tests 'com.nikhil.yt.ui.MotionEnergyStructuralRegressionTest'
           --tests 'com.nikhil.yt.ui.UiEnergyRegressionTest'
           --stacktrace --no-daemon --max-workers=2
+      - name: Upload player graphics and CPU preparation report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: player-graphics-checks
+          path: |
+            app/build/test-results/testUniversalDebugUnitTest/
+            app/build/video-morph-preview/*.png
+            app/build/video-morph-preview/*.json
+          retention-days: 7
       - name: Android lint
         if: ${{ !cancelled() }}
         run: gradle :app:lintUniversalDebug --no-daemon --max-workers=2
@@ -78,5 +90,6 @@ jobs:
             app/build/reports/tests/testUniversalDebugUnitTest/
             app/build/reports/lint-results-universalDebug.*
             app/build/video-morph-preview/*.png
+            app/build/video-morph-preview/*.json
           if-no-files-found: warn
           retention-days: 7

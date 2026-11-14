@@ -956,5 +956,5 @@
     <string name="artist_candle_local">Свеча останется личной. Словами благодарности можно поделиться с другими.</string>
     <string name="artist_candle_close">Закрыть</string>
     <string name="capsule_video_ambient_title">Фон из цветов видео</string>
-    <string name="capsule_video_ambient_description">Продолжать цвета воспроизводимого видео на фон плеера. Миниатюрный кадр считывается примерно раз в 1,5 секунды только при видимом видео. По умолчанию выключено для экономии энергии.</string>
+    <string name="capsule_video_ambient_description">Цветовые области видео плавно продолжаются в фоне плеера и следуют за движением в кадре. Работает только при видимом видео.</string>
 </resources>

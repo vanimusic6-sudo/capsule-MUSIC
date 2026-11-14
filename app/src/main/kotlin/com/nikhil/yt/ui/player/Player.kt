@@ -260,6 +260,8 @@ fun BottomSheetPlayer(
     val decodedArtworkCache = remember {
         mutableStateMapOf<String, Pair<String, Painter>>()
     }
+    val immersiveSceneMemory = remember { ImmersiveSceneMemory() }
+
 
     /*
      * Start cover + portrait work while the player is collapsed, but never while the whole app is
@@ -355,8 +357,8 @@ fun BottomSheetPlayer(
         videoPlaybackState.presentingVideo &&
             videoPlaybackState.mediaId == enrichedMetadata?.id
     }?.field
-    val videoAmbientOverlayAlpha = remember { Animatable(0f) }
-    var videoAmbientOverlayMounted by remember { mutableStateOf(false) }
+    val videoAmbientOverlayAlpha = remember { Animatable(if (activeVideoAmbientBands != null) 1f else 0f) }
+    var videoAmbientOverlayMounted by remember { mutableStateOf(activeVideoAmbientBands != null) }
     LaunchedEffect(activeVideoAmbientBands != null) {
         if (activeVideoAmbientBands != null) {
             videoAmbientOverlayMounted = true
@@ -512,7 +514,7 @@ fun BottomSheetPlayer(
                         CapsuleVideoAmbientBackdrop(
                             bands = retainedVideoAmbientBands,
                             field = retainedVideoAmbient?.field,
-                            animated = videoPlaybackState.presentingVideo && isPlaying,
+                            animated = videoPlaybackState.presentingVideo,
                             modifier = Modifier.fillMaxSize().graphicsLayer {
                                 alpha = videoAmbientOverlayAlpha.value
                             },
@@ -536,6 +538,7 @@ fun BottomSheetPlayer(
                     CapsulePlayerLyricsHost(
                     design = effectivePlayerDesign,
                     warmedImmersiveTone = warmedImmersiveTone,
+                    sceneMemory = immersiveSceneMemory,
                     showLyrics = showInlineLyrics,
                     mediaMetadata = metadata,
                     decodedArtworkCache = decodedArtworkCache,
@@ -639,6 +642,7 @@ private val LyricsFrameCornerRadius = 18.dp
 private fun CapsulePlayerLyricsHost(
     design: CapsulePlayerDesign,
     warmedImmersiveTone: ImmersiveArtworkTone?,
+    sceneMemory: ImmersiveSceneMemory,
     showLyrics: Boolean,
     mediaMetadata: MediaMetadata,
     decodedArtworkCache: MutableMap<String, Pair<String, Painter>>,
@@ -774,6 +778,7 @@ private fun CapsulePlayerLyricsHost(
                 CapsuleImmersiveContent(
                     mediaMetadata = mediaMetadata,
                     artworkTone = requireNotNull(immersiveArtworkTone),
+                    sceneMemory = sceneMemory,
                     decodedArtworkCache = decodedArtworkCache,
                     videoAmbientBands = videoAmbientBands,
                     videoAmbientField = videoAmbientField,

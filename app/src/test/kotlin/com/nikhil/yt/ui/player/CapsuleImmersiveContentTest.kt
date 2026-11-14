@@ -264,9 +264,9 @@ class CapsuleImmersiveContentTest {
     }
 
     @org.junit.Test
-    fun editorWorkspaceStopsAtArtworkAndQueueRail() {
+    fun editorWorkspaceKeepsItsOriginalControlsAnchorAndQueueRail() {
         val total = 851.dp
-        val artwork = immersiveArtworkHeight(total)
+        val artwork = immersiveControlsTop(total)
         val workspace =
             immersiveEditorHeight(
                 totalHeight = total,
@@ -355,12 +355,14 @@ class CapsuleImmersiveContentTest {
     }
 
     @Test
-    fun `an ordinary phone gives the cover about half the sheet`() {
+    fun `cover grows moderately while controls keep their old space`() {
         val height = immersiveArtworkHeight(800.dp)
+        assertEquals(440.dp, immersiveControlsTop(800.dp))
+        assertTrue(height > immersiveControlsTop(800.dp))
 
         assertTrue(
             "800dp phone gave $height, which is not about half of it",
-            height > 320.dp && height < 480.dp,
+            height > 440.dp && height < 512.dp,
         )
     }
 
@@ -414,7 +416,7 @@ class CapsuleImmersiveContentTest {
             immersiveSceneOpacity(previous, current, 0.95f, 0f), 0.0001f)
         assertEquals(0.95f,
             immersiveSceneOpacity(current, current, 0.95f, 0f), 0.0001f)
-        assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS in 400..600)
+        assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS in 380..460)
     }
     @Test fun metadataTurnsDirtyGreyOnlyOverNearWhiteBackground() {
         val white = immersiveMetadataInk(Color.White)
@@ -429,9 +431,9 @@ class CapsuleImmersiveContentTest {
     }
 
     @Test fun trackRevealIsLongEnoughToReadWithoutHoldingOldArtworkForSeconds() {
-        assertTrue(IMMERSIVE_TRACK_FADE_MS in 400..550)
+        assertTrue(IMMERSIVE_TRACK_FADE_MS in 340..420)
         assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS >= IMMERSIVE_TRACK_FADE_MS)
-        assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS <= 600)
+        assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS <= 460)
     }
 
     @Test fun whiteMetadataKeepsContrastForTitleAndTranslucentArtist() {
@@ -440,6 +442,16 @@ class CapsuleImmersiveContentTest {
             val contrast = 1.05f / (color.luminance() + 0.05f)
             assertTrue("White artwork must not hide metadata: $contrast", contrast >= 4.5f)
         }
+    }
+
+    @Test fun trackDissolveHasSoftEndpointsWithoutAnAggressiveMiddleBurst() {
+        assertEquals(0f, ImmersiveTrackEasing.transform(0f), 0.0001f)
+        assertEquals(1f, ImmersiveTrackEasing.transform(1f), 0.0001f)
+        val steps = (0..100).map { ImmersiveTrackEasing.transform(it / 100f) }
+        assertTrue(steps.zipWithNext().all { (a, b) -> b >= a && b - a < 0.018f })
+        assertTrue("The dissolve must start promptly instead of lingering", steps[5] in 0.025f..0.05f)
+        assertTrue(steps[20] > 0.15f)
+        assertTrue(steps[95] > 0.985f)
     }
 
 }

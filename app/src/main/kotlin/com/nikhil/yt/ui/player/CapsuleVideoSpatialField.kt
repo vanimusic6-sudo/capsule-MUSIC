@@ -28,6 +28,7 @@ private const val VIDEO_DIFFUSE_HEIGHT = 176
 internal fun capsuleVideoSpatialBitmap(
     field: CapsuleColorField,
     fallbackFloor: Color,
+    alreadyDiffused: Boolean = false,
 ): ImageBitmap {
     val sw = field.width
     val sh = field.height
@@ -36,7 +37,11 @@ internal fun capsuleVideoSpatialBitmap(
     // Blur every source pixel with a fixed 9x7 triangular kernel. This is
     // only ~63 * 320 operations per accepted readback, never per display
     // frame. Wide spatial support suppresses hard vertical colour bars.
-    for (cy in 0 until sh) for (cx in 0 until sw) {
+    if (alreadyDiffused) {
+        field.cells.forEachIndexed { i, color ->
+            smoothed[i * 3] = color.red; smoothed[i * 3 + 1] = color.green; smoothed[i * 3 + 2] = color.blue
+        }
+    } else for (cy in 0 until sh) for (cx in 0 until sw) {
         var rr = 0f
         var gg = 0f
         var bb = 0f

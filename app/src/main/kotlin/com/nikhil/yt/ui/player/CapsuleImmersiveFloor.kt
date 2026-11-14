@@ -112,7 +112,7 @@ internal fun rememberImmersiveEdgeColor(
     val sourceUrl = pinnedSource ?: mediaMetadata?.thumbnailUrl?.takeIf(String::isNotBlank)
     // A different viewport shows a different centre-cropped area of the same frame.
     val artworkAspect = visibleArtworkAspectRatio.coerceIn(0.55f, 2.2f)
-    val key = mediaMetadata?.id?.let { "$it|$sourceUrl|${(artworkAspect * 100f).toInt()}" }
+    val key = mediaMetadata?.id?.let { "visible-field-v2|$it|$sourceUrl|${(artworkAspect * 100f).toInt()}" }
     var resolved by remember { mutableStateOf<ImmersiveArtworkTone?>(null) }
     var resolvedKey by remember { mutableStateOf<String?>(null) }
     val cached = key?.let { synchronized(immersiveArtworkCache) { immersiveArtworkCache[it] } }
@@ -169,35 +169,20 @@ internal fun rememberImmersiveEdgeColor(
             if (isYtimg && (!landscape || image.width < 224)) continue
 
             resultTone = withContext(Dispatchers.Default) {
-                // ORIGINAL Immersion colour extraction: the modal background
-                // in the lower visible centre crop, not a full-artwork palette.
-                // Only near-white, low-saturation covers bypass the original
-                // brightness clamp so the isolated softer fade can eliminate
-                // the noticeable white->grey edge.
-                // The visible BOTTOM of the displayed crop (including overscan)
-                // must drive both the seam and the entire controls floor.
-                // Sampling 72–95% of the source used to pick the distant sky or
-                // mid-artwork, creating an unrelated muddy brown on the bottom.
-                val visibleTail = image.capsuleImmersiveVisibleTail(artworkAspect, landscape)
-                val rawEdge = capsuleDominantEdgeColor(visibleTail)
-                val nearWhite = rawEdge.isNearWhiteImmersiveBackground()
-                val bottomTexture = image.immersiveBottomTexture(artworkAspect)
-                val colorField = image.capsuleColorField(artworkAspect)
-                // Legacy colour bands remain available for old snapshots and
-                // incomplete artwork, but do NOT drive the normal backdrop.
-                val edgeBands = emptyList<Color>()
+                // Use the actual displayed crop, excluding the masked bottom.
+                // A complete spatial field replaces the last-row hue winner.
+                val visibleField = image.capsuleImmersiveVisibleField(artworkAspect, landscape)
+                val visibleMean = capsuleImmersiveVisibleMean(visibleField)
+                val nearWhite = visibleMean.isNearWhiteImmersiveBackground()
                 ImmersiveArtworkTone(
-                    // Do not clamp this colour: a clamped seam is visibly
-                    // darker than the last actual row of the artwork.
-                    edge = rawEdge,
-                    accent = capsuleCleanImmersiveFloor(visibleTail),
-                    bottomTexture = bottomTexture,
-                    edgeBands = edgeBands,
-                    colorField = colorField,
-                    visibleTail = visibleTail,
-                    diffusionTail = image.capsuleImmersiveVisibleTail(
-                        artworkAspect, landscape, fraction = 1f - IMMERSIVE_DIFFUSION_START,
-                    ),
+                    // Base/loading colours only; the page itself uses visibleField.
+                    edge = visibleMean,
+                    accent = Color(visibleMean.red * 0.35f, visibleMean.green * 0.35f, visibleMean.blue * 0.35f),
+                    bottomTexture = 0f,
+                    edgeBands = emptyList(),
+                    colorField = visibleField,
+                    visibleTail = null,
+                    diffusionTail = null,
                     // Own the preview pixels independently of Coil's bitmap
                     // pool. A retained player frame must never point at a
                     // bitmap that another request can recycle/reuse.

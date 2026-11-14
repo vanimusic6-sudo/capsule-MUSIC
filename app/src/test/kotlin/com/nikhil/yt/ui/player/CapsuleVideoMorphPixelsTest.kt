@@ -359,27 +359,31 @@ class CapsuleVideoMorphPixelsTest {
                 }
             }
         }
-        for (alpha in listOf(0f, 0.25f, 0.5f, 0.75f, 1f)) {
-            compose.runOnIdle { fade.value = alpha }
-            val bitmap = snapshot("joined-scene-$alpha")
-            try {
-                val reference = bitmap.getPixel(bitmap.width / 2, bitmap.height / 3)
-                val expectedRed = (255 * (1f - alpha)).roundToInt()
-                val expectedBlue = (255 * alpha).roundToInt()
-                assertTrue(kotlin.math.abs(AndroidColor.red(reference) - expectedRed) <= 3)
-                assertTrue(kotlin.math.abs(AndroidColor.blue(reference) - expectedBlue) <= 3)
-                // All photo, overlap and page pixels have identical source
-                // colours. Independent track alpha on the masked photo would
-                // instead make a bright/red stripe inside this exact region.
-                for (row in 0..80) {
-                    val y = ((0.54f + row * 0.002f) * bitmap.height).roundToInt()
-                    val pixel = bitmap.getPixel(bitmap.width / 2, y)
-                    assertTrue("Track alpha $alpha changed colour at feather row $y",
-                        kotlin.math.abs(AndroidColor.red(pixel) - AndroidColor.red(reference)) <= 3 &&
-                            kotlin.math.abs(AndroidColor.blue(pixel) - AndroidColor.blue(reference)) <= 3)
-                }
-            } finally { bitmap.recycle() }
-        }
+        val first = snapshot("joined-endpoint-red")
+        compose.runOnIdle { fade.value = 1f }
+        val second = snapshot("joined-endpoint-blue")
+        try {
+            for (alpha in listOf(0f, 0.25f, 0.5f, 0.75f, 1f)) {
+                compose.runOnIdle { fade.value = alpha }
+                val bitmap = snapshot("joined-scene-$alpha")
+                try {
+                    // Include the stage scrim in each endpoint. Group opacity
+                    // must interpolate the complete scene, including its mask.
+                    for (row in 0..80) {
+                        val y = ((0.34f + row * 0.006f) * bitmap.height).roundToInt()
+                        val x = bitmap.width / 2
+                        val pixel = bitmap.getPixel(x, y)
+                        for (shift in listOf(0, 8, 16)) {
+                            val start = first.getPixel(x, y) ushr shift and 255
+                            val end = second.getPixel(x, y) ushr shift and 255
+                            val expected = (start * (1f - alpha) + end * alpha).roundToInt()
+                            assertTrue("Track alpha $alpha broke group blend at row $y",
+                                kotlin.math.abs((pixel ushr shift and 255) - expected) <= 3)
+                        }
+                    }
+                } finally { bitmap.recycle() }
+            }
+        } finally { first.recycle(); second.recycle() }
     }
 
     @Test fun videoBackplateAttenuatesPhotoAndFloorEqually() {
@@ -417,13 +421,8 @@ class CapsuleVideoMorphPixelsTest {
             })
         }
         val cover = source.asImageBitmap()
-        val continuation = immersiveSpatialFieldBitmap(
-            bands = emptyList(), fallbackFloor = Color(0xFF19191D),
-            coverFraction = 280f / 440f, tailFraction = 0.06f,
-            texture = 0.9f, landscape = false, nearWhite = false, photoOverlay = false,
-            edgeMap = source.capsuleImmersiveVisibleTail(320f / 280f, false,
-                fraction = 1f - IMMERSIVE_DIFFUSION_START),
-        )
+        val continuation = capsuleImmersiveImageBackdropBitmap(
+            source.capsuleImmersiveVisibleField(320f / 280f, false), 280f / 440f)
         compose.setContent {
             Box(Modifier.size(320.dp, 440.dp).testTag("media-slot")) {
                 ImmersiveAudioScene(continuation, 280.dp, sceneAlpha = { 1f }) {
@@ -446,6 +445,86 @@ class CapsuleVideoMorphPixelsTest {
                 }
             }
         } finally { image.recycle() }
+    }
+
+    @Test fun photographicBackdropKeepsColourWithoutASeparateFeatherStrip() {
+        val source = Bitmap.createBitmap(320, 280, Bitmap.Config.ARGB_8888)
+        source.eraseColor(AndroidColor.rgb(210, 140, 75))
+        val field = source.capsuleImmersiveVisibleField(320f / 280f, false)
+        val background = capsuleImmersiveImageBackdropBitmap(field, 280f / 440f)
+        compose.setContent {
+            Box(Modifier.size(320.dp, 440.dp).testTag("media-slot")) {
+                ImmersiveAudioScene(background, 280.dp, sceneAlpha = { 1f }) {
+                    Image(source.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize())
+                }
+            }
+        }
+        val image = snapshot("image-backed-photographic-colour")
+        try {
+            val belowStage = image.getPixel(image.width / 2, image.height * 3 / 4)
+            assertTrue(AndroidColor.red(belowStage) > AndroidColor.blue(belowStage) + 50)
+            val edge = (image.height * 281f / 440f).roundToInt()
+            for (y in edge - 4..edge + 4) {
+                val a = image.getPixel(image.width / 2, y)
+                val b = image.getPixel(image.width / 2, y + 1)
+                assertTrue(kotlin.math.abs(AndroidColor.red(a) - AndroidColor.red(b)) < 5)
+            }
+        } finally { image.recycle() }
+    }
+
+    @Test fun tallerCropKeepsRoundArtworkFeaturesRound() {
+        val source = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(source)
+        canvas.drawColor(AndroidColor.BLACK)
+        canvas.drawCircle(128f, 70f, 26f, android.graphics.Paint().apply { color = AndroidColor.RED })
+        val background = capsuleImmersiveImageBackdropBitmap(
+            source.capsuleImmersiveVisibleField(240f / 300f, false), 300f / 440f)
+        compose.setContent {
+            Box(Modifier.size(240.dp, 440.dp).testTag("media-slot")) {
+                ImmersiveAudioScene(background, 300.dp, sceneAlpha = { 1f }) {
+                    Image(source.asImageBitmap(), contentDescription = null,
+                        contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                }
+            }
+        }
+        val image = snapshot("larger-cover-preserves-proportions")
+        try {
+            var left = image.width; var right = -1; var top = image.height; var bottom = -1
+            for (y in 0 until image.height / 3) for (x in 0 until image.width) {
+                val pixel = image.getPixel(x, y)
+                if (AndroidColor.red(pixel) > 240 && AndroidColor.green(pixel) < 8 && AndroidColor.blue(pixel) < 8) {
+                    left = minOf(left, x); right = maxOf(right, x)
+                    top = minOf(top, y); bottom = maxOf(bottom, y)
+                }
+            }
+            assertTrue(right > left && bottom > top)
+            assertTrue("Crop must scale both image axes equally",
+                kotlin.math.abs((right - left) - (bottom - top)) <= 3)
+        } finally { image.recycle() }
+    }
+
+    @Test fun tinyProgressCannotProtrudeOutsideTheEmptyCapsuleSilhouette() {
+        val position = mutableStateOf(0f)
+        compose.setContent {
+            Box(Modifier.size(320.dp, 80.dp).testTag("media-slot")) {
+                CapsuleThinSlider(value = position.value, valueRange = 0f..1f, enabled = true,
+                    activeColor = Color.White, inactiveColor = Color.Gray,
+                    onValueChange = {}, onValueChangeFinished = {},
+                    modifier = Modifier.fillMaxSize(), trackHeight = 8.dp)
+            }
+        }
+        val empty = snapshot("slider-empty-cap")
+        compose.runOnIdle { position.value = 0.006f }
+        val tiny = snapshot("slider-tiny-progress")
+        try {
+            for (y in 0 until empty.height) for (x in 0 until 12) {
+                if (AndroidColor.alpha(empty.getPixel(x, y)) == 0) {
+                    assertTrue("Tiny progress must share the track's original rounded outline",
+                        AndroidColor.alpha(tiny.getPixel(x, y)) <= 1)
+                }
+            }
+        } finally { empty.recycle(); tiny.recycle() }
     }
 
     private fun assertRectangularBlend(name: String) {

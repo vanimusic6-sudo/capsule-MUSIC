@@ -46,6 +46,32 @@ class CapsuleImmersiveTailTest {
         image.recycle()
     }
 
+    @Test fun smallWhiteEdgeLabelCannotBecomeABroadWhitePatch() {
+        val dark = Color(0xFF121117)
+        val source = CapsuleColorField(96, 34, List(96 * 34) { i ->
+            if (i % 96 >= 91 && i / 96 >= 29) Color.White else dark
+        })
+        val image = immersiveSpatialFieldBitmap(emptyList(), dark,
+            0.55f, 0.06f, 0f, false, false, false, edgeMap = source).asAndroidBitmap()
+        val y = (image.height * 0.58f).toInt()
+        val maximum = (0 until image.width).maxOf { AndroidColor.red(image.getPixel(it, y)) }
+        assertTrue("A label occupying less than 1% of the photo cannot light the page: $maximum", maximum < 42)
+        image.recycle()
+    }
+
+    @Test fun sparseWhiteMarkProtectionDoesNotSuppressARealColouredLightSource() {
+        val dark = Color(0xFF121117)
+        val source = CapsuleColorField(96, 34, List(96 * 34) { i ->
+            if (i % 96 >= 85) Color(0xFFFF4810) else dark
+        })
+        val image = immersiveSpatialFieldBitmap(emptyList(), dark,
+            0.55f, 0.06f, 0f, false, false, false, edgeMap = source).asAndroidBitmap()
+        val y = (image.height * 0.58f).toInt()
+        assertTrue("A real red flame must retain its own light; only pale marks are limited",
+            AndroidColor.red(image.getPixel(image.width - 2, y)) > 80)
+        image.recycle()
+    }
+
     @Test fun photoNeverGetsATintedOverlayOrHardBoundaryStripe() {
         val source = CapsuleColorField(64, 8, List(64 * 8) { Color(0xFFE9B078) })
         val overlay = immersiveSpatialFieldBitmap(

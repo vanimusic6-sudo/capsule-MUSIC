@@ -32,7 +32,7 @@ class PlayerTransitionArchitectureTest {
         assertFalse(menu.contains("rememberDraggableState"))
     }
 
-    @Test fun immersiveArtworkHasNoGraphiteTargetOrPressedWhiteOverlay() {
+    @Test fun immersiveArtworkUsesOnePhotographicBackgroundAndNoPressedWhiteOverlay() {
         val immersive = source("com/nikhil/yt/ui/player/CapsuleImmersiveContent.kt")
         // The old two-coroutine readiness gate, tall ray projection and
         // independent audio fade must never return.
@@ -57,20 +57,16 @@ class PlayerTransitionArchitectureTest {
         assertTrue(player.contains("val warmedImmersiveTone ="))
         assertTrue(player.contains("enabled = onScreen && !enrichedMetadata?.thumbnailUrl.isNullOrBlank()"))
         assertTrue(player.contains("warmedImmersiveTone = warmedImmersiveTone"))
-        val field = source("com/nikhil/yt/ui/player/CapsuleImmersiveField.kt")
-        assertTrue(field.contains("fun capsuleDominantEdgeColor("))
-        assertTrue(field.contains("fun capsuleImmersiveBleedEnd("))
-        assertTrue(field.contains("EDGE_WIDTH = 192"))
-        assertFalse(field.contains("cubicWeights("))
-        assertFalse(field.contains("sin(pageY"))
         val backdrop = source("com/nikhil/yt/ui/player/CapsuleVideoAmbientBackdrop.kt")
         assertTrue(backdrop.contains("onFirstTextureReady"))
         assertTrue(backdrop.contains("blend.animateTo("))
         assertTrue(backdrop.contains("capsuleVideoSpatialBitmap("))
 
         val floor = source("com/nikhil/yt/ui/player/CapsuleImmersiveFloor.kt")
-        assertTrue(floor.contains("val rawEdge = capsuleDominantEdgeColor(visibleTail)"))
-        assertTrue(floor.contains("val colorField = image.capsuleColorField(artworkAspect)"))
+        assertTrue(floor.contains("val visibleField = image.capsuleImmersiveVisibleField(artworkAspect, landscape)"))
+        assertFalse(floor.contains("val rawEdge = capsuleDominantEdgeColor(visibleTail)"))
+        assertFalse(immersive.contains("immersiveSpatialFieldBitmap("))
+        assertFalse(immersive.contains("ImmersiveSoftArtwork("))
         assertFalse(floor.contains("val edgeBands = image.immersiveBottomEdgeBands("))
         assertTrue(floor.contains("val edgeBands: List<Color> = emptyList()"))
         assertTrue(floor.contains("val preview: ImageBitmap? = null"))
@@ -78,15 +74,8 @@ class PlayerTransitionArchitectureTest {
         assertTrue(floor.contains("fun Bitmap.immersiveBottomBackground(artworkAspect: Float)"))
         assertFalse(floor.contains("immersiveArtworkBackground("))
         assertTrue(floor.contains("nearWhiteBackground = nearWhite"))
-        // Every cover now selects its floor from the SAME visible lower crop;
-        // no independent whitening/clamping or artificial colour adjustment.
-        assertTrue(floor.contains("accent = capsuleCleanImmersiveFloor(visibleTail)"))
-        assertFalse(floor.contains("rawEdge.immersiveMutedAccent()"))
-        assertTrue(floor.contains("capsuleCleanImmersiveFloor(visibleTail)"))
-        assertFalse(floor.contains("accent = background.immersiveMutedAccent()"))
-        assertTrue(floor.contains("fun Color.immersiveMutedAccent()"))
-        assertTrue(floor.contains("comfortableImmersiveColor"))
-        assertTrue(floor.contains("0.44f"))
+        // Palette and crop behaviour are covered with native bitmap inputs in
+        // CapsuleImmersiveImageBackdropTest, not obsolete extraction strings.
 
         val videoArtwork = source("com/nikhil/yt/ui/player/CapsuleVideoArtworkTransition.kt")
         assertTrue(videoArtwork.contains("interactionSource = artworkTapInteraction"))
