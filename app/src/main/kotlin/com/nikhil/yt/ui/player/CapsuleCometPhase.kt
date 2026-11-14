@@ -14,6 +14,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.MotionDurationScale
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 
 private const val CapsuleCometPeriodMs = 8_000L
@@ -86,16 +89,21 @@ internal fun rememberCapsuleCometRotation(
         rotation.snapTo(CapsuleCometPhaseClock.angleNow())
 
         if (shouldTurn) {
-            while (isActive) {
-                rotation.animateTo(
-                    targetValue = rotation.value + 360f,
-                    animationSpec =
-                        tween(
-                            durationMillis = CapsuleCometPeriodMs.toInt(),
-                            easing = LinearEasing,
-                        ),
-                )
-                rotation.snapTo(rotation.value % 360f)
+            val durationScale = coroutineContext[MotionDurationScale]
+            snapshotFlow { durationScale?.scaleFactor ?: 1f }.collectLatest { scale ->
+                if (scale <= 0f) return@collectLatest
+
+                while (isActive) {
+                    rotation.animateTo(
+                        targetValue = rotation.value + 360f,
+                        animationSpec =
+                            tween(
+                                durationMillis = CapsuleCometPeriodMs.toInt(),
+                                easing = LinearEasing,
+                            ),
+                    )
+                    rotation.snapTo(rotation.value % 360f)
+                }
             }
         }
     }

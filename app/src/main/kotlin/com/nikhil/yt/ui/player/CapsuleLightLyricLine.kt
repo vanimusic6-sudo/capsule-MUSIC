@@ -7,12 +7,17 @@
 package com.nikhil.yt.ui.player
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,9 +31,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.sp
 import com.nikhil.yt.db.entities.LyricsEntity.Companion.LYRICS_NOT_FOUND
 import com.nikhil.yt.lyrics.LyricsEntry
+import com.nikhil.yt.lyrics.withInstrumentalBreaks
+import com.nikhil.yt.lyrics.findInstrumentalAwareLineIndex
+import com.nikhil.yt.lyrics.isInstrumentalInterval
+import com.nikhil.yt.lyrics.instrumentalFillFraction
+import com.nikhil.yt.ui.component.InstrumentalNoteGlyph
 import com.nikhil.yt.lyrics.LyricsUtils
 import com.nikhil.yt.utils.reportException
 import com.nikhil.yt.ui.motion.CapsuleEnterEasing
@@ -68,37 +79,38 @@ private const val LINE_LEAD_MS = 300L
  * Only synced formats are followed. Plain lyrics have no timing, so there is no
  * honest way to pick "the line that is sounding now" from them.
  */
-internal fun capsuleLightLyricLines(lyrics: String?): List<LyricsEntry> {
+internal fun capsuleLightLyricLines(lyrics: String?, durationMs: Long = 0L): List<LyricsEntry> {
     val raw = lyrics?.trim().orEmpty()
     if (raw.isEmpty() || raw == LYRICS_NOT_FOUND) return emptyList()
     return try {
-        when {
+        val parsed = when {
             LyricsUtils.isTtml(raw) -> LyricsUtils.parseTtml(raw)
             raw.startsWith("[") -> LyricsUtils.parseLyrics(raw)
             else -> emptyList()
         }
+        withInstrumentalBreaks(parsed, durationMs.coerceAtLeast(0L))
     } catch (e: Exception) {
         reportException(e)
         emptyList()
     }
 }
 
-/**
- * The line sounding at [positionMs], or null before the first line starts and
- * during instrumental gaps, where the row stays empty rather than holding a
- * line that is no longer being sung.
- */
-internal fun capsuleLightLyricLineAt(
-    lines: List<LyricsEntry>,
-    positionMs: Long,
-): String? {
+/** Use exactly the same pause intervals and vocal anticipation as the full lyrics screen. */
+internal fun capsuleLightLyricEntryAt(lines: List<LyricsEntry>, positionMs: Long): LyricsEntry? {
     if (lines.isEmpty()) return null
     val position = positionMs.coerceAtLeast(0L)
-    val index = LyricsUtils.findCurrentLineIndex(lines, position, leadMs = LINE_LEAD_MS)
+    val index = findInstrumentalAwareLineIndex(lines, position, leadMs = LINE_LEAD_MS)
     val entry = lines.getOrNull(index) ?: return null
-    if (position + LINE_LEAD_MS < entry.time) return null
-    return entry.text.trim().replace('\n', ' ').takeIf { it.isNotEmpty() }
+    return if (entry.isInstrumental) {
+        entry.takeIf { isInstrumentalInterval(position, it.time, it.durationMs) }
+    } else {
+        entry.takeIf { position + LINE_LEAD_MS >= it.time && it.text.isNotBlank() }
+    }
 }
+
+internal fun capsuleLightLyricLineAt(lines: List<LyricsEntry>, positionMs: Long): String? =
+    capsuleLightLyricEntryAt(lines, positionMs)?.takeUnless { it.isInstrumental }
+        ?.text?.trim()?.replace('\n', ' ')
 
 /**
  * Draws [line], fading to the next one as playback moves.
@@ -117,28 +129,55 @@ internal fun CapsuleLightLyricLine(
     line: String?,
     textColor: Color,
     modifier: Modifier = Modifier,
+    instrumental: LyricsEntry? = null,
+    playbackPosition: State<Long> = rememberUpdatedState(0L),
+    animate: Boolean = true,
 ) {
     val settled = remember { Animatable(1f) }
     var shown by remember { mutableStateOf(line.orEmpty()) }
 
-    LaunchedEffect(line) {
+    LaunchedEffect(line, animate) {
         val next = line.orEmpty()
+        if (!animate) {
+            shown = next
+            settled.snapTo(1f)
+            return@LaunchedEffect
+        }
         if (next == shown) return@LaunchedEffect
         if (shown.isNotEmpty()) settled.animateTo(0f, tween(FADE_OUT_MILLIS, easing = CapsuleExitEasing))
         shown = next
-        // Nothing to fade in during an instrumental gap: the row is simply empty.
+        // The compact note occupies the same fixed row during a pause.
         if (next.isEmpty()) return@LaunchedEffect
         settled.snapTo(0f)
         settled.animateTo(1f, tween(FADE_IN_MILLIS, easing = CapsuleEnterEasing))
     }
 
     val arrived = settled.value.coerceIn(0f, 1f)
+    val reservedHeight = maxOf(
+        CapsuleLightLyricLineHeight,
+        with(LocalDensity.current) { LINE_HEIGHT.toDp() * MAX_LINES + 6.dp },
+    )
 
     Box(
-        modifier = modifier.fillMaxWidth().heightIn(min = CapsuleLightLyricLineHeight),
+        modifier = modifier.fillMaxWidth().heightIn(min = reservedHeight),
         contentAlignment = Alignment.CenterStart,
     ) {
-        Text(
+        if (instrumental != null) {
+            // Reuse the existing progress readout. Only draw-time interpolation runs between its
+            // samples: no new position polling, decoder or permanent animation clock.
+            val fill = animateFloatAsState(
+                targetValue = instrumentalFillFraction(
+                    playbackPosition.value, instrumental.time, instrumental.durationMs,
+                ),
+                animationSpec = tween(if (animate) 300 else 0, easing = LinearEasing),
+                label = "lightInstrumentalFill",
+            )
+            InstrumentalNoteGlyph(
+                fill = { fill.value }, textColor = textColor.copy(alpha = LINE_ALPHA),
+                modifier = Modifier.size(30.dp),
+            )
+        } else {
+            Text(
             text = shown,
             color = textColor.copy(alpha = LINE_ALPHA * arrived),
             fontSize = LINE_SIZE,
@@ -151,6 +190,7 @@ internal fun CapsuleLightLyricLine(
                 Modifier
                     .fillMaxWidth()
                     .graphicsLayer { translationY = (1f - arrived) * RISE_PX },
-        )
+            )
+        }
     }
 }

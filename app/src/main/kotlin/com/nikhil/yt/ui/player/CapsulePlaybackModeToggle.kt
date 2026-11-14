@@ -61,7 +61,6 @@ internal fun CapsuleAudioVideoToggle(
     onVideoClick: () -> Unit,
     modifier: Modifier = Modifier,
     lightStyle: Boolean = false,
-    cosmoStyle: Boolean = false,
     lightOrder: List<CapsuleLightAvItem> = CapsuleLightAvBaseOrder,
     lightEditable: Boolean = false,
     onLightOrderChange: (List<CapsuleLightAvItem>) -> Unit = {},
@@ -73,7 +72,7 @@ internal fun CapsuleAudioVideoToggle(
      * either extreme: 18dp is too pill-like at 48dp height, while a proportional ~10dp radius
      * leaves an obvious straight wall. The tuned shell/segment pair keeps the silhouette light.
      */
-    val framedStyle = lightStyle || cosmoStyle
+    val framedStyle = lightStyle
     val shape =
         if (framedStyle) {
             RoundedCornerShape(CapsuleLightToggleRadius)
@@ -113,8 +112,7 @@ internal fun CapsuleAudioVideoToggle(
             modifier = modifier
                 .height(CapsuleLightToggleHeight)
                 .clip(shape)
-                .background(textColor.copy(alpha = if (cosmoStyle) 0.025f else 0.035f))
-                .then(if (cosmoStyle) Modifier.border(1.dp, textColor.copy(alpha = 0.16f), shape) else Modifier)
+                .background(textColor.copy(alpha = 0.035f))
                 .padding(CapsuleLightToggleInset),
         ) {
             CapsuleRollingSelection(

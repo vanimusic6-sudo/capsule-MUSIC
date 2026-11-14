@@ -81,6 +81,8 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.nikhil.yt.ui.player.appIsOnScreen
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -633,19 +635,9 @@ fun Lyrics(
     val resources = LocalResources.current
     val configuration = LocalConfiguration.current
 
-    val isPlaying by playerConnection.isPlaying.collectAsState()
+    val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
 
-    DisposableEffect(isPlaying) {
-        val window = (context as? android.app.Activity)?.window
-        if (isPlaying) {
-            window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        } else {
-            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
-        onDispose {
-            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
-    }
+    LyricsScreenAwake(isPlaying = isPlaying, visible = isVisible, onScreen = appIsOnScreen())
 
     val landscapeOffset =
         configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -665,8 +657,8 @@ fun Lyrics(
     val romanizeKoreanLyrics by rememberPreference(LyricsRomanizeKoreanKey, true)
     val scope = rememberCoroutineScope()
 
-    val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
-    val lyricsEntity by playerConnection.currentLyrics.collectAsState(initial = null)
+    val mediaMetadata by playerConnection.mediaMetadata.collectAsStateWithLifecycle()
+    val lyricsEntity by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
     val lyrics = remember(lyricsEntity) { lyricsEntity?.lyrics?.trim() }
 
     val playerBackground by rememberEnumPreference(

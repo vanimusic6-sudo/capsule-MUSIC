@@ -10,7 +10,6 @@ class CapsuleLyricsThemeTest {
     @Test
     fun denseAndLightSupportEveryPlayerBackgroundStyle() {
         listOf(
-            CapsulePlayerDesign.SUPER,
             CapsulePlayerDesign.LIGHT,
         ).forEach { design ->
             PlayerBackgroundStyle.entries.forEach { style ->

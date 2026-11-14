@@ -14,6 +14,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -44,9 +53,23 @@ import com.nikhil.yt.utils.httpFailureStatus
 import com.nikhil.yt.utils.rememberPreference
 
 @Composable
+internal fun PlaybackErrorOverlay(
+    mediaId: String?,
+    error: PlaybackException?,
+    visible: Boolean,
+    retry: () -> Unit,
+) {
+    var dismissed by remember(mediaId, error) { mutableStateOf(false) }
+    if (visible && error != null && !dismissed) {
+        PlaybackError(error = error, retry = retry, onDismiss = { dismissed = true })
+    }
+}
+
+@Composable
 fun PlaybackError(
     error: PlaybackException,
     retry: () -> Unit,
+    onDismiss: () -> Unit,
 ) {
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
@@ -134,123 +157,137 @@ fun PlaybackError(
             rawDetails
         }
 
-    Surface(
-        shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.86f),
-        tonalElevation = 2.dp,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.86f),
+            tonalElevation = 2.dp,
+            modifier = Modifier.fillMaxWidth(),
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.Top,
-                modifier = Modifier.fillMaxWidth(),
+            Column(
+                modifier = Modifier
+                    .heightIn(max = LocalConfiguration.current.screenHeightDp.dp * 0.85f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Icon(
-                    painter = painterResource(R.drawable.info),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onErrorContainer,
-                )
-
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-
-                    Text(
-                        text = reason,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        maxLines = 6,
-                        overflow = TextOverflow.Clip,
-                    )
-                }
-            }
-
-            if (isYouTubeBotCheck) {
-                Surface(
-                    shape = MaterialTheme.shapes.large,
-                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.09f),
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.Top,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
+                    Icon(
+                        painter = painterResource(R.drawable.info),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+
                     Column(
-                        modifier = Modifier.padding(12.dp),
+                        modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         Text(
-                            text = recommendationTitle,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold,
+                            text = title,
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                             color = MaterialTheme.colorScheme.onErrorContainer,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
                         )
+
                         Text(
-                            text = recommendation,
+                            text = reason,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.92f),
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            maxLines = 6,
+                            overflow = TextOverflow.Clip,
                         )
                     }
                 }
-            }
 
-            if (failureKind == PlaybackFailureKind.GENERIC || isYouTubeBotCheck) Surface(
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.06f),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(
-                    text = visibleDetails,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.92f),
-                    modifier = Modifier.padding(12.dp),
-                    maxLines = if (isYouTubeBotCheck) 3 else 12,
-                    overflow = TextOverflow.Clip,
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                OutlinedButton(
-                    onClick = retry,
-                    colors =
-                        ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                        ),
-                ) {
-                    Text(text = retryText)
+                if (isYouTubeBotCheck) {
+                    Surface(
+                        shape = MaterialTheme.shapes.large,
+                        color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.09f),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                text = recommendationTitle,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                            Text(
+                                text = recommendation,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.92f),
+                            )
+                        }
+                    }
                 }
 
-                Button(
-                    onClick = {
-                        clipboard.setText(AnnotatedString(rawDetails))
-                        Toast.makeText(context, copiedText, Toast.LENGTH_SHORT).show()
-                    },
-                    colors =
-                        ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.onErrorContainer,
-                            contentColor = MaterialTheme.colorScheme.errorContainer,
-                        ),
+                if (failureKind == PlaybackFailureKind.GENERIC || isYouTubeBotCheck) Surface(
+                    shape = MaterialTheme.shapes.large,
+                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.06f),
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Icon(
-                        painter = painterResource(R.drawable.select_all),
-                        contentDescription = null,
+                    Text(
+                        text = visibleDetails,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.92f),
+                        modifier = Modifier.padding(12.dp),
+                        maxLines = if (isYouTubeBotCheck) 3 else 12,
+                        overflow = TextOverflow.Clip,
                     )
-                    androidx.compose.foundation.layout.Spacer(Modifier.width(8.dp))
-                    Text(text = copyText)
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text(stringResource(R.string.dismiss), color = MaterialTheme.colorScheme.onErrorContainer)
+                    }
+                    OutlinedButton(
+                        onClick = retry,
+                        colors =
+                            ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                            ),
+                    ) {
+                        Text(text = retryText)
+                    }
+
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    Button(
+                        onClick = {
+                            clipboard.setText(AnnotatedString(rawDetails))
+                            Toast.makeText(context, copiedText, Toast.LENGTH_SHORT).show()
+                        },
+                        colors =
+                            ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.onErrorContainer,
+                                contentColor = MaterialTheme.colorScheme.errorContainer,
+                            ),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.select_all),
+                            contentDescription = null,
+                        )
+                        androidx.compose.foundation.layout.Spacer(Modifier.width(8.dp))
+                        Text(text = copyText)
+                    }
                 }
             }
         }
     }
+
 }

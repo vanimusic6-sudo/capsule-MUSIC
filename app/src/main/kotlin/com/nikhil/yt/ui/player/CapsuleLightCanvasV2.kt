@@ -1055,6 +1055,7 @@ internal fun CapsuleLightCanvasV2(
     positionsDp: Map<CapsuleLightBlock, Float>,
     editable: Boolean,
     viewportHeight: Dp,
+    runtimeActive: Boolean = true,
     onLayoutSettled: (
         positionsDp: Map<CapsuleLightBlock, Float>,
         order: List<CapsuleLightBlock>,
@@ -1273,6 +1274,7 @@ internal fun CapsuleLightCanvasV2(
     // never writes during drag.
     LaunchedEffect(
         allMeasured,
+        runtimeActive,
         layoutFitsCanvas,
         resolvedOrder,
         resolvedPositionsPx,
@@ -1280,6 +1282,7 @@ internal fun CapsuleLightCanvasV2(
         externalGestureActive,
     ) {
         if (
+            !runtimeActive ||
             !allMeasured ||
             !layoutFitsCanvas ||
             dragged != null ||
@@ -1420,7 +1423,7 @@ internal fun CapsuleLightCanvasV2(
                     animateFloatAsState(
                         targetValue = visualTop,
                         animationSpec =
-                            if (!initialPlacementCommitted) {
+                            if (!runtimeActive || !initialPlacementCommitted) {
                                 // No artificial first-open spring from unresolved zero tops.
                                 snap()
                             } else if (selected) {

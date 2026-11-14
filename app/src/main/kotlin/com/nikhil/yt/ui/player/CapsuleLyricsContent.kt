@@ -46,7 +46,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -133,8 +133,8 @@ internal fun CapsuleLyricsBackdropLayer(
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val onScreen = appIsOnScreen()
-    val playbackState by playerConnection.playbackState.collectAsState()
-    val isPlaying by playerConnection.isPlaying.collectAsState()
+    val playbackState by playerConnection.playbackState.collectAsStateWithLifecycle()
+    val isPlaying by playerConnection.isPlaying.collectAsStateWithLifecycle()
 
     val lyricsUsePlayerTheme by
         rememberPreference(
@@ -301,10 +301,10 @@ fun CapsuleLyricsContent(
     }
 
     val playbackState by
-        playerConnection.playbackState.collectAsState()
+        playerConnection.playbackState.collectAsStateWithLifecycle()
 
     val isPlaying by
-        playerConnection.isPlaying.collectAsState()
+        playerConnection.isPlaying.collectAsStateWithLifecycle()
 
     // Same treatment as the full player: the control card is a translucent layer, not an
     // opaque black block, so the selected lyrics background colours the panel underneath it.
@@ -312,16 +312,16 @@ fun CapsuleLyricsContent(
     val lyricsOutlineColor = CapsuleLyricsText.copy(alpha = 0.16f)
 
     val canSkipPrevious by
-        playerConnection.canSkipPrevious.collectAsState()
+        playerConnection.canSkipPrevious.collectAsStateWithLifecycle()
 
     val canSkipNext by
-        playerConnection.canSkipNext.collectAsState()
+        playerConnection.canSkipNext.collectAsStateWithLifecycle()
 
     val volumeState =
         playerConnection
             .service
             .playerVolume
-            .collectAsState()
+            .collectAsStateWithLifecycle()
 
     val isLoading =
         playbackState ==

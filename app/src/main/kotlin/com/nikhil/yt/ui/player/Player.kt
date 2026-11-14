@@ -130,6 +130,19 @@ fun BottomSheetPlayer(
         mutableStateOf(false)
     }
 
+    val queueSheetState =
+        rememberBottomSheetState(
+            dismissedBound = 0.dp,
+            expandedBound = state.expandedBound,
+            collapsedBound = 0.dp,
+            initialAnchor = 1,
+        )
+
+    var playerSceneExposed by remember { mutableStateOf(true) }
+    val lyricsUsePlayerTheme by rememberPreference(
+        com.nikhil.yt.constants.LyricsUsePlayerThemeKey,
+        ReleaseAppearanceDefaults.usePlayerThemeInLyrics,
+    )
     val playerDesign by rememberEnumPreference(CapsulePlayerDesignKey, ReleaseAppearanceDefaults.playerDesign)
     val configuration = LocalConfiguration.current
     val isLandscape =
@@ -166,6 +179,7 @@ fun BottomSheetPlayer(
 
     val playbackState by playerConnection.playbackState.collectAsState()
     val isPlaying by playerConnection.isPlaying.collectAsState()
+    val playbackError by playerConnection.error.collectAsState()
     val mediaMetadata by playerConnection.mediaMetadata.collectAsState()
     val videoPlaybackState by playerConnection.service.videoPlaybackState.collectAsState()
     val videoAmbientEnabled by rememberPreference(CapsuleVideoAmbientBackgroundKey, false)
@@ -305,11 +319,12 @@ fun BottomSheetPlayer(
         onScreen,
         showInlineLyrics,
         state.isDismissed,
+        queueSheetState.isExpanded,
     ) {
         if (sliderPosition != null) return@LaunchedEffect
         // Lyrics owns its own visible progress readout. Do not keep the hidden player clock alive
         // underneath it, and do not poll anything after the whole sheet was dismissed.
-        if (!onScreen || showInlineLyrics || state.isDismissed) return@LaunchedEffect
+        if (!onScreen || showInlineLyrics || state.isDismissed || queueSheetState.isExpanded) return@LaunchedEffect
 
         while (isActive) {
             position = playerConnection.service.capsuleTimelinePlayer.currentPosition.coerceAtLeast(0L)
@@ -416,19 +431,13 @@ fun BottomSheetPlayer(
             onScreen &&
             isPlaying &&
             playbackState == Player.STATE_READY &&
-            !videoPlaybackState.presentingVideo
+            !videoPlaybackState.presentingVideo &&
+            !queueSheetState.isExpanded &&
+            (playerSceneExposed || (showInlineLyrics && lyricsUsePlayerTheme))
     val sharedBackdropAnimationTime =
         rememberCapsuleAnimationTime(
             compact = false,
             running = backdropTimelineRunning,
-        )
-
-    val queueSheetState =
-        rememberBottomSheetState(
-            dismissedBound = 0.dp,
-            expandedBound = state.expandedBound,
-            collapsedBound = 0.dp,
-            initialAnchor = 1,
         )
 
     // Parent Player owns BACK as one unit. Lyrics/Queue may choose what BACK does only while
@@ -442,6 +451,13 @@ fun BottomSheetPlayer(
                 state.collapseSoft()
         }
     }
+
+    PlaybackErrorOverlay(
+        mediaId = mediaMetadata?.id,
+        error = playbackError,
+        visible = onScreen && state.isExpandedOrExpanding,
+        retry = playerConnection.service::retryCurrentFromFreshStream,
+    )
 
     BottomSheet(
         state = state,
@@ -501,7 +517,8 @@ fun BottomSheetPlayer(
                         .graphicsLayer {
                             alpha = playerBackdropContentAlpha(state.visualProgress)
                         }
-                        .background(playerSurfaceColor(useBlackBackground)),
+                        .background(playerSurfaceColor(useBlackBackground))
+                        .drawWithContent { if (onScreen && playerSceneExposed) drawContent() },
                 ) {
                     // Keep the original artwork backdrop alive under the
                     // temporary video ambience. Both entry and exit crossfade
@@ -509,15 +526,16 @@ fun BottomSheetPlayer(
                     // Keep the prepared artwork scene for reversal, but do not
                     // shade another full-page layer beneath opaque video light.
                     Box(Modifier.fillMaxSize().drawWithContent {
-                        if (!videoAmbientOverlayMounted || retainedVideoAmbientBands == null ||
-                            videoAmbientOverlayAlpha.value < 0.999f) drawContent()
+                        if (onScreen && playerSceneExposed &&
+                            (!videoAmbientOverlayMounted || retainedVideoAmbientBands == null ||
+                                videoAmbientOverlayAlpha.value < 0.999f)) drawContent()
                     }) {
                         PlayerBackground(
                             playerBackground = playerBackground,
                             gradientColors = gradientColors,
                             artworkField = artworkScene.field,
                             animated = if (playerBackground == PlayerBackgroundStyle.SCENE_LIGHT)
-                                onScreen && state.shouldLayerAboveCollapsedChrome else backdropTimelineRunning,
+                                onScreen && playerSceneExposed && state.shouldLayerAboveCollapsedChrome else backdropTimelineRunning,
                             sharedAnimationTime = sharedBackdropAnimationTime,
                         )
                     }
@@ -525,7 +543,7 @@ fun BottomSheetPlayer(
                         CapsuleVideoAmbientBackdrop(
                             bands = retainedVideoAmbientBands,
                             field = retainedVideoAmbient?.field,
-                            animated = videoPlaybackState.presentingVideo,
+                            animated = onScreen && playerSceneExposed && videoPlaybackState.presentingVideo,
                             modifier = Modifier.fillMaxSize().graphicsLayer {
                                 alpha = videoAmbientOverlayAlpha.value
                             },
@@ -540,7 +558,7 @@ fun BottomSheetPlayer(
                 Box(
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    // Same sink works for Light/Cosmo and Immersion without touching
+                    // Same sink works for Light and Immersion without touching
                     // the Media3 service or starting another renderer.
                     CompositionLocalProvider(
                         LocalCapsuleVideoAmbientEnabled provides videoAmbientCaptureActive,
@@ -576,6 +594,7 @@ fun BottomSheetPlayer(
                     navController = navController,
                     playerState = state,
                     queueState = queueSheetState,
+                    onPlayerExposureChanged = { playerSceneExposed = it },
                     onShowLyrics = {
                         showInlineLyrics = true
                     },
@@ -584,7 +603,7 @@ fun BottomSheetPlayer(
                     },
                     // BottomSheet owns the one transition alpha for every player design.
                     // Immersive keeps this hook for its internal layout, but a second fade here
-                    // would square the opacity and desynchronise it from Light/Cosmo.
+                    // would square the opacity and desynchronise it from Light.
                     transitionForegroundAlpha = { 1f },
                     onShowMenu = {
                         menuState.show(presentation = MenuPresentation.CAPSULE_PLAYER) {
@@ -672,6 +691,7 @@ private fun CapsulePlayerLyricsHost(
     navController: NavController,
     playerState: BottomSheetState,
     queueState: BottomSheetState,
+    onPlayerExposureChanged: (Boolean) -> Unit,
     onShowLyrics: () -> Unit,
     onHideLyrics: () -> Unit,
     transitionForegroundAlpha: () -> Float,
@@ -688,8 +708,9 @@ private fun CapsulePlayerLyricsHost(
     // The outgoing player stays fully present while Lyrics travels across it. Once the page has
     // covered the last pixel, its lyric row and decorative orbit can sleep until closing starts.
     val playerMotionActive by remember(showLyrics) {
-        derivedStateOf { !showLyrics || sheetOffset.value > 0.001f }
+        derivedStateOf { (!showLyrics || sheetOffset.value > 0.001f) && !queueState.isExpanded }
     }
+    LaunchedEffect(playerMotionActive) { onPlayerExposureChanged(playerMotionActive) }
     var lyricsLayerMounted by remember { mutableStateOf(showLyrics) }
     var lyricsRuntimeActive by remember { mutableStateOf(showLyrics) }
     // When ink is 100% transparent, drop its expensive LazyColumn and
@@ -825,7 +846,6 @@ private fun CapsulePlayerLyricsHost(
             }
 
             CapsulePlayerContent(
-                design = design,
                 mediaMetadata = mediaMetadata,
                 decodedArtworkCache = decodedArtworkCache,
                 sliderPosition = sliderPosition,
@@ -917,7 +937,7 @@ private fun CapsulePlayerLyricsHost(
                             immersiveArtworkTone = immersiveArtworkTone,
                             playerArtworkColors = playerArtworkColors,
                             backdropAnimationTime = backdropAnimationTime,
-                            isVisible = showLyrics,
+                            isVisible = showLyrics && !queueState.isExpanded,
                             instantBackdrop = true,
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -963,7 +983,7 @@ private fun CapsulePlayerLyricsHost(
                             playerArtworkColors = playerArtworkColors,
                             backdropAnimationTime = backdropAnimationTime,
                             drawBackdrop = false,
-                            isVisible = lyricsRuntimeActive,
+                            isVisible = lyricsRuntimeActive && !queueState.isExpanded,
                             motionPosition = { sheetOffset.value },
                             backHandlerEnabled =
                                 showLyrics && playerState.isExpandedOrExpanding,

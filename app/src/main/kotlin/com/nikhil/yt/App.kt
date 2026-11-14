@@ -160,6 +160,7 @@ class App : Application(), SingletonImageLoader.Factory {
         applicationScope.launch(Dispatchers.IO) {
             try {
                 dataStore.edit { preferences ->
+                    com.nikhil.yt.constants.migrateRetiredPlayerDesign(preferences)
                     if (
                         preferences[DiscordActivityButton2LabelKey] ==
                         CapsuleBrand.LEGACY_DISCORD_BUTTON_LABEL

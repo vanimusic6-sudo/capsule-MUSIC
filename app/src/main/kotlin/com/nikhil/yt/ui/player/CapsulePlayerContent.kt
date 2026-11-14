@@ -55,6 +55,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -118,7 +119,6 @@ import com.nikhil.yt.constants.CapsuleLightArtworkHeightScaleKey
 import com.nikhil.yt.constants.CapsuleLightBlockGapsKey
 import com.nikhil.yt.constants.CapsuleLightCanvasPositionsKey
 import com.nikhil.yt.constants.LyricsSyncOffsetKey
-import com.nikhil.yt.constants.CapsulePlayerDesign
 import com.nikhil.yt.db.entities.LyricsEntity
 import com.nikhil.yt.ui.component.ArtistSelectionItem
 import com.nikhil.yt.constants.CropThumbnailToSquareKey
@@ -141,13 +141,9 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
 
-private val CapsuleControlsShape =
-    RoundedCornerShape(24.dp)
-
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun CapsulePlayerContent(
-    design: CapsulePlayerDesign,
     mediaMetadata: MediaMetadata,
     decodedArtworkCache: MutableMap<String, Pair<String, Painter>>,
     sliderPosition: Long?,
@@ -181,16 +177,16 @@ fun CapsulePlayerContent(
     expansionProgress: Float = if (open) 1f else 0f,
 ) {
     // Keep the full player alive through its collapse/open transition, but once the sheet has
-    // actually reached the mini-player anchor there is no reason to keep its subscriptions,
-    // artwork tree and local animation state composed underneath.
+    // actually reached the mini-player anchor there is no reason to keep its subscriptions.
+    // Backgrounding is different: retain CanvasV2 measurements and editor state so returning does
+    // not restart its placement springs. Timers, lyric collection and image requests sleep below.
     val onScreen = appIsOnScreen()
-    if (!onScreen || (!open && expansionProgress <= 0.001f)) {
+    if (!open && expansionProgress <= 0.001f) {
         Box(Modifier.fillMaxSize())
         return
     }
 
-    val visible = open
-    val isLight = design == CapsulePlayerDesign.LIGHT
+    val visible = open && onScreen && motionActive
     val isLandscape =
         LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
@@ -299,7 +295,7 @@ fun CapsulePlayerContent(
 
     // Portrait Light uses the v2 canvas. Landscape intentionally falls back to the untouched
     // fixed Light stack until a dedicated horizontal composition is designed.
-    val useClayLayout = isLight && !isLandscape
+    val useClayLayout = !isLandscape
 
     /*
      * Crash recovery is tied to an edit transaction, not to the editor toggle itself. A completed
@@ -336,30 +332,27 @@ fun CapsulePlayerContent(
         }
     }
 
-    val shuffleEnabled by playerConnection.shuffleModeEnabled.collectAsState()
+    val shuffleEnabled by playerConnection.shuffleModeEnabled.collectAsStateWithLifecycle()
     val isPlaying by
-        playerConnection.isPlaying.collectAsState()
+        playerConnection.isPlaying.collectAsStateWithLifecycle()
 
     val playbackState by
-        playerConnection.playbackState.collectAsState()
-
-    val playbackError by
-        playerConnection.error.collectAsState()
+        playerConnection.playbackState.collectAsStateWithLifecycle()
 
     val canSkipPrevious by
-        playerConnection.canSkipPrevious.collectAsState()
+        playerConnection.canSkipPrevious.collectAsStateWithLifecycle()
 
     val canSkipNext by
-        playerConnection.canSkipNext.collectAsState()
+        playerConnection.canSkipNext.collectAsStateWithLifecycle()
 
     val repeatMode by
-        playerConnection.repeatMode.collectAsState()
+        playerConnection.repeatMode.collectAsStateWithLifecycle()
 
     val togetherState by
-        playerConnection.service.togetherSessionState.collectAsState()
+        playerConnection.service.togetherSessionState.collectAsStateWithLifecycle()
 
     val videoPlaybackState by
-        playerConnection.service.videoPlaybackState.collectAsState()
+        playerConnection.service.videoPlaybackState.collectAsStateWithLifecycle()
 
     val isCapsuleVideoPlaying = videoPlaybackState.presentingVideo
     val needsVideoSurface = videoPlaybackState.needsSurface
@@ -432,7 +425,7 @@ fun CapsulePlayerContent(
      * the screen. If the feature itself is disabled, the slot is truly zero-height outside edit
      * mode so it cannot steal artwork budget.
      */
-    val lyricLineConfigured = isLight && showLyricLine
+    val lyricLineConfigured = showLyricLine
     // Restore an artwork frame reduced while the lyric row occupied its space,
     // but ONLY on the actual on -> off transition. Never overwrite a custom
     // smaller cover when opening a player whose lyric row was already disabled.
@@ -450,17 +443,25 @@ fun CapsulePlayerContent(
     val lyricLineActive = lyricLineConfigured && visible && motionActive
 
     val lyricsEntity by
-        if (lyricLineActive) {
-            playerConnection.currentLyrics.collectAsState(initial = null)
+        if (lyricLineConfigured && motionActive) {
+            playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
         } else {
             remember { mutableStateOf<LyricsEntity?>(null) }
         }
 
     val syncedLyricLines =
-        remember(lyricsEntity) { capsuleLightLyricLines(lyricsEntity?.lyrics) }
+        remember(lyricsEntity, mediaMetadata.id, durationMs) {
+            capsuleLightLyricLines(lyricsEntity?.takeIf { it.id == mediaMetadata.id }?.lyrics, durationMs)
+        }
 
     // The same correction the lyrics screen applies: one song, one answer about its timing.
     val lyricSyncOffsetMs by rememberPreference(LyricsSyncOffsetKey, defaultValue = 0)
+
+    val lyricPosition = displayPosition + clampOffset(lyricSyncOffsetMs)
+    val lyricEntry = remember(syncedLyricLines, lyricPosition) {
+        capsuleLightLyricEntryAt(syncedLyricLines, lyricPosition)
+    }
+    val lyricPlaybackPosition = rememberUpdatedState(lyricPosition)
 
     /*
      * The line has to ask for the lyrics itself. Fetching used to be the lyrics screen's job, so a
@@ -577,40 +578,33 @@ fun CapsulePlayerContent(
     // Reading the already decoded bitmap on resume avoids an unnecessary 960px refetch.
 
     val artworkContent: @Composable () -> Unit = {
-            val currentPlaybackError = playbackError
 
-            if (currentPlaybackError != null) {
-                PlaybackError(
-                    error = currentPlaybackError,
-                    retry = playerConnection.service::retryCurrentFromFreshStream,
-                )
-            } else {
                 CapsuleVideoArtworkTransition(
                     presentingVideo = isCapsuleVideoPlaying,
                     needsSurface = needsVideoSurface,
                     transitionKey = mediaMetadata.id,
                     fillArtworkSlot = useClayLayout,
-                    artworkCornerRadius = if (isLight) 16.dp else 24.dp,
+                    artworkCornerRadius = 16.dp,
                     // No late corner pop: keep the same silhouette radius
                     // through the entire artwork ↔ VIDEO transition.
-                    videoCornerRadius = if (isLight) 16.dp else 24.dp,
-                    artworkOffsetY = if (isLight) 0.dp else (-5).dp,
-                    videoWidthScale = if (isLandscape) 1f else if (isLight) 1.08f else 1.04f,
+                    videoCornerRadius = 16.dp,
+                    artworkOffsetY = 0.dp,
+                    videoWidthScale = if (isLandscape) 1f else 1.08f,
                     // VIDEO is a fixed screen-level window. User resizing the
                     // Light AUDIO cover changes only its own dimensions.
                     independentVideoViewport = useClayLayout,
-                    blendStyle = if (isLight) CapsuleVideoBlendStyle.LIGHT else CapsuleVideoBlendStyle.COSMO,
+                    blendStyle = CapsuleVideoBlendStyle.LIGHT,
                     // Never let an incompletely loaded/Fit album bitmap reveal
                     // the live video beneath its transparent margin on closing.
                     // A mode-dependent matte used to change colour halfway
                     // through closing, creating a tiny corner flash even when
                     // the album photo was already opaque. Keep it constant.
                     artworkBackground = Color(0xFF141414),
-                    outline = if (isLight) Color.Transparent else outline,
+                    outline = Color.Transparent,
                     onArtworkClick = onArtworkClick,
-                    artworkClickable = !isCapsuleVideoPlaying && !(isLight && lightEditorEnabled),
+                    artworkClickable = !isCapsuleVideoPlaying && !lightEditorEnabled,
                     video = { active ->
-                        CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active)
+                        CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active && visible)
                     },
                 ) {
                     if (hideArtwork) {
@@ -673,8 +667,8 @@ fun CapsulePlayerContent(
                                 .crossfade(false)
                                 .build()
                         }
-                        LaunchedEffect(mediaMetadata.id, requestedArtworkUrl, artworkRebind, artworkLoading) {
-                            if (!artworkLoading || artworkRebind > 0 || requestedArtworkUrl.isNullOrBlank()) {
+                        LaunchedEffect(mediaMetadata.id, requestedArtworkUrl, artworkRebind, artworkLoading, onScreen, motionActive) {
+                            if (!visible || !artworkLoading || artworkRebind > 0 || requestedArtworkUrl.isNullOrBlank()) {
                                 return@LaunchedEffect
                             }
                             // A real full-resolution URL can be slow on VPNs. Wait
@@ -701,7 +695,7 @@ fun CapsulePlayerContent(
                         // the long abrupt grey-to-photo switch.
                         val artworkReveal by animateFloatAsState(
                             targetValue = if (retainedArtworkPainter != null) 1f else 0f,
-                            animationSpec = tween(durationMillis = 230),
+                            animationSpec = tween(durationMillis = if (visible) 230 else 0),
                             label = "capsule-artwork-soft-reveal",
                         )
                         val artworkContentScale =
@@ -726,8 +720,8 @@ fun CapsulePlayerContent(
                             }
                             // No low-resolution preview node: only the fully
                             // decoded artwork is ever placed on the canvas.
-                            if (retainedArtworkPainter == null ||
-                                retainedArtworkUrl != requestedArtworkUrl
+                            if (visible && (retainedArtworkPainter == null ||
+                                retainedArtworkUrl != requestedArtworkUrl)
                             ) {
                             key(mediaMetadata.id, requestedArtworkUrl, artworkRebind) {
                             AsyncImage(
@@ -821,7 +815,7 @@ fun CapsulePlayerContent(
                         }
                     }
                 }
-            }
+
     }
 
     /*
@@ -873,7 +867,6 @@ fun CapsulePlayerContent(
     }
 
     CapsulePlayerLayout(
-        design = design,
         textColor = textColor,
         onCollapse = onCollapse,
         onMenuClick = onMenuClick,
@@ -889,15 +882,10 @@ fun CapsulePlayerContent(
                      * this composable only as geometry and stop lyric collection/fetching above.
                      */
                     CapsuleLightLyricLine(
-                        line =
-                            if (lyricLineActive) {
-                                capsuleLightLyricLineAt(
-                                    syncedLyricLines,
-                                    displayPosition + clampOffset(lyricSyncOffsetMs),
-                                )
-                            } else {
-                                null
-                            },
+                        line = lyricEntry?.text?.trim()?.replace('\n', ' '),
+                        instrumental = lyricEntry?.takeIf { it.isInstrumental },
+                        playbackPosition = lyricPlaybackPosition,
+                        animate = lyricLineActive,
                         textColor = textColor,
                     )
                 }
@@ -920,6 +908,7 @@ fun CapsulePlayerContent(
                 )
         ,
         lightEditorEnabled = useClayLayout && lightEditorEnabled,
+        lightRuntimeActive = visible,
         lightOrder = visibleLightOrder,
         lightCanvasPositionsDp = visibleLightCanvasPositions,
         lightGapsDp = lightBlockGaps,
@@ -1078,17 +1067,12 @@ fun CapsulePlayerContent(
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                     ) {
                                         Spacer(Modifier.height(8.dp))
-                                        Box(Modifier.width(artworkBaseWidth * lightArtworkWidthScale)) {
+                                        Box(Modifier.fillMaxWidth().padding(horizontal = CapsuleLightTransportEdgeInset)) {
                                             CapsuleLightLyricLine(
-                                                line =
-                                                    if (lyricLineActive) {
-                                                        capsuleLightLyricLineAt(
-                                                            syncedLyricLines,
-                                                            displayPosition + clampOffset(lyricSyncOffsetMs),
-                                                        )
-                                                    } else {
-                                                        null
-                                                    },
+                                                line = lyricEntry?.text?.trim()?.replace('\n', ' '),
+                        instrumental = lyricEntry?.takeIf { it.isInstrumental },
+                        playbackPosition = lyricPlaybackPosition,
+                        animate = lyricLineActive,
                                                 textColor = textColor,
                                             )
                                         }
@@ -1116,6 +1100,7 @@ fun CapsulePlayerContent(
                         CapsuleLightBlock.METADATA -> {
                             CapsuleLightReorderRow(
                                 order = lightMetadataOrder,
+                                widthFor = { if (it == CapsuleLightMetadataItem.FAVORITE) 48.dp else null },
                                 editable = lightEditorEnabled,
                                 weightFor = { item ->
                                     when (item) {
@@ -1145,7 +1130,7 @@ fun CapsulePlayerContent(
                                 modifier =
                                     Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 24.dp),
+                                        .padding(horizontal = CapsuleLightTransportEdgeInset),
                             ) { item ->
                                 when (item) {
                                     CapsuleLightMetadataItem.TEXT -> {
@@ -1159,7 +1144,7 @@ fun CapsulePlayerContent(
                                                 mediaId = mediaMetadata.id,
                                                 title = mediaMetadata.title,
                                                 color = textColor,
-                                                enabled = !lightEditorEnabled,
+                                                enabled = visible && !lightEditorEnabled,
                                                 modifier = Modifier.fillMaxWidth(),
                                             )
 
@@ -1211,13 +1196,13 @@ fun CapsulePlayerContent(
                                 modifier =
                                     Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 24.dp, vertical = 7.dp),
+                                        .padding(horizontal = CapsuleLightTransportEdgeInset, vertical = 7.dp),
                             ) {
                                 CapsuleThinSlider(
                                     value = displayPosition.toFloat(),
                                     valueRange = 0f..safeDuration.coerceAtLeast(1L).toFloat(),
                                     enabled = canSeek && safeDuration > 0L && !lightEditorEnabled,
-                                    smoothPlayback = isPlaying && sliderPosition == null,
+                                    smoothPlayback = visible && motionActive && isPlaying && sliderPosition == null,
                                     activeColor = textColor.copy(alpha = 0.96f),
                                     inactiveColor = textColor.copy(alpha = 0.24f),
                                     onValueChange = { onSeekPreview(it.toLong()) },
@@ -1228,7 +1213,7 @@ fun CapsulePlayerContent(
                                 )
 
                                 Row(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
+                                    modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                 ) {
                                     Text(
@@ -1280,7 +1265,7 @@ fun CapsulePlayerContent(
                                 modifier =
                                     Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 24.dp, vertical = 6.dp),
+                                        .padding(horizontal = CapsuleLightTransportEdgeInset, vertical = 6.dp),
                             ) { item ->
                                 when (item) {
                                     CapsuleLightModeItem.SHUFFLE -> {
@@ -1444,7 +1429,7 @@ fun CapsulePlayerContent(
                     Modifier
                         .fillMaxWidth()
                         .padding(
-                            horizontal = if (isLight) 24.dp else 22.dp,
+                            horizontal = CapsuleLightTransportEdgeInset,
                         ),
             ) {
                 Row(
@@ -1527,7 +1512,7 @@ fun CapsulePlayerContent(
 
                 Spacer(
                     Modifier.height(
-                        if (isLight) 14.dp else 10.dp,
+                        14.dp,
                     ),
                 )
 
@@ -1546,7 +1531,7 @@ fun CapsulePlayerContent(
                         canSeek &&
                             safeDuration >
                             0L,
-                    smoothPlayback = isPlaying && sliderPosition == null,
+                    smoothPlayback = visible && motionActive && isPlaying && sliderPosition == null,
                     activeColor =
                         textColor.copy(
                             alpha = 0.96f,
@@ -1574,10 +1559,7 @@ fun CapsulePlayerContent(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(
-                                horizontal =
-                                    2.dp,
-                            ),
+,
                     horizontalArrangement =
                         Arrangement.SpaceBetween,
                 ) {
@@ -1589,9 +1571,9 @@ fun CapsulePlayerContent(
                         color =
                             secondaryText,
                         fontFamily =
-                            if (isLight) FontFamily.SansSerif else FontFamily.Monospace,
+                            FontFamily.SansSerif,
                         fontSize =
-                            if (isLight) 12.sp else 13.sp,
+                            12.sp,
                     )
 
                     Text(
@@ -1607,18 +1589,18 @@ fun CapsulePlayerContent(
                         color =
                             secondaryText,
                         fontFamily =
-                            if (isLight) FontFamily.SansSerif else FontFamily.Monospace,
+                            FontFamily.SansSerif,
                         fontSize =
-                            if (isLight) 12.sp else 13.sp,
+                            12.sp,
                     )
                 }
 
                 Row(
-                    Modifier.fillMaxWidth().padding(top = if (isLight) 6.dp else 0.dp),
+                    Modifier.fillMaxWidth().padding(top = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center,
                 ) {
-                    if (isLight) {
+
                         androidx.compose.material3.IconButton(
                             onClick = { playerConnection.player.shuffleModeEnabled = !shuffleEnabled },
                             enabled = !isListenTogetherGuest,
@@ -1628,10 +1610,9 @@ fun CapsulePlayerContent(
                                 tint = textColor.copy(alpha = if (shuffleEnabled) 1f else 0.5f),
                                 modifier = Modifier.size(21.dp))
                         }
-                    }
+
                     CapsuleAudioVideoToggle(
-                        lightStyle = isLight,
-                        cosmoStyle = !isLight,
+                        lightStyle = true,
                         state = videoPlaybackState,
                         textColor = textColor,
                         enabled = !isListenTogetherGuest,
@@ -1646,10 +1627,10 @@ fun CapsulePlayerContent(
                             )
                         },
                         modifier =
-                            if (isLight) Modifier.weight(1f) else Modifier.width(200.dp),
+                            Modifier.weight(1f),
                     )
-    
-                    if (isLight) {
+
+
                         androidx.compose.material3.IconButton(
                             onClick = { showSleepTimerDialog = true },
                             enabled = !isListenTogetherGuest,
@@ -1659,17 +1640,18 @@ fun CapsulePlayerContent(
                                 tint = textColor.copy(alpha = if (sleepTimerEnabled) 1f else 0.5f),
                                 modifier = Modifier.size(21.dp))
                         }
-                    }
+
                 }
 
                 Spacer(
                     Modifier.height(
-                        if (isLight) 16.dp else 8.dp,
+                        16.dp,
                     ),
                 )
 
-                if (isLight) {
+
                     CapsuleLightControls(
+                        outerInset = 0.dp,
                         textColor = textColor,
                         shuffleEnabled = shuffleEnabled,
                         repeatMode = repeatMode,
@@ -1682,184 +1664,7 @@ fun CapsulePlayerContent(
                         onRepeat = { playerConnection.player.toggleRepeatMode() },
                         orbit = { CapsuleOrbitButton(isPlaying, isLoading, visible && motionActive, textColor, onPlayPause) },
                     )
-                } else {
-                    Column(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .clip(
-                                    CapsuleControlsShape,
-                                )
-                                .border(
-                                    1.dp,
-                                    outline,
-                                    CapsuleControlsShape,
-                                )
-                                .background(
-                                    panel,
-                                ),
-                    ) {
-                        Row(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .height(
-                                        92.dp,
-                                    ),
-                            verticalAlignment =
-                                Alignment.CenterVertically,
-                        ) {
-                            CapsuleTransportSideButton(
-                                iconRes =
-                                    R.drawable.skip_previous,
-                                enabled =
-                                    canSkipPrevious &&
-                                        !isListenTogetherGuest,
-                                textColor =
-                                    textColor,
-                                onClick =
-                                    playerConnection::seekToPrevious,
-                                modifier =
-                                    Modifier.weight(1f),
-                            )
 
-                            Box(
-                                modifier =
-                                    Modifier.weight(
-                                        1.18f,
-                                    ),
-                                contentAlignment =
-                                    Alignment.Center,
-                            ) {
-                                CapsuleOrbitButton(
-                                    isPlaying =
-                                        isPlaying,
-                                    isLoading =
-                                        isLoading,
-                                    visible = visible && motionActive,
-                                    color =
-                                        textColor,
-                                    onClick = onPlayPause,
-                                )
-                            }
-
-                            CapsuleTransportSideButton(
-                                iconRes =
-                                    R.drawable.skip_next,
-                                enabled =
-                                    canSkipNext &&
-                                        !isListenTogetherGuest,
-                                textColor =
-                                    textColor,
-                                onClick =
-                                    playerConnection::seekToNext,
-                                modifier =
-                                    Modifier.weight(1f),
-                            )
-                        }
-
-                        Box(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .height(
-                                        1.dp,
-                                    )
-                                    .background(
-                                        outline,
-                                    ),
-                        )
-
-                        Row(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .height(
-                                        66.dp,
-                                    ),
-                            verticalAlignment =
-                                Alignment.CenterVertically,
-                        ) {
-                            CapsuleAuxButton(
-                                iconRes =
-                                    R.drawable.bedtime,
-                                tint =
-                                    if (
-                                        sleepTimerEnabled
-                                    ) {
-                                        textColor
-                                    } else {
-                                        textColor.copy(
-                                            alpha =
-                                                0.82f,
-                                        )
-                                    },
-                                enabled =
-                                    !isListenTogetherGuest,
-                                onClick = {
-                                    showSleepTimerDialog =
-                                        true
-                                },
-                                modifier =
-                                    Modifier.weight(1f),
-                            )
-
-                            CapsuleAuxButton(
-                                iconRes =
-                                    when (
-                                        repeatMode
-                                    ) {
-                                        Player.REPEAT_MODE_ONE ->
-                                            R.drawable.repeat_one
-
-                                        else ->
-                                            R.drawable.repeat
-                                    },
-                                tint =
-                                    if (
-                                        repeatMode ==
-                                        Player.REPEAT_MODE_OFF ||
-                                        isListenTogetherGuest
-                                    ) {
-                                        textColor.copy(
-                                            alpha =
-                                                0.46f,
-                                        )
-                                    } else {
-                                        textColor.copy(
-                                            alpha =
-                                                0.88f,
-                                        )
-                                    },
-                                enabled =
-                                    !isListenTogetherGuest,
-                                onClick = {
-                                    playerConnection.player
-                                        .toggleRepeatMode()
-                                },
-                                modifier =
-                                    Modifier.weight(1f),
-                            )
-
-                            CapsuleAuxButton(
-                                iconRes =
-                                    R.drawable.more_horiz,
-                                tint =
-                                    textColor.copy(
-                                        alpha =
-                                            0.88f,
-                                    ),
-                                enabled =
-                                    true,
-                                onClick =
-                                    onMenuClick,
-                                modifier =
-                                    Modifier.weight(1f),
-                            )
-                        }
-                    }
-
-                }
 
                 Spacer(
                     Modifier.height(
@@ -1867,8 +1672,6 @@ fun CapsulePlayerContent(
                     ),
                 )
 
-                // Preserve Cosmo's original 5dp layout footprint.
-                // The previous 38dp touch wrapper pushed the whole player off its baseline.
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterHorizontally)
@@ -2068,99 +1871,9 @@ internal fun CapsuleThinSlider(
     }
 }
 
-@Composable
-private fun CapsuleTransportSideButton(
-    iconRes: Int,
-    enabled: Boolean,
-    textColor: Color,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier =
-            modifier
-                .height(
-                    92.dp,
-                )
-                .clickable(
-                    enabled =
-                        enabled,
-                    onClick =
-                        onClick,
-                ),
-        contentAlignment =
-            Alignment.Center,
-    ) {
-        Icon(
-            painter =
-                painterResource(
-                    iconRes,
-                ),
-            contentDescription =
-                null,
-            tint =
-                textColor.copy(
-                    alpha =
-                        if (enabled) {
-                            0.92f
-                        } else {
-                            0.25f
-                        },
-                ),
-            modifier =
-                Modifier.size(
-                    35.dp,
-                ),
-        )
-    }
-}
 
-@Composable
-private fun CapsuleAuxButton(
-    iconRes: Int,
-    tint: Color,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier =
-            modifier
-                .height(
-                    66.dp,
-                )
-                .clickable(
-                    enabled =
-                        enabled,
-                    onClick =
-                        onClick,
-                ),
-        contentAlignment =
-            Alignment.Center,
-    ) {
-        Icon(
-            painter =
-                painterResource(
-                    iconRes,
-                ),
-            contentDescription =
-                null,
-            tint =
-                if (enabled) {
-                    tint
-                } else {
-                    tint.copy(
-                        alpha =
-                            0.38f,
-                    )
-                },
-            modifier =
-                Modifier.size(
-                    25.dp,
-                ),
-        )
-    }
-}
+
+
 
 /**
  * Whether the comet is allowed to turn.
@@ -2202,7 +1915,7 @@ internal fun CapsuleOrbitButton(
     // is always solid (it must not look like a translucent glass bubble).
     val alpha by animateFloatAsState(
         targetValue = if (isPlaying) 1f else 0.46f,
-        animationSpec = tween(durationMillis = 300),
+        animationSpec = tween(durationMillis = if (visible) 300 else 0),
         label = "CapsuleOrbitPauseAlpha",
     )
 
@@ -2216,7 +1929,7 @@ internal fun CapsuleOrbitButton(
                     CircleShape,
                 )
                 // No paused-state disc: the orbit is the play/pause button in
-                // Super, Light and Immersive, so the three designs stay aligned.
+                // Light and Immersion, so both designs stay aligned.
                 .clickable(
                     enabled = enabled,
                     onClick =
@@ -2225,7 +1938,7 @@ internal fun CapsuleOrbitButton(
         contentAlignment =
             Alignment.Center,
     ) {
-        if (isLoading) {
+        if (isLoading && visible) {
             CircularProgressIndicator(
                 color =
                     color.copy(

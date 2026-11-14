@@ -42,9 +42,6 @@ internal fun InstrumentalLyricNote(
     textColor: Color,
     phase: InstrumentalNotePhase,
 ) {
-    val painter = painterResource(R.drawable.music_note)
-    val tint = remember(textColor) { ColorFilter.tint(textColor) }
-    val description = stringResource(R.string.instrumental_pause)
     val active = phase == InstrumentalNotePhase.ACTIVE
     val visible = phase != InstrumentalNotePhase.UPCOMING
     val expansion = animateFloatAsState(
@@ -77,8 +74,12 @@ internal fun InstrumentalLyricNote(
             }
         }
     }
-    Canvas(
-        Modifier
+    InstrumentalNoteGlyph(
+        fill = { fill.value },
+        textColor = textColor,
+        announced = visible,
+        drawVisible = { opacity.value > 0f },
+        modifier = Modifier
             // Measure a constant glyph; only the row's occupied height changes. The neighbours
             // move apart during this finite transition, with no reserved blank row beforehand.
             .layout { measurable, constraints ->
@@ -89,17 +90,30 @@ internal fun InstrumentalLyricNote(
                 }
             }
             .size(48.dp)
-            .semantics { if (visible) contentDescription = description }
             .graphicsLayer {
                 alpha = opacity.value
                 scaleX = scale.value
                 scaleY = scale.value
             },
-    ) {
-        // Future notes occupy zero height and do no vector drawing.
-        if (opacity.value <= 0f) return@Canvas
+    )
+}
+
+/** Shared glyph for the full lyrics screen and Light's fixed-height compact row. */
+@Composable
+internal fun InstrumentalNoteGlyph(
+    fill: () -> Float,
+    textColor: Color,
+    modifier: Modifier = Modifier,
+    announced: Boolean = true,
+    drawVisible: () -> Boolean = { true },
+) {
+    val painter = painterResource(R.drawable.music_note)
+    val tint = remember(textColor) { ColorFilter.tint(textColor) }
+    val description = stringResource(R.string.instrumental_pause)
+    Canvas(modifier.semantics { if (announced) contentDescription = description }) {
+        if (!drawVisible()) return@Canvas
         with(painter) { draw(size = size, alpha = 0.42f, colorFilter = tint) }
-        val fraction = fill.value
+        val fraction = fill().coerceIn(0f, 1f)
         if (fraction > 0f) {
             clipRect(top = size.height * (1f - fraction)) {
                 with(painter) { draw(size = size, colorFilter = tint) }
