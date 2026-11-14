@@ -29,8 +29,15 @@ column, a neighbourhood median over the lower quarter of the sampled field
 (original photo approximately 61.5–82%) supplies stable surrounding material.
 This rejects a single last scanline and small foreground details. The underlay
 smoothly converges to that material at photo 70–82%, inside the existing mask;
-sharp-photo geometry, mask and blur radii are unchanged. The whole page is still
-filtered as one field, so there is no independently drawn seam strip. A separable Gaussian blur and cubic B-spline reconstruction produce
+sharp-photo geometry, mask and blur radii are unchanged.
+
+The initial constant-column extension retained local bright/dark features all
+the way to the footer, turning spots into vertical bands. Local boundary detail
+now has finite reach: it smoothly decays from photo 70% to page stage+6%, into
+an affine left-to-right field built from robust broad half-image material.
+Broad left/right colour regions survive, while central subjects occupying a
+minority of each half cannot seed a footer column. The same whole-page filter
+still joins the underlay; no extra strip, blur pass or animation clock is added. A separable Gaussian blur and cubic B-spline reconstruction produce
 one 192×304 immutable page texture, including the lower scrim. It retains spatial
 colour rather than converging to a separately selected single-colour floor.
 Preparation runs once on a worker per cover/layout, with cache capacity 3
@@ -67,6 +74,10 @@ and preserve white-paper metadata contrast and spatial colour placement.
 Follow-up regressions keep green left/pink right down to the page bottom,
 retain a central gold subject in the upper background without repeating it
 under the controls, and prevent one vivid final scanline from choosing the floor.
+Additional regressions exercise a dark disk on white paper and a golden subject
+that actually reaches the sampled lower rows: both retain nearby photographic
+colour, while local central contrast ends before the footer. These close the
+previous test gap, where the bright fixture ended above the sampled boundary.
 Tests also cover frame-flash damping, sustained video scene following, colour
 region position, interruption, track timing and foreground restoration.
 
