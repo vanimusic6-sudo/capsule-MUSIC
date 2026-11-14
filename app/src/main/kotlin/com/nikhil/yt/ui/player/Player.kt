@@ -509,7 +509,8 @@ fun BottomSheetPlayer(
                     // Keep the prepared artwork scene for reversal, but do not
                     // shade another full-page layer beneath opaque video light.
                     Box(Modifier.fillMaxSize().drawWithContent {
-                        if (videoAmbientOverlayAlpha.value < 0.999f) drawContent()
+                        if (!videoAmbientOverlayMounted || retainedVideoAmbientBands == null ||
+                            videoAmbientOverlayAlpha.value < 0.999f) drawContent()
                     }) {
                         PlayerBackground(
                             playerBackground = playerBackground,
