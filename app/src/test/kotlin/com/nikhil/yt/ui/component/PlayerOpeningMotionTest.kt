@@ -146,7 +146,9 @@ class PlayerOpeningMotionTest {
             val desired = state.collapsedBound + (state.expandedBound - state.collapsedBound) * progress
             state.dispatchRawUserDelta(with(compose.density) { (desired - state.value).toPx() }, allowDismiss = false)
         }
-        compose.waitForIdle()
+        // Raw position injection does not advance the deliberately paused display clock.
+        // Let the derived mount/visibility gates compose before measuring or drawing that frame.
+        advance(16)
     }
 
     private fun pagePoint(x: Float, y: Float): Offset {
@@ -221,12 +223,12 @@ class PlayerOpeningMotionTest {
         mount()
         for (p in listOf(0.25f, 0.43f, 0.66f, 0.85f, 0.98f)) {
             sampleAt(p)
+            capture("uniform-page-${(p*100).roundToInt()}").recycle()
             val a = pagePoint(0f, 0f); val b = pagePoint(1f, 1f)
             assertEquals(360f / 700f, (b.x-a.x)/(b.y-a.y), 0.0001f)
             val centre = pagePoint(0.5f,0.5f)
             val frame = playerWindowBounds(p, Size(360f,700f),48f,110f,12f)
             assertEquals(with(compose.density) { frame.center.y.dp.toPx() }, centre.y, 1f)
-            capture("uniform-page-${(p*100).roundToInt()}").recycle()
         }
         assertEquals(1, measuredContent.distinct().size)
     }
@@ -324,7 +326,9 @@ class PlayerOpeningMotionTest {
     }
 
     @Test fun sourceMaterialAndAppDrawingStopAfterTheWindowBecomesOpaque() {
-        mount();compose.runOnIdle {state.expandSoft()};advance(700)
+        mount();compose.runOnIdle {state.expandSoft()};advance(32)
+        capture("material-active").recycle()
+        advance(700)
         val source=materialDraws;val app=sceneDraws;val compositions=sceneCompositions
         assertTrue("the idle check must exercise the material's actual draw pass", source > 0)
         advance(1500)
