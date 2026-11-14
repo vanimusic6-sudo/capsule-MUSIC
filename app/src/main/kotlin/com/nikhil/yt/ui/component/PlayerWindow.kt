@@ -138,7 +138,7 @@ internal fun PlayerWindow(
                 Box(Modifier.fillMaxSize().graphicsLayer {
                     val p = state.visualProgress
                     val frame = playerWindowBounds(p, size, miniHeight.toPx(), state.collapsedBound.toPx(), miniInset.toPx())
-                    val scale = playerPageScale(p)
+                    val scale = playerPageScale(p, frame.width / size.width.coerceAtLeast(1f))
                     transformOrigin = TransformOrigin(0f, 0f)
                     scaleX = scale
                     scaleY = scale

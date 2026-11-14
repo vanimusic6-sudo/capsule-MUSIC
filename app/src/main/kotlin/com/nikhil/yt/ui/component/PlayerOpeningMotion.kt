@@ -71,7 +71,8 @@ internal fun playerFrameTravel(progress: Float): Float = boundedProgress(progres
 
 /** Only the page contents dissolve. The growing material shell never fades over the app. */
 internal fun playerPageOpacity(progress: Float): Float = window(progress, 0.18f, 0.66f)
-internal fun playerPageScale(progress: Float): Float = 0.94f + 0.06f * window(progress, 0.18f, 1f)
+internal fun playerPageScale(progress: Float, minimumWidthFraction: Float = 0f): Float =
+    maxOf(0.94f + 0.06f * window(progress, 0.18f, 1f), minimumWidthFraction.coerceIn(0f, 1f))
 internal fun playerSourceSeal(progress: Float): Float = window(progress, 0f, 0.20f)
 
 /** Mini is the opaque source UNDER the dissolving card, so the app cannot leak through it. */

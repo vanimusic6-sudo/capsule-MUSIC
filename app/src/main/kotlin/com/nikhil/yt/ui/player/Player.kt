@@ -532,7 +532,10 @@ fun BottomSheetPlayer(
                 }
                 MiniPlayerSurface(
                     style = miniPlayerBackground, pureBlack = pureBlack, colors = gradientColors,
-                    modifier = Modifier.fillMaxSize(), animated = false,
+                    modifier = Modifier.fillMaxSize().graphicsLayer {
+                        alpha = if (miniPlayerBackground == MiniPlayerBackgroundStyle.GLASS)
+                            1f - com.nikhil.yt.ui.component.playerSourceSeal(state.visualProgress) else 1f
+                    }, animated = false,
                     glassBackdrop = miniPlayerBackdrop,
                     glassShape = androidx.compose.ui.graphics.RectangleShape,
                 ) {}

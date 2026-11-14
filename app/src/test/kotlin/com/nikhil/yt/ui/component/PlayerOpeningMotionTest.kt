@@ -326,8 +326,21 @@ class PlayerOpeningMotionTest {
     @Test fun sourceMaterialAndAppDrawingStopAfterTheWindowBecomesOpaque() {
         mount();compose.runOnIdle {state.expandSoft()};advance(700)
         val source=materialDraws;val app=sceneDraws;val compositions=sceneCompositions
+        assertTrue("the idle check must exercise the material's actual draw pass", source > 0)
         advance(1500)
         compose.runOnIdle {assertEquals(source,materialDraws);assertEquals(app,sceneDraws);assertEquals(compositions,sceneCompositions)}
+    }
+
+    @Test fun opaquePageCoversTheWholeWindowOnPhoneAndRailWidths() {
+        for (width in listOf(320f,360f,400f,600f,960f)) {
+            for (step in 660..1000) {
+                val p=step/1000f
+                val frame=playerWindowBounds(p,Size(width,700f),64f,120f,12f)
+                val scale=playerPageScale(p,frame.width/width)
+                assertTrue("no app-colour side seam at width $width and progress $p",width*scale+0.001f>=frame.width)
+                assertTrue(700f*scale+0.001f>=frame.height)
+            }
+        }
     }
 
     @Test fun stoppingTheActivityCompletesTheCurrentTargetWithoutHiddenAnimationFrames() {
