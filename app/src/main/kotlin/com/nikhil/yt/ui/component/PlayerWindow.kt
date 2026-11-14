@@ -16,6 +16,9 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.hideFromAccessibility
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
@@ -44,10 +47,9 @@ internal fun PlayerWindow(
 ) {
     val arbiter = remember(state) { MiniPlayerGestureArbiter() }
     val renderPage by remember(state) { derivedStateOf {
-        shouldRenderExpandedSurface(state.visualProgress, state.isDismissed)
-    } }
-    val renderSource by remember(state) { derivedStateOf {
-        renderPage && playerPageOpacity(state.visualProgress) < 1f
+        !state.isDismissed && (state.isExpandedOrExpanding ||
+            (state.isCollapsedOrCollapsing && state.isAnimationRunning) ||
+            shouldRenderExpandedSurface(state.visualProgress, state.isDismissed))
     } }
     val sourceDraws by remember(state) { derivedStateOf {
         playerMiniDrawAlpha(state.visualProgress) > 0f
@@ -57,6 +59,7 @@ internal fun PlayerWindow(
         !state.isDismissed && sourceDraws
     } }
     val pageDraws by remember(state) { derivedStateOf { playerPageOpacity(state.visualProgress) > 0f } }
+    val pageAccessible by remember(state) { derivedStateOf { playerPageOpacity(state.visualProgress) >= 1f } }
 
     if (backHandlerEnabled && state.isExpandedOrExpanding) BackHandler(onBack = state::collapseSoft)
 
@@ -68,6 +71,9 @@ internal fun PlayerWindow(
                 Modifier
                     .offset { IntOffset(0, (state.expandedBound - state.collapsedBound).roundToPx()) }
                     .zIndex(if (sourceDraws) 2f else 0f)
+                    .semantics {
+                        if (!state.compactForegroundAcceptsInput) hideFromAccessibility()
+                    }
                     .graphicsLayer {
                         alpha = playerMiniDrawAlpha(state.visualProgress)
                         scaleY = 1f + playerMiniStretch(state.visualProgress, state.frameVelocityFraction)
@@ -117,8 +123,12 @@ internal fun PlayerWindow(
                         alpha = 1f
                     },
             ) {
-                if (renderSource) {
-                    Box(Modifier.fillMaxWidth().height(miniHeight).graphicsLayer {
+                // Keep both sibling LayoutNodes attached for the WHOLE window lifetime.
+                // Removing the source at an opacity threshold can leave a queued accessibility
+                // remeasure referring to the detached child. Covered drawing is cheap to skip;
+                // detaching a live layout is neither needed nor safe during the trip.
+                key("player-source-material") {
+                    Box(Modifier.fillMaxWidth().height(miniHeight).clearAndSetSemantics {}.graphicsLayer {
                         val frame = playerWindowBounds(state.visualProgress,
                             androidx.compose.ui.geometry.Size(size.width, state.expandedBound.toPx()),
                             miniHeight.toPx(), state.collapsedBound.toPx(), miniInset.toPx())
@@ -127,6 +137,8 @@ internal fun PlayerWindow(
                         translationY = frame.top
                         scaleX = frame.width / size.width.coerceAtLeast(1f)
                         scaleY = frame.height / size.height.coerceAtLeast(1f)
+                    }.drawWithContent {
+                        if (playerPageOpacity(state.visualProgress) < 1f) drawContent()
                     }) {
                         CompositionLocalProvider(LocalCapsuleBackgroundMotionEnabled provides false) {
                             if (compactBackground != null) compactBackground()
@@ -135,7 +147,10 @@ internal fun PlayerWindow(
                     }
                 }
 
-                Box(Modifier.fillMaxSize().graphicsLayer {
+                key("player-destination-page") {
+                Box(Modifier.fillMaxSize().semantics {
+                    if (!pageAccessible) hideFromAccessibility()
+                }.graphicsLayer {
                     val p = state.visualProgress
                     val frame = playerWindowBounds(p, size, miniHeight.toPx(), state.collapsedBound.toPx(), miniInset.toPx())
                     val scale = playerPageScale(p, frame.width / size.width.coerceAtLeast(1f))
@@ -162,6 +177,7 @@ internal fun PlayerWindow(
                         }, content = backgroundContent)
                     content()
                     }
+                }
                 }
             }
         }

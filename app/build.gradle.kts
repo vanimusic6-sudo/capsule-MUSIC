@@ -324,7 +324,8 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation("androidx.compose.ui:ui-test-junit4:${libs.versions.composeUi.get()}")
     debugImplementation("androidx.compose.ui:ui-test-manifest:${libs.versions.composeUi.get()}")
-    testImplementation("org.robolectric:robolectric:4.16")
+    // Android 17 regression coverage for the device LayoutNode/accessibility crash.
+    testImplementation("org.robolectric:robolectric:4.18")
     testImplementation(libs.coroutines.test)
     testImplementation(libs.ktor.client.mock)
     implementation("com.github.therealbush:translator:1.1.1")

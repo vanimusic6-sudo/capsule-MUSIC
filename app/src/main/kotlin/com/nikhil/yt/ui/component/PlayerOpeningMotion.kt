@@ -21,7 +21,8 @@ import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.hideFromAccessibility
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 
@@ -73,7 +74,6 @@ internal fun playerFrameTravel(progress: Float): Float = boundedProgress(progres
 internal fun playerPageOpacity(progress: Float): Float = window(progress, 0.18f, 0.66f)
 internal fun playerPageScale(progress: Float, minimumWidthFraction: Float = 0f): Float =
     maxOf(0.94f + 0.06f * window(progress, 0.18f, 1f), minimumWidthFraction.coerceIn(0f, 1f))
-internal fun playerSourceSeal(progress: Float): Float = window(progress, 0f, 0.20f)
 
 /** Mini is the opaque source UNDER the dissolving card, so the app cannot leak through it. */
 internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0.015f, 0.20f)
@@ -112,7 +112,8 @@ internal fun PlayerSceneBackdrop(
 ) {
     Box(
         modifier.fillMaxSize()
-            .then(if (blocked) Modifier.clearAndSetSemantics {} else Modifier)
+            // Keep the modifier/node topology stable while semantics queries force remeasure.
+            .semantics { if (blocked) hideFromAccessibility() }
             .pointerInput(blocked) {
                 if (!blocked) return@pointerInput
                 awaitEachGesture {

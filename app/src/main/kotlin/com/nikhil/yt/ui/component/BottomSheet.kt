@@ -696,9 +696,9 @@ class BottomSheetState internal constructor(
 
     val compactSurfaceVisible by
         derivedStateOf {
-            // Recreate Mini's cheap controls just before their finite closing handoff. Its
-            // decorative clock remains stopped until PlayerWindow actually draws the source.
-            if (playerMotion) !isDismissed && visualProgress < 0.38f
+            // Do not detach Mini children halfway through a queued measure/semantics traversal.
+            // Keep them for the finite trip; their decorative clock is separately draw-gated.
+            if (playerMotion) !isDismissed && (!isExpanded || isAnimationRunning)
             else shouldShowCompactSurface(visualProgress, isDismissed, contentHandoffPoint)
         }
 

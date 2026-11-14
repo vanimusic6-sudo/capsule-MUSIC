@@ -50,6 +50,8 @@ class PlayerOpeningMotionTest {
     private lateinit var state: BottomSheetState
     private val foreground = mutableStateOf(true)
     private var materialDraws = 0
+    private var materialMounts = 0
+    private var materialDisposals = 0
     private var sceneDraws = 0
     private var sceneCompositions = 0
     private var navigationClicks = 0
@@ -108,6 +110,10 @@ class PlayerOpeningMotionTest {
                         collapsedHorizontalInset = 12.dp, collapsedTopCornerRadius = 14.dp,
                         surfaceAlpha = ::playerHandoffSurfaceAlpha,
                         compactBackground = {
+                            DisposableEffect(Unit) {
+                                materialMounts++
+                                onDispose { materialDisposals++ }
+                            }
                             Box(Modifier.fillMaxSize().drawWithContent { materialDraws++; drawContent() }
                                 .background(Color(0xFF7C3331)))
                         },
@@ -338,6 +344,31 @@ class PlayerOpeningMotionTest {
         assertTrue("the idle check must exercise the material's actual draw pass", source > 0)
         advance(1500)
         compose.runOnIdle {assertEquals(source,materialDraws);assertEquals(app,sceneDraws);assertEquals(compositions,sceneCompositions)}
+    }
+
+    @Test fun sourceMaterialRemainsAttachedUntilTheWholeWindowCloses() {
+        mount()
+        sampleAt(0.80f)
+        compose.runOnIdle {
+            assertTrue(state.isAnimationRunning)
+            assertEquals(1, materialMounts)
+            assertEquals("source material detached during active player motion", 0, materialDisposals)
+            assertTrue("Mini body must not detach while its parent is still moving", state.compactSurfaceVisible)
+        }
+        advance(700)
+        compose.runOnIdle { assertEquals(0, materialDisposals); assertFalse(state.compactSurfaceVisible) }
+        val draws = materialDraws
+        advance(300)
+        compose.runOnIdle { assertEquals("retained material must not draw while covered", draws, materialDraws) }
+        compose.runOnIdle { state.collapseSoft() }
+        advance(64)
+        compose.runOnIdle {
+            assertEquals(1, materialMounts)
+            assertEquals(0, materialDisposals)
+            assertTrue(state.compactSurfaceVisible)
+        }
+        advance(700)
+        compose.runOnIdle { assertEquals(1, materialDisposals); assertTrue(state.isCollapsed) }
     }
 
     @Test fun opaquePageCoversTheWholeWindowOnPhoneAndRailWidths() {

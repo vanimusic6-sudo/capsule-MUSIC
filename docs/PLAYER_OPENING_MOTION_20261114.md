@@ -23,10 +23,9 @@ artwork deformation have been removed from the generic renderer.
   still handled by the existing Compose animation clock.
 - A native rounded outline interpolates the actual Mini rectangle into the window. The shell
   itself never dissolves over the app. Corners retain their radius and finish outside the viewport.
-- The source material is the selected Mini background, using the existing artwork palette and
-  glass backdrop. Only this Mini-height material layer stretches to fill the growing shell. It has
-  no decorative clock and is removed once the page is opaque. Glass seals into an already sampled
-  artwork tone before page content is visible; there is no generic grey replacement page.
+- The source material uses the selected Mini style and existing artwork palette. Live glass
+  belongs to the real Mini only; its transition bridge uses the static palette gradient. Only this Mini-height material layer stretches to fill the growing shell. It has
+  no decorative clock and stops drawing once the page is opaque; there is no generic grey replacement page.
 - Full-player background, artwork, video and controls form ONE stable measured page. It moves
   with the shell's centre and receives one uniform 0.94–1 scale, preserving aspect ratios. It
   dissolves inside the source material over progress 0.18–0.66. This removes the bright photo
@@ -44,8 +43,10 @@ No screenshot capture, bitmap copy, new image request, decoder, sampling timer, 
 infinite transition, FPS cap or quality reduction is introduced. The material is measured at Mini
 height and transformed on the GPU. The real page is measured once and transformed rather than
 remeasured on every frame. Its draw pass and decorative clocks are suppressed while its opacity
-is zero. Covered source material is unmounted; covered app drawing stops. Mini controls are
-prepared only in the short final closing region, with their background clock stopped until visible.
+is zero. Source and destination wrapper nodes stay attached for the whole window lifetime; covered source
+drawing is skipped. Mini controls remain attached during the finite trip, with their background
+clock stopped while invisible. They retire only after the expanded anchor settles. Covered app
+drawing stops.
 The existing Activity-stop handler completes the requested anchor without hidden animation frames.
 
 Audio/video playback, palette extraction, immersion composition and final player layouts are
@@ -62,3 +63,5 @@ results and APK provenance are recorded in draft PR 100.
 
 No physical-device 60/90/120Hz trace, TalkBack session, thermal or battery measurement is claimed.
 The resulting DEV APK still needs an appearance check on the phone.
+
+Owner lifetime hotfix and Android 17 accessibility regression: see PLAYER_WINDOW_OWNER_CRASH_20261115.md.

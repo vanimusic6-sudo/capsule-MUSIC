@@ -521,25 +521,17 @@ fun BottomSheetPlayer(
             )
         },
         compactBackground = {
-            // The growing shell starts with the actual selected Mini material, not a grey
-            // full-page fallback. Only this small material layer changes aspect, never artwork.
-            // Glass seals into an existing artwork tone before the full page becomes visible.
-            Box(Modifier.fillMaxSize()) {
-                if (miniPlayerBackground == MiniPlayerBackgroundStyle.GLASS) {
-                    Box(Modifier.fillMaxSize().graphicsLayer {
-                        alpha = com.nikhil.yt.ui.component.playerSourceSeal(state.visualProgress)
-                    }.background(gradientColors.firstOrNull() ?: playerSurfaceColor(useBlackBackground)))
-                }
-                MiniPlayerSurface(
-                    style = miniPlayerBackground, pureBlack = pureBlack, colors = gradientColors,
-                    modifier = Modifier.fillMaxSize().graphicsLayer {
-                        alpha = if (miniPlayerBackground == MiniPlayerBackgroundStyle.GLASS)
-                            1f - com.nikhil.yt.ui.component.playerSourceSeal(state.visualProgress) else 1f
-                    }, animated = false,
-                    glassBackdrop = miniPlayerBackdrop,
-                    glassShape = androidx.compose.ui.graphics.RectangleShape,
-                ) {}
-            }
+            // The transition must not create a second live backdrop consumer and then detach it
+            // while accessibility is measuring. Glass remains live on the real Mini only; this
+            // passive bridge uses the already extracted artwork palette and has no source owner.
+            CapsuleCompactSurfaceBackground(
+                style = if (miniPlayerBackground == MiniPlayerBackgroundStyle.GLASS)
+                    MiniPlayerBackgroundStyle.GRADIENT else miniPlayerBackground,
+                pureBlack = pureBlack,
+                colors = gradientColors,
+                modifier = Modifier.fillMaxSize(),
+                animated = false,
+            )
         },
         backgroundContent = {
             // Generic sheets retain their old bridge. The physical card reveals its real page
