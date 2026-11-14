@@ -124,11 +124,15 @@ class PlayerOpeningMotionTest {
         }
     }
 
-    private fun preview(progress: Float) = compose.runOnIdle {
-        state.setUserGestureInProgress(true)
-        val desired = with(compose.density) { (110.dp + 590.dp * progress).toPx() }
-        val current = with(compose.density) { state.value.toPx() }
-        state.dispatchRawUserDelta(desired - current, allowDismiss = false)
+    private fun preview(progress: Float) {
+        compose.runOnIdle {
+            state.setUserGestureInProgress(true)
+            val desired = with(compose.density) { (110.dp + 590.dp * progress).toPx() }
+            val current = with(compose.density) { state.value.toPx() }
+            state.dispatchRawUserDelta(desired - current, allowDismiss = false)
+        }
+        // With autoAdvance disabled, idle alone does not commit the newly visible content.
+        advance(16)
     }
 
     @Test fun cornersKeepTheirRadiusUntilTheEdgesAreAttached() {
