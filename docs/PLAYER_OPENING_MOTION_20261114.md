@@ -21,7 +21,7 @@ repeated requests coalesce, and reversals continue from the current position.
   region a direct Mini-to-player blend, without two independent fades exposing the app between
   them. Mini stays at its dock while the full card moves in a separate sibling slot, rather than
   inheriting the parent translation. Only Mini's upper edge stretches towards the descending
-  player, by at most 6% of Mini's height (roughly 3dp). Its bottom and horizontal edges remain
+  player, by at most 6% of Mini's height (roughly 4dp). Its bottom and horizontal edges remain
   fixed; actual closing velocity supplies the stretch, which vanishes at rest and both anchors.
   Independent downward Mini dismissal retains its original trajectory. Mini moves in front again
   only when the upper card is fully transparent, restoring its

@@ -391,7 +391,10 @@ class PlayerOpeningMotionTest {
         mount()
         fun miniTop() = compose.onNodeWithTag("mini", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top
         val dock = miniTop()
-        compose.runOnIdle { state.snapTo(90.dp) }
+        compose.runOnIdle {
+            state.dispatchRawUserDelta(with(compose.density) { (-20).dp.toPx() },
+                allowDismiss = true, compactDismissOnly = true)
+        }
         val moved = miniTop()
         assertEquals(with(compose.density) { 20.dp.toPx() }, moved - dock, 1f)
         compose.runOnIdle { state.snapTo(state.collapsedBound) }
