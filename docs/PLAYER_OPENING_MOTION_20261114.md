@@ -28,6 +28,8 @@ background slot. A retained matching Immersion page texture is reused even after
 eviction; it is not rendered again merely because the shared cache was evicted. During genuine
 image preparation, Immersion uses its already sampled cover colour instead of a generic grey
 base. Decoding still uses the existing full-resolution requests and bounded caches.
+For a same-cover crop/inset refresh, the previous complete photo/background pair stays visible
+until the replacement texture is ready, then retires immediately without another opacity trip.
 
 No permanent clock, hidden full-player composition, additional decoder, sampling timer or blur
 is introduced. Visible motion uses the display frame clock and Android duration scale. Covered

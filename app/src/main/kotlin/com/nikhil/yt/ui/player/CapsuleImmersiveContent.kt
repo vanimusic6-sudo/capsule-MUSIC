@@ -823,7 +823,9 @@ internal fun CapsuleImmersiveContent(
             outgoingStartAlpha = if (old?.key == outgoingFrame?.key)
                 outgoingStartAlpha else staleSceneAlpha.value
             val geometryOnly = old?.mediaId == mediaMetadata.id
-            outgoingFrame = old.takeUnless { geometryOnly }
+            // A same-song crop/inset refresh still needs its last complete pair until the
+            // replacement page texture arrives. Dropping it here exposed a neutral frame.
+            outgoingFrame = old
             shownGradient = immersiveGradientFrame(visualKey, mediaMetadata.id, artworkTone, readyPainter)
             // New background + photo appear together only after their first
             // render has completed, instead of sequential fade-out/in.
