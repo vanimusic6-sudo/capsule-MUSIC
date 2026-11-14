@@ -42,7 +42,7 @@ internal fun rememberNavigableArtists(artists: List<MediaMetadata.Artist>): List
 /**
  * Asks which artist was meant, when a track credits more than one.
  *
- * Lifted out of the Cosmo player rather than copied into the immersive one. The same dialog had
+ * Shared by the Light and Immersion players. The same dialog had
  * already been duplicated once in this package — two hundred identical lines of slider — and the
  * cost of that is two behaviours that drift until they are different features with one name.
  */

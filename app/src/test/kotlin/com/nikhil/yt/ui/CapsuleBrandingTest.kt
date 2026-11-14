@@ -49,17 +49,6 @@ class CapsuleBrandingTest {
     }
 
     /**
-     * The skin stored as SUPER is shown as Cosmo.
-     *
-     * The enum constant deliberately keeps its old name: it is the value written into everybody's
-     * settings, and renaming it would reset the skin of every user who had chosen it. The display
-     * name is the part that was meant to change.
-     */
-    @Test fun persistedSuperSkinIsDisplayedAsCosmo() {
-        assertEquals("Cosmo", context.getString(R.string.capsule_player_super))
-    }
-
-    /**
      * No player design label carries the product name.
      *
      * The list already sits under a "Player design" heading inside Capsule, so repeating the brand
@@ -68,7 +57,6 @@ class CapsuleBrandingTest {
      */
     @Test fun playerDesignNamesDoNotRepeatTheBrand() {
         val names = listOf(
-            R.string.capsule_player_super,
             R.string.capsule_player_light,
             R.string.capsule_player_immersive,
         )

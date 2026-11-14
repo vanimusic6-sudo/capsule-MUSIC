@@ -1,4 +1,4 @@
-/** Capsule MUSIC — manual, single-line player title for all three player designs. GPL-3.0. */
+/** Capsule MUSIC — manual, single-line player title for both player designs. GPL-3.0. */
 package com.nikhil.yt.ui.player
 
 import androidx.compose.animation.core.tween

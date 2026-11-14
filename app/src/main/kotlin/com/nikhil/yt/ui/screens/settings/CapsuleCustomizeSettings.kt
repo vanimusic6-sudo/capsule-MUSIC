@@ -119,7 +119,6 @@ fun CapsuleCustomizeSettings(
         when (playerDesign) {
             CapsulePlayerDesign.LIGHT -> CapsuleCustomizeTarget.LIGHT
             CapsulePlayerDesign.IMMERSIVE -> CapsuleCustomizeTarget.IMMERSIVE
-            CapsulePlayerDesign.SUPER -> null
         }
 
     // Once editing is enabled, keep editing the design that was active at that exact moment.
@@ -319,7 +318,7 @@ fun CapsuleCustomizeSettings(
             .verticalScroll(
                 rememberScrollState(),
                 flingBehavior = rememberSettingsFlingBehavior(),
-            
+
             overscrollEffect = null)
             .padding(bottom = settingsBottomContentPadding()),
     ) {

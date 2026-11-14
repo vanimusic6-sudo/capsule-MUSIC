@@ -110,7 +110,7 @@ class CapsuleVideoArtworkTransitionTest {
         assertEquals("user's Light cover height is not VIDEO height", normalHeight, videoHeight)
     }
 
-    @Test fun oneWindowWidthIsSharedAcrossImmersionCosmoAndLight() {
+    @Test fun oneWindowWidthIsSharedAcrossImmersionAndLight() {
         // The recorded bug: Immersion's full-bleed slot bypassed the maximum
         // screen-width constraint because the cap used coerceAtLeast(slotWidth).
         // On the same 400dp device all three 16:9 VIDEO windows now match.
@@ -138,15 +138,15 @@ class CapsuleVideoArtworkTransitionTest {
         val light = outputWidth
         compose.runOnIdle { design.value = 1 }
         compose.waitForIdle()
-        val cosmo = outputWidth
+        val tallLightSlot = outputWidth
         compose.runOnIdle { design.value = 2 }
         compose.waitForIdle()
         val immersion = outputWidth
         assertTrue("Light width must be positive", light > 0)
         assertTrue("Immersion cannot be materially wider than Light: $immersion vs $light",
             kotlin.math.abs(immersion - light) <= 4)
-        assertTrue("Immersion cannot be materially wider than Cosmo: $immersion vs $cosmo",
-            kotlin.math.abs(immersion - cosmo) <= 4)
+        assertTrue("Immersion cannot be materially wider than tall Light slot: $immersion vs $tallLightSlot",
+            kotlin.math.abs(immersion - tallLightSlot) <= 4)
     }
 
     @Test fun cornersAdvanceFromTheFirstFrameAndDoNotPopLate() {
@@ -165,13 +165,11 @@ class CapsuleVideoArtworkTransitionTest {
 
     @Test fun everySkinHasItsOwnMeasuredOpticalDissolve() {
         val light = capsuleVideoBlendSpec(CapsuleVideoBlendStyle.LIGHT)
-        val cosmo = capsuleVideoBlendSpec(CapsuleVideoBlendStyle.COSMO)
         val immersion = capsuleVideoBlendSpec(CapsuleVideoBlendStyle.IMMERSION)
         // All styles use the SAME physical timeline, with distinct optical
         // reveal ranges, eliminating cross-animation drift.
-        assertTrue(light.fadeSpan < cosmo.fadeSpan)
-        assertTrue(cosmo.fadeSpan < immersion.fadeSpan)
-        assertTrue(immersion.fadeStart < cosmo.fadeStart)
+        assertTrue(light.fadeSpan < immersion.fadeSpan)
+        assertTrue(immersion.fadeStart < light.fadeStart)
         for (style in CapsuleVideoBlendStyle.entries) {
             assertEquals(1f, capsulePhotoOpacity(0f, style), 0.0001f)
             assertEquals(0f, capsulePhotoOpacity(1f, style), 0.0001f)
@@ -225,7 +223,7 @@ class CapsuleVideoArtworkTransitionTest {
             capsuleVideoContentLag(0.48f, 0.27f, true) < -0.1f)
         assertTrue("no out-of-bounds renderer translate",
             kotlin.math.abs(capsuleVideoContentLag(0.5f, -2f, true)) <= 1f)
-        assertTrue("Light/Cosmo also get subtle video-window momentum",
+        assertTrue("Light also get subtle video-window momentum",
             capsuleVideoContentLag(0.5f, 0.65f, false) > 0f)
     }
 
@@ -344,11 +342,10 @@ class CapsuleVideoArtworkTransitionTest {
         }
     }
 
-    @Test fun lightSwitchAcceptsEveryTapDuringLoadingAndReversal() = verifyTaps(light = true, cosmo = false)
-    @Test fun cosmoSwitchAcceptsEveryTapDuringLoadingAndReversal() = verifyTaps(light = false, cosmo = true)
-    @Test fun plainSwitchAcceptsEveryTapDuringLoadingAndReversal() = verifyTaps(light = false, cosmo = false)
+    @Test fun lightSwitchAcceptsEveryTapDuringLoadingAndReversal() = verifyTaps(light = true)
+    @Test fun plainSwitchAcceptsEveryTapDuringLoadingAndReversal() = verifyTaps(light = false)
 
-    private fun verifyTaps(light: Boolean, cosmo: Boolean) {
+    private fun verifyTaps(light: Boolean) {
         val state = mutableStateOf(CapsuleVideoPlaybackState())
         var audioClicks = 0
         var videoClicks = 0
@@ -361,16 +358,16 @@ class CapsuleVideoArtworkTransitionTest {
                     state.value = CapsuleVideoPlaybackState(
                         preferredMode = CapsulePlaybackMode.VIDEO, phase = CapsuleVideoPhase.RESOLVING)
                 },
-                modifier = Modifier.size(240.dp, 48.dp), lightStyle = light, cosmoStyle = cosmo,
+                modifier = Modifier.size(240.dp, 48.dp), lightStyle = light,
             )
         }
         repeat(10) {
-            compose.onNodeWithText(if (light || cosmo) "video" else "VIDEO").performTouchInput { click() }
+            compose.onNodeWithText(if (light) "video" else "VIDEO").performTouchInput { click() }
             compose.mainClock.advanceTimeBy(32)
             // A repeat tap while loading reaches the service's idempotent
             // handler, instead of the UI dropping input for an animation.
-            compose.onNodeWithText(if (light || cosmo) "video" else "VIDEO").performTouchInput { click() }
-            compose.onNodeWithText(if (light || cosmo) "audio" else "AUDIO").performTouchInput { click() }
+            compose.onNodeWithText(if (light) "video" else "VIDEO").performTouchInput { click() }
+            compose.onNodeWithText(if (light) "audio" else "AUDIO").performTouchInput { click() }
             compose.mainClock.advanceTimeBy(32)
         }
         compose.runOnIdle {
@@ -381,7 +378,6 @@ class CapsuleVideoArtworkTransitionTest {
     }
 
     @Test fun lightKeepsThePreparingSurfaceWhenFirstFrameArrives() = verifyStableOutput(320, 280, true, 0)
-    @Test fun cosmoKeepsThePreparingSurfaceWhenFirstFrameArrives() = verifyStableOutput(340, 420, false, 0)
     @Test fun immersiveKeepsThePreparingSurfaceWhenFirstFrameArrives() = verifyStableOutput(380, 440, true, 12, motion = CapsuleVideoArtworkMotion.IMMERSIVE)
     @Test fun enlargedLightWindowKeepsOneFixedNativeViewport() = verifyStableOutput(320, 280, true, 0, 1.08f)
 

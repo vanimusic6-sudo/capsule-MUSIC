@@ -117,7 +117,7 @@ class CapsuleLightLayoutTest {
         compose.setContent {
             MaterialTheme {
                 CapsulePlayerLayout(
-                    design = CapsulePlayerDesign.LIGHT,
+
                     textColor = Color.White,
                     onCollapse = {},
                     onMenuClick = {},
@@ -162,11 +162,10 @@ class CapsuleLightLayoutTest {
     }
 
     @Test fun lightIsCoverFirstAndHasNoTopHeaderButtons() {
-        var design by mutableStateOf(CapsulePlayerDesign.SUPER)
         var height by mutableStateOf(760.dp)
         compose.setContent {
             MaterialTheme {
-                CapsulePlayerLayout(design, Color.White, {}, {}, Modifier.size(320.dp, height).testTag("player"),
+                CapsulePlayerLayout(Color.White, {}, {}, Modifier.size(320.dp, height).testTag("player"),
                     artwork = { Box(Modifier.fillMaxWidth().aspectRatio(1f).testTag("cover")) },
                     details = { Box(Modifier.fillMaxWidth().height(320.dp).testTag("details")) },
                 )
@@ -174,7 +173,6 @@ class CapsuleLightLayoutTest {
         }
         val collapseLabel = compose.activity.getString(R.string.capsule_collapse_player)
         val menuLabel = compose.activity.getString(R.string.more)
-        compose.runOnIdle { design = CapsulePlayerDesign.LIGHT }
         compose.onNodeWithContentDescription(collapseLabel).assertDoesNotExist()
         compose.onNodeWithContentDescription(menuLabel).assertDoesNotExist()
         for (screenHeight in listOf(760.dp, 620.dp)) {
@@ -231,7 +229,7 @@ class CapsuleLightLayoutTest {
         var clicks = 0
         compose.setContent {
             MaterialTheme {
-                CapsulePlayerLayout(CapsulePlayerDesign.LIGHT, Color.White, {}, {},
+                CapsulePlayerLayout(Color.White, {}, {},
                     Modifier.size(320.dp, 420.dp),
                     artwork = { Box(Modifier.fillMaxWidth().aspectRatio(1f).testTag("cover")) },
                     details = {
@@ -253,7 +251,7 @@ class CapsuleLightLayoutTest {
         compose.setContent {
             MaterialTheme {
                 CapsulePlayerLayout(
-                    CapsulePlayerDesign.LIGHT, Color.White, {}, {},
+                    Color.White, {}, {},
                     Modifier.size(320.dp, 420.dp).testTag("player"),
                     onExpandQueue = { queueOpens++ },
                     artwork = { Box(Modifier.fillMaxWidth().aspectRatio(1f).testTag("cover")) },
@@ -282,7 +280,7 @@ class CapsuleLightLayoutTest {
         compose.setContent {
             MaterialTheme {
                 CapsulePlayerLayout(
-                    CapsulePlayerDesign.LIGHT, Color.White, {}, {},
+                    Color.White, {}, {},
                     Modifier.size(360.dp, 860.dp),
                     lyricLine = { Box(Modifier.fillMaxWidth().height(CapsuleLightLyricLineHeight).testTag("lyric")) },
                     artwork = { Box(Modifier.fillMaxSize().testTag("cover")) },
@@ -299,7 +297,7 @@ class CapsuleLightLayoutTest {
         compose.setContent {
             MaterialTheme {
                 CapsulePlayerLayout(
-                    CapsulePlayerDesign.LIGHT, Color.White, {}, {},
+                    Color.White, {}, {},
                     Modifier.size(360.dp, 860.dp),
                     lyricLine = { Box(Modifier.fillMaxWidth().height(CapsuleLightLyricLineHeight).testTag("lyric")) },
                     artwork = { Box(Modifier.fillMaxSize().testTag("cover")) },
@@ -363,7 +361,7 @@ class CapsuleLightLayoutTest {
         compose.setContent {
             MaterialTheme {
                 CapsulePlayerLayout(
-                    CapsulePlayerDesign.LIGHT, Color.White, {}, {},
+                    Color.White, {}, {},
                     Modifier.size(360.dp, 860.dp),
                     lyricLine = { Box(Modifier.fillMaxWidth().height(CapsuleLightLyricLineHeight).testTag("lyric")) },
                     artwork = { Box(Modifier.fillMaxSize().testTag("cover")) },
@@ -382,7 +380,7 @@ class CapsuleLightLayoutTest {
         compose.setContent {
             MaterialTheme {
                 CapsulePlayerLayout(
-                    CapsulePlayerDesign.LIGHT, Color.White, {}, {},
+                    Color.White, {}, {},
                     Modifier.size(360.dp, 860.dp),
                     lyricLine =
                         if (withLine) {

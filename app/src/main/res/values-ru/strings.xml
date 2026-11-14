@@ -792,7 +792,6 @@
     <string name="error_network_problem_title">Проблема с сетью</string>
     <string name="error_network_problem_description">Проверьте подключение к интернету. Если используете VPN — попробуйте переподключить или перезапустить его.</string>
     <string name="capsule_player_design">Дизайн плеера</string>
-    <string name="capsule_player_super">Cosmo</string>
     <string name="capsule_player_light">Лайт</string>
     <string name="capsule_player_immersive">Погружение</string>
     <string name="capsule_light_lyric_line">Строка текста песни</string>

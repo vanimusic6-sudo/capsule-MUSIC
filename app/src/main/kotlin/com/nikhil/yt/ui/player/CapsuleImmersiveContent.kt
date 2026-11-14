@@ -503,7 +503,7 @@ internal fun immersiveEditorHeight(
 /**
  * A player where the cover is the screen.
  *
- * Cosmo and Light both frame the artwork: a card with an edge, sitting in its own reserved space
+ * Light frames the artwork: a card with an edge, sitting in its own reserved space
  * with the controls arranged beneath. This one has no frame. The cover runs the full width from
  * the very top and simply stops being there — the bottom half of it dissolves into the player's
  * own background, so there is no line anywhere saying where the picture ends and the app begins.
@@ -615,7 +615,7 @@ internal fun CapsuleImmersiveContent(
      */
     val artistCredits = rememberArtistCredits(mediaMetadata.artists)
     val navigableArtists = rememberNavigableArtists(artistCredits)
-    // Match Light/Cosmo: close the chooser rather than retarget it on song change.
+    // Match Light: close the chooser rather than retarget it on song change.
     var showArtistPicker by remember(mediaMetadata.id) { mutableStateOf(false) }
 
     if (showArtistPicker) {
@@ -1178,6 +1178,7 @@ internal fun CapsuleImmersiveContent(
                         ) {
                             CapsuleLightReorderRow(
                                 order = immersiveMetadataOrder,
+                                widthFor = { if (it == CapsuleLightMetadataItem.FAVORITE) 48.dp else null },
                                 editable = immersiveEditEnabled,
                                 weightFor = { item ->
                                     when (item) {
@@ -1267,7 +1268,7 @@ internal fun CapsuleImmersiveContent(
                                             modifier =
                                                 Modifier
                                                     .fillMaxWidth()
-                                                    .height(52.dp)
+                                                    .height(48.dp)
                                                     .clip(CircleShape)
                                                     .clickable(
                                                         interactionSource = favoriteInteraction,
@@ -1278,7 +1279,7 @@ internal fun CapsuleImmersiveContent(
                                                             onToggleLike()
                                                         },
                                                     ),
-                                            contentAlignment = Alignment.Center,
+                                            contentAlignment = Alignment.CenterEnd,
                                         ) {
                                             CapsuleFavoriteIcon(
                                                 liked = liked,
@@ -1289,7 +1290,7 @@ internal fun CapsuleImmersiveContent(
                                                     } else {
                                                         metadataInk
                                                     },
-                                                modifier = Modifier.size(28.dp),
+                                                modifier = Modifier.size(32.dp),
                                                 userActionToken = favoriteActionToken,
                                             )
                                         }
@@ -1568,7 +1569,7 @@ internal fun CapsuleImmersiveContent(
         }
 
         /*
-         * The rail at the foot of the screen. Cosmo shows the same mark with the queue behind it,
+         * The rail at the foot of the screen. Light shows the same mark with the queue behind it,
          * so nothing new has to be learned to find it here.
          */
         Box(

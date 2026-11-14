@@ -380,8 +380,6 @@ enum class PreferredLyricsProvider {
 }
 
 enum class CapsulePlayerDesign {
-    // Persisted as SUPER for existing installations; displayed as Capsule Dense.
-    SUPER,
     LIGHT,
 
     /** Artwork edge to edge, controls that leave after four idle seconds and return on a touch. */

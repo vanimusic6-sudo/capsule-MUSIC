@@ -100,7 +100,7 @@ class PlayerArtworkReliabilityTest {
         assertFalse(content.contains("model = mediaMetadata.thumbnailUrl"))
     }
 
-    @Test fun lightAndCosmoKeepImageFallbackLocalToTheirOwnArtwork() {
+    @Test fun lightKeepsImageFallbackLocalToItsOwnArtwork() {
         val full = source("CapsulePlayerContent.kt")
         assertTrue(full.contains("val originalArtworkUrl = pinnedArtworkUrl"))
         assertTrue(full.contains("if (pinnedArtworkUrl == null) pinnedArtworkUrl = originalArtworkUrl"))

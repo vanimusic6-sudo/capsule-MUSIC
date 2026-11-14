@@ -39,7 +39,7 @@ import kotlin.math.PI
 internal enum class CapsuleVideoArtworkMotion { SCULPTED, IMMERSIVE }
 
 /** Each skin gets its own optical handoff; physical layout stays shared. */
-internal enum class CapsuleVideoBlendStyle { LIGHT, COSMO, IMMERSION }
+internal enum class CapsuleVideoBlendStyle { LIGHT, IMMERSION }
 
 internal data class CapsuleVideoBlendSpec(
     /** Shared spring progress before the first visible VIDEO pixel. */
@@ -51,7 +51,6 @@ internal data class CapsuleVideoBlendSpec(
 internal fun capsuleVideoBlendSpec(style: CapsuleVideoBlendStyle): CapsuleVideoBlendSpec =
     when (style) {
         CapsuleVideoBlendStyle.LIGHT -> CapsuleVideoBlendSpec(fadeStart = 0.58f, fadeSpan = 0.28f)
-        CapsuleVideoBlendStyle.COSMO -> CapsuleVideoBlendSpec(fadeStart = 0.58f, fadeSpan = 0.32f)
         CapsuleVideoBlendStyle.IMMERSION -> CapsuleVideoBlendSpec(fadeStart = 0.32f, fadeSpan = 0.68f)
     }
 
@@ -89,7 +88,7 @@ internal fun CapsuleVideoArtworkTransition(
     videoWidthScale: Float = 1f,
     independentVideoViewport: Boolean = false,
     motion: CapsuleVideoArtworkMotion = CapsuleVideoArtworkMotion.SCULPTED,
-    blendStyle: CapsuleVideoBlendStyle = CapsuleVideoBlendStyle.COSMO,
+    blendStyle: CapsuleVideoBlendStyle = CapsuleVideoBlendStyle.LIGHT,
     fixedImmersiveArtwork: Boolean = false,
     artworkBackground: Color = Color.Transparent,
     outline: Color = Color.Transparent,
@@ -127,7 +126,7 @@ internal fun CapsuleVideoArtworkTransition(
             )
         }
     }
-    // Both player families now have a leading-edge spring. In Cosmo/Light it
+    // Both player families now have a leading-edge spring. In Light it
     // is tighter and almost critically damped: enough for attached-edge drag,
     // not the bigger liquid wobble of Immersion.
     val lead = remember(transitionKey) { Animatable(target) }
@@ -161,7 +160,7 @@ internal fun CapsuleVideoArtworkTransition(
         val coverHeight = if (fillArtworkSlot) slotHeight else coverWidth
         // The old coerceAtLeast(slotWidth) silently disabled the device-width
         // cap in Immersion, whose slot is full bleed. Its VIDEO window became
-        // almost screen-wide while Light/Cosmo were inset. All designs now
+        // almost screen-wide while Light were inset. All designs now
         // share an explicit screen-relative target. Keep the user-sized Light
         // artwork slot as an upper bound when it is unusually small.
         val sharedWindowWidth = (windowWidth - with(density) { 32.dp.roundToPx() }).coerceAtLeast(1)
@@ -208,7 +207,7 @@ internal fun CapsuleVideoArtworkTransition(
             // A colour matte behind the photo used to show through its alpha
             // feather, hiding the actual scene continuation behind it. This
             // fixed artwork layer MUST remain transparent outside the bitmap.
-            // Light/Cosmo keep the separate opaque protective matte below.
+            // Light keep the separate opaque protective matte below.
             Box(
                 Modifier
                     .requiredSize(coverWidthDp, coverHeightDp)
@@ -249,7 +248,7 @@ internal fun CapsuleVideoArtworkTransition(
                     val top = (size.height - h) / 2f
                     // Corner radius is *part of* the moving silhouette, not
                     // another smoothstep that stays square for half the travel
-                    // then suddenly rounds near the video frame. Light/Cosmo
+                    // then suddenly rounds near the video frame. Light
                     // will keep their existing artwork radius at both ends.
                     val radius = capsuleMorphCornerRadius(
                         artworkRadius, videoRadius, p,
@@ -441,7 +440,7 @@ internal fun immersiveEdgeTension(body: Float, lead: Float): Float {
 internal fun capsuleMorphCornerRadius(startPx: Float, endPx: Float, progress: Float): Float =
     startPx + (endPx - startPx) * progress.coerceIn(0f, 1f)
 
-/** Controlled adhesive pull for Cosmo / Light; at rest there is no distortion. */
+/** Controlled adhesive pull for Light; at rest there is no distortion. */
 internal fun sculptedStickyStretch(body: Float, lead: Float): Float {
     val p = body.coerceIn(0f, 1f)
     val middle = sin((PI * p).toFloat()).coerceAtLeast(0f)

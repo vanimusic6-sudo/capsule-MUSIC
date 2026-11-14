@@ -89,7 +89,7 @@ class CapsuleVideoMorphPixelsTest {
                 (AndroidColor.red(pixel) > 0 || AndroidColor.blue(pixel) > 0))
     }
 
-    @Test fun lightAndCosmoReturnOpaquePhotoBeforeContainerFinishesClosing() {
+    @Test fun lightReturnsOpaquePhotoBeforeContainerFinishesClosing() {
         val presenting = mutableStateOf(true)
         val surfaceNeeded = mutableStateOf(true)
         compose.setContent {
@@ -119,7 +119,7 @@ class CapsuleVideoMorphPixelsTest {
             compose.waitForIdle()
         }
         assertEquals(
-            "Cosmo cover must be completely opaque by ~160ms without corner leaks",
+            "Light cover must be completely opaque by ~160ms without corner leaks",
             AndroidColor.BLUE, centre("sculpted-cover-no-double-exposure"),
         )
         compose.mainClock.autoAdvance = true
@@ -129,9 +129,6 @@ class CapsuleVideoMorphPixelsTest {
 
     @Test fun lightCloseNeverLeaksVideoPastTheElasticAlbumEdge() =
         assertSolidCoverAtElasticEdges(CapsuleVideoBlendStyle.LIGHT, 220L)
-
-    @Test fun cosmoCloseNeverLeaksVideoPastTheElasticAlbumEdge() =
-        assertSolidCoverAtElasticEdges(CapsuleVideoBlendStyle.COSMO, 240L)
 
     @Test fun immersionCloseDissolvesVideoWithoutRubberEdgeLeaks() =
         assertSolidCoverAtElasticEdges(CapsuleVideoBlendStyle.IMMERSION, 325L)

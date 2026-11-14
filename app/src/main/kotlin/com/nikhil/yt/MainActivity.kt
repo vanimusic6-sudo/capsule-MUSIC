@@ -1996,7 +1996,7 @@ class MainActivity : ComponentActivity() {
          * system bars and its controls separately respect the navigation-bar inset.
          *
          * Without this, modern Android can provide a black navigation-bar scrim/colour after the
-         * app dock slides away, which looks like a detached black strip under Cosmo/Light.
+         * app dock slides away, which looks like a detached black strip under Light.
          */
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             window.navigationBarColor = Color.Transparent.toArgb()

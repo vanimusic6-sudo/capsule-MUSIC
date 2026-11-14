@@ -51,7 +51,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import com.nikhil.yt.R
-import com.nikhil.yt.constants.CapsulePlayerDesign
 
 private val LocalCapsuleLightMenu = staticCompositionLocalOf<() -> Unit> { {} }
 
@@ -114,10 +113,9 @@ internal val CapsuleLightToggleSegmentRadius = 12.dp
  */
 internal val CapsuleLightQueueDockHeight = 30.dp
 
-/** Both designs host the same artwork, metadata and playback actions. */
+/** Light artwork, metadata and playback actions on one aligned canvas. */
 @Composable
 internal fun CapsulePlayerLayout(
-    design: CapsulePlayerDesign,
     textColor: Color,
     onCollapse: () -> Unit,
     onMenuClick: () -> Unit,
@@ -144,7 +142,7 @@ internal fun CapsulePlayerLayout(
      * Optional block renderer used by the first Capsule "clay" editor.
      *
      * When supplied, Light is rendered as reorderable slots instead of the fixed artwork/details
-     * stack. Dense/Immersive and old call sites keep the exact legacy path below.
+     * stack. Landscape uses the fixed Light stack below.
      */
     lightBlockContent: (@Composable (CapsuleLightBlock, Dp, Dp, Float) -> Unit)? = null,
     /**
@@ -157,162 +155,152 @@ internal fun CapsulePlayerLayout(
     artwork: @Composable () -> Unit,
     details: @Composable () -> Unit,
 ) {
-    val light = design == CapsulePlayerDesign.LIGHT
-    if (light) {
-        BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-            val fontScale = LocalDensity.current.fontScale.coerceIn(1f, 1.6f)
-            // The details column also carries the sounding lyric line above it, when it is on.
-            val lyricSpace = if (lyricLine != null) CapsuleLightLyricLineHeight else 0.dp
-            val detailsSpace = (320.dp + lyricSpace) * fontScale
-            val customCanvasHeight =
-                if (lightBlockContent != null) {
-                    (maxHeight - CapsuleLightQueueDockHeight).coerceAtLeast(0.dp)
-                } else {
-                    maxHeight
-                }
-            val artworkVerticalBudget =
-                (customCanvasHeight - detailsSpace)
-                    .coerceAtLeast(120.dp)
 
-            // The editable Light must fit inside a real fixed canvas. On short screens the card is
-            // allowed to start smaller than legacy Light's old 160dp floor rather than forcing the
-            // whole player to become scrollable.
-            val artworkSide = minOf(
-                (maxWidth - 48.dp).coerceAtLeast(120.dp),
-                if (lightBlockContent != null) {
-                    artworkVerticalBudget.coerceIn(120.dp, 360.dp)
-                } else {
-                    (maxHeight - detailsSpace).coerceIn(160.dp, 360.dp)
-                },
-            )
-
-            // Width aligns exactly with the visible transport capsule edges. Height deliberately
-            // keeps the old artworkSide so this request changes no vertical geometry.
-            val artworkBaseWidth =
-                capsuleLightBaseArtworkWidth(maxWidth)
-
-            val artworkHeightBudgetAfterGaps =
-                (customCanvasHeight - detailsSpace)
-                    .coerceAtLeast(artworkSide * 0.55f)
-            val artworkMaxHeightScale =
-                if (artworkSide.value > 0f) {
-                    (artworkHeightBudgetAfterGaps.value / artworkSide.value)
-                        .coerceIn(0.55f, 1.35f)
-                } else {
-                    1f
-                }
-            val scrollState = rememberScrollState()
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val fontScale = LocalDensity.current.fontScale.coerceIn(1f, 1.6f)
+        // The details column also carries the sounding lyric line above it, when it is on.
+        val lyricSpace = if (lyricLine != null) CapsuleLightLyricLineHeight else 0.dp
+        val detailsSpace = (320.dp + lyricSpace) * fontScale
+        val customCanvasHeight =
             if (lightBlockContent != null) {
-                val editableHeight =
-                    (maxHeight - CapsuleLightQueueDockHeight)
-                        .coerceAtLeast(0.dp)
+                (maxHeight - CapsuleLightQueueDockHeight).coerceAtLeast(0.dp)
+            } else {
+                maxHeight
+            }
+        val artworkVerticalBudget =
+            (customCanvasHeight - detailsSpace)
+                .coerceAtLeast(120.dp)
 
-                CompositionLocalProvider(LocalCapsuleLightMenu provides onMenuClick) {
-                    Box(
+        // The editable Light must fit inside a real fixed canvas. On short screens the card is
+        // allowed to start smaller than legacy Light's old 160dp floor rather than forcing the
+        // whole player to become scrollable.
+        val artworkSide = minOf(
+            (maxWidth - 48.dp).coerceAtLeast(120.dp),
+            if (lightBlockContent != null) {
+                artworkVerticalBudget.coerceIn(120.dp, 360.dp)
+            } else {
+                (maxHeight - detailsSpace).coerceIn(160.dp, 360.dp)
+            },
+        )
+
+        // Width aligns exactly with the visible transport capsule edges. Height deliberately
+        // keeps the old artworkSide so this request changes no vertical geometry.
+        val artworkBaseWidth =
+            capsuleLightBaseArtworkWidth(maxWidth)
+
+        val artworkHeightBudgetAfterGaps =
+            (customCanvasHeight - detailsSpace)
+                .coerceAtLeast(artworkSide * 0.55f)
+        val artworkMaxHeightScale =
+            if (artworkSide.value > 0f) {
+                (artworkHeightBudgetAfterGaps.value / artworkSide.value)
+                    .coerceIn(0.55f, 1.35f)
+            } else {
+                1f
+            }
+        val scrollState = rememberScrollState()
+        if (lightBlockContent != null) {
+            val editableHeight =
+                (maxHeight - CapsuleLightQueueDockHeight)
+                    .coerceAtLeast(0.dp)
+
+            CompositionLocalProvider(LocalCapsuleLightMenu provides onMenuClick) {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(maxHeight)
+                            .clipToBounds(),
+                ) {
+                    CapsuleLightCanvasV2(
+                        order = lightOrder,
+                        positionsDp = lightCanvasPositionsDp,
+                        editable = lightEditorEnabled,
+                        viewportHeight = editableHeight,
+                        onLayoutSettled = onLightCanvasSettled,
+                        onEditStarted = onLightEditStarted,
+                        onArtworkSelectionDismiss = onLightArtworkSelectionDismiss,
+                        externalGestureActive = lightInteractionActive,
+                        artworkResizeActive = lightArtworkResizeActive,
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .height(maxHeight)
+                                .height(editableHeight)
                                 .clipToBounds(),
-                    ) {
-                        CapsuleLightCanvasV2(
-                            order = lightOrder,
-                            positionsDp = lightCanvasPositionsDp,
-                            editable = lightEditorEnabled,
-                            viewportHeight = editableHeight,
-                            onLayoutSettled = onLightCanvasSettled,
-                            onEditStarted = onLightEditStarted,
-                            onArtworkSelectionDismiss = onLightArtworkSelectionDismiss,
-                            externalGestureActive = lightInteractionActive,
-                            artworkResizeActive = lightArtworkResizeActive,
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .height(editableHeight)
-                                    .clipToBounds(),
-                        ) { block, canvasMaxArtworkHeight ->
-                            val effectiveArtworkMaxScale =
-                                if (
-                                    block == CapsuleLightBlock.ARTWORK &&
-                                    canvasMaxArtworkHeight != null &&
-                                    artworkSide.value > 0f
-                                ) {
-                                    // The v2 canvas measures every real block. Its budget is the
-                                    // source of truth; the old 320dp details estimate can otherwise
-                                    // reject growth even when the actual scene has free room.
-                                    val artworkFrameBudget =
-                                        (canvasMaxArtworkHeight - 8.dp)
-                                            .coerceAtLeast(artworkSide * 0.55f)
-                                    (
-                                        artworkFrameBudget.value /
-                                            artworkSide.value
-                                        )
-                                        .coerceIn(0.55f, 1.35f)
-                                } else {
-                                    artworkMaxHeightScale
-                                }
-
-                            Box(
-                                modifier = Modifier.fillMaxWidth(),
-                                contentAlignment = Alignment.Center,
+                    ) { block, canvasMaxArtworkHeight ->
+                        val effectiveArtworkMaxScale =
+                            if (
+                                block == CapsuleLightBlock.ARTWORK &&
+                                canvasMaxArtworkHeight != null &&
+                                artworkSide.value > 0f
                             ) {
-                                lightBlockContent(
-                                    block,
-                                    artworkBaseWidth,
-                                    artworkSide,
-                                    effectiveArtworkMaxScale,
-                                )
+                                // The v2 canvas measures every real block. Its budget is the
+                                // source of truth; the old 320dp details estimate can otherwise
+                                // reject growth even when the actual scene has free room.
+                                val artworkFrameBudget =
+                                    (canvasMaxArtworkHeight - 8.dp)
+                                        .coerceAtLeast(artworkSide * 0.55f)
+                                (
+                                    artworkFrameBudget.value /
+                                        artworkSide.value
+                                    )
+                                    .coerceIn(0.55f, 1.35f)
+                            } else {
+                                artworkMaxHeightScale
                             }
-                        }
 
-                        CapsuleLightQueueDock(
-                            textColor = textColor,
-                            enabled = !lightEditorEnabled,
-                            onExpandQueue = onExpandQueue,
-                            modifier =
-                                Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .fillMaxWidth()
-                                    .height(CapsuleLightQueueDockHeight),
-                        )
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            lightBlockContent(
+                                block,
+                                artworkBaseWidth,
+                                artworkSide,
+                                effectiveArtworkMaxScale,
+                            )
+                        }
                     }
-                }
-            } else {
-                Column(
-                    modifier = Modifier.fillMaxWidth()
-                        .verticalScroll(scrollState, enabled = scrollState.maxValue > 0,
-            flingBehavior = rememberCapsuleFlingBehavior(),
-            overscrollEffect = null),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Spacer(Modifier.height(8.dp))
-                    Box(Modifier.size(artworkSide), contentAlignment = Alignment.Center) { artwork() }
-                    if (lyricLine == null) {
-                        Spacer(Modifier.height(20.dp))
-                    } else {
-                        /*
-                         * The line is held to the card's width and starts at the card's leading edge,
-                         * so its first character lines up with the artwork rather than floating in the
-                         * middle of a wider column.
-                         */
-                        Spacer(Modifier.height(8.dp))
-                        Box(Modifier.width(artworkSide)) { lyricLine() }
-                        Spacer(Modifier.height(10.dp))
-                    }
-                    CompositionLocalProvider(LocalCapsuleLightMenu provides onMenuClick) { details() }
+
+                    CapsuleLightQueueDock(
+                        textColor = textColor,
+                        enabled = !lightEditorEnabled,
+                        onExpandQueue = onExpandQueue,
+                        modifier =
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .height(CapsuleLightQueueDockHeight),
+                    )
                 }
             }
-        }
-    } else {
-        Column(modifier = modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Spacer(Modifier.height(10.dp))
-            Box(
-                Modifier.weight(1f).fillMaxWidth().padding(horizontal = 22.dp, vertical = 8.dp),
-                contentAlignment = Alignment.Center,
-            ) { artwork() }
-            details()
+        } else {
+            Column(
+                modifier = Modifier.fillMaxWidth()
+                    .verticalScroll(scrollState, enabled = scrollState.maxValue > 0,
+        flingBehavior = rememberCapsuleFlingBehavior(),
+        overscrollEffect = null),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Spacer(Modifier.height(8.dp))
+                Box(Modifier.width(artworkBaseWidth).height(artworkSide), contentAlignment = Alignment.Center) { artwork() }
+                if (lyricLine == null) {
+                    Spacer(Modifier.height(20.dp))
+                } else {
+                    /*
+                     * The line is held to the card's width and starts at the card's leading edge,
+                     * so its first character lines up with the artwork rather than floating in the
+                     * middle of a wider column.
+                     */
+                    Spacer(Modifier.height(8.dp))
+                    Box(Modifier.width(artworkBaseWidth)) { lyricLine() }
+                    Spacer(Modifier.height(10.dp))
+                }
+                CompositionLocalProvider(LocalCapsuleLightMenu provides onMenuClick) { details() }
+            }
         }
     }
+
 }
 
 @Composable
@@ -365,13 +353,13 @@ internal fun CapsuleLightFavorite(
                     onToggleLike()
                 },
             ),
-        contentAlignment = Alignment.Center,
+        contentAlignment = Alignment.CenterEnd,
     ) {
         CapsuleFavoriteIcon(
             liked = liked,
             interactionSource = favoriteInteraction,
             tint = if (liked) CapsuleFavoriteColors.selected(textColor) else textColor.copy(alpha = 0.72f),
-            modifier = Modifier.size(28.dp),
+            modifier = Modifier.size(32.dp),
             userActionToken = userActionToken,
         )
     }

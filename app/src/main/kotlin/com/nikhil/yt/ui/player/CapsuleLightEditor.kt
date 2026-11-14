@@ -1110,6 +1110,7 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
     onEditStarted: () -> Unit,
     modifier: Modifier = Modifier,
     verticalAlignment: Alignment.Vertical = Alignment.CenterVertically,
+    widthFor: (T) -> Dp? = { null },
     dragHandleOnly: Boolean = false,
     dragHandleOnlyFor: ((T) -> Boolean)? = null,
     longPressToDrag: Boolean = true,
@@ -1123,7 +1124,7 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
             order.forEach { item ->
                 key(item) {
                     Box(
-                        modifier = Modifier.weight(weightFor(item)),
+                        modifier = widthFor(item)?.let { Modifier.width(it) } ?: Modifier.weight(weightFor(item)),
                         contentAlignment = Alignment.Center,
                     ) {
                         content(item)
@@ -1300,8 +1301,7 @@ internal fun <T : Enum<T>> CapsuleLightReorderRow(
 
                 Box(
                     modifier =
-                        Modifier
-                            .weight(weightFor(item))
+                        (widthFor(item)?.let { Modifier.width(it) } ?: Modifier.weight(weightFor(item)))
                             .onGloballyPositioned { coordinates ->
                                 bounds[item] =
                                     AxisBounds(
