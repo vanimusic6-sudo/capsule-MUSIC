@@ -79,11 +79,22 @@ internal fun playerFrameHeight(progress: Float, fullHeight: Float, miniHeight: F
     return mini + (full - mini) * playerFrameTravel(progress)
 }
 
-/** One short optical handoff near Mini; the real page remains opaque inside this layer. */
-internal fun playerCardOpacity(progress: Float): Float = window(progress, 0.06f, 0.28f)
+/** A gentle material handoff near Mini, with zero slope/curvature at both ends. */
+internal fun playerCardOpacity(progress: Float): Float {
+    val t = ((boundedProgress(progress) - 0.06f) / 0.36f).coerceIn(0f, 1f).toDouble()
+    return (t * t * t * (t * (t * 6.0 - 15.0) + 10.0)).toFloat().coerceIn(0f, 1f)
+}
 
 /** Mini is the opaque source UNDER the dissolving card, so the app cannot leak through it. */
 internal fun playerMiniDrawAlpha(progress: Float): Float = if (playerCardOpacity(progress) < 1f) 1f else 0f
+
+/** Mini's bottom stays docked; only its top reaches slightly towards the descending card. */
+internal fun playerMiniStretch(progress: Float, velocityFraction: Float): Float {
+    val p = boundedProgress(progress)
+    val speed = if (velocityFraction.isFinite()) (-velocityFraction).coerceAtLeast(0f) else 0f
+    val contact = window(p, 0f, 0.10f) * (1f - window(p, 0.12f, 0.42f))
+    return 0.06f * speed / (1f + speed) * contact
+}
 
 /** Actual offset velocity supplies the sign. No target-direction switch or extra animation clock. */
 internal fun playerCardElasticity(progress: Float, velocityFraction: Float): Float {

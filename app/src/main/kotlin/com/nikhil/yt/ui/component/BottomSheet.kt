@@ -290,9 +290,9 @@ internal fun playerFrameHorizontalScale(
 /**
  * One moving container, two independent content trees.
  *
- * The full Player sheet owns the physical trajectory. Mini Player rides the same trajectory and
- * hands visual ownership to the full surface through progress-derived opacity. Mini controls and
- * gesture ownership still remain independent from the full Player composable.
+ * The full Player sheet owns the physical trajectory. Mini stays docked underneath that surface;
+ * it only stretches upwards slightly during closing. Both use the same anchored progress/velocity.
+ * Mini controls and gesture ownership remain independent from the full Player composable.
  */
 @Composable
 fun BottomSheet(
@@ -354,8 +354,9 @@ fun BottomSheet(
             modifier
                 .fillMaxSize()
                 .offset {
-                    val distance = if (state.playerMotion && state.rawProgress > 0f) {
-                        (state.expandedBound - state.collapsedBound) * (1f - playerFrameTravel(state.visualProgress))
+                    val distance = if (state.playerMotion && state.rawProgress >= 0f) {
+                        // The full card moves in its own slot; Mini must not ride this container.
+                        0.dp
                     } else {
                         state.expandedBound - state.value
                     }
@@ -395,15 +396,21 @@ fun BottomSheet(
             Box(
                 modifier =
                     Modifier
-                        // Ride the parent sheet itself. This is the ArchiveTune-style lift: Mini
-                        // physically travels upward and the opacity handoff only softens the morph
-                        // instead of replacing movement with a dissolve.
+                        .offset {
+                            // Fixed dock throughout opening/closing. Negative progress retains
+                            // the existing independent swipe-down-to-dismiss trajectory.
+                            IntOffset(0, if (state.playerMotion && state.rawProgress >= 0f)
+                                (state.expandedBound - state.collapsedBound).roundToPx() else 0)
+                        }
                         .graphicsLayer {
                             alpha = if (state.playerMotion) playerMiniDrawAlpha(state.visualProgress)
                                 else miniPlayerContentAlpha(state.visualProgress, state.contentHandoffPoint)
+                            scaleY = if (state.playerMotion)
+                                1f + playerMiniStretch(state.visualProgress, state.frameVelocityFraction) else 1f
+                            if (state.playerMotion) transformOrigin = TransformOrigin(0.5f, 1f)
                         }
-                        // Mini visually yields over the same moving frame. Input has its own
-                        // progress gate, so an almost-gone Mini cannot steal full-player controls.
+                        // Mini is stationary under the card's material blend. Input has its own
+                        // progress gate, so it cannot steal full-player controls during the trip.
                         .zIndex(if (state.playerMotion) {
                             // Move in front only after the upper card has fully dissolved.
                             // The change is invisible and restores native Mini control hit-testing.
@@ -445,6 +452,11 @@ fun BottomSheet(
                 modifier =
                     Modifier
                         .fillMaxSize()
+                        .offset {
+                            IntOffset(0, if (state.playerMotion && state.rawProgress > 0f)
+                                ((state.expandedBound - state.collapsedBound) *
+                                    (1f - playerFrameTravel(state.visualProgress))).roundToPx() else 0)
+                        }
                         .pointerInput(state) {
                             if (!state.playerMotion) return@pointerInput
                             awaitEachGesture {

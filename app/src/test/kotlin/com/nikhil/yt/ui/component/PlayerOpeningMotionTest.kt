@@ -191,7 +191,7 @@ class PlayerOpeningMotionTest {
         assertEquals(1f, playerMiniDrawAlpha(p), 0f)
         val outsideMini = bitmap.getPixel(x, plateY)
         assertTrue("the bright photo fragment must be absent before the handoff",
-            AndroidColor.green(outsideMini) > 70 && AndroidColor.red(outsideMini) < 100)
+            AndroidColor.red(outsideMini) < 180 && AndroidColor.green(outsideMini) < 160)
         bitmap.recycle()
     }
 
@@ -298,9 +298,10 @@ class PlayerOpeningMotionTest {
         assertEquals(1f, playerMiniDrawAlpha(p), 0f)
         assertEquals(1f, fullPlayerContentAlpha(p, magnetic = true), 0f)
         val bitmap = capture("mini-card-blend")
-        val top = 590f * (1f - playerFrameTravel(p))
-        val y = with(compose.density) { (top + 20f).dp.toPx() }.roundToInt()
-        val actual = bitmap.getPixel(bitmap.width / 2, y)
+        // Mini stays at its dock. Sample the overlapping backgrounds outside the poster.
+        val x = with(compose.density) { 40.dp.toPx() }.roundToInt()
+        val y = with(compose.density) { 614.dp.toPx() }.roundToInt()
+        val actual = bitmap.getPixel(x, y)
         fun blend(source: Int, target: Int) = (source * (1f - alpha) + target * alpha).roundToInt()
         assertEquals("Mini must remain opaque UNDER the single card fade",
             blend(124, 155).toFloat(), AndroidColor.red(actual).toFloat(), 2f)
@@ -313,9 +314,10 @@ class PlayerOpeningMotionTest {
         assertEquals(0f, playerCardOpacity(0f), 0f)
         assertEquals(0f, playerCardOpacity(0.06f), 0f)
         assertTrue(playerCardOpacity(0.09f) < 0.1f)
-        assertEquals(1f, playerCardOpacity(0.28f), 0f)
+        assertTrue("background blending should already have begun on closing", playerCardOpacity(0.35f) < 0.95f)
+        assertEquals(1f, playerCardOpacity(0.42f), 0f)
         assertEquals(1f, playerMiniDrawAlpha(0f), 0f)
-        assertEquals(0f, playerMiniDrawAlpha(0.28f), 0f)
+        assertEquals(0f, playerMiniDrawAlpha(0.42f), 0f)
         var previous = 0f
         for (step in 0..1000) {
             val p = step / 1000f
@@ -338,6 +340,62 @@ class PlayerOpeningMotionTest {
                 assertTrue(playerCardElasticity(p, v) in -1f..1f)
             }
         }
+    }
+
+    @Test fun miniReachesUpOnlyOnClosingAndRelaxesWithoutAnotherClock() {
+        assertTrue(playerMiniStretch(0.12f, -3f) > 0f)
+        assertEquals(0f, playerMiniStretch(0.12f, 3f), 0f)
+        assertEquals(0f, playerMiniStretch(0.12f, 0f), 0f)
+        assertEquals(0f, playerMiniStretch(0f, -3f), 0f)
+        assertEquals(0f, playerMiniStretch(1f, -3f), 0f)
+        for (step in 0..1000) {
+            for (velocity in listOf(-100f, -3f, 0f, 3f, Float.NaN)) {
+                assertTrue(playerMiniStretch(step / 1000f, velocity) in 0f..0.06f)
+            }
+        }
+    }
+
+    @Test fun miniStaysDockedAndOnlyItsTopStretchesTowardsTheClosingPlayer() {
+        mount()
+        fun miniBounds() = compose.onNodeWithTag("mini", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val dock = miniBounds()
+        compose.runOnIdle { state.expandSoft() }
+        repeat(32) {
+            advance(16)
+            val opening = miniBounds()
+            assertEquals("Mini must not ride the opening card", dock.top, opening.top, 1f)
+            assertEquals(dock.bottom, opening.bottom, 1f)
+        }
+        compose.runOnIdle { state.collapseSoft() }
+        var highestTop = dock.top
+        var capturedStretch = false
+        repeat(26) {
+            advance(16)
+            val closing = miniBounds()
+            highestTop = minOf(highestTop, closing.top)
+            if (!capturedStretch && closing.top < dock.top - 1f) {
+                capture("mini-docked-stretch").recycle()
+                capturedStretch = true
+            }
+            assertEquals("the lower Mini edge must stay anchored", dock.bottom, closing.bottom, 1f)
+            assertEquals(dock.left, closing.left, 1f)
+            assertEquals(dock.right, closing.right, 1f)
+            assertTrue("only a small upward stretch is allowed", closing.top >= dock.top - dock.height * 0.061f - 1f)
+        }
+        assertTrue("closing must visibly reach towards the falling card", highestTop < dock.top - 1f)
+        assertEquals(dock.top, miniBounds().top, 1f)
+        capture("mini-fixed-after-close").recycle()
+    }
+
+    @Test fun dockedMiniRetainsItsIndependentDownwardDismissOffset() {
+        mount()
+        fun miniTop() = compose.onNodeWithTag("mini", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top
+        val dock = miniTop()
+        compose.runOnIdle { state.snapTo(90.dp) }
+        val moved = miniTop()
+        assertEquals(with(compose.density) { 20.dp.toPx() }, moved - dock, 1f)
+        compose.runOnIdle { state.snapTo(state.collapsedBound) }
+        assertEquals(dock, miniTop(), 1f)
     }
 
     @Test fun actualOpeningStretchesAndClosingCompressesTheSameMeasuredPage() {

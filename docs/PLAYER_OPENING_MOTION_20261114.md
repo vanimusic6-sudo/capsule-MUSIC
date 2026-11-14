@@ -13,11 +13,18 @@ repeated requests coalesce, and reversals continue from the current position.
 - The app underneath stays at its original size and position. A light 16% black scrim replaces
   the previous 30% scrim, scaling and secondary rounded clipping layer.
 - The real full page mounts at the first moving offset and remains opaque internally. The
-  existing outer card layer dissolves only between progress 0.06 and 0.28. Below 0.06 the bright
-  photo fragment is completely gone; above 0.28 the window is fully opaque.
+  existing outer card layer blends between progress 0.06 and 0.42 with a quintic curve that has
+  zero slope and curvature at its endpoints. Background materials therefore blend over a longer
+  part of the unchanged 360ms closing trip. Below 0.06 the bright photo fragment is completely
+  gone; above 0.42 the window is fully opaque. No temporary grey material replaces the real page.
 - Mini stays opaque UNDER that one card fade until it is covered. This makes the top source
   region a direct Mini-to-player blend, without two independent fades exposing the app between
-  them. Mini moves in front again only when the upper card is fully transparent, restoring its
+  them. Mini stays at its dock while the full card moves in a separate sibling slot, rather than
+  inheriting the parent translation. Only Mini's upper edge stretches towards the descending
+  player, by at most 6% of Mini's height (roughly 3dp). Its bottom and horizontal edges remain
+  fixed; actual closing velocity supplies the stretch, which vanishes at rest and both anchors.
+  Independent downward Mini dismissal retains its original trajectory. Mini moves in front again
+  only when the upper card is fully transparent, restoring its
   native control hit-testing. Half-revealed full-page artwork cannot hijack taps as Lyrics actions.
 - A bounded deformation follows the actual anchored offset velocity: opening stretches Y by at
   most 1% with opposite X compensation up to 0.35%; closing compresses it. The pivot is the centre
@@ -47,7 +54,8 @@ app drawing stops; backgrounding finishes the requested anchor without hidden an
 
 ## Verification
 
-Native tests cover absence of the bright photo fragment near Mini, exact Mini-under-card pixel
+Native tests cover stationary Mini bounds through opening, bottom-anchored upward stretch on
+closing, independent downward Mini dismissal, absence of the bright photo fragment near Mini, exact Mini-under-card pixel
 blending without a transparent middle frame, restored Mini tap ownership before settlement,
 opening stretch/closing compression with stable measured layout, stationary app edges, rounded
 corner completion, source-card bounds, timing, repeated requests, near-Mini reversal without a
