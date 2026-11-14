@@ -506,14 +506,20 @@ fun BottomSheetPlayer(
                     // Keep the original artwork backdrop alive under the
                     // temporary video ambience. Both entry and exit crossfade
                     // on the GPU; palette samples NEVER replace it abruptly.
-                    PlayerBackground(
-                        playerBackground = playerBackground,
-                        gradientColors = gradientColors,
-                        artworkField = artworkScene.field,
-                        animated = if (playerBackground == PlayerBackgroundStyle.SCENE_LIGHT)
-                            onScreen && state.shouldLayerAboveCollapsedChrome else backdropTimelineRunning,
-                        sharedAnimationTime = sharedBackdropAnimationTime,
-                    )
+                    // Keep the prepared artwork scene for reversal, but do not
+                    // shade another full-page layer beneath opaque video light.
+                    Box(Modifier.fillMaxSize().drawWithContent {
+                        if (videoAmbientOverlayAlpha.value < 0.999f) drawContent()
+                    }) {
+                        PlayerBackground(
+                            playerBackground = playerBackground,
+                            gradientColors = gradientColors,
+                            artworkField = artworkScene.field,
+                            animated = if (playerBackground == PlayerBackgroundStyle.SCENE_LIGHT)
+                                onScreen && state.shouldLayerAboveCollapsedChrome else backdropTimelineRunning,
+                            sharedAnimationTime = sharedBackdropAnimationTime,
+                        )
+                    }
                     if (videoAmbientOverlayMounted && retainedVideoAmbientBands != null) {
                         CapsuleVideoAmbientBackdrop(
                             bands = retainedVideoAmbientBands,

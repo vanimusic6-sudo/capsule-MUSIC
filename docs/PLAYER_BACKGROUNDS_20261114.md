@@ -32,7 +32,9 @@ spatial field. Both are published as one scene, so tracks with equal palettes bu
 different colour positions still update. The scene shares the existing striped
 mutex and bounded 32-entry LRU across player/mini/Lyrics/cards. There is no second
 image request for the spatial style, no second decoder and no continuous sampling
-of static artwork. Texture construction happens only when that style is drawn.
+of static artwork. Texture construction happens only when that style is drawn. Once the live video
+light becomes opaque, the underlying prepared artwork backdrop skips drawing;
+it remains available for the reverse handoff without a duplicate GPU pass.
 
 ## Verification boundaries
 

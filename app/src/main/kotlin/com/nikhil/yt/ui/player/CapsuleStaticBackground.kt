@@ -56,6 +56,10 @@ internal class CapsuleStaticBackground(
                     if (wide) 0.38f else 1.14f)
                 light(palette[1], 0.32f, 0.78f, 0.60f, 0.38f,
                     if (wide) 0.32f else 0.94f)
+                // Source-coloured bloom near the album's lower side edges.
+                // Small cached cores distinguish light from a flat wash.
+                light(sunlight, 0.12f, 0.52f, 0.30f, 0.45f, if (wide) 0.35f else 0.75f)
+                light(palette[2], 0.92f, 0.52f, 0.28f, 0.35f, if (wide) 0.35f else 0.90f)
                 rect(Brush.verticalGradient(0f to Color.Transparent,
                     0.58f to Color.Transparent,
                     1f to Color.Black.copy(alpha = if (wide) 0.18f else 0.28f)))
