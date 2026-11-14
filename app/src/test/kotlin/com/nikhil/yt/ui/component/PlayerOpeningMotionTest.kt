@@ -166,7 +166,7 @@ class PlayerOpeningMotionTest {
         compose.runOnIdle { state.expandSoft() }
         advance(48)
         val p = compose.runOnIdle { state.visualProgress }
-        assertTrue("sample must precede the UI handoff: $p", p > 0f && p < PlayerContentHandoffPoint)
+        assertTrue("sample must precede the UI handoff: $p", p > 0f && p < state.contentHandoffPoint)
         val bitmap = capture("opening-dock-origin")
         val x = bitmap.width / 2
         val navigationY = with(compose.density) { 670.dp.toPx() }.roundToInt()
@@ -244,7 +244,7 @@ class PlayerOpeningMotionTest {
         heights.forEach { assertEquals(heights.first(), it, 1f) }
     }
 
-    @Test fun repeatedOpenFinishesWithinFourHundredMilliseconds() {
+    @Test fun repeatedOpenKeepsTheCalibratedDurationInsteadOfRestarting() {
         mount()
         compose.runOnIdle { state.expandSoft() }
         advance(96)
@@ -252,7 +252,39 @@ class PlayerOpeningMotionTest {
         advance(96)
         compose.runOnIdle { state.expandSoft() }
         advance(208)
+        compose.runOnIdle { assertFalse("opening should not rush to its end before 460ms", state.isExpanded) }
+        advance(112)
         compose.runOnIdle { assertTrue(state.isExpanded); assertFalse(state.isAnimationRunning) }
+    }
+
+    @Test fun tapStartsMovingWithinTheFirstTwoFrames() {
+        mount()
+        compose.onNodeWithTag("mini", useUnmergedTree = true).performTouchInput {
+            down(center)
+            up()
+        }
+        compose.runOnIdle { assertTrue(state.isExpandedOrExpanding) }
+        advance(32)
+        compose.runOnIdle { assertTrue("tap left a motionless lead-in", state.rawProgress > 0.005f) }
+    }
+
+    @Test fun artworkArrivesBeforeAQuarterOfTheTravelWithoutOverlappingMini() {
+        mount()
+        compose.runOnIdle { state.expandSoft() }
+        var frames = 0
+        while (compose.runOnIdle { state.visualProgress } <= 0.14f && frames++ < 20) advance(16)
+        val p = compose.runOnIdle { state.visualProgress }
+        assertTrue("early artwork must arrive before the old handoff: $p", p < PlayerContentHandoffPoint)
+        assertEquals(0f, miniPlayerContentAlpha(p, state.contentHandoffPoint), 0f)
+        assertTrue(fullPlayerContentAlpha(p, magnetic = true) > 0f)
+        compose.onNodeWithTag("poster", useUnmergedTree = true).assertExists()
+        capture("early-artwork-handoff").recycle()
+        for (step in 0..1000) {
+            val progress = step / 1000f
+            assertFalse("compact and full UI overlap at $progress",
+                miniPlayerContentAlpha(progress, state.contentHandoffPoint) > 0.0001f &&
+                    fullPlayerContentAlpha(progress, magnetic = true) > 0.0001f)
+        }
     }
 
     @Test fun reversalContinuesFromTheCurrentPositionAndLatestIntentWins() {

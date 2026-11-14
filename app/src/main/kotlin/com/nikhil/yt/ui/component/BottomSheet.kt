@@ -62,6 +62,7 @@ import androidx.compose.ui.zIndex
 import com.nikhil.yt.ui.motion.CapsuleMotion
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
@@ -164,6 +165,7 @@ internal fun isAtSheetAnchor(
  * expanded content appears, while the sheet/background itself remains continuous.
  */
 internal const val PlayerContentHandoffPoint = 0.25f
+internal const val MagneticPlayerContentHandoffPoint = 0.12f
 internal const val PlayerBackdropFadeEnd = 0.55f
 internal const val FullPlayerContentFadeEnd = 0.88f
 
@@ -178,24 +180,29 @@ private fun transitionWindow(
 }
 
 /** Entire compact UI, including artwork and controls. */
-internal fun miniPlayerContentAlpha(progress: Float): Float =
+internal fun miniPlayerContentAlpha(
+    progress: Float,
+    handoffPoint: Float = PlayerContentHandoffPoint,
+): Float =
     (1f - transitionWindow(
         progress = progress,
         start = 0f,
-        end = PlayerContentHandoffPoint,
+        end = handoffPoint,
     )).coerceIn(0f, 1f)
 
 /** Full Player UI starts only after compact UI has completely yielded. */
 internal fun fullPlayerContentAlpha(progress: Float, magnetic: Boolean = false): Float =
     transitionWindow(
         progress = progress,
-        start = PlayerContentHandoffPoint,
-        end = if (magnetic) 0.55f else FullPlayerContentFadeEnd,
+        start = if (magnetic) MagneticPlayerContentHandoffPoint else PlayerContentHandoffPoint,
+        end = if (magnetic) 0.62f else FullPlayerContentFadeEnd,
     )
 
 /** The backdrop settles ahead of the cover and controls, so bright UI never floats on a weak sheet. */
-internal fun playerBackdropContentAlpha(progress: Float): Float =
-    transitionWindow(progress, PlayerContentHandoffPoint, PlayerBackdropFadeEnd)
+internal fun playerBackdropContentAlpha(
+    progress: Float,
+    handoffPoint: Float = PlayerContentHandoffPoint,
+): Float = transitionWindow(progress, handoffPoint, PlayerBackdropFadeEnd)
 
 /** Non-interactive shared container that bridges the content handoff. */
 internal fun playerContainerAlpha(progress: Float): Float =
@@ -221,25 +228,28 @@ internal fun shouldRenderExpandedSurface(
 internal fun shouldRenderExpandedContent(
     rawProgress: Float,
     isDismissed: Boolean,
+    handoffPoint: Float = PlayerContentHandoffPoint,
 ): Boolean {
     if (isDismissed) return false
     val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 0f
-    return p > PlayerContentHandoffPoint
+    return p > handoffPoint
 }
 
 internal fun shouldShowCompactSurface(
     rawProgress: Float,
     isDismissed: Boolean,
+    handoffPoint: Float = PlayerContentHandoffPoint,
 ): Boolean {
     if (isDismissed) return false
     val p = if (rawProgress.isFinite()) rawProgress.coerceIn(0f, 1f) else 1f
-    return p < PlayerContentHandoffPoint
+    return p < handoffPoint
 }
 
 internal fun miniPlayerForegroundCanAcceptInput(
     rawProgress: Float,
     isDismissed: Boolean,
-): Boolean = shouldShowCompactSurface(rawProgress, isDismissed)
+    handoffPoint: Float = PlayerContentHandoffPoint,
+): Boolean = shouldShowCompactSurface(rawProgress, isDismissed, handoffPoint)
 
 internal fun expandedPlayerCanAcceptInput(
     rawProgress: Float,
@@ -335,7 +345,7 @@ fun BottomSheet(
     val renderExpandedContent by
         remember(state) {
             derivedStateOf {
-                shouldRenderExpandedContent(state.visualProgress, state.isDismissed)
+                shouldRenderExpandedContent(state.visualProgress, state.isDismissed, state.contentHandoffPoint)
             }
         }
 
@@ -389,7 +399,7 @@ fun BottomSheet(
                         // physically travels upward and the opacity handoff only softens the morph
                         // instead of replacing movement with a dissolve.
                         .graphicsLayer {
-                            alpha = miniPlayerContentAlpha(state.visualProgress)
+                            alpha = miniPlayerContentAlpha(state.visualProgress, state.contentHandoffPoint)
                         }
                         // Mini visually yields over the same moving frame. Input has its own
                         // progress gate, so an almost-gone Mini cannot steal full-player controls.
@@ -718,19 +728,22 @@ class BottomSheetState internal constructor(
     val isDismissedOrDismissing: Boolean
         get() = requestedAnchor == SheetAnchor.Dismissed
 
+    internal val contentHandoffPoint: Float
+        get() = if (playerMotion) MagneticPlayerContentHandoffPoint else PlayerContentHandoffPoint
+
     val shouldLayerAboveCollapsedChrome by
         derivedStateOf {
-            shouldRenderExpandedContent(visualProgress, isDismissed)
+            shouldRenderExpandedContent(visualProgress, isDismissed, contentHandoffPoint)
         }
 
     val compactSurfaceVisible by
         derivedStateOf {
-            shouldShowCompactSurface(visualProgress, isDismissed)
+            shouldShowCompactSurface(visualProgress, isDismissed, contentHandoffPoint)
         }
 
     val compactForegroundAcceptsInput by
         derivedStateOf {
-            miniPlayerForegroundCanAcceptInput(visualProgress, isDismissed)
+            miniPlayerForegroundCanAcceptInput(visualProgress, isDismissed, contentHandoffPoint)
         }
 
     private fun resolveRequestedAnchor(anchor: SheetAnchor): SheetAnchor =
@@ -824,7 +837,9 @@ class BottomSheetState internal constructor(
         if (playerMotion && requestedAnchor == resolved && playerAnimationJob?.isActive == true) return
         if (playerMotion) playerAnimationJob?.cancel()
         val requested = requestAnchor(resolved)
-        val job = coroutineScope.launch {
+        val job = coroutineScope.launch(
+            start = if (playerMotion) CoroutineStart.UNDISPATCHED else CoroutineStart.DEFAULT,
+        ) {
             if (requestedAnchor != requested) return@launch
             try {
                 animateToAnchor(

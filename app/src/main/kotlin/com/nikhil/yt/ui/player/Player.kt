@@ -77,7 +77,6 @@ import com.nikhil.yt.models.mergeArtistCredits
 import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.ui.component.BottomSheet
 import com.nikhil.yt.ui.component.BottomSheetState
-import com.nikhil.yt.ui.component.PlayerContentHandoffPoint
 import com.nikhil.yt.ui.component.playerHandoffSurfaceAlpha
 import com.nikhil.yt.ui.component.playerBackdropContentAlpha
 import com.nikhil.yt.ui.component.LocalBottomSheetPageState
@@ -521,13 +520,13 @@ fun BottomSheetPlayer(
                 )
             }
             if (effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
-                state.visualProgress > PlayerContentHandoffPoint
+                state.visualProgress > state.contentHandoffPoint
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            alpha = playerBackdropContentAlpha(state.visualProgress)
+                            alpha = playerBackdropContentAlpha(state.visualProgress, state.contentHandoffPoint)
                         }
                         .background(playerSurfaceColor(useBlackBackground))
                         .drawWithContent { if (onScreen && playerSceneExposed) drawContent() },

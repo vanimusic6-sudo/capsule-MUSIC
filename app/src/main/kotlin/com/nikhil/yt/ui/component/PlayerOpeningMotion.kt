@@ -31,10 +31,10 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.PI
 import kotlin.math.sin
 
-internal const val PlayerOpenDurationMs = 360
-internal const val PlayerCloseDurationMs = 280
-internal val PlayerOpenAnimation = tween<Float>(PlayerOpenDurationMs, easing = CubicBezierEasing(0.24f, 0f, 0.38f, 1f))
-internal val PlayerCloseAnimation = tween<Float>(PlayerCloseDurationMs, easing = CubicBezierEasing(0.28f, 0f, 0.44f, 1f))
+internal const val PlayerOpenDurationMs = 460
+internal const val PlayerCloseDurationMs = 360
+internal val PlayerOpenAnimation = tween<Float>(PlayerOpenDurationMs, easing = CubicBezierEasing(0.30f, 0.10f, 0.35f, 1f))
+internal val PlayerCloseAnimation = tween<Float>(PlayerCloseDurationMs, easing = CubicBezierEasing(0.28f, 0.08f, 0.40f, 1f))
 
 /** Action ownership is separate from Scaffold's subcomposition order. No clock or retained UI. */
 class PlayerBackAction {
