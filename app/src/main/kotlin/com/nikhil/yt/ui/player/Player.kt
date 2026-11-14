@@ -470,6 +470,16 @@ fun BottomSheetPlayer(
         retry = playerConnection.service::retryCurrentFromFreshStream,
     )
 
+    val showCompactTransitionPlate by remember(state) {
+        derivedStateOf { !state.playerMotion && state.visualProgress < 0.5f }
+    }
+    val showPlayerBackdrop by remember(state, effectivePlayerDesign) {
+        derivedStateOf {
+            effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
+                state.visualProgress > state.contentHandoffPoint
+        }
+    }
+
     BottomSheet(
         state = state,
         modifier = modifier,
@@ -507,10 +517,9 @@ fun BottomSheetPlayer(
             )
         },
         backgroundContent = {
-            // Carry the compact card's actual palette through the empty part of the sheet.
-            // The chosen full-player backdrop then replaces it as the full UI arrives, instead
-            // of exposing the neutral Surface for a quarter of the opening travel.
-            if (state.visualProgress < 0.5f) {
+            // Generic sheets retain their old bridge. The physical card reveals its real page
+            // from the first frame and never paints the mini material as a temporary grey page.
+            if (showCompactTransitionPlate) {
                 CapsuleCompactSurfaceBackground(
                     style = miniPlayerBackground,
                     pureBlack = pureBlack,
@@ -519,14 +528,13 @@ fun BottomSheetPlayer(
                     animated = false,
                 )
             }
-            if (effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
-                state.visualProgress > state.contentHandoffPoint
-            ) {
+            if (showPlayerBackdrop) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            alpha = playerBackdropContentAlpha(state.visualProgress, state.contentHandoffPoint)
+                            alpha = if (state.playerMotion) 1f else
+                                playerBackdropContentAlpha(state.visualProgress, state.contentHandoffPoint)
                         }
                         .background(playerSurfaceColor(useBlackBackground))
                         .drawWithContent { if (onScreen && playerSceneExposed) drawContent() },

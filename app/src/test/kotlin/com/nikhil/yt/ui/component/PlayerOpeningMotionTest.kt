@@ -18,6 +18,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -51,6 +55,8 @@ class PlayerOpeningMotionTest {
     private var controlClicks = 0
     private var nestedSurface = false
     private val routeEpoch = mutableStateOf(0)
+    private var contentMounts = 0
+    private var contentDisposals = 0
     private val measuredContent = mutableListOf<IntSize>()
 
     private fun mount() {
@@ -103,6 +109,10 @@ class PlayerOpeningMotionTest {
                             Box(Modifier.fillMaxSize().background(Color(0xFF7C3331)).testTag("mini"))
                         },
                     ) {
+                        DisposableEffect(Unit) {
+                            contentMounts++
+                            onDispose { contentDisposals++ }
+                        }
                         Box(Modifier.fillMaxSize().onSizeChanged { measuredContent += it }) {
                             Box(Modifier.align(Alignment.TopCenter).padding(top = 56.dp)
                                 .size(180.dp).background(Color(0xFFFFBF4C)).testTag("poster"))
@@ -131,7 +141,6 @@ class PlayerOpeningMotionTest {
             val contour = playerFrameContour(p, 12f, 14f, 1f)
             assertTrue(contour.radius >= 14f)
             assertTrue(contour.inset >= 0f)
-            assertTrue(contour.bend in 0f..3.501f)
             assertTrue(playerFrameTravel(p) >= lastTravel - 0.00001f)
             lastTravel = playerFrameTravel(p)
             if (p <= 0.97f) assertEquals(0f, contour.bleed, 0f)
@@ -139,6 +148,9 @@ class PlayerOpeningMotionTest {
         assertEquals(26f, playerFrameContour(1f, 12f, 14f, 1f).radius, 0f)
         assertEquals(1f, playerFrameTravel(0.97f), 0f)
         assertEquals(1f, playerFrameTravel(1f), 0f)
+        val outline = PlayerCardShape(playerFrameContour(0.5f, 12f, 14f, 1f))
+            .createOutline(Size(360f, 700f), LayoutDirection.Ltr, Density(1f))
+        assertTrue("the card should use a native round-rectangle clip", outline is Outline.Rounded)
     }
 
     @Test fun cardBoundsGrowFromTheMiniInsteadOfStartingBelowTheScreen() {
@@ -166,7 +178,7 @@ class PlayerOpeningMotionTest {
         compose.runOnIdle { state.expandSoft() }
         advance(48)
         val p = compose.runOnIdle { state.visualProgress }
-        assertTrue("sample must precede the UI handoff: $p", p > 0f && p < state.contentHandoffPoint)
+        assertTrue("sample must show the early physical reveal: $p", p > state.contentHandoffPoint && p < PlayerContentHandoffPoint)
         val bitmap = capture("opening-dock-origin")
         val x = bitmap.width / 2
         val navigationY = with(compose.density) { 670.dp.toPx() }.roundToInt()
@@ -174,8 +186,8 @@ class PlayerOpeningMotionTest {
         assertTrue("the card must not already extend through navigation", AndroidColor.blue(navigation) > 180)
         val top = 590f * (1f - playerFrameTravel(p))
         val plateY = with(compose.density) { (top + 58f).dp.toPx() }.roundToInt()
-        assertEquals("the growing surface must already be opaque below Mini content",
-            AndroidColor.rgb(155, 40, 35), bitmap.getPixel(x, plateY))
+        assertEquals("real artwork must replace the grey/empty stage in the first visible card",
+            AndroidColor.rgb(255, 191, 76), bitmap.getPixel(x, plateY))
         bitmap.recycle()
     }
 
@@ -184,7 +196,7 @@ class PlayerOpeningMotionTest {
         compose.setContent {
             Box(Modifier.size(260.dp, 240.dp).background(Color.Green).testTag("scene")) {
                 Box(Modifier.fillMaxSize().graphicsLayer {
-                    shape = PlayerMagneticFrameShape(playerFrameContour(progress.value, 12.dp.toPx(), 14.dp.toPx(), density))
+                    shape = PlayerCardShape(playerFrameContour(progress.value, 12.dp.toPx(), 14.dp.toPx(), density))
                     clip = true
                 }.background(Color.Red))
             }
@@ -223,7 +235,7 @@ class PlayerOpeningMotionTest {
         compose.runOnIdle { assertEquals(1, controlClicks) }
     }
 
-    @Test fun contentRetainsItsDimensionsWhileOnlyTheContourBends() {
+    @Test fun contentRetainsItsDimensionsWhileTheCardGrows() {
         mount()
         val widths = mutableListOf<Float>()
         val heights = mutableListOf<Float>()
@@ -276,7 +288,7 @@ class PlayerOpeningMotionTest {
         val p = compose.runOnIdle { state.visualProgress }
         assertTrue("early artwork must arrive before the old handoff: $p", p < PlayerContentHandoffPoint)
         assertEquals(0f, miniPlayerContentAlpha(p, state.contentHandoffPoint), 0f)
-        assertTrue(fullPlayerContentAlpha(p, magnetic = true) > 0f)
+        assertEquals(1f, fullPlayerContentAlpha(p, magnetic = true), 0f)
         compose.onNodeWithTag("poster", useUnmergedTree = true).assertExists()
         capture("early-artwork-handoff").recycle()
         for (step in 0..1000) {
@@ -285,6 +297,37 @@ class PlayerOpeningMotionTest {
                 miniPlayerContentAlpha(progress, state.contentHandoffPoint) > 0.0001f &&
                     fullPlayerContentAlpha(progress, magnetic = true) > 0.0001f)
         }
+    }
+
+    @Test fun appSceneStaysStationaryWhileTheCardCoversIt() {
+        mount()
+        compose.runOnIdle { state.expandSoft() }
+        var frames = 0
+        while (compose.runOnIdle { state.visualProgress } < 0.55f && frames++ < 30) advance(16)
+        val bitmap = capture("stationary-app-scene")
+        val x = with(compose.density) { 1.dp.toPx() }.roundToInt()
+        val y = with(compose.density) { 40.dp.toPx() }.roundToInt()
+        assertTrue("a receding app would expose a black strip at its left edge",
+            AndroidColor.green(bitmap.getPixel(x, y)) > 60)
+        bitmap.recycle()
+    }
+
+    @Test fun closeReopenNearMiniDoesNotDisposeAndRebuildTheVisiblePage() {
+        mount()
+        compose.runOnIdle { state.expandSoft() }
+        advance(512)
+        compose.runOnIdle { state.collapseSoft() }
+        var frames = 0
+        while (compose.runOnIdle { state.visualProgress } > 0.09f && frames++ < 40) advance(16)
+        compose.runOnIdle {
+            assertTrue(state.visualProgress > state.contentHandoffPoint)
+            assertEquals(1, contentMounts)
+            assertEquals("the still-visible page must survive the final closing segment", 0, contentDisposals)
+        }
+        capture("closing-near-mini").recycle()
+        compose.runOnIdle { state.expandSoft() }
+        advance(512)
+        compose.runOnIdle { assertTrue(state.isExpanded); assertEquals(1, contentMounts) }
     }
 
     @Test fun reversalContinuesFromTheCurrentPositionAndLatestIntentWins() {

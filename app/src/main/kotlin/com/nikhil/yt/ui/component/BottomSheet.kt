@@ -165,7 +165,7 @@ internal fun isAtSheetAnchor(
  * expanded content appears, while the sheet/background itself remains continuous.
  */
 internal const val PlayerContentHandoffPoint = 0.25f
-internal const val MagneticPlayerContentHandoffPoint = 0.12f
+internal const val MagneticPlayerContentHandoffPoint = SHEET_PROGRESS_EPSILON
 internal const val PlayerBackdropFadeEnd = 0.55f
 internal const val FullPlayerContentFadeEnd = 0.88f
 
@@ -192,11 +192,10 @@ internal fun miniPlayerContentAlpha(
 
 /** Full Player UI starts only after compact UI has completely yielded. */
 internal fun fullPlayerContentAlpha(progress: Float, magnetic: Boolean = false): Float =
-    transitionWindow(
-        progress = progress,
-        start = if (magnetic) MagneticPlayerContentHandoffPoint else PlayerContentHandoffPoint,
-        end = if (magnetic) 0.62f else FullPlayerContentFadeEnd,
-    )
+    if (magnetic) {
+        // Reveal the actual page by its card bounds, not by a second full-screen opacity wash.
+        if (progress.isFinite() && progress > SHEET_PROGRESS_EPSILON) 1f else 0f
+    } else transitionWindow(progress, PlayerContentHandoffPoint, FullPlayerContentFadeEnd)
 
 /** The backdrop settles ahead of the cover and controls, so bright UI never floats on a weak sheet. */
 internal fun playerBackdropContentAlpha(
@@ -447,7 +446,7 @@ fun BottomSheet(
                                 scaleX = 1f
                                 scaleY = 1f
                                 if (raw < 1f) {
-                                    shape = PlayerMagneticFrameShape(
+                                    shape = PlayerCardShape(
                                         playerFrameContour(raw, collapsedHorizontalInset.toPx(),
                                             collapsedTopCornerRadius.toPx(), density),
                                         playerFrameHeight(raw, size.height,
@@ -484,10 +483,9 @@ fun BottomSheet(
                     modifier =
                         Modifier
                             .fillMaxSize()
-                            .graphicsLayer {
-                                // The bounded card grows out of Mini rather than fading in as a page.
-                                alpha = if (state.playerMotion) 1f else surfaceAlpha(state.visualProgress)
-                            }
+                            .then(if (state.playerMotion) Modifier else Modifier.graphicsLayer {
+                                alpha = surfaceAlpha(state.visualProgress)
+                            })
                             .background(backgroundColor)
                             // The expanded sheet is modal. Its empty/decorative regions must
                             // own touch input; otherwise a tap lands on settings underneath.
@@ -513,9 +511,9 @@ fun BottomSheet(
                         modifier =
                             Modifier
                                 .fillMaxSize()
-                                .graphicsLayer {
-                                    alpha = fullPlayerContentAlpha(state.visualProgress, magnetic = state.playerMotion)
-                                },
+                                .then(if (state.playerMotion) Modifier else Modifier.graphicsLayer {
+                                    alpha = fullPlayerContentAlpha(state.visualProgress)
+                                }),
                     ) {
                         content()
                     }

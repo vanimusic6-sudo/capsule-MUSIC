@@ -9,27 +9,22 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.unit.dp
-import kotlin.math.PI
-import kotlin.math.sin
 
 internal const val PlayerOpenDurationMs = 460
 internal const val PlayerCloseDurationMs = 360
@@ -68,22 +63,13 @@ private fun window(progress: Float, start: Float, end: Float): Float {
     return t * t * (3f - 2f * t)
 }
 
-/** The underlay recedes once; it owns no Animatable, timer, blur or alpha buffer. */
-internal fun playerSceneFocus(progress: Float): Float = window(progress, 0f, 0.72f)
-internal fun playerSceneScale(progress: Float): Float = 1f - 0.024f * playerSceneFocus(progress)
-internal fun playerSceneDim(progress: Float): Float = 0.30f * playerSceneFocus(progress)
+/** The app stays stationary. Only a light scrim follows the existing window progress. */
+internal fun playerSceneFocus(progress: Float): Float = window(progress, 0f, 1f)
+internal fun playerSceneDim(progress: Float): Float = 0.16f * playerSceneFocus(progress)
 internal fun playerSceneNeedsDrawing(progress: Float): Boolean = boundedProgress(progress) < 1f
 
-/** Smooth edge catch; the last 3% carries only the corners past the window, not the content. */
-internal fun playerFrameTravel(progress: Float): Float {
-    val p = boundedProgress(progress)
-    if (p <= 0.80f) return p
-    if (p >= 0.97f) return 1f
-    val t = (p - 0.80f) / 0.17f
-    // Hermite tangents match the incoming movement and reach zero velocity at contact.
-    val slope = 0.17f / 0.20f
-    return 0.80f + 0.20f * ((slope - 2f) * t * t * t + (3f - 2f * slope) * t * t + slope * t)
-}
+/** One continuous trip; the final corner pixels finish outside the viewport. */
+internal fun playerFrameTravel(progress: Float): Float = (boundedProgress(progress) / 0.97f).coerceAtMost(1f)
 
 /** Grow both card edges from Mini's bounds; the lower edge starts above app navigation. */
 internal fun playerFrameHeight(progress: Float, fullHeight: Float, miniHeight: Float): Float {
@@ -115,14 +101,7 @@ internal fun PlayerSceneBackdrop(
             }
             // Read transition state in drawing/layer properties, not composition or measurement.
             // Once the opaque player covers the scene, even its draw recording can sleep.
-            .drawWithContent { if (playerSceneNeedsDrawing(progress())) drawContent() }
-            .graphicsLayer {
-                val focus = playerSceneFocus(progress())
-                scaleX = playerSceneScale(progress())
-                scaleY = scaleX
-                shape = if (focus > 0f) RoundedCornerShape(26.dp * focus) else RectangleShape
-                clip = focus > 0f
-            },
+            .drawWithContent { if (playerSceneNeedsDrawing(progress())) drawContent() },
     ) {
         content()
         Canvas(Modifier.fillMaxSize()) {
@@ -143,7 +122,6 @@ internal data class PlayerFrameContour(
     val inset: Float,
     val radius: Float,
     val bleed: Float,
-    val bend: Float,
 )
 
 /**
@@ -153,19 +131,18 @@ internal data class PlayerFrameContour(
  */
 internal fun playerFrameContour(progress: Float, miniInset: Float, miniRadius: Float, density: Float): PlayerFrameContour {
     val p = boundedProgress(progress)
-    val attachment = window(p, 0.52f, 0.97f)
-    val radius = miniRadius + (26f * density - miniRadius) * window(p, 0.05f, 0.45f)
+    val attachment = playerFrameTravel(p)
+    val radius = miniRadius + (26f * density - miniRadius) * attachment
     return PlayerFrameContour(
         inset = miniInset.coerceAtLeast(0f) * (1f - attachment),
         radius = radius.coerceAtLeast(0f),
         // At ~0.293r of diagonal overscan the circular arc is completely outside a square
         // viewport. Keep the rounding visible until the frame itself has reached the screen.
         bleed = (radius.coerceAtLeast(0f) * 0.30f + density) * window(p, 0.97f, 1f),
-        bend = 3.5f * density * sin(PI.toFloat() * attachment).coerceAtLeast(0f),
     )
 }
 
-internal class PlayerMagneticFrameShape(
+internal class PlayerCardShape(
     private val contour: PlayerFrameContour,
     private val visibleHeight: Float? = null,
 ) : Shape {
@@ -175,23 +152,8 @@ internal class PlayerMagneticFrameShape(
         val top = -contour.bleed
         val bottom = (visibleHeight ?: size.height).coerceIn(0f, size.height) + contour.bleed
         val radius = contour.radius.coerceIn(0f, minOf(right - left, bottom - top).coerceAtLeast(0f) / 2f)
-        if (radius == 0f && contour.bend == 0f) return Outline.Rectangle(Rect(left, top, right, bottom))
-        val k = 0.55228475f * radius
-        val span = (bottom - top - 2f * radius).coerceAtLeast(0f)
-        return Outline.Generic(Path().apply {
-            moveTo(left + radius, top)
-            lineTo(right - radius, top)
-            cubicTo(right - radius + k, top, right, top + radius - k, right, top + radius)
-            // The middle of each edge reaches for the screen before its corners catch up.
-            cubicTo(right + contour.bend, top + radius + span / 3f,
-                right + contour.bend, bottom - radius - span / 3f, right, bottom - radius)
-            cubicTo(right, bottom - radius + k, right - radius + k, bottom, right - radius, bottom)
-            lineTo(left + radius, bottom)
-            cubicTo(left + radius - k, bottom, left, bottom - radius + k, left, bottom - radius)
-            cubicTo(left - contour.bend, bottom - radius - span / 3f,
-                left - contour.bend, top + radius + span / 3f, left, top + radius)
-            cubicTo(left, top + radius - k, left + radius - k, top, left + radius, top)
-            close()
-        })
+        if (radius == 0f) return Outline.Rectangle(Rect(left, top, right, bottom))
+        // A native round rectangle avoids rebuilding a bowed Path and its complex clip each frame.
+        return Outline.Rounded(RoundRect(Rect(left, top, right, bottom), CornerRadius(radius, radius)))
     }
 }

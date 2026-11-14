@@ -883,7 +883,7 @@ internal fun CapsuleImmersiveContent(
             paintKey, frame?.colorField, pageFloor,
         ) {
             val readyFrame = frame ?: return@LaunchedEffect
-            if (immersivePaintCache[paintKey] == null) matchedPaint = withContext(Dispatchers.Default) {
+            if (matchedPaint == null) matchedPaint = withContext(Dispatchers.Default) {
                 val visible = readyFrame.colorField ?: CapsuleColorField(1, 1, listOf(readyFrame.floor))
                 capsuleImmersiveImageBackdropBitmap(visible, coverFraction)
             }
@@ -995,7 +995,9 @@ internal fun CapsuleImmersiveContent(
         // Compose each photo and its continuation into ONE scene before
         // applying track opacity. Independent alpha layers mix the old photo
         // with the new floor most strongly at the feather, drawing a stripe.
-        Box(Modifier.fillMaxSize().background(IMMERSIVE_NEUTRAL_COLOR)) {
+        Box(Modifier.fillMaxSize().background(
+            immersivePageBaseColor(isVideo, artworkTone.ready, artworkTone.edge),
+        )) {
             if (audioSceneVisible) {
                 val leaving = outgoingFrame
                 if (leaving != null && outgoingPaint != null) {

@@ -1,58 +1,49 @@
-# Player opening: firm attachment and a focused app scene
+# Player opening: one physical card reveal
 
-Agreed behaviour: retain the existing growing-window basis, keep rounded corners through the
-whole trip, carry them past the viewport at the end, add confident edge attachment without a
-rebound, dim/recede the app underneath, and let the player cover stationary app navigation.
+The player grows from the Mini card's real bounds and covers stationary app navigation. Opening
+is 460ms and closing 360ms. A completed tap starts the finite anchored mutation immediately;
+repeated requests coalesce, and reversals continue from the current position.
 
-## Ownership
+## Presentation
 
-- The existing anchored sheet offset remains the only physical timeline. A player-only profile
-  uses a finite 460ms opening and 360ms closing; generic sheets retain their existing motion.
-  The opening curve has a small nonzero initial tangent, removing the nearly motionless lead-in
-  while lowering the peak speed compared with the 360ms candidate. Standard tap-up semantics
-  remain intact. Player mutations enter immediately rather than enqueueing another launch turn.
-- The visible frame begins at Mini's actual card height and inset, above app navigation. Its top
-  moves upward while its bottom grows down from the card's bottom to the screen. A full-height
-  page no longer fades in underneath a vanishing Mini. The bounded source plate is opaque from
-  its first frame; only the content handoff changes opacity.
-- Vertical travel catches the screen smoothly at progress 0.97. Horizontal contour attachment
-  and a small outward side bend derive from the same progress. The last interval carries the
-  rounded clipping arcs beyond the viewport; the radius itself never collapses to zero.
-- The clip changes; artwork, text, controls and the video viewport are not stretched. Native
-  device corners supply their normal physical crop. A square viewport completes corner filling
-  progressively, without relying on rounded-display APIs or per-frame window-inset queries.
-- Full content follows one opacity handoff and becomes opaque at progress 0.62. Mini yields at
-  0.12, so artwork no longer waits for the first quarter of travel before appearing. Mini/full
-  opacity, background readiness, input ownership and decorative clocks use the same threshold.
-  Generic sheets retain the original 0.25 handoff. App navigation remains below the growing
-  card until the card physically covers it.
-- One app-scene parent owns a maximum 2.4% recession and 30% black scrim. The player is a sibling
-  above it; navigation stays in the app scene and is covered/uncovered by the player itself.
-- Back action routing is registered after NavHost within Scaffold's subcomposition, preserving
-  lyrics/queue-first closing. Further Back presses during the closing trip are consumed until
-  the player has actually left. Modal input/semantics belong to the overlay from opening intent.
+- One progress controls the card's position, height, width and corner radius. A native rounded
+  rectangle replaces the bowed cubic Path. The extra late edge-catch acceleration is removed.
+- Rounded corners remain through the trip, then leave the viewport in its final interval.
+  Square screens fill their remaining corner pixels progressively too.
+- The app underneath stays at its original size and position. A light 16% black scrim replaces
+  the previous 30% scrim, scaling and secondary rounded clipping layer.
+- The real full page mounts at the first visible card offset, stays opaque, and is revealed by
+  the card's bounds. Mini yields at that same threshold. There is no independent page-opacity
+  reveal, temporary enlarged Mini background or partly visible Mini/full UI overlap.
+- The page remains mounted through the final visible closing segment. Reopening near Mini no
+  longer disposes and reconstructs the still-visible page midway through the reversal.
+- Generic sheets retain their original opacity handoff and motion. Artwork, video and control
+  proportions stay unchanged; accepted artwork palettes and final gradient rendering are intact.
 
-## Energy and interruption
+## Work and loading
 
-There is no new permanent animation, blur, shader, readback, decoder or sampling timer. Visual
-state is read during placement, drawing and graphics-layer updates; media retains stable
-measurement. Covered app-scene drawing is skipped at the full anchor. Android duration scale
-applies to the finite transition. Backgrounding finishes the requested player anchor without
-waiting for hidden display frames. Repeated open requests do not restart the current trip;
-opposite requests begin at the current position through the existing anchored mutation owner.
+The underlay transform, two full-page opacity layers and complex outline Path are removed.
+Background mounting uses derived visibility booleans, avoiding raw-progress composition of the
+background slot. A retained matching Immersion page texture is reused even after shared-LRU
+eviction; it is not rendered again merely because the shared cache was evicted. During genuine
+image preparation, Immersion uses its already sampled cover colour instead of a generic grey
+base. Decoding still uses the existing full-resolution requests and bounded caches.
 
-## Checks
+No permanent clock, hidden full-player composition, additional decoder, sampling timer or blur
+is introduced. Visible motion uses the display frame clock and Android duration scale. Covered
+app drawing stops; backgrounding finishes the requested anchor without hidden animation frames.
 
-The quality workflow renders native corner/window previews and tests contour completion on a
-square viewport, the opaque source card and exposed navigation during its first frames, stable
-media dimensions, the 460ms trip with repeat taps, a real tap's first two display frames, artwork
-appearance before the old 0.25 handoff, rapid reversal, Back registration order, background completion and idle
-drawing. Existing player, media, backdrop and energy checks remain enabled. CI results and APK
-provenance are recorded in the draft pull request.
+## Verification
 
-No physical-device frame trace, temperature/battery measurement or 60/90/120Hz visual validation
-is claimed. The supplied 12791.mp4 recording was inspected frame-by-frame before calibration. Review
-the DEV build on the user's phone before merging appearance changes.
+Native tests cover first-visible artwork pixels instead of an empty/grey transition plate,
+stationary app edges, rounded corner completion, source-card bounds, stable media dimensions,
+tap responsiveness, timing, repeated requests, near-Mini reversal without a remount, Back and
+background/idle behavior. Existing player, backdrop, playback and energy checks remain enabled.
+Results and APK provenance are recorded in the draft PR.
 
-Implementation references: [Compose graphics modifiers](https://developer.android.com/develop/ui/compose/graphics/draw/modifiers),
-[Android rounded-screen behaviour](https://developer.android.com/develop/ui/views/layout/insets/rounded-corners).
+The user's 12793.mp4 recording was inspected. No physical-device frame trace, 60/90/120Hz jank,
+end-to-end tap latency, temperature or battery measurements are claimed. Appearance stays in
+review until the DEV build has been checked on the phone.
+
+References: [Compose graphics](https://developer.android.com/develop/ui/compose/graphics/draw/modifiers),
+[Android rounded screens](https://developer.android.com/develop/ui/views/layout/insets/rounded-corners).
