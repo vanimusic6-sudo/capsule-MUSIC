@@ -13,6 +13,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import kotlin.math.abs
+import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class)
@@ -81,5 +82,71 @@ class CapsuleImmersiveImageBackdropTest {
         val bottom = backdrop.getPixel(96, 300)
         assertTrue("Continuation must retain image colour, not end at a separate black floor",
             (bottom ushr 16 and 255) + (bottom and 255) > 80)
+    }
+
+    @Test fun greenLeftAndPinkRightKeepTheirSidesAllTheWayDown() {
+        val image = photo().apply {
+            Canvas(this).drawRect(0f, 0f, 160f, 320f, Paint().apply { color = 0xFF29945A.toInt() })
+            Canvas(this).drawRect(160f, 0f, 320f, 320f, Paint().apply { color = 0xFF9E386D.toInt() })
+        }
+        val backdrop = capsuleImmersiveImageBackdropBitmap(image.capsuleImmersiveVisibleField(1f, false), 0.60f)
+            .asAndroidBitmap()
+        preview(backdrop, "continuation-green-left-pink-right")
+        for (fraction in listOf(0.70f, 0.85f, 0.98f)) {
+            val y = (backdrop.height * fraction).toInt()
+            val left = backdrop.getPixel(backdrop.width / 8, y)
+            val right = backdrop.getPixel(backdrop.width * 7 / 8, y)
+            assertTrue("Green must stay left at $fraction",
+                (left ushr 8 and 255) > (left ushr 16 and 255) + 25)
+            assertTrue("Pink must stay right at $fraction",
+                (right ushr 16 and 255) > (right ushr 8 and 255) + 25)
+        }
+    }
+
+    @Test fun centralGoldenSubjectDoesNotReturnAsALampBelowTheControls() {
+        val plain = photo().apply { eraseColor(0xFF30363D.toInt()) }
+        val subject = plain.copy(Bitmap.Config.ARGB_8888, true).apply {
+            Canvas(this).drawRect(105f, 96f, 215f, 208f,
+                Paint().apply { color = 0xFFFFA720.toInt() })
+        }
+        val a = capsuleImmersiveImageBackdropBitmap(plain.capsuleImmersiveVisibleField(1f, false), 0.60f)
+            .asAndroidBitmap()
+        val b = capsuleImmersiveImageBackdropBitmap(subject.capsuleImmersiveVisibleField(1f, false), 0.60f)
+            .asAndroidBitmap()
+        preview(b, "continuation-no-central-light-echo")
+        assertTrue("Real central image colour should remain in the upper backdrop",
+            (b.getPixel(96, 90) ushr 16 and 255) > (a.getPixel(96, 90) ushr 16 and 255) + 20)
+        assertTrue("Central light must not be repeated below the controls",
+            largestLowerChange(a, b) <= 2)
+    }
+
+    @Test fun oneVividFinalRowCannotChooseTheWholePlayerFloor() {
+        val plain = photo().apply { eraseColor(0xFF305060.toInt()) }
+        val stripe = plain.copy(Bitmap.Config.ARGB_8888, true).apply {
+            Canvas(this).drawRect(0f, 258f, 320f, 264f,
+                Paint().apply { color = 0xFFFF7020.toInt() })
+        }
+        val a = capsuleImmersiveImageBackdropBitmap(plain.capsuleImmersiveVisibleField(1f, false), 0.60f)
+            .asAndroidBitmap()
+        val b = capsuleImmersiveImageBackdropBitmap(stripe.capsuleImmersiveVisibleField(1f, false), 0.60f)
+            .asAndroidBitmap()
+        assertTrue("Continuation must use lower image material, not one scanline",
+            largestLowerChange(a, b) <= 2)
+    }
+
+    private fun largestLowerChange(a: Bitmap, b: Bitmap): Int {
+        var largest = 0
+        for (y in (a.height * 0.82f).toInt() until a.height) for (x in 0 until a.width) {
+            val p = a.getPixel(x, y); val q = b.getPixel(x, y)
+            for (shift in listOf(0, 8, 16)) largest = maxOf(largest,
+                abs((p ushr shift and 255) - (q ushr shift and 255)))
+        }
+        return largest
+    }
+
+    private fun preview(bitmap: Bitmap, name: String) {
+        val path = File("build/video-morph-preview/$name.png")
+        path.parentFile.mkdirs()
+        path.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 }

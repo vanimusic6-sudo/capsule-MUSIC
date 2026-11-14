@@ -13,7 +13,8 @@ at pinned commit `0c15cc3b468841b72f6b8ddfaa940844830aa957` (GPL-3.0).
 It combines the cover and a rotated continuation into a full-page blurred source,
 then overlays the sharp cover with a graduated alpha mask and light black scrim.
 There is no separate special brightening blend. Attribution is retained in the
-new renderer. Capsule adapts this composition without introducing live Haze blur.
+new renderer. Capsule retains the stage mask/scrims without introducing live Haze blur.
+The 2026-11-14 continuation below replaces the rotated-background approach.
 
 Audio preparation now area-samples a 32×24 spatial field from the displayed
 centre crop, including the existing uniform landscape overscan. The lower 18%
@@ -22,8 +23,14 @@ Small isolated pale marks are blended toward the surrounding image material
 using image/neighbourhood statistics; broad white paper and saturated coloured lights are retained.
 A label outside the crop or in the excluded bottom cannot affect any field cell.
 
-The field becomes a 32×48 page composition with a reversed continuation below
-the cover. A separable Gaussian blur and cubic B-spline reconstruction produce
+The field becomes a 32×48 page composition. The continuation preserves source
+left/right order and never walks back through the middle of the photo. For each
+column, a neighbourhood median over the lower quarter of the sampled field
+(original photo approximately 61.5–82%) supplies stable surrounding material.
+This rejects a single last scanline and small foreground details. The underlay
+smoothly converges to that material at photo 70–82%, inside the existing mask;
+sharp-photo geometry, mask and blur radii are unchanged. The whole page is still
+filtered as one field, so there is no independently drawn seam strip. A separable Gaussian blur and cubic B-spline reconstruction produce
 one 192×304 immutable page texture, including the lower scrim. It retains spatial
 colour rather than converging to a separately selected single-colour floor.
 Preparation runs once on a worker per cover/layout, with cache capacity 3
@@ -57,6 +64,9 @@ near-zero slider, directional video field, uniform field and alternating-stripe
 input. New bitmap checks compare complete results with/without a hidden bottom
 label and out-of-crop marks; check the influence of small visible white labels;
 and preserve white-paper metadata contrast and spatial colour placement.
+Follow-up regressions keep green left/pink right down to the page bottom,
+retain a central gold subject in the upper background without repeating it
+under the controls, and prevent one vivid final scanline from choosing the floor.
 Tests also cover frame-flash damping, sustained video scene following, colour
 region position, interruption, track timing and foreground restoration.
 

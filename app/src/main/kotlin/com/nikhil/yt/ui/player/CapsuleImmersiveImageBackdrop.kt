@@ -4,9 +4,10 @@
  * rukamori/ArchiveTune@0c15cc3b468841b72f6b8ddfaa940844830aa957
  * app/src/main/kotlin/moe/rukamori/archivetune/ui/player/immersive/ImmersivePlayerScreen.kt
  *
- * ArchiveTune combines the stage photo and a rotated continuation beneath a
- * blurred source, then overlays the sharp stage with a mask and scrim. Here
- * the still-photo backdrop is prepared once off-main instead of live Haze.
+ * ArchiveTune's sharp-stage mask/scrim is retained. Capsule extends robust
+ * lower image material in its original left/right order, without rotating
+ * the photo or walking back through its centre. The still-photo backdrop
+ * is prepared once off-main instead of live Haze.
  */
 package com.nikhil.yt.ui.player
 
@@ -147,23 +148,46 @@ private class SplineAxis(output: Int, source: Int) {
 private val backdropSplineX = SplineAxis(PAINT_WIDTH, PAGE_COLUMNS)
 private val backdropSplineY = SplineAxis(PAINT_HEIGHT, PAGE_ROWS)
 
+/** Several lower visible rows, not one last scanline or a mirrored whole photo. */
+private fun immersiveLowerMaterial(field: CapsuleColorField): CapsuleColorField {
+    val start = (field.height * 0.75f).toInt().coerceIn(0, field.height - 1)
+    val cells = List(field.width) { x ->
+        val material = ArrayList<Color>((field.height - start) * 3)
+        for (y in start until field.height) for (dx in -1..1) {
+            material += field.cell(x + dx, y)
+        }
+        val mid = material.size / 2
+        Color(material.map { it.red }.sorted()[mid],
+            material.map { it.green }.sorted()[mid], material.map { it.blue }.sorted()[mid])
+    }
+    return CapsuleColorField(field.width, 1, cells)
+}
+
 /** Full photographic continuation, baked once on a worker. No progressive blur strip. */
 internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stageFraction: Float): ImageBitmap {
     val stage = stageFraction.coerceIn(0.35f, 0.75f)
+    val lower = immersiveLowerMaterial(field)
     val raw = FloatArray(PAGE_COLUMNS * PAGE_ROWS * 3)
-    fun sample(x: Float, y: Float): Color {
-        val px = (x * field.width - 0.5f).coerceIn(0f, field.width - 1f)
-        val py = (y * field.height - 0.5f).coerceIn(0f, field.height - 1f)
+    fun sample(source: CapsuleColorField, x: Float, y: Float): Color {
+        val px = (x * source.width - 0.5f).coerceIn(0f, source.width - 1f)
+        val py = (y * source.height - 0.5f).coerceIn(0f, source.height - 1f)
         val x0 = px.toInt(); val y0 = py.toInt(); val fx = px - x0; val fy = py - y0
         return androidx.compose.ui.graphics.lerp(
-            androidx.compose.ui.graphics.lerp(field.cell(x0, y0), field.cell(x0 + 1, y0), fx),
-            androidx.compose.ui.graphics.lerp(field.cell(x0, y0 + 1), field.cell(x0 + 1, y0 + 1), fx), fy)
+            androidx.compose.ui.graphics.lerp(source.cell(x0, y0), source.cell(x0 + 1, y0), fx),
+            androidx.compose.ui.graphics.lerp(source.cell(x0, y0 + 1), source.cell(x0 + 1, y0 + 1), fx), fy)
     }
     for (y in 0 until PAGE_ROWS) for (x in 0 until PAGE_COLUMNS) {
         val pageY = (y + 0.5f) / PAGE_ROWS; val pageX = (x + 0.5f) / PAGE_COLUMNS
-        val sourceX = if (pageY < stage) pageX else 0.5f + (0.5f - pageX) * stage
-        val visibleY = if (pageY < stage) pageY / stage else 1f - (pageY - stage)
-        val color = sample(sourceX, visibleY.coerceIn(0f, IMMERSIVE_VISIBLE_SAMPLE_END) / IMMERSIVE_VISIBLE_SAMPLE_END)
+        val photoY = pageY / stage
+        val continuation = sample(lower, pageX, 0.5f)
+        val color = if (photoY >= IMMERSIVE_VISIBLE_SAMPLE_END) continuation else {
+            // A smooth underlay handoff inside the existing photo mask. No
+            // change to the sharp cover's size, opacity curve or blur radius.
+            val t = ((photoY - 0.70f) / (IMMERSIVE_VISIBLE_SAMPLE_END - 0.70f)).coerceIn(0f, 1f)
+            val mix = t * t * (3f - 2f * t)
+            androidx.compose.ui.graphics.lerp(
+                sample(field, pageX, photoY / IMMERSIVE_VISIBLE_SAMPLE_END), continuation, mix)
+        }
         val i = (y * PAGE_COLUMNS + x) * 3
         raw[i] = color.red; raw[i + 1] = color.green; raw[i + 2] = color.blue
     }
