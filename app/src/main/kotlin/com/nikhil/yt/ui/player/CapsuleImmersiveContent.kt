@@ -858,7 +858,7 @@ internal fun CapsuleImmersiveContent(
         // had TWO independent render coroutines and a readiness callback:
         // one often won by a frame and the other faded in as a visible wave.
         val paintKey = remember(frame?.key, coverFraction) {
-            "image-diffusion-v4|${frame?.key}|$coverFraction"
+            "image-continuation-v3|${frame?.key}|$coverFraction"
         }
         // One prepared page texture for one decoded cover. The previous
         // pair also built a separate tinted PHOTO overlay, which repeatedly

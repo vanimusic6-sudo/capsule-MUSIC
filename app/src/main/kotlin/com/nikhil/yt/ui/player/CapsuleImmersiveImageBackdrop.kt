@@ -163,22 +163,10 @@ private fun immersiveLowerMaterial(field: CapsuleColorField): CapsuleColorField 
     return CapsuleColorField(field.width, 1, cells)
 }
 
-/** Broad side colours exclude a small central subject from the distant floor. */
-private fun immersiveSideMaterial(lower: CapsuleColorField, right: Boolean): Color {
-    val split = (lower.width / 2).coerceAtLeast(1)
-    val cells = if (right) lower.cells.drop(split).ifEmpty { lower.cells }
-        else lower.cells.take(split)
-    val mid = cells.size / 2
-    return Color(cells.map { it.red }.sorted()[mid],
-        cells.map { it.green }.sorted()[mid], cells.map { it.blue }.sorted()[mid])
-}
-
 /** Full photographic continuation, baked once on a worker. No progressive blur strip. */
 internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stageFraction: Float): ImageBitmap {
     val stage = stageFraction.coerceIn(0.35f, 0.75f)
     val lower = immersiveLowerMaterial(field)
-    val left = immersiveSideMaterial(lower, right = false)
-    val right = immersiveSideMaterial(lower, right = true)
     val raw = FloatArray(PAGE_COLUMNS * PAGE_ROWS * 3)
     fun sample(source: CapsuleColorField, x: Float, y: Float): Color {
         val px = (x * source.width - 0.5f).coerceIn(0f, source.width - 1f)
@@ -191,17 +179,7 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
     for (y in 0 until PAGE_ROWS) for (x in 0 until PAGE_COLUMNS) {
         val pageY = (y + 0.5f) / PAGE_ROWS; val pageX = (x + 0.5f) / PAGE_COLUMNS
         val photoY = pageY / stage
-        // A copied edge profile has infinite vertical reach: every spot
-        // becomes a column. Its local detail must expire before the lower
-        // controls, while a broad left-to-right colour field survives.
-        val broad = Color(
-            left.red + (right.red - left.red) * pageX,
-            left.green + (right.green - left.green) * pageX,
-            left.blue + (right.blue - left.blue) * pageX,
-        )
-        val reach = ((pageY - stage * 0.70f) / (stage * 0.30f + 0.06f)).coerceIn(0f, 1f)
-        val diffusion = reach * reach * (3f - 2f * reach)
-        val continuation = androidx.compose.ui.graphics.lerp(sample(lower, pageX, 0.5f), broad, diffusion)
+        val continuation = sample(lower, pageX, 0.5f)
         val color = if (photoY >= IMMERSIVE_VISIBLE_SAMPLE_END) continuation else {
             // A smooth underlay handoff inside the existing photo mask. No
             // change to the sharp cover's size, opacity curve or blur radius.

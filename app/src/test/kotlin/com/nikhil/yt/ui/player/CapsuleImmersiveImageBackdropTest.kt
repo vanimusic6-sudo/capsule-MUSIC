@@ -134,52 +134,9 @@ class CapsuleImmersiveImageBackdropTest {
             largestLowerChange(a, b) <= 2)
     }
 
-    @Test fun darkCircleOnPaperDoesNotBecomeABlackColumnBelowTheControls() {
-        val image = photo().apply {
-            eraseColor(-1)
-            Canvas(this).drawCircle(160f, 150f, 110f,
-                Paint().apply { color = 0xFF181818.toInt() })
-        }
-        val backdrop = capsuleImmersiveImageBackdropBitmap(image.capsuleImmersiveVisibleField(1f, false), 0.60f)
-            .asAndroidBitmap()
-        preview(backdrop, "diffusion-black-circle-on-paper")
-        val upperCentre = backdrop.getPixel(backdrop.width / 2, (backdrop.height * 0.35f).toInt())
-        val upperSide = backdrop.getPixel(backdrop.width / 8, (backdrop.height * 0.35f).toInt())
-        assertTrue("The real dark subject must remain in the photo underlay",
-            (upperCentre and 255) + 30 < (upperSide and 255))
-        for (fraction in listOf(0.90f, 0.98f)) {
-            val y = (backdrop.height * fraction).toInt()
-            val centre = backdrop.getPixel(backdrop.width / 2, y) and 255
-            val side = backdrop.getPixel(backdrop.width / 8, y) and 255
-            assertTrue("Dark subject must not leave a persistent footer column: $centre / $side",
-                abs(centre - side) <= 3)
-            assertTrue("White paper must remain a light background", centre >= 145)
-        }
-    }
-
-    @Test fun goldenSubjectInTheLowerMaterialHasFiniteReachInsteadOfAVerticalBand() {
-        val plain = photo().apply { eraseColor(0xFF30363D.toInt()) }
-        val subject = plain.copy(Bitmap.Config.ARGB_8888, true).apply {
-            Canvas(this).drawRect(112f, 120f, 208f, 264f,
-                Paint().apply { color = 0xFFFFA720.toInt() })
-        }
-        val a = capsuleImmersiveImageBackdropBitmap(plain.capsuleImmersiveVisibleField(1f, false), 0.60f)
-            .asAndroidBitmap()
-        val b = capsuleImmersiveImageBackdropBitmap(subject.capsuleImmersiveVisibleField(1f, false), 0.60f)
-            .asAndroidBitmap()
-        preview(b, "diffusion-golden-subject-finite-reach")
-        val y = (b.height * 0.55f).toInt()
-        assertTrue("Continuation should still connect to the real nearby colour",
-            (b.getPixel(96, y) ushr 16 and 255) > (a.getPixel(96, y) ushr 16 and 255) + 10)
-        assertTrue("Local colour must disperse before the lower controls",
-            largestLowerChange(a, b, start = 0.75f) <= 10)
-        assertTrue("The central gold band must have ended by the footer",
-            largestLowerChange(a, b, start = 0.90f) <= 2)
-    }
-
-    private fun largestLowerChange(a: Bitmap, b: Bitmap, start: Float = 0.82f): Int {
+    private fun largestLowerChange(a: Bitmap, b: Bitmap): Int {
         var largest = 0
-        for (y in (a.height * start).toInt() until a.height) for (x in 0 until a.width) {
+        for (y in (a.height * 0.82f).toInt() until a.height) for (x in 0 until a.width) {
             val p = a.getPixel(x, y); val q = b.getPixel(x, y)
             for (shift in listOf(0, 8, 16)) largest = maxOf(largest,
                 abs((p ushr shift and 255) - (q ushr shift and 255)))
