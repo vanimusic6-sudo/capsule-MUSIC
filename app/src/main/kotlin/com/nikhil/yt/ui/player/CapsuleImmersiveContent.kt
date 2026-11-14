@@ -883,10 +883,14 @@ internal fun CapsuleImmersiveContent(
             paintKey, frame?.colorField, pageFloor,
         ) {
             val readyFrame = frame ?: return@LaunchedEffect
-            if (matchedPaint == null) matchedPaint = withContext(Dispatchers.Default) {
-                val visible = readyFrame.colorField ?: CapsuleColorField(1, 1, listOf(readyFrame.floor))
-                capsuleImmersiveImageBackdropBitmap(visible, coverFraction)
-            }
+            // Reuse only an exact crop/geometry key, including after shared-LRU eviction.
+            // An entry frame can still be a temporary fallback during an inset/rotation change.
+            matchedPaint = immersivePaintCache[paintKey]
+                ?: entryScene?.takeIf { it.paintKey == paintKey }?.bitmap
+                ?: withContext(Dispatchers.Default) {
+                    val visible = readyFrame.colorField ?: CapsuleColorField(1, 1, listOf(readyFrame.floor))
+                    capsuleImmersiveImageBackdropBitmap(visible, coverFraction)
+                }
             matchedPaint?.let {
                 immersivePaintCache[paintKey] = it
                 lastReadyPaint = readyFrame.key to it
