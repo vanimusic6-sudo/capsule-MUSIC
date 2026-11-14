@@ -1,15 +1,14 @@
 package com.nikhil.yt.ui.component
 
-import android.app.Activity
 import android.view.WindowManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.ui.platform.LocalContext
+import androidx.activity.compose.LocalActivity
 
 /** Screen-on is owned by visible, playing lyrics, never by a retained hidden list. */
 @Composable
 internal fun LyricsScreenAwake(isPlaying: Boolean, visible: Boolean, onScreen: Boolean) {
-    val window = (LocalContext.current as? Activity)?.window
+    val window = LocalActivity.current?.window
     val keepAwake = isPlaying && visible && onScreen
     DisposableEffect(window, keepAwake) {
         if (keepAwake) window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
