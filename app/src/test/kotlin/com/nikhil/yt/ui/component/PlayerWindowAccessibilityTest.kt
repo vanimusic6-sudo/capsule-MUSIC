@@ -5,6 +5,8 @@ import android.content.Context
 import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
@@ -52,11 +54,24 @@ class PlayerWindowAccessibilityTest {
     private val shown = mutableStateOf(true)
     private val revision = mutableIntStateOf(0)
     private var accessibilityQueries = 0
+    private lateinit var accessibilityManager: AccessibilityManager
+    private var accessibilityEventsAtMount = 0
 
     private fun mount() {
         val manager = RuntimeEnvironment.getApplication().getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+        accessibilityManager = manager
         shadowOf(manager).setEnabled(true)
         shadowOf(manager).setTouchExplorationEnabled(true)
+        // Compose intentionally ignores an enabled manager with an empty service list (the
+        // UIAutomator case). A real spoken service is required to schedule its semantics checker.
+        val service = AccessibilityServiceInfo().apply {
+            eventTypes = AccessibilityEvent.TYPES_ALL_MASK
+            feedbackType = AccessibilityServiceInfo.FEEDBACK_SPOKEN
+            flags = AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE
+        }
+        shadowOf(manager).setEnabledAccessibilityServiceList(listOf(service))
+        assertTrue(manager.isEnabled)
+        assertTrue(manager.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK).isNotEmpty())
         compose.mainClock.autoAdvance = false
         compose.setContent {
             MaterialTheme {
@@ -104,6 +119,7 @@ class PlayerWindowAccessibilityTest {
         }
         compose.waitForIdle()
         queryAccessibility()
+        accessibilityEventsAtMount = shadowOf(manager).getSentAccessibilityEvents().size
     }
 
     private fun findOwner(view: View): View? {
@@ -147,6 +163,8 @@ class PlayerWindowAccessibilityTest {
         frames(45)
         compose.runOnIdle { assertTrue(state.isCollapsed);assertFalse(state.isAnimationRunning) }
         assertTrue(accessibilityQueries>100)
+        assertTrue("the deferred accessibility checker must actually emit events",
+            shadowOf(accessibilityManager).getSentAccessibilityEvents().size>accessibilityEventsAtMount)
     }
 
     @Test fun accessibilityRemeasureSurvivesHostRemovalAndRestorationDuringMotion() {
@@ -160,5 +178,7 @@ class PlayerWindowAccessibilityTest {
         compose.runOnIdle { state.collapseSoft() };frames(45)
         compose.runOnIdle { assertTrue(state.isCollapsed);assertFalse(state.isAnimationRunning) }
         assertTrue(accessibilityQueries>80)
+        assertTrue("the deferred accessibility checker must actually emit events",
+            shadowOf(accessibilityManager).getSentAccessibilityEvents().size>accessibilityEventsAtMount)
     }
 }
