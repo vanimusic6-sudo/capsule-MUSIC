@@ -32,6 +32,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import java.io.File
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import org.junit.Assert.*
 import org.junit.Rule
@@ -173,7 +174,7 @@ class PlayerOpeningMotionTest {
         }
     }
 
-    @Test fun firstOpeningFramesKeepNavigationBelowAnOpaqueGrowingCard() {
+    @Test fun firstFramesKeepMiniVisibleWithoutAnIsolatedBrightArtworkFragment() {
         mount()
         compose.runOnIdle { state.expandSoft() }
         advance(48)
@@ -186,8 +187,11 @@ class PlayerOpeningMotionTest {
         assertTrue("the card must not already extend through navigation", AndroidColor.blue(navigation) > 180)
         val top = 590f * (1f - playerFrameTravel(p))
         val plateY = with(compose.density) { (top + 58f).dp.toPx() }.roundToInt()
-        assertEquals("real artwork must replace the grey/empty stage in the first visible card",
-            AndroidColor.rgb(255, 191, 76), bitmap.getPixel(x, plateY))
+        assertEquals(0f, playerCardOpacity(p), 0f)
+        assertEquals(1f, playerMiniDrawAlpha(p), 0f)
+        val outsideMini = bitmap.getPixel(x, plateY)
+        assertTrue("the bright photo fragment must be absent before the handoff",
+            AndroidColor.green(outsideMini) > 70 && AndroidColor.red(outsideMini) < 100)
         bitmap.recycle()
     }
 
@@ -235,7 +239,7 @@ class PlayerOpeningMotionTest {
         compose.runOnIdle { assertEquals(1, controlClicks) }
     }
 
-    @Test fun contentRetainsItsDimensionsWhileTheCardGrows() {
+    @Test fun layoutStaysStableWhileVisualElasticityRemainsSubtle() {
         mount()
         val widths = mutableListOf<Float>()
         val heights = mutableListOf<Float>()
@@ -252,8 +256,10 @@ class PlayerOpeningMotionTest {
         }
         assertTrue(measuredContent.isNotEmpty())
         assertEquals(1, measuredContent.distinct().size)
-        widths.forEach { assertEquals(widths.first(), it, 1f) }
-        heights.forEach { assertEquals(heights.first(), it, 1f) }
+        val settledWidth = widths.last()
+        val settledHeight = heights.last()
+        widths.forEach { assertTrue(abs(it - settledWidth) <= settledWidth * 0.012f + 1f) }
+        heights.forEach { assertTrue(abs(it - settledHeight) <= settledHeight * 0.012f + 1f) }
     }
 
     @Test fun repeatedOpenKeepsTheCalibratedDurationInsteadOfRestarting() {
@@ -280,23 +286,94 @@ class PlayerOpeningMotionTest {
         compose.runOnIdle { assertTrue("tap left a motionless lead-in", state.rawProgress > 0.005f) }
     }
 
-    @Test fun artworkArrivesBeforeAQuarterOfTheTravelWithoutOverlappingMini() {
+    @Test fun oneCardDissolveBlendsOverAnOpaqueMiniWithoutADeadMiddleFrame() {
         mount()
         compose.runOnIdle { state.expandSoft() }
         var frames = 0
         while (compose.runOnIdle { state.visualProgress } <= 0.14f && frames++ < 20) advance(16)
         val p = compose.runOnIdle { state.visualProgress }
-        assertTrue("early artwork must arrive before the old handoff: $p", p < PlayerContentHandoffPoint)
-        assertEquals(0f, miniPlayerContentAlpha(p, state.contentHandoffPoint), 0f)
+        assertTrue(p < PlayerContentHandoffPoint)
+        val alpha = playerCardOpacity(p)
+        assertTrue(alpha > 0f && alpha < 1f)
+        assertEquals(1f, playerMiniDrawAlpha(p), 0f)
         assertEquals(1f, fullPlayerContentAlpha(p, magnetic = true), 0f)
-        compose.onNodeWithTag("poster", useUnmergedTree = true).assertExists()
-        capture("early-artwork-handoff").recycle()
+        val bitmap = capture("mini-card-blend")
+        val top = 590f * (1f - playerFrameTravel(p))
+        val y = with(compose.density) { (top + 20f).dp.toPx() }.roundToInt()
+        val actual = bitmap.getPixel(bitmap.width / 2, y)
+        fun blend(source: Int, target: Int) = (source * (1f - alpha) + target * alpha).roundToInt()
+        assertEquals("Mini must remain opaque UNDER the single card fade",
+            blend(124, 155).toFloat(), AndroidColor.red(actual).toFloat(), 2f)
+        assertEquals(blend(51, 40).toFloat(), AndroidColor.green(actual).toFloat(), 2f)
+        assertEquals(blend(49, 35).toFloat(), AndroidColor.blue(actual).toFloat(), 2f)
+        bitmap.recycle()
+    }
+
+    @Test fun closingPhotoFadesBeforeMiniSettlesAndBothEndpointsAreClean() {
+        assertEquals(0f, playerCardOpacity(0f), 0f)
+        assertEquals(0f, playerCardOpacity(0.06f), 0f)
+        assertTrue(playerCardOpacity(0.09f) < 0.1f)
+        assertEquals(1f, playerCardOpacity(0.28f), 0f)
+        assertEquals(1f, playerMiniDrawAlpha(0f), 0f)
+        assertEquals(0f, playerMiniDrawAlpha(0.28f), 0f)
+        var previous = 0f
         for (step in 0..1000) {
-            val progress = step / 1000f
-            assertFalse("compact and full UI overlap at $progress",
-                miniPlayerContentAlpha(progress, state.contentHandoffPoint) > 0.0001f &&
-                    fullPlayerContentAlpha(progress, magnetic = true) > 0.0001f)
+            val p = step / 1000f
+            val alpha = playerCardOpacity(p)
+            assertTrue(alpha >= previous)
+            if (alpha < 1f) assertEquals(1f, playerMiniDrawAlpha(p), 0f)
+            previous = alpha
         }
+    }
+
+    @Test fun elasticDeformationUsesVelocityAndVanishesAtRestAndNearMini() {
+        assertTrue(playerCardElasticity(0.5f, 3f) > 0f)
+        assertTrue(playerCardElasticity(0.5f, -3f) < 0f)
+        assertEquals(0f, playerCardElasticity(0f, 3f), 0f)
+        assertEquals(0f, playerCardElasticity(1f, -3f), 0f)
+        assertEquals(0f, playerCardElasticity(0.5f, 0f), 0f)
+        assertEquals(0f, playerCardElasticity(0.04f, 3f), 0f)
+        for (p in listOf(-1f, 0f, 0.1f, 0.5f, 1f, 2f, Float.NaN)) {
+            for (v in listOf(-100f, -3f, 0f, 3f, 100f, Float.NaN)) {
+                assertTrue(playerCardElasticity(p, v) in -1f..1f)
+            }
+        }
+    }
+
+    @Test fun actualOpeningStretchesAndClosingCompressesTheSameMeasuredPage() {
+        mount()
+        compose.runOnIdle { state.expandSoft() }
+        var frames = 0
+        while (compose.runOnIdle { state.visualProgress } < 0.5f && frames++ < 30) advance(16)
+        val openingHeight = compose.onNodeWithTag("poster", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.height
+        capture("elastic-opening").recycle()
+        advance(512)
+        val settledHeight = compose.onNodeWithTag("poster", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.height
+        compose.runOnIdle { state.collapseSoft() }
+        frames = 0
+        while (compose.runOnIdle { state.visualProgress } > 0.55f && frames++ < 30) advance(16)
+        val closingHeight = compose.onNodeWithTag("poster", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.height
+        capture("elastic-closing").recycle()
+        assertTrue("opening must stretch subtly", openingHeight > settledHeight + 0.5f)
+        assertTrue("closing must compress subtly", closingHeight < settledHeight - 0.5f)
+        assertEquals(1, measuredContent.distinct().size)
+    }
+
+    @Test fun miniCanReopenAfterTheUpperCardHasDissolvedBeforeFinalSettlement() {
+        mount()
+        compose.runOnIdle { state.expandSoft() }
+        advance(512)
+        compose.runOnIdle { state.collapseSoft() }
+        var frames = 0
+        while (compose.runOnIdle { state.visualProgress } > 0.04f && frames++ < 40) advance(16)
+        compose.runOnIdle {
+            assertEquals(0f, playerCardOpacity(state.visualProgress), 0f)
+            assertTrue(state.compactForegroundAcceptsInput)
+        }
+        compose.onNodeWithTag("mini", useUnmergedTree = true).performTouchInput { click(center) }
+        compose.runOnIdle { assertTrue(state.isExpandedOrExpanding); assertEquals(0, navigationClicks) }
+        advance(512)
+        compose.runOnIdle { assertTrue(state.isExpanded); assertEquals(1, contentMounts) }
     }
 
     @Test fun appSceneStaysStationaryWhileTheCardCoversIt() {

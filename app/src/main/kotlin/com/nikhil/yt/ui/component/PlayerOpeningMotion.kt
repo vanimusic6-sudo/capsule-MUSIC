@@ -25,6 +25,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
+import kotlin.math.abs
 
 internal const val PlayerOpenDurationMs = 460
 internal const val PlayerCloseDurationMs = 360
@@ -76,6 +77,20 @@ internal fun playerFrameHeight(progress: Float, fullHeight: Float, miniHeight: F
     val full = fullHeight.coerceAtLeast(0f)
     val mini = miniHeight.coerceIn(0f, full)
     return mini + (full - mini) * playerFrameTravel(progress)
+}
+
+/** One short optical handoff near Mini; the real page remains opaque inside this layer. */
+internal fun playerCardOpacity(progress: Float): Float = window(progress, 0.06f, 0.28f)
+
+/** Mini is the opaque source UNDER the dissolving card, so the app cannot leak through it. */
+internal fun playerMiniDrawAlpha(progress: Float): Float = if (playerCardOpacity(progress) < 1f) 1f else 0f
+
+/** Actual offset velocity supplies the sign. No target-direction switch or extra animation clock. */
+internal fun playerCardElasticity(progress: Float, velocityFraction: Float): Float {
+    val p = boundedProgress(progress)
+    val velocity = if (velocityFraction.isFinite()) velocityFraction else 0f
+    val drive = velocity / (1f + abs(velocity))
+    return drive * (4f * p * (1f - p)) * playerCardOpacity(p)
 }
 
 @Composable
