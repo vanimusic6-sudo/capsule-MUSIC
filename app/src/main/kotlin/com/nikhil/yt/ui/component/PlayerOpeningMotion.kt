@@ -31,8 +31,8 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.PI
 import kotlin.math.sin
 
-internal const val PlayerOpenDurationMs = 600
-internal const val PlayerCloseDurationMs = 460
+internal const val PlayerOpenDurationMs = 360
+internal const val PlayerCloseDurationMs = 280
 internal val PlayerOpenAnimation = tween<Float>(PlayerOpenDurationMs, easing = CubicBezierEasing(0.24f, 0f, 0.38f, 1f))
 internal val PlayerCloseAnimation = tween<Float>(PlayerCloseDurationMs, easing = CubicBezierEasing(0.28f, 0f, 0.44f, 1f))
 
@@ -83,6 +83,13 @@ internal fun playerFrameTravel(progress: Float): Float {
     // Hermite tangents match the incoming movement and reach zero velocity at contact.
     val slope = 0.17f / 0.20f
     return 0.80f + 0.20f * ((slope - 2f) * t * t * t + (3f - 2f * slope) * t * t + slope * t)
+}
+
+/** Grow both card edges from Mini's bounds; the lower edge starts above app navigation. */
+internal fun playerFrameHeight(progress: Float, fullHeight: Float, miniHeight: Float): Float {
+    val full = fullHeight.coerceAtLeast(0f)
+    val mini = miniHeight.coerceIn(0f, full)
+    return mini + (full - mini) * playerFrameTravel(progress)
 }
 
 @Composable
@@ -158,12 +165,15 @@ internal fun playerFrameContour(progress: Float, miniInset: Float, miniRadius: F
     )
 }
 
-internal class PlayerMagneticFrameShape(private val contour: PlayerFrameContour) : Shape {
+internal class PlayerMagneticFrameShape(
+    private val contour: PlayerFrameContour,
+    private val visibleHeight: Float? = null,
+) : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
         val left = contour.inset - contour.bleed
         val right = size.width - contour.inset + contour.bleed
         val top = -contour.bleed
-        val bottom = size.height + contour.bleed
+        val bottom = (visibleHeight ?: size.height).coerceIn(0f, size.height) + contour.bleed
         val radius = contour.radius.coerceIn(0f, minOf(right - left, bottom - top).coerceAtLeast(0f) / 2f)
         if (radius == 0f && contour.bend == 0f) return Outline.Rectangle(Rect(left, top, right, bottom))
         val k = 0.55228475f * radius

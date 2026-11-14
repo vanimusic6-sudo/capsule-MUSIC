@@ -7,15 +7,20 @@ rebound, dim/recede the app underneath, and let the player cover stationary app 
 ## Ownership
 
 - The existing anchored sheet offset remains the only physical timeline. A player-only profile
-  uses a finite 600ms opening and 460ms closing; generic sheets retain their existing motion.
+  uses a finite 360ms opening and 280ms closing; generic sheets retain their existing motion.
+  The 600/460ms candidate was rejected after reviewing the user's 12789.mp4 recording.
+- The visible frame begins at Mini's actual card height and inset, above app navigation. Its top
+  moves upward while its bottom grows down from the card's bottom to the screen. A full-height
+  page no longer fades in underneath a vanishing Mini. The bounded source plate is opaque from
+  its first frame; only the content handoff changes opacity.
 - Vertical travel catches the screen smoothly at progress 0.97. Horizontal contour attachment
   and a small outward side bend derive from the same progress. The last interval carries the
   rounded clipping arcs beyond the viewport; the radius itself never collapses to zero.
 - The clip changes; artwork, text, controls and the video viewport are not stretched. Native
   device corners supply their normal physical crop. A square viewport completes corner filling
   progressively, without relying on rounded-display APIs or per-frame window-inset queries.
-- Full content follows one opacity handoff and becomes opaque at progress 0.72. The sheet surface
-  is already opaque when Mini yields at 0.25, so navigation cannot shine through the new player.
+- Full content follows one opacity handoff and becomes opaque at progress 0.55. Mini yields at
+  0.25. App navigation remains below the growing card until the card physically covers it.
 - One app-scene parent owns a maximum 2.4% recession and 30% black scrim. The player is a sibling
   above it; navigation stays in the app scene and is covered/uncovered by the player itself.
 - Back action routing is registered after NavHost within Scaffold's subcomposition, preserving
@@ -34,7 +39,8 @@ opposite requests begin at the current position through the existing anchored mu
 ## Checks
 
 The quality workflow renders native corner/window previews and tests contour completion on a
-square viewport, navigation occlusion and touch ownership, stable media dimensions, the 600ms
+square viewport, the opaque source card and exposed navigation during its first frames, stable
+media dimensions, the 360ms
 trip with repeat taps, rapid reversal, Back registration order, background completion and idle
 drawing. Existing player, media, backdrop and energy checks remain enabled. CI results and APK
 provenance are recorded in the draft pull request.

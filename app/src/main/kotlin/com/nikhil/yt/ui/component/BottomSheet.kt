@@ -190,7 +190,7 @@ internal fun fullPlayerContentAlpha(progress: Float, magnetic: Boolean = false):
     transitionWindow(
         progress = progress,
         start = PlayerContentHandoffPoint,
-        end = if (magnetic) 0.72f else FullPlayerContentFadeEnd,
+        end = if (magnetic) 0.55f else FullPlayerContentFadeEnd,
     )
 
 /** The backdrop settles ahead of the cover and controls, so bright UI never floats on a weak sheet. */
@@ -437,10 +437,12 @@ fun BottomSheet(
                                 scaleX = 1f
                                 scaleY = 1f
                                 if (raw < 1f) {
-                                    shape = PlayerMagneticFrameShape(playerFrameContour(
-                                        raw, collapsedHorizontalInset.toPx(),
-                                        collapsedTopCornerRadius.toPx(), density,
-                                    ))
+                                    shape = PlayerMagneticFrameShape(
+                                        playerFrameContour(raw, collapsedHorizontalInset.toPx(),
+                                            collapsedTopCornerRadius.toPx(), density),
+                                        playerFrameHeight(raw, size.height,
+                                            (collapsedContentHeight ?: state.collapsedBound).toPx()),
+                                    )
                                     clip = true
                                 } else {
                                     shape = androidx.compose.ui.graphics.RectangleShape
@@ -473,7 +475,8 @@ fun BottomSheet(
                         Modifier
                             .fillMaxSize()
                             .graphicsLayer {
-                                alpha = surfaceAlpha(state.visualProgress)
+                                // The bounded card grows out of Mini rather than fading in as a page.
+                                alpha = if (state.playerMotion) 1f else surfaceAlpha(state.visualProgress)
                             }
                             .background(backgroundColor)
                             // The expanded sheet is modal. Its empty/decorative regions must

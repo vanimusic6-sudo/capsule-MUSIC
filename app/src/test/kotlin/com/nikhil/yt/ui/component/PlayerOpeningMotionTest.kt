@@ -141,6 +141,44 @@ class PlayerOpeningMotionTest {
         assertEquals(1f, playerFrameTravel(1f), 0f)
     }
 
+    @Test fun cardBoundsGrowFromTheMiniInsteadOfStartingBelowTheScreen() {
+        val height = 700f
+        val dock = 110f
+        val mini = 48f
+        assertEquals(mini, playerFrameHeight(0f, height, mini), 0f)
+        assertEquals(height, playerFrameHeight(1f, height, mini), 0f)
+        var lastTop = height - dock
+        var lastBottom = height - dock + mini
+        for (step in 0..1000) {
+            val p = step / 1000f
+            val top = (height - dock) * (1f - playerFrameTravel(p))
+            val bottom = top + playerFrameHeight(p, height, mini)
+            assertTrue(top <= lastTop + 0.001f)
+            assertTrue(bottom >= lastBottom - 0.001f)
+            assertTrue(bottom <= height + 0.001f)
+            lastTop = top
+            lastBottom = bottom
+        }
+    }
+
+    @Test fun firstOpeningFramesKeepNavigationBelowAnOpaqueGrowingCard() {
+        mount()
+        compose.runOnIdle { state.expandSoft() }
+        advance(48)
+        val p = compose.runOnIdle { state.visualProgress }
+        assertTrue("sample must precede the UI handoff: $p", p > 0f && p < PlayerContentHandoffPoint)
+        val bitmap = capture("opening-dock-origin")
+        val x = bitmap.width / 2
+        val navigationY = with(compose.density) { 670.dp.toPx() }.roundToInt()
+        val navigation = bitmap.getPixel(x, navigationY)
+        assertTrue("the card must not already extend through navigation", AndroidColor.blue(navigation) > 180)
+        val top = 590f * (1f - playerFrameTravel(p))
+        val plateY = with(compose.density) { (top + 58f).dp.toPx() }.roundToInt()
+        assertEquals("the growing surface must already be opaque below Mini content",
+            AndroidColor.rgb(155, 40, 35), bitmap.getPixel(x, plateY))
+        bitmap.recycle()
+    }
+
     @Test fun squareViewportCornersFillProgressivelyWithoutAZeroRadiusSnap() {
         val progress = mutableStateOf(0.97f)
         compose.setContent {
@@ -206,14 +244,14 @@ class PlayerOpeningMotionTest {
         heights.forEach { assertEquals(heights.first(), it, 1f) }
     }
 
-    @Test fun repeatedOpenDoesNotRestartTheSixHundredMillisecondMotion() {
+    @Test fun repeatedOpenFinishesWithinFourHundredMilliseconds() {
         mount()
         compose.runOnIdle { state.expandSoft() }
-        advance(240)
+        advance(96)
         compose.runOnIdle { assertTrue(state.rawProgress in 0.1f..0.9f); state.expandSoft() }
-        advance(160)
+        advance(96)
         compose.runOnIdle { state.expandSoft() }
-        advance(300)
+        advance(208)
         compose.runOnIdle { assertTrue(state.isExpanded); assertFalse(state.isAnimationRunning) }
     }
 
