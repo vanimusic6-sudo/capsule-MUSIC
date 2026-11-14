@@ -141,14 +141,15 @@ class PlayerOpeningMotionTest {
     }
 
     private fun sampleAt(progress: Float) {
+        // Exercise the same mutation/intent owner as a real Mini tap. Raw-delta injection is a
+        // gesture escape hatch and does not establish the player's tap-only presentation intent.
+        compose.runOnIdle { state.expandSoft() }
+        var frames = 0
+        while (compose.runOnIdle { state.visualProgress } < progress && frames++ < 100) advance(16)
         compose.runOnIdle {
-            state.setUserGestureInProgress(true)
-            val desired = state.collapsedBound + (state.expandedBound - state.collapsedBound) * progress
-            state.dispatchRawUserDelta(with(compose.density) { (desired - state.value).toPx() }, allowDismiss = false)
+            assertTrue("opening did not reach sample $progress", state.visualProgress >= progress)
+            assertEquals("the native sample must include the actual page tree", 1, contentMounts)
         }
-        // Raw position injection does not advance the deliberately paused display clock.
-        // Let the derived mount/visibility gates compose before measuring or drawing that frame.
-        advance(16)
     }
 
     private fun pagePoint(x: Float, y: Float): Offset {
@@ -180,12 +181,15 @@ class PlayerOpeningMotionTest {
     }
 
     @Test fun sourceMaterialFillsTheWindowBeforeAnyBrightPageCanAppear() {
-        mount(); sampleAt(0.12f)
-        assertEquals(0f, playerPageOpacity(state.visualProgress), 0f)
+        mount(); sampleAt(0.04f)
+        val p = compose.runOnIdle { state.visualProgress }
+        assertTrue("sample must precede the page handoff", p > 0f && p <= 0.18f)
+        assertEquals(0f, playerPageOpacity(p), 0f)
         val bitmap = capture("source-material-no-photo")
         // Above Mini, INSIDE the expanded shell. This used to show the app through the photo.
         val x = with(compose.density) { 180.dp.toPx() }.roundToInt()
-        val y = with(compose.density) { 550.dp.toPx() }.roundToInt()
+        val frame = playerWindowBounds(p, Size(360f,700f),48f,110f,12f)
+        val y = with(compose.density) { (frame.top+12f).dp.toPx() }.roundToInt()
         assertEquals(AndroidColor.rgb(124, 51, 49), bitmap.getPixel(x, y))
         bitmap.recycle()
     }
@@ -227,7 +231,8 @@ class PlayerOpeningMotionTest {
             val a = pagePoint(0f, 0f); val b = pagePoint(1f, 1f)
             assertEquals(360f / 700f, (b.x-a.x)/(b.y-a.y), 0.0001f)
             val centre = pagePoint(0.5f,0.5f)
-            val frame = playerWindowBounds(p, Size(360f,700f),48f,110f,12f)
+            val actual = compose.runOnIdle { state.visualProgress }
+            val frame = playerWindowBounds(actual, Size(360f,700f),48f,110f,12f)
             assertEquals(with(compose.density) { frame.center.y.dp.toPx() }, centre.y, 1f)
         }
         assertEquals(1, measuredContent.distinct().size)
