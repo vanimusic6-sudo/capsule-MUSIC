@@ -124,17 +124,6 @@ class PlayerOpeningMotionTest {
         }
     }
 
-    private fun preview(progress: Float) {
-        compose.runOnIdle {
-            state.setUserGestureInProgress(true)
-            val desired = with(compose.density) { (110.dp + 590.dp * progress).toPx() }
-            val current = with(compose.density) { state.value.toPx() }
-            state.dispatchRawUserDelta(desired - current, allowDismiss = false)
-        }
-        // With autoAdvance disabled, idle alone does not commit the newly visible content.
-        advance(16)
-    }
-
     @Test fun cornersKeepTheirRadiusUntilTheEdgesAreAttached() {
         var lastTravel = 0f
         for (step in 0..1000) {
@@ -200,10 +189,13 @@ class PlayerOpeningMotionTest {
         mount()
         val widths = mutableListOf<Float>()
         val heights = mutableListOf<Float>()
+        compose.runOnIdle { state.expandSoft() }
         for (p in listOf(0.3f, 0.6f, 0.85f, 0.97f, 0.99f, 1f)) {
-            preview(p)
-            compose.waitForIdle()
-            val poster = compose.onNodeWithTag("poster").fetchSemanticsNode().boundsInRoot
+            // Exercise the real animation/mutation owner instead of the raw gesture escape hatch.
+            var frames = 0
+            while (compose.runOnIdle { state.visualProgress } < p && frames++ < 50) advance(16)
+            compose.runOnIdle { assertTrue("opening did not reach $p", state.visualProgress >= p) }
+            val poster = compose.onNodeWithTag("poster", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
             widths += poster.width
             heights += poster.height
             capture("opening-${(p * 100).roundToInt()}").recycle()
