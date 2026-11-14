@@ -95,6 +95,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -1424,7 +1425,7 @@ class MainActivity : ComponentActivity() {
                                             // transitions carry it and its background
                                             // together with the returning page.
                                             // This slot is ONLY for the active search.
-                                            AnimatedVisibility(
+                                            androidx.compose.animation.AnimatedVisibility(
                                                 visible = active || navBackStackEntry?.destination?.route?.startsWith("search/") == true,
                                                 enter = fadeIn(animationSpec = tween(durationMillis = 300)),
                                                 exit = fadeOut(animationSpec = tween(durationMillis = 200))
@@ -1745,11 +1746,15 @@ class MainActivity : ComponentActivity() {
                                          * back event at all.
                                          */
                                             BackRepeatGuard(enabled = canPopBack)
-                                            BackHandler(enabled = playerOwnsBack) {
-                                                if (playerBottomSheetState.isExpandedOrExpanding) {
-                                                    playerBackAction.handle(playerBottomSheetState::collapseSoft)
+                                            key(navBackStackEntry?.id) {
+                                                if (playerOwnsBack) {
+                                                    BackHandler {
+                                                        if (playerBottomSheetState.isExpandedOrExpanding) {
+                                                            playerBackAction.handle(playerBottomSheetState::collapseSoft)
+                                                        }
+                                                        // Consume repeated Back until Mini has actually settled.
+                                                    }
                                                 }
-                                                // Further Back presses during closing are consumed until Mini settles.
                                             }
                                         }
                                     }

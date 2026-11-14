@@ -50,6 +50,7 @@ class PlayerOpeningMotionTest {
     private var backgroundBacks = 0
     private var controlClicks = 0
     private var nestedSurface = false
+    private val routeEpoch = mutableStateOf(0)
     private val measuredContent = mutableListOf<IntSize>()
 
     private fun mount() {
@@ -83,9 +84,13 @@ class PlayerOpeningMotionTest {
                                 drawContent()
                             }) { Text("APP SCENE", Modifier.padding(24.dp), color = Color.White) }
                             // Same registration order as the real Scaffold: NavHost first, overlay last.
-                            BackHandler { backgroundBacks++ }
-                            BackHandler(enabled = modal) {
-                                if (state.isExpandedOrExpanding) back.handle(state::collapseSoft)
+                            key(routeEpoch.value) {
+                                BackHandler { backgroundBacks++ }
+                            }
+                            key(routeEpoch.value) {
+                                if (modal) BackHandler {
+                                    if (state.isExpandedOrExpanding) back.handle(state::collapseSoft)
+                                }
                             }
                         }
                     }
@@ -255,6 +260,17 @@ class PlayerOpeningMotionTest {
         advance(500)
         compose.runOnIdle { assertTrue(state.isCollapsed) }
         compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed(); assertEquals(1, backgroundBacks) }
+    }
+
+    @Test fun aLaterRouteDoesNotStealTheNextPlayerBack() {
+        mount()
+        compose.runOnIdle { routeEpoch.value++ }
+        advance(32)
+        compose.runOnIdle { state.expandSoft() }
+        advance(700)
+        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        advance(500)
+        compose.runOnIdle { assertTrue(state.isCollapsed); assertEquals(0, backgroundBacks) }
     }
 
     private fun capture(name: String): Bitmap {
