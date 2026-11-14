@@ -30,7 +30,14 @@ class UiEnergyRegressionTest {
         // background instead of its former full-screen gradient shader.
         // Guard against accidental second full-screen paint in either mode.
         assertTrue("calculate only one artwork continuation per decoded cover",
-            src.split("matchedPaint = withContext(Dispatchers.Default)").size - 1 == 1)
+            src.split("capsuleImmersiveImageBackdropBitmap(visible, coverFraction)").size - 1 == 1)
+        val preparation = src.substringAfter("val readyFrame = frame ?: return@LaunchedEffect")
+            .substringBefore("matchedPaint?.let {")
+        assertTrue("check cached/retained exact geometry before doing background work",
+            preparation.contains("matchedPaint = immersivePaintCache[paintKey]") &&
+                preparation.contains("entryScene?.takeIf { it.paintKey == paintKey }?.bitmap"))
+        assertTrue("prepare only a cache miss off the UI thread",
+            preparation.contains("?: withContext(Dispatchers.Default)"))
         assertTrue("no second tinted bitmap over the real photograph",
             !src.contains("matchedPaint?.second?.let { overlay ->"))
         assertTrue("VIDEO must use a neutral fallback when ambient is off",
