@@ -155,18 +155,9 @@ internal fun isAtSheetAnchor(
 ): Boolean =
     (value - anchor).value.absoluteValue <= ANCHOR_EPSILON_DP
 
-/**
- * Player transition policy.
- *
- * Physical motion has one source: the anchored sheet progress. Generic sheets retain a split
- * opacity handoff. The physical player dissolves its whole card over the opaque Mini source
- * near the dock; its real page stays mounted and has no independent opacity animation.
- *
- * This follows the useful part of ArchiveTune's current BottomSheet: compact content yields before
- * expanded content appears, while the sheet/background itself remains continuous.
- */
+/** Generic opacity policy. The main player uses PlayerWindow's material/content handoff. */
 internal const val PlayerContentHandoffPoint = 0.25f
-internal const val MagneticPlayerContentHandoffPoint = SHEET_PROGRESS_EPSILON
+internal const val PlayerWindowMountThreshold = SHEET_PROGRESS_EPSILON
 internal const val PlayerBackdropFadeEnd = 0.55f
 internal const val FullPlayerContentFadeEnd = 0.88f
 
@@ -192,11 +183,8 @@ internal fun miniPlayerContentAlpha(
     )).coerceIn(0f, 1f)
 
 /** Full Player UI starts only after compact UI has completely yielded. */
-internal fun fullPlayerContentAlpha(progress: Float, magnetic: Boolean = false): Float =
-    if (magnetic) {
-        // Reveal the actual page by its card bounds, not by a second full-screen opacity wash.
-        if (progress.isFinite() && progress > SHEET_PROGRESS_EPSILON) 1f else 0f
-    } else transitionWindow(progress, PlayerContentHandoffPoint, FullPlayerContentFadeEnd)
+internal fun fullPlayerContentAlpha(progress: Float): Float =
+    transitionWindow(progress, PlayerContentHandoffPoint, FullPlayerContentFadeEnd)
 
 /** The backdrop settles ahead of the cover and controls, so bright UI never floats on a weak sheet. */
 internal fun playerBackdropContentAlpha(
@@ -287,13 +275,7 @@ internal fun playerFrameHorizontalScale(
     return collapsedScale + (1f - collapsedScale) * eased
 }
 
-/**
- * One moving container, two independent content trees.
- *
- * The full Player sheet owns the physical trajectory. Mini stays docked underneath that surface;
- * it only stretches upwards slightly during closing. Both use the same anchored progress/velocity.
- * Mini controls and gesture ownership remain independent from the full Player composable.
- */
+/** Generic sheets retain their established behavior. The main player delegates to PlayerWindow. */
 @Composable
 fun BottomSheet(
     state: BottomSheetState,
@@ -311,9 +293,19 @@ fun BottomSheet(
     collapsedTopCornerRadius: Dp = PlayerFrameCornerRadius,
     surfaceAlpha: (Float) -> Float = ::playerContainerAlpha,
     collapsedContent: @Composable BoxScope.() -> Unit,
+    compactBackground: (@Composable BoxScope.() -> Unit)? = null,
     backgroundContent: @Composable BoxScope.() -> Unit = {},
     content: @Composable BoxScope.() -> Unit,
 ) {
+    if (state.playerMotion) {
+        PlayerWindow(
+            state, modifier, backgroundColor, onDismiss, compactSwipeDismissEnabled,
+            backHandlerEnabled && gesturesEnabled, collapsedContentHeight ?: state.collapsedBound,
+            collapsedHorizontalInset, collapsedTopCornerRadius,
+            collapsedContent, compactBackground, backgroundContent, content,
+        )
+        return
+    }
     /* Keep the mini-player composition alive so Room-backed state and icon morph state survive. */
     val shouldComposeMini by
         remember(state, onDismiss) {
@@ -354,12 +346,7 @@ fun BottomSheet(
             modifier
                 .fillMaxSize()
                 .offset {
-                    val distance = if (state.playerMotion && state.rawProgress >= 0f) {
-                        // The full card moves in its own slot; Mini must not ride this container.
-                        0.dp
-                    } else {
-                        state.expandedBound - state.value
-                    }
+                    val distance = state.expandedBound - state.value
                     val y = distance.roundToPx().coerceAtLeast(0)
                     IntOffset(x = 0, y = y)
                 }
@@ -396,26 +383,10 @@ fun BottomSheet(
             Box(
                 modifier =
                     Modifier
-                        .offset {
-                            // Fixed dock throughout opening/closing. Negative progress retains
-                            // the existing independent swipe-down-to-dismiss trajectory.
-                            IntOffset(0, if (state.playerMotion && state.rawProgress >= 0f)
-                                (state.expandedBound - state.collapsedBound).roundToPx() else 0)
-                        }
                         .graphicsLayer {
-                            alpha = if (state.playerMotion) playerMiniDrawAlpha(state.visualProgress)
-                                else miniPlayerContentAlpha(state.visualProgress, state.contentHandoffPoint)
-                            scaleY = if (state.playerMotion)
-                                1f + playerMiniStretch(state.visualProgress, state.frameVelocityFraction) else 1f
-                            if (state.playerMotion) transformOrigin = TransformOrigin(0.5f, 1f)
+                            alpha = miniPlayerContentAlpha(state.visualProgress, state.contentHandoffPoint)
                         }
-                        // Mini is stationary under the card's material blend. Input has its own
-                        // progress gate, so it cannot steal full-player controls during the trip.
-                        .zIndex(if (state.playerMotion) {
-                            // Move in front only after the upper card has fully dissolved.
-                            // The change is invisible and restores native Mini control hit-testing.
-                            if (state.compactForegroundAcceptsInput) 2f else 0f
-                        } else if (state.compactSurfaceVisible) 2f else 0f)
+                        .zIndex(if (state.compactSurfaceVisible) 2f else 0f)
                         .then(
                             if (compactSwipeDismissEnabled && onDismiss != null) {
                                 Modifier.bottomSheetDraggable(
@@ -452,79 +423,22 @@ fun BottomSheet(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .offset {
-                            IntOffset(0, if (state.playerMotion && state.rawProgress > 0f)
-                                ((state.expandedBound - state.collapsedBound) *
-                                    (1f - playerFrameTravel(state.visualProgress))).roundToPx() else 0)
-                        }
-                        .pointerInput(state) {
-                            if (!state.playerMotion) return@pointerInput
-                            awaitEachGesture {
-                                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                                // Half-revealed artwork must not intercept a second Mini tap as
-                                // an artwork/lyrics action. Mini moves in front once the fade ends.
-                                if (playerCardOpacity(state.visualProgress) < 1f) {
-                                    down.consume()
-                                    do {
-                                        val event = awaitPointerEvent(PointerEventPass.Initial)
-                                        event.changes.forEach { it.consume() }
-                                    } while (event.changes.any { it.pressed })
-                                }
-                            }
-                        }
                         .graphicsLayer {
                             val raw = state.visualProgress
-                            if (state.playerMotion) {
-                                val cardHeight = playerFrameHeight(raw, size.height,
-                                    (collapsedContentHeight ?: state.collapsedBound).toPx())
-                                val elasticity = playerCardElasticity(raw, state.frameVelocityFraction)
-                                scaleX = 1f - 0.0035f * elasticity
-                                scaleY = 1f + 0.010f * elasticity
-                                transformOrigin = TransformOrigin(0.5f,
-                                    (cardHeight / (2f * size.height.coerceAtLeast(1f))).coerceIn(0f, 1f))
-                                alpha = playerCardOpacity(raw)
-                                if (raw < 1f) {
-                                    shape = PlayerCardShape(
-                                        playerFrameContour(raw, collapsedHorizontalInset.toPx(),
-                                            collapsedTopCornerRadius.toPx(), density),
-                                        cardHeight,
-                                    )
-                                    clip = true
-                                } else {
-                                    shape = androidx.compose.ui.graphics.RectangleShape
-                                    clip = false
-                                }
-                            } else {
-                                alpha = 1f
-                                scaleY = 1f
-                                scaleX =
-                                    playerFrameHorizontalScale(
-                                        progress = raw,
-                                        widthPx = size.width,
-                                        collapsedInsetPx = collapsedHorizontalInset.toPx(),
-                                    )
-                                transformOrigin = TransformOrigin(0.5f, 0f)
-                                val topCornerRadius =
-                                    playerFrameCornerRadius(
-                                        progress = raw,
-                                        collapsedRadius = collapsedTopCornerRadius,
-                                    )
-                                shape =
-                                    RoundedCornerShape(
-                                        topStart = topCornerRadius,
-                                        topEnd = topCornerRadius,
-                                    )
-                                clip = topCornerRadius > 0.dp
-                            }
+                            scaleX = playerFrameHorizontalScale(raw, size.width, collapsedHorizontalInset.toPx())
+                            transformOrigin = TransformOrigin(0.5f, 0f)
+                            val radius = playerFrameCornerRadius(raw, collapsedTopCornerRadius)
+                            shape = RoundedCornerShape(topStart = radius, topEnd = radius)
+                            clip = radius > 0.dp
                         },
             ) {
                 Box(
                     modifier =
                         Modifier
                             .fillMaxSize()
-                            .then(if (state.playerMotion) Modifier else Modifier.graphicsLayer {
+                            .graphicsLayer {
                                 alpha = surfaceAlpha(state.visualProgress)
-                            })
+                            }
                             .background(backgroundColor)
                             // The expanded sheet is modal. Its empty/decorative regions must
                             // own touch input; otherwise a tap lands on settings underneath.
@@ -550,9 +464,9 @@ fun BottomSheet(
                         modifier =
                             Modifier
                                 .fillMaxSize()
-                                .then(if (state.playerMotion) Modifier else Modifier.graphicsLayer {
+                                .graphicsLayer {
                                     alpha = fullPlayerContentAlpha(state.visualProgress)
-                                }),
+                                },
                     ) {
                         content()
                     }
@@ -766,7 +680,7 @@ class BottomSheetState internal constructor(
         get() = requestedAnchor == SheetAnchor.Dismissed
 
     internal val contentHandoffPoint: Float
-        get() = if (playerMotion) MagneticPlayerContentHandoffPoint else PlayerContentHandoffPoint
+        get() = if (playerMotion) PlayerWindowMountThreshold else PlayerContentHandoffPoint
 
     internal val frameVelocityFraction: Float
         get() {
@@ -782,13 +696,15 @@ class BottomSheetState internal constructor(
 
     val compactSurfaceVisible by
         derivedStateOf {
-            if (playerMotion) !isDismissed && playerMiniDrawAlpha(visualProgress) > 0f
+            // Recreate Mini's cheap controls just before their finite closing handoff. Its
+            // decorative clock remains stopped until PlayerWindow actually draws the source.
+            if (playerMotion) !isDismissed && visualProgress < 0.38f
             else shouldShowCompactSurface(visualProgress, isDismissed, contentHandoffPoint)
         }
 
     val compactForegroundAcceptsInput by
         derivedStateOf {
-            if (playerMotion) !isDismissed && playerCardOpacity(visualProgress) <= SHEET_PROGRESS_EPSILON
+            if (playerMotion) !isDismissed && visualProgress <= 0.10f
             else miniPlayerForegroundCanAcceptInput(visualProgress, isDismissed, contentHandoffPoint)
         }
 

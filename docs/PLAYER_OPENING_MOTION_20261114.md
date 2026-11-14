@@ -1,70 +1,64 @@
-# Player opening: one card motion with a short Mini handoff
+# Player window rewrite after reviewing 12804.mp4
 
-The player grows from the Mini card's real bounds and covers stationary app navigation. Opening
-is 460ms and closing 360ms. A completed tap starts the finite anchored mutation immediately;
-repeated requests coalesce, and reversals continue from the current position.
+## What the recording revealed
 
-## Presentation
+The 6.76s recording was inspected as full frames and 30fps strips around opening and closing.
+At approximately 0.65–0.85s and 1.45–1.62s the old transition reveals/collapses a large cropped
+photograph above Mini. It reads as a sliding shutter rather than a shared container. App labels
+remain visible through that photograph during the outer-card fade. Mini, the photograph and the
+card boundary therefore have conflicting visual ownership. Repeated short openings amplify this.
 
-- One progress controls the card's position, height, width and corner radius. A native rounded
-  rectangle replaces the bowed cubic Path. The extra late edge-catch acceleration is removed.
-- Rounded corners remain through the trip, then leave the viewport in its final interval.
-  Square screens fill their remaining corner pixels progressively too.
-- The app underneath stays at its original size and position. A light 16% black scrim replaces
-  the previous 30% scrim, scaling and secondary rounded clipping layer.
-- The real full page mounts at the first moving offset and remains opaque internally. The
-  existing outer card layer blends between progress 0.06 and 0.42 with a quintic curve that has
-  zero slope and curvature at its endpoints. Background materials therefore blend over a longer
-  part of the unchanged 360ms closing trip. Below 0.06 the bright photo fragment is completely
-  gone; above 0.42 the window is fully opaque. No temporary grey material replaces the real page.
-- Mini stays opaque UNDER that one card fade until it is covered. This makes the top source
-  region a direct Mini-to-player blend, without two independent fades exposing the app between
-  them. Mini stays at its dock while the full card moves in a separate sibling slot, rather than
-  inheriting the parent translation. Only Mini's upper edge stretches towards the descending
-  player, by at most 6% of Mini's height (roughly 4dp). Its bottom and horizontal edges remain
-  fixed; actual closing velocity supplies the stretch, which vanishes at rest and both anchors.
-  Independent downward Mini dismissal retains its original trajectory. Mini moves in front again
-  only when the upper card is fully transparent, restoring its
-  native control hit-testing. Half-revealed full-page artwork cannot hijack taps as Lyrics actions.
-- A bounded deformation follows the actual anchored offset velocity: opening stretches Y by at
-  most 1% with opposite X compensation up to 0.35%; closing compresses it. The pivot is the centre
-  of the visible card, and deformation vanishes at rest, both anchors and the Mini handoff. No
-  target-direction flip, extra clock, looping bounce or layout remeasurement is added.
-- The page remains mounted through the final visible closing segment. Reopening near Mini no
-  longer disposes and reconstructs the still-visible page midway through the reversal.
-- Generic sheets retain their original opacity handoff and motion. Artwork, video and control
-  measured layouts and decode sizes stay unchanged. Only the explicitly requested subtle card
-  transform affects visual proportions; palettes and final gradient rendering remain intact.
+The recording establishes appearance, not physical-device frame times, tap latency or battery
+consumption. A screen recording alone cannot separate UI stalls from capture cadence.
 
-## Work and loading
+## New ownership
 
-The underlay transform, independent page-opacity layers and complex outline Path stay removed.
-The short outer-card dissolve reuses its existing graphics layer and does not run at the full anchor.
-Background mounting uses derived visibility booleans, avoiding raw-progress composition of the
-background slot. A retained matching Immersion page texture is reused even after shared-LRU
-eviction; it is not rendered again merely because the shared cache was evicted. During genuine
-image preparation, Immersion uses its already sampled cover colour instead of a generic grey
-base. Decoding still uses the existing full-resolution requests and bounded caches.
-For a same-cover crop/inset refresh, the previous complete photo/background pair stays visible
-until the replacement texture is ready, then retires immediately without another opacity trip.
+BottomSheet now delegates the main player to PlayerWindow. Generic menus/queue sheets keep
+their old implementation. Old main-player layer alpha, parent translation and anisotropic
+artwork deformation have been removed from the generic renderer.
 
-No permanent clock, hidden full-player composition, additional decoder, sampling timer or blur
-is introduced. Visible motion uses the display frame clock and Android duration scale. Covered
-app drawing stops; backgrounding finishes the requested anchor without hidden animation frames.
+- One anchored, critically damped spring drives window bounds, source handoff, page position and
+  focus. Opening stiffness is 650, closing 850, damping ratio 1. Velocity survives reversal. A
+  short reversal does not replay a complete fixed 460/360ms animation. Android duration scale is
+  still handled by the existing Compose animation clock.
+- A native rounded outline interpolates the actual Mini rectangle into the window. The shell
+  itself never dissolves over the app. Corners retain their radius and finish outside the viewport.
+- The source material is the selected Mini background, using the existing artwork palette and
+  glass backdrop. Only this Mini-height material layer stretches to fill the growing shell. It has
+  no decorative clock and is removed once the page is opaque. Glass seals into an already sampled
+  artwork tone before page content is visible; there is no generic grey replacement page.
+- Full-player background, artwork, video and controls form ONE stable measured page. It moves
+  with the shell's centre and receives one uniform 0.94–1 scale, preserving aspect ratios. It
+  dissolves inside the source material over progress 0.18–0.66. This removes the bright photo
+  fragment near Mini and prevents the page fade from exposing app labels behind the photograph.
+- Mini stays at its dock. Its foreground yields over progress 0.015–0.20. On closing its upper edge
+  reaches towards the incoming window by at most 4.5% of its height, with a fixed bottom and no
+  horizontal motion. This follows the same anchored velocity and has no separate spring/timer.
+- App navigation is stationary under the window. A 20% scrim follows the same progress, rather
+  than introducing another navigation animation. Modal hit shielding stays active for the trip;
+  Mini can reopen the window near its dock. The page survives a near-Mini reversal.
+
+## Resource review
+
+No screenshot capture, bitmap copy, new image request, decoder, sampling timer, full-page blur,
+infinite transition, FPS cap or quality reduction is introduced. The material is measured at Mini
+height and transformed on the GPU. The real page is measured once and transformed rather than
+remeasured on every frame. Its draw pass and decorative clocks are suppressed while its opacity
+is zero. Covered source material is unmounted; covered app drawing stops. Mini controls are
+prepared only in the short final closing region, with their background clock stopped until visible.
+The existing Activity-stop handler completes the requested anchor without hidden animation frames.
+
+Audio/video playback, palette extraction, immersion composition and final player layouts are
+unchanged. The source bridge reuses the same current palette; it does not extract another one.
 
 ## Verification
 
-Native tests cover stationary Mini bounds through opening, bottom-anchored upward stretch on
-closing, independent downward Mini dismissal, absence of the bright photo fragment near Mini, exact Mini-under-card pixel
-blending without a transparent middle frame, restored Mini tap ownership before settlement,
-opening stretch/closing compression with stable measured layout, stationary app edges, rounded
-corner completion, source-card bounds, timing, repeated requests, near-Mini reversal without a
-remount, Back and background/idle behavior. Existing player, backdrop, playback and energy checks remain enabled.
-Results and APK provenance are recorded in the draft PR.
+Native tests cover material opacity before page reveal; exact source/page blend pixels above
+Mini; uniform page aspect and fixed measurement; source bounds and rounded finish; stationary Mini
+and bottom-anchored stretch; independent downward Mini dismissal; first-frame response; repeated
+requests; reversals; early Mini reopening without a remount; modal input; Back registration;
+source/app idle drawing and Activity-stop behavior. The actual Android builds, lint, all regression
+results and APK provenance are recorded in draft PR 100.
 
-The user's 12795.mp4 recording and clarification were inspected. No physical-device frame trace, 60/90/120Hz jank,
-end-to-end tap latency, temperature or battery measurements are claimed. Appearance stays in
-review until the DEV build has been checked on the phone.
-
-References: [Compose graphics](https://developer.android.com/develop/ui/compose/graphics/draw/modifiers),
-[Android rounded screens](https://developer.android.com/develop/ui/views/layout/insets/rounded-corners).
+No physical-device 60/90/120Hz trace, TalkBack session, thermal or battery measurement is claimed.
+The resulting DEV APK still needs an appearance check on the phone.

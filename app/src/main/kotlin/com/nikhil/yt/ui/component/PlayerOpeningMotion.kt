@@ -1,8 +1,7 @@
 /* Capsule MUSIC — one physical timeline for the player window and its app scene. GPL-3.0. */
 package com.nikhil.yt.ui.component
 
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -25,12 +24,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
-import kotlin.math.abs
 
-internal const val PlayerOpenDurationMs = 460
-internal const val PlayerCloseDurationMs = 360
-internal val PlayerOpenAnimation = tween<Float>(PlayerOpenDurationMs, easing = CubicBezierEasing(0.30f, 0.10f, 0.35f, 1f))
-internal val PlayerCloseAnimation = tween<Float>(PlayerCloseDurationMs, easing = CubicBezierEasing(0.28f, 0.08f, 0.40f, 1f))
+// One critically damped mutation preserves velocity when Back/tap reverses the window.
+// A nearby reversal settles sooner instead of replaying a full fixed-duration trip.
+internal val PlayerOpenAnimation = spring<Float>(dampingRatio = 1f, stiffness = 650f, visibilityThreshold = 0.5f)
+internal val PlayerCloseAnimation = spring<Float>(dampingRatio = 1f, stiffness = 850f, visibilityThreshold = 0.5f)
 
 /** Action ownership is separate from Scaffold's subcomposition order. No clock or retained UI. */
 class PlayerBackAction {
@@ -65,43 +63,43 @@ private fun window(progress: Float, start: Float, end: Float): Float {
 }
 
 /** The app stays stationary. Only a light scrim follows the existing window progress. */
-internal fun playerSceneFocus(progress: Float): Float = window(progress, 0f, 1f)
-internal fun playerSceneDim(progress: Float): Float = 0.16f * playerSceneFocus(progress)
+internal fun playerSceneDim(progress: Float): Float = 0.20f * window(progress, 0f, 0.72f)
 internal fun playerSceneNeedsDrawing(progress: Float): Boolean = boundedProgress(progress) < 1f
 
 /** One continuous trip; the final corner pixels finish outside the viewport. */
-internal fun playerFrameTravel(progress: Float): Float = (boundedProgress(progress) / 0.97f).coerceAtMost(1f)
+internal fun playerFrameTravel(progress: Float): Float = boundedProgress(progress)
 
-/** Grow both card edges from Mini's bounds; the lower edge starts above app navigation. */
-internal fun playerFrameHeight(progress: Float, fullHeight: Float, miniHeight: Float): Float {
-    val full = fullHeight.coerceAtLeast(0f)
-    val mini = miniHeight.coerceIn(0f, full)
-    return mini + (full - mini) * playerFrameTravel(progress)
-}
-
-/** A gentle material handoff near Mini, with zero slope/curvature at both ends. */
-internal fun playerCardOpacity(progress: Float): Float {
-    val t = ((boundedProgress(progress) - 0.06f) / 0.36f).coerceIn(0f, 1f).toDouble()
-    return (t * t * t * (t * (t * 6.0 - 15.0) + 10.0)).toFloat().coerceIn(0f, 1f)
-}
+/** Only the page contents dissolve. The growing material shell never fades over the app. */
+internal fun playerPageOpacity(progress: Float): Float = window(progress, 0.18f, 0.66f)
+internal fun playerPageScale(progress: Float): Float = 0.94f + 0.06f * window(progress, 0.18f, 1f)
+internal fun playerSourceSeal(progress: Float): Float = window(progress, 0f, 0.20f)
 
 /** Mini is the opaque source UNDER the dissolving card, so the app cannot leak through it. */
-internal fun playerMiniDrawAlpha(progress: Float): Float = if (playerCardOpacity(progress) < 1f) 1f else 0f
+internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0.015f, 0.20f)
 
 /** Mini's bottom stays docked; only its top reaches slightly towards the descending card. */
 internal fun playerMiniStretch(progress: Float, velocityFraction: Float): Float {
     val p = boundedProgress(progress)
     val speed = if (velocityFraction.isFinite()) (-velocityFraction).coerceAtLeast(0f) else 0f
-    val contact = window(p, 0f, 0.10f) * (1f - window(p, 0.12f, 0.42f))
-    return 0.06f * speed / (1f + speed) * contact
+    val contact = window(p, 0f, 0.06f) * (1f - window(p, 0.08f, 0.22f))
+    return 0.045f * speed / (1f + speed) * contact
 }
 
-/** Actual offset velocity supplies the sign. No target-direction switch or extra animation clock. */
-internal fun playerCardElasticity(progress: Float, velocityFraction: Float): Float {
+/** The shell changes aspect, while every photo/video/control shares ONE uniform page scale. */
+internal fun playerWindowBounds(progress: Float, size: Size, miniHeight: Float, dockHeight: Float, inset: Float): Rect {
     val p = boundedProgress(progress)
-    val velocity = if (velocityFraction.isFinite()) velocityFraction else 0f
-    val drive = velocity / (1f + abs(velocity))
-    return drive * (4f * p * (1f - p)) * playerCardOpacity(p)
+    val width = size.width.coerceAtLeast(0f)
+    val height = size.height.coerceAtLeast(0f)
+    val top = (height - dockHeight.coerceIn(0f, height)) * (1f - p)
+    val bottom = (height - dockHeight + miniHeight).coerceIn(0f, height) * (1f - p) + height * p
+    val side = inset.coerceIn(0f, width / 2f) * (1f - p)
+    return Rect(side, top, width - side, bottom.coerceAtLeast(top))
+}
+
+internal class PlayerWindowShape(private val bounds: Rect, private val radius: Float, private val bleed: Float) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline =
+        Outline.Rounded(RoundRect(Rect(bounds.left - bleed, bounds.top - bleed,
+            bounds.right + bleed, bounds.bottom + bleed), CornerRadius(radius, radius)))
 }
 
 @Composable
@@ -166,20 +164,4 @@ internal fun playerFrameContour(progress: Float, miniInset: Float, miniRadius: F
         // viewport. Keep the rounding visible until the frame itself has reached the screen.
         bleed = (radius.coerceAtLeast(0f) * 0.30f + density) * window(p, 0.97f, 1f),
     )
-}
-
-internal class PlayerCardShape(
-    private val contour: PlayerFrameContour,
-    private val visibleHeight: Float? = null,
-) : Shape {
-    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
-        val left = contour.inset - contour.bleed
-        val right = size.width - contour.inset + contour.bleed
-        val top = -contour.bleed
-        val bottom = (visibleHeight ?: size.height).coerceIn(0f, size.height) + contour.bleed
-        val radius = contour.radius.coerceIn(0f, minOf(right - left, bottom - top).coerceAtLeast(0f) / 2f)
-        if (radius == 0f) return Outline.Rectangle(Rect(left, top, right, bottom))
-        // A native round rectangle avoids rebuilding a bowed Path and its complex clip each frame.
-        return Outline.Rounded(RoundRect(Rect(left, top, right, bottom), CornerRadius(radius, radius)))
-    }
 }

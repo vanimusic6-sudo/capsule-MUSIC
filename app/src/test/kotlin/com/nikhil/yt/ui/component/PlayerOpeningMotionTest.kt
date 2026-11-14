@@ -49,6 +49,7 @@ class PlayerOpeningMotionTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private lateinit var state: BottomSheetState
     private val foreground = mutableStateOf(true)
+    private var materialDraws = 0
     private var sceneDraws = 0
     private var sceneCompositions = 0
     private var navigationClicks = 0
@@ -106,6 +107,10 @@ class PlayerOpeningMotionTest {
                         backHandlerEnabled = false, collapsedContentHeight = 48.dp,
                         collapsedHorizontalInset = 12.dp, collapsedTopCornerRadius = 14.dp,
                         surfaceAlpha = ::playerHandoffSurfaceAlpha,
+                        compactBackground = {
+                            Box(Modifier.fillMaxSize().drawWithContent { materialDraws++; drawContent() }
+                                .background(Color(0xFF7C3331)))
+                        },
                         collapsedContent = {
                             Box(Modifier.fillMaxSize().background(Color(0xFF7C3331)).testTag("mini"))
                         },
@@ -114,7 +119,7 @@ class PlayerOpeningMotionTest {
                             contentMounts++
                             onDispose { contentDisposals++ }
                         }
-                        Box(Modifier.fillMaxSize().onSizeChanged { measuredContent += it }) {
+                        Box(Modifier.fillMaxSize().testTag("page").onSizeChanged { measuredContent += it }) {
                             Box(Modifier.align(Alignment.TopCenter).padding(top = 56.dp)
                                 .size(180.dp).background(Color(0xFFFFBF4C)).testTag("poster"))
                             Text("PLAYER", Modifier.align(Alignment.Center), color = Color.White)
@@ -135,389 +140,240 @@ class PlayerOpeningMotionTest {
         }
     }
 
-    @Test fun cornersKeepTheirRadiusUntilTheEdgesAreAttached() {
-        var lastTravel = 0f
-        for (step in 0..1000) {
-            val p = step / 1000f
-            val contour = playerFrameContour(p, 12f, 14f, 1f)
-            assertTrue(contour.radius >= 14f)
-            assertTrue(contour.inset >= 0f)
-            assertTrue(playerFrameTravel(p) >= lastTravel - 0.00001f)
-            lastTravel = playerFrameTravel(p)
-            if (p <= 0.97f) assertEquals(0f, contour.bleed, 0f)
+    private fun sampleAt(progress: Float) {
+        compose.runOnIdle {
+            state.setUserGestureInProgress(true)
+            val desired = state.collapsedBound + (state.expandedBound - state.collapsedBound) * progress
+            state.dispatchRawUserDelta(with(compose.density) { (desired - state.value).toPx() }, allowDismiss = false)
         }
-        assertEquals(26f, playerFrameContour(1f, 12f, 14f, 1f).radius, 0f)
-        assertEquals(1f, playerFrameTravel(0.97f), 0f)
-        assertEquals(1f, playerFrameTravel(1f), 0f)
-        val outline = PlayerCardShape(playerFrameContour(0.5f, 12f, 14f, 1f))
-            .createOutline(Size(360f, 700f), LayoutDirection.Ltr, Density(1f))
-        assertTrue("the card should use a native round-rectangle clip", outline is Outline.Rounded)
+        compose.waitForIdle()
     }
 
-    @Test fun cardBoundsGrowFromTheMiniInsteadOfStartingBelowTheScreen() {
-        val height = 700f
-        val dock = 110f
-        val mini = 48f
-        assertEquals(mini, playerFrameHeight(0f, height, mini), 0f)
-        assertEquals(height, playerFrameHeight(1f, height, mini), 0f)
-        var lastTop = height - dock
-        var lastBottom = height - dock + mini
-        for (step in 0..1000) {
-            val p = step / 1000f
-            val top = (height - dock) * (1f - playerFrameTravel(p))
-            val bottom = top + playerFrameHeight(p, height, mini)
-            assertTrue(top <= lastTop + 0.001f)
-            assertTrue(bottom >= lastBottom - 0.001f)
-            assertTrue(bottom <= height + 0.001f)
-            lastTop = top
-            lastBottom = bottom
+    private fun pagePoint(x: Float, y: Float): Offset {
+        val node = compose.onNodeWithTag("page", useUnmergedTree = true).fetchSemanticsNode()
+        return compose.runOnIdle {
+            node.layoutInfo.coordinates.localToRoot(Offset(node.layoutInfo.coordinates.size.width * x,
+                node.layoutInfo.coordinates.size.height * y))
         }
     }
 
-    @Test fun firstFramesKeepMiniVisibleWithoutAnIsolatedBrightArtworkFragment() {
-        mount()
-        compose.runOnIdle { state.expandSoft() }
-        advance(48)
-        val p = compose.runOnIdle { state.visualProgress }
-        assertTrue("sample must show the early physical reveal: $p", p > state.contentHandoffPoint && p < PlayerContentHandoffPoint)
-        val bitmap = capture("opening-dock-origin")
-        val x = bitmap.width / 2
-        val navigationY = with(compose.density) { 670.dp.toPx() }.roundToInt()
-        val navigation = bitmap.getPixel(x, navigationY)
-        assertTrue("the card must not already extend through navigation", AndroidColor.blue(navigation) > 180)
-        val top = 590f * (1f - playerFrameTravel(p))
-        val plateY = with(compose.density) { (top + 58f).dp.toPx() }.roundToInt()
-        assertEquals(0f, playerCardOpacity(p), 0f)
-        assertEquals(1f, playerMiniDrawAlpha(p), 0f)
-        val outsideMini = bitmap.getPixel(x, plateY)
-        assertTrue("the bright photo fragment must be absent before the handoff",
-            AndroidColor.red(outsideMini) < 180 && AndroidColor.green(outsideMini) < 160)
+    @Test fun windowGrowsFromTheDockWithMonotonicEdgesAndPersistentRounding() {
+        val size = Size(360f, 700f)
+        val source = playerWindowBounds(0f, size, 48f, 110f, 12f)
+        assertEquals(12f, source.left, 0f); assertEquals(590f, source.top, 0f)
+        assertEquals(348f, source.right, 0f); assertEquals(638f, source.bottom, 0f)
+        var previous = source
+        for (step in 0..1000) {
+            val p = step / 1000f
+            val frame = playerWindowBounds(p, size, 48f, 110f, 12f)
+            assertTrue(frame.top <= previous.top + 0.001f)
+            assertTrue(frame.bottom >= previous.bottom - 0.001f)
+            assertTrue(frame.left <= previous.left + 0.001f)
+            assertTrue(playerFrameContour(p, 12f, 14f, 1f).radius >= 14f)
+            previous = frame
+        }
+        assertEquals(androidx.compose.ui.geometry.Rect(0f, 0f, 360f, 700f), previous)
+        val outline = PlayerWindowShape(source, 14f, 0f).createOutline(size, LayoutDirection.Ltr, Density(1f))
+        assertTrue(outline is Outline.Rounded)
+    }
+
+    @Test fun sourceMaterialFillsTheWindowBeforeAnyBrightPageCanAppear() {
+        mount(); sampleAt(0.12f)
+        assertEquals(0f, playerPageOpacity(state.visualProgress), 0f)
+        val bitmap = capture("source-material-no-photo")
+        // Above Mini, INSIDE the expanded shell. This used to show the app through the photo.
+        val x = with(compose.density) { 180.dp.toPx() }.roundToInt()
+        val y = with(compose.density) { 550.dp.toPx() }.roundToInt()
+        assertEquals(AndroidColor.rgb(124, 51, 49), bitmap.getPixel(x, y))
         bitmap.recycle()
     }
 
-    @Test fun squareViewportCornersFillProgressivelyWithoutAZeroRadiusSnap() {
-        val progress = mutableStateOf(0.97f)
+    @Test fun pageDissolvesIntoSourceMaterialInsteadOfShowingTheAppBehindIt() {
+        mount(); sampleAt(0.43f)
+        val p = compose.runOnIdle { state.visualProgress }
+        val alpha = playerPageOpacity(p)
+        val frame = playerWindowBounds(p, Size(360f, 700f), 48f, 110f, 12f)
+        val bitmap = capture("material-page-blend")
+        val x = with(compose.density) { 40.dp.toPx() }.roundToInt()
+        val y = with(compose.density) { (frame.center.y + 20f).dp.toPx() }.roundToInt()
+        val pixel = bitmap.getPixel(x, y)
+        fun mix(source: Int, target: Int) = source * (1f - alpha) + target * alpha
+        assertEquals(mix(124,155), AndroidColor.red(pixel).toFloat(), 2f)
+        assertEquals(mix(51,40), AndroidColor.green(pixel).toFloat(), 2f)
+        assertEquals(mix(49,35), AndroidColor.blue(pixel).toFloat(), 2f)
+        bitmap.recycle()
+    }
+
+    @Test fun closingContentIsGoneBeforeTheWindowReachesMini() {
+        assertEquals(0f, playerPageOpacity(0f), 0f)
+        assertEquals(0f, playerPageOpacity(0.18f), 0f)
+        assertEquals(1f, playerPageOpacity(0.66f), 0f)
+        assertTrue(playerMiniDrawAlpha(0.08f) > 0f)
+        assertEquals(0f, playerMiniDrawAlpha(0.20f), 0f)
+        var previous = 0f
+        for (step in 0..1000) {
+            val alpha = playerPageOpacity(step / 1000f)
+            assertTrue(alpha >= previous - 0.000001f); previous = alpha
+        }
+    }
+
+    @Test fun pageKeepsOneMeasurementAndUniformAspectThroughoutTheTrip() {
+        mount()
+        for (p in listOf(0.25f, 0.43f, 0.66f, 0.85f, 0.98f)) {
+            sampleAt(p)
+            val a = pagePoint(0f, 0f); val b = pagePoint(1f, 1f)
+            assertEquals(360f / 700f, (b.x-a.x)/(b.y-a.y), 0.0001f)
+            val centre = pagePoint(0.5f,0.5f)
+            val frame = playerWindowBounds(p, Size(360f,700f),48f,110f,12f)
+            assertEquals(with(compose.density) { frame.center.y.dp.toPx() }, centre.y, 1f)
+            capture("uniform-page-${(p*100).roundToInt()}").recycle()
+        }
+        assertEquals(1, measuredContent.distinct().size)
+    }
+
+    @Test fun miniStaysAtItsDockAndOnlyItsUpperEdgeReachesTowardsTheClosingWindow() {
+        mount()
+        fun bounds() = compose.onNodeWithTag("mini",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
+        val dock = bounds()
+        compose.runOnIdle { state.expandSoft() }
+        repeat(45) {
+            advance(16); val b = bounds()
+            assertEquals(dock.top,b.top,1f); assertEquals(dock.bottom,b.bottom,1f)
+        }
+        compose.runOnIdle { state.collapseSoft() }
+        var highest = dock.top; var captured = false
+        repeat(45) {
+            advance(16); val b=bounds(); highest=minOf(highest,b.top)
+            assertEquals(dock.bottom,b.bottom,1f)
+            assertEquals(dock.left,b.left,1f); assertEquals(dock.right,b.right,1f)
+            assertTrue(b.height <= dock.height*1.046f+1f)
+            if (!captured && b.top < dock.top-0.5f) {capture("mini-source-stretch").recycle();captured=true}
+        }
+        assertTrue(highest < dock.top-0.5f)
+        assertEquals(dock.top,bounds().top,1f)
+        capture("closed").recycle()
+    }
+
+    @Test fun stretchHasNoIndependentClockOrOpeningBounce() {
+        assertTrue(playerMiniStretch(0.08f,-3f)>0f)
+        assertEquals(0f,playerMiniStretch(0.08f,3f),0f)
+        assertEquals(0f,playerMiniStretch(0.08f,0f),0f)
+        assertEquals(0f,playerMiniStretch(0f,-3f),0f)
+        assertEquals(0f,playerMiniStretch(1f,-3f),0f)
+        for (step in 0..1000) assertTrue(playerMiniStretch(step/1000f,-100f) in 0f..0.045f)
+    }
+
+    @Test fun compactSwipeDismissStillMovesMiniDownIndependently() {
+        mount()
+        fun top()=compose.onNodeWithTag("mini",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot.top
+        val dock=top()
+        compose.runOnIdle {state.dispatchRawUserDelta(with(compose.density){(-20).dp.toPx()},true,true)}
+        assertEquals(with(compose.density){20.dp.toPx()},top()-dock,1f)
+        compose.runOnIdle {state.snapTo(state.collapsedBound)}
+        assertEquals(dock,top(),1f)
+    }
+
+    @Test fun aTapMovesTheWindowWithinTwoDisplayFrames() {
+        mount()
+        compose.onNodeWithTag("mini",useUnmergedTree=true).performTouchInput {click(center)}
+        advance(32)
+        compose.runOnIdle {assertTrue(state.isExpandedOrExpanding);assertTrue(state.visualProgress>0.005f)}
+    }
+
+    @Test fun repeatedRequestsDoNotRestartTheSpringAndItSettlesWithoutALongTail() {
+        mount(); compose.runOnIdle {state.expandSoft()}
+        advance(80);compose.runOnIdle {state.expandSoft()}
+        advance(80);compose.runOnIdle {state.expandSoft()}
+        advance(550)
+        compose.runOnIdle {assertTrue(state.isExpanded);assertFalse(state.isAnimationRunning)}
+        compose.runOnIdle {state.collapseSoft()};advance(650)
+        compose.runOnIdle {assertTrue(state.isCollapsed);assertFalse(state.isAnimationRunning)}
+    }
+
+    @Test fun reversalContinuesFromTheSamePositionAndLatestIntentWins() {
+        mount();compose.runOnIdle {state.expandSoft()};advance(96)
+        val before=compose.runOnIdle {state.value.value}
+        compose.runOnIdle {state.collapseSoft();assertEquals(before,state.value.value,0.01f)}
+        advance(96)
+        val closing=compose.runOnIdle {state.value.value};assertTrue(closing<before)
+        compose.runOnIdle {state.expandSoft();assertEquals(closing,state.value.value,0.01f)}
+        advance(700)
+        compose.runOnIdle {assertTrue(state.isExpanded);assertEquals(1,contentMounts)}
+    }
+
+    @Test fun reopeningAtTheSourceDoesNotRebuildTheVisiblePageOrClickTheApp() {
+        mount();compose.runOnIdle {state.expandSoft()};advance(700)
+        compose.runOnIdle {state.collapseSoft()}
+        var frames=0
+        while(compose.runOnIdle {state.visualProgress}>0.09f && frames++<60) advance(16)
+        compose.runOnIdle {assertTrue(state.compactForegroundAcceptsInput);assertEquals(0,contentDisposals)}
+        capture("source-handoff").recycle()
+        compose.onNodeWithTag("mini",useUnmergedTree=true).performTouchInput {click(center)}
+        advance(700)
+        compose.runOnIdle {assertTrue(state.isExpanded);assertEquals(1,contentMounts);assertEquals(0,navigationClicks)}
+    }
+
+    @Test fun theStationaryAppAndNavigationNeverReceiveTransitionTaps() {
+        mount();capture("collapsed").recycle()
+        compose.runOnIdle {state.expandSoft()};advance(32)
+        compose.onNodeWithTag("scene").performTouchInput {click(Offset(center.x,height-20f))}
+        compose.runOnIdle {assertEquals(0,navigationClicks)}
+        advance(700);capture("expanded").recycle()
+        compose.onNodeWithTag("control").performClick()
+        compose.runOnIdle {assertEquals(1,controlClicks)}
+    }
+
+    @Test fun sourceMaterialAndAppDrawingStopAfterTheWindowBecomesOpaque() {
+        mount();compose.runOnIdle {state.expandSoft()};advance(700)
+        val source=materialDraws;val app=sceneDraws;val compositions=sceneCompositions
+        advance(1500)
+        compose.runOnIdle {assertEquals(source,materialDraws);assertEquals(app,sceneDraws);assertEquals(compositions,sceneCompositions)}
+    }
+
+    @Test fun stoppingTheActivityCompletesTheCurrentTargetWithoutHiddenAnimationFrames() {
+        mount();compose.runOnIdle {state.expandSoft()};advance(80)
+        compose.runOnIdle {foreground.value=false};advance(32)
+        compose.runOnIdle {assertTrue(state.isExpanded);assertFalse(state.isAnimationRunning)}
+        val draws=sceneDraws;advance(1000)
+        compose.runOnIdle {assertEquals(draws,sceneDraws)}
+    }
+
+    @Test fun backClosesNestedSurfaceThenPlayerAndConsumesRepeatsDuringClosing() {
+        mount();compose.runOnIdle {state.expandSoft()};advance(700)
+        compose.runOnIdle {nestedSurface=true;compose.activity.onBackPressedDispatcher.onBackPressed()}
+        compose.runOnIdle {assertFalse(nestedSurface);assertTrue(state.isExpanded)}
+        compose.runOnIdle {compose.activity.onBackPressedDispatcher.onBackPressed()};advance(64)
+        compose.runOnIdle {compose.activity.onBackPressedDispatcher.onBackPressed();assertEquals(0,backgroundBacks)}
+        advance(700)
+        compose.runOnIdle {assertTrue(state.isCollapsed);compose.activity.onBackPressedDispatcher.onBackPressed();assertEquals(1,backgroundBacks)}
+    }
+
+    @Test fun routeRecompositionDoesNotStealPlayerBackOwnership() {
+        mount();compose.runOnIdle {routeEpoch.value++};advance(32)
+        compose.runOnIdle {state.expandSoft()};advance(700)
+        compose.runOnIdle {compose.activity.onBackPressedDispatcher.onBackPressed()};advance(700)
+        compose.runOnIdle {assertTrue(state.isCollapsed);assertEquals(0,backgroundBacks)}
+    }
+
+    @Test fun cornersFinishOutsideTheSquareViewportInsteadOfLosingTheirRadius() {
+        val p=mutableStateOf(0.97f)
         compose.setContent {
-            Box(Modifier.size(260.dp, 240.dp).background(Color.Green).testTag("scene")) {
+            Box(Modifier.size(260.dp,240.dp).background(Color.Green).testTag("scene")) {
                 Box(Modifier.fillMaxSize().graphicsLayer {
-                    shape = PlayerCardShape(playerFrameContour(progress.value, 12.dp.toPx(), 14.dp.toPx(), density))
-                    clip = true
+                    val contour=playerFrameContour(p.value,12.dp.toPx(),14.dp.toPx(),density)
+                    shape=PlayerWindowShape(androidx.compose.ui.geometry.Rect(0f,0f,size.width,size.height),contour.radius,contour.bleed)
+                    clip=true
                 }.background(Color.Red))
             }
         }
-        fun cornerInk(name: String): Int {
-            val b = capture(name)
-            val edge = with(compose.density) { 26.dp.toPx() }.roundToInt()
-            return (0 until edge).sumOf { y -> (0 until edge).count { x -> AndroidColor.red(b.getPixel(x, y)) > 200 } }
+        fun ink(name:String):Int {
+            val bitmap=capture(name);val edge=with(compose.density){26.dp.toPx()}.roundToInt()
+            val count=(0 until edge).sumOf{y->(0 until edge).count{x->AndroidColor.red(bitmap.getPixel(x,y))>200}}
+            bitmap.recycle();return count
         }
-        val attached = cornerInk("square-attached-rounded")
-        compose.runOnIdle { progress.value = 0.99f }
-        val leaving = cornerInk("square-corners-leaving")
-        compose.runOnIdle { progress.value = 1f }
-        val settled = cornerInk("square-corners-outside")
-        assertTrue(leaving > attached)
-        assertTrue(settled > leaving)
-        val pixel = capture("square-final").getPixel(1, 1)
-        assertEquals(AndroidColor.RED, pixel)
-    }
-
-    @Test fun navigationIsCoveredAndCannotReceiveOpeningTaps() {
-        mount()
-        val collapsed = capture("collapsed")
-        val x = collapsed.width / 2
-        val y = collapsed.height - with(compose.density) { 24.dp.toPx() }.roundToInt()
-        assertEquals(AndroidColor.BLUE, collapsed.getPixel(x, y))
-        compose.runOnIdle { state.expandSoft() }
-        advance(16)
-        // Before the rising sheet has claimed its hit region, the app scene already yields input.
-        compose.onNodeWithTag("scene").performTouchInput { click(Offset(center.x, height - 20f)) }
-        compose.runOnIdle { assertEquals(0, navigationClicks) }
-        advance(700)
-        val expanded = capture("expanded")
-        assertEquals(AndroidColor.rgb(155, 40, 35), expanded.getPixel(x, y))
-        compose.onNodeWithTag("control").performClick()
-        compose.runOnIdle { assertEquals(1, controlClicks) }
-    }
-
-    @Test fun layoutStaysStableWhileVisualElasticityRemainsSubtle() {
-        mount()
-        val widths = mutableListOf<Float>()
-        val heights = mutableListOf<Float>()
-        compose.runOnIdle { state.expandSoft() }
-        for (p in listOf(0.3f, 0.6f, 0.85f, 0.97f, 0.99f, 1f)) {
-            // Exercise the real animation/mutation owner instead of the raw gesture escape hatch.
-            var frames = 0
-            while (compose.runOnIdle { state.visualProgress } < p && frames++ < 50) advance(16)
-            compose.runOnIdle { assertTrue("opening did not reach $p", state.visualProgress >= p) }
-            val poster = compose.onNodeWithTag("poster", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-            widths += poster.width
-            heights += poster.height
-            capture("opening-${(p * 100).roundToInt()}").recycle()
-        }
-        assertTrue(measuredContent.isNotEmpty())
-        assertEquals(1, measuredContent.distinct().size)
-        val settledWidth = widths.last()
-        val settledHeight = heights.last()
-        widths.forEach { assertTrue(abs(it - settledWidth) <= settledWidth * 0.012f + 1f) }
-        heights.forEach { assertTrue(abs(it - settledHeight) <= settledHeight * 0.012f + 1f) }
-    }
-
-    @Test fun repeatedOpenKeepsTheCalibratedDurationInsteadOfRestarting() {
-        mount()
-        compose.runOnIdle { state.expandSoft() }
-        advance(96)
-        compose.runOnIdle { assertTrue(state.rawProgress in 0.1f..0.9f); state.expandSoft() }
-        advance(96)
-        compose.runOnIdle { state.expandSoft() }
-        advance(208)
-        compose.runOnIdle { assertFalse("opening should not rush to its end before 460ms", state.isExpanded) }
-        advance(112)
-        compose.runOnIdle { assertTrue(state.isExpanded); assertFalse(state.isAnimationRunning) }
-    }
-
-    @Test fun tapStartsMovingWithinTheFirstTwoFrames() {
-        mount()
-        compose.onNodeWithTag("mini", useUnmergedTree = true).performTouchInput {
-            down(center)
-            up()
-        }
-        compose.runOnIdle { assertTrue(state.isExpandedOrExpanding) }
-        advance(32)
-        compose.runOnIdle { assertTrue("tap left a motionless lead-in", state.rawProgress > 0.005f) }
-    }
-
-    @Test fun oneCardDissolveBlendsOverAnOpaqueMiniWithoutADeadMiddleFrame() {
-        mount()
-        compose.runOnIdle { state.expandSoft() }
-        var frames = 0
-        while (compose.runOnIdle { state.visualProgress } <= 0.14f && frames++ < 20) advance(16)
-        val p = compose.runOnIdle { state.visualProgress }
-        assertTrue(p < PlayerContentHandoffPoint)
-        val alpha = playerCardOpacity(p)
-        assertTrue(alpha > 0f && alpha < 1f)
-        assertEquals(1f, playerMiniDrawAlpha(p), 0f)
-        assertEquals(1f, fullPlayerContentAlpha(p, magnetic = true), 0f)
-        val bitmap = capture("mini-card-blend")
-        // Mini stays at its dock. Sample the overlapping backgrounds outside the poster.
-        val x = with(compose.density) { 40.dp.toPx() }.roundToInt()
-        val y = with(compose.density) { 614.dp.toPx() }.roundToInt()
-        val actual = bitmap.getPixel(x, y)
-        fun blend(source: Int, target: Int) = (source * (1f - alpha) + target * alpha).roundToInt()
-        assertEquals("Mini must remain opaque UNDER the single card fade",
-            blend(124, 155).toFloat(), AndroidColor.red(actual).toFloat(), 2f)
-        assertEquals(blend(51, 40).toFloat(), AndroidColor.green(actual).toFloat(), 2f)
-        assertEquals(blend(49, 35).toFloat(), AndroidColor.blue(actual).toFloat(), 2f)
-        bitmap.recycle()
-    }
-
-    @Test fun closingPhotoFadesBeforeMiniSettlesAndBothEndpointsAreClean() {
-        assertEquals(0f, playerCardOpacity(0f), 0f)
-        assertEquals(0f, playerCardOpacity(0.06f), 0f)
-        assertTrue(playerCardOpacity(0.09f) < 0.1f)
-        assertTrue("background blending should already have begun on closing", playerCardOpacity(0.35f) < 0.95f)
-        assertEquals(1f, playerCardOpacity(0.42f), 0f)
-        assertEquals(1f, playerMiniDrawAlpha(0f), 0f)
-        assertEquals(0f, playerMiniDrawAlpha(0.42f), 0f)
-        var previous = 0f
-        for (step in 0..1000) {
-            val p = step / 1000f
-            val alpha = playerCardOpacity(p)
-            assertTrue(alpha >= previous)
-            if (alpha < 1f) assertEquals(1f, playerMiniDrawAlpha(p), 0f)
-            previous = alpha
-        }
-    }
-
-    @Test fun elasticDeformationUsesVelocityAndVanishesAtRestAndNearMini() {
-        assertTrue(playerCardElasticity(0.5f, 3f) > 0f)
-        assertTrue(playerCardElasticity(0.5f, -3f) < 0f)
-        assertEquals(0f, playerCardElasticity(0f, 3f), 0f)
-        assertEquals(0f, playerCardElasticity(1f, -3f), 0f)
-        assertEquals(0f, playerCardElasticity(0.5f, 0f), 0f)
-        assertEquals(0f, playerCardElasticity(0.04f, 3f), 0f)
-        for (p in listOf(-1f, 0f, 0.1f, 0.5f, 1f, 2f, Float.NaN)) {
-            for (v in listOf(-100f, -3f, 0f, 3f, 100f, Float.NaN)) {
-                assertTrue(playerCardElasticity(p, v) in -1f..1f)
-            }
-        }
-    }
-
-    @Test fun miniReachesUpOnlyOnClosingAndRelaxesWithoutAnotherClock() {
-        assertTrue(playerMiniStretch(0.12f, -3f) > 0f)
-        assertEquals(0f, playerMiniStretch(0.12f, 3f), 0f)
-        assertEquals(0f, playerMiniStretch(0.12f, 0f), 0f)
-        assertEquals(0f, playerMiniStretch(0f, -3f), 0f)
-        assertEquals(0f, playerMiniStretch(1f, -3f), 0f)
-        for (step in 0..1000) {
-            for (velocity in listOf(-100f, -3f, 0f, 3f, Float.NaN)) {
-                assertTrue(playerMiniStretch(step / 1000f, velocity) in 0f..0.06f)
-            }
-        }
-    }
-
-    @Test fun miniStaysDockedAndOnlyItsTopStretchesTowardsTheClosingPlayer() {
-        mount()
-        fun miniBounds() = compose.onNodeWithTag("mini", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        val dock = miniBounds()
-        compose.runOnIdle { state.expandSoft() }
-        repeat(32) {
-            advance(16)
-            val opening = miniBounds()
-            assertEquals("Mini must not ride the opening card", dock.top, opening.top, 1f)
-            assertEquals(dock.bottom, opening.bottom, 1f)
-        }
-        compose.runOnIdle { state.collapseSoft() }
-        var highestTop = dock.top
-        var capturedStretch = false
-        repeat(26) {
-            advance(16)
-            val closing = miniBounds()
-            highestTop = minOf(highestTop, closing.top)
-            if (!capturedStretch && closing.top < dock.top - 1f) {
-                capture("mini-docked-stretch").recycle()
-                capturedStretch = true
-            }
-            assertEquals("the lower Mini edge must stay anchored", dock.bottom, closing.bottom, 1f)
-            assertEquals(dock.left, closing.left, 1f)
-            assertEquals(dock.right, closing.right, 1f)
-            assertTrue("only a small upward stretch is allowed", closing.top >= dock.top - dock.height * 0.061f - 1f)
-        }
-        assertTrue("closing must visibly reach towards the falling card", highestTop < dock.top - 1f)
-        assertEquals(dock.top, miniBounds().top, 1f)
-        capture("mini-fixed-after-close").recycle()
-    }
-
-    @Test fun dockedMiniRetainsItsIndependentDownwardDismissOffset() {
-        mount()
-        fun miniTop() = compose.onNodeWithTag("mini", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top
-        val dock = miniTop()
-        compose.runOnIdle {
-            state.dispatchRawUserDelta(with(compose.density) { (-20).dp.toPx() },
-                allowDismiss = true, compactDismissOnly = true)
-        }
-        val moved = miniTop()
-        assertEquals(with(compose.density) { 20.dp.toPx() }, moved - dock, 1f)
-        compose.runOnIdle { state.snapTo(state.collapsedBound) }
-        assertEquals(dock, miniTop(), 1f)
-    }
-
-    @Test fun actualOpeningStretchesAndClosingCompressesTheSameMeasuredPage() {
-        mount()
-        compose.runOnIdle { state.expandSoft() }
-        var frames = 0
-        while (compose.runOnIdle { state.visualProgress } < 0.5f && frames++ < 30) advance(16)
-        val openingHeight = compose.onNodeWithTag("poster", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.height
-        capture("elastic-opening").recycle()
-        advance(512)
-        val settledHeight = compose.onNodeWithTag("poster", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.height
-        compose.runOnIdle { state.collapseSoft() }
-        frames = 0
-        while (compose.runOnIdle { state.visualProgress } > 0.55f && frames++ < 30) advance(16)
-        val closingHeight = compose.onNodeWithTag("poster", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.height
-        capture("elastic-closing").recycle()
-        assertTrue("opening must stretch subtly", openingHeight > settledHeight + 0.5f)
-        assertTrue("closing must compress subtly", closingHeight < settledHeight - 0.5f)
-        assertEquals(1, measuredContent.distinct().size)
-    }
-
-    @Test fun miniCanReopenAfterTheUpperCardHasDissolvedBeforeFinalSettlement() {
-        mount()
-        compose.runOnIdle { state.expandSoft() }
-        advance(512)
-        compose.runOnIdle { state.collapseSoft() }
-        var frames = 0
-        while (compose.runOnIdle { state.visualProgress } > 0.04f && frames++ < 40) advance(16)
-        compose.runOnIdle {
-            assertEquals(0f, playerCardOpacity(state.visualProgress), 0f)
-            assertTrue(state.compactForegroundAcceptsInput)
-        }
-        compose.onNodeWithTag("mini", useUnmergedTree = true).performTouchInput { click(center) }
-        compose.runOnIdle { assertTrue(state.isExpandedOrExpanding); assertEquals(0, navigationClicks) }
-        advance(512)
-        compose.runOnIdle { assertTrue(state.isExpanded); assertEquals(1, contentMounts) }
-    }
-
-    @Test fun appSceneStaysStationaryWhileTheCardCoversIt() {
-        mount()
-        compose.runOnIdle { state.expandSoft() }
-        var frames = 0
-        while (compose.runOnIdle { state.visualProgress } < 0.55f && frames++ < 30) advance(16)
-        val bitmap = capture("stationary-app-scene")
-        val x = with(compose.density) { 1.dp.toPx() }.roundToInt()
-        val y = with(compose.density) { 40.dp.toPx() }.roundToInt()
-        assertTrue("a receding app would expose a black strip at its left edge",
-            AndroidColor.green(bitmap.getPixel(x, y)) > 60)
-        bitmap.recycle()
-    }
-
-    @Test fun closeReopenNearMiniDoesNotDisposeAndRebuildTheVisiblePage() {
-        mount()
-        compose.runOnIdle { state.expandSoft() }
-        advance(512)
-        compose.runOnIdle { state.collapseSoft() }
-        var frames = 0
-        while (compose.runOnIdle { state.visualProgress } > 0.09f && frames++ < 40) advance(16)
-        compose.runOnIdle {
-            assertTrue(state.visualProgress > state.contentHandoffPoint)
-            assertEquals(1, contentMounts)
-            assertEquals("the still-visible page must survive the final closing segment", 0, contentDisposals)
-        }
-        capture("closing-near-mini").recycle()
-        compose.runOnIdle { state.expandSoft() }
-        advance(512)
-        compose.runOnIdle { assertTrue(state.isExpanded); assertEquals(1, contentMounts) }
-    }
-
-    @Test fun reversalContinuesFromTheCurrentPositionAndLatestIntentWins() {
-        mount()
-        compose.runOnIdle { state.expandSoft() }
-        advance(240)
-        val before = compose.runOnIdle { state.value.value }
-        compose.runOnIdle { state.collapseSoft(); assertEquals(before, state.value.value, 0.001f) }
-        advance(128)
-        val closing = compose.runOnIdle { state.value.value }
-        assertTrue(closing < before)
-        compose.runOnIdle { state.expandSoft(); assertEquals(closing, state.value.value, 0.001f) }
-        advance(700)
-        compose.runOnIdle { assertTrue(state.isExpanded) }
-    }
-
-    @Test fun stoppedActivityFinishesItsRequestedAnchorWithoutHiddenFrames() {
-        mount()
-        compose.runOnIdle { state.expandSoft() }
-        advance(200)
-        compose.runOnIdle { assertFalse(state.isExpanded); foreground.value = false }
-        advance(32)
-        compose.runOnIdle { assertTrue(state.isExpanded); assertFalse(state.isAnimationRunning) }
-        val drawn = sceneDraws
-        val composed = sceneCompositions
-        advance(1500)
-        compose.runOnIdle { assertEquals(drawn, sceneDraws); assertEquals(composed, sceneCompositions) }
-    }
-
-    @Test fun scaffoldBackClosesNestedSurfaceThenPlayerAndShieldsClosing() {
-        mount()
-        compose.runOnIdle { state.expandSoft() }
-        advance(700)
-        compose.runOnIdle { nestedSurface = true; compose.activity.onBackPressedDispatcher.onBackPressed() }
-        compose.runOnIdle { assertFalse(nestedSurface); assertTrue(state.isExpanded); assertEquals(0, backgroundBacks) }
-        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
-        advance(96)
-        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed(); assertEquals(0, backgroundBacks) }
-        advance(500)
-        compose.runOnIdle { assertTrue(state.isCollapsed) }
-        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed(); assertEquals(1, backgroundBacks) }
-    }
-
-    @Test fun aLaterRouteDoesNotStealTheNextPlayerBack() {
-        mount()
-        compose.runOnIdle { routeEpoch.value++ }
-        advance(32)
-        compose.runOnIdle { state.expandSoft() }
-        advance(700)
-        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
-        advance(500)
-        compose.runOnIdle { assertTrue(state.isCollapsed); assertEquals(0, backgroundBacks) }
+        val start=ink("rounded-attached");compose.runOnIdle{p.value=0.99f};val leaving=ink("rounded-leaving")
+        compose.runOnIdle{p.value=1f};val end=ink("rounded-outside")
+        assertTrue(leaving>start);assertTrue(end>leaving)
     }
 
     private fun capture(name: String): Bitmap {

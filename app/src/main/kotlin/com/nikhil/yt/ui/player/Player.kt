@@ -426,10 +426,14 @@ fun BottomSheetPlayer(
 
             else -> false
         }
+    val pageIsDrawn by remember(state) { derivedStateOf {
+        !state.playerMotion || com.nikhil.yt.ui.component.playerPageOpacity(state.visualProgress) > 0f
+    } }
     val backdropTimelineRunning =
         backdropNeedsClock &&
             effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
             state.shouldLayerAboveCollapsedChrome &&
+            pageIsDrawn &&
             onScreen &&
             isPlaying &&
             playbackState == Player.STATE_READY &&
@@ -516,6 +520,24 @@ fun BottomSheetPlayer(
                 foregroundInteractive = state.compactForegroundAcceptsInput,
             )
         },
+        compactBackground = {
+            // The growing shell starts with the actual selected Mini material, not a grey
+            // full-page fallback. Only this small material layer changes aspect, never artwork.
+            // Glass seals into an existing artwork tone before the full page becomes visible.
+            Box(Modifier.fillMaxSize()) {
+                if (miniPlayerBackground == MiniPlayerBackgroundStyle.GLASS) {
+                    Box(Modifier.fillMaxSize().graphicsLayer {
+                        alpha = com.nikhil.yt.ui.component.playerSourceSeal(state.visualProgress)
+                    }.background(gradientColors.firstOrNull() ?: playerSurfaceColor(useBlackBackground)))
+                }
+                MiniPlayerSurface(
+                    style = miniPlayerBackground, pureBlack = pureBlack, colors = gradientColors,
+                    modifier = Modifier.fillMaxSize(), animated = false,
+                    glassBackdrop = miniPlayerBackdrop,
+                    glassShape = androidx.compose.ui.graphics.RectangleShape,
+                ) {}
+            }
+        },
         backgroundContent = {
             // Generic sheets retain their old bridge. The physical card reveals its real page
             // from the first frame and never paints the mini material as a temporary grey page.
@@ -554,7 +576,7 @@ fun BottomSheetPlayer(
                             gradientColors = gradientColors,
                             artworkField = artworkScene.field,
                             animated = if (playerBackground == PlayerBackgroundStyle.SCENE_LIGHT)
-                                onScreen && playerSceneExposed && state.shouldLayerAboveCollapsedChrome else backdropTimelineRunning,
+                                onScreen && pageIsDrawn && playerSceneExposed && state.shouldLayerAboveCollapsedChrome else backdropTimelineRunning,
                             sharedAnimationTime = sharedBackdropAnimationTime,
                         )
                     }
@@ -562,7 +584,7 @@ fun BottomSheetPlayer(
                         CapsuleVideoAmbientBackdrop(
                             bands = retainedVideoAmbientBands,
                             field = retainedVideoAmbient?.field,
-                            animated = onScreen && playerSceneExposed && videoPlaybackState.presentingVideo,
+                            animated = onScreen && pageIsDrawn && playerSceneExposed && videoPlaybackState.presentingVideo,
                             modifier = Modifier.fillMaxSize().graphicsLayer {
                                 alpha = videoAmbientOverlayAlpha.value
                             },

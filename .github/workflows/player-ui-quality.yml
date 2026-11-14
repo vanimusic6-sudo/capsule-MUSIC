@@ -7,6 +7,7 @@ on:
       - 'app/src/main/kotlin/com/nikhil/yt/ui/player/**'
       - 'app/src/main/kotlin/com/nikhil/yt/ui/component/BottomSheet.kt'
       - 'app/src/main/kotlin/com/nikhil/yt/ui/component/PlayerOpeningMotion.kt'
+      - 'app/src/main/kotlin/com/nikhil/yt/ui/component/PlayerWindow.kt'
       - 'app/src/main/kotlin/com/nikhil/yt/MainActivity.kt'
       - 'app/src/test/kotlin/com/nikhil/yt/ui/**'
       - '.github/workflows/player-ui-quality.yml'
