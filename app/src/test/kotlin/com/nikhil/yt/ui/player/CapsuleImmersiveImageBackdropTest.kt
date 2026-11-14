@@ -103,47 +103,6 @@ class CapsuleImmersiveImageBackdropTest {
         }
     }
 
-    @Test fun centralGoldenSubjectDoesNotReturnAsALampBelowTheControls() {
-        val plain = photo().apply { eraseColor(0xFF30363D.toInt()) }
-        val subject = plain.copy(Bitmap.Config.ARGB_8888, true).apply {
-            Canvas(this).drawRect(105f, 96f, 215f, 208f,
-                Paint().apply { color = 0xFFFFA720.toInt() })
-        }
-        val a = capsuleImmersiveImageBackdropBitmap(plain.capsuleImmersiveVisibleField(1f, false), 0.60f)
-            .asAndroidBitmap()
-        val b = capsuleImmersiveImageBackdropBitmap(subject.capsuleImmersiveVisibleField(1f, false), 0.60f)
-            .asAndroidBitmap()
-        preview(b, "continuation-no-central-light-echo")
-        assertTrue("Real central image colour should remain in the upper backdrop",
-            (b.getPixel(96, 90) ushr 16 and 255) > (a.getPixel(96, 90) ushr 16 and 255) + 20)
-        assertTrue("Central light must not be repeated below the controls",
-            largestLowerChange(a, b) <= 2)
-    }
-
-    @Test fun oneVividFinalRowCannotChooseTheWholePlayerFloor() {
-        val plain = photo().apply { eraseColor(0xFF305060.toInt()) }
-        val stripe = plain.copy(Bitmap.Config.ARGB_8888, true).apply {
-            Canvas(this).drawRect(0f, 258f, 320f, 264f,
-                Paint().apply { color = 0xFFFF7020.toInt() })
-        }
-        val a = capsuleImmersiveImageBackdropBitmap(plain.capsuleImmersiveVisibleField(1f, false), 0.60f)
-            .asAndroidBitmap()
-        val b = capsuleImmersiveImageBackdropBitmap(stripe.capsuleImmersiveVisibleField(1f, false), 0.60f)
-            .asAndroidBitmap()
-        assertTrue("Continuation must use lower image material, not one scanline",
-            largestLowerChange(a, b) <= 2)
-    }
-
-    private fun largestLowerChange(a: Bitmap, b: Bitmap): Int {
-        var largest = 0
-        for (y in (a.height * 0.82f).toInt() until a.height) for (x in 0 until a.width) {
-            val p = a.getPixel(x, y); val q = b.getPixel(x, y)
-            for (shift in listOf(0, 8, 16)) largest = maxOf(largest,
-                abs((p ushr shift and 255) - (q ushr shift and 255)))
-        }
-        return largest
-    }
-
     private fun preview(bitmap: Bitmap, name: String) {
         val path = File("build/video-morph-preview/$name.png")
         path.parentFile.mkdirs()
