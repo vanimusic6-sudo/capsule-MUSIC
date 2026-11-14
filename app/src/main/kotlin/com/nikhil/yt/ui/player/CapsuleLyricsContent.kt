@@ -162,14 +162,19 @@ internal fun CapsuleLyricsBackdropLayer(
     val needsArtworkColors =
         lyricsBackdrop is CapsuleLyricsBackdrop.PlayerTheme &&
             lyricsBackdrop.style != PlayerBackgroundStyle.DEFAULT
-    val localArtworkColors =
-        rememberCapsuleArtworkColors(
+    val needsSpatialField = (lyricsBackdrop as? CapsuleLyricsBackdrop.PlayerTheme)?.style == PlayerBackgroundStyle.SCENE_LIGHT
+    val localArtworkScene =
+        rememberCapsuleArtworkScene(
             mediaMetadata = mediaMetadata,
             enabled =
                 onScreen &&
                     needsArtworkColors &&
-                    playerArtworkColors.isEmpty(),
+                    (playerArtworkColors.isEmpty() || needsSpatialField),
+            animatePalette = playerArtworkColors.isEmpty(),
         )
+    val localArtworkColors = localArtworkScene.colors
+    val retainedField = remember { arrayOf<CapsuleColorField?>(null) }
+    SideEffect { localArtworkScene.field?.let { retainedField[0] = it } }
     val resolvedArtworkColors =
         if (playerArtworkColors.isNotEmpty()) {
             playerArtworkColors
@@ -215,6 +220,7 @@ internal fun CapsuleLyricsBackdropLayer(
                     is CapsuleLyricsBackdrop.PlayerTheme -> PlayerBackground(
                         playerBackground = backdrop.style,
                         gradientColors = artworkColors,
+                        artworkField = localArtworkScene.field ?: retainedField[0],
                         animated = isVisible && onScreen && isPlaying &&
                             playbackState == Player.STATE_READY && backdrop == lyricsBackdrop,
                         sharedAnimationTime = backdropAnimationTime,

@@ -55,4 +55,24 @@ class CapsuleScenePaletteTest {
         assertTrue("Cool right region should stay bluer than left",
             AndroidColor.blue(right) > AndroidColor.blue(left))
     }
+    @Test fun tinyColouredLabelCannotBecomeTheMainWallpaperAccent() {
+        val image = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
+        image.eraseColor(AndroidColor.rgb(224, 224, 224))
+        for (y in 92 until 98) for (x in 92 until 98) image.setPixel(x, y, AndroidColor.RED)
+        val palette = capsuleArtworkScenePalette(image)
+        assertTrue(palette.all { maxOf(it.red, it.green, it.blue) - minOf(it.red, it.green, it.blue) < 0.06f })
+    }
+
+    @Test fun texturedRedAcrossTheHueBoundaryKeepsItsTrueDominance() {
+        val image = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
+        for (y in 0 until 100) for (x in 0 until 100) {
+            image.setPixel(x, y, if (x >= 70) AndroidColor.GRAY
+                else if (x % 20 < 10) AndroidColor.rgb(218, 35, 20)
+                else AndroidColor.rgb(218, 20, 35))
+        }
+        val palette = capsuleArtworkScenePalette(image)
+        assertTrue("A split red hue must not lose to a smaller grey patch",
+            palette[0].red > maxOf(palette[0].green, palette[0].blue) * 2f)
+    }
+
 }

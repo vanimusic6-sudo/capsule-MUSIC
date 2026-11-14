@@ -752,6 +752,9 @@ fun AppearanceSettings(
 
                     PlayerBackgroundStyle.CAPSULE_GLOW ->
                         stringResource(R.string.background_capsule_glow)
+
+                    PlayerBackgroundStyle.SCENE_LIGHT ->
+                        stringResource(R.string.background_scene_light)
                 }
             },
         )

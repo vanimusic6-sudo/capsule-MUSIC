@@ -2,6 +2,8 @@ package com.nikhil.yt.ui
 
 import androidx.compose.ui.graphics.Color
 import com.nikhil.yt.ui.player.ArtworkPaletteCache
+import com.nikhil.yt.ui.player.CapsuleArtworkScene
+import com.nikhil.yt.ui.player.CapsuleColorField
 import com.nikhil.yt.ui.player.capsuleArtworkPaletteKey
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -64,4 +66,26 @@ class ArtworkPaletteCacheTest {
         assertEquals(palette, cache.get("playing"))
         assertNotNull(cache.get("next"))
     }
+    @Test fun spatialSceneAndPaletteShareOneBoundedDecode() = runTest {
+        val cache = ArtworkPaletteCache(maxEntries = 2)
+        val field = CapsuleColorField(1, 1, listOf(Color.Red))
+        val scene = CapsuleArtworkScene(palette, field)
+        val release = CompletableDeferred<Unit>()
+        var decodes = 0
+        val first = async(start = CoroutineStart.UNDISPATCHED) {
+            cache.getOrExtractScene("same") { decodes++; release.await(); scene }
+        }
+        val second = async(start = CoroutineStart.UNDISPATCHED) {
+            cache.getOrExtractScene("same") { error("Duplicate scene decode") }
+        }
+        release.complete(Unit)
+        assertSame(scene, first.await())
+        assertSame(scene, second.await())
+        assertEquals(palette, cache.get("same"))
+        assertEquals(1, decodes)
+        cache.put("second", listOf(Color.Black))
+        cache.put("third", listOf(Color.Gray))
+        assertNull("Field must be evicted with its palette", cache.getScene("same"))
+    }
+
 }

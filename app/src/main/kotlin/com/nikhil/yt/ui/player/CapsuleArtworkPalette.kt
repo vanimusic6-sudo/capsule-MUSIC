@@ -35,29 +35,40 @@ import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 // A short shared colour handoff feels tied to the artwork, not a late wave.
 private const val ARTWORK_PALETTE_TRANSITION_MS = 420
 
+internal data class CapsuleArtworkScene(
+    val colors: List<Color>,
+    val field: CapsuleColorField? = null,
+)
+
 internal class ArtworkPaletteCache(private val maxEntries: Int = 32) {
     // Bounded stripes also keep waiters on the same lock after a failed decode.
     private val extractionMutexes = Array(8) { Mutex() }
     private val values =
-        object : LinkedHashMap<String, List<Color>>(
+        object : LinkedHashMap<String, CapsuleArtworkScene>(
             maxEntries,
             0.75f,
             true,
         ) {
             override fun removeEldestEntry(
-                eldest: MutableMap.MutableEntry<String, List<Color>>?,
+                eldest: MutableMap.MutableEntry<String, CapsuleArtworkScene>?,
             ): Boolean = size > maxEntries
         }
 
     @Synchronized
-    fun get(key: String): List<Color>? = values[key]
+    fun get(key: String): List<Color>? = values[key]?.colors
+
+    @Synchronized
+    fun getScene(key: String): CapsuleArtworkScene? = values[key]
+
+    @Synchronized
+    fun putScene(key: String, scene: CapsuleArtworkScene) { values[key] = scene }
 
     @Synchronized
     fun put(
         key: String,
         colors: List<Color>,
     ) {
-        values[key] = colors
+        values[key] = CapsuleArtworkScene(colors)
     }
 
     suspend fun getOrExtract(
@@ -71,6 +82,13 @@ internal class ArtworkPaletteCache(private val maxEntries: Int = 32) {
             get(key) ?: extract()?.also { put(key, it) }
         }
     }
+
+    suspend fun getOrExtractScene(key: String, extract: suspend () -> CapsuleArtworkScene?): CapsuleArtworkScene? {
+        getScene(key)?.let { return it }
+        val lock = extractionMutexes[(key.hashCode() and Int.MAX_VALUE) % extractionMutexes.size]
+        return lock.withLock { getScene(key) ?: extract()?.also { putScene(key, it) } }
+    }
+
 }
 
 private val CapsuleArtworkPaletteCache = ArtworkPaletteCache()
@@ -103,12 +121,26 @@ internal fun rememberCapsuleArtworkColors(
 /** Shared artwork palette for non-player surfaces such as playlist cards. */
 @Composable
 internal fun rememberArtworkGradientColors(
-    cacheKey: String?,
-    thumbnailUrl: String?,
-    enabled: Boolean = true,
+    cacheKey: String?, thumbnailUrl: String?, enabled: Boolean = true,
     paletteCache: ArtworkPaletteCache = CapsuleArtworkPaletteCache,
     refreshOnOpen: Boolean = false,
-): List<Color> {
+): List<Color> = rememberArtworkScene(cacheKey, thumbnailUrl, enabled, paletteCache, refreshOnOpen).colors
+
+@Composable
+internal fun rememberCapsuleArtworkScene(
+    mediaMetadata: MediaMetadata?, enabled: Boolean = true,
+    refreshOnOpen: Boolean = false, animatePalette: Boolean = true,
+): CapsuleArtworkScene = rememberArtworkScene(
+    mediaMetadata?.let { capsuleArtworkPaletteKey(it.id) }, mediaMetadata?.thumbnailUrl,
+    enabled, CapsuleArtworkPaletteCache, refreshOnOpen, animatePalette,
+)
+
+@Composable
+internal fun rememberArtworkScene(
+    cacheKey: String?, thumbnailUrl: String?, enabled: Boolean,
+    paletteCache: ArtworkPaletteCache, refreshOnOpen: Boolean,
+    animatePalette: Boolean = true,
+): CapsuleArtworkScene {
     val context = LocalContext.current
     val primary = MaterialTheme.colorScheme.primary
     val secondary = MaterialTheme.colorScheme.secondary
@@ -123,8 +155,8 @@ internal fun rememberArtworkGradientColors(
      * Keying this state by cacheKey used to recreate it for every track and
      * briefly expose the theme fallback before the new artwork was ready.
      */
-    val initialPalette = remember { cacheKey?.let(paletteCache::get) }
-    var targetColors by remember { mutableStateOf(initialPalette ?: fallback) }
+    val initialPalette = remember { cacheKey?.let(paletteCache::getScene) }
+    var targetScene by remember { mutableStateOf(initialPalette ?: CapsuleArtworkScene(fallback)) }
     var hasArtworkPalette by remember { mutableStateOf(initialPalette != null) }
     var resolvedKey by remember { mutableStateOf(cacheKey.takeIf { initialPalette != null }) }
 
@@ -144,7 +176,7 @@ internal fun rememberArtworkGradientColors(
 
         if (cacheKey == null) {
             if (!hasArtworkPalette) {
-                targetColors = fallback
+                targetScene = CapsuleArtworkScene(fallback)
             }
             return@LaunchedEffect
         }
@@ -154,8 +186,8 @@ internal fun rememberArtworkGradientColors(
         // successful palettes exit here without any extra network or bitmap work.
         if (cacheKey == resolvedKey) return@LaunchedEffect
 
-        paletteCache.get(cacheKey)?.let {
-            targetColors = it
+        paletteCache.getScene(cacheKey)?.let {
+            targetScene = it
             hasArtworkPalette = true
             resolvedKey = cacheKey
             return@LaunchedEffect
@@ -168,7 +200,7 @@ internal fun rememberArtworkGradientColors(
         }
 
         val extracted =
-            paletteCache.getOrExtract(cacheKey) {
+            paletteCache.getOrExtractScene(cacheKey) {
                 val request =
                     ImageRequest.Builder(context)
                         .data(thumbnailUrl)
@@ -181,9 +213,9 @@ internal fun rememberArtworkGradientColors(
                 try {
                     val artworkBitmap = withContext(Dispatchers.IO) {
                         context.imageLoader.execute(request)
-                    }.image?.toBitmap() ?: return@getOrExtract null
+                    }.image?.toBitmap() ?: return@getOrExtractScene null
                     withContext(Dispatchers.Default) {
-                        capsuleArtworkScenePalette(artworkBitmap)
+                        capsuleArtworkScene(artworkBitmap)
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
@@ -194,18 +226,19 @@ internal fun rememberArtworkGradientColors(
             }
                 ?: return@LaunchedEffect
 
-        targetColors = extracted
+        targetScene = extracted
         hasArtworkPalette = true
         resolvedKey = cacheKey
     }
 
     // Remove hidden palette animations from the frame clock altogether. Keep the decoded
     // target above so the same colors are immediately available when the surface returns.
-    if (!enabled) return emptyList()
+    if (!enabled) return CapsuleArtworkScene(emptyList())
+    if (!animatePalette) return targetScene
 
     val first by
         animateColorAsState(
-            targetValue = targetColors.getOrElse(0) { fallback[0] },
+            targetValue = targetScene.colors.getOrElse(0) { fallback[0] },
             animationSpec =
                 tween(
                     durationMillis = ARTWORK_PALETTE_TRANSITION_MS,
@@ -215,7 +248,7 @@ internal fun rememberArtworkGradientColors(
         )
     val second by
         animateColorAsState(
-            targetValue = targetColors.getOrElse(1) { fallback[1] },
+            targetValue = targetScene.colors.getOrElse(1) { fallback[1] },
             animationSpec =
                 tween(
                     durationMillis = ARTWORK_PALETTE_TRANSITION_MS,
@@ -225,7 +258,7 @@ internal fun rememberArtworkGradientColors(
         )
     val third by
         animateColorAsState(
-            targetValue = targetColors.getOrElse(2) { fallback[2] },
+            targetValue = targetScene.colors.getOrElse(2) { fallback[2] },
             animationSpec =
                 tween(
                     durationMillis = ARTWORK_PALETTE_TRANSITION_MS,
@@ -234,5 +267,5 @@ internal fun rememberArtworkGradientColors(
             label = "capsuleArtworkTertiary",
         )
 
-    return listOf(first, second, third)
+    return CapsuleArtworkScene(listOf(first, second, third), targetScene.field)
 }

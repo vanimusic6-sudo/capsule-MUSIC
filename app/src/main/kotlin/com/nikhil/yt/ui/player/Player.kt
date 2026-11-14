@@ -382,12 +382,14 @@ fun BottomSheetPlayer(
             (miniPlayerBackground != MiniPlayerBackgroundStyle.THEME ||
                 (effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
                     playerBackground != PlayerBackgroundStyle.DEFAULT))
-    val gradientColors =
-        rememberCapsuleArtworkColors(
+    val artworkScene =
+        rememberCapsuleArtworkScene(
             mediaMetadata = enrichedMetadata,
             enabled = needsArtworkPalette,
             refreshOnOpen = state.isExpandedOrExpanding,
         )
+
+    val gradientColors = artworkScene.colors
 
     val textColor =
         when {
@@ -507,7 +509,9 @@ fun BottomSheetPlayer(
                     PlayerBackground(
                         playerBackground = playerBackground,
                         gradientColors = gradientColors,
-                        animated = backdropTimelineRunning,
+                        artworkField = artworkScene.field,
+                        animated = if (playerBackground == PlayerBackgroundStyle.SCENE_LIGHT)
+                            onScreen && state.shouldLayerAboveCollapsedChrome else backdropTimelineRunning,
                         sharedAnimationTime = sharedBackdropAnimationTime,
                     )
                     if (videoAmbientOverlayMounted && retainedVideoAmbientBands != null) {

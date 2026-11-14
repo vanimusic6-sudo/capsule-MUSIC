@@ -397,6 +397,7 @@ enum class PlayerBackgroundStyle {
     COLORING,
     GLOW,
     CAPSULE_GLOW,
+    SCENE_LIGHT,
 }
 
 enum class MiniPlayerBackgroundStyle {
