@@ -33,6 +33,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -93,6 +94,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -220,6 +222,10 @@ import com.nikhil.yt.ui.component.LocalBottomSheetPageState
 import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.StarDialog
 import com.nikhil.yt.ui.component.TopSearch
+import com.nikhil.yt.ui.component.PlayerSceneBackdrop
+import com.nikhil.yt.ui.component.PlayerBackAction
+import com.nikhil.yt.ui.component.playerRailFocus
+import com.nikhil.yt.ui.component.shouldRenderExpandedSurface
 import com.nikhil.yt.ui.component.rememberBottomSheetState
 import com.nikhil.yt.ui.component.shouldRestoreCompactPlayerAfterPlayback
 import com.nikhil.yt.ui.component.shimmer.ShimmerTheme
@@ -894,8 +900,17 @@ class MainActivity : ComponentActivity() {
                                         MiniPlayerBottomSpacing +
                                         MiniPlayerHeight,
                             expandedBound = maxHeight,
+                            playerMotion = true,
                         )
 
+
+                    val playerBackAction = remember { PlayerBackAction() }
+                    val playerOwnsBack by remember(playerBottomSheetState) {
+                        derivedStateOf {
+                            playerBottomSheetState.isExpandedOrExpanding ||
+                                shouldRenderExpandedSurface(playerBottomSheetState.visualProgress, playerBottomSheetState.isDismissed)
+                        }
+                    }
 
                     /*
                      * Focus/IME ownership changes immediately when mini → player
@@ -1346,6 +1361,7 @@ class MainActivity : ComponentActivity() {
                         Row {
                             AnimatedVisibility(useRail && shouldShowNavigationBar) {
                                 NavigationRail(
+                                    modifier = Modifier.playerRailFocus { playerBottomSheetState.visualProgress },
                                     containerColor = if(pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer,
                                     contentColor = if(pureBlack) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                                     header = { Spacer(Modifier.height(24.dp)) }
@@ -1380,7 +1396,7 @@ class MainActivity : ComponentActivity() {
                                                 val wasPlayerActive = playerBottomSheetState.isExpanded
 
                                                 if(wasPlayerActive) {
-                                                    playerBottomSheetState.collapse(spring())
+                                                    playerBottomSheetState.collapseSoft()
                                                 }
 
                                                 if (screen.route == Screens.Search.route) {
@@ -1399,363 +1415,365 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
 
-                            Scaffold(
-                                topBar = {
-                                    // The pinned main-route greeting now belongs
-                                    // to each NavHost canvas so Settings Back
-                                    // transitions carry it and its background
-                                    // together with the returning page.
-                                    // This slot is ONLY for the active search.
-                                    AnimatedVisibility(
-                                        visible = active || navBackStackEntry?.destination?.route?.startsWith("search/") == true,
-                                        enter = fadeIn(animationSpec = tween(durationMillis = 300)),
-                                        exit = fadeOut(animationSpec = tween(durationMillis = 200))
-                                    ) {
-                                        TopSearch(
-                                            query = query,
-                                            onQueryChange = onQueryChange,
-                                            onSearch = onSearch,
-                                            active = active,
-                                            onActiveChange = onActiveChange,
-                                            placeholder = {
-                                                Text(
-                                                    text = stringResource(
-                                                        when (searchSource) {
-                                                            SearchSource.LOCAL -> R.string.search_library
-                                                            SearchSource.ONLINE -> R.string.search_yt_music
-                                                        }
-                                                    ),
-                                                )
-                                            },
-                                            leadingIcon = {
-                                                IconButton(
-                                                    onClick = {
-                                                        when {
-                                                            active -> onActiveChange(false)
-                                                            !navigationItems.fastAny { it.route == navBackStackEntry?.destination?.route } -> {
-                                                                navController.navigateUp()
-                                                            }
-
-                                                            else -> onActiveChange(true)
-                                                        }
+                            Box(Modifier.fillMaxSize().background(Color.Black)) {
+                                PlayerSceneBackdrop(progress = { playerBottomSheetState.visualProgress }, blocked = playerOwnsBack) {
+                                    Scaffold(
+                                        topBar = {
+                                            // The pinned main-route greeting now belongs
+                                            // to each NavHost canvas so Settings Back
+                                            // transitions carry it and its background
+                                            // together with the returning page.
+                                            // This slot is ONLY for the active search.
+                                            AnimatedVisibility(
+                                                visible = active || navBackStackEntry?.destination?.route?.startsWith("search/") == true,
+                                                enter = fadeIn(animationSpec = tween(durationMillis = 300)),
+                                                exit = fadeOut(animationSpec = tween(durationMillis = 200))
+                                            ) {
+                                                TopSearch(
+                                                    query = query,
+                                                    onQueryChange = onQueryChange,
+                                                    onSearch = onSearch,
+                                                    active = active,
+                                                    onActiveChange = onActiveChange,
+                                                    placeholder = {
+                                                        Text(
+                                                            text = stringResource(
+                                                                when (searchSource) {
+                                                                    SearchSource.LOCAL -> R.string.search_library
+                                                                    SearchSource.ONLINE -> R.string.search_yt_music
+                                                                }
+                                                            ),
+                                                        )
                                                     },
-                                                    onLongClick = {
-                                                        when {
-                                                            active -> {}
-                                                            !navigationItems.fastAny { it.route == navBackStackEntry?.destination?.route } -> {
-                                                                navController.backToMain()
-                                                            }
-                                                            else -> {}
-                                                        }
-                                                    },
-                                                ) {
-                                                    Icon(
-                                                        painterResource(
-                                                            if (active ||
-                                                                !navigationItems.fastAny { it.route == navBackStackEntry?.destination?.route }
-                                                            ) {
-                                                                R.drawable.arrow_back
-                                                            } else {
-                                                                R.drawable.search
-                                                            },
-                                                        ),
-                                                        contentDescription = if (active || !navigationItems.fastAny { it.route == navBackStackEntry?.destination?.route }) "Back" else "Search",
-                                                    )
-                                                }
-                                            },
-                                            trailingIcon = {
-                                                Row {
-                                                    if (active) {
-                                                        if (query.text.isNotEmpty()) {
-                                                            IconButton(
-                                                                onClick = {
-                                                                    onQueryChange(
-                                                                        TextFieldValue(
-                                                                            ""
-                                                                        )
-                                                                    )
-                                                                },
-                                                            ) {
-                                                                Icon(
-                                                                    painter = painterResource(R.drawable.close),
-                                                                    contentDescription = "Clear search",
-                                                                )
-                                                            }
-                                                        }
+                                                    leadingIcon = {
                                                         IconButton(
                                                             onClick = {
-                                                                searchSource =
-                                                                    if (searchSource == SearchSource.ONLINE) SearchSource.LOCAL else SearchSource.ONLINE
+                                                                when {
+                                                                    active -> onActiveChange(false)
+                                                                    !navigationItems.fastAny { it.route == navBackStackEntry?.destination?.route } -> {
+                                                                        navController.navigateUp()
+                                                                    }
+
+                                                                    else -> onActiveChange(true)
+                                                                }
+                                                            },
+                                                            onLongClick = {
+                                                                when {
+                                                                    active -> {}
+                                                                    !navigationItems.fastAny { it.route == navBackStackEntry?.destination?.route } -> {
+                                                                        navController.backToMain()
+                                                                    }
+                                                                    else -> {}
+                                                                }
                                                             },
                                                         ) {
                                                             Icon(
-                                                                painter = painterResource(
-                                                                    when (searchSource) {
-                                                                        SearchSource.LOCAL -> R.drawable.library_music
-                                                                        SearchSource.ONLINE -> R.drawable.language
+                                                                painterResource(
+                                                                    if (active ||
+                                                                        !navigationItems.fastAny { it.route == navBackStackEntry?.destination?.route }
+                                                                    ) {
+                                                                        R.drawable.arrow_back
+                                                                    } else {
+                                                                        R.drawable.search
                                                                     },
                                                                 ),
-                                                                contentDescription = "Toggle search source",
+                                                                contentDescription = if (active || !navigationItems.fastAny { it.route == navBackStackEntry?.destination?.route }) "Back" else "Search",
                                                             )
+                                                        }
+                                                    },
+                                                    trailingIcon = {
+                                                        Row {
+                                                            if (active) {
+                                                                if (query.text.isNotEmpty()) {
+                                                                    IconButton(
+                                                                        onClick = {
+                                                                            onQueryChange(
+                                                                                TextFieldValue(
+                                                                                    ""
+                                                                                )
+                                                                            )
+                                                                        },
+                                                                    ) {
+                                                                        Icon(
+                                                                            painter = painterResource(R.drawable.close),
+                                                                            contentDescription = "Clear search",
+                                                                        )
+                                                                    }
+                                                                }
+                                                                IconButton(
+                                                                    onClick = {
+                                                                        searchSource =
+                                                                            if (searchSource == SearchSource.ONLINE) SearchSource.LOCAL else SearchSource.ONLINE
+                                                                    },
+                                                                ) {
+                                                                    Icon(
+                                                                        painter = painterResource(
+                                                                            when (searchSource) {
+                                                                                SearchSource.LOCAL -> R.drawable.library_music
+                                                                                SearchSource.ONLINE -> R.drawable.language
+                                                                            },
+                                                                        ),
+                                                                        contentDescription = "Toggle search source",
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                    },
+                                                    modifier =
+                                                        Modifier
+                                                            // The search overlay is composed in Scaffold.topBar,
+                                                            // outside the NavHost captured for mini-player glass.
+                                                            // Capture its visible content while expanded.
+                                                            .then(
+                                                                if (miniPlayerLiquidGlassActive && active) {
+                                                                    Modifier.layerBackdrop(miniPlayerSearchBackdrop)
+                                                                } else {
+                                                                    Modifier
+                                                                },
+                                                            )
+                                                            .focusRequester(searchBarFocusRequester)
+                                                            .let { with(this@BoxWithConstraints) { it.align(Alignment.TopCenter) } },
+                                                    focusRequester = searchBarFocusRequester,
+                                                    colors = if (pureBlack && active) {
+                                                        SearchBarDefaults.colors(
+                                                            containerColor = Color.Black,
+                                                            dividerColor = Color.DarkGray,
+                                                            inputFieldColors = TextFieldDefaults.colors(
+                                                                focusedTextColor = Color.White,
+                                                                unfocusedTextColor = Color.Gray,
+                                                                focusedContainerColor = Color.Transparent,
+                                                                unfocusedContainerColor = Color.Transparent,
+                                                                cursorColor = Color.White,
+                                                                focusedIndicatorColor = Color.Transparent,
+                                                                unfocusedIndicatorColor = Color.Transparent,
+                                                            )
+                                                        )
+                                                    } else {
+                                                        SearchBarDefaults.colors(
+                                                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                                                        )
+                                                    }
+                                                ) {
+                                                    // Search results must actually travel underneath
+                                                    // the glass. Reserve space at the END of each list,
+                                                    // not by shrinking its whole viewport above Mini Player.
+                                                    val searchOverlayBottomPadding = getBottomNavPadding() +
+                                                        (if (!playerBottomSheetState.isDismissed) {
+                                                            MiniPlayerHeight +
+                                                                MiniPlayerBottomSpacing
+                                                        } else 0.dp)
+                                                    Crossfade(
+                                                        targetState = searchSource,
+                                                        label = "",
+                                                        modifier =
+                                                            Modifier
+                                                                .fillMaxSize()
+                                                                .navigationBarsPadding(),
+                                                    ) { searchSource ->
+                                                        when (searchSource) {
+                                                            SearchSource.LOCAL ->
+                                                                LocalSearchScreen(
+                                                                    query = query.text,
+                                                                    navController = navController,
+                                                                    onDismiss = { onActiveChange(false) },
+                                                                    pureBlack = pureBlack,
+                                                                    bottomContentPadding = searchOverlayBottomPadding,
+                                                                )
+
+                                                            SearchSource.ONLINE ->
+                                                                OnlineSearchScreen(
+                                                                    query = query.text,
+                                                                    onQueryChange = onQueryChange,
+                                                                    navController = navController,
+                                                                    onSearch = { submitted -> onSearch(submitted) },
+                                                                    onDismiss = { onActiveChange(false) },
+                                                                    pureBlack = pureBlack,
+                                                                    bottomContentPadding = searchOverlayBottomPadding,
+                                                                )
                                                         }
                                                     }
                                                 }
-                                            },
-                                            modifier =
-                                                Modifier
-                                                    // The search overlay is composed in Scaffold.topBar,
-                                                    // outside the NavHost captured for mini-player glass.
-                                                    // Capture its visible content while expanded.
-                                                    .then(
-                                                        if (miniPlayerLiquidGlassActive && active) {
-                                                            Modifier.layerBackdrop(miniPlayerSearchBackdrop)
-                                                        } else {
-                                                            Modifier
-                                                        },
-                                                    )
-                                                    .focusRequester(searchBarFocusRequester)
-                                                    .let { with(this@BoxWithConstraints) { it.align(Alignment.TopCenter) } },
-                                            focusRequester = searchBarFocusRequester,
-                                            colors = if (pureBlack && active) {
-                                                SearchBarDefaults.colors(
-                                                    containerColor = Color.Black,
-                                                    dividerColor = Color.DarkGray,
-                                                    inputFieldColors = TextFieldDefaults.colors(
-                                                        focusedTextColor = Color.White,
-                                                        unfocusedTextColor = Color.Gray,
-                                                        focusedContainerColor = Color.Transparent,
-                                                        unfocusedContainerColor = Color.Transparent,
-                                                        cursorColor = Color.White,
-                                                        focusedIndicatorColor = Color.Transparent,
-                                                        unfocusedIndicatorColor = Color.Transparent,
-                                                    )
-                                                )
-                                            } else {
-                                                SearchBarDefaults.colors(
-                                                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-                                                )
                                             }
-                                        ) {
-                                            // Search results must actually travel underneath
-                                            // the glass. Reserve space at the END of each list,
-                                            // not by shrinking its whole viewport above Mini Player.
-                                            val searchOverlayBottomPadding = getBottomNavPadding() +
-                                                (if (!playerBottomSheetState.isDismissed) {
-                                                    MiniPlayerHeight +
-                                                        MiniPlayerBottomSpacing
-                                                } else 0.dp)
-                                            Crossfade(
-                                                targetState = searchSource,
-                                                label = "",
-                                                modifier =
-                                                    Modifier
-                                                        .fillMaxSize()
-                                                        .navigationBarsPadding(),
-                                            ) { searchSource ->
-                                                when (searchSource) {
-                                                    SearchSource.LOCAL ->
-                                                        LocalSearchScreen(
-                                                            query = query.text,
-                                                            navController = navController,
-                                                            onDismiss = { onActiveChange(false) },
-                                                            pureBlack = pureBlack,
-                                                            bottomContentPadding = searchOverlayBottomPadding,
-                                                        )
+                                        },
+                                        bottomBar = {
+                                            Box {
+                                                // The About route needs a continuous background behind
+                                                // the mini-player rather than the outer Scaffold's surface.
+                                                if (navBackStackEntry?.destination?.route == "settings/about") {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .align(Alignment.BottomCenter)
+                                                            .fillMaxWidth()
+                                                            .height(MiniPlayerHeight + getBottomNavPadding() + bottomInset)
+                                                            .background(MaterialTheme.colorScheme.background),
+                                                    )
+                                                }
 
-                                                    SearchSource.ONLINE ->
-                                                        OnlineSearchScreen(
-                                                            query = query.text,
-                                                            onQueryChange = onQueryChange,
-                                                            navController = navController,
-                                                            onSearch = { submitted -> onSearch(submitted) },
-                                                            onDismiss = { onActiveChange(false) },
-                                                            pureBlack = pureBlack,
-                                                            bottomContentPadding = searchOverlayBottomPadding,
-                                                        )
+
+                                                if(useRail) return@Box
+
+                                                val navSlideDistance =
+                                                    bottomInset + floatingBarsBottomPadding + navVisibleHeight
+
+                                                Box(
+                                                    modifier =
+                                                        Modifier
+                                                            .align(Alignment.BottomCenter)
+                                                            .height(navSlideDistance)
+                                                            // Navigation stays in the app scene underneath the player.
+                                                            .zIndex(1f)
+                                                            .offset {
+                                                                val hidden =
+                                                                    1f - navigationBarReveal
+                                                                IntOffset(
+                                                                    x = 0,
+                                                                    y = (navSlideDistance * hidden).roundToPx(),
+                                                                )
+                                                            },
+                                                ) {
+                                                    if (pureBlack) Color.Black
+                                                    else MaterialTheme.colorScheme.surfaceContainer
+
+                                                    FluidSlidingNavigationBar(
+                                                        modifier =
+                                                            Modifier
+                                                                .align(Alignment.BottomCenter)
+                                                                .fillMaxWidth()
+                                                                .height(bottomInset + navVisibleHeight),
+                                                        items = navigationItems,
+                                                        currentRoute =
+                                                            if (active) Screens.Search.route
+                                                            else navBackStackEntry?.destination?.route ?: "",
+                                                        pureBlack = pureBlack,
+                                                        capsuleMiniPlayerVisible = capsuleMiniPlayerActuallyVisible,
+                                                        onTabSelected = { screen ->
+                                                            if (screen.route == Screens.Search.route) {
+                                                                onActiveChange(true)
+                                                            } else {
+                                                                if (active) onActiveChange(false)
+                                                                mainTabNavigator.select(screen.route) {
+                                                                    navController.currentBackStackEntry?.liveSavedStateHandle()?.set("scrollToTop", true)
+                                                                    coroutineScope.launch {
+                                                                        searchBarScrollBehavior.state.resetHeightOffset()
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    )
+
                                                 }
                                             }
-                                        }
-                                    }
-                                },
-                                bottomBar = {
-                                    Box {
-                                        // The About route needs a continuous background behind
-                                        // the mini-player rather than the outer Scaffold's surface.
-                                        if (navBackStackEntry?.destination?.route == "settings/about") {
-                                            Box(
-                                                modifier = Modifier
-                                                    .align(Alignment.BottomCenter)
-                                                    .fillMaxWidth()
-                                                    .height(MiniPlayerHeight + getBottomNavPadding() + bottomInset)
-                                                    .background(MaterialTheme.colorScheme.background),
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .then(
+                                                if (currentRoute in topLevelScreens) Modifier
+                                                else Modifier.nestedScroll(searchBarScrollBehavior.nestedScrollConnection)
                                             )
-                                        }
-                                        BottomSheetPlayer(
-                                            state = playerBottomSheetState,
-                                            navController = navController,
-                                            modifier =
-                                                Modifier.zIndex(
-                                                    if (playerBottomSheetState.shouldLayerAboveCollapsedChrome) {
-                                                        2f
-                                                    } else {
-                                                        0f
-                                                    },
-                                                ),
-                                            pureBlack = pureBlack,
-                                            miniPlayerBackdrop =
-                                                when {
-                                                    !miniPlayerLiquidGlassActive -> null
-                                                    active -> miniPlayerSearchBackdrop
-                                                    else -> miniPlayerGlassBackdrop
-                                                },
-                                        )
-
-                                        if(useRail) return@Box
-
-                                        val navSlideDistance =
-                                            bottomInset + floatingBarsBottomPadding + navVisibleHeight
-
+                                    ) {
+                                        /*
+                                         * Record one stable full-size source for liquid glass instead of
+                                         * recording NavHost itself. Settings/detail routes use nested
+                                         * Scaffolds, insets and route transitions; attaching the recorder to
+                                         * the animated NavHost made the source go effectively empty in some
+                                         * of those states. This mirrors the robust sibling-source layout used
+                                         * by mature Backdrop integrations: source box here, mini-player in
+                                         * Scaffold.bottomBar.
+                                         */
                                         Box(
                                             modifier =
                                                 Modifier
-                                                    .align(Alignment.BottomCenter)
-                                                    .height(navSlideDistance)
-                                                    /*
-                                                     * Restore the original physical dock motion:
-                                                     * opening the player sends the app navigation
-                                                     * down out of the window; closing brings it
-                                                     * back up over the descending player. Route
-                                                     * visibility and player travel share one
-                                                     * bounded motion instead of fading the bar.
-                                                     */
-                                                    .zIndex(3f)
-                                                    .offset {
-                                                        val hidden =
-                                                            CapsuleMotion.either(
-                                                                playerBottomSheetState.visualProgress,
-                                                                1f - navigationBarReveal,
-                                                            )
-                                                        IntOffset(
-                                                            x = 0,
-                                                            y = (navSlideDistance * hidden).roundToPx(),
-                                                        )
-                                                    },
+                                                    .fillMaxSize()
+                                                    .then(
+                                                        // The normal source stays clipped to the bottom
+                                                        // band. Search owns a separate recorder while open.
+                                                        if (miniPlayerLiquidGlassActive && !active) {
+                                                            Modifier
+                                                                .layerBackdrop(miniPlayerGlassBackdrop)
+                                                                .background(
+                                                                    if (pureBlack) {
+                                                                        Color.Black
+                                                                    } else {
+                                                                        MaterialTheme.colorScheme.background
+                                                                    },
+                                                                )
+                                                        } else {
+                                                            Modifier
+                                                        },
+                                                    ),
                                         ) {
-                                            if (pureBlack) Color.Black
-                                            else MaterialTheme.colorScheme.surfaceContainer
-
-                                            FluidSlidingNavigationBar(
-                                                modifier =
-                                                    Modifier
-                                                        .align(Alignment.BottomCenter)
-                                                        .fillMaxWidth()
-                                                        .height(bottomInset + navVisibleHeight),
-                                                items = navigationItems,
-                                                currentRoute =
-                                                    if (active) Screens.Search.route
-                                                    else navBackStackEntry?.destination?.route ?: "",
-                                                pureBlack = pureBlack,
-                                                capsuleMiniPlayerVisible = capsuleMiniPlayerActuallyVisible,
-                                                onTabSelected = { screen ->
-                                                    if (screen.route == Screens.Search.route) {
-                                                        onActiveChange(true)
-                                                    } else {
-                                                        if (active) onActiveChange(false)
-                                                        mainTabNavigator.select(screen.route) {
-                                                            navController.currentBackStackEntry?.liveSavedStateHandle()?.set("scrollToTop", true)
-                                                            coroutineScope.launch {
-                                                                searchBarScrollBehavior.state.resetHeightOffset()
-                                                            }
-                                                        }
-                                                    }
-                                                }
+                                            NavHost(
+                                            navController = navController,
+                                            startDestination = initialMainRoute,
+                                            enterTransition = {
+                                                ScreenTransitions.enter(initialState.destination.route, targetState.destination.route)
+                                            },
+                                            exitTransition = {
+                                                ScreenTransitions.exit(initialState.destination.route, targetState.destination.route)
+                                            },
+                                            popEnterTransition = {
+                                                ScreenTransitions.enter(initialState.destination.route, targetState.destination.route, isPop = true)
+                                            },
+                                            popExitTransition = {
+                                                ScreenTransitions.exit(initialState.destination.route, targetState.destination.route, isPop = true)
+                                            },
+                                            modifier =
+                                                Modifier
+                                                    .clipToBounds()
+                                                    .then(
+                                                        if (currentRoute in topLevelScreens) Modifier
+                                                        else Modifier.nestedScroll(
+                                                            if (navigationItems.fastAny { it.route == currentRoute } ||
+                                                                currentRoute?.startsWith("search/") == true
+                                                            ) searchBarScrollBehavior.nestedScrollConnection
+                                                            else topAppBarScrollBehavior.nestedScrollConnection
+                                                        )
+                                                    )
+                                        ) {
+                                            navigationBuilder(
+                                                navController,
+                                                topAppBarScrollBehavior,
                                             )
+                                        }
 
+                                        /*
+                                         * Must sit here, after the NavHost and inside the same
+                                         * subcomposition. Back callbacks are consulted newest-first, and
+                                         * Material's Scaffold subcomposes its content during the measure
+                                         * pass — so a guard registered in the outer composition would be
+                                         * registered *before* navigation's own callback and never see a
+                                         * back event at all.
+                                         */
+                                            BackRepeatGuard(enabled = canPopBack)
+                                            BackHandler(enabled = playerOwnsBack) {
+                                                if (playerBottomSheetState.isExpandedOrExpanding) {
+                                                    playerBackAction.handle(playerBottomSheetState::collapseSoft)
+                                                }
+                                                // Further Back presses during closing are consumed until Mini settles.
+                                            }
                                         }
                                     }
-                                },
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .then(
-                                        if (currentRoute in topLevelScreens) Modifier
-                                        else Modifier.nestedScroll(searchBarScrollBehavior.nestedScrollConnection)
-                                    )
-                            ) {
-                                /*
-                                 * Record one stable full-size source for liquid glass instead of
-                                 * recording NavHost itself. Settings/detail routes use nested
-                                 * Scaffolds, insets and route transitions; attaching the recorder to
-                                 * the animated NavHost made the source go effectively empty in some
-                                 * of those states. This mirrors the robust sibling-source layout used
-                                 * by mature Backdrop integrations: source box here, mini-player in
-                                 * Scaffold.bottomBar.
-                                 */
-                                Box(
-                                    modifier =
-                                        Modifier
-                                            .fillMaxSize()
-                                            .then(
-                                                // The normal source stays clipped to the bottom
-                                                // band. Search owns a separate recorder while open.
-                                                if (miniPlayerLiquidGlassActive && !active) {
-                                                    Modifier
-                                                        .layerBackdrop(miniPlayerGlassBackdrop)
-                                                        .background(
-                                                            if (pureBlack) {
-                                                                Color.Black
-                                                            } else {
-                                                                MaterialTheme.colorScheme.background
-                                                            },
-                                                        )
-                                                } else {
-                                                    Modifier
-                                                },
-                                            ),
-                                ) {
-                                    NavHost(
+                                }
+                                BottomSheetPlayer(
+                                    state = playerBottomSheetState,
                                     navController = navController,
-                                    startDestination = initialMainRoute,
-                                    enterTransition = {
-                                        ScreenTransitions.enter(initialState.destination.route, targetState.destination.route)
-                                    },
-                                    exitTransition = {
-                                        ScreenTransitions.exit(initialState.destination.route, targetState.destination.route)
-                                    },
-                                    popEnterTransition = {
-                                        ScreenTransitions.enter(initialState.destination.route, targetState.destination.route, isPop = true)
-                                    },
-                                    popExitTransition = {
-                                        ScreenTransitions.exit(initialState.destination.route, targetState.destination.route, isPop = true)
-                                    },
                                     modifier =
-                                        Modifier
-                                            .clipToBounds()
-                                            .then(
-                                                if (currentRoute in topLevelScreens) Modifier
-                                                else Modifier.nestedScroll(
-                                                    if (navigationItems.fastAny { it.route == currentRoute } ||
-                                                        currentRoute?.startsWith("search/") == true
-                                                    ) searchBarScrollBehavior.nestedScrollConnection
-                                                    else topAppBarScrollBehavior.nestedScrollConnection
-                                                )
-                                            )
-                                ) {
-                                    navigationBuilder(
-                                        navController,
-                                        topAppBarScrollBehavior,
-                                    )
-                                }
-
-                                /*
-                                 * Must sit here, after the NavHost and inside the same
-                                 * subcomposition. Back callbacks are consulted newest-first, and
-                                 * Material's Scaffold subcomposes its content during the measure
-                                 * pass — so a guard registered in the outer composition would be
-                                 * registered *before* navigation's own callback and never see a
-                                 * back event at all.
-                                 */
-                                    BackRepeatGuard(enabled = canPopBack)
-                                }
+                                        Modifier.zIndex(
+                                            if (playerBottomSheetState.shouldLayerAboveCollapsedChrome) {
+                                                2f
+                                            } else {
+                                                0f
+                                            },
+                                        ),
+                                    pureBlack = pureBlack,
+                                    backAction = playerBackAction,
+                                    miniPlayerBackdrop =
+                                        when {
+                                            !miniPlayerLiquidGlassActive -> null
+                                            active -> miniPlayerSearchBackdrop
+                                            else -> miniPlayerGlassBackdrop
+                                        },
+                                )
                             }
                         }
 

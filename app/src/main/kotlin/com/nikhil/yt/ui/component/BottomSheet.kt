@@ -62,6 +62,7 @@ import androidx.compose.ui.zIndex
 import com.nikhil.yt.ui.motion.CapsuleMotion
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
 import kotlin.math.abs
@@ -185,11 +186,11 @@ internal fun miniPlayerContentAlpha(progress: Float): Float =
     )).coerceIn(0f, 1f)
 
 /** Full Player UI starts only after compact UI has completely yielded. */
-internal fun fullPlayerContentAlpha(progress: Float): Float =
+internal fun fullPlayerContentAlpha(progress: Float, magnetic: Boolean = false): Float =
     transitionWindow(
         progress = progress,
         start = PlayerContentHandoffPoint,
-        end = FullPlayerContentFadeEnd,
+        end = if (magnetic) 0.72f else FullPlayerContentFadeEnd,
     )
 
 /** The backdrop settles ahead of the cover and controls, so bright UI never floats on a weak sheet. */
@@ -206,17 +207,7 @@ internal fun playerContainerAlpha(progress: Float): Float =
 
 /** The surface remains continuous at the handoff, then becomes opaque before the UI brightens. */
 internal fun playerHandoffSurfaceAlpha(progress: Float): Float =
-    if (!progress.isFinite()) {
-        0f
-    } else {
-        val p = progress.coerceIn(0f, 1f)
-        if (p <= PlayerContentHandoffPoint) {
-            p
-        } else {
-            PlayerContentHandoffPoint +
-                (1f - PlayerContentHandoffPoint) * playerBackdropContentAlpha(p)
-        }
-    }
+    transitionWindow(progress, 0f, PlayerContentHandoffPoint)
 
 internal fun shouldRenderExpandedSurface(
     rawProgress: Float,
@@ -353,10 +344,12 @@ fun BottomSheet(
             modifier
                 .fillMaxSize()
                 .offset {
-                    val y =
-                        (state.expandedBound - state.value)
-                            .roundToPx()
-                            .coerceAtLeast(0)
+                    val distance = if (state.playerMotion && state.rawProgress > 0f) {
+                        (state.expandedBound - state.collapsedBound) * (1f - playerFrameTravel(state.visualProgress))
+                    } else {
+                        state.expandedBound - state.value
+                    }
+                    val y = distance.roundToPx().coerceAtLeast(0)
                     IntOffset(x = 0, y = y)
                 }
                 /*
@@ -439,24 +432,40 @@ fun BottomSheet(
                         .fillMaxSize()
                         .graphicsLayer {
                             val raw = state.visualProgress
-                            scaleX =
-                                playerFrameHorizontalScale(
-                                    progress = raw,
-                                    widthPx = size.width,
-                                    collapsedInsetPx = collapsedHorizontalInset.toPx(),
-                                )
-                            transformOrigin = TransformOrigin(0.5f, 0f)
-                            val topCornerRadius =
-                                playerFrameCornerRadius(
-                                    progress = raw,
-                                    collapsedRadius = collapsedTopCornerRadius,
-                                )
-                            shape =
-                                RoundedCornerShape(
-                                    topStart = topCornerRadius,
-                                    topEnd = topCornerRadius,
-                                )
-                            clip = topCornerRadius > 0.dp
+                            if (state.playerMotion) {
+                                // The contour pulls outward; content is never stretched in X/Y.
+                                scaleX = 1f
+                                scaleY = 1f
+                                if (raw < 1f) {
+                                    shape = PlayerMagneticFrameShape(playerFrameContour(
+                                        raw, collapsedHorizontalInset.toPx(),
+                                        collapsedTopCornerRadius.toPx(), density,
+                                    ))
+                                    clip = true
+                                } else {
+                                    shape = androidx.compose.ui.graphics.RectangleShape
+                                    clip = false
+                                }
+                            } else {
+                                scaleX =
+                                    playerFrameHorizontalScale(
+                                        progress = raw,
+                                        widthPx = size.width,
+                                        collapsedInsetPx = collapsedHorizontalInset.toPx(),
+                                    )
+                                transformOrigin = TransformOrigin(0.5f, 0f)
+                                val topCornerRadius =
+                                    playerFrameCornerRadius(
+                                        progress = raw,
+                                        collapsedRadius = collapsedTopCornerRadius,
+                                    )
+                                shape =
+                                    RoundedCornerShape(
+                                        topStart = topCornerRadius,
+                                        topEnd = topCornerRadius,
+                                    )
+                                clip = topCornerRadius > 0.dp
+                            }
                         },
             ) {
                 Box(
@@ -492,7 +501,7 @@ fun BottomSheet(
                             Modifier
                                 .fillMaxSize()
                                 .graphicsLayer {
-                                    alpha = fullPlayerContentAlpha(state.visualProgress)
+                                    alpha = fullPlayerContentAlpha(state.visualProgress, magnetic = state.playerMotion)
                                 },
                     ) {
                         content()
@@ -607,6 +616,7 @@ class BottomSheetState internal constructor(
     dismissedBound: Dp,
     collapsedBound: Dp,
     expandedBound: Dp,
+    internal val playerMotion: Boolean = false,
 ) {
     private val dismissedBoundState = mutableStateOf(dismissedBound)
     private val collapsedBoundState = mutableStateOf(collapsedBound)
@@ -636,6 +646,7 @@ class BottomSheetState internal constructor(
      * Semantic intent used by Back/navigation. Physical progress remains the only visual source.
      * This prevents a closing spring from leaving Player as owner after close is requested.
      */
+    private var playerAnimationJob: Job? = null
     private var requestedAnchor by mutableStateOf(anchoredState.targetValue)
     private var userGestureInProgress by mutableStateOf(false)
 
@@ -806,8 +817,11 @@ class BottomSheetState internal constructor(
         animationSpec: AnimationSpec<Float>,
         priority: MutatePriority = MutatePriority.Default,
     ) {
-        val requested = requestAnchor(target)
-        coroutineScope.launch {
+        val resolved = resolveRequestedAnchor(target)
+        if (playerMotion && requestedAnchor == resolved && playerAnimationJob?.isActive == true) return
+        if (playerMotion) playerAnimationJob?.cancel()
+        val requested = requestAnchor(resolved)
+        val job = coroutineScope.launch {
             if (requestedAnchor != requested) return@launch
             try {
                 animateToAnchor(
@@ -819,6 +833,7 @@ class BottomSheetState internal constructor(
                 // A new user gesture or a newer programmatic request owns the same offset now.
             }
         }
+        if (playerMotion) playerAnimationJob = job
     }
 
     fun collapse(animationSpec: AnimationSpec<Float>) {
@@ -838,11 +853,11 @@ class BottomSheetState internal constructor(
     }
 
     fun collapseSoft() {
-        launchAnimation(SheetAnchor.Collapsed, BottomSheetSoftAnimationSpecPx)
+        launchAnimation(SheetAnchor.Collapsed, if (playerMotion) PlayerCloseAnimation else BottomSheetSoftAnimationSpecPx)
     }
 
     fun expandSoft() {
-        launchAnimation(SheetAnchor.Expanded, BottomSheetSoftAnimationSpecPx)
+        launchAnimation(SheetAnchor.Expanded, if (playerMotion) PlayerOpenAnimation else BottomSheetSoftAnimationSpecPx)
     }
 
     fun dismiss() {
@@ -1109,6 +1124,7 @@ fun rememberBottomSheetState(
     expandedBound: Dp,
     collapsedBound: Dp = dismissedBound,
     initialAnchor: Int = DISMISSED_ANCHOR,
+    playerMotion: Boolean = false,
 ): BottomSheetState {
     val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
@@ -1139,7 +1155,7 @@ fun rememberBottomSheetState(
         }
 
     val state =
-        remember(anchoredState, coroutineScope, density) {
+        remember(anchoredState, coroutineScope, density, playerMotion) {
             BottomSheetState(
                 coroutineScope = coroutineScope,
                 anchoredState = anchoredState,
@@ -1148,6 +1164,7 @@ fun rememberBottomSheetState(
                 dismissedBound = dismissedBound,
                 collapsedBound = collapsedBound,
                 expandedBound = expandedBound,
+                playerMotion = playerMotion,
             )
         }
 

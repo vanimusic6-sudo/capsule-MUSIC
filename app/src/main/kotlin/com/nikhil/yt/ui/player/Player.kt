@@ -119,6 +119,7 @@ fun BottomSheetPlayer(
     navController: NavController,
     modifier: Modifier = Modifier,
     pureBlack: Boolean,
+    backAction: com.nikhil.yt.ui.component.PlayerBackAction? = null,
     miniPlayerBackdrop: Backdrop? = null,
 ) {
     val context = LocalContext.current
@@ -254,6 +255,8 @@ fun BottomSheetPlayer(
         }
 
     val onScreen = appIsOnScreen()
+    com.nikhil.yt.ui.component.PlayerTransitionLifetime(state, onScreen)
+
     // Sample the current Immersion cover while MINI is still displayed.
     // Previously colour extraction did not start until the sheet opened;
     // a quick tap had to wait for multiple sequential image decodes.
@@ -442,13 +445,22 @@ fun BottomSheetPlayer(
 
     // Parent Player owns BACK as one unit. Lyrics/Queue may choose what BACK does only while
     // the Player's semantic target is Expanded.
-    BackHandler(enabled = state.isExpandedOrExpanding) {
+    val handlePlayerBack: () -> Unit = {
         when {
             showInlineLyrics && state.isExpandedOrExpanding -> showInlineLyrics = false
             queueSheetState.isExpandedOrExpanding ->
                 queueSheetState.collapseSoft()
             state.isExpandedOrExpanding ->
                 state.collapseSoft()
+        }
+    }
+    val currentPlayerBack by androidx.compose.runtime.rememberUpdatedState(handlePlayerBack)
+    if (backAction == null) {
+        BackHandler(enabled = state.isExpandedOrExpanding) { currentPlayerBack() }
+    } else {
+        androidx.compose.runtime.DisposableEffect(backAction) {
+            backAction.callback = { currentPlayerBack() }
+            onDispose { backAction.callback = null }
         }
     }
 
