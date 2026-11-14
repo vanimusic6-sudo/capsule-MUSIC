@@ -118,6 +118,37 @@ class PlayerLayoutBatchTest {
         }
     }
 
+    @Test fun hiddenCanvasDoesNotRewriteSavedGeometryAndResumesWithoutRemounting() {
+        val active = mutableStateOf(false)
+        var writes = 0
+        var compositionsOfArtwork = 0
+        compose.setContent {
+            CapsuleLightCanvasV2(
+                order = CapsuleLightBaseOrder, positionsDp = emptyMap(), editable = false,
+                viewportHeight = 650.dp, runtimeActive = active.value,
+                onLayoutSettled = { _, _ -> writes++ }, onEditStarted = {},
+                onArtworkSelectionDismiss = {}, modifier = Modifier.size(320.dp, 650.dp),
+            ) { block, _ ->
+                if (block == CapsuleLightBlock.ARTWORK) {
+                    androidx.compose.runtime.DisposableEffect(Unit) {
+                        compositionsOfArtwork++
+                        onDispose { compositionsOfArtwork-- }
+                    }
+                }
+                Box(Modifier.fillMaxWidth().height(60.dp).testTag(block.name))
+            }
+        }
+        compose.runOnIdle { assertEquals(0, writes); assertEquals(1, compositionsOfArtwork) }
+        val before = compose.onNodeWithTag("METADATA").fetchSemanticsNode().boundsInRoot
+        compose.runOnIdle { active.value = true }
+        compose.runOnIdle { assertTrue(writes > 0); assertEquals(1, compositionsOfArtwork) }
+        assertEquals(before, compose.onNodeWithTag("METADATA").fetchSemanticsNode().boundsInRoot)
+        compose.runOnIdle { active.value = false }
+        val settledWrites = writes
+        compose.mainClock.advanceTimeBy(1_000L)
+        compose.runOnIdle { assertEquals(settledWrites, writes); assertEquals(1, compositionsOfArtwork) }
+    }
+
     @Test fun playbackFailureIsAnOverlayAndDismissalBelongsOnlyToThatError() {
         val error = mutableStateOf<PlaybackException?>(PlaybackException("test", null, PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED))
         val visible = mutableStateOf(true)

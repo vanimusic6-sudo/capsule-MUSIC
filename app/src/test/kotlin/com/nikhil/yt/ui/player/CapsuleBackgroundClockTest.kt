@@ -34,25 +34,33 @@ class CapsuleBackgroundClockTest {
         repeat(4) { compose.mainClock.advanceTimeBy(100L); compose.waitForIdle() }
         var baseline = 0L
         var compositionBaseline = 0
-        compose.runOnIdle { baseline = timeline.value; compositionBaseline = compositions }
+        var frameBaseline = 0L
+        compose.runOnIdle { baseline = timeline.value; compositionBaseline = compositions; frameBaseline = compose.mainClock.currentTime }
         repeat(4) {
             compose.mainClock.advanceTimeBy(100L)
             compose.waitForIdle()
             compose.runOnIdle {
                 assertTrue("Ambient timeline keeps advancing", timeline.value > baseline)
-                assertTrue("Elapsed phase cannot jump", timeline.value - baseline <= 120L)
+                // Samples arrive at the wallpaper cadence, so two reads straddling its boundary
+                // may differ by more than one 100ms advance. Bound against actual display time
+                // plus one sample interval and one vsync, rather than an arbitrary 120ms.
+                val elapsed = compose.mainClock.currentTime - frameBaseline
+                assertTrue("Elapsed phase cannot jump", timeline.value - baseline <=
+                    elapsed + capsuleAmbientFrameDelayMs(compact = true) + 16L)
+                frameBaseline = compose.mainClock.currentTime
                 baseline = timeline.value
                 assertEquals("No player recomposition on wallpaper tick", compositionBaseline, compositions)
             }
         }
         compose.runOnIdle { running.value = false }
         compose.mainClock.advanceTimeBy(150L)
-        compose.runOnIdle { baseline = timeline.value }
+        compose.runOnIdle { baseline = timeline.value; frameBaseline = compose.mainClock.currentTime }
         compose.mainClock.advanceTimeBy(1_000L)
-        compose.runOnIdle { assertEquals(baseline, timeline.value); running.value = true }
+        compose.runOnIdle { assertEquals(baseline, timeline.value); frameBaseline = compose.mainClock.currentTime; running.value = true }
         repeat(3) { compose.mainClock.advanceTimeBy(100L); compose.waitForIdle() }
         compose.runOnIdle {
-            assertTrue("Resuming must exclude paused time", timeline.value - baseline in 1L..320L)
+            assertTrue("Resuming must exclude paused time", timeline.value - baseline in 1L..(compose.mainClock.currentTime - frameBaseline +
+                capsuleAmbientFrameDelayMs(compact = true) + 16L))
         }
     }
 }

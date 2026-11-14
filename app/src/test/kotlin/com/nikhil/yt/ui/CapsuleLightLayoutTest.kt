@@ -246,34 +246,27 @@ class CapsuleLightLayoutTest {
     }
 
 
-    @Test fun lightScrollingKeepsTheDownwardQueueGestureAtTheTop() {
+    @Test fun lightQueueUsesItsDockInsteadOfPullingDownTheDetails() {
         var queueOpens = 0
         compose.setContent {
             MaterialTheme {
                 CapsulePlayerLayout(
                     Color.White, {}, {},
-                    Modifier.size(320.dp, 420.dp).testTag("player"),
+                    Modifier.size(320.dp, 620.dp).testTag("player"),
                     onExpandQueue = { queueOpens++ },
-                    artwork = { Box(Modifier.fillMaxWidth().aspectRatio(1f).testTag("cover")) },
-                    details = {
-                        Column(Modifier.fillMaxWidth()) {
-                            Box(Modifier.height(700.dp))
-                            Box(Modifier.size(48.dp).testTag("last-control"))
-                        }
+                    lightBlockContent = { block, _, _, _ ->
+                        Box(Modifier.fillMaxWidth().height(60.dp).testTag(block.name))
                     },
+                    artwork = {}, details = {},
                 )
             }
         }
-        compose.onNodeWithTag("last-control").performScrollTo()
-        compose.onNodeWithTag("player").performTouchInput {
-            swipeDown(startY = height * 0.25f, endY = height * 0.5f, durationMillis = 600)
+        compose.onNodeWithTag("METADATA").performTouchInput {
+            swipeDown(durationMillis = 300)
         }
-        compose.runOnIdle { assertEquals("Scrolling the details must not open the queue", 0, queueOpens) }
-        compose.onNodeWithTag("cover").performScrollTo()
-        compose.onNodeWithTag("player").performTouchInput {
-            swipeDown(startY = height * 0.2f, endY = height * 0.7f, durationMillis = 600)
-        }
-        compose.runOnIdle { assertEquals("A pull down from the top opens the queue once", 1, queueOpens) }
+        compose.runOnIdle { assertEquals(0, queueOpens) }
+        compose.onAllNodes(hasClickAction())[0].performClick()
+        compose.runOnIdle { assertEquals(1, queueOpens) }
     }
 
     @Test fun lightArtworkCardIsSquare() {
@@ -317,7 +310,7 @@ class CapsuleLightLayoutTest {
 
     @Test fun theSoundingLineFollowsThePlaybackPosition() {
         val lines = capsuleLightLyricLines("[00:10.00]first line\n[00:20.00]second line\n[00:30.00]third line")
-        assertEquals(3, lines.size)
+        assertEquals(3, lines.count { !it.isInstrumental })
         assertNull("nothing is sounding before the first line", capsuleLightLyricLineAt(lines, 0L))
         assertEquals("first line", capsuleLightLyricLineAt(lines, 12_000L))
         assertEquals("second line", capsuleLightLyricLineAt(lines, 25_000L))

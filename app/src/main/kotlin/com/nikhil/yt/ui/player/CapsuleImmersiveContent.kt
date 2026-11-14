@@ -1269,7 +1269,6 @@ internal fun CapsuleImmersiveContent(
                                                 Modifier
                                                     .fillMaxWidth()
                                                     .height(48.dp)
-                                                    .clip(CircleShape)
                                                     .clickable(
                                                         interactionSource = favoriteInteraction,
                                                         indication = null,
@@ -1319,7 +1318,7 @@ internal fun CapsuleImmersiveContent(
                                 enabled =
                                     safeDuration > 0L &&
                                         !immersiveEditEnabled,
-                                smoothPlayback = isPlaying && sliderPosition == null,
+                                smoothPlayback = onScreen && controlsActive && isPlaying && sliderPosition == null,
                                 activeColor = immersiveInk,
                                 inactiveColor = immersiveInk.copy(alpha = 0.22f),
                                 onValueChange = { onSeekPreview(it.toLong()) },
@@ -1332,8 +1331,7 @@ internal fun CapsuleImmersiveContent(
                             Row(
                                 modifier =
                                     Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 2.dp),
+                                        .fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                             ) {
                                 Text(
@@ -1505,6 +1503,7 @@ internal fun CapsuleImmersiveContent(
                                     .padding(horizontal = 20.dp),
                         ) {
                             CapsuleLightControls(
+                                outerInset = 0.dp,
                                 textColor = immersiveInk,
                                 shuffleEnabled = shuffleEnabled,
                                 repeatMode = repeatMode,

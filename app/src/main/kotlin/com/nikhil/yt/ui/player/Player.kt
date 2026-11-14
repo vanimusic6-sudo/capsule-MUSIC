@@ -130,6 +130,14 @@ fun BottomSheetPlayer(
         mutableStateOf(false)
     }
 
+    val queueSheetState =
+        rememberBottomSheetState(
+            dismissedBound = 0.dp,
+            expandedBound = state.expandedBound,
+            collapsedBound = 0.dp,
+            initialAnchor = 1,
+        )
+
     var playerSceneExposed by remember { mutableStateOf(true) }
     val lyricsUsePlayerTheme by rememberPreference(
         com.nikhil.yt.constants.LyricsUsePlayerThemeKey,
@@ -311,11 +319,12 @@ fun BottomSheetPlayer(
         onScreen,
         showInlineLyrics,
         state.isDismissed,
+        queueSheetState.isExpanded,
     ) {
         if (sliderPosition != null) return@LaunchedEffect
         // Lyrics owns its own visible progress readout. Do not keep the hidden player clock alive
         // underneath it, and do not poll anything after the whole sheet was dismissed.
-        if (!onScreen || showInlineLyrics || state.isDismissed) return@LaunchedEffect
+        if (!onScreen || showInlineLyrics || state.isDismissed || queueSheetState.isExpanded) return@LaunchedEffect
 
         while (isActive) {
             position = playerConnection.service.capsuleTimelinePlayer.currentPosition.coerceAtLeast(0L)
@@ -423,19 +432,12 @@ fun BottomSheetPlayer(
             isPlaying &&
             playbackState == Player.STATE_READY &&
             !videoPlaybackState.presentingVideo &&
+            !queueSheetState.isExpanded &&
             (playerSceneExposed || (showInlineLyrics && lyricsUsePlayerTheme))
     val sharedBackdropAnimationTime =
         rememberCapsuleAnimationTime(
             compact = false,
             running = backdropTimelineRunning,
-        )
-
-    val queueSheetState =
-        rememberBottomSheetState(
-            dismissedBound = 0.dp,
-            expandedBound = state.expandedBound,
-            collapsedBound = 0.dp,
-            initialAnchor = 1,
         )
 
     // Parent Player owns BACK as one unit. Lyrics/Queue may choose what BACK does only while
@@ -515,7 +517,8 @@ fun BottomSheetPlayer(
                         .graphicsLayer {
                             alpha = playerBackdropContentAlpha(state.visualProgress)
                         }
-                        .background(playerSurfaceColor(useBlackBackground)),
+                        .background(playerSurfaceColor(useBlackBackground))
+                        .drawWithContent { if (onScreen && playerSceneExposed) drawContent() },
                 ) {
                     // Keep the original artwork backdrop alive under the
                     // temporary video ambience. Both entry and exit crossfade
@@ -934,7 +937,7 @@ private fun CapsulePlayerLyricsHost(
                             immersiveArtworkTone = immersiveArtworkTone,
                             playerArtworkColors = playerArtworkColors,
                             backdropAnimationTime = backdropAnimationTime,
-                            isVisible = showLyrics,
+                            isVisible = showLyrics && !queueState.isExpanded,
                             instantBackdrop = true,
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -980,7 +983,7 @@ private fun CapsulePlayerLyricsHost(
                             playerArtworkColors = playerArtworkColors,
                             backdropAnimationTime = backdropAnimationTime,
                             drawBackdrop = false,
-                            isVisible = lyricsRuntimeActive,
+                            isVisible = lyricsRuntimeActive && !queueState.isExpanded,
                             motionPosition = { sheetOffset.value },
                             backHandlerEnabled =
                                 showLyrics && playerState.isExpandedOrExpanding,

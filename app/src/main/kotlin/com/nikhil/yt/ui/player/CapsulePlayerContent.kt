@@ -450,7 +450,9 @@ fun CapsulePlayerContent(
         }
 
     val syncedLyricLines =
-        remember(lyricsEntity, durationMs) { capsuleLightLyricLines(lyricsEntity?.lyrics, durationMs) }
+        remember(lyricsEntity, mediaMetadata.id, durationMs) {
+            capsuleLightLyricLines(lyricsEntity?.takeIf { it.id == mediaMetadata.id }?.lyrics, durationMs)
+        }
 
     // The same correction the lyrics screen applies: one song, one answer about its timing.
     val lyricSyncOffsetMs by rememberPreference(LyricsSyncOffsetKey, defaultValue = 0)
@@ -602,7 +604,7 @@ fun CapsulePlayerContent(
                     onArtworkClick = onArtworkClick,
                     artworkClickable = !isCapsuleVideoPlaying && !lightEditorEnabled,
                     video = { active ->
-                        CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active)
+                        CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active && visible)
                     },
                 ) {
                     if (hideArtwork) {
@@ -880,7 +882,7 @@ fun CapsulePlayerContent(
                      * this composable only as geometry and stop lyric collection/fetching above.
                      */
                     CapsuleLightLyricLine(
-                        line = lyricEntry?.text,
+                        line = lyricEntry?.text?.trim()?.replace('\n', ' '),
                         instrumental = lyricEntry?.takeIf { it.isInstrumental },
                         playbackPosition = lyricPlaybackPosition,
                         animate = lyricLineActive,
@@ -906,6 +908,7 @@ fun CapsulePlayerContent(
                 )
         ,
         lightEditorEnabled = useClayLayout && lightEditorEnabled,
+        lightRuntimeActive = visible,
         lightOrder = visibleLightOrder,
         lightCanvasPositionsDp = visibleLightCanvasPositions,
         lightGapsDp = lightBlockGaps,
@@ -1066,7 +1069,7 @@ fun CapsulePlayerContent(
                                         Spacer(Modifier.height(8.dp))
                                         Box(Modifier.fillMaxWidth().padding(horizontal = CapsuleLightTransportEdgeInset)) {
                                             CapsuleLightLyricLine(
-                                                line = lyricEntry?.text,
+                                                line = lyricEntry?.text?.trim()?.replace('\n', ' '),
                         instrumental = lyricEntry?.takeIf { it.isInstrumental },
                         playbackPosition = lyricPlaybackPosition,
                         animate = lyricLineActive,
@@ -1210,7 +1213,7 @@ fun CapsulePlayerContent(
                                 )
 
                                 Row(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
+                                    modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                 ) {
                                     Text(
@@ -1556,10 +1559,7 @@ fun CapsulePlayerContent(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(
-                                horizontal =
-                                    2.dp,
-                            ),
+,
                     horizontalArrangement =
                         Arrangement.SpaceBetween,
                 ) {
@@ -1651,6 +1651,7 @@ fun CapsulePlayerContent(
 
 
                     CapsuleLightControls(
+                        outerInset = 0.dp,
                         textColor = textColor,
                         shuffleEnabled = shuffleEnabled,
                         repeatMode = repeatMode,

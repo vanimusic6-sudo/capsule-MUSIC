@@ -67,7 +67,7 @@ class PlayerArtworkReliabilityTest {
         assertFalse(preloader.contains("CAPSULE_VISUAL_PREFETCH_SETTLE_MS = 1_200L"))
     }
 
-    @Test fun decodedArtworkSurvivesAppBackgroundWithoutKeepingAnimationTreeAlive() {
+    @Test fun decodedArtworkAndLightMeasurementsSurviveWhileHiddenWorkSleeps() {
         val player = source("Player.kt")
         val content = source("CapsulePlayerContent.kt")
         assertTrue(player.contains("val decodedArtworkCache = remember {"))
@@ -76,7 +76,12 @@ class PlayerArtworkReliabilityTest {
         assertFalse(content.contains("val decodedArtworkCache = remember"))
         assertTrue(content.contains("while (decodedArtworkCache.size > 3)"))
         // Keep expensive visual work stopped when the app is backgrounded.
-        assertTrue(content.contains("if (!onScreen || (!open && expansionProgress <= 0.001f))"))
+        assertTrue(content.contains("if (!open && expansionProgress <= 0.001f)"))
+        assertTrue(content.contains("val visible = open && onScreen && motionActive"))
+        assertTrue(content.contains("active = active && visible"))
+        assertTrue(content.contains("if (visible && (retainedArtworkPainter"))
+        assertTrue(content.contains("if (!visible || !artworkLoading"))
+        assertTrue(content.contains("collectAsStateWithLifecycle"))
         assertTrue(player.contains("skipArtworkPrefetch = state.shouldLayerAboveCollapsedChrome"))
         val preload = source("CapsuleMediaPreload.kt")
         assertTrue(preload.contains("if (skipArtworkPrefetch) return@LaunchedEffect"))

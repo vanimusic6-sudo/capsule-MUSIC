@@ -122,6 +122,7 @@ internal fun CapsulePlayerLayout(
     modifier: Modifier = Modifier,
     onExpandQueue: () -> Unit = {},
     lightEditorEnabled: Boolean = false,
+    lightRuntimeActive: Boolean = true,
     lightOrder: List<CapsuleLightBlock> = CapsuleLightBaseOrder,
     lightCanvasPositionsDp: Map<CapsuleLightBlock, Float> = emptyMap(),
     lightGapsDp: Map<CapsuleLightBlock, Float> = CapsuleLightBaseGaps,
@@ -216,6 +217,7 @@ internal fun CapsulePlayerLayout(
                         order = lightOrder,
                         positionsDp = lightCanvasPositionsDp,
                         editable = lightEditorEnabled,
+                        runtimeActive = lightRuntimeActive,
                         viewportHeight = editableHeight,
                         onLayoutSettled = onLightCanvasSettled,
                         onEditStarted = onLightEditStarted,
@@ -283,7 +285,7 @@ internal fun CapsulePlayerLayout(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Spacer(Modifier.height(8.dp))
-                Box(Modifier.width(artworkBaseWidth).height(artworkSide), contentAlignment = Alignment.Center) { artwork() }
+                Box(Modifier.size(artworkSide), contentAlignment = Alignment.Center) { artwork() }
                 if (lyricLine == null) {
                     Spacer(Modifier.height(20.dp))
                 } else {
@@ -293,7 +295,7 @@ internal fun CapsulePlayerLayout(
                      * middle of a wider column.
                      */
                     Spacer(Modifier.height(8.dp))
-                    Box(Modifier.width(artworkBaseWidth)) { lyricLine() }
+                    Box(Modifier.width(artworkSide)) { lyricLine() }
                     Spacer(Modifier.height(10.dp))
                 }
                 CompositionLocalProvider(LocalCapsuleLightMenu provides onMenuClick) { details() }
@@ -342,7 +344,6 @@ internal fun CapsuleLightFavorite(
     Box(
         modifier = Modifier
             .size(48.dp)
-            .clip(CircleShape)
             .clickable(
                 enabled = enabled,
                 interactionSource = favoriteInteraction,
@@ -386,6 +387,7 @@ internal fun CapsuleLightControls(
     onOrderChange: (List<CapsuleLightTransportItem>) -> Unit = {},
     onOrderSettled: (List<CapsuleLightTransportItem>) -> Unit = {},
     onEditStarted: () -> Unit = {},
+    outerInset: Dp = CapsuleLightPanelOuterInset,
 ) {
     val menuAction = onMenuClick ?: LocalCapsuleLightMenu.current
     val transportSurface = textColor.copy(alpha = 0.035f)
@@ -406,7 +408,7 @@ internal fun CapsuleLightControls(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = CapsuleLightPanelOuterInset)
+                .padding(horizontal = outerInset)
                 .height(CapsuleLightTransportHeight)
                 .clip(CapsuleLightPanelShape)
                 .background(transportSurface)
