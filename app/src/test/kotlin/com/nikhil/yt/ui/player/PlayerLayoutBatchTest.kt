@@ -1,6 +1,9 @@
 package com.nikhil.yt.ui.player
 
 import android.app.Application
+import android.view.WindowManager
+import androidx.activity.ComponentActivity
+import com.nikhil.yt.ui.component.LyricsScreenAwake
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -15,7 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.datastore.preferences.core.mutablePreferencesOf
@@ -37,7 +40,7 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class)
 class PlayerLayoutBatchTest {
-    @get:Rule val compose = createComposeRule()
+    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
     @Test fun retiredDesignMigratesWithoutChangingExistingLightOrImmersion() {
         assertEquals(listOf("LIGHT", "IMMERSIVE"), CapsulePlayerDesign.entries.map { it.name })
@@ -147,6 +150,28 @@ class PlayerLayoutBatchTest {
         val settledWrites = writes
         compose.mainClock.advanceTimeBy(1_000L)
         compose.runOnIdle { assertEquals(settledWrites, writes); assertEquals(1, compositionsOfArtwork) }
+    }
+
+    @Test fun onlyVisiblePlayingLyricsMayKeepTheDisplayAwake() {
+        val playing = mutableStateOf(true)
+        val visible = mutableStateOf(true)
+        val onScreen = mutableStateOf(true)
+        val mounted = mutableStateOf(true)
+        compose.setContent {
+            if (mounted.value) LyricsScreenAwake(playing.value, visible.value, onScreen.value)
+        }
+        fun assertAwake(expected: Boolean) = compose.runOnIdle {
+            assertEquals(expected, compose.activity.window.attributes.flags and
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON != 0)
+        }
+        assertAwake(true)
+        compose.runOnIdle { visible.value = false }; assertAwake(false)
+        compose.runOnIdle { visible.value = true }; assertAwake(true)
+        compose.runOnIdle { onScreen.value = false }; assertAwake(false)
+        compose.runOnIdle { onScreen.value = true }; assertAwake(true)
+        compose.runOnIdle { playing.value = false }; assertAwake(false)
+        compose.runOnIdle { playing.value = true }; assertAwake(true)
+        compose.runOnIdle { mounted.value = false }; assertAwake(false)
     }
 
     @Test fun playbackFailureIsAnOverlayAndDismissalBelongsOnlyToThatError() {

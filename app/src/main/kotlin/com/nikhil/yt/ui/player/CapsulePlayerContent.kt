@@ -695,7 +695,7 @@ fun CapsulePlayerContent(
                         // the long abrupt grey-to-photo switch.
                         val artworkReveal by animateFloatAsState(
                             targetValue = if (retainedArtworkPainter != null) 1f else 0f,
-                            animationSpec = tween(durationMillis = if (onScreen) 230 else 0),
+                            animationSpec = tween(durationMillis = if (visible) 230 else 0),
                             label = "capsule-artwork-soft-reveal",
                         )
                         val artworkContentScale =

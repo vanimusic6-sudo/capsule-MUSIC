@@ -13,7 +13,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -57,13 +57,13 @@ fun LyricsScreen(
     val onScreen = appIsOnScreen()
 
     val currentLyrics by
-        playerConnection.currentLyrics.collectAsState(initial = null)
+        playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
     val isPlaying by
-        playerConnection.isPlaying.collectAsState()
+        playerConnection.isPlaying.collectAsStateWithLifecycle()
 
     // One owner for "fetch these lyrics if we do not have them", shared with the sounding line
     // under Capsule Light's artwork.
-    RequestLyricsIfMissing(mediaMetadata, currentLyrics)
+    if (isVisible && onScreen) RequestLyricsIfMissing(mediaMetadata, currentLyrics)
 
     var position by remember(mediaMetadata.id) {
         mutableLongStateOf(player.currentPosition.coerceAtLeast(0L))

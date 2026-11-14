@@ -16,6 +16,7 @@ Scope: Light and Immersion player presentation, optional inline lyrics, playback
 | Covered backgrounds | Ordinary wallpaper could still shade/advance beneath opaque lyrics or an expanded queue. | Skip covered drawing. Keep a shared clock only when a visible themed lyrics backdrop also needs it. Stop the root readout and lyrics work beneath a fully expanded queue. |
 | Disabled animations | The comet's infinite `animateTo` loop had no duration-scale guard. A zero-duration tween can complete synchronously, creating a busy loop. | Suspend the cycle when system animation scale is zero and observe scale changes. Visible enabled motion retains its existing cadence. |
 | Background loading | A retained Light loading spinner/cover retry could continue without visible output. | Gate the spinner, retry and cover request by visibility; cancel when covered/stopped. |
+| Full lyrics lifetime | The wrapper retained a Room lyrics collector after the heavy list was unmounted, and an obscured list could still retain the keep-screen-on flag. | Use lifecycle-aware collectors in the wrapper/list/backdrop, fetch only while visible, and release the screen-on flag when paused, obscured or backgrounded. The title’s delayed restore also cancels on background. |
 | Palette allocations | An unchanged scene/list was recreated on unrelated progress recompositions. | Remember the returned scene by its actual colour and immutable field inputs. |
 
 ## Existing controls inspected

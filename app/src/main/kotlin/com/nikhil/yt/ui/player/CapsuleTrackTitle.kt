@@ -33,7 +33,9 @@ internal fun CapsuleTrackTitle(
     // Never auto-marquee. A finger can drag the title to reveal hidden letters;
     // a new song resets the position, and inactivity gently restores the start.
     val scroll = androidx.compose.runtime.key(mediaId, title) { rememberScrollState() }
-    LaunchedEffect(mediaId, title, scroll, enabled) {
+    val onScreen = appIsOnScreen()
+    LaunchedEffect(mediaId, title, scroll, enabled, onScreen) {
+        if (!onScreen) return@LaunchedEffect
         if (!enabled) {
             scroll.scrollTo(0)
             return@LaunchedEffect
