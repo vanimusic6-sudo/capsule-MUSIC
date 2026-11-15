@@ -29,8 +29,10 @@ import com.nikhil.yt.ui.motion.CapsuleMotion
 
 // One critically damped mutation preserves velocity when Back/tap reverses the window.
 // A nearby reversal settles sooner instead of replaying a full fixed-duration trip.
-internal val PlayerOpenAnimation = spring<Float>(dampingRatio = 1f, stiffness = 650f, visibilityThreshold = 0.5f)
-internal val PlayerCloseAnimation = spring<Float>(dampingRatio = 1f, stiffness = 850f, visibilityThreshold = 0.5f)
+// The anchor spans the whole screen, but the visible page travels only 44dp. An 8px anchor
+// threshold therefore retires an imperceptible end tail, not 8px of visible page movement.
+internal val PlayerOpenAnimation = spring<Float>(dampingRatio = 1f, stiffness = 200f, visibilityThreshold = 8f)
+internal val PlayerCloseAnimation = spring<Float>(dampingRatio = 1f, stiffness = 240f, visibilityThreshold = 8f)
 
 /** Action ownership is separate from Scaffold's subcomposition order. No clock or retained UI. */
 class PlayerBackAction {
@@ -72,11 +74,11 @@ internal fun playerSceneNeedsDrawing(progress: Float): Boolean = boundedProgress
 internal fun playerPageVisible(progress: Float): Boolean = boundedProgress(progress) > 0f
 internal fun playerPageAcceptsInput(progress: Float): Boolean = boundedProgress(progress) >= 0.88f
 
-internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0f, 0.32f)
-internal fun playerMiniLift(progress: Float, density: Float): Float = 6f * density * window(progress, 0f, 0.32f)
+internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0f, 0.52f)
+internal fun playerMiniLift(progress: Float, density: Float): Float = 6f * density * window(progress, 0f, 0.52f)
 
-// Complete the optical handoff before settling so app text cannot ghost through the whole trip.
-internal fun playerPresentationOpacity(progress: Float): Float = window(progress, 0f, 0.55f)
+// Spread the optical handoff over the visible travel, then finish before the quiet settling.
+internal fun playerPresentationOpacity(progress: Float): Float = window(progress, 0f, 0.90f)
 internal fun playerPresentationScale(progress: Float): Float = 0.985f + 0.015f * boundedProgress(progress)
 internal fun playerPresentationLift(progress: Float, density: Float): Float = 44f * density * (1f - boundedProgress(progress))
 
@@ -152,6 +154,6 @@ internal fun playerPageContour(progress: Float, miniRadius: Float, density: Floa
         radius = radius.coerceAtLeast(0f),
         // At ~0.293r of diagonal overscan the circular arc is completely outside a square
         // viewport. Keep the rounding visible until the frame itself has reached the screen.
-        bleed = (radius.coerceAtLeast(0f) * 0.30f + density) * window(p, 0.97f, 1f),
+        bleed = (radius.coerceAtLeast(0f) * 0.30f + density) * window(p, 0.90f, 1f),
     )
 }

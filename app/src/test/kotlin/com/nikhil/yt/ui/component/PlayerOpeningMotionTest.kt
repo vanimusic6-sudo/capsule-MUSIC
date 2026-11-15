@@ -389,6 +389,35 @@ class PlayerOpeningMotionTest {
         compose.runOnIdle {assertTrue(state.isCollapsed);assertFalse(state.isAnimationRunning)}
     }
 
+    @Test fun openingAndClosingSpreadTheVisibleHandoffAcrossDisplayFrames() {
+        mount()
+        compose.runOnIdle { state.expandSoft() }
+        advance(32)
+        compose.runOnIdle {
+            assertTrue("respond immediately without flashing a nearly opaque page",
+                state.visualProgress > 0.005f && playerPresentationOpacity(state.visualProgress) < 0.35f)
+        }
+        advance(96)
+        compose.runOnIdle {
+            assertTrue("the main visible arrival must still be in progress at 128ms",
+                playerPresentationOpacity(state.visualProgress) in 0.20f..0.95f)
+        }
+        advance(600)
+        compose.runOnIdle { assertTrue(state.isExpanded); state.collapseSoft() }
+        advance(32)
+        compose.runOnIdle {
+            assertTrue("closing must not immediately throw the page away",
+                playerPresentationOpacity(state.visualProgress) > 0.90f)
+        }
+        advance(96)
+        compose.runOnIdle {
+            assertTrue("closing must keep a visible, gradual optical handoff",
+                playerPresentationOpacity(state.visualProgress) in 0.15f..0.95f)
+        }
+        advance(600)
+        compose.runOnIdle { assertTrue(state.isCollapsed); assertFalse(state.isAnimationRunning) }
+    }
+
     @Test fun reversalContinuesFromTheSamePositionAndLatestIntentWins() {
         mount();compose.runOnIdle {state.expandSoft()};advance(96)
         val before=compose.runOnIdle {state.value.value}
@@ -480,7 +509,7 @@ class PlayerOpeningMotionTest {
     }
 
     @Test fun cornersFinishOutsideTheSquareViewportInsteadOfLosingTheirRadius() {
-        val p=mutableStateOf(0.97f)
+        val p=mutableStateOf(0.90f)
         compose.setContent {
             Box(Modifier.size(260.dp,240.dp).background(Color.Green).testTag("scene")) {
                 Box(Modifier.fillMaxSize().graphicsLayer {
@@ -495,7 +524,7 @@ class PlayerOpeningMotionTest {
             val count=(0 until edge).sumOf{y->(0 until edge).count{x->AndroidColor.red(bitmap.getPixel(x,y))>200}}
             bitmap.recycle();return count
         }
-        val start=ink("rounded-attached");compose.runOnIdle{p.value=0.99f};val leaving=ink("rounded-leaving")
+        val start=ink("rounded-attached");compose.runOnIdle{p.value=0.95f};val leaving=ink("rounded-leaving")
         compose.runOnIdle{p.value=1f};val end=ink("rounded-outside")
         assertTrue(leaving>start);assertTrue(end>leaving)
     }
