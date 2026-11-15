@@ -21,11 +21,13 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28], application = Application::class, manifest = Config.NONE)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 class NativeMediaBitmapLoaderTest {
     private fun image(color: Int): ByteArray {
         val bitmap = Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888)
