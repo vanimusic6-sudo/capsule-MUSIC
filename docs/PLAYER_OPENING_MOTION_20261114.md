@@ -14,8 +14,8 @@ Opening stiffness 650, closing stiffness 850 and critical damping 1 are unchange
 anchored spring retains velocity on reversal and respects the system animation duration scale.
 There is no new timer, easing or independent source animation.
 
-The real Mini follows the growing window's upper edge, using the same progress and a fractional
-GPU translation. Its size and artwork proportions stay constant. Closing reverses that trajectory
+The real Mini follows the growing window's upper edge, using the same progress and lambda
+placement of its complete layer. Its size and artwork proportions stay constant. Closing reverses that trajectory
 back to the dock. Independent downward Mini dismissal remains available.
 
 The synthetic source-material layer and its compactBackground API are removed entirely. There
@@ -35,8 +35,9 @@ remain covered by regression tests.
 
 No screenshot capture, bitmap copy, new image request, decoder, blur, sampling timer, infinite
 transition, FPS cap or quality reduction is introduced. The replacement removes a stretched GPU
-layer. Source translation and destination transforms are read in graphicsLayer, without per-frame
-Mini layout. Audio/video playback, palette extraction and final screen designs are unchanged.
+layer. Source coordinates are read in lambda offset (placement only, no remeasurement); destination
+transforms are read in graphicsLayer. Native pixels also check that Mini paints at its moving
+position and leaves no clipped strip behind in its old dock. Audio/video playback, palette extraction and final screen designs are unchanged.
 
 ## Verification
 

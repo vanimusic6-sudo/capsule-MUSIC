@@ -67,15 +67,19 @@ internal fun PlayerWindow(
         if (onDismiss == null || !state.isDismissed) {
             Box(
                 Modifier
-                    .offset { IntOffset(0, (state.expandedBound - state.collapsedBound).roundToPx()) }
+                    .offset {
+                        // Place the whole Mini layer, including its alpha buffer. Translating a
+                        // child inside the fixed dock's placement layer clips that buffer to a strip.
+                        IntOffset(0, with(this) {
+                            playerMiniTop(state.visualProgress, state.expandedBound.toPx(),
+                                state.collapsedBound.toPx()).toDp().roundToPx()
+                        })
+                    }
                     .zIndex(if (sourceDraws) 2f else 0f)
                     .semantics {
                         if (!state.compactForegroundAcceptsInput) hideFromAccessibility()
                     }
                     .graphicsLayer {
-                        val dock = (state.expandedBound - state.collapsedBound).toPx()
-                        translationY = playerMiniTop(state.visualProgress,
-                            state.expandedBound.toPx(), state.collapsedBound.toPx()) - dock
                         alpha = playerMiniDrawAlpha(state.visualProgress)
                     }
                     .then(if (compactSwipeDismissEnabled && onDismiss != null) Modifier.bottomSheetDraggable(

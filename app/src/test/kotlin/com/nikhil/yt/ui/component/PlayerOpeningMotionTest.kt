@@ -201,6 +201,22 @@ class PlayerOpeningMotionTest {
         assertEquals(mix(49,155),AndroidColor.red(pixel).toFloat(),3f)
         assertEquals(mix(123,40),AndroidColor.green(pixel).toFloat(),3f)
         assertEquals(mix(80,35),AndroidColor.blue(pixel).toFloat(),3f)
+        // Bounds alone miss a clipped moving alpha buffer. Outside the window's side inset,
+        // Mini must actually paint at its new location and leave its old dock footprint clear.
+        val outsideX=with(compose.density){4.dp.toPx()}.roundToInt()
+        val miniY=with(compose.density){(frame.top+24f).dp.toPx()}.roundToInt()
+        val miniPixel=bitmap.getPixel(outsideX,miniY)
+        val miniAlpha=playerMiniDrawAlpha(p)
+        fun sourceMix(app:Int,source:Int)=app*(1f-focus)*(1f-miniAlpha)+source*miniAlpha
+        assertEquals(sourceMix(49,124),AndroidColor.red(miniPixel).toFloat(),3f)
+        assertEquals(sourceMix(123,51),AndroidColor.green(miniPixel).toFloat(),3f)
+        assertEquals(sourceMix(80,49),AndroidColor.blue(miniPixel).toFloat(),3f)
+        val oldDockY=with(compose.density){633.dp.toPx()}.roundToInt()
+        assertTrue(frame.top+48f<633f)
+        val vacatedPixel=bitmap.getPixel(outsideX,oldDockY)
+        assertEquals(49*(1f-focus),AndroidColor.red(vacatedPixel).toFloat(),3f)
+        assertEquals(123*(1f-focus),AndroidColor.green(vacatedPixel).toFloat(),3f)
+        assertEquals(80*(1f-focus),AndroidColor.blue(vacatedPixel).toFloat(),3f)
         bitmap.recycle()
     }
 
