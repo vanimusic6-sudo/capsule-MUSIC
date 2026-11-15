@@ -53,3 +53,10 @@ All exceptions propagate; no lifecycle error is filtered out of the tests.
 CI results and the replacement APK provenance are recorded in draft PR 100. Android 17 under
 Robolectric is not a physical HONOR reproduction; no device-level success or thermal measurement
 is claimed until the replacement is checked on the phone.
+
+## Following revision: moving Mini
+
+The 12822.mp4 review replaces the passive palette bridge with a direct real-Mini/page handoff.
+The bridge node is removed from the implementation entirely, rather than detached at a progress
+threshold. The real Mini and destination retain the lifetime and stable-semantics protections above.
+The existing API 37 accessibility stress test is retained with the real source/page fixture.

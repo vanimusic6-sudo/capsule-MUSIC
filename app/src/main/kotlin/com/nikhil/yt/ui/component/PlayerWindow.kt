@@ -16,7 +16,6 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
@@ -25,9 +24,9 @@ import androidx.compose.ui.zIndex
 
 /**
  * Only the window's outline changes aspect. The real page keeps one measurement and one uniform
- * scale. Its background and controls dissolve together INSIDE the source material, never over the
- * app. A small source-material layer is stretched on the GPU; no screenshot, bitmap or decoder is
- * created for this transition. Generic/queue sheets do not enter this implementation.
+ * scale. The real Mini rides the same upper edge and hands off directly to the real page. There
+ * is no stretched palette panel, duplicated backdrop, screenshot or decoder. Generic/queue sheets
+ * do not enter this implementation. Node lifetimes still span the complete finite motion.
  */
 @Composable
 internal fun PlayerWindow(
@@ -41,7 +40,6 @@ internal fun PlayerWindow(
     miniInset: Dp,
     miniRadius: Dp,
     collapsedContent: @Composable BoxScope.() -> Unit,
-    compactBackground: (@Composable BoxScope.() -> Unit)?,
     backgroundContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -75,9 +73,10 @@ internal fun PlayerWindow(
                         if (!state.compactForegroundAcceptsInput) hideFromAccessibility()
                     }
                     .graphicsLayer {
+                        val dock = (state.expandedBound - state.collapsedBound).toPx()
+                        translationY = playerMiniTop(state.visualProgress,
+                            state.expandedBound.toPx(), state.collapsedBound.toPx()) - dock
                         alpha = playerMiniDrawAlpha(state.visualProgress)
-                        scaleY = 1f + playerMiniStretch(state.visualProgress, state.frameVelocityFraction)
-                        transformOrigin = TransformOrigin(0.5f, 1f)
                     }
                     .then(if (compactSwipeDismissEnabled && onDismiss != null) Modifier.bottomSheetDraggable(
                         state = state, onDismiss = onDismiss, dismissOnlyFromCollapsed = true,
@@ -119,34 +118,12 @@ internal fun PlayerWindow(
                         val contour = playerFrameContour(p, miniInset.toPx(), miniRadius.toPx(), density)
                         shape = PlayerWindowShape(frame, contour.radius, contour.bleed)
                         clip = p < 1f
-                        // The shell is always whole; only the page INSIDE it changes opacity.
+                        // Clip the real page. No extra material is painted into the growing frame.
                         alpha = 1f
                     },
             ) {
-                // Keep both sibling LayoutNodes attached for the WHOLE window lifetime.
-                // Removing the source at an opacity threshold can leave a queued accessibility
-                // remeasure referring to the detached child. Covered drawing is cheap to skip;
-                // detaching a live layout is neither needed nor safe during the trip.
-                key("player-source-material") {
-                    Box(Modifier.fillMaxWidth().height(miniHeight).clearAndSetSemantics {}.graphicsLayer {
-                        val frame = playerWindowBounds(state.visualProgress,
-                            androidx.compose.ui.geometry.Size(size.width, state.expandedBound.toPx()),
-                            miniHeight.toPx(), state.collapsedBound.toPx(), miniInset.toPx())
-                        transformOrigin = TransformOrigin(0f, 0f)
-                        translationX = frame.left
-                        translationY = frame.top
-                        scaleX = frame.width / size.width.coerceAtLeast(1f)
-                        scaleY = frame.height / size.height.coerceAtLeast(1f)
-                    }.drawWithContent {
-                        if (playerPageOpacity(state.visualProgress) < 1f) drawContent()
-                    }) {
-                        CompositionLocalProvider(LocalCapsuleBackgroundMotionEnabled provides false) {
-                            if (compactBackground != null) compactBackground()
-                            else Box(Modifier.fillMaxSize().background(backgroundColor))
-                        }
-                    }
-                }
-
+                // Keep the destination attached until the motion settles, including transparent
+                // closing frames. The real Mini is the only source; no second source node exists.
                 key("player-destination-page") {
                 Box(Modifier.fillMaxSize().semantics {
                     if (!pageAccessible) hideFromAccessibility()

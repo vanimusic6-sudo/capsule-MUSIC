@@ -23,8 +23,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
-import com.nikhil.yt.constants.MiniPlayerBackgroundStyle
-import com.nikhil.yt.ui.player.CapsuleCompactSurfaceBackground
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.junit.Assert.*
@@ -103,11 +101,7 @@ class PlayerWindowAccessibilityTest {
                                 if (state.compactSurfaceVisible) Text("Mini ${revision.intValue}",Modifier.fillMaxSize())
                                 else Box(Modifier.fillMaxSize())
                             },
-                            compactBackground={
-                                CapsuleCompactSurfaceBackground(MiniPlayerBackgroundStyle.GRADIENT,false,
-                                    listOf(Color(0xFF683F5A),Color(0xFF284250),Color(0xFF242831)),
-                                    Modifier.fillMaxSize(),animated=false)
-                            },
+
                         ) {
                             Box(Modifier.fillMaxSize().background(Color(0xFF28242C)).testTag("page")) {
                                 Text("Player ${revision.intValue}",Modifier.padding(24.dp))

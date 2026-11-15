@@ -70,28 +70,23 @@ internal fun playerSceneNeedsDrawing(progress: Float): Boolean = boundedProgress
 /** One continuous trip; the final corner pixels finish outside the viewport. */
 internal fun playerFrameTravel(progress: Float): Float = boundedProgress(progress)
 
-/** Only the page contents dissolve. The growing material shell never fades over the app. */
-internal fun playerPageOpacity(progress: Float): Float = window(progress, 0.18f, 0.66f)
+/** One short handoff between the real moving Mini and the real page; no palette bridge. */
+internal fun playerPageOpacity(progress: Float): Float = window(progress, 0.015f, 0.25f)
 internal fun playerPageScale(progress: Float, minimumWidthFraction: Float = 0f): Float =
     maxOf(0.94f + 0.06f * window(progress, 0.18f, 1f), minimumWidthFraction.coerceIn(0f, 1f))
 
-/** Mini is the opaque source UNDER the dissolving card, so the app cannot leak through it. */
-internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0.015f, 0.20f)
+internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - playerPageOpacity(progress)
 
-/** Mini's bottom stays docked; only its top reaches slightly towards the descending card. */
-internal fun playerMiniStretch(progress: Float, velocityFraction: Float): Float {
-    val p = boundedProgress(progress)
-    val speed = if (velocityFraction.isFinite()) (-velocityFraction).coerceAtLeast(0f) else 0f
-    val contact = window(p, 0f, 0.06f) * (1f - window(p, 0.08f, 0.22f))
-    return 0.045f * speed / (1f + speed) * contact
-}
+/** The source and window share the same upper edge, including through a direction reversal. */
+internal fun playerMiniTop(progress: Float, fullHeight: Float, dockHeight: Float): Float =
+    (fullHeight - dockHeight.coerceIn(0f, fullHeight.coerceAtLeast(0f))) * (1f - boundedProgress(progress))
 
 /** The shell changes aspect, while every photo/video/control shares ONE uniform page scale. */
 internal fun playerWindowBounds(progress: Float, size: Size, miniHeight: Float, dockHeight: Float, inset: Float): Rect {
     val p = boundedProgress(progress)
     val width = size.width.coerceAtLeast(0f)
     val height = size.height.coerceAtLeast(0f)
-    val top = (height - dockHeight.coerceIn(0f, height)) * (1f - p)
+    val top = playerMiniTop(p, height, dockHeight)
     val bottom = (height - dockHeight + miniHeight).coerceIn(0f, height) * (1f - p) + height * p
     val side = inset.coerceIn(0f, width / 2f) * (1f - p)
     return Rect(side, top, width - side, bottom.coerceAtLeast(top))

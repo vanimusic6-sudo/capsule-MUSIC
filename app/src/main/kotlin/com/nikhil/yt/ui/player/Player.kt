@@ -520,19 +520,6 @@ fun BottomSheetPlayer(
                 foregroundInteractive = state.compactForegroundAcceptsInput,
             )
         },
-        compactBackground = {
-            // The transition must not create a second live backdrop consumer and then detach it
-            // while accessibility is measuring. Glass remains live on the real Mini only; this
-            // passive bridge uses the already extracted artwork palette and has no source owner.
-            CapsuleCompactSurfaceBackground(
-                style = if (miniPlayerBackground == MiniPlayerBackgroundStyle.GLASS)
-                    MiniPlayerBackgroundStyle.GRADIENT else miniPlayerBackground,
-                pureBlack = pureBlack,
-                colors = gradientColors,
-                modifier = Modifier.fillMaxSize(),
-                animated = false,
-            )
-        },
         backgroundContent = {
             // Generic sheets retain their old bridge. The physical card reveals its real page
             // from the first frame and never paints the mini material as a temporary grey page.

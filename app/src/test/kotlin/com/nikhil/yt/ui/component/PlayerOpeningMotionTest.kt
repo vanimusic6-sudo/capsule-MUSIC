@@ -49,9 +49,9 @@ class PlayerOpeningMotionTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private lateinit var state: BottomSheetState
     private val foreground = mutableStateOf(true)
-    private var materialDraws = 0
-    private var materialMounts = 0
-    private var materialDisposals = 0
+    private var miniDraws = 0
+    private var miniMounts = 0
+    private var miniDisposals = 0
     private var sceneDraws = 0
     private var sceneCompositions = 0
     private var navigationClicks = 0
@@ -109,16 +109,13 @@ class PlayerOpeningMotionTest {
                         backHandlerEnabled = false, collapsedContentHeight = 48.dp,
                         collapsedHorizontalInset = 12.dp, collapsedTopCornerRadius = 14.dp,
                         surfaceAlpha = ::playerHandoffSurfaceAlpha,
-                        compactBackground = {
-                            DisposableEffect(Unit) {
-                                materialMounts++
-                                onDispose { materialDisposals++ }
-                            }
-                            Box(Modifier.fillMaxSize().drawWithContent { materialDraws++; drawContent() }
-                                .background(Color(0xFF7C3331)))
-                        },
                         collapsedContent = {
-                            Box(Modifier.fillMaxSize().background(Color(0xFF7C3331)).testTag("mini"))
+                            DisposableEffect(Unit) {
+                                miniMounts++
+                                onDispose { miniDisposals++ }
+                            }
+                            Box(Modifier.fillMaxSize().drawWithContent { miniDraws++;drawContent() }
+                                .background(Color(0xFF7C3331)).testTag("mini"))
                         },
                     ) {
                         DisposableEffect(Unit) {
@@ -186,46 +183,51 @@ class PlayerOpeningMotionTest {
         assertTrue(outline is Outline.Rounded)
     }
 
-    @Test fun sourceMaterialFillsTheWindowBeforeAnyBrightPageCanAppear() {
-        mount(); sampleAt(0.04f)
-        val p = compose.runOnIdle { state.visualProgress }
-        assertTrue("sample must precede the page handoff", p > 0f && p <= 0.18f)
-        assertEquals(0f, playerPageOpacity(p), 0f)
-        val bitmap = capture("source-material-no-photo")
-        // Above Mini, INSIDE the expanded shell. This used to show the app through the photo.
-        val x = with(compose.density) { 180.dp.toPx() }.roundToInt()
-        val frame = playerWindowBounds(p, Size(360f,700f),48f,110f,12f)
-        val y = with(compose.density) { (frame.top+12f).dp.toPx() }.roundToInt()
-        assertEquals(AndroidColor.rgb(124, 51, 49), bitmap.getPixel(x, y))
+    @Test fun realPageBeginsAtTheMovingMiniWithoutASeparatePalettePanel() {
+        mount();sampleAt(0.04f)
+        val p=compose.runOnIdle {state.visualProgress}
+        val alpha=playerPageOpacity(p)
+        assertTrue("the actual page must begin with the source handoff",alpha>0f && alpha<1f)
+        val frame=playerWindowBounds(p,Size(360f,700f),48f,110f,12f)
+        val bitmap=capture("direct-mini-page-handoff")
+        // Below the moving Mini footprint but inside the growing window. Only the REAL page
+        // can paint this region; the old separate palette panel painted a different opaque colour.
+        val x=with(compose.density){40.dp.toPx()}.roundToInt()
+        val y=with(compose.density){(frame.top+60f).dp.toPx()}.roundToInt()
+        assertTrue(frame.top+60f<frame.bottom)
+        val pixel=bitmap.getPixel(x,y)
+        val focus=playerSceneDim(p)
+        fun mix(app:Int,page:Int)=app*(1f-focus)*(1f-alpha)+page*alpha
+        assertEquals(mix(49,155),AndroidColor.red(pixel).toFloat(),3f)
+        assertEquals(mix(123,40),AndroidColor.green(pixel).toFloat(),3f)
+        assertEquals(mix(80,35),AndroidColor.blue(pixel).toFloat(),3f)
         bitmap.recycle()
     }
 
-    @Test fun pageDissolvesIntoSourceMaterialInsteadOfShowingTheAppBehindIt() {
-        mount(); sampleAt(0.43f)
-        val p = compose.runOnIdle { state.visualProgress }
-        val alpha = playerPageOpacity(p)
-        val frame = playerWindowBounds(p, Size(360f, 700f), 48f, 110f, 12f)
-        val bitmap = capture("material-page-blend")
-        val x = with(compose.density) { 40.dp.toPx() }.roundToInt()
-        val y = with(compose.density) { (frame.center.y + 20f).dp.toPx() }.roundToInt()
-        val pixel = bitmap.getPixel(x, y)
-        fun mix(source: Int, target: Int) = source * (1f - alpha) + target * alpha
-        assertEquals(mix(124,155), AndroidColor.red(pixel).toFloat(), 2f)
-        assertEquals(mix(51,40), AndroidColor.green(pixel).toFloat(), 2f)
-        assertEquals(mix(49,35), AndroidColor.blue(pixel).toFloat(), 2f)
+    @Test fun onlyTheRealPagePaintsTheWindowAfterTheShortHandoff() {
+        mount();sampleAt(0.43f)
+        val p=compose.runOnIdle {state.visualProgress}
+        assertEquals(1f,playerPageOpacity(p),0f)
+        assertEquals(0f,playerMiniDrawAlpha(p),0f)
+        val frame=playerWindowBounds(p,Size(360f,700f),48f,110f,12f)
+        val bitmap=capture("real-page-no-palette-layer")
+        val x=with(compose.density){40.dp.toPx()}.roundToInt()
+        val y=with(compose.density){(frame.center.y+20f).dp.toPx()}.roundToInt()
+        assertEquals(AndroidColor.rgb(155,40,35),bitmap.getPixel(x,y))
         bitmap.recycle()
     }
 
-    @Test fun closingContentIsGoneBeforeTheWindowReachesMini() {
-        assertEquals(0f, playerPageOpacity(0f), 0f)
-        assertEquals(0f, playerPageOpacity(0.18f), 0f)
-        assertEquals(1f, playerPageOpacity(0.66f), 0f)
-        assertTrue(playerMiniDrawAlpha(0.08f) > 0f)
-        assertEquals(0f, playerMiniDrawAlpha(0.20f), 0f)
-        var previous = 0f
-        for (step in 0..1000) {
-            val alpha = playerPageOpacity(step / 1000f)
-            assertTrue(alpha >= previous - 0.000001f); previous = alpha
+    @Test fun miniAndPageUseOneComplementaryHandoffWithoutAMaterialOnlyStage() {
+        assertEquals(0f,playerPageOpacity(0.015f),0f)
+        assertEquals(1f,playerPageOpacity(0.25f),0f)
+        assertEquals(1f,playerMiniDrawAlpha(0f),0f)
+        assertEquals(0f,playerMiniDrawAlpha(0.25f),0f)
+        var previous=0f
+        for(step in 0..1000) {
+            val p=step/1000f
+            val alpha=playerPageOpacity(p)
+            assertTrue(alpha>=previous-0.000001f);previous=alpha
+            assertEquals(1f,alpha+playerMiniDrawAlpha(p),0.000001f)
         }
     }
 
@@ -244,36 +246,46 @@ class PlayerOpeningMotionTest {
         assertEquals(1, measuredContent.distinct().size)
     }
 
-    @Test fun miniStaysAtItsDockAndOnlyItsUpperEdgeReachesTowardsTheClosingWindow() {
+    @Test fun miniTravelsWithTheWindowOnBothOpeningAndClosingAndKeepsItsSize() {
         mount()
-        fun bounds() = compose.onNodeWithTag("mini",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
-        val dock = bounds()
-        compose.runOnIdle { state.expandSoft() }
-        repeat(45) {
-            advance(16); val b = bounds()
-            assertEquals(dock.top,b.top,1f); assertEquals(dock.bottom,b.bottom,1f)
+        fun bounds()=compose.onNodeWithTag("mini",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
+        val dock=bounds()
+        fun checkPosition() {
+            val p=compose.runOnIdle {state.visualProgress}
+            val b=bounds()
+            val expected=with(compose.density){playerMiniTop(p,700f,110f).dp.toPx()}
+            assertEquals("Mini and the growing frame must share their upper edge",expected,b.top,1f)
+            assertEquals(dock.height,b.height,1f)
+            assertEquals(dock.width,b.width,1f)
         }
-        compose.runOnIdle { state.collapseSoft() }
-        var highest = dock.top; var captured = false
-        repeat(45) {
-            advance(16); val b=bounds(); highest=minOf(highest,b.top)
-            assertEquals(dock.bottom,b.bottom,1f)
-            assertEquals(dock.left,b.left,1f); assertEquals(dock.right,b.right,1f)
-            assertTrue(b.height <= dock.height*1.046f+1f)
-            if (!captured && b.top < dock.top-0.5f) {capture("mini-source-stretch").recycle();captured=true}
+        compose.runOnIdle {state.expandSoft()};advance(32)
+        checkPosition()
+        assertTrue("Mini must move while it is still visibly handing off",bounds().top<dock.top-1f)
+        assertTrue(compose.runOnIdle {playerMiniDrawAlpha(state.visualProgress)}>0f)
+        capture("moving-mini-opening").recycle()
+        repeat(43){advance(16);checkPosition()}
+        compose.runOnIdle {state.collapseSoft()}
+        var captured=false
+        repeat(45){
+            advance(16);checkPosition()
+            val p=compose.runOnIdle {state.visualProgress}
+            if(!captured && p>0.02f && p<0.20f){capture("moving-mini-closing").recycle();captured=true}
         }
-        assertTrue(highest < dock.top-0.5f)
         assertEquals(dock.top,bounds().top,1f)
         capture("closed").recycle()
     }
 
-    @Test fun stretchHasNoIndependentClockOrOpeningBounce() {
-        assertTrue(playerMiniStretch(0.08f,-3f)>0f)
-        assertEquals(0f,playerMiniStretch(0.08f,3f),0f)
-        assertEquals(0f,playerMiniStretch(0.08f,0f),0f)
-        assertEquals(0f,playerMiniStretch(0f,-3f),0f)
-        assertEquals(0f,playerMiniStretch(1f,-3f),0f)
-        for (step in 0..1000) assertTrue(playerMiniStretch(step/1000f,-100f) in 0f..0.045f)
+    @Test fun miniAndWindowShareOnePositionCurveWithoutAnIndependentLiftClock() {
+        var previous=590f
+        for(step in 0..1000) {
+            val p=step/1000f
+            val top=playerMiniTop(p,700f,110f)
+            val frame=playerWindowBounds(p,Size(360f,700f),48f,110f,12f)
+            assertEquals(frame.top,top,0f)
+            assertTrue(top<=previous+0.001f);previous=top
+        }
+        assertEquals(590f,playerMiniTop(0f,700f,110f),0f)
+        assertEquals(0f,playerMiniTop(1f,700f,110f),0f)
     }
 
     @Test fun compactSwipeDismissStillMovesMiniDownIndependently() {
@@ -336,39 +348,36 @@ class PlayerOpeningMotionTest {
         compose.runOnIdle {assertEquals(1,controlClicks)}
     }
 
-    @Test fun sourceMaterialAndAppDrawingStopAfterTheWindowBecomesOpaque() {
+    @Test fun coveredMiniAndAppDrawingStopAfterTheWindowBecomesOpaque() {
         mount();compose.runOnIdle {state.expandSoft()};advance(32)
-        capture("material-active").recycle()
-        advance(700)
-        val source=materialDraws;val app=sceneDraws;val compositions=sceneCompositions
-        assertTrue("the idle check must exercise the material's actual draw pass", source > 0)
+        capture("mini-active").recycle();advance(700)
+        val source=miniDraws;val app=sceneDraws;val compositions=sceneCompositions
+        assertTrue(source>0)
         advance(1500)
-        compose.runOnIdle {assertEquals(source,materialDraws);assertEquals(app,sceneDraws);assertEquals(compositions,sceneCompositions)}
+        compose.runOnIdle {assertEquals(source,miniDraws);assertEquals(app,sceneDraws);assertEquals(compositions,sceneCompositions)}
     }
 
-    @Test fun sourceMaterialRemainsAttachedUntilTheWholeWindowCloses() {
-        mount()
-        sampleAt(0.80f)
+    @Test fun miniAndDestinationRemainAttachedThroughMotionAndRetireOnlyAtRest() {
+        mount();sampleAt(0.80f)
         compose.runOnIdle {
             assertTrue(state.isAnimationRunning)
-            assertEquals(1, materialMounts)
-            assertEquals("source material detached during active player motion", 0, materialDisposals)
-            assertTrue("Mini body must not detach while its parent is still moving", state.compactSurfaceVisible)
-        }
-        advance(700)
-        compose.runOnIdle { assertEquals(0, materialDisposals); assertFalse(state.compactSurfaceVisible) }
-        val draws = materialDraws
-        advance(300)
-        compose.runOnIdle { assertEquals("retained material must not draw while covered", draws, materialDraws) }
-        compose.runOnIdle { state.collapseSoft() }
-        advance(64)
-        compose.runOnIdle {
-            assertEquals(1, materialMounts)
-            assertEquals(0, materialDisposals)
+            assertEquals(1,miniMounts);assertEquals(0,miniDisposals)
+            assertEquals(1,contentMounts);assertEquals(0,contentDisposals)
             assertTrue(state.compactSurfaceVisible)
         }
         advance(700)
-        compose.runOnIdle { assertEquals(1, materialDisposals); assertTrue(state.isCollapsed) }
+        compose.runOnIdle {assertEquals(0,contentDisposals);assertFalse(state.compactSurfaceVisible)}
+        compose.runOnIdle {state.collapseSoft()};advance(64)
+        compose.runOnIdle {
+            assertEquals(1,miniMounts);assertEquals(0,miniDisposals)
+            assertEquals(1,contentMounts);assertEquals(0,contentDisposals)
+            assertTrue(state.compactSurfaceVisible)
+        }
+        advance(700)
+        compose.runOnIdle {
+            assertEquals(0,miniDisposals);assertEquals(1,contentDisposals)
+            assertTrue(state.isCollapsed)
+        }
     }
 
     @Test fun opaquePageCoversTheWholeWindowOnPhoneAndRailWidths() {
