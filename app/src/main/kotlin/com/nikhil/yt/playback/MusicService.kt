@@ -255,6 +255,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -527,11 +529,14 @@ class MusicService :
     private var autoStartOnBluetoothEnabled = false
     private var bluetoothReceiverRegistered = false
 
-    private var scopeJob = Job()
+    private var scopeJob = SupervisorJob()
     private var scope = CoroutineScope(Dispatchers.Main + scopeJob)
     private var ioScope = CoroutineScope(Dispatchers.IO + scopeJob)
+    // System controllers keep this loader for the complete session lifetime. Never bind it to
+    // a replaceable UI/service scope: one failed image must not cancel likes or future covers.
+    private val sessionArtworkScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val sessionArtworkLoader by lazy(LazyThreadSafetyMode.NONE) {
-        CacheBitmapLoader(CoilBitmapLoader(this, scope))
+        CacheBitmapLoader(CoilBitmapLoader(this, sessionArtworkScope))
     }
     private val songMutationMutex = Mutex()
     private val binder = MusicBinder()
@@ -2382,7 +2387,7 @@ class MusicService :
 
     private fun ensureScopesActive() {
         if (!scopeJob.isActive) {
-            scopeJob = Job()
+            scopeJob = SupervisorJob()
         }
         if (!scope.isActive) {
             scope = CoroutineScope(Dispatchers.Main + scopeJob)
@@ -3582,8 +3587,9 @@ class MusicService :
     private fun toggleLibrary() {
         val metadata = activeSongMetadata()
         val mediaId = activeSongId(metadata) ?: return
+        SongLikeMutationFence.Shared.record(mediaId)
 
-        ioScope.launch {
+        ioScope.launch(SilentHandler) {
             songMutationMutex.withLock {
                 database.withTransaction {
                     val current = ensureSongForMutation(mediaId, metadata) ?: return@withTransaction
@@ -3595,8 +3601,11 @@ class MusicService :
 
     private val likeTapGate = LikeTapGate()
 
-    fun toggleLike(source: String = "service") {
-        val metadata = activeSongMetadata()
+    fun toggleLike(
+        source: String = "service",
+        requestedMetadata: com.nikhil.yt.models.MediaMetadata? = null,
+    ) {
+        val metadata = requestedMetadata ?: activeSongMetadata()
         val mediaId = activeSongId(metadata)
 
         Timber.tag("MusicService").i(
@@ -3611,8 +3620,9 @@ class MusicService :
         }
 
         if (!likeTapGate.accept(mediaId)) return
+        SongLikeMutationFence.Shared.record(mediaId)
 
-        ioScope.launch {
+        ioScope.launch(SilentHandler) {
             songMutationMutex.withLock {
                 val updatedSong =
                     database.withTransaction {
@@ -6136,6 +6146,7 @@ class MusicService :
     }
 
     override fun onDestroy() {
+        sessionArtworkScope.cancel()
         nativeMediaCardCheckJob?.cancel()
         if (::mediaSession.isInitialized && nativeMediaCardFallback.rescueActive) {
             nativeMediaCardFallback.clear()

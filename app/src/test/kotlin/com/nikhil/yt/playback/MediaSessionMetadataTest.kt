@@ -35,4 +35,15 @@ class MediaSessionMetadataTest {
         assertTrue(item.mediaMetadata.artworkUri?.scheme == "https")
         assertEquals("a1b2c3d4e5f", item.mediaId)
     }
+    @Test fun switchingTracksPublishesANewArtworkUriAlongWithItsOwnText() {
+        val first=MediaMetadata("first","First",listOf(MediaMetadata.Artist("a","A")),100,
+            thumbnailUrl="https://i.ytimg.com/vi/first/hqdefault.jpg")
+        val second=first.copy(id="second",title="Second",thumbnailUrl="https://i.ytimg.com/vi/second/hqdefault.jpg")
+        val a=first.toMediaItem().mediaMetadata
+        val b=second.toMediaItem().mediaMetadata
+        assertTrue(a.artworkUri!=b.artworkUri)
+        assertEquals(second.thumbnailUrl,b.artworkUri.toString())
+        assertEquals("Second",b.title.toString())
+    }
+
 }

@@ -145,7 +145,7 @@ class PlayerConnection(
     }
 
     fun toggleLike() {
-        service.toggleLike("player_ui")
+        service.toggleLike("player_ui", mediaMetadata.value)
     }
 
     fun seekToNext() {

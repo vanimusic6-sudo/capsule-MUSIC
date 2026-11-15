@@ -77,7 +77,6 @@ import com.nikhil.yt.models.mergeArtistCredits
 import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.ui.component.BottomSheet
 import com.nikhil.yt.ui.component.BottomSheetState
-import com.nikhil.yt.ui.component.PlayerContentHandoffPoint
 import com.nikhil.yt.ui.component.playerHandoffSurfaceAlpha
 import com.nikhil.yt.ui.component.playerBackdropContentAlpha
 import com.nikhil.yt.ui.component.LocalBottomSheetPageState
@@ -119,6 +118,7 @@ fun BottomSheetPlayer(
     navController: NavController,
     modifier: Modifier = Modifier,
     pureBlack: Boolean,
+    backAction: com.nikhil.yt.ui.component.PlayerBackAction? = null,
     miniPlayerBackdrop: Backdrop? = null,
 ) {
     val context = LocalContext.current
@@ -254,6 +254,8 @@ fun BottomSheetPlayer(
         }
 
     val onScreen = appIsOnScreen()
+    com.nikhil.yt.ui.component.PlayerTransitionLifetime(state, onScreen)
+
     // Sample the current Immersion cover while MINI is still displayed.
     // Previously colour extraction did not start until the sheet opened;
     // a quick tap had to wait for multiple sequential image decodes.
@@ -424,10 +426,14 @@ fun BottomSheetPlayer(
 
             else -> false
         }
+    val pageIsDrawn by remember(state) { derivedStateOf {
+        !state.playerMotion || com.nikhil.yt.ui.component.playerPageVisible(state.visualProgress)
+    } }
     val backdropTimelineRunning =
         backdropNeedsClock &&
             effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
             state.shouldLayerAboveCollapsedChrome &&
+            pageIsDrawn &&
             onScreen &&
             isPlaying &&
             playbackState == Player.STATE_READY &&
@@ -442,13 +448,22 @@ fun BottomSheetPlayer(
 
     // Parent Player owns BACK as one unit. Lyrics/Queue may choose what BACK does only while
     // the Player's semantic target is Expanded.
-    BackHandler(enabled = state.isExpandedOrExpanding) {
+    val handlePlayerBack: () -> Unit = {
         when {
             showInlineLyrics && state.isExpandedOrExpanding -> showInlineLyrics = false
             queueSheetState.isExpandedOrExpanding ->
                 queueSheetState.collapseSoft()
             state.isExpandedOrExpanding ->
                 state.collapseSoft()
+        }
+    }
+    val currentPlayerBack by androidx.compose.runtime.rememberUpdatedState(handlePlayerBack)
+    if (backAction == null) {
+        BackHandler(enabled = state.isExpandedOrExpanding) { currentPlayerBack() }
+    } else {
+        androidx.compose.runtime.DisposableEffect(backAction) {
+            backAction.callback = { currentPlayerBack() }
+            onDispose { backAction.callback = null }
         }
     }
 
@@ -458,6 +473,16 @@ fun BottomSheetPlayer(
         visible = onScreen && state.isExpandedOrExpanding,
         retry = playerConnection.service::retryCurrentFromFreshStream,
     )
+
+    val showCompactTransitionPlate by remember(state) {
+        derivedStateOf { !state.playerMotion && state.visualProgress < 0.5f }
+    }
+    val showPlayerBackdrop by remember(state, effectivePlayerDesign) {
+        derivedStateOf {
+            effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
+                state.visualProgress > state.contentHandoffPoint
+        }
+    }
 
     BottomSheet(
         state = state,
@@ -496,10 +521,9 @@ fun BottomSheetPlayer(
             )
         },
         backgroundContent = {
-            // Carry the compact card's actual palette through the empty part of the sheet.
-            // The chosen full-player backdrop then replaces it as the full UI arrives, instead
-            // of exposing the neutral Surface for a quarter of the opening travel.
-            if (state.visualProgress < 0.5f) {
+            // Generic sheets retain their old bridge. The physical card reveals its real page
+            // from the first frame and never paints the mini material as a temporary grey page.
+            if (showCompactTransitionPlate) {
                 CapsuleCompactSurfaceBackground(
                     style = miniPlayerBackground,
                     pureBlack = pureBlack,
@@ -508,14 +532,13 @@ fun BottomSheetPlayer(
                     animated = false,
                 )
             }
-            if (effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
-                state.visualProgress > PlayerContentHandoffPoint
-            ) {
+            if (showPlayerBackdrop) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            alpha = playerBackdropContentAlpha(state.visualProgress)
+                            alpha = if (state.playerMotion) 1f else
+                                playerBackdropContentAlpha(state.visualProgress, state.contentHandoffPoint)
                         }
                         .background(playerSurfaceColor(useBlackBackground))
                         .drawWithContent { if (onScreen && playerSceneExposed) drawContent() },
@@ -535,7 +558,7 @@ fun BottomSheetPlayer(
                             gradientColors = gradientColors,
                             artworkField = artworkScene.field,
                             animated = if (playerBackground == PlayerBackgroundStyle.SCENE_LIGHT)
-                                onScreen && playerSceneExposed && state.shouldLayerAboveCollapsedChrome else backdropTimelineRunning,
+                                onScreen && pageIsDrawn && playerSceneExposed && state.shouldLayerAboveCollapsedChrome else backdropTimelineRunning,
                             sharedAnimationTime = sharedBackdropAnimationTime,
                         )
                     }
@@ -543,7 +566,7 @@ fun BottomSheetPlayer(
                         CapsuleVideoAmbientBackdrop(
                             bands = retainedVideoAmbientBands,
                             field = retainedVideoAmbient?.field,
-                            animated = onScreen && playerSceneExposed && videoPlaybackState.presentingVideo,
+                            animated = onScreen && pageIsDrawn && playerSceneExposed && videoPlaybackState.presentingVideo,
                             modifier = Modifier.fillMaxSize().graphicsLayer {
                                 alpha = videoAmbientOverlayAlpha.value
                             },

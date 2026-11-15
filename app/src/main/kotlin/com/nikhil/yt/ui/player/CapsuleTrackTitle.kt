@@ -72,6 +72,7 @@ internal fun CapsuleTrackTitle(
         maxLines = 1,
         softWrap = false,
         overflow = TextOverflow.Clip,
-        modifier = modifier.clipToBounds().horizontalScroll(scroll, enabled = enabled),
+        modifier = modifier.clipToBounds()
+            .horizontalScroll(scroll, enabled = enabled),
     )
 }

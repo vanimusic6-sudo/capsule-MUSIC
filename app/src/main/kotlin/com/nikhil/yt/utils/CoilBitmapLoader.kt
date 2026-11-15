@@ -23,6 +23,10 @@ import coil3.toBitmap
 import kotlinx.coroutines.delay
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.guava.future
 import kotlin.math.roundToInt
@@ -41,8 +45,12 @@ import kotlin.math.roundToInt
  */
 class CoilBitmapLoader(
     private val context: Context,
-    private val scope: CoroutineScope,
+    scope: CoroutineScope,
 ) : BitmapLoader {
+    // Futures report failed artwork to Media3. Such a failure must not cancel the caller's
+    // normal Job and unrelated service work. Owner cancellation still stops all image requests.
+    private val requestScope = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]))
+
     override fun supportsMimeType(mimeType: String): Boolean = mimeType.startsWith("image/")
 
     // ArchiveTune also bounds the *decoded* bitmap. The old path decoded
@@ -52,7 +60,7 @@ class CoilBitmapLoader(
         (context.resources.displayMetrics.density * 128f).roundToInt().coerceIn(128, 512)
 
     override fun decodeBitmap(data: ByteArray): ListenableFuture<Bitmap> =
-        scope.future(Dispatchers.Default) {
+        requestScope.future(Dispatchers.Default) {
             require(data.isNotEmpty()) { "Empty image data" }
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
@@ -79,10 +87,11 @@ class CoilBitmapLoader(
         }
 
     override fun loadBitmap(uri: Uri): ListenableFuture<Bitmap> =
-        scope.future(Dispatchers.IO) {
+        requestScope.future(Dispatchers.IO) {
             var lastFailure: Throwable? = null
 
             for (attempt in 0 until ATTEMPTS) {
+                ensureActive()
                 if (attempt > 0) {
                     // A track change and its first artwork request arrive together, before the image
                     // is in Coil's cache, so the first attempt is often a cold network fetch. The
@@ -101,6 +110,7 @@ class CoilBitmapLoader(
                                 .build()
                         context.imageLoader.execute(request)
                     }.getOrElse { throwable ->
+                        if (throwable is CancellationException) throw throwable
                         lastFailure = throwable
                         continue
                     }
@@ -111,7 +121,10 @@ class CoilBitmapLoader(
                             .onSuccess { bitmap -> return@future bitmap }
                             .onFailure { throwable -> lastFailure = throwable }
 
-                    is ErrorResult -> lastFailure = result.throwable
+                    is ErrorResult -> {
+                        if (result.throwable is CancellationException) throw result.throwable
+                        lastFailure = result.throwable
+                    }
                 }
             }
 

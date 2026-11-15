@@ -5,7 +5,16 @@ on:
   pull_request:
     paths:
       - 'app/src/main/kotlin/com/nikhil/yt/ui/player/**'
+      - 'app/src/main/kotlin/com/nikhil/yt/ui/component/BottomSheet.kt'
+      - 'app/src/main/kotlin/com/nikhil/yt/ui/component/PlayerOpeningMotion.kt'
+      - 'app/src/main/kotlin/com/nikhil/yt/ui/component/PlayerWindow.kt'
+      - 'app/src/main/kotlin/com/nikhil/yt/MainActivity.kt'
+      - 'app/src/main/kotlin/com/nikhil/yt/playback/**'
+      - 'app/src/main/kotlin/com/nikhil/yt/utils/CoilBitmapLoader.kt'
+      - 'app/src/main/kotlin/com/nikhil/yt/utils/SyncUtils.kt'
       - 'app/src/test/kotlin/com/nikhil/yt/ui/**'
+      - 'app/src/test/kotlin/com/nikhil/yt/playback/**'
+      - 'app/src/test/kotlin/com/nikhil/yt/utils/SyncLikedSongsOrderingTest.kt'
       - '.github/workflows/player-ui-quality.yml'
   workflow_dispatch:
 
@@ -57,6 +66,9 @@ jobs:
           --tests 'com.nikhil.yt.ui.player.ImmersiveArtworkBackgroundTest'
           --tests 'com.nikhil.yt.ui.player.ImmersiveVideoArtworkClipRegressionTest'
           --tests 'com.nikhil.yt.ui.CapsuleMotionTest'
+          --tests 'com.nikhil.yt.ui.DockHandoverTest'
+          --tests 'com.nikhil.yt.ui.component.PlayerOpeningMotionTest'
+          --tests 'com.nikhil.yt.ui.component.PlayerWindowAccessibilityTest'
           --tests 'com.nikhil.yt.ui.PlayerTransitionGestureTest'
           --tests 'com.nikhil.yt.ui.PlayerTransitionArchitectureTest'
           --tests 'com.nikhil.yt.ui.SearchPresentationRegressionTest'
@@ -77,6 +89,11 @@ jobs:
           --tests 'com.nikhil.yt.ui.player.CapsuleDesignPresetTest'
           --tests 'com.nikhil.yt.ui.MotionEnergyStructuralRegressionTest'
           --tests 'com.nikhil.yt.ui.UiEnergyRegressionTest'
+          --tests 'com.nikhil.yt.playback.NativeMediaBitmapLoaderTest'
+          --tests 'com.nikhil.yt.playback.MediaSessionMetadataTest'
+          --tests 'com.nikhil.yt.playback.LikeTapGateTest'
+          --tests 'com.nikhil.yt.playback.SongLikeMutationFenceTest'
+          --tests 'com.nikhil.yt.utils.SyncLikedSongsOrderingTest'
           --stacktrace --no-daemon --max-workers=2
       - name: Upload player graphics and CPU preparation report
         if: ${{ !cancelled() }}
@@ -87,6 +104,7 @@ jobs:
             app/build/test-results/testUniversalDebugUnitTest/
             app/build/video-morph-preview/*.png
             app/build/video-morph-preview/*.json
+            app/build/player-opening-preview/*.png
           retention-days: 7
       - name: Android lint
         if: ${{ !cancelled() }}
@@ -102,5 +120,6 @@ jobs:
             app/build/reports/lint-results-universalDebug.*
             app/build/video-morph-preview/*.png
             app/build/video-morph-preview/*.json
+            app/build/player-opening-preview/*.png
           if-no-files-found: warn
           retention-days: 7

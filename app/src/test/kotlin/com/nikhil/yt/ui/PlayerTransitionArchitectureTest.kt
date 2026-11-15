@@ -36,7 +36,9 @@ class PlayerTransitionArchitectureTest {
         val immersive = source("com/nikhil/yt/ui/player/CapsuleImmersiveContent.kt")
         // The old two-coroutine readiness gate, tall ray projection and
         // independent audio fade must never return.
-        assertTrue(immersive.contains("matchedPaint = withContext(Dispatchers.Default)"))
+        assertTrue(immersive.contains("matchedPaint = immersivePaintCache[paintKey]"))
+        assertTrue(immersive.contains("entryScene?.takeIf { it.paintKey == paintKey }?.bitmap"))
+        assertTrue(immersive.contains("?: withContext(Dispatchers.Default)"))
         assertTrue(immersive.contains("matchedPaint?.let { bitmap ->"))
         assertTrue(immersive.contains("if (frame != null) ImmersiveAudioScene("))
         assertFalse("No second tinted photo overlay", immersive.contains("matchedPaint?.second?.let"))

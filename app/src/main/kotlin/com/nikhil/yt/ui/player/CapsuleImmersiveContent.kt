@@ -823,7 +823,9 @@ internal fun CapsuleImmersiveContent(
             outgoingStartAlpha = if (old?.key == outgoingFrame?.key)
                 outgoingStartAlpha else staleSceneAlpha.value
             val geometryOnly = old?.mediaId == mediaMetadata.id
-            outgoingFrame = old.takeUnless { geometryOnly }
+            // A same-song crop/inset refresh still needs its last complete pair until the
+            // replacement page texture arrives. Dropping it here exposed a neutral frame.
+            outgoingFrame = old
             shownGradient = immersiveGradientFrame(visualKey, mediaMetadata.id, artworkTone, readyPainter)
             // New background + photo appear together only after their first
             // render has completed, instead of sequential fade-out/in.
@@ -883,10 +885,14 @@ internal fun CapsuleImmersiveContent(
             paintKey, frame?.colorField, pageFloor,
         ) {
             val readyFrame = frame ?: return@LaunchedEffect
-            if (immersivePaintCache[paintKey] == null) matchedPaint = withContext(Dispatchers.Default) {
-                val visible = readyFrame.colorField ?: CapsuleColorField(1, 1, listOf(readyFrame.floor))
-                capsuleImmersiveImageBackdropBitmap(visible, coverFraction)
-            }
+            // Reuse only an exact crop/geometry key, including after shared-LRU eviction.
+            // An entry frame can still be a temporary fallback during an inset/rotation change.
+            matchedPaint = immersivePaintCache[paintKey]
+                ?: entryScene?.takeIf { it.paintKey == paintKey }?.bitmap
+                ?: withContext(Dispatchers.Default) {
+                    val visible = readyFrame.colorField ?: CapsuleColorField(1, 1, listOf(readyFrame.floor))
+                    capsuleImmersiveImageBackdropBitmap(visible, coverFraction)
+                }
             matchedPaint?.let {
                 immersivePaintCache[paintKey] = it
                 lastReadyPaint = readyFrame.key to it
@@ -995,7 +1001,9 @@ internal fun CapsuleImmersiveContent(
         // Compose each photo and its continuation into ONE scene before
         // applying track opacity. Independent alpha layers mix the old photo
         // with the new floor most strongly at the feather, drawing a stripe.
-        Box(Modifier.fillMaxSize().background(IMMERSIVE_NEUTRAL_COLOR)) {
+        Box(Modifier.fillMaxSize().background(
+            immersivePageBaseColor(isVideo, artworkTone.ready, artworkTone.edge),
+        )) {
             if (audioSceneVisible) {
                 val leaving = outgoingFrame
                 if (leaving != null && outgoingPaint != null) {

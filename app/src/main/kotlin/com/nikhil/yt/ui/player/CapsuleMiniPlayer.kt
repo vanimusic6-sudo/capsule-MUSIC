@@ -957,7 +957,7 @@ private fun CapsuleMiniSongInfo(
                 overflow =
                     TextOverflow.Clip,
                 modifier =
-                    if (visible) {
+                    (if (visible) {
                         Modifier.basicMarquee(
                             iterations = 1,
                             initialDelayMillis = 3000,
@@ -965,7 +965,7 @@ private fun CapsuleMiniSongInfo(
                         )
                     } else {
                         Modifier
-                    },
+                    }),
             )
 
             Row(

@@ -57,11 +57,11 @@ class DockHandoverTest {
         assertEquals(1f, fullPlayerContentAlpha(FullPlayerContentFadeEnd), 0f)
     }
 
-    @Test fun `player backdrop remains translucent at the empty UI handoff`() {
+    @Test fun `player surface is opaque before the main UI handoff`() {
         assertEquals(0f, miniPlayerContentAlpha(PlayerContentHandoffPoint), 0f)
         assertEquals(0f, fullPlayerContentAlpha(PlayerContentHandoffPoint), 0f)
         assertEquals(
-            PlayerContentHandoffPoint,
+            1f,
             playerHandoffSurfaceAlpha(PlayerContentHandoffPoint),
             0f,
         )
