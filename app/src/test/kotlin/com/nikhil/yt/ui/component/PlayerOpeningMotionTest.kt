@@ -20,6 +20,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Outline
@@ -60,13 +61,14 @@ class PlayerOpeningMotionTest {
     private var navigationClicks = 0
     private var backgroundBacks = 0
     private var controlClicks = 0
+    private var compactClicks = 0
     private var nestedSurface = false
     private val routeEpoch = mutableStateOf(0)
     private var contentMounts = 0
     private var contentDisposals = 0
     private val measuredContent = mutableListOf<IntSize>()
 
-    private fun mount() {
+    private fun mount(portraitPoster: Boolean = false) {
         compose.mainClock.autoAdvance = false
         compose.setContent {
             MaterialTheme {
@@ -125,10 +127,13 @@ class PlayerOpeningMotionTest {
                                     Box(Modifier.align(Alignment.CenterStart).padding(start=10.dp).size(40.dp)
                                         .clip(CircleShape)
                                         .playerMorphElement(PlayerMorphPart.Artwork,"fixture",false,20.dp)
-                                        .background(Color(0xFFFFBF4C)).testTag("mini-art"))
+                                        .background(Color(0xFFFFBF4C)).drawBehind { drawCircle(Color.Cyan,radius=10.dp.toPx()) }
+                                        .testTag("mini-art"))
                                     Text("PLAYER",Modifier.align(Alignment.CenterStart).padding(start=62.dp)
                                         .playerMorphElement(PlayerMorphPart.Title,"fixture",false),
                                         fontSize=14.sp,color=Color.White)
+                                    Box(Modifier.align(Alignment.CenterEnd).size(24.dp)
+                                        .clickable{compactClicks++}.testTag("mini-control"))
                                 }
                             }
                         },
@@ -139,8 +144,10 @@ class PlayerOpeningMotionTest {
                         }
                         Box(Modifier.fillMaxSize().testTag("page").onSizeChanged { measuredContent += it }) {
                             Box(Modifier.align(Alignment.TopCenter).padding(top = 56.dp)
-                                .size(180.dp).playerMorphElement(PlayerMorphPart.Artwork,"fixture",true,16.dp)
-                                .background(Color(0xFFFFBF4C)).testTag("poster"))
+                                .size(180.dp,if(portraitPoster)240.dp else 180.dp)
+                                .playerMorphElement(PlayerMorphPart.Artwork,"fixture",true,16.dp)
+                                .background(Color(0xFFFFBF4C)).drawBehind { drawCircle(Color.Cyan,radius=45.dp.toPx()) }
+                                .testTag("poster"))
                             Text("PLAYER", Modifier.align(Alignment.Center)
                                 .playerMorphElement(PlayerMorphPart.Title,"fixture",true),fontSize=23.sp,color=Color.White)
                             Box(Modifier.align(Alignment.CenterEnd).size(48.dp)
@@ -221,6 +228,31 @@ class PlayerOpeningMotionTest {
             bitmap.recycle()
         }
         assertEquals(1,measuredContent.distinct().size)
+    }
+
+    @Test fun rectangularDestinationCropsThePhotoWithoutStretchingACircleIntoAnEllipse() {
+        mount(portraitPoster=true)
+        for(fraction in listOf(0.20f,0.40f,0.70f)) {
+            sampleAt(fraction)
+            val bitmap=capture("portrait-cover-${(fraction*100).roundToInt()}")
+            var left=bitmap.width;var top=bitmap.height;var right=-1;var bottom=-1
+            for(y in 0 until bitmap.height) for(x in 0 until bitmap.width) {
+                val c=bitmap.getPixel(x,y)
+                if(AndroidColor.red(c)<15 && AndroidColor.green(c)>240 && AndroidColor.blue(c)>240) {
+                    left=minOf(left,x);top=minOf(top,y);right=maxOf(right,x);bottom=maxOf(bottom,y)
+                }
+            }
+            assertTrue("the photo's circular reference must be visible",right>left && bottom>top)
+            assertEquals("uniform crop must keep the circle round",(right-left).toFloat(),(bottom-top).toFloat(),3f)
+            bitmap.recycle()
+        }
+    }
+
+    @Test fun idleCompactButtonsKeepTheirActualTouchTargetsAndDoNotOpenThePlayer() {
+        mount()
+        compose.onNodeWithTag("mini-control",useUnmergedTree=true).performTouchInput{click(center)}
+        advance(32)
+        compose.runOnIdle{assertEquals(1,compactClicks);assertTrue(state.isCollapsed)}
     }
 
     @Test fun expandingContainerStartsAtTheActualInsetCardAndDoesNotPaintOutsideItsBounds() {
@@ -345,7 +377,7 @@ class PlayerOpeningMotionTest {
         compose.onNodeWithTag("scene").performTouchInput {click(Offset(center.x,height-20f))}
         compose.runOnIdle {assertEquals(0,navigationClicks)}
         advance(700);capture("expanded").recycle()
-        compose.onNodeWithTag("control").performClick()
+        compose.onNodeWithTag("control").performTouchInput{click(center)}
         compose.runOnIdle {assertEquals(1,controlClicks)}
     }
 

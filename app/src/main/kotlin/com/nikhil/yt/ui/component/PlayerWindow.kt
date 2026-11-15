@@ -108,7 +108,7 @@ internal fun PlayerWindow(
                         CornerRadius(contour.radius, contour.radius)))
                 }
                 clipPath(path) {
-                    drawContent()
+                    this@drawWithContent.drawContent()
                     with(morph) { paint(frame) }
                 }
             }
