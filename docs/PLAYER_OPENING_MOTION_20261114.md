@@ -7,7 +7,9 @@ presentation that fits Capsule, for both opening and closing.
 
 The complete player rises only 44dp and approaches from 98.5% to its exact final size, pivoting at
 the bottom center. Its background, photograph/video, title, controls and lyrics entry stay together
-in their real final layout. One opacity follows that same anchored spring. Mini retires locally
+in their real final layout. One opacity follows that same anchored spring and completes within
+its first 55% of position progress, before settling, to avoid prolonged app-text ghosting.
+Mini retires locally
 by 6dp and fades during the early portion; the app underneath remains stationary with a light
 16% maximum black scrim. Closing reverses the same geometry and opacity, without a separate exit
 concept. Rounded 26dp corners finish beyond the screen edges, avoiding a last-frame square snap.

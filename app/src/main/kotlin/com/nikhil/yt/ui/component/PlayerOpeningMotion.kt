@@ -75,7 +75,8 @@ internal fun playerPageAcceptsInput(progress: Float): Boolean = boundedProgress(
 internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0f, 0.32f)
 internal fun playerMiniLift(progress: Float, density: Float): Float = 6f * density * window(progress, 0f, 0.32f)
 
-internal fun playerPresentationOpacity(progress: Float): Float = boundedProgress(progress)
+// Complete the optical handoff before settling so app text cannot ghost through the whole trip.
+internal fun playerPresentationOpacity(progress: Float): Float = window(progress, 0f, 0.55f)
 internal fun playerPresentationScale(progress: Float): Float = 0.985f + 0.015f * boundedProgress(progress)
 internal fun playerPresentationLift(progress: Float, density: Float): Float = 44f * density * (1f - boundedProgress(progress))
 

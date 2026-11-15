@@ -52,6 +52,9 @@ internal fun PlayerWindow(
     val pageDraws by remember(state) { derivedStateOf { playerPageVisible(state.visualProgress) } }
     val pageAccessible by remember(state) { derivedStateOf { playerPageAcceptsInput(state.visualProgress) } }
     val compactInteractive by remember(state) { derivedStateOf { state.compactForegroundAcceptsInput } }
+    val windowInteractive by remember(state) { derivedStateOf {
+        state.isExpandedOrExpanding || state.visualProgress > 0f
+    } }
     val dismissingMini by remember(state) { derivedStateOf { state.rawProgress < 0f } }
 
     if (backHandlerEnabled && state.isExpandedOrExpanding) BackHandler(onBack = state::collapseSoft)
@@ -59,7 +62,9 @@ internal fun PlayerWindow(
     Box(modifier.fillMaxSize()
         .offset { IntOffset(0, if (dismissingMini) (state.collapsedBound - state.value).roundToPx() else 0) }
         .clipToBounds()
-        .pointerInput(state) {
+        // An idle full-size pointer node wins sibling hit testing even if it consumes nothing.
+        // Remove only that input node at rest; the layout/page identities remain stable.
+        .then(if (windowInteractive) Modifier.pointerInput(state) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                 val p = state.visualProgress
@@ -78,7 +83,7 @@ internal fun PlayerWindow(
                     }
                 }
             }
-        },
+        } else Modifier),
     ) {
         if (onDismiss == null || !state.isDismissed) {
             Box(Modifier

@@ -281,7 +281,9 @@ class PlayerOpeningMotionTest {
         var titlePixels = 0
         for (y in title.top.toInt() until title.bottom.toInt()) for (x in title.left.toInt() until title.right.toInt()) {
             val c = bitmap.getPixel(x, y)
-            if (AndroidColor.red(c) > 180 && AndroidColor.green(c) > 100 && AndroidColor.blue(c) > 100) titlePixels++
+            // The entire page is translucent here. Detect its light glyphs after compositing
+            // over the actual green app, rather than expecting already-opaque white pixels.
+            if (AndroidColor.red(c) > 140 && AndroidColor.green(c) > 130 && AndroidColor.blue(c) > 130) titlePixels++
         }
         assertTrue("title must arrive with the photograph", titlePixels > 30)
         bitmap.recycle()
@@ -300,7 +302,9 @@ class PlayerOpeningMotionTest {
         advance(700)
         val bitmap = capture("surface-artwork-ready")
         val poster = rawBounds("poster")
-        assertEquals(AndroidColor.CYAN, bitmap.getPixel(poster.center.x.roundToInt(), poster.center.y.roundToInt()))
+        assertEquals(AndroidColor.rgb(255, 191, 76), bitmap.getPixel(
+            (poster.left + poster.width * 0.2f).roundToInt(),
+            (poster.top + poster.height * 0.2f).roundToInt()))
         bitmap.recycle()
     }
 
@@ -309,6 +313,8 @@ class PlayerOpeningMotionTest {
         compose.onNodeWithTag("mini-control", useUnmergedTree = true).performTouchInput { click(center) }
         advance(32)
         compose.runOnIdle { assertEquals(1, compactClicks); assertTrue(state.isCollapsed) }
+        compose.onNodeWithTag("navigation").performTouchInput { click(center) }
+        compose.runOnIdle { assertEquals(1, navigationClicks); assertTrue(state.isCollapsed) }
     }
 
     @Test fun closingRetreatsAsOnePageAndLeavesNoArtworkOrInputLayerBelowMini() {
