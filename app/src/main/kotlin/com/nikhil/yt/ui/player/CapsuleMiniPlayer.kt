@@ -970,7 +970,7 @@ private fun CapsuleMiniSongInfo(
                         )
                     } else {
                         Modifier
-                    }).playerMorphElement(PlayerMorphPart.Title, metadata.id, false),
+                    }).playerMorphElement(PlayerMorphPart.Title, metadata.id, false, fontSizeSp = 14f),
             )
 
             Row(

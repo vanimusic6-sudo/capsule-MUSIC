@@ -1,6 +1,7 @@
 package com.nikhil.yt.ui.component
 
 import android.app.Application
+import com.nikhil.yt.ui.player.CapsuleVideoArtworkTransition
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color as AndroidColor
@@ -18,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
@@ -62,13 +64,15 @@ class PlayerOpeningMotionTest {
     private var backgroundBacks = 0
     private var controlClicks = 0
     private var compactClicks = 0
+    private var sharedDecoded by mutableStateOf(true)
     private var nestedSurface = false
     private val routeEpoch = mutableStateOf(0)
     private var contentMounts = 0
     private var contentDisposals = 0
     private val measuredContent = mutableListOf<IntSize>()
 
-    private fun mount(portraitPoster: Boolean = false) {
+    private fun mount(portraitPoster: Boolean = false, actualArtworkCard: Boolean = false, decodedArtwork: Boolean = true) {
+        sharedDecoded = decodedArtwork
         compose.mainClock.autoAdvance = false
         compose.setContent {
             MaterialTheme {
@@ -130,7 +134,7 @@ class PlayerOpeningMotionTest {
                                         .background(Color(0xFFFFBF4C)).drawBehind { drawCircle(Color.Cyan,radius=10.dp.toPx()) }
                                         .testTag("mini-art"))
                                     Text("PLAYER",Modifier.align(Alignment.CenterStart).padding(start=62.dp)
-                                        .playerMorphElement(PlayerMorphPart.Title,"fixture",false),
+                                        .playerMorphElement(PlayerMorphPart.Title,"fixture",false,fontSizeSp=14f).testTag("mini-title"),
                                         fontSize=14.sp,color=Color.White)
                                     Box(Modifier.align(Alignment.CenterEnd).size(24.dp)
                                         .clickable{compactClicks++}.testTag("mini-control"))
@@ -144,12 +148,22 @@ class PlayerOpeningMotionTest {
                         }
                         Box(Modifier.fillMaxSize().testTag("page").onSizeChanged { measuredContent += it }) {
                             Box(Modifier.align(Alignment.TopCenter).padding(top = 56.dp)
-                                .size(180.dp,if(portraitPoster)240.dp else 180.dp)
-                                .playerMorphElement(PlayerMorphPart.Artwork,"fixture",true,16.dp)
-                                .background(Color(0xFFFFBF4C)).drawBehind { drawCircle(Color.Cyan,radius=45.dp.toPx()) }
-                                .testTag("poster"))
+                                .size(180.dp,if(portraitPoster)240.dp else 180.dp).testTag("poster")) {
+                                if(actualArtworkCard) {
+                                    CapsuleVideoArtworkTransition(presentingVideo=false,needsSurface=false,
+                                        transitionKey="fixture",artworkCornerRadius=16.dp,
+                                        artworkBackground=Color.Magenta,video={}) {
+                                        Box(Modifier.fillMaxSize().playerMorphArtworkReady("fixture",sharedDecoded)
+                                            .background(if(sharedDecoded)Color(0xFFFFBF4C) else Color.Magenta)
+                                            .drawBehind{drawCircle(Color.Cyan,radius=45.dp.toPx())})
+                                    }
+                                } else Box(Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp))
+                                    .playerMorphElement(PlayerMorphPart.Artwork,"fixture",true,16.dp,requiresReadyArtwork=true)
+                                    .playerMorphArtworkReady("fixture",sharedDecoded)
+                                    .background(if(sharedDecoded)Color(0xFFFFBF4C) else Color.Magenta).drawBehind { drawCircle(Color.Cyan,radius=45.dp.toPx()) })
+                            }
                             Text("PLAYER", Modifier.align(Alignment.Center)
-                                .playerMorphElement(PlayerMorphPart.Title,"fixture",true),fontSize=23.sp,color=Color.White)
+                                .playerMorphElement(PlayerMorphPart.Title,"fixture",true,fontSizeSp=23f).testTag("full-title"),fontSize=23.sp,color=Color.White)
                             Box(Modifier.align(Alignment.CenterEnd).size(48.dp)
                                 .clickable { controlClicks++ }.testTag("control"))
                         }
@@ -228,6 +242,78 @@ class PlayerOpeningMotionTest {
             bitmap.recycle()
         }
         assertEquals(1,measuredContent.distinct().size)
+    }
+
+    @Test fun aLoadingDestinationKeepsTheRealThumbnailUntilDecodedArtworkIsReady() {
+        mount(decodedArtwork=false)
+        val source=rawBounds("mini-art")
+        sampleAt(0.35f)
+        fun check(name:String) {
+            val p=compose.runOnIdle{state.visualProgress}
+            val expected=playerMorphBounds(source,rawBounds("poster"),p)
+            val bitmap=capture(name)
+            val ink=yellowBounds(bitmap)
+            assertEquals(expected.width,ink.width().toFloat(),4f)
+            assertEquals(expected.top,ink.top.toFloat(),3f)
+            assertTrue("loading magenta must never replace the shared photograph",
+                bitmap.getPixel(expected.center.x.roundToInt(),expected.center.y.roundToInt())!=AndroidColor.MAGENTA)
+            bitmap.recycle()
+        }
+        check("shared-photo-loading-source")
+        compose.runOnIdle{sharedDecoded=true};advance(16)
+        check("shared-photo-decoded-target")
+    }
+
+    private fun whiteBounds(bitmap:Bitmap,region:androidx.compose.ui.geometry.Rect):androidx.compose.ui.geometry.Rect {
+        var left=bitmap.width;var top=bitmap.height;var right=-1;var bottom=-1
+        for(y in region.top.toInt().coerceAtLeast(0) until region.bottom.toInt().coerceAtMost(bitmap.height))
+            for(x in region.left.toInt().coerceAtLeast(0) until region.right.toInt().coerceAtMost(bitmap.width)) {
+                val c=bitmap.getPixel(x,y)
+                if(AndroidColor.red(c)>220 && AndroidColor.green(c)>220 && AndroidColor.blue(c)>220) {
+                    left=minOf(left,x);top=minOf(top,y);right=maxOf(right,x);bottom=maxOf(bottom,y)
+                }
+            }
+        assertTrue("the moving title must paint readable glyphs",right>=left && bottom>=top)
+        return androidx.compose.ui.geometry.Rect(left.toFloat(),top.toFloat(),(right+1).toFloat(),(bottom+1).toFloat())
+    }
+
+    @Test fun sharedTitleInterpolatesActualGlyphSizeAndBaselineWithoutADoubledLine() {
+        mount()
+        val sourceTitle=rawBounds("mini-title")
+        val closed=capture("title-source")
+        val sourceGlyphs=whiteBounds(closed,sourceTitle);closed.recycle()
+        compose.runOnIdle{state.expandSoft()};advance(700)
+        val targetTitle=rawBounds("full-title")
+        val opened=capture("title-target")
+        val targetGlyphs=whiteBounds(opened,targetTitle);opened.recycle()
+        compose.runOnIdle{state.collapseSoft()};advance(700)
+        sampleAt(0.35f)
+        val p=compose.runOnIdle{state.visualProgress}
+        val title=playerMorphBounds(sourceTitle,targetTitle,p)
+        val bitmap=capture("title-shared-baseline")
+        val glyphs=whiteBounds(bitmap,title.inflate(3f))
+        val expected=playerMorphBounds(sourceGlyphs,targetGlyphs,p)
+        assertEquals("font width",expected.width,glyphs.width,4f)
+        assertEquals("font height must not include two differently scaled lines",expected.height,glyphs.height,4f)
+        assertEquals("baseline path",expected.bottom,glyphs.bottom,4f)
+        bitmap.recycle()
+    }
+
+    @Test fun actualCapsuleArtworkCardDoesNotLeaveItsEmptyMatteBehindTheSharedCover() {
+        mount(actualArtworkCard=true)
+        val source=rawBounds("mini")
+        sampleAt(0.70f)
+        val p=compose.runOnIdle{state.visualProgress}
+        val frame=playerMorphBounds(source,with(compose.density){
+            androidx.compose.ui.geometry.Rect(0f,0f,360.dp.toPx(),700.dp.toPx())},p)
+        val bitmap=capture("actual-capsule-card-shared-cover")
+        val target=rawBounds("poster")
+        val x=(target.left+with(compose.density){20.dp.toPx()}).roundToInt()
+        val y=(frame.top+with(compose.density){12.dp.toPx()}).roundToInt()
+        assertTrue("sample must be in the final artwork slot",y<target.bottom)
+        assertEquals("no static magenta artwork matte behind the moving shared image",
+            AndroidColor.rgb(155,40,35),bitmap.getPixel(x,y))
+        bitmap.recycle()
     }
 
     @Test fun rectangularDestinationCropsThePhotoWithoutStretchingACircleIntoAnEllipse() {

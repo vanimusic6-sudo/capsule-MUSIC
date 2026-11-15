@@ -101,6 +101,7 @@ import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.nikhil.yt.ui.component.playerMorphArtworkReady
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
@@ -698,6 +699,9 @@ fun CapsulePlayerContent(
                             animationSpec = tween(durationMillis = if (visible) 230 else 0),
                             label = "capsule-artwork-soft-reveal",
                         )
+                        val sharedArtworkReady by remember(mediaMetadata.id) {
+                            derivedStateOf { retainedArtworkPainter != null && artworkReveal >= 0.999f }
+                        }
                         val artworkContentScale =
                             if (cropAlbumArt ||
                                 (useClayLayout && (artworkResizeActive ||
@@ -715,6 +719,7 @@ fun CapsulePlayerContent(
                                     contentDescription = null,
                                     contentScale = artworkContentScale,
                                     modifier = Modifier.fillMaxSize()
+                                        .playerMorphArtworkReady(mediaMetadata.id, sharedArtworkReady)
                                         .graphicsLayer { alpha = artworkReveal },
                                 )
                             }

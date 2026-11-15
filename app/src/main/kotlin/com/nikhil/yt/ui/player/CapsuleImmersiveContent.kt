@@ -8,6 +8,7 @@ package com.nikhil.yt.ui.player
 
 import com.nikhil.yt.ui.component.PlayerMorphPart
 import com.nikhil.yt.ui.component.playerMorphElement
+import com.nikhil.yt.ui.component.playerMorphArtworkReady
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -200,7 +201,8 @@ internal fun ImmersiveAudioScene(
                 .graphicsLayer {
                     compositingStrategy = CompositingStrategy.Offscreen
                 }
-                .playerMorphElement(PlayerMorphPart.Artwork, morphMediaId, true)
+                .playerMorphElement(PlayerMorphPart.Artwork, morphMediaId, true, requiresReadyArtwork = true)
+                .playerMorphArtworkReady(morphMediaId)
                 .drawWithCache {
                     // The mask reveals a full image-backed blur underneath,
                     // rather than an independently coloured edge continuation.

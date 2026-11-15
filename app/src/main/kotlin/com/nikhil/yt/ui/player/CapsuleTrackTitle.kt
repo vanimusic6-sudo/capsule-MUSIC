@@ -75,7 +75,7 @@ internal fun CapsuleTrackTitle(
         softWrap = false,
         overflow = TextOverflow.Clip,
         modifier = modifier.clipToBounds()
-            .playerMorphElement(PlayerMorphPart.Title, mediaId, true)
+            .playerMorphElement(PlayerMorphPart.Title, mediaId, true, fontSizeSp = 23f)
             .horizontalScroll(scroll, enabled = enabled),
     )
 }
