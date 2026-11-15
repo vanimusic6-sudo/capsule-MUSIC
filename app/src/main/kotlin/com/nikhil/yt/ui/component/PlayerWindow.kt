@@ -24,7 +24,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
 
-/** One transform for the real page, including its background, artwork, text and controls. */
+/** One reversible container transform from the actual compact card to the full player. */
 @Composable
 internal fun PlayerWindow(
     state: BottomSheetState,
@@ -52,6 +52,9 @@ internal fun PlayerWindow(
     val pageDraws by remember(state) { derivedStateOf { playerPageVisible(state.visualProgress) } }
     val pageAccessible by remember(state) { derivedStateOf { playerPageAcceptsInput(state.visualProgress) } }
     val compactInteractive by remember(state) { derivedStateOf { state.compactForegroundAcceptsInput } }
+    // Keep Mini visually above the matching frame until its own opacity is nearly zero.
+    // Changing z-order at 10% used to expose a different surface halfway through the handoff.
+    val miniOverlaysPage by remember(state) { derivedStateOf { state.visualProgress < 0.43f } }
     val windowInteractive by remember(state) { derivedStateOf {
         state.isExpandedOrExpanding || state.visualProgress > 0f
     } }
@@ -73,7 +76,10 @@ internal fun PlayerWindow(
                     val compactHit = state.compactForegroundAcceptsInput &&
                         down.position.x in miniInset.toPx()..(size.width - miniInset.toPx()) &&
                         down.position.y in miniTop..(miniTop + miniHeight.toPx())
-                    val frame = playerPresentationBounds(p, size.width.toFloat(), size.height.toFloat(), density)
+                    val frame = playerPresentationBounds(
+                        p, size.width.toFloat(), size.height.toFloat(),
+                        size.height - state.collapsedBound.toPx(), miniHeight.toPx(), miniInset.toPx(),
+                    )
                     if (!compactHit && (!playerPageAcceptsInput(p) || !frame.contains(down.position))) {
                         down.consume()
                         do {
@@ -88,7 +94,7 @@ internal fun PlayerWindow(
         if (onDismiss == null || !state.isDismissed) {
             Box(Modifier
                 .offset { IntOffset(0, (state.expandedBound - state.collapsedBound).roundToPx()) }
-                .zIndex(if (compactInteractive) 3f else 0f)
+                .zIndex(if (miniOverlaysPage) 3f else 0f)
                 .semantics { if (!compactInteractive) hideFromAccessibility() }
                 .then(if (compactSwipeDismissEnabled && onDismiss != null) Modifier.bottomSheetDraggable(
                     state = state, onDismiss = onDismiss, dismissOnlyFromCollapsed = true,
@@ -102,6 +108,8 @@ internal fun PlayerWindow(
                     val p = state.visualProgress
                     alpha = playerMiniDrawAlpha(p)
                     translationY = playerMiniLift(p, density)
+                    scaleX = playerMiniApproach(p)
+                    scaleY = scaleX
                 }
                 .drawWithContent { if (sourceClock) drawContent() },
             ) {
@@ -116,12 +124,12 @@ internal fun PlayerWindow(
                     .graphicsLayer {
                         val p = state.visualProgress
                         alpha = playerPresentationOpacity(p)
-                        scaleX = playerPresentationScale(p)
-                        scaleY = scaleX
-                        translationY = playerPresentationLift(p, density)
-                        transformOrigin = TransformOrigin(0.5f, 1f)
+                        val frame = playerPresentationBounds(
+                            p, size.width, size.height,
+                            size.height - state.collapsedBound.toPx(), miniHeight.toPx(), miniInset.toPx(),
+                        )
                         val contour = playerPageContour(p, miniRadius.toPx(), density)
-                        shape = PlayerWindowShape(Rect(0f, 0f, size.width, size.height), contour.radius, contour.bleed)
+                        shape = PlayerWindowShape(frame, contour.radius, contour.bleed)
                         clip = true
                     }
                     .drawWithContent { if (playerPageVisible(state.visualProgress)) drawContent() },
@@ -137,7 +145,26 @@ internal fun PlayerWindow(
                                 } while (event.changes.any { it.pressed })
                             }
                         }, content = backgroundContent)
-                        Box(Modifier.fillMaxSize(), content = content)
+                        // The foreground grows uniformly from the mini artwork side *inside* the
+                        // moving frame. Its final layout never changes, and no child/cover is
+                        // remeasured on each spring frame. The background is not scaled or tinted.
+                        Box(
+                            Modifier.fillMaxSize().graphicsLayer {
+                                val p = state.visualProgress
+                                val frame = playerPresentationBounds(
+                                    p, size.width, size.height,
+                                    size.height - state.collapsedBound.toPx(),
+                                    miniHeight.toPx(), miniInset.toPx(),
+                                )
+                                alpha = playerContentOpacity(p)
+                                scaleX = playerPresentationScale(p)
+                                scaleY = scaleX
+                                transformOrigin = TransformOrigin(0.5f, 0f)
+                                translationX = playerPresentationContentX(p, size.width, miniInset.toPx(), density)
+                                translationY = playerPresentationContentY(p, frame.top, density)
+                            },
+                            content = content,
+                        )
                     }
                 }
             }
