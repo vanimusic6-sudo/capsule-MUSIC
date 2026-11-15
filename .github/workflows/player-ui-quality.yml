@@ -9,7 +9,12 @@ on:
       - 'app/src/main/kotlin/com/nikhil/yt/ui/component/PlayerOpeningMotion.kt'
       - 'app/src/main/kotlin/com/nikhil/yt/ui/component/PlayerWindow.kt'
       - 'app/src/main/kotlin/com/nikhil/yt/MainActivity.kt'
+      - 'app/src/main/kotlin/com/nikhil/yt/playback/**'
+      - 'app/src/main/kotlin/com/nikhil/yt/utils/CoilBitmapLoader.kt'
+      - 'app/src/main/kotlin/com/nikhil/yt/utils/SyncUtils.kt'
       - 'app/src/test/kotlin/com/nikhil/yt/ui/**'
+      - 'app/src/test/kotlin/com/nikhil/yt/playback/**'
+      - 'app/src/test/kotlin/com/nikhil/yt/utils/SyncLikedSongsOrderingTest.kt'
       - '.github/workflows/player-ui-quality.yml'
   workflow_dispatch:
 
