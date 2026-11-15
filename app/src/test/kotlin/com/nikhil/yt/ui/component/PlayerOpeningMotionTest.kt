@@ -181,7 +181,7 @@ class PlayerOpeningMotionTest {
         }
     }
 
-    private fun sampleAt(progress: Float) {
+    private fun sampleAt(progress: Float, expectedMounts: Int = 1) {
         // Exercise the same mutation/intent owner as a real Mini tap. Raw-delta injection is a
         // gesture escape hatch and does not establish the player's tap-only presentation intent.
         compose.runOnIdle { state.expandSoft() }
@@ -189,7 +189,7 @@ class PlayerOpeningMotionTest {
         while (compose.runOnIdle { state.visualProgress } < progress && frames++ < 100) advance(16)
         compose.runOnIdle {
             assertTrue("opening did not reach sample $progress", state.visualProgress >= progress)
-            assertEquals("the native sample must include the actual page tree", 1, contentMounts)
+            assertEquals("the native sample must include the actual page tree", expectedMounts, contentMounts)
         }
     }
 
@@ -287,7 +287,7 @@ class PlayerOpeningMotionTest {
         val opened=capture("title-target")
         val targetGlyphs=whiteBounds(opened,targetTitle);opened.recycle()
         compose.runOnIdle{state.collapseSoft()};advance(700)
-        sampleAt(0.35f)
+        sampleAt(0.35f, expectedMounts = 2)
         val p=compose.runOnIdle{state.visualProgress}
         val title=playerMorphBounds(sourceTitle,targetTitle,p)
         val bitmap=capture("title-shared-baseline")

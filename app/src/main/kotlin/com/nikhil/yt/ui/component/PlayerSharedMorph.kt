@@ -138,7 +138,9 @@ internal class PlayerSharedMorph(val state: BottomSheetState) {
                     val t = ((p - 0.10f) / 0.55f).coerceIn(0f, 1f)
                     val blend = t * t * (3f - 2f * t)
                     val fontSize = source.fontSize + (target.fontSize - source.fontSize) * p
-                    paintLayer(source, fontSize / source.fontSize, 1f-blend)
+                    // Paint the aligned source opaquely underneath. Complementary layer alpha
+                    // would reduce combined glyph coverage to 75% at mid-handoff and dim text.
+                    if (blend < 1f) paintLayer(source, fontSize / source.fontSize, 1f)
                     paintLayer(target, fontSize / target.fontSize, blend)
                 } else paintLayer(ink, scale, 1f)
             }
