@@ -212,44 +212,59 @@ class PlayerOpeningMotionTest {
         return android.graphics.Rect(left,top,right+1,bottom+1)
     }
 
-    @Test fun presentationIsBoundedMonotonicAndExactAtRest() {
+    @Test fun presentationMorphsFromActualMiniBoundsToTheExactFullscreenViewport() {
         assertEquals(0f, playerPresentationOpacity(Float.NaN), 0f)
         assertEquals(0f, playerPresentationOpacity(-1f), 0f)
         assertEquals(1f, playerPresentationOpacity(2f), 0f)
         assertEquals(1f, playerPresentationScale(1f), 0f)
-        assertEquals(0f, playerPresentationLift(1f, 3f), 0f)
-        var lastOpacity = 0f
-        var lastScale = 0f
-        var lastLift = Float.MAX_VALUE
+        assertEquals(0f, playerPresentationContentX(1f, 360f, 12f, 1f), 0f)
+        assertEquals(0f, playerPresentationContentY(1f, 0f, 1f), 0f)
+
+        val source = playerPresentationBounds(0f, 360f, 700f, 590f, 48f, 12f)
+        assertEquals(androidx.compose.ui.geometry.Rect(12f, 590f, 348f, 638f), source)
+        val target = playerPresentationBounds(1f, 360f, 700f, 590f, 48f, 12f)
+        assertEquals(androidx.compose.ui.geometry.Rect(0f, 0f, 360f, 700f), target)
+
+        var previous = source
+        var previousOpacity = 0f
+        var previousScale = 0f
         for (i in 0..100) {
             val p = i / 100f
-            val alpha = playerPresentationOpacity(p)
+            val frame = playerPresentationBounds(p, 360f, 700f, 590f, 48f, 12f)
+            val opacity = playerPresentationOpacity(p)
             val scale = playerPresentationScale(p)
-            val lift = playerPresentationLift(p, 1f)
-            assertTrue(alpha >= lastOpacity && alpha in 0f..1f)
-            assertTrue(scale >= lastScale && scale in 0.98f..1f)
-            assertTrue(lift <= lastLift && lift in 0f..48f)
-            lastOpacity = alpha; lastScale = scale; lastLift = lift
+            assertTrue("outer frame grows upward", frame.top <= previous.top)
+            assertTrue("outer frame grows downward", frame.bottom >= previous.bottom)
+            assertTrue("frame grows horizontally", frame.left <= previous.left && frame.right >= previous.right)
+            assertTrue(opacity >= previousOpacity && opacity in 0f..1f)
+            assertTrue(scale >= previousScale && scale in 0.24f..1f)
+            previous = frame; previousOpacity = opacity; previousScale = scale
         }
     }
 
-    @Test fun wholePageKeepsItsLayoutAndMovesAsOneShortUniformPresentation() {
+    @Test fun realPageContentIsUniformAndFollowsTheExpandingClip() {
         mount()
         for (fraction in listOf(0.15f, 0.45f, 0.75f, 0.95f)) {
             sampleAt(fraction)
+            val p = compose.runOnIdle { state.visualProgress }
             val a = pagePoint(0f, 0f); val b = pagePoint(1f, 1f)
             val page = compose.onNodeWithTag("page", useUnmergedTree = true).fetchSemanticsNode()
             val actualScale = (b.x - a.x) / page.layoutInfo.coordinates.size.width
             val heightScale = (b.y - a.y) / page.layoutInfo.coordinates.size.height
-            assertEquals("one uniform transform for the complete page", actualScale, heightScale, 0.001f)
-            assertTrue(actualScale in 0.98f..1.001f)
-            assertTrue("the page lifts only a short distance", a.y in 0f..with(compose.density) { 56.dp.toPx() })
+            assertEquals("photographs cannot be stretched to fill the growing frame", actualScale, heightScale, 0.001f)
+            assertEquals(playerPresentationScale(p), actualScale, 0.002f)
+            val frame = playerPresentationBounds(p, with(compose.density) { 360.dp.toPx() },
+                with(compose.density) { 700.dp.toPx() }, with(compose.density) { 590.dp.toPx() },
+                with(compose.density) { 48.dp.toPx() }, with(compose.density) { 12.dp.toPx() })
+            assertEquals("content follows its clipped, physical source", frame.top -
+                with(compose.density) { 9.dp.toPx() } * (1f - p), a.y, 2f)
             val poster = rawBounds("poster")
             assertEquals(with(compose.density) { 180.dp.toPx() } * actualScale, poster.width, 2f)
-            assertEquals("the cover remains in its real page slot", a.y + with(compose.density) { 56.dp.toPx() } * actualScale, poster.top, 2f)
-            capture("surface-open-${(fraction * 100).roundToInt()}").recycle()
+            assertEquals("cover stays attached to its moving content",
+                a.y + with(compose.density) { 56.dp.toPx() } * actualScale, poster.top, 2f)
+            capture("morph-open-${(fraction * 100).roundToInt()}").recycle()
         }
-        assertEquals("no per-frame page measurement", 1, measuredContent.distinct().size)
+        assertEquals("do not remeasure the full player on every frame", 1, measuredContent.distinct().size)
     }
 
     @Test fun nativePhotoCircleStaysRoundThroughPortraitPagePresentation() {
@@ -389,30 +404,34 @@ class PlayerOpeningMotionTest {
         compose.runOnIdle {assertTrue(state.isCollapsed);assertFalse(state.isAnimationRunning)}
     }
 
-    @Test fun openingAndClosingSpreadTheVisibleHandoffAcrossDisplayFrames() {
+    @Test fun openingAndClosingUseTheSameMovingFrameWithoutAVisualTeleport() {
         mount()
         compose.runOnIdle { state.expandSoft() }
         advance(32)
         compose.runOnIdle {
-            assertTrue("respond immediately without flashing a nearly opaque page",
-                state.visualProgress > 0.005f && playerPresentationOpacity(state.visualProgress) < 0.35f)
+            assertTrue("start moving on the first two display frames", state.visualProgress > 0.005f)
+            assertTrue("do not throw a fully opaque frame over Mini", playerPresentationOpacity(state.visualProgress) < 0.60f)
         }
         advance(96)
         compose.runOnIdle {
-            assertTrue("the main visible arrival must still be in progress at 128ms",
-                playerPresentationOpacity(state.visualProgress) in 0.20f..0.95f)
+            val p = state.visualProgress
+            val frame = playerPresentationBounds(p, 360f, 700f, 590f, 48f, 12f)
+            assertTrue("at 128ms the frame must be visibly in transit", frame.top in 20f..520f)
+            assertTrue("the full-player image is already growing", playerPresentationScale(p) > 0.35f)
         }
         advance(600)
         compose.runOnIdle { assertTrue(state.isExpanded); state.collapseSoft() }
         advance(32)
         compose.runOnIdle {
-            assertTrue("closing must not immediately throw the page away",
+            assertTrue("closing begins from the existing page rather than fading it out",
                 playerPresentationOpacity(state.visualProgress) > 0.90f)
         }
         advance(96)
         compose.runOnIdle {
-            assertTrue("closing must keep a visible, gradual optical handoff",
-                playerPresentationOpacity(state.visualProgress) in 0.15f..0.95f)
+            val p = state.visualProgress
+            val frame = playerPresentationBounds(p, 360f, 700f, 590f, 48f, 12f)
+            assertTrue("the closing frame travels into the compact card", frame.top in 20f..540f)
+            assertTrue("Mini must reappear before the shrinking frame reaches it", playerMiniDrawAlpha(p) > 0f)
         }
         advance(600)
         compose.runOnIdle { assertTrue(state.isCollapsed); assertFalse(state.isAnimationRunning) }
