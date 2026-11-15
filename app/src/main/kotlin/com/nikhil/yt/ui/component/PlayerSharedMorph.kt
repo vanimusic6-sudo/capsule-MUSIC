@@ -44,7 +44,7 @@ internal class PlayerSharedMorph(val state: BottomSheetState) {
     var origin by mutableStateOf(Offset.Zero)
     private val nodes = mutableStateMapOf<Pair<PlayerMorphPart, Boolean>, PlayerMorphEndpoint>()
     private val sources = mutableStateMapOf<PlayerMorphPart, Pair<String, Rect>>()
-    val active: Boolean get() = state.visualProgress > 0f && state.visualProgress < 1f
+    val active by derivedStateOf { state.visualProgress > 0f && state.visualProgress < 1f }
 
     fun register(node: PlayerMorphEndpoint) { nodes[node.part to node.destination] = node }
     fun remove(node: PlayerMorphEndpoint) {

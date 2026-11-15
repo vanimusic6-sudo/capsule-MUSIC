@@ -63,6 +63,7 @@ internal fun PlayerWindow(
     } }
     val pageDraws by remember(state) { derivedStateOf { playerPageVisible(state.visualProgress) } }
     val pageAccessible by remember(state) { derivedStateOf { playerPageAcceptsInput(state.visualProgress) } }
+    val compactAtRest by remember(state) { derivedStateOf { state.visualProgress == 0f } }
     val dismissingMini by remember(state) { derivedStateOf { state.rawProgress < 0f } }
 
     if (backHandlerEnabled && state.isExpandedOrExpanding) BackHandler(onBack = state::collapseSoft)
@@ -116,7 +117,7 @@ internal fun PlayerWindow(
         if (onDismiss == null || !state.isDismissed) {
             Box(Modifier
                 .offset { IntOffset(0, (state.expandedBound - state.collapsedBound).roundToPx()) }
-                .zIndex(if (state.visualProgress == 0f) 2f else 0f)
+                .zIndex(if (compactAtRest) 2f else 0f)
                 .semantics { if (!state.compactForegroundAcceptsInput) hideFromAccessibility() }
                 .then(if (compactSwipeDismissEnabled && onDismiss != null) Modifier.bottomSheetDraggable(
                     state = state, onDismiss = onDismiss, dismissOnlyFromCollapsed = true,
