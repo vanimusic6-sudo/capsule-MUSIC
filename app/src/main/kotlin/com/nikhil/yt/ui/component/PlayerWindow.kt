@@ -51,7 +51,6 @@ internal fun PlayerWindow(
 ) {
     val morph = remember(state) { PlayerSharedMorph(state) }
     val arbiter = remember(state) { MiniPlayerGestureArbiter() }
-    val bodyLayer = rememberGraphicsLayer()
     val handoffInteraction = remember { MutableInteractionSource() }
     val renderPage by remember(state) { derivedStateOf {
         !state.isDismissed && (state.isExpandedOrExpanding ||
@@ -134,6 +133,8 @@ internal fun PlayerWindow(
         }
         if (renderPage) {
             key("player-destination-page") {
+                // The retained display list owns page children only for this page lifetime.
+                val bodyLayer = rememberGraphicsLayer()
                 Box(Modifier.fillMaxSize()
                     .semantics { if (!pageAccessible) hideFromAccessibility() }
                     .drawWithContent { if (playerPageVisible(state.visualProgress)) drawContent() },
