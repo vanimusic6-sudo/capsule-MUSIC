@@ -450,7 +450,10 @@ fun BottomSheet(
                                     down.consume()
                                     do {
                                         val event = awaitPointerEvent()
-                                        event.changes.forEach { it.consume() }
+                                        // Block taps through the modal surface, but leave movement
+                                        // available to the sheet's parent vertical drag owner.
+                                        // Consuming MOVE here prevented drag takeover/reversal.
+                                        event.changes.filter { !it.pressed }.forEach { it.consume() }
                                     } while (event.changes.any { it.pressed })
                                 }
                             },
