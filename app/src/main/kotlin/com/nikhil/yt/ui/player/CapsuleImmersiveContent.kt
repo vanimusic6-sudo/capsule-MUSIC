@@ -6,9 +6,6 @@
 
 package com.nikhil.yt.ui.player
 
-import com.nikhil.yt.ui.component.PlayerMorphPart
-import com.nikhil.yt.ui.component.playerMorphElement
-import com.nikhil.yt.ui.component.playerMorphArtworkReady
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -184,7 +181,6 @@ internal fun ImmersiveAudioScene(
     background: ImageBitmap,
     artworkHeight: Dp,
     sceneAlpha: () -> Float,
-    morphMediaId: String? = null,
     artwork: @Composable () -> Unit,
 ) {
     Box(Modifier.fillMaxSize().graphicsLayer {
@@ -201,8 +197,6 @@ internal fun ImmersiveAudioScene(
                 .graphicsLayer {
                     compositingStrategy = CompositingStrategy.Offscreen
                 }
-                .playerMorphElement(PlayerMorphPart.Artwork, morphMediaId, true, requiresReadyArtwork = true)
-                .playerMorphArtworkReady(morphMediaId)
                 .drawWithCache {
                     // The mask reveals a full image-backed blur underneath,
                     // rather than an independently coloured edge continuation.
@@ -1031,7 +1025,6 @@ internal fun CapsuleImmersiveContent(
                 matchedPaint?.let { bitmap ->
                     if (frame != null) ImmersiveAudioScene(
                         background = bitmap,
-                        morphMediaId = if (!isVideo) mediaMetadata.id else null,
                         artworkHeight = artworkHeight,
                         sceneAlpha = {
                             immersiveSceneOpacity(

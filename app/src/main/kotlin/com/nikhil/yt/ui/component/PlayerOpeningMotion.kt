@@ -25,6 +25,7 @@ import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
+import com.nikhil.yt.ui.motion.CapsuleMotion
 
 // One critically damped mutation preserves velocity when Back/tap reverses the window.
 // A nearby reversal settles sooner instead of replaying a full fixed-duration trip.
@@ -60,25 +61,31 @@ private fun boundedProgress(progress: Float): Float =
 
 private fun window(progress: Float, start: Float, end: Float): Float {
     val t = ((boundedProgress(progress) - start) / (end - start)).coerceIn(0f, 1f)
-    return t * t * (3f - 2f * t)
+    return CapsuleMotion.smooth(t)
 }
 
-/** The app stays stationary. Only a light scrim follows the existing window progress. */
-internal fun playerSceneDim(progress: Float): Float = 0.20f * window(progress, 0f, 0.72f)
+/** The app stays stationary; a restrained shadow gives the arriving surface depth. */
+internal fun playerSceneDim(progress: Float): Float = 0.16f * boundedProgress(progress)
 internal fun playerSceneNeedsDrawing(progress: Float): Boolean = boundedProgress(progress) < 1f
 
-/** The page paints opaquely as soon as it enters. Never crossfade a whole page over the app. */
+/** One reversible envelope for the WHOLE page, never independent child arrivals. */
 internal fun playerPageVisible(progress: Float): Boolean = boundedProgress(progress) > 0f
-internal fun playerPageAcceptsInput(progress: Float): Boolean = boundedProgress(progress) >= 0.72f
+internal fun playerPageAcceptsInput(progress: Float): Boolean = boundedProgress(progress) >= 0.88f
 
-/** Only non-shared compact controls retire; artwork/title have their own matched paths. */
-internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0.04f, 0.28f)
+internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0f, 0.32f)
+internal fun playerMiniLift(progress: Float, density: Float): Float = 6f * density * window(progress, 0f, 0.32f)
 
-internal fun playerBodyOpacity(progress: Float): Float = window(progress, 0.22f, 0.72f)
+internal fun playerPresentationOpacity(progress: Float): Float = boundedProgress(progress)
+internal fun playerPresentationScale(progress: Float): Float = 0.985f + 0.015f * boundedProgress(progress)
+internal fun playerPresentationLift(progress: Float, density: Float): Float = 44f * density * (1f - boundedProgress(progress))
 
-/** Geometric source edge used by compact hit-testing and fallback bounds. */
-internal fun playerSurfaceTop(progress: Float, fullHeight: Float, dockHeight: Float): Float =
-    (fullHeight - dockHeight.coerceIn(0f, fullHeight.coerceAtLeast(0f))) * (1f - boundedProgress(progress))
+/** Bottom-pivot scale and translation, also used by input gating. No layout is animated. */
+internal fun playerPresentationBounds(progress: Float, width: Float, height: Float, density: Float): Rect {
+    val scale = playerPresentationScale(progress)
+    val lift = playerPresentationLift(progress, density)
+    val inset = width * (1f - scale) / 2f
+    return Rect(inset, height * (1f - scale) + lift, width - inset, height + lift)
+}
 
 internal class PlayerWindowShape(private val bounds: Rect, private val radius: Float, private val bleed: Float) : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline =
@@ -139,8 +146,7 @@ internal data class PlayerFrameContour(
  */
 internal fun playerPageContour(progress: Float, miniRadius: Float, density: Float): PlayerFrameContour {
     val p = boundedProgress(progress)
-    val attachment = p
-    val radius = miniRadius + (26f * density - miniRadius) * attachment
+    val radius = maxOf(miniRadius, 26f * density)
     return PlayerFrameContour(
         radius = radius.coerceAtLeast(0f),
         // At ~0.293r of diagonal overscan the circular arc is completely outside a square

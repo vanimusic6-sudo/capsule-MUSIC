@@ -1,8 +1,6 @@
 /** Capsule MUSIC — manual, single-line player title for both player designs. GPL-3.0. */
 package com.nikhil.yt.ui.player
 
-import com.nikhil.yt.ui.component.PlayerMorphPart
-import com.nikhil.yt.ui.component.playerMorphElement
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -75,7 +73,6 @@ internal fun CapsuleTrackTitle(
         softWrap = false,
         overflow = TextOverflow.Clip,
         modifier = modifier.clipToBounds()
-            .playerMorphElement(PlayerMorphPart.Title, mediaId, true, fontSizeSp = 23f)
             .horizontalScroll(scroll, enabled = enabled),
     )
 }

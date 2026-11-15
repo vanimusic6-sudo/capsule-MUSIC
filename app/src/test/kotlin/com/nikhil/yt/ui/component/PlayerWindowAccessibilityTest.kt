@@ -99,15 +99,15 @@ class PlayerWindowAccessibilityTest {
                             collapsedTopCornerRadius=14.dp,backHandlerEnabled=false,
                             collapsedContent={
                                 if (state.compactSurfaceVisible) Text("Mini ${revision.intValue}",Modifier.fillMaxSize()
-                                    .playerMorphElement(PlayerMorphPart.Surface,"stress",false)
-                                    .playerMorphElement(PlayerMorphPart.Title,"stress",false))
+
+                                    )
                                 else Box(Modifier.fillMaxSize())
                             },
 
                         ) {
                             Box(Modifier.fillMaxSize().background(Color(0xFF28242C)).testTag("page")) {
                                 Text("Player ${revision.intValue}",Modifier.padding(24.dp)
-                                    .playerMorphElement(PlayerMorphPart.Title,"stress",true))
+                                    )
                             }
                         }
                     }

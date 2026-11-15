@@ -1,4 +1,4 @@
-/* Capsule MUSIC — a shared Mini container, artwork and title. GPL-3.0. */
+/* Capsule MUSIC — one quiet, reversible presentation of the whole player. GPL-3.0. */
 package com.nikhil.yt.ui.component
 
 import androidx.activity.compose.BackHandler
@@ -12,28 +12,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.*
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.graphics.layer.drawLayer
-import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
-import kotlin.math.roundToInt
 
-/**
- * One existing anchored spring drives a real measured container and paired foreground elements.
- * The page retains its final layout. Shared artwork/title leave their native slots only while
- * the overlay is active; no whole-page zoom, moving page, screenshot or second animation clock.
- */
+/** One transform for the real page, including its background, artwork, text and controls. */
 @Composable
 internal fun PlayerWindow(
     state: BottomSheetState,
@@ -49,9 +40,7 @@ internal fun PlayerWindow(
     backgroundContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    val morph = remember(state) { PlayerSharedMorph(state) }
     val arbiter = remember(state) { MiniPlayerGestureArbiter() }
-    val handoffInteraction = remember { MutableInteractionSource() }
     val renderPage by remember(state) { derivedStateOf {
         !state.isDismissed && (state.isExpandedOrExpanding ||
             (state.isCollapsedOrCollapsing && state.isAnimationRunning) ||
@@ -62,28 +51,24 @@ internal fun PlayerWindow(
     } }
     val pageDraws by remember(state) { derivedStateOf { playerPageVisible(state.visualProgress) } }
     val pageAccessible by remember(state) { derivedStateOf { playerPageAcceptsInput(state.visualProgress) } }
-    val compactAtRest by remember(state) { derivedStateOf { state.visualProgress == 0f } }
+    val compactInteractive by remember(state) { derivedStateOf { state.compactForegroundAcceptsInput } }
     val dismissingMini by remember(state) { derivedStateOf { state.rawProgress < 0f } }
 
     if (backHandlerEnabled && state.isExpandedOrExpanding) BackHandler(onBack = state::collapseSoft)
 
-    CompositionLocalProvider(LocalPlayerSharedMorph provides morph) {
     Box(modifier.fillMaxSize()
         .offset { IntOffset(0, if (dismissingMini) (state.collapsedBound - state.value).roundToPx() else 0) }
-        // One full-viewport owner invalidates ALL transition pixels, including below the Mini.
-        // No translated child can leave a cover strip outside its parent's invalidation bounds.
         .clipToBounds()
-        .onGloballyPositioned { morph.origin = it.localToRoot(Offset.Zero) }
         .pointerInput(state) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                 val p = state.visualProgress
                 if (p > 0f && p < 1f) {
-                    val frame = morph.container(Size(size.width.toFloat(), size.height.toFloat()),
-                        miniHeight.toPx(), state.collapsedBound.toPx(), miniInset.toPx())
+                    val miniTop = size.height - state.collapsedBound.toPx() + playerMiniLift(p, density)
                     val compactHit = state.compactForegroundAcceptsInput &&
-                        down.position.x in frame.left..frame.right &&
-                        down.position.y in frame.top..(frame.top + miniHeight.toPx())
+                        down.position.x in miniInset.toPx()..(size.width - miniInset.toPx()) &&
+                        down.position.y in miniTop..(miniTop + miniHeight.toPx())
+                    val frame = playerPresentationBounds(p, size.width.toFloat(), size.height.toFloat(), density)
                     if (!compactHit && (!playerPageAcceptsInput(p) || !frame.contains(down.position))) {
                         down.consume()
                         do {
@@ -93,39 +78,27 @@ internal fun PlayerWindow(
                     }
                 }
             }
-        }
-        .drawWithContent {
-            val p = state.visualProgress
-            if (p <= 0f || p >= 1f) {
-                drawContent()
-            } else {
-                val frame = morph.container(size, miniHeight.toPx(), state.collapsedBound.toPx(), miniInset.toPx())
-                val contour = playerPageContour(p, miniRadius.toPx(), density)
-                val path = Path().apply {
-                    addRoundRect(RoundRect(Rect(frame.left-contour.bleed, frame.top-contour.bleed,
-                        frame.right+contour.bleed, frame.bottom+contour.bleed),
-                        CornerRadius(contour.radius, contour.radius)))
-                }
-                clipPath(path) {
-                    this@drawWithContent.drawContent()
-                    with(morph) { paint(frame) }
-                }
-            }
         },
     ) {
         if (onDismiss == null || !state.isDismissed) {
             Box(Modifier
                 .offset { IntOffset(0, (state.expandedBound - state.collapsedBound).roundToPx()) }
-                .zIndex(if (compactAtRest) 2f else 0f)
-                .semantics { if (!state.compactForegroundAcceptsInput) hideFromAccessibility() }
+                .zIndex(if (compactInteractive) 3f else 0f)
+                .semantics { if (!compactInteractive) hideFromAccessibility() }
                 .then(if (compactSwipeDismissEnabled && onDismiss != null) Modifier.bottomSheetDraggable(
                     state = state, onDismiss = onDismiss, dismissOnlyFromCollapsed = true,
                     miniGestureArbiter = arbiter, compactDismissOnly = true,
                 ) else Modifier)
-                .clickable(enabled = state.compactForegroundAcceptsInput,
+                .clickable(enabled = compactInteractive,
                     interactionSource = remember { MutableInteractionSource() }, indication = null,
                     onClick = state::expandSoft)
-                .fillMaxWidth().height(miniHeight),
+                .fillMaxWidth().height(miniHeight)
+                .graphicsLayer {
+                    val p = state.visualProgress
+                    alpha = playerMiniDrawAlpha(p)
+                    translationY = playerMiniLift(p, density)
+                }
+                .drawWithContent { if (sourceClock) drawContent() },
             ) {
                 CompositionLocalProvider(LocalCapsuleBackgroundMotionEnabled provides sourceClock,
                     LocalMiniPlayerGestureArbiter provides arbiter) { collapsedContent() }
@@ -133,10 +106,19 @@ internal fun PlayerWindow(
         }
         if (renderPage) {
             key("player-destination-page") {
-                // The retained display list owns page children only for this page lifetime.
-                val bodyLayer = rememberGraphicsLayer()
-                Box(Modifier.fillMaxSize()
+                Box(Modifier.fillMaxSize().zIndex(1f)
                     .semantics { if (!pageAccessible) hideFromAccessibility() }
+                    .graphicsLayer {
+                        val p = state.visualProgress
+                        alpha = playerPresentationOpacity(p)
+                        scaleX = playerPresentationScale(p)
+                        scaleY = scaleX
+                        translationY = playerPresentationLift(p, density)
+                        transformOrigin = TransformOrigin(0.5f, 1f)
+                        val contour = playerPageContour(p, miniRadius.toPx(), density)
+                        shape = PlayerWindowShape(Rect(0f, 0f, size.width, size.height), contour.radius, contour.bleed)
+                        clip = true
+                    }
                     .drawWithContent { if (playerPageVisible(state.visualProgress)) drawContent() },
                 ) {
                     CompositionLocalProvider(LocalCapsuleBackgroundMotionEnabled provides pageDraws) {
@@ -150,35 +132,10 @@ internal fun PlayerWindow(
                                 } while (event.changes.any { it.pressed })
                             }
                         }, content = backgroundContent)
-                        Box(Modifier.fillMaxSize().drawWithContent {
-                            // Recording still visits the matched elements while the rest of the
-                            // page is transparent. The shared cover is never gated by body alpha.
-                            val p = state.visualProgress
-                            if (p >= 1f) drawContent() else {
-                                bodyLayer.record { this@drawWithContent.drawContent() }
-                                bodyLayer.alpha = playerBodyOpacity(p)
-                                drawLayer(bodyLayer)
-                            }
-                        }, content = content)
+                        Box(Modifier.fillMaxSize(), content = content)
                     }
                 }
             }
         }
-        // Stable hit region follows the displayed source, not its stationary measurement slot.
-        Box(Modifier.offset {
-            IntOffset(0, playerSurfaceTop(state.visualProgress, state.expandedBound.toPx(),
-                state.collapsedBound.toPx()).roundToInt())
-        }.fillMaxWidth().height(miniHeight).zIndex(if (morph.active) 5f else -1f)
-            .testTag("player-mini-handoff")
-            .semantics { hideFromAccessibility() }
-            .then(if (morph.active && state.compactForegroundAcceptsInput) {
-                Modifier.then(if (compactSwipeDismissEnabled && onDismiss != null)
-                    Modifier.bottomSheetDraggable(state = state, onDismiss = onDismiss,
-                        dismissOnlyFromCollapsed = true, miniGestureArbiter = arbiter,
-                        compactDismissOnly = true) else Modifier)
-                    .clickable(interactionSource = handoffInteraction, indication = null,
-                        onClick = state::expandSoft)
-            } else Modifier))
-    }
     }
 }
