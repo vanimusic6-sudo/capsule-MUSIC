@@ -20,6 +20,9 @@ import com.nikhil.yt.innertube.models.PlaylistItem
 import com.nikhil.yt.innertube.models.SongItem
 import com.nikhil.yt.innertube.utils.completed
 import com.nikhil.yt.innertube.utils.parseCookieString
+import com.nikhil.yt.playback.SongLikeMutationFence
+import com.nikhil.yt.extensions.SilentHandler
+import kotlinx.coroutines.SupervisorJob
 import com.nikhil.yt.db.ArtistSubscriptionState
 import com.nikhil.yt.db.MusicDatabase
 import com.nikhil.yt.db.entities.ArtistEntity
@@ -58,7 +61,7 @@ class SyncUtils @Inject constructor(
     private val database: MusicDatabase,
     @ApplicationContext private val context: Context,
 ) {
-    private val syncScope = CoroutineScope(Dispatchers.IO)
+    private val syncScope = CoroutineScope(Dispatchers.IO + SupervisorJob() + SilentHandler)
     private val syncEnabled = MutableStateFlow(true)
     private val syncGeneration = AtomicLong(0L)
     
@@ -241,6 +244,7 @@ class SyncUtils @Inject constructor(
             return@coroutineScope
         }
         val gen = syncGeneration.get()
+        val localLikesAtRequest = SongLikeMutationFence.Shared.snapshot()
         YouTube.playlist("LM").completed().onSuccess { page ->
             if (!isSyncStillEnabled(gen)) return@onSuccess
             val remoteSongs = page.songs.orEmpty()
@@ -256,9 +260,13 @@ class SyncUtils @Inject constructor(
                     if (!isSyncStillEnabled(gen)) return@launch
                     dbWriteSemaphore.withPermit {
                         if (!isSyncStillEnabled(gen)) return@withPermit
-                        val dbSong = database.song(song.id).firstOrNull()
                         database.withTransaction {
                             if (!isSyncStillEnabled(gen)) return@withTransaction
+                            // An LM response can predate a tap. Never restore its stale like over
+                            // a local intent accepted while that network request was in flight.
+                            if (SongLikeMutationFence.Shared.changedSince(song.id, localLikesAtRequest))
+                                return@withTransaction
+                            val dbSong = getSongById(song.id)
                             if (dbSong == null) {
                                 insert(song.toMediaMetadata()) { it.copy(liked = true, likedDate = timestamp) }
                             } else if (!dbSong.song.liked || dbSong.song.likedDate != timestamp) {
@@ -287,6 +295,7 @@ class SyncUtils @Inject constructor(
             return@coroutineScope
         }
         val gen = syncGeneration.get()
+        val localLikesAtRequest = SongLikeMutationFence.Shared.snapshot()
         YouTube.library("FEmusic_liked_videos").completed().onSuccess { page ->
             if (!isSyncStillEnabled(gen)) return@onSuccess
             val remoteSongs = page.items.filterIsInstance<SongItem>().reversed()
@@ -299,16 +308,26 @@ class SyncUtils @Inject constructor(
 
             if (!isSyncStillEnabled(gen)) return@onSuccess
             localSongs.filterNot { it.id in remoteIds }
-                .forEach { database.update(it.song.copy(inLibrary = null)) }
+                .forEach { song ->
+                    database.withTransaction {
+                        if (isSyncStillEnabled(gen) &&
+                            !SongLikeMutationFence.Shared.changedSince(song.id, localLikesAtRequest))
+                            inLibrary(song.id, null)
+                    }
+                }
 
             remoteSongs.forEach { song ->
                 launch {
                     if (!isSyncStillEnabled(gen)) return@launch
                     dbWriteSemaphore.withPermit {
                         if (!isSyncStillEnabled(gen)) return@withPermit
-                        val dbSong = database.song(song.id).firstOrNull()
                         database.withTransaction {
                             if (!isSyncStillEnabled(gen)) return@withTransaction
+                            if (SongLikeMutationFence.Shared.changedSince(song.id, localLikesAtRequest))
+                                return@withTransaction
+                            // Read inside this transaction so membership updates cannot write an
+                            // old SongEntity over a freshly changed local liked field.
+                            val dbSong = getSongById(song.id)
                             if (dbSong == null) {
                                 insert(song.toMediaMetadata()) { it.toggleLibrary() }
                             } else if (dbSong.song.inLibrary == null) {

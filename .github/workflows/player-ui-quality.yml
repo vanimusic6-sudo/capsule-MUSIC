@@ -84,6 +84,11 @@ jobs:
           --tests 'com.nikhil.yt.ui.player.CapsuleDesignPresetTest'
           --tests 'com.nikhil.yt.ui.MotionEnergyStructuralRegressionTest'
           --tests 'com.nikhil.yt.ui.UiEnergyRegressionTest'
+          --tests 'com.nikhil.yt.playback.NativeMediaBitmapLoaderTest'
+          --tests 'com.nikhil.yt.playback.MediaSessionMetadataTest'
+          --tests 'com.nikhil.yt.playback.LikeTapGateTest'
+          --tests 'com.nikhil.yt.playback.SongLikeMutationFenceTest'
+          --tests 'com.nikhil.yt.utils.SyncLikedSongsOrderingTest'
           --stacktrace --no-daemon --max-workers=2
       - name: Upload player graphics and CPU preparation report
         if: ${{ !cancelled() }}
