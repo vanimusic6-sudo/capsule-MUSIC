@@ -1,52 +1,25 @@
-# Player opening: moving Mini and direct page handoff
+# Player opening: a rigid opaque page from the Mini dock
 
-## Review of 12822.mp4
+## Recording 12824.mp4
 
-The 5.80s recording was inspected as full frames at eight samples per second. The user likes the
-current speed but rejects the flat artwork-palette panel that expands behind the stationary Mini.
-That panel looks like another object, particularly during short openings and reversals. The new
-request supersedes the earlier preference for a stationary Mini.
+Reviewed the 4.948s, 592x1280, 60fps user recording at 12 samples per second, with full frames retained. Across repeated openings and closings, the former transition exposes a horizontal slice of the cover and brings controls into view early. During closing, the player becomes a floating short card with a changing cover crop. The previous blend also lets the home page show through the destination during handoff.
 
-## One trajectory
+The root cause is geometric: a changing-aspect window clips a separately scaled page, whose centre follows the centre of that window. Cover, controls and shell therefore have different apparent trajectories despite sharing one progress value. Mini movement alone does not fix it.
 
-BottomSheet delegates only the main player to PlayerWindow; generic sheets remain unchanged.
-Opening stiffness 650, closing stiffness 850 and critical damping 1 are unchanged. The existing
-anchored spring retains velocity on reversal and respects the system animation duration scale.
-There is no new timer, easing or independent source animation.
+## Replacement
 
-The real Mini follows the growing window's upper edge, using the same progress and lambda
-placement of its complete layer. Its size and artwork proportions stay constant. Closing reverses that trajectory
-back to the dock. Independent downward Mini dismissal remains available.
+Remove the changing-height window, page zoom, centre alignment, and destination alpha transition. Measure the actual page once at final size. A single graphics layer translates that page vertically from the Mini dock to its final origin; its full height extends below the viewport during travel. Cover and controls retain their actual size and local coordinates. The real page stays opaque, so home text/cards do not ghost through it. Only native rounding follows the top-edge attachment.
 
-The synthetic source-material layer and its compactBackground API are removed entirely. There
-is no stretched palette panel or second glass backdrop. Mini fades directly into the actual full
-page over progress 0.015–0.25 with complementary opacity curves. The page's existing uniform
-0.94–1 scale, native rounded outline and focus scrim remain. The full page is measured at its final
-size and transformed as one object; photographs and video are not stretched independently.
+The Mini uses the same top-edge position and fades only its own controls over the opaque destination during progress 0.02–0.18. Its whole placement/alpha layer moves together. On close the same geometry reverses without creating a short floating window. Opening stiffness 650, closing stiffness 850 and critical damping 1 remain unchanged. Anchored motion preserves current position and velocity on reversal and respects system duration scale.
 
 ## Lifetime, input and energy
 
-The real Mini and destination keep the owner-crash hotfix: Mini's heavy controls retire only at
-the settled expanded anchor; destination survives all active closing frames, including transparent
-ones. Accessibility modifiers remain stable and use discrete visibility gates. Covered Mini/app
-painting stops, and invisible decorative clocks stop without detaching live nodes mid-flight.
-Activity stop completes the requested anchor. Modal hit shielding, Back and near-dock reopening
-remain covered by regression tests.
+Retain the Android 17 owner-crash protections: keyed destination, stable semantics modifiers, Mini children retained through active motion, and destination retained through all closing frames until settling. Input switches discretely from Mini to destination; the underlying app remains shielded through the transition. Activity stop completes the current target. Independent Mini dismissal remains available.
 
-No screenshot capture, bitmap copy, new image request, decoder, blur, sampling timer, infinite
-transition, FPS cap or quality reduction is introduced. The replacement removes a stretched GPU
-layer. Source coordinates are read in lambda offset (placement only, no remeasurement); destination
-transforms are read in graphicsLayer. Native pixels also check that Mini paints at its moving
-position and leaves no clipped strip behind in its old dock. Audio/video playback, palette extraction and final screen designs are unchanged.
+No new bitmap, decoder, image request, blur, timer, FPS limit or rendering-quality reduction. Translation is read in graphicsLayer, Mini placement in lambda offset. Covered decorative work stops. Audio/video playback, artwork processing, palettes and final player layouts are unchanged.
 
 ## Verification
 
-Native tests cover direct page blend pixels without a palette bridge; complementary handoff;
-Mini travel with constant size on both directions; shared geometry; fixed page measurement and
-aspect; rounded finish; first-frame response; reversals; repeated requests; input, Back, Activity
-stop and covered idle drawing. API 37 accessibility tests keep actual enabled-service node queries
-and stress host removal/restoration. Build, lint and exact CI results are recorded in draft PR 100.
+Native graphics tests assert actual opaque page pixels over the green app, the absence of a vacated Mini strip, full-height coverage down to navigation, constant page/artwork size, and a fixed artwork origin relative to the moving page. These replace assertions about the discarded centred-window effect. Retain reversal, repeated requests, Back, taps, modal shielding, source lifetime, idle drawing, and API 37 enabled-service accessibility stress tests. Exact CI and APK provenance are recorded in draft PR 100.
 
-A recording and native CI cannot establish physical-device smoothness, TalkBack behavior, heat or
-battery use. No physical HONOR / 60–120Hz measurements are claimed. Appearance still needs the
-user's phone check. See PLAYER_WINDOW_OWNER_CRASH_20261115.md for the earlier crash analysis.
+Native CI is not a physical HONOR smoothness/heat/TalkBack measurement. The new APK still needs a phone appearance check.

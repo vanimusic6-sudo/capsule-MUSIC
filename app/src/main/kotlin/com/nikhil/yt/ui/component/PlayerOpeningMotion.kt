@@ -67,30 +67,16 @@ private fun window(progress: Float, start: Float, end: Float): Float {
 internal fun playerSceneDim(progress: Float): Float = 0.20f * window(progress, 0f, 0.72f)
 internal fun playerSceneNeedsDrawing(progress: Float): Boolean = boundedProgress(progress) < 1f
 
-/** One continuous trip; the final corner pixels finish outside the viewport. */
-internal fun playerFrameTravel(progress: Float): Float = boundedProgress(progress)
+/** The page paints opaquely as soon as it enters. Never crossfade a whole page over the app. */
+internal fun playerPageVisible(progress: Float): Boolean = boundedProgress(progress) > 0f
+internal fun playerPageAcceptsInput(progress: Float): Boolean = boundedProgress(progress) >= 0.18f
 
-/** One short handoff between the real moving Mini and the real page; no palette bridge. */
-internal fun playerPageOpacity(progress: Float): Float = window(progress, 0.015f, 0.25f)
-internal fun playerPageScale(progress: Float, minimumWidthFraction: Float = 0f): Float =
-    maxOf(0.94f + 0.06f * window(progress, 0.18f, 1f), minimumWidthFraction.coerceIn(0f, 1f))
+/** Only the compact controls retire; the destination beneath them is always opaque. */
+internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0.02f, 0.18f)
 
-internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - playerPageOpacity(progress)
-
-/** The source and window share the same upper edge, including through a direction reversal. */
-internal fun playerMiniTop(progress: Float, fullHeight: Float, dockHeight: Float): Float =
+/** One top edge for both source and destination. The entire page travels without resizing. */
+internal fun playerSurfaceTop(progress: Float, fullHeight: Float, dockHeight: Float): Float =
     (fullHeight - dockHeight.coerceIn(0f, fullHeight.coerceAtLeast(0f))) * (1f - boundedProgress(progress))
-
-/** The shell changes aspect, while every photo/video/control shares ONE uniform page scale. */
-internal fun playerWindowBounds(progress: Float, size: Size, miniHeight: Float, dockHeight: Float, inset: Float): Rect {
-    val p = boundedProgress(progress)
-    val width = size.width.coerceAtLeast(0f)
-    val height = size.height.coerceAtLeast(0f)
-    val top = playerMiniTop(p, height, dockHeight)
-    val bottom = (height - dockHeight + miniHeight).coerceIn(0f, height) * (1f - p) + height * p
-    val side = inset.coerceIn(0f, width / 2f) * (1f - p)
-    return Rect(side, top, width - side, bottom.coerceAtLeast(top))
-}
 
 internal class PlayerWindowShape(private val bounds: Rect, private val radius: Float, private val bleed: Float) : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline =
@@ -140,7 +126,6 @@ internal fun Modifier.playerRailFocus(progress: () -> Float): Modifier = drawWit
 }
 
 internal data class PlayerFrameContour(
-    val inset: Float,
     val radius: Float,
     val bleed: Float,
 )
@@ -150,12 +135,11 @@ internal data class PlayerFrameContour(
  * window, carrying the rounded arcs behind its physical edges. A square display reveals those
  * last corner pixels progressively too. Media itself stays at its measured, undistorted size.
  */
-internal fun playerFrameContour(progress: Float, miniInset: Float, miniRadius: Float, density: Float): PlayerFrameContour {
+internal fun playerPageContour(progress: Float, miniRadius: Float, density: Float): PlayerFrameContour {
     val p = boundedProgress(progress)
-    val attachment = playerFrameTravel(p)
+    val attachment = p
     val radius = miniRadius + (26f * density - miniRadius) * attachment
     return PlayerFrameContour(
-        inset = miniInset.coerceAtLeast(0f) * (1f - attachment),
         radius = radius.coerceAtLeast(0f),
         // At ~0.293r of diagonal overscan the circular arc is completely outside a square
         // viewport. Keep the rounding visible until the frame itself has reached the screen.

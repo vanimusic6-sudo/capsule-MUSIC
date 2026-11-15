@@ -427,7 +427,7 @@ fun BottomSheetPlayer(
             else -> false
         }
     val pageIsDrawn by remember(state) { derivedStateOf {
-        !state.playerMotion || com.nikhil.yt.ui.component.playerPageOpacity(state.visualProgress) > 0f
+        !state.playerMotion || com.nikhil.yt.ui.component.playerPageVisible(state.visualProgress)
     } }
     val backdropTimelineRunning =
         backdropNeedsClock &&

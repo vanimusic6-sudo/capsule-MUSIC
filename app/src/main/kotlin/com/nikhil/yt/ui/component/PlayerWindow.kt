@@ -1,4 +1,4 @@
-/* Capsule MUSIC — a material container transform, not a sliding page crop. GPL-3.0. */
+/* Capsule MUSIC — one opaque, top-anchored player surface. GPL-3.0. */
 package com.nikhil.yt.ui.component
 
 import androidx.activity.compose.BackHandler
@@ -12,7 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -23,10 +23,10 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
 
 /**
- * Only the window's outline changes aspect. The real page keeps one measurement and one uniform
- * scale. The real Mini rides the same upper edge and hands off directly to the real page. There
- * is no stretched palette panel, duplicated backdrop, screenshot or decoder. Generic/queue sheets
- * do not enter this implementation. Node lifetimes still span the complete finite motion.
+ * The real, full-size page moves as one opaque surface from the Mini dock to the screen top.
+ * Source controls follow the same top edge and retire over that surface. There is no growing
+ * crop window, page recentering, zoom, palette bridge or translucent destination.
+ * Keep layout and semantics nodes attached until the finite motion actually settles.
  */
 @Composable
 internal fun PlayerWindow(
@@ -37,7 +37,6 @@ internal fun PlayerWindow(
     compactSwipeDismissEnabled: Boolean,
     backHandlerEnabled: Boolean,
     miniHeight: Dp,
-    miniInset: Dp,
     miniRadius: Dp,
     collapsedContent: @Composable BoxScope.() -> Unit,
     backgroundContent: @Composable BoxScope.() -> Unit,
@@ -56,8 +55,8 @@ internal fun PlayerWindow(
     val sourceClock by remember(state) { derivedStateOf {
         !state.isDismissed && sourceDraws
     } }
-    val pageDraws by remember(state) { derivedStateOf { playerPageOpacity(state.visualProgress) > 0f } }
-    val pageAccessible by remember(state) { derivedStateOf { playerPageOpacity(state.visualProgress) >= 1f } }
+    val pageDraws by remember(state) { derivedStateOf { playerPageVisible(state.visualProgress) } }
+    val pageAccessible by remember(state) { derivedStateOf { playerPageAcceptsInput(state.visualProgress) } }
 
     if (backHandlerEnabled && state.isExpandedOrExpanding) BackHandler(onBack = state::collapseSoft)
 
@@ -71,7 +70,7 @@ internal fun PlayerWindow(
                         // Place the whole Mini layer, including its alpha buffer. Translating a
                         // child inside the fixed dock's placement layer clips that buffer to a strip.
                         IntOffset(0, with(this) {
-                            playerMiniTop(state.visualProgress, state.expandedBound.toPx(),
+                            playerSurfaceTop(state.visualProgress, state.expandedBound.toPx(),
                                 state.collapsedBound.toPx()).toDp().roundToPx()
                         })
                     }
@@ -102,12 +101,15 @@ internal fun PlayerWindow(
         }
 
         if (renderPage) {
+            // One layer owns translation and the native outline. The page is measured once at
+            // its final size, with its top anchored to the source rather than centred in a mask.
             Box(
                 Modifier.fillMaxSize()
+                    .semantics { if (!pageAccessible) hideFromAccessibility() }
                     .pointerInput(state) {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                            if (playerPageOpacity(state.visualProgress) < 1f) {
+                            if (!playerPageAcceptsInput(state.visualProgress)) {
                                 down.consume()
                                 do {
                                     val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -118,47 +120,28 @@ internal fun PlayerWindow(
                     }
                     .graphicsLayer {
                         val p = state.visualProgress
-                        val frame = playerWindowBounds(p, size, miniHeight.toPx(), state.collapsedBound.toPx(), miniInset.toPx())
-                        val contour = playerFrameContour(p, miniInset.toPx(), miniRadius.toPx(), density)
-                        shape = PlayerWindowShape(frame, contour.radius, contour.bleed)
+                        translationY = playerSurfaceTop(p, state.expandedBound.toPx(), state.collapsedBound.toPx())
+                        val contour = playerPageContour(p, miniRadius.toPx(), density)
+                        shape = PlayerWindowShape(Rect(0f, 0f, size.width, size.height), contour.radius, contour.bleed)
                         clip = p < 1f
-                        // Clip the real page. No extra material is painted into the growing frame.
-                        alpha = 1f
-                    },
-            ) {
-                // Keep the destination attached until the motion settles, including transparent
-                // closing frames. The real Mini is the only source; no second source node exists.
-                key("player-destination-page") {
-                Box(Modifier.fillMaxSize().semantics {
-                    if (!pageAccessible) hideFromAccessibility()
-                }.graphicsLayer {
-                    val p = state.visualProgress
-                    val frame = playerWindowBounds(p, size, miniHeight.toPx(), state.collapsedBound.toPx(), miniInset.toPx())
-                    val scale = playerPageScale(p, frame.width / size.width.coerceAtLeast(1f))
-                    transformOrigin = TransformOrigin(0f, 0f)
-                    scaleX = scale
-                    scaleY = scale
-                    translationX = (size.width - size.width * scale) / 2f
-                    translationY = frame.center.y - size.height * scale / 2f
-                    alpha = playerPageOpacity(p)
-                }.drawWithContent {
-                    if (playerPageOpacity(state.visualProgress) > 0f) drawContent()
-                }) {
-                    CompositionLocalProvider(LocalCapsuleBackgroundMotionEnabled provides pageDraws) {
-                    Box(Modifier.fillMaxSize().background(backgroundColor)
-                        .pointerInput(renderPage) {
-                            awaitEachGesture {
-                                val down = awaitFirstDown(requireUnconsumed = false)
-                                down.consume()
-                                do {
-                                    val event = awaitPointerEvent()
-                                    event.changes.forEach { it.consume() }
-                                } while (event.changes.any { it.pressed })
-                            }
-                        }, content = backgroundContent)
-                    content()
                     }
-                }
+                    .drawWithContent { if (playerPageVisible(state.visualProgress)) drawContent() },
+            ) {
+                key("player-destination-page") {
+                    CompositionLocalProvider(LocalCapsuleBackgroundMotionEnabled provides pageDraws) {
+                        Box(Modifier.fillMaxSize().background(backgroundColor)
+                            .pointerInput(renderPage) {
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    down.consume()
+                                    do {
+                                        val event = awaitPointerEvent()
+                                        event.changes.forEach { it.consume() }
+                                    } while (event.changes.any { it.pressed })
+                                }
+                            }, content = backgroundContent)
+                        content()
+                    }
                 }
             }
         }

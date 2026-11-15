@@ -163,101 +163,90 @@ class PlayerOpeningMotionTest {
         }
     }
 
-    @Test fun windowGrowsFromTheDockWithMonotonicEdgesAndPersistentRounding() {
-        val size = Size(360f, 700f)
-        val source = playerWindowBounds(0f, size, 48f, 110f, 12f)
-        assertEquals(12f, source.left, 0f); assertEquals(590f, source.top, 0f)
-        assertEquals(348f, source.right, 0f); assertEquals(638f, source.bottom, 0f)
-        var previous = source
+    @Test fun pageTopTravelsMonotonicallyFromTheDockWithoutGrowingACropWindow() {
+        var previous = 590f
         for (step in 0..1000) {
             val p = step / 1000f
-            val frame = playerWindowBounds(p, size, 48f, 110f, 12f)
-            assertTrue(frame.top <= previous.top + 0.001f)
-            assertTrue(frame.bottom >= previous.bottom - 0.001f)
-            assertTrue(frame.left <= previous.left + 0.001f)
-            assertTrue(playerFrameContour(p, 12f, 14f, 1f).radius >= 14f)
-            previous = frame
+            val top = playerSurfaceTop(p, 700f, 110f)
+            assertTrue(top <= previous + 0.001f)
+            assertTrue(top >= 0f)
+            previous = top
         }
-        assertEquals(androidx.compose.ui.geometry.Rect(0f, 0f, 360f, 700f), previous)
-        val outline = PlayerWindowShape(source, 14f, 0f).createOutline(size, LayoutDirection.Ltr, Density(1f))
-        assertTrue(outline is Outline.Rounded)
+        assertEquals(590f, playerSurfaceTop(0f, 700f, 110f), 0f)
+        assertEquals(0f, previous, 0f)
     }
 
-    @Test fun realPageBeginsAtTheMovingMiniWithoutASeparatePalettePanel() {
+    @Test fun enteringPageIsOpaqueAndMovingMiniDoesNotLeaveADockGhost() {
         mount();sampleAt(0.04f)
         val p=compose.runOnIdle {state.visualProgress}
-        val alpha=playerPageOpacity(p)
-        assertTrue("the actual page must begin with the source handoff",alpha>0f && alpha<1f)
-        val frame=playerWindowBounds(p,Size(360f,700f),48f,110f,12f)
-        val bitmap=capture("direct-mini-page-handoff")
-        // Below the moving Mini footprint but inside the growing window. Only the REAL page
-        // can paint this region; the old separate palette panel painted a different opaque colour.
+        val top=playerSurfaceTop(p,700f,110f)
+        val bitmap=capture("opaque-page-mini-handoff")
         val x=with(compose.density){40.dp.toPx()}.roundToInt()
-        val y=with(compose.density){(frame.top+60f).dp.toPx()}.roundToInt()
-        assertTrue(frame.top+60f<frame.bottom)
-        val pixel=bitmap.getPixel(x,y)
-        val focus=playerSceneDim(p)
-        fun mix(app:Int,page:Int)=app*(1f-focus)*(1f-alpha)+page*alpha
-        assertEquals(mix(49,155),AndroidColor.red(pixel).toFloat(),3f)
-        assertEquals(mix(123,40),AndroidColor.green(pixel).toFloat(),3f)
-        assertEquals(mix(80,35),AndroidColor.blue(pixel).toFloat(),3f)
-        // Bounds alone miss a clipped moving alpha buffer. Outside the window's side inset,
-        // Mini must actually paint at its new location and leave its old dock footprint clear.
-        val outsideX=with(compose.density){4.dp.toPx()}.roundToInt()
-        val miniY=with(compose.density){(frame.top+24f).dp.toPx()}.roundToInt()
-        val miniPixel=bitmap.getPixel(outsideX,miniY)
-        val miniAlpha=playerMiniDrawAlpha(p)
-        fun sourceMix(app:Int,source:Int)=app*(1f-focus)*(1f-miniAlpha)+source*miniAlpha
-        assertEquals(sourceMix(49,124),AndroidColor.red(miniPixel).toFloat(),3f)
-        assertEquals(sourceMix(123,51),AndroidColor.green(miniPixel).toFloat(),3f)
-        assertEquals(sourceMix(80,49),AndroidColor.blue(miniPixel).toFloat(),3f)
+        val y=with(compose.density){(top+60f).dp.toPx()}.roundToInt()
+        // The app is green and the page is red. A translucent destination, the old palette
+        // bridge or a centred moving mask all violate this actual native colour sample.
+        assertEquals(AndroidColor.rgb(155,40,35),bitmap.getPixel(x,y))
+        val miniY=with(compose.density){(top+24f).dp.toPx()}.roundToInt()
+        val miniPixel=bitmap.getPixel(x,miniY)
+        val alpha=playerMiniDrawAlpha(p)
+        assertTrue(alpha>0f)
+        fun mix(page:Int,source:Int)=page*(1f-alpha)+source*alpha
+        assertEquals(mix(155,124),AndroidColor.red(miniPixel).toFloat(),3f)
+        assertEquals(mix(40,51),AndroidColor.green(miniPixel).toFloat(),3f)
+        assertEquals(mix(35,49),AndroidColor.blue(miniPixel).toFloat(),3f)
         val oldDockY=with(compose.density){633.dp.toPx()}.roundToInt()
-        assertTrue(frame.top+48f<633f)
-        val vacatedPixel=bitmap.getPixel(outsideX,oldDockY)
-        assertEquals(49*(1f-focus),AndroidColor.red(vacatedPixel).toFloat(),3f)
-        assertEquals(123*(1f-focus),AndroidColor.green(vacatedPixel).toFloat(),3f)
-        assertEquals(80*(1f-focus),AndroidColor.blue(vacatedPixel).toFloat(),3f)
+        assertTrue(top+48f<633f)
+        assertEquals("old Mini must not leave a second strip",AndroidColor.rgb(155,40,35),bitmap.getPixel(x,oldDockY))
         bitmap.recycle()
     }
 
-    @Test fun onlyTheRealPagePaintsTheWindowAfterTheShortHandoff() {
+    @Test fun opaquePageExtendsBelowTheViewportInsteadOfLeavingAFloatingBottomEdge() {
         mount();sampleAt(0.43f)
         val p=compose.runOnIdle {state.visualProgress}
-        assertEquals(1f,playerPageOpacity(p),0f)
+        assertTrue(playerPageVisible(p))
         assertEquals(0f,playerMiniDrawAlpha(p),0f)
-        val frame=playerWindowBounds(p,Size(360f,700f),48f,110f,12f)
-        val bitmap=capture("real-page-no-palette-layer")
+        val bitmap=capture("opaque-full-height-page")
         val x=with(compose.density){40.dp.toPx()}.roundToInt()
-        val y=with(compose.density){(frame.center.y+20f).dp.toPx()}.roundToInt()
+        // The former growing mask left the blue navigation visible BELOW the floating player.
+        // A full-height sheet must cover it with the real page throughout this part of the trip.
+        val y=with(compose.density){690.dp.toPx()}.roundToInt()
         assertEquals(AndroidColor.rgb(155,40,35),bitmap.getPixel(x,y))
         bitmap.recycle()
     }
 
-    @Test fun miniAndPageUseOneComplementaryHandoffWithoutAMaterialOnlyStage() {
-        assertEquals(0f,playerPageOpacity(0.015f),0f)
-        assertEquals(1f,playerPageOpacity(0.25f),0f)
+    @Test fun compactControlsRetireOverAnOpaquePageAndOnlyVisibleOwnersAcceptInput() {
+        assertFalse(playerPageVisible(0f))
+        assertTrue(playerPageVisible(0.001f))
         assertEquals(1f,playerMiniDrawAlpha(0f),0f)
-        assertEquals(0f,playerMiniDrawAlpha(0.25f),0f)
-        var previous=0f
+        assertEquals(0f,playerMiniDrawAlpha(0.18f),0f)
+        assertFalse(playerPageAcceptsInput(0.10f))
+        assertTrue(playerPageAcceptsInput(0.18f))
+        var previous=1f
         for(step in 0..1000) {
-            val p=step/1000f
-            val alpha=playerPageOpacity(p)
-            assertTrue(alpha>=previous-0.000001f);previous=alpha
-            assertEquals(1f,alpha+playerMiniDrawAlpha(p),0.000001f)
+            val alpha=playerMiniDrawAlpha(step/1000f)
+            assertTrue(alpha<=previous+0.000001f);previous=alpha
         }
     }
 
-    @Test fun pageKeepsOneMeasurementAndUniformAspectThroughoutTheTrip() {
+    @Test fun pageAndArtworkKeepTheirFinalSizeAndTopOriginThroughoutTheTrip() {
         mount()
         for (p in listOf(0.25f, 0.43f, 0.66f, 0.85f, 0.98f)) {
             sampleAt(p)
-            capture("uniform-page-${(p*100).roundToInt()}").recycle()
+            capture("rigid-page-${(p*100).roundToInt()}").recycle()
             val a = pagePoint(0f, 0f); val b = pagePoint(1f, 1f)
-            assertEquals(360f / 700f, (b.x-a.x)/(b.y-a.y), 0.0001f)
-            val centre = pagePoint(0.5f,0.5f)
+            assertEquals(with(compose.density){360.dp.toPx()},b.x-a.x,1f)
+            assertEquals(with(compose.density){700.dp.toPx()},b.y-a.y,1f)
             val actual = compose.runOnIdle { state.visualProgress }
-            val frame = playerWindowBounds(actual, Size(360f,700f),48f,110f,12f)
-            assertEquals(with(compose.density) { frame.center.y.dp.toPx() }, centre.y, 1f)
+            val top = playerSurfaceTop(actual,700f,110f)
+            assertEquals(with(compose.density) { top.dp.toPx() }, a.y, 1f)
+            val poster=compose.onNodeWithTag("poster",useUnmergedTree=true).fetchSemanticsNode()
+            val origin=poster.layoutInfo.coordinates.localToRoot(Offset.Zero)
+            assertEquals("artwork must stay anchored to the page, never to a growing mask centre",
+                with(compose.density){(top+56f).dp.toPx()},origin.y,1f)
+            val end=poster.layoutInfo.coordinates.localToRoot(Offset(
+                poster.layoutInfo.coordinates.size.width.toFloat(),poster.layoutInfo.coordinates.size.height.toFloat()))
+            assertEquals(with(compose.density){180.dp.toPx()},end.x-origin.x,1f)
+            assertEquals(with(compose.density){180.dp.toPx()},end.y-origin.y,1f)
         }
         assertEquals(1, measuredContent.distinct().size)
     }
@@ -269,7 +258,7 @@ class PlayerOpeningMotionTest {
         fun checkPosition() {
             val p=compose.runOnIdle {state.visualProgress}
             val b=bounds()
-            val expected=with(compose.density){playerMiniTop(p,700f,110f).dp.toPx()}
+            val expected=with(compose.density){playerSurfaceTop(p,700f,110f).dp.toPx()}
             assertEquals("Mini and the growing frame must share their upper edge",expected,b.top,1f)
             assertEquals(dock.height,b.height,1f)
             assertEquals(dock.width,b.width,1f)
@@ -295,13 +284,11 @@ class PlayerOpeningMotionTest {
         var previous=590f
         for(step in 0..1000) {
             val p=step/1000f
-            val top=playerMiniTop(p,700f,110f)
-            val frame=playerWindowBounds(p,Size(360f,700f),48f,110f,12f)
-            assertEquals(frame.top,top,0f)
+            val top=playerSurfaceTop(p,700f,110f)
             assertTrue(top<=previous+0.001f);previous=top
         }
-        assertEquals(590f,playerMiniTop(0f,700f,110f),0f)
-        assertEquals(0f,playerMiniTop(1f,700f,110f),0f)
+        assertEquals(590f,playerSurfaceTop(0f,700f,110f),0f)
+        assertEquals(0f,playerSurfaceTop(1f,700f,110f),0f)
     }
 
     @Test fun compactSwipeDismissStillMovesMiniDownIndependently() {
@@ -396,18 +383,6 @@ class PlayerOpeningMotionTest {
         }
     }
 
-    @Test fun opaquePageCoversTheWholeWindowOnPhoneAndRailWidths() {
-        for (width in listOf(320f,360f,400f,600f,960f)) {
-            for (step in 660..1000) {
-                val p=step/1000f
-                val frame=playerWindowBounds(p,Size(width,700f),64f,120f,12f)
-                val scale=playerPageScale(p,frame.width/width)
-                assertTrue("no app-colour side seam at width $width and progress $p",width*scale+0.001f>=frame.width)
-                assertTrue(700f*scale+0.001f>=frame.height)
-            }
-        }
-    }
-
     @Test fun stoppingTheActivityCompletesTheCurrentTargetWithoutHiddenAnimationFrames() {
         mount();compose.runOnIdle {state.expandSoft()};advance(80)
         compose.runOnIdle {foreground.value=false};advance(32)
@@ -438,7 +413,7 @@ class PlayerOpeningMotionTest {
         compose.setContent {
             Box(Modifier.size(260.dp,240.dp).background(Color.Green).testTag("scene")) {
                 Box(Modifier.fillMaxSize().graphicsLayer {
-                    val contour=playerFrameContour(p.value,12.dp.toPx(),14.dp.toPx(),density)
+                    val contour=playerPageContour(p.value,14.dp.toPx(),density)
                     shape=PlayerWindowShape(androidx.compose.ui.geometry.Rect(0f,0f,size.width,size.height),contour.radius,contour.bleed)
                     clip=true
                 }.background(Color.Red))
