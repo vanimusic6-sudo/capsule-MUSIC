@@ -98,13 +98,16 @@ class PlayerWindowAccessibilityTest {
                             collapsedContentHeight=48.dp,collapsedHorizontalInset=12.dp,
                             collapsedTopCornerRadius=14.dp,backHandlerEnabled=false,
                             collapsedContent={
-                                if (state.compactSurfaceVisible) Text("Mini ${revision.intValue}",Modifier.fillMaxSize())
+                                if (state.compactSurfaceVisible) Text("Mini ${revision.intValue}",Modifier.fillMaxSize()
+                                    .playerMorphElement(PlayerMorphPart.Surface,"stress",false)
+                                    .playerMorphElement(PlayerMorphPart.Title,"stress",false))
                                 else Box(Modifier.fillMaxSize())
                             },
 
                         ) {
                             Box(Modifier.fillMaxSize().background(Color(0xFF28242C)).testTag("page")) {
-                                Text("Player ${revision.intValue}",Modifier.padding(24.dp))
+                                Text("Player ${revision.intValue}",Modifier.padding(24.dp)
+                                    .playerMorphElement(PlayerMorphPart.Title,"stress",true))
                             }
                         }
                     }

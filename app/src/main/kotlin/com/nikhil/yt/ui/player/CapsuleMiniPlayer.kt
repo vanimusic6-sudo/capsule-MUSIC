@@ -8,6 +8,8 @@
 
 package com.nikhil.yt.ui.player
 
+import com.nikhil.yt.ui.component.PlayerMorphPart
+import com.nikhil.yt.ui.component.playerMorphElement
 import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import com.nikhil.yt.ui.component.CapsuleFavoriteColors
@@ -578,6 +580,7 @@ fun CapsuleMiniPlayer(
                         layoutDirection = layoutDirection,
                     )
                     .clip(miniPlayerShape)
+                    .playerMorphElement(PlayerMorphPart.Surface, mediaMetadata?.id, false)
                     .background(Color.Transparent)
                     .border(
                         width = if (standardStyle) 0.dp else 1.dp,
@@ -869,7 +872,9 @@ private fun CapsuleMiniPlayButton(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .clip(CircleShape),
+                        .clip(CircleShape)
+                        .playerMorphElement(PlayerMorphPart.Artwork, mediaMetadata?.id, false,
+                            if (standardStyle) 20.dp else 22.dp),
             )
 
             if (
@@ -957,7 +962,7 @@ private fun CapsuleMiniSongInfo(
                 overflow =
                     TextOverflow.Clip,
                 modifier =
-                    if (visible) {
+                    (if (visible) {
                         Modifier.basicMarquee(
                             iterations = 1,
                             initialDelayMillis = 3000,
@@ -965,7 +970,7 @@ private fun CapsuleMiniSongInfo(
                         )
                     } else {
                         Modifier
-                    },
+                    }).playerMorphElement(PlayerMorphPart.Title, metadata.id, false),
             )
 
             Row(

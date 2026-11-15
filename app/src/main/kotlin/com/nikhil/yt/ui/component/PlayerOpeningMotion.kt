@@ -69,12 +69,14 @@ internal fun playerSceneNeedsDrawing(progress: Float): Boolean = boundedProgress
 
 /** The page paints opaquely as soon as it enters. Never crossfade a whole page over the app. */
 internal fun playerPageVisible(progress: Float): Boolean = boundedProgress(progress) > 0f
-internal fun playerPageAcceptsInput(progress: Float): Boolean = boundedProgress(progress) >= 0.18f
+internal fun playerPageAcceptsInput(progress: Float): Boolean = boundedProgress(progress) >= 0.72f
 
-/** Only the compact controls retire; the destination beneath them is always opaque. */
-internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0.02f, 0.18f)
+/** Only non-shared compact controls retire; artwork/title have their own matched paths. */
+internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0.04f, 0.28f)
 
-/** One top edge for both source and destination. The entire page travels without resizing. */
+internal fun playerBodyOpacity(progress: Float): Float = window(progress, 0.22f, 0.72f)
+
+/** Geometric source edge used by compact hit-testing and fallback bounds. */
 internal fun playerSurfaceTop(progress: Float, fullHeight: Float, dockHeight: Float): Float =
     (fullHeight - dockHeight.coerceIn(0f, fullHeight.coerceAtLeast(0f))) * (1f - boundedProgress(progress))
 

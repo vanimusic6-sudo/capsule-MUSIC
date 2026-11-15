@@ -300,7 +300,7 @@ fun BottomSheet(
         PlayerWindow(
             state, modifier, backgroundColor, onDismiss, compactSwipeDismissEnabled,
             backHandlerEnabled && gesturesEnabled, collapsedContentHeight ?: state.collapsedBound,
-            collapsedTopCornerRadius,
+            collapsedHorizontalInset, collapsedTopCornerRadius,
             collapsedContent, backgroundContent, content,
         )
         return

@@ -16,6 +16,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Size
@@ -114,8 +117,20 @@ class PlayerOpeningMotionTest {
                                 miniMounts++
                                 onDispose { miniDisposals++ }
                             }
-                            Box(Modifier.fillMaxSize().drawWithContent { miniDraws++;drawContent() }
-                                .background(Color(0xFF7C3331)).testTag("mini"))
+                            Box(Modifier.fillMaxSize().padding(horizontal=12.dp)) {
+                                Box(Modifier.fillMaxSize()
+                                    .playerMorphElement(PlayerMorphPart.Surface,"fixture",false)
+                                    .drawWithContent { miniDraws++;drawContent() }
+                                    .background(Color(0xFF7C3331)).testTag("mini")) {
+                                    Box(Modifier.align(Alignment.CenterStart).padding(start=10.dp).size(40.dp)
+                                        .clip(CircleShape)
+                                        .playerMorphElement(PlayerMorphPart.Artwork,"fixture",false,20.dp)
+                                        .background(Color(0xFFFFBF4C)).testTag("mini-art"))
+                                    Text("PLAYER",Modifier.align(Alignment.CenterStart).padding(start=62.dp)
+                                        .playerMorphElement(PlayerMorphPart.Title,"fixture",false),
+                                        fontSize=14.sp,color=Color.White)
+                                }
+                            }
                         },
                     ) {
                         DisposableEffect(Unit) {
@@ -124,8 +139,10 @@ class PlayerOpeningMotionTest {
                         }
                         Box(Modifier.fillMaxSize().testTag("page").onSizeChanged { measuredContent += it }) {
                             Box(Modifier.align(Alignment.TopCenter).padding(top = 56.dp)
-                                .size(180.dp).background(Color(0xFFFFBF4C)).testTag("poster"))
-                            Text("PLAYER", Modifier.align(Alignment.Center), color = Color.White)
+                                .size(180.dp).playerMorphElement(PlayerMorphPart.Artwork,"fixture",true,16.dp)
+                                .background(Color(0xFFFFBF4C)).testTag("poster"))
+                            Text("PLAYER", Modifier.align(Alignment.Center)
+                                .playerMorphElement(PlayerMorphPart.Title,"fixture",true),fontSize=23.sp,color=Color.White)
                             Box(Modifier.align(Alignment.CenterEnd).size(48.dp)
                                 .clickable { controlClicks++ }.testTag("control"))
                         }
@@ -163,132 +180,113 @@ class PlayerOpeningMotionTest {
         }
     }
 
-    @Test fun pageTopTravelsMonotonicallyFromTheDockWithoutGrowingACropWindow() {
-        var previous = 590f
-        for (step in 0..1000) {
-            val p = step / 1000f
-            val top = playerSurfaceTop(p, 700f, 110f)
-            assertTrue(top <= previous + 0.001f)
-            assertTrue(top >= 0f)
-            previous = top
+    private fun rawBounds(tag: String): androidx.compose.ui.geometry.Rect =
+        compose.onNodeWithTag(tag,useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
+
+    private fun yellowBounds(bitmap: Bitmap): android.graphics.Rect {
+        var left=bitmap.width;var top=bitmap.height;var right=-1;var bottom=-1
+        for(y in 0 until bitmap.height) for(x in 0 until bitmap.width) {
+            val c=bitmap.getPixel(x,y)
+            if(AndroidColor.red(c)>245 && AndroidColor.green(c) in 180..200 && AndroidColor.blue(c) in 65..90) {
+                left=minOf(left,x);top=minOf(top,y);right=maxOf(right,x);bottom=maxOf(bottom,y)
+            }
         }
-        assertEquals(590f, playerSurfaceTop(0f, 700f, 110f), 0f)
-        assertEquals(0f, previous, 0f)
+        assertTrue("the actual shared artwork must paint",right>=left && bottom>=top)
+        return android.graphics.Rect(left,top,right+1,bottom+1)
     }
 
-    @Test fun enteringPageIsOpaqueAndMovingMiniDoesNotLeaveADockGhost() {
-        mount();sampleAt(0.04f)
+    @Test fun realContainerInterpolatesAllFourMiniEdgesIntoTheScreen() {
+        val source=androidx.compose.ui.geometry.Rect(12f,590f,348f,638f)
+        val target=androidx.compose.ui.geometry.Rect(0f,0f,360f,700f)
+        assertEquals(source,playerMorphBounds(source,target,0f))
+        assertEquals(target,playerMorphBounds(source,target,1f))
+        val half=playerMorphBounds(source,target,0.5f)
+        assertEquals(androidx.compose.ui.geometry.Rect(6f,295f,354f,669f),half)
+    }
+
+    @Test fun actualArtworkGrowsOutOfTheMiniInsteadOfRevealingAFinalSizePoster() {
+        mount()
+        val source=rawBounds("mini-art")
+        for(fraction in listOf(0.04f,0.15f,0.30f,0.50f,0.75f,0.92f)) {
+            sampleAt(fraction)
+            val p=compose.runOnIdle {state.visualProgress}
+            val target=rawBounds("poster")
+            val expected=playerMorphBounds(source,target,p)
+            val bitmap=capture("shared-art-${(fraction*100).roundToInt()}")
+            val ink=yellowBounds(bitmap)
+            assertEquals("artwork left",expected.left,ink.left.toFloat(),3f)
+            assertEquals("artwork top",expected.top,ink.top.toFloat(),3f)
+            assertEquals("artwork width must grow rather than show a final-size slice",expected.width,ink.width().toFloat(),4f)
+            assertEquals("the cover must remain square",ink.width().toFloat(),ink.height().toFloat(),4f)
+            bitmap.recycle()
+        }
+        assertEquals(1,measuredContent.distinct().size)
+    }
+
+    @Test fun expandingContainerStartsAtTheActualInsetCardAndDoesNotPaintOutsideItsBounds() {
+        mount();val source=rawBounds("mini")
+        sampleAt(0.30f)
         val p=compose.runOnIdle {state.visualProgress}
-        val top=playerSurfaceTop(p,700f,110f)
-        val bitmap=capture("opaque-page-mini-handoff")
-        val x=with(compose.density){40.dp.toPx()}.roundToInt()
-        val y=with(compose.density){(top+60f).dp.toPx()}.roundToInt()
-        // The app is green and the page is red. A translucent destination, the old palette
-        // bridge or a centred moving mask all violate this actual native colour sample.
+        val target=with(compose.density){androidx.compose.ui.geometry.Rect(0f,0f,360.dp.toPx(),700.dp.toPx())}
+        val frame=playerMorphBounds(source,target,p)
+        val bitmap=capture("shared-container")
+        // A point inside the new shell but outside the compact strip must contain the real page.
+        val x=(frame.left+with(compose.density){12.dp.toPx()}).roundToInt()
+        val y=(frame.top+with(compose.density){90.dp.toPx()}).roundToInt()
         assertEquals(AndroidColor.rgb(155,40,35),bitmap.getPixel(x,y))
-        val miniY=with(compose.density){(top+24f).dp.toPx()}.roundToInt()
-        val miniPixel=bitmap.getPixel(x,miniY)
-        val alpha=playerMiniDrawAlpha(p)
-        assertTrue(alpha>0f)
-        fun mix(page:Int,source:Int)=page*(1f-alpha)+source*alpha
-        assertEquals(mix(155,124),AndroidColor.red(miniPixel).toFloat(),3f)
-        assertEquals(mix(40,51),AndroidColor.green(miniPixel).toFloat(),3f)
-        assertEquals(mix(35,49),AndroidColor.blue(miniPixel).toFloat(),3f)
-        val oldDockY=with(compose.density){633.dp.toPx()}.roundToInt()
-        assertTrue(top+48f<633f)
-        assertEquals("old Mini must not leave a second strip",AndroidColor.rgb(155,40,35),bitmap.getPixel(x,oldDockY))
+        // The previous slide leaked an enlarged photo below Mini/navigation. The shell must clip
+        // this point until its interpolated bottom edge actually reaches it.
+        val navY=with(compose.density){690.dp.toPx()}.roundToInt()
+        assertTrue(navY>frame.bottom)
+        val nav=bitmap.getPixel(bitmap.width/2,navY)
+        assertTrue("navigation must remain outside the expanding container",AndroidColor.blue(nav)>150)
         bitmap.recycle()
     }
 
-    @Test fun opaquePageExtendsBelowTheViewportInsteadOfLeavingAFloatingBottomEdge() {
-        mount();sampleAt(0.43f)
-        val p=compose.runOnIdle {state.visualProgress}
-        assertTrue(playerPageVisible(p))
-        assertEquals(0f,playerMiniDrawAlpha(p),0f)
-        val bitmap=capture("opaque-full-height-page")
-        val x=with(compose.density){40.dp.toPx()}.roundToInt()
-        // The former growing mask left the blue navigation visible BELOW the floating player.
-        // A full-height sheet must cover it with the real page throughout this part of the trip.
-        val y=with(compose.density){690.dp.toPx()}.roundToInt()
-        assertEquals(AndroidColor.rgb(155,40,35),bitmap.getPixel(x,y))
-        bitmap.recycle()
-    }
-
-    @Test fun compactControlsRetireOverAnOpaquePageAndOnlyVisibleOwnersAcceptInput() {
-        assertFalse(playerPageVisible(0f))
-        assertTrue(playerPageVisible(0.001f))
+    @Test fun bodyWaitsForSpaceWhileSharedArtworkIsAlreadyMoving() {
+        assertEquals(0f,playerBodyOpacity(0.20f),0f)
+        assertEquals(1f,playerBodyOpacity(0.72f),0f)
+        assertFalse(playerPageAcceptsInput(0.20f))
+        assertTrue(playerPageAcceptsInput(0.72f))
         assertEquals(1f,playerMiniDrawAlpha(0f),0f)
-        assertEquals(0f,playerMiniDrawAlpha(0.18f),0f)
-        assertFalse(playerPageAcceptsInput(0.10f))
-        assertTrue(playerPageAcceptsInput(0.18f))
-        var previous=1f
-        for(step in 0..1000) {
-            val alpha=playerMiniDrawAlpha(step/1000f)
-            assertTrue(alpha<=previous+0.000001f);previous=alpha
-        }
+        assertEquals(0f,playerMiniDrawAlpha(0.28f),0f)
     }
 
-    @Test fun pageAndArtworkKeepTheirFinalSizeAndTopOriginThroughoutTheTrip() {
-        mount()
-        for (p in listOf(0.25f, 0.43f, 0.66f, 0.85f, 0.98f)) {
-            sampleAt(p)
-            capture("rigid-page-${(p*100).roundToInt()}").recycle()
-            val a = pagePoint(0f, 0f); val b = pagePoint(1f, 1f)
-            assertEquals(with(compose.density){360.dp.toPx()},b.x-a.x,1f)
-            assertEquals(with(compose.density){700.dp.toPx()},b.y-a.y,1f)
-            val actual = compose.runOnIdle { state.visualProgress }
-            val top = playerSurfaceTop(actual,700f,110f)
-            assertEquals(with(compose.density) { top.dp.toPx() }, a.y, 1f)
-            val poster=compose.onNodeWithTag("poster",useUnmergedTree=true).fetchSemanticsNode()
-            val origin=poster.layoutInfo.coordinates.localToRoot(Offset.Zero)
-            assertEquals("artwork must stay anchored to the page, never to a growing mask centre",
-                with(compose.density){(top+56f).dp.toPx()},origin.y,1f)
-            val end=poster.layoutInfo.coordinates.localToRoot(Offset(
-                poster.layoutInfo.coordinates.size.width.toFloat(),poster.layoutInfo.coordinates.size.height.toFloat()))
-            assertEquals(with(compose.density){180.dp.toPx()},end.x-origin.x,1f)
-            assertEquals(with(compose.density){180.dp.toPx()},end.y-origin.y,1f)
+    @Test fun closingArtworkReturnsToTheSameThumbnailAndLeavesNoPosterBelowMini() {
+        mount();val source=rawBounds("mini-art")
+        compose.runOnIdle{state.expandSoft()};advance(700)
+        val target=rawBounds("poster")
+        compose.runOnIdle{state.collapseSoft()}
+        var sampled=false
+        repeat(45) {
+            advance(16)
+            val p=compose.runOnIdle{state.visualProgress}
+            if(!sampled && p in 0.15f..0.5f) {
+                val bitmap=capture("shared-art-closing")
+                val ink=yellowBounds(bitmap)
+                val expected=playerMorphBounds(source,target,p)
+                assertEquals(expected.left,ink.left.toFloat(),3f)
+                assertEquals(expected.width,ink.width().toFloat(),4f)
+                bitmap.recycle();sampled=true
+            }
         }
-        assertEquals(1, measuredContent.distinct().size)
+        assertTrue(sampled)
+        val bitmap=capture("closed-no-ghost")
+        val ink=yellowBounds(bitmap)
+        assertEquals(source.left,ink.left.toFloat(),3f)
+        assertEquals(source.width,ink.width().toFloat(),4f)
+        val navY=with(compose.density){670.dp.toPx()}.roundToInt()
+        assertEquals(AndroidColor.BLUE,bitmap.getPixel(bitmap.width/2,navY))
+        bitmap.recycle()
     }
 
-    @Test fun miniTravelsWithTheWindowOnBothOpeningAndClosingAndKeepsItsSize() {
-        mount()
-        fun bounds()=compose.onNodeWithTag("mini",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
-        val dock=bounds()
-        fun checkPosition() {
-            val p=compose.runOnIdle {state.visualProgress}
-            val b=bounds()
-            val expected=with(compose.density){playerSurfaceTop(p,700f,110f).dp.toPx()}
-            assertEquals("Mini and the growing frame must share their upper edge",expected,b.top,1f)
-            assertEquals(dock.height,b.height,1f)
-            assertEquals(dock.width,b.width,1f)
-        }
-        compose.runOnIdle {state.expandSoft()};advance(32)
-        checkPosition()
-        assertTrue("Mini must move while it is still visibly handing off",bounds().top<dock.top-1f)
-        assertTrue(compose.runOnIdle {playerMiniDrawAlpha(state.visualProgress)}>0f)
-        capture("moving-mini-opening").recycle()
-        repeat(43){advance(16);checkPosition()}
-        compose.runOnIdle {state.collapseSoft()}
-        var captured=false
-        repeat(45){
-            advance(16);checkPosition()
-            val p=compose.runOnIdle {state.visualProgress}
-            if(!captured && p>0.02f && p<0.20f){capture("moving-mini-closing").recycle();captured=true}
-        }
-        assertEquals(dock.top,bounds().top,1f)
-        capture("closed").recycle()
-    }
-
-    @Test fun miniAndWindowShareOnePositionCurveWithoutAnIndependentLiftClock() {
-        var previous=590f
-        for(step in 0..1000) {
-            val p=step/1000f
-            val top=playerSurfaceTop(p,700f,110f)
-            assertTrue(top<=previous+0.001f);previous=top
-        }
-        assertEquals(590f,playerSurfaceTop(0f,700f,110f),0f)
-        assertEquals(0f,playerSurfaceTop(1f,700f,110f),0f)
+    @Test fun finalPageKeepsItsOwnMeasurementsWhileSharedElementsTravel() {
+        mount();sampleAt(0.43f)
+        val a=pagePoint(0f,0f);val b=pagePoint(1f,1f)
+        assertEquals(with(compose.density){360.dp.toPx()},b.x-a.x,1f)
+        assertEquals(with(compose.density){700.dp.toPx()},b.y-a.y,1f)
+        assertEquals(0f,a.y,1f)
+        assertEquals(1,measuredContent.distinct().size)
     }
 
     @Test fun compactSwipeDismissStillMovesMiniDownIndependently() {
@@ -336,7 +334,7 @@ class PlayerOpeningMotionTest {
         while(compose.runOnIdle {state.visualProgress}>0.09f && frames++<60) advance(16)
         compose.runOnIdle {assertTrue(state.compactForegroundAcceptsInput);assertEquals(0,contentDisposals)}
         capture("source-handoff").recycle()
-        compose.onNodeWithTag("mini",useUnmergedTree=true).performTouchInput {click(center)}
+        compose.onNodeWithTag("player-mini-handoff",useUnmergedTree=true).performTouchInput {click(center)}
         advance(700)
         compose.runOnIdle {assertTrue(state.isExpanded);assertEquals(1,contentMounts);assertEquals(0,navigationClicks)}
     }

@@ -1,6 +1,8 @@
 /* Capsule MUSIC — stable GPU cover/video composition. GPL-3.0. */
 package com.nikhil.yt.ui.player
 
+import com.nikhil.yt.ui.component.PlayerMorphPart
+import com.nikhil.yt.ui.component.playerMorphElement
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
@@ -367,6 +369,8 @@ internal fun CapsuleVideoArtworkTransition(
                 Box(
                     Modifier
                         .requiredSize(coverWidthDp, coverHeightDp)
+                        .playerMorphElement(PlayerMorphPart.Artwork, transitionKey as? String, true,
+                            artworkCornerRadius, enabled = !needsSurface)
                         .graphicsLayer {
                             val p = body.value
                             if (immersive) {
