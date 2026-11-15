@@ -422,8 +422,14 @@ class PlayerOpeningMotionTest {
         mount();compose.runOnIdle {state.expandSoft()};advance(96)
         val before=compose.runOnIdle {state.value.value}
         compose.runOnIdle {state.collapseSoft();assertEquals(before,state.value.value,0.01f)}
-        advance(96)
-        val closing=compose.runOnIdle {state.value.value};assertTrue(closing<before)
+        // A soft spring carries its existing velocity briefly before turning. Forcing the
+        // previous 96ms direction deadline would reintroduce the abrupt reversal being fixed.
+        advance(32)
+        val coasting=compose.runOnIdle {state.value.value}
+        assertTrue("reversal must preserve momentum: $before -> $coasting",coasting>=before-0.01f)
+        advance(160)
+        val closing=compose.runOnIdle {state.value.value}
+        assertTrue("the latest closing intent must turn the same page: $before -> $closing",closing<before)
         compose.runOnIdle {state.expandSoft();assertEquals(closing,state.value.value,0.01f)}
         advance(700)
         compose.runOnIdle {assertTrue(state.isExpanded);assertEquals(1,contentMounts)}
