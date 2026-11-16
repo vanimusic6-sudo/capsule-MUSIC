@@ -38,10 +38,10 @@ class CapsuleMetadataPolishTest {
         val names = listOf("Noize MC", "Монеточка", "Third Artist", "Fourth Artist")
         val full = names.joinToString(" • ")
         assertEquals(full, capsuleArtistLabel(names, full.length + 2) { it.length })
-        val two = "Noize MC • Монеточка • ещё +2"
+        val two = "Noize MC • Монеточка • ещё 2"
         assertEquals(two, capsuleArtistLabel(names, two.length + 2) { it.length })
-        assertEquals("ещё +4", capsuleArtistLabel(names, 13) { it.length })
-        assertEquals("+4", capsuleArtistLabel(names, 4) { it.length })
+        assertEquals("ещё 4", capsuleArtistLabel(names, 13) { it.length })
+        assertEquals("", capsuleArtistLabel(names, 4) { it.length })
         assertEquals("", capsuleArtistLabel(names, 2) { it.length })
         assertEquals("", capsuleArtistLabel(emptyList(), 400) { it.length })
     }
