@@ -24,6 +24,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,6 +33,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
@@ -215,22 +217,23 @@ internal fun playerClassicSurfaceAlpha(progress: Float): Float =
     transitionWindow(progress, 0f, 0.14f)
 
 /** Mini and full content overlap briefly while sharing a solid moving material. */
+// Preserve the 25% main handoff; do not leave two separate player interfaces visible.
 internal fun playerClassicMiniAlpha(progress: Float): Float =
-    1f - transitionWindow(progress, 0.03f, 0.42f)
+    1f - transitionWindow(progress, 0f, PlayerContentHandoffPoint)
 
+// Finish the big UI with the moving sheet, not late after its physical arrival.
 internal fun playerClassicContentAlpha(progress: Float): Float =
-    transitionWindow(progress, 0.16f, 0.62f)
+    transitionWindow(progress, PlayerContentHandoffPoint, 0.70f)
+
+internal fun playerClassicBackdropAlpha(progress: Float): Float =
+    transitionWindow(progress, PlayerContentHandoffPoint, 0.48f)
 
 /** Mount the real player invisibly before the crossfade, not mid-flight at the old 25% mark. */
 internal const val PlayerClassicContentMountThreshold = 0.025f
 
-/**
- * Parent sheet rises by [travelPx]. Mini counter-translates 78% of the same distance, so
- * it genuinely follows the opening (22% rise), but never flies to the top of the screen.
- * At the dock the return is mathematically exact; reversal uses the same physical offset.
- */
-internal fun playerClassicMiniCounterTravel(travelPx: Float): Float =
-    if (travelPx.isFinite()) travelPx.coerceAtLeast(0f) * 0.78f else 0f
+/** In the accepted main motion, the Mini belongs to the real rising BottomSheet.
+ * No counter-travel: it rises and returns with its parent, without a phantom fixed card. */
+internal fun playerClassicMiniCounterTravel(travelPx: Float): Float = 0f
 
 internal fun shouldRenderExpandedSurface(
     rawProgress: Float,
@@ -278,10 +281,15 @@ internal val PlayerFrameCornerRadius = 26.dp
 internal fun playerFrameCornerRadius(
     progress: Float,
     collapsedRadius: Dp = PlayerFrameCornerRadius,
+    holdVisibleCorner: Boolean = false,
 ): Dp {
     val p = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 1f
-    val eased = CapsuleMotion.smooth(p).coerceIn(0f, 1f)
-    return (collapsedRadius * (1f - eased)).coerceAtLeast(0.dp)
+    // ArchiveTune-like stable upper corners, with a smooth final 12% resolution
+    // instead of dropping the radius in one frame. Generic sheets unchanged.
+    val finish = if (holdVisibleCorner)
+        CapsuleMotion.smooth(((p - 0.88f) / 0.12f).coerceIn(0f, 1f))
+    else CapsuleMotion.smooth(p)
+    return (collapsedRadius * (1f - finish)).coerceAtLeast(0.dp)
 }
 
 /**
@@ -355,6 +363,11 @@ fun BottomSheet(
             }
         }
     val miniGestureArbiter = remember(state) { MiniPlayerGestureArbiter() }
+    val miniOpeningInteraction = remember(state) { MutableInteractionSource() }
+    val miniPressed by miniOpeningInteraction.collectIsPressedAsState()
+    LaunchedEffect(state, miniPressed) {
+        state.setCompactOpenPress(miniPressed && state.compactForegroundAcceptsInput)
+    }
     val renderExpandedSurface by
         remember(state) {
             derivedStateOf {
@@ -422,6 +435,11 @@ fun BottomSheet(
                                 translationY = playerClassicMiniCounterTravel(
                                     (state.value - state.collapsedBound).toPx(),
                                 )
+                                // One existing spring; the Mini compresses and recovers
+                                // entirely before its 25% visual handoff.
+                                scaleX = CapsuleMotion.miniScaleX(p)
+                                scaleY = CapsuleMotion.miniScaleY(p)
+                                transformOrigin = TransformOrigin(0.5f, 1f)
                             }
                         }
                         // A z-order flip WHILE Mini is translucent produced a thin stray card
@@ -444,7 +462,7 @@ fun BottomSheet(
                         )
                         .clickable(
                             enabled = canReopen,
-                            interactionSource = remember { MutableInteractionSource() },
+                            interactionSource = miniOpeningInteraction,
                             indication = null,
                             onClick = state::expandSoft,
                         )
@@ -469,7 +487,10 @@ fun BottomSheet(
                             val raw = state.visualProgress
                             scaleX = playerFrameHorizontalScale(raw, size.width, collapsedHorizontalInset.toPx())
                             transformOrigin = TransformOrigin(0.5f, 0f)
-                            val radius = playerFrameCornerRadius(raw, collapsedTopCornerRadius)
+                            val radius = playerFrameCornerRadius(
+                                raw, collapsedTopCornerRadius,
+                                holdVisibleCorner = state.classicPlayerPresentation,
+                            )
                             shape = RoundedCornerShape(topStart = radius, topEnd = radius)
                             clip = radius > 0.dp
                         },
@@ -548,9 +569,9 @@ private val BottomSheetSoftAnimationSpecPx: AnimationSpec<Float> =
 // a critically damped spring carries velocity through interruptions and reaches the last pixel
 // without a lingering tail. These specs apply to the player, never to menus or the queue.
 internal val PlayerClassicOpenAnimation: AnimationSpec<Float> =
-    spring(dampingRatio = 1f, stiffness = 232f, visibilityThreshold = 1f)
+    spring(dampingRatio = 1f, stiffness = 216f, visibilityThreshold = 0.75f)
 internal val PlayerClassicCloseAnimation: AnimationSpec<Float> =
-    spring(dampingRatio = 1f, stiffness = 250f, visibilityThreshold = 1f)
+    spring(dampingRatio = 1f, stiffness = 236f, visibilityThreshold = 0.75f)
 
 private fun SheetAnchor.legacyId(): Int =
     when (this) {
@@ -667,6 +688,14 @@ class BottomSheetState internal constructor(
      * This prevents a closing spring from leaving Player as owner after close is requested.
      */
     private var playerAnimationJob: Job? = null
+    internal var compactOpenPress by mutableStateOf(false)
+        private set
+
+    internal fun setCompactOpenPress(pressed: Boolean) {
+        if (classicPlayerPresentation && compactOpenPress != pressed)
+            compactOpenPress = pressed
+    }
+
     private var requestedAnchor by mutableStateOf(anchoredState.targetValue)
     private var userGestureInProgress by mutableStateOf(false)
 
