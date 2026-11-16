@@ -184,9 +184,13 @@ internal fun ImmersiveAudioScene(
     sceneAlpha: () -> Float,
     artwork: @Composable () -> Unit,
 ) {
+    // While the same image is travelling from Mini, do not reveal a second enormous,
+    // stationary photograph beneath it. The native full-resolution photo fades in only
+    // as the moving shared cover arrives at the exact Immersion artwork slot.
+    val sharedArtwork = LocalPlayerArtworkHandoff.current
     Box(Modifier.fillMaxSize().graphicsLayer {
         compositingStrategy = CompositingStrategy.Auto
-        alpha = sceneAlpha()
+        alpha = sceneAlpha() * (sharedArtwork?.destinationArtworkAlpha() ?: 1f)
     }) {
         Image(
             bitmap = background, contentDescription = null,
