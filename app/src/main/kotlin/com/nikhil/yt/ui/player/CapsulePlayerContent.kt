@@ -1154,26 +1154,12 @@ fun CapsulePlayerContent(
                                                     Spacer(Modifier.width(5.dp))
                                                 }
 
-                                                Text(
-                                                    text = artistCredits.joinToString { it.name },
+                                                CapsuleArtistCredits(
+                                                    artists = artistCredits,
                                                     color = secondaryText,
-                                                    fontSize = CapsulePlayerArtistFontSize,
-                                                    lineHeight = CapsulePlayerArtistLineHeight,
-                                                    fontWeight = FontWeight.Normal,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                    modifier =
-                                                        Modifier
-                                                            .weight(1f, fill = false)
-                                                            .clip(RoundedCornerShape(8.dp))
-                                                            .clickable(
-                                                                enabled =
-                                                                    navigableArtists.isNotEmpty() &&
-                                                                        !lightEditorEnabled,
-                                                            ) {
-                                                                handleArtistClick()
-                                                            }
-                                                            .padding(vertical = 2.dp),
+                                                    enabled = navigableArtists.isNotEmpty() && !lightEditorEnabled,
+                                                    onClick = ::handleArtistClick,
+                                                    modifier = Modifier.weight(1f, fill = false).padding(vertical = 2.dp),
                                                 )
                                             }
                                         }
@@ -1472,37 +1458,12 @@ fun CapsulePlayerContent(
                                 )
                             }
 
-                            Text(
-                                text =
-                                    artistCredits.joinToString {
-                                            it.name
-                                        },
-                                color =
-                                    secondaryText,
-                                fontSize = CapsulePlayerArtistFontSize,
-                                lineHeight = CapsulePlayerArtistLineHeight,
-                                fontWeight = FontWeight.Normal,
-                                maxLines = 1,
-                                overflow =
-                                    TextOverflow.Ellipsis,
-                                modifier =
-                                    Modifier
-                                        .weight(
-                                            1f,
-                                            fill = false,
-                                        )
-                                        .clip(
-                                            RoundedCornerShape(8.dp),
-                                        )
-                                        .clickable(
-                                            enabled =
-                                                navigableArtists.isNotEmpty(),
-                                        ) {
-                                            handleArtistClick()
-                                        }
-                                        .padding(
-                                            vertical = 2.dp,
-                                        ),
+                            CapsuleArtistCredits(
+                                artists = artistCredits,
+                                color = secondaryText,
+                                enabled = navigableArtists.isNotEmpty(),
+                                onClick = ::handleArtistClick,
+                                modifier = Modifier.weight(1f, fill = false).padding(vertical = 2.dp),
                             )
                         }
                     }
