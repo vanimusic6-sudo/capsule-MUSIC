@@ -501,7 +501,11 @@ fun BottomSheetPlayer(
         // instead of appearing as an unrelated full-width page behind it.
         collapsedHorizontalInset = 12.dp,
         collapsedTopCornerRadius = 14.dp,
-        surfaceAlpha = ::playerHandoffSurfaceAlpha,
+        // Paint the shell solid before artwork arrives; the old translucent material
+        // revealed the Home UI THROUGH the cover in the middle of the rise.
+        surfaceAlpha = if (state.classicPlayerPresentation)
+            com.nikhil.yt.ui.component::playerClassicSurfaceAlpha
+        else ::playerHandoffSurfaceAlpha,
         onDismiss = {
             playerConnection.service.stopAndClearPlayback()
         },
