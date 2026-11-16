@@ -427,7 +427,8 @@ fun BottomSheetPlayer(
             else -> false
         }
     val pageIsDrawn by remember(state) { derivedStateOf {
-        !state.playerMotion || com.nikhil.yt.ui.component.playerPageVisible(state.visualProgress)
+        !state.playerMotion || state.classicPlayerPresentation ||
+            com.nikhil.yt.ui.component.playerPageVisible(state.visualProgress)
     } }
     val backdropTimelineRunning =
         backdropNeedsClock &&
@@ -475,7 +476,7 @@ fun BottomSheetPlayer(
     )
 
     val showCompactTransitionPlate by remember(state) {
-        derivedStateOf { !state.playerMotion && state.visualProgress < 0.5f }
+        derivedStateOf { (!state.playerMotion || state.classicPlayerPresentation) && state.visualProgress < 0.5f }
     }
     val showPlayerBackdrop by remember(state, effectivePlayerDesign) {
         derivedStateOf {
@@ -537,7 +538,7 @@ fun BottomSheetPlayer(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            alpha = if (state.playerMotion) 1f else
+                            alpha = if (state.playerMotion && !state.classicPlayerPresentation) 1f else
                                 playerBackdropContentAlpha(state.visualProgress, state.contentHandoffPoint)
                         }
                         .background(playerSurfaceColor(useBlackBackground))
