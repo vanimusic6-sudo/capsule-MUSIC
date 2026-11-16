@@ -153,20 +153,34 @@ class PlayerTransitionGestureTest {
         )
     }
 
-    @Test fun `restored player material never ghosts through its album content`() {
-        assertEquals(0f, playerClassicSurfaceAlpha(0f), 0f)
-        assertEquals(1f, playerClassicSurfaceAlpha(0.14f), 0.0001f)
-        assertEquals(1f, playerClassicSurfaceAlpha(0.35f), 0f)
-        assertEquals(0f, playerClassicContentAlpha(0.25f), 0f)
-        assertTrue(playerClassicContentAlpha(0.35f) > 0f)
-        assertEquals(1f, playerClassicContentAlpha(0.70f), 0f)
-        assertEquals(1f, playerClassicMiniAlpha(0f), 0f)
-        assertTrue(playerClassicMiniAlpha(0.12f) in 0.1f..0.9f)
-        assertEquals(0f, playerClassicMiniAlpha(0.25f), 0f)
-        assertEquals(0f, playerClassicBackdropAlpha(0.25f), 0f)
-        assertEquals(1f, playerClassicBackdropAlpha(0.48f), 0f)
+    @Test fun `12915 real photo leads the solid shell and mini never yields into grey`() {
+        assertEquals(0f, playerClassicSurfaceAlpha(0.0f), 0f)
+        assertEquals(0f, playerClassicSurfaceAlpha(0.12f), 0f)
+        assertEquals(1f, playerClassicSurfaceAlpha(0.48f), 0f)
+        assertEquals(0f, playerClassicContentAlpha(0.045f), 0f)
+        assertTrue(playerClassicContentAlpha(0.15f) > 0f)
+        assertEquals(1f, playerClassicContentAlpha(0.48f), 0f)
+        assertEquals(1f, playerClassicMiniAlpha(0.07f), 0f)
+        assertTrue(playerClassicMiniAlpha(0.25f) in 0.1f..0.9f)
+        assertEquals(0f, playerClassicMiniAlpha(0.47f), 0f)
+        assertEquals(0f, playerClassicBackdropAlpha(0.035f), 0f)
+        assertEquals(1f, playerClassicBackdropAlpha(0.36f), 0f)
         assertEquals(0f, playerClassicMiniCounterTravel(Float.NaN), 0f)
         assertEquals(0f, playerClassicMiniCounterTravel(100f), 0f)
+
+        // An opening or closing frame must never reveal solid gray under an absent photograph.
+        // Both directions use these exact same curves, and are safe under quick Back/reopen.
+        for (i in 0..200) {
+            val p = i / 200f
+            val fullPhoto = playerClassicContentAlpha(p)
+            val backing = playerClassicSurfaceAlpha(p)
+            val mini = playerClassicMiniAlpha(p)
+            assertTrue("grey sheet would show ahead of photo at progress=$p",
+                fullPhoto + 0.0001f >= backing)
+            val combinedCoverage = 1f - (1f - mini) * (1f - fullPhoto)
+            assertTrue("Mini/photo handoff has an empty frame at progress=$p: $combinedCoverage",
+                combinedCoverage >= 0.75f)
+        }
     }
 
     @Test fun `main player spring moves the original sheet and returns Mini to its dock`() {
