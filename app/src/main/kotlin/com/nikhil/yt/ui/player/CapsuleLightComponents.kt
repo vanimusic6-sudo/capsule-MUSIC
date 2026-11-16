@@ -354,7 +354,9 @@ internal fun CapsuleLightFavorite(
                     onToggleLike()
                 },
             ),
-        contentAlignment = Alignment.CenterEnd,
+        // The original trailing alignment put the smaller heart outside the optical centre
+        // of its 48dp touch region. Centre the 26dp glyph while keeping the full hit target.
+        contentAlignment = Alignment.Center,
     ) {
         CapsuleFavoriteIcon(
             liked = liked,
