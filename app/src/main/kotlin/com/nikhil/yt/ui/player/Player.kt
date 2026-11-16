@@ -78,6 +78,7 @@ import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.ui.component.BottomSheet
 import com.nikhil.yt.ui.component.BottomSheetState
 import com.nikhil.yt.ui.component.playerHandoffSurfaceAlpha
+import com.nikhil.yt.ui.component.playerClassicSurfaceAlpha
 import com.nikhil.yt.ui.component.playerBackdropContentAlpha
 import com.nikhil.yt.ui.component.LocalBottomSheetPageState
 import com.nikhil.yt.ui.component.LocalMenuState
@@ -504,7 +505,7 @@ fun BottomSheetPlayer(
         // Paint the shell solid before artwork arrives; the old translucent material
         // revealed the Home UI THROUGH the cover in the middle of the rise.
         surfaceAlpha = if (state.classicPlayerPresentation)
-            com.nikhil.yt.ui.component::playerClassicSurfaceAlpha
+            ::playerClassicSurfaceAlpha
         else ::playerHandoffSurfaceAlpha,
         onDismiss = {
             playerConnection.service.stopAndClearPlayback()
