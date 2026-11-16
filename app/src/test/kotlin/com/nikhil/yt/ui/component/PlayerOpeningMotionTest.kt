@@ -217,7 +217,7 @@ class PlayerOpeningMotionTest {
         assertEquals(0f, playerPresentationOpacity(-1f), 0f)
         assertEquals(1f, playerPresentationOpacity(2f), 0f)
         assertEquals(1f, playerPresentationScale(1f), 0f)
-        assertEquals(0f, playerPresentationContentX(1f, 360f, 12f, 1f), 0f)
+        assertEquals(0.95f, playerPresentationScale(0f), 0f)
         assertEquals(0f, playerPresentationContentY(1f, 0f, 1f), 0f)
 
         val source = playerPresentationBounds(0f, 360f, 700f, 590f, 48f, 12f)
@@ -237,7 +237,7 @@ class PlayerOpeningMotionTest {
             assertTrue("outer frame grows downward", frame.bottom >= previous.bottom)
             assertTrue("frame grows horizontally", frame.left <= previous.left && frame.right >= previous.right)
             assertTrue(opacity >= previousOpacity && opacity in 0f..1f)
-            assertTrue(scale >= previousScale && scale in 0.24f..1f)
+            assertTrue(scale >= previousScale && scale in 0.95f..1f)
             previous = frame; previousOpacity = opacity; previousScale = scale
         }
     }
@@ -257,7 +257,7 @@ class PlayerOpeningMotionTest {
                 with(compose.density) { 700.dp.toPx() }, with(compose.density) { 590.dp.toPx() },
                 with(compose.density) { 48.dp.toPx() }, with(compose.density) { 12.dp.toPx() })
             assertEquals("content follows its clipped, physical source", frame.top -
-                with(compose.density) { 9.dp.toPx() } * (1f - p), a.y, 2f)
+                with(compose.density) { 24.dp.toPx() } * (1f - p), a.y, 2f)
             val poster = rawBounds("poster")
             assertEquals(with(compose.density) { 180.dp.toPx() } * actualScale, poster.width, 2f)
             assertEquals("cover stays attached to its moving content",
@@ -265,6 +265,24 @@ class PlayerOpeningMotionTest {
             capture("morph-open-${(fraction * 100).roundToInt()}").recycle()
         }
         assertEquals("do not remeasure the full player on every frame", 1, measuredContent.distinct().size)
+    }
+
+    @Test fun thePageDoesNotCollapseIntoASideStripAtAnyPointInTheMorph() {
+        mount()
+        for (fraction in listOf(0.10f, 0.25f, 0.45f, 0.65f, 0.85f)) {
+            sampleAt(fraction)
+            val a = pagePoint(0f, 0f)
+            val b = pagePoint(1f, 1f)
+            val p = compose.runOnIdle { state.visualProgress }
+            val screenCenter = with(compose.density) { 180.dp.toPx() }
+            assertEquals("content stays horizontally centered, even during close", screenCenter,
+                (a.x + b.x) / 2f, 2f)
+            assertEquals("content is never crushed below 95% width",
+                with(compose.density) { 360.dp.toPx() } * playerPresentationScale(p),
+                b.x - a.x, 2f)
+            assertEquals("the content scale never stretches a portrait",
+                b.x - a.x, (b.y - a.y) / 700f * 360f, 2f)
+        }
     }
 
     @Test fun nativePhotoCircleStaysRoundThroughPortraitPagePresentation() {
@@ -417,7 +435,8 @@ class PlayerOpeningMotionTest {
             val p = state.visualProgress
             val frame = playerPresentationBounds(p, 360f, 700f, 590f, 48f, 12f)
             assertTrue("at 128ms the frame must be visibly in transit", frame.top in 20f..520f)
-            assertTrue("the full-player image is already growing", playerPresentationScale(p) > 0.35f)
+            assertTrue("real artwork must not collapse into a narrow offset strip",
+                playerPresentationScale(p) >= 0.95f)
         }
         advance(600)
         compose.runOnIdle { assertTrue(state.isExpanded); state.collapseSoft() }
