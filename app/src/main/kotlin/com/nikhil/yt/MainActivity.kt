@@ -890,6 +890,9 @@ class MainActivity : ComponentActivity() {
                                         MiniPlayerBottomSpacing +
                                         MiniPlayerHeight,
                             expandedBound = maxHeight,
+                            // Keep the exact original main BottomSheet presentation; ONLY
+                            // the player-specific spring and content fade timing are polished.
+                            useMainPlayerMotionPolish = true,
                         )
 
 
