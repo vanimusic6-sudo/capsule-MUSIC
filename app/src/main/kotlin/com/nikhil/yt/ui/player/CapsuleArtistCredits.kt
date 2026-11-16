@@ -18,6 +18,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,6 +36,13 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.nikhil.yt.models.MediaMetadata
+import com.nikhil.yt.LocalDatabase
+import com.nikhil.yt.ui.component.ArtistPortraits
+import androidx.compose.material3.Icon
+import androidx.compose.ui.res.painterResource
+import com.nikhil.yt.R
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 
 /**
  * Whole-name fit. Never crop a second artist halfway or replace them with an ellipsis.
@@ -50,19 +59,19 @@ internal fun capsuleArtistLabel(
     if (measurePx(all) <= limit) return all
     for (shown in names.size - 1 downTo 0) {
         val remaining = names.size - shown
-        val suffix = "ещё +$remaining"
+        val suffix = "ещё $remaining"
         val candidate =
             if (shown > 0) names.take(shown).joinToString(" • ") + " • " + suffix else suffix
         if (measurePx(candidate) <= limit) return candidate
     }
-    val compact = "+${names.size}"
+    val compact = "ещё ${names.size}"
     return if (measurePx(compact) <= limit) compact else ""
 }
 
 /**
  * At most two *tiny cached* circular avatars, two artist photos maximum, no extra full-size
  * artwork decode, no shimmer or continuous avatar animation. The label is one measured line,
- * uses • instead of commas, and reserves a real layout width for the complete +N suffix.
+ * uses • instead of commas, and reserves a real layout width for the complete "ещё N" suffix.
  */
 @Composable
 internal fun CapsuleArtistCredits(
@@ -108,9 +117,37 @@ internal fun CapsuleArtistCredits(
             if (portraits.isNotEmpty()) {
                 Box(modifier = Modifier.width(avatarBlock - 8.dp).height(avatarSize)) {
                     portraits.forEachIndexed { index, artist ->
-                        val thumbnail = artist.thumbnailUrl
-                        val photoRequest = remember(context, thumbnail) {
-                            thumbnail?.takeIf { it.isNotBlank() }?.let { url ->
+                        // SongItem conversion often has NO artist thumbnail at all, especially
+                        // for single-artist tracks. Resolve via existing portrait cache / Room /
+                        // artist-page API (shared with the artist picker), not a fake initial.
+                        val database = LocalDatabase.current
+                        val photoUrl by produceState<String?>(
+                            initialValue = artist.thumbnailUrl?.takeIf { it.isNotBlank() }
+                                ?: ArtistPortraits.peek(artist.id),
+                            key1 = artist.id, key2 = artist.thumbnailUrl,
+                        ) {
+                            value = artist.thumbnailUrl?.takeIf { it.isNotBlank() }
+                                ?: ArtistPortraits.peek(artist.id)
+                            val artistId = artist.id?.takeIf { it.isNotBlank() }
+                            if (value == null && artistId != null) {
+                                try {
+                                    value = ArtistPortraits.resolve(
+                                        id = artistId,
+                                        hintedUrl = artist.thumbnailUrl,
+                                        allowNetwork = true,
+                                        localLookup = {
+                                            database.artist(artistId).first()?.thumbnailUrl
+                                        },
+                                    )
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (_: Exception) {
+                                    // Missing/unreachable artist pages must never affect audio.
+                                }
+                            }
+                        }
+                        val photoRequest = remember(context, photoUrl) {
+                            photoUrl?.let { url ->
                                 ImageRequest.Builder(context).data(url).size(72, 72).crossfade(false).build()
                             }
                         }
@@ -128,12 +165,14 @@ internal fun CapsuleArtistCredits(
                                 modifier = frame,
                             )
                         } else {
+                            // Placeholder is a quiet person silhouette, not a fake photo or
+                            // a large letter. It disappears when the real portrait resolves.
                             Box(frame, contentAlignment = Alignment.Center) {
-                                Text(
-                                    text = artist.name.take(1).uppercase(),
-                                    color = color,
-                                    fontSize = 10.sp,
-                                    maxLines = 1,
+                                Icon(
+                                    painter = painterResource(R.drawable.artist),
+                                    contentDescription = null,
+                                    tint = color.copy(alpha = 0.42f),
+                                    modifier = Modifier.size(13.dp),
                                 )
                             }
                         }
