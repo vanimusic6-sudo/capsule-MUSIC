@@ -73,6 +73,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import com.nikhil.yt.ui.component.LocalPlayerArtworkHandoff
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
@@ -812,6 +815,8 @@ private fun CapsuleMiniPlayButton(
     interactionEnabled: Boolean = true,
 ) {
     val playLabel = stringResource(if (isPlaying) androidx.media3.ui.R.string.exo_controls_pause_description else R.string.play)
+    // Reuse the decoded circle image as the shared moving artwork. No second Coil request.
+    val artworkHandoff = LocalPlayerArtworkHandoff.current
 
     Box(
         contentAlignment =
@@ -862,6 +867,9 @@ private fun CapsuleMiniPlayButton(
                 model =
                     mediaMetadata
                         ?.thumbnailUrl,
+                onSuccess = { success ->
+                    artworkHandoff?.publish(mediaMetadata?.id, success.painter)
+                },
                 contentDescription =
                     null,
                 contentScale =
@@ -869,7 +877,12 @@ private fun CapsuleMiniPlayButton(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .clip(CircleShape),
+                        .clip(CircleShape)
+                        .onGloballyPositioned { coordinates ->
+                            val measured = coordinates.boundsInRoot()
+                            if (artworkHandoff?.sourceBoundsInRoot != measured)
+                                artworkHandoff?.sourceBoundsInRoot = measured
+                        },
             )
 
             if (
