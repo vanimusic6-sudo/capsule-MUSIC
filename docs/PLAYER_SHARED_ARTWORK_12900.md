@@ -28,6 +28,10 @@ else can fade/reveal, but it must not replace the artwork trajectory.
   and uniform scale. The radius continuously shrinks from the true Mini circle to the
   unrounded full-bleed region. The bridge is active only during the spring and fades
   to the already-rendering high-res full artwork before rest.
+- Crucially, the FULL Immersion audio photo/gradient scene is gated by the SAME progress
+  and cannot paint a second giant car behind the shared travelling cover. The native
+  full-resolution scene becomes visible over progress 0.66–0.92 as the moving preview
+  fades away, so the original 12900.mp4 pop is addressed at its source, not merely covered.
 - Media identity is checked at publication and immediately invalidates the previous
   painter on track change. Missing image => graceful fallback to existing normal player.
 - VIDEO does not use the shared painter: it keeps its existing TextureView ownership and
