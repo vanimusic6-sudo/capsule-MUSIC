@@ -436,9 +436,11 @@ fun BottomSheet(
                             if (state.classicPlayerPresentation) {
                                 translationY = playerClassicMiniCounterTravel(
                                     (state.value - state.collapsedBound).toPx(),
-                                )
+                                ) + CapsuleMotion.miniAdhesionDp(p) * density
+                                // Source Mini lags the anchored lift by at most 1.8dp,
+                                // then reunites with the exact dock. No independent spring.
                                 // One existing spring; the Mini compresses and recovers
-                                // entirely before its 25% visual handoff.
+                                // entirely before the artwork cross-handoff.
                                 scaleX = CapsuleMotion.miniScaleX(p)
                                 scaleY = CapsuleMotion.miniScaleY(p)
                                 transformOrigin = TransformOrigin(0.5f, 1f)
