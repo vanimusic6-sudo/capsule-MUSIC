@@ -905,10 +905,12 @@ class MainActivity : ComponentActivity() {
                     // derivedStateOf prevents each spring frame from recomposing MainActivity.
                     val playerNavTuckTarget by remember(playerBottomSheetState) {
                         derivedStateOf {
-                            !playerBottomSheetState.isDismissed &&
-                                (playerBottomSheetState.compactOpenPress ||
-                                    playerBottomSheetState.isExpandedOrExpanding ||
-                                    playerBottomSheetState.visualProgress >= 0.16f)
+                            CapsuleMotion.navigationTucked(
+                                opening = playerBottomSheetState.isExpandedOrExpanding,
+                                compactPressed = playerBottomSheetState.compactOpenPress,
+                                progress = playerBottomSheetState.visualProgress,
+                                dismissed = playerBottomSheetState.isDismissed,
+                            )
                         }
                     }
                     val playerNavTuck by animateFloatAsState(
