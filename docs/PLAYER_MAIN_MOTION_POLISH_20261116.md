@@ -28,9 +28,17 @@ its symbols. Removing it is a separate cleanup after approval.
 
 - Opening: critically damped anchored spring, stiffness 232, 1px visibility threshold.
 - Closing: critically damped anchored spring, stiffness 250, 1px visibility threshold.
-- The same progress controls geometry, corner radius and handoff opacity, with the original
-  main timings for compact UI and full content. No extra bounce, blur, wash, layer screenshot,
-  artificial floating cover, frame limiter, or background changes.
+- The same anchor progress still drives geometry and visual ownership. After reviewing
+  **12882.mp4** the original handoff was further corrected: the surface becomes fully
+  opaque by progress 0.14 (before full artwork appears), Mini fades over 0.03–0.42,
+  and full foreground eases in over 0.16–0.62. Real content mounts invisibly at 0.025,
+  avoiding a sudden attachment/pop at progress 0.25. The background palette is untouched.
+- The sheet continues its original full travel, but Mini counter-travels by 78% of the same
+  physical displacement. Thus Mini itself rises a restrained 22% until it fades; it
+  does **not** fly all the way up over the app before disappearing. The source's
+  z-index changes only after it is entirely invisible.
+- No extra bounce, blur, wash, artwork duplication, colour overlay, frame limiter
+  or changes to audio/video playback.
 - Player-only tuning: menus, queue and other sheets retain their old spring settings.
 - All other motion/non-motion code from the review branch is retained.
 
@@ -47,3 +55,17 @@ CI can establish compilation, platform semantics and tested geometry, but cannot
 a slow-motion real HONOR recording. Assess both Light and Immersion, audio and video,
 immediate Back, repeated taps, landscape/insets, system motion-duration scale and
 physical refresh rates before merging. Keep the PR as draft.
+
+## Recording-specific diagnosis (12882.mp4)
+
+At ~0.25–0.45s of the supplied 592x1280 recording, Home remained visible through
+an oversized partially transparent expanded canvas; source Mini had already started
+fading while cover text/photo emerged on a weak surface. This was not spring speed:
+`playerHandoffSurfaceAlpha` rose only to 0.25 by the old handoff at progress 0.25,
+and the full foreground mounted precisely then. The actual Mini also rode 100% of
+the sheet's vertical displacement; the two surfaces visually split apart, with
+source z-index switching during the fade.
+
+This revision changes ONLY these player-classic-specific values; generic menus and
+queue keep their old behavior. Verify the new playback on a device because static
+CI and Robolectric cannot guarantee the perceptual result of video and album paint.
