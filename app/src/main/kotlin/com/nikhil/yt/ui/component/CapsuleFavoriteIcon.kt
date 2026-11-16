@@ -46,7 +46,7 @@ internal fun CapsuleFavoriteIcon(
     val pressed = interactionSource?.collectIsPressedAsState()?.value == true
     val press by animateFloatAsState(
         if (pressed) 1f else 0f,
-        spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumHigh),
+        spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 540f),
         label = "favoritePress",
     )
 
