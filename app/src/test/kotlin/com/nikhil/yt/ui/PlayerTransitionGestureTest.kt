@@ -50,7 +50,7 @@ class PlayerTransitionGestureTest {
     private var mainScreenClicks = 0
     private var compactDockHeight by mutableStateOf(80.dp)
 
-    private fun showSheet(tapOnlyPlayer: Boolean = false) {
+    private fun showSheet(tapOnlyPlayer: Boolean = false, classicPlayer: Boolean = false) {
         childClicks = 0
         horizontalDistance = 0f
         dismisses = 0
@@ -67,6 +67,8 @@ class PlayerTransitionGestureTest {
                             collapsedBound = compactDockHeight,
                             expandedBound = 851.dp,
                             initialAnchor = COLLAPSED_ANCHOR,
+                            playerMotion = classicPlayer,
+                            classicPlayerPresentation = classicPlayer,
                         )
 
                     Button(
@@ -143,6 +145,39 @@ class PlayerTransitionGestureTest {
             "transition never entered [" + min + ", " + max + "], last=" +
                 compose.runOnIdle { state.rawProgress },
         )
+    }
+
+    @Test fun `main player spring moves the original sheet and returns Mini to its dock`() {
+        showSheet(tapOnlyPlayer = true, classicPlayer = true)
+        compose.mainClock.autoAdvance = false
+        try {
+            val dockY = miniNode().fetchSemanticsNode().boundsInRoot.top
+            compose.runOnIdle {
+                assertTrue(state.classicPlayerPresentation)
+                assertTrue(state.playerMotion)
+                assertEquals(0f, state.visualProgress, 0f)
+                state.expandSoft()
+            }
+            advanceUntilProgress(min = 0.25f, max = 0.90f)
+            val movingY = miniNode().fetchSemanticsNode().boundsInRoot.top
+            assertTrue("Main BottomSheet must physically lift Mini, not render a separate overlay",
+                movingY < dockY - 40f)
+            compose.runOnIdle { state.collapseSoft() }
+            // The spring reverses from its *current position*, never teleports back to source.
+            val reversingY = miniNode().fetchSemanticsNode().boundsInRoot.top
+            assertTrue("Reversal must retain the current physical position", reversingY < dockY - 40f)
+            repeat(75) { compose.mainClock.advanceTimeByFrame() }
+            compose.waitForIdle()
+            val settledY = miniNode().fetchSemanticsNode().boundsInRoot.top
+            assertEquals("The original Mini must return to its exact dock", dockY, settledY, 2f)
+            compose.runOnIdle {
+                assertTrue(state.isCollapsed)
+                assertTrue(!state.isAnimationRunning)
+                assertEquals(1f, miniPlayerContentAlpha(state.visualProgress), 0f)
+            }
+        } finally {
+            compose.mainClock.autoAdvance = true
+        }
     }
 
     @Test fun `child click is not stolen by vertical sheet gesture`() {
