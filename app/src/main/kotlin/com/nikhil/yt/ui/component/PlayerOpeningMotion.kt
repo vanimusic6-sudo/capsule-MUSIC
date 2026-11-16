@@ -79,25 +79,25 @@ internal fun playerPageAcceptsInput(progress: Float): Boolean = boundedProgress(
 
 // Leave the real mini in view while the expanded frame is still near its source. The mini
 // contributes the actual artwork and material at the first/last frames; it never teleports.
-internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0.07f, 0.50f)
+internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0.13f, 0.60f)
 internal fun playerMiniLift(progress: Float, density: Float): Float =
     -8f * density * window(progress, 0f, 0.40f)
 internal fun playerMiniApproach(progress: Float): Float =
     1f + 0.012f * window(progress, 0f, 0.45f)
 
-// Only the REAL full-player background draws inside the expanding contour. The content gently
-// grows from the mini-artwork side at a uniform scale so portrait covers and icons never warp.
-internal fun playerPresentationOpacity(progress: Float): Float = window(progress, 0f, 0.32f)
-internal fun playerContentOpacity(progress: Float): Float = window(progress, 0.08f, 0.57f)
-internal fun playerPresentationScale(progress: Float): Float = 0.24f + 0.76f * boundedProgress(progress)
+// Keep the content close to its natural size; the CONTOUR supplies the large size change.
+// A 24% page scale made the artwork collapse into a detached, left-anchored vertical strip
+// on device. The real mini card owns the first/last frames, not a tiny copy of the full UI.
+internal fun playerPresentationOpacity(progress: Float): Float = window(progress, 0.04f, 0.33f)
+internal fun playerContentOpacity(progress: Float): Float = window(progress, 0.24f, 0.72f)
+internal fun playerPresentationScale(progress: Float): Float = 0.95f + 0.05f * boundedProgress(progress)
 
-internal fun playerPresentationContentX(
-    progress: Float, width: Float, miniInset: Float, density: Float,
-): Float = (miniInset + 32f * density - width * 0.5f) * (1f - boundedProgress(progress))
-
+// The near-full-size page follows the ascending top edge of the morphing frame. The small
+// underlap keeps artwork IN the revealed card, not cropped to a one-sided strip. At rest both
+// scale and translation are exactly identity. No separate horizontal translation at all.
 internal fun playerPresentationContentY(
     progress: Float, frameTop: Float, density: Float,
-): Float = frameTop - 9f * density * (1f - boundedProgress(progress))
+): Float = frameTop - 24f * density * (1f - boundedProgress(progress))
 
 /**
  * Coordinates are in the root player's viewport, not in a separately measured overlay.
