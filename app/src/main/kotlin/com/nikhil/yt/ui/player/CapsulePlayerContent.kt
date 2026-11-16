@@ -1263,7 +1263,7 @@ fun CapsulePlayerContent(
                                             modifier = Modifier.fillMaxWidth(),
                                         ) {
                                             Icon(
-                                                painterResource(R.drawable.shuffle),
+                                                painterResource(R.drawable.capsule_transport_shuffle),
                                                 stringResource(R.string.shuffle),
                                                 tint =
                                                     textColor.copy(
@@ -1567,7 +1567,7 @@ fun CapsulePlayerContent(
                             enabled = !isListenTogetherGuest,
                             modifier = Modifier.size(48.dp),
                         ) {
-                            Icon(painterResource(R.drawable.shuffle), stringResource(R.string.shuffle),
+                            Icon(painterResource(R.drawable.capsule_transport_shuffle), stringResource(R.string.shuffle),
                                 tint = textColor.copy(alpha = if (shuffleEnabled) 1f else 0.5f),
                                 modifier = Modifier.size(21.dp))
                         }
