@@ -54,6 +54,32 @@ object CapsuleMotion {
         return (a + b - a * b).coerceIn(0f, 1f)
     }
 
+    /** A brief, symmetrical compression of the ORIGINAL Mini on the main ascending sheet.
+     * This is a pure draw-time function of existing sheet progress: no second animation clock. */
+    fun miniCompression(progress: Float): Float {
+        val p = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 0f
+        if (p <= 0f || p >= 0.25f) return 0f
+        val t = p / 0.25f
+        val arch = 4f * t * (1f - t)
+        return (arch * arch).coerceIn(0f, 1f)
+    }
+
+    fun miniScaleX(progress: Float): Float = 1f - 0.048f * miniCompression(progress)
+    fun miniScaleY(progress: Float): Float = 1f - 0.027f * miniCompression(progress)
+
+    /** The app's navigation tucks early and only returns near the Mini's final dock. */
+    fun navigationTucked(
+        opening: Boolean,
+        compactPressed: Boolean,
+        progress: Float,
+        dismissed: Boolean,
+    ): Boolean = !dismissed &&
+        (opening || compactPressed ||
+            (progress.isFinite() && progress.coerceIn(0f, 1f) >= 0.16f))
+
+    fun navTuckScaleX(progress: Float): Float = 1f - 0.07f * smooth(progress)
+    fun navTuckScaleY(progress: Float): Float = 1f - 0.19f * smooth(progress)
+
     /**
      * Quintic smootherstep. Velocity and acceleration are both zero at the endpoints, so a
      * transition can be interrupted or handed to another surface without the tiny start/stop kick
