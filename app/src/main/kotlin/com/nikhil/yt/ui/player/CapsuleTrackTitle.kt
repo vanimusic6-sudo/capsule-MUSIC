@@ -1,7 +1,16 @@
 /** Capsule MUSIC — whole-glyph manual title, both full player designs. GPL-3.0. */
 package com.nikhil.yt.ui.player
 
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.LocalTextStyle
@@ -9,7 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -76,74 +85,81 @@ internal fun CapsuleTrackTitle(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    // User can drag to read the remainder of the title. It moves by complete character clusters,
-    // never shows an ellipsis or clips half of a glyph; after inactivity it returns to the start.
-    // This performs no work when idle beyond the normal Text composable.
-    val measurer = rememberTextMeasurer(cacheSize = 16)
-    val inheritedStyle = LocalTextStyle.current
-    val style = remember(inheritedStyle) {
-        inheritedStyle.merge(
-            TextStyle(fontSize = 23.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold),
-        )
-    }
-    val boundaries = remember(title) { capsuleGraphemeBoundaries(title) }
-    var firstCluster by androidx.compose.runtime.key(mediaId, title) {
-        remember { mutableIntStateOf(0) }
-    }
+    // A finger must move pixels, not jump from one letter to the next. Restore
+    // Compose's native gesture/inertia engine, and apply a whole-grapheme draw clip
+    // only AFTER the scroll settles. No idle marquee, no per-letter recomposition.
+    val scroll = androidx.compose.runtime.key(mediaId, title) { rememberScrollState() }
     val onScreen = appIsOnScreen()
-    LaunchedEffect(firstCluster, enabled, onScreen, mediaId, title) {
-        if (!enabled || !onScreen) {
-            firstCluster = 0
-        } else if (firstCluster > 0) {
-            delay(3_800L)
-            firstCluster = 0
+    val boundaries = remember(title) { capsuleGraphemeBoundaries(title) }
+    var layout by remember(mediaId, title) { mutableStateOf<TextLayoutResult?>(null) }
+    LaunchedEffect(mediaId, title, scroll, enabled, onScreen) {
+        if (!onScreen) return@LaunchedEffect
+        if (!enabled) {
+            scroll.scrollTo(0)
+            return@LaunchedEffect
+        }
+        var restoreJob: kotlinx.coroutines.Job? = null
+        var returning = false
+        snapshotFlow { scroll.isScrollInProgress }.collect { moving ->
+            if (moving) {
+                if (!returning) restoreJob?.cancel()
+            } else if (!returning && scroll.value > 0) {
+                restoreJob?.cancel()
+                restoreJob = launch {
+                    delay(3_800L)
+                    if (!scroll.isScrollInProgress && scroll.value > 0) {
+                        returning = true
+                        try {
+                            scroll.animateScrollTo(0, animationSpec = tween(durationMillis = 620))
+                        } finally {
+                            returning = false
+                        }
+                    }
+                }
+            }
         }
     }
 
-    BoxWithConstraints(modifier = modifier) {
-        val density = LocalDensity.current
-        val availablePx = with(density) { maxWidth.roundToPx() }.coerceAtLeast(0)
-        val lastCluster = boundaries.lastIndex
-        val endCluster = remember(title, boundaries, firstCluster, availablePx, style) {
-            capsuleTitleWindowEnd(title, boundaries, firstCluster, availablePx) {
-                if (it.isEmpty()) 0
-                else measurer.measure(text = it, style = style, maxLines = 1, softWrap = false).size.width
-            }
-        }
-        val visibleText = remember(title, boundaries, firstCluster, endCluster) {
-            title.substring(boundaries[firstCluster], boundaries[endCluster])
-        }
-        // A 10dp gesture advances a single Unicode cluster; speed depends only on the user's
-        // finger, not a continuously animating marquee or a perpetual Compose scroll state.
-        val stepPx = with(density) { 10.dp.toPx() }
-        var accumulatedDrag by remember(mediaId, title) { androidx.compose.runtime.mutableFloatStateOf(0f) }
-        Text(
-            text = visibleText,
-            color = color,
-            fontSize = 23.sp,
-            lineHeight = 28.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            softWrap = false,
-            overflow = TextOverflow.Clip,
-            modifier = Modifier
-                .fillMaxWidth()
-                .then(if (enabled && boundaries.size > 2) {
-                    Modifier.pointerInput(title, enabled) {
-                        detectHorizontalDragGestures(onDragStart = { accumulatedDrag = 0f }) { change, delta ->
-                            change.consume()
-                            accumulatedDrag += delta
-                            while (accumulatedDrag <= -stepPx && firstCluster < lastCluster - 1) {
-                                firstCluster += 1
-                                accumulatedDrag += stepPx
-                            }
-                            while (accumulatedDrag >= stepPx && firstCluster > 0) {
-                                firstCluster -= 1
-                                accumulatedDrag -= stepPx
-                            }
+    Text(
+        text = title,
+        color = color,
+        fontSize = 23.sp,
+        lineHeight = 28.sp,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Clip,
+        onTextLayout = { layout = it },
+        modifier = modifier
+            .clipToBounds()
+            // Outside horizontalScroll: clip in viewport coordinates, not in the
+            // full intrinsic text width. Draw-time only, no relayout or new layer.
+            .drawWithContent {
+                val measured = layout
+                if (measured == null || scroll.isScrollInProgress || boundaries.size < 2) {
+                    drawContent()
+                } else {
+                    val shift = scroll.value.toFloat()
+                    var left = size.width
+                    var right = 0f
+                    for (i in 0 until boundaries.lastIndex) {
+                        val start = boundaries[i]
+                        val end = boundaries[i + 1]
+                        if (end <= start) continue
+                        val startX = measured.getBoundingBox(start).left - shift
+                        val endX = measured.getBoundingBox(end - 1).right - shift
+                        if (startX >= -0.5f && endX <= size.width - 2f) {
+                            left = minOf(left, startX.coerceAtLeast(0f))
+                            right = maxOf(right, endX)
                         }
                     }
-                } else Modifier),
-        )
-    }
+                    if (right > left) {
+                        clipRect(left = left, right = right.coerceAtMost(size.width)) {
+                            drawContent()
+                        }
+                    }
+                }
+            }
+            .horizontalScroll(scroll, enabled = enabled),
+    )
 }
