@@ -54,18 +54,24 @@ object CapsuleMotion {
         return (a + b - a * b).coerceIn(0f, 1f)
     }
 
-    /** A brief, symmetrical compression of the ORIGINAL Mini on the main ascending sheet.
-     * This is a pure draw-time function of existing sheet progress: no second animation clock. */
+    /**
+     * A soft, sticky release of the ORIGINAL Mini from the ascending sheet.
+     *
+     * 12915.mp4: compressing almost 5% in the first quarter of a very stiff spring
+     * read as a hard punch. Spread a gentler squeeze across the whole real Mini -> image
+     * overlap, preserving zero velocity at the start, at its middle, and at the return.
+     * Pure geometry of the same anchored progress: no per-frame allocations or second clock.
+     */
     fun miniCompression(progress: Float): Float {
         val p = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 0f
-        if (p <= 0f || p >= 0.25f) return 0f
-        val t = p / 0.25f
+        if (p <= 0f || p >= 0.47f) return 0f
+        val t = p / 0.47f
         val arch = 4f * t * (1f - t)
         return (arch * arch).coerceIn(0f, 1f)
     }
 
-    fun miniScaleX(progress: Float): Float = 1f - 0.048f * miniCompression(progress)
-    fun miniScaleY(progress: Float): Float = 1f - 0.027f * miniCompression(progress)
+    fun miniScaleX(progress: Float): Float = 1f - 0.035f * miniCompression(progress)
+    fun miniScaleY(progress: Float): Float = 1f - 0.019f * miniCompression(progress)
 
     /** The app's navigation tucks early and only returns near the Mini's final dock. */
     fun navigationTucked(
