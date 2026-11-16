@@ -55,6 +55,26 @@ object CapsuleMotion {
     }
 
     /**
+     * A restrained squash of the REAL Mini while it is still on the rising main sheet.
+     * Mini shrinks then returns to identity before its 25%-travel visual handoff. No new spring,
+     * overshoot, separate content clock or offscreen blur; opening and closing are symmetric.
+     */
+    fun miniCompression(progress: Float): Float {
+        val p = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 0f
+        if (p <= 0f || p >= 0.25f) return 0f
+        val t = p / 0.25f
+        val arch = 4f * t * (1f - t)
+        return (arch * arch).coerceIn(0f, 1f)
+    }
+
+    fun miniScaleX(progress: Float): Float = 1f - 0.048f * miniCompression(progress)
+    fun miniScaleY(progress: Float): Float = 1f - 0.027f * miniCompression(progress)
+
+    /** Navigation exits as a small bar sucked under the bottom edge, not a big page shift. */
+    fun navTuckScaleX(progress: Float): Float = 1f - 0.07f * smooth(progress)
+    fun navTuckScaleY(progress: Float): Float = 1f - 0.19f * smooth(progress)
+
+    /**
      * Quintic smootherstep. Velocity and acceleration are both zero at the endpoints, so a
      * transition can be interrupted or handed to another surface without the tiny start/stop kick
      * that a cubic smoothstep still leaves in acceleration.
