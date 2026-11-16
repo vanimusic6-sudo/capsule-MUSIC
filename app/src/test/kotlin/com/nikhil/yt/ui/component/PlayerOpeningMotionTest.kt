@@ -212,6 +212,34 @@ class PlayerOpeningMotionTest {
         return android.graphics.Rect(left,top,right+1,bottom+1)
     }
 
+    @Test fun artworkSharesExactMeasuredCircleAndFullBleedDestination() {
+        val source = androidx.compose.ui.geometry.Rect(36f, 590f, 86f, 640f)
+        val target = androidx.compose.ui.geometry.Rect(0f, 0f, 360f, 405f)
+        assertEquals(source, playerSharedArtworkBounds(source, target, 0f))
+        assertEquals(target, playerSharedArtworkBounds(source, target, 1f))
+        val midpoint = playerSharedArtworkBounds(source, target, 0.5f)
+        assertEquals(18f, midpoint.left, 0.001f)
+        assertEquals(43f + 180f, midpoint.right, 0.001f)
+        assertEquals(295f, midpoint.top, 0.001f)
+        assertEquals(522.5f, midpoint.bottom, 0.001f)
+        // A real shared-artwork journey must have no side-strip collapse or x-axis teleport.
+        var last = source
+        for (i in 1..100) {
+            val b = playerSharedArtworkBounds(source, target, i / 100f)
+            assertTrue(b.width >= last.width)
+            assertTrue(b.height >= last.height)
+            assertTrue(b.left <= last.left)
+            assertTrue(b.top <= last.top)
+            last = b
+        }
+        assertEquals(0f, playerSharedArtworkAlpha(0f), 0f)
+        assertEquals(1f, playerSharedArtworkAlpha(0.12f), 0f)
+        assertEquals(1f, playerSharedArtworkAlpha(0.66f), 0f)
+        assertEquals(0f, playerSharedArtworkAlpha(0.90f), 0f)
+        assertEquals(0f, playerSharedArtworkAlpha(1f), 0f)
+        assertEquals(source, playerSharedArtworkBounds(source, target, Float.NaN))
+    }
+
     @Test fun presentationMorphsFromActualMiniBoundsToTheExactFullscreenViewport() {
         assertEquals(0f, playerPresentationOpacity(Float.NaN), 0f)
         assertEquals(0f, playerPresentationOpacity(-1f), 0f)
