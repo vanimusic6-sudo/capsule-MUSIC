@@ -27,13 +27,15 @@ These are principles, not copies of native Apple code.
 * The expanded page remains fully laid out at its final measured size, and is only
   clipped to that interpolated rounded frame. This avoids per-frame remeasurement,
   owner-detachment, video layout churn, and the 44dp pseudo-shared presentation.
-* One graphics layer on its **foreground content** scales uniformly from 24% to 100%
-  and translates from the mini-artwork side to its native final position.
-  Therefore portrait/square artwork and text are never stretched in X versus Y.
+* One graphics layer on the **foreground content** now scales only from 95% to 100%.
+  Its vertical position follows the frame's top edge and it stays horizontally centered.
+  This preserves the artwork's shape and avoids the left-sided strip seen on device.
+  The *container clip*, not a miniature copy of the entire UI, provides the physical shrink.
   The wallpaper is clipped by the frame but not scaled.
 * The actual mini, not a simulated coloured plate, remains in view during handoff.
-  It lifts 8dp, approaches by at most 1.2%, and fades over the early half of frame
-  progress. The full background and content ease in within that growing silhouette.
+  It lifts 8dp, approaches by at most 1.2%, and fades during the first 60% of frame
+  progress. The full background and content ease in within the growing silhouette.
+  Its z-order never flips mid-animation.
 * Corners retain their circular clip. At the end the arc bleeds behind the real display
   edges rather than disappearing in a square snap. There is no blur, additional colour
   blend, dual artwork decoder, screenshot, per-element position registry or new clock.
@@ -60,3 +62,17 @@ open/close at 0.25x video speed, immediate reversal, mid-animation Back,
 different album aspect ratios, video, Light and Immersion, navigation overlap,
 landscape, and animation-duration-scale 0. A code-level/CI pass does not verify
 the final visual feel or OEM video composition.
+
+## Review of the HONOR recording (12867.mp4)
+
+The first proposal with 24% scaling was rejected after reviewing the supplied real-device
+recording. At approximately 1.3–1.5s and 2.5–2.8s the full content became a thin
+left-anchored crop detached from Mini; the early expanded page popped into view instead of
+sharing the compact silhouette. The cause was two incompatible coordinate treatments:
+a full-screen content tree scaled to 0.24 at top-center then translated horizontally,
+while the outside clip independently interpolated Mini-to-screen dimensions. Switching
+the Mini to a lower z-index at 43% made the occlusion discontinuous. The corrective change
+removes the horizontal translation, keeps content width at 95–100%, moves it with the
+frame edge, delays foreground handoff, and retains Mini's z-order until it fades to zero.
+
+This is a code correction based on the actual clip, not yet a verified follow-up recording.
