@@ -58,8 +58,11 @@ internal fun PlayerWindow(
     content: @Composable BoxScope.() -> Unit,
 ) {
     val arbiter = remember(state) { MiniPlayerGestureArbiter() }
-    val artworkHandoff = remember(state) { PlayerArtworkHandoff() }
-    SideEffect { artworkHandoff.expect(transitionMediaId) }
+    val artworkHandoff = remember(state) { PlayerArtworkHandoff { state.visualProgress } }
+    SideEffect {
+        artworkHandoff.expect(transitionMediaId)
+        artworkHandoff.enabled = sharedArtworkEnabled
+    }
     val renderPage by remember(state) {
         derivedStateOf {
             !state.isDismissed && (
