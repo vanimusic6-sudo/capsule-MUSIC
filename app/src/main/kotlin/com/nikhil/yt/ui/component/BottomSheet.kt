@@ -264,13 +264,15 @@ internal val PlayerFrameCornerRadius = 26.dp
 internal fun playerFrameCornerRadius(
     progress: Float,
     collapsedRadius: Dp = PlayerFrameCornerRadius,
+    holdVisibleCorner: Boolean = false,
 ): Dp {
     val p = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 1f
     // ArchiveTune keeps its visible sheet corners rounded instead of slowly flattening
-    // them for the WHOLE ascent. Preserve Capsule's 14dp shape until the sheet nears
-    // the viewport edge, then resolve to an exact square fullscreen finish in the
-    // final 12% of travel; no last-frame radius jump or permanent fullscreen clip.
-    val finish = CapsuleMotion.smooth(((p - 0.88f) / 0.12f).coerceIn(0f, 1f))
+    // them for the WHOLE ascent. Apply this only to the requested main-player polish:
+    // generic/Queue sheets retain the exact old continuous shape curve.
+    val finish = if (holdVisibleCorner) {
+        CapsuleMotion.smooth(((p - 0.88f) / 0.12f).coerceIn(0f, 1f))
+    } else CapsuleMotion.smooth(p)
     return (collapsedRadius * (1f - finish)).coerceAtLeast(0.dp)
 }
 
@@ -415,8 +417,8 @@ fun BottomSheet(
                             alpha = miniPlayerContentAlpha(p)
                             // No new motion controller: the existing anchored sheet lifts the
                             // Mini. A tiny reversible 4.8% squash adds weight at the departure.
-                            scaleX = CapsuleMotion.miniScaleX(p)
-                            scaleY = CapsuleMotion.miniScaleY(p)
+                            scaleX = if (state.isMainPlayerPolished) CapsuleMotion.miniScaleX(p) else 1f
+                            scaleY = if (state.isMainPlayerPolished) CapsuleMotion.miniScaleY(p) else 1f
                             transformOrigin = TransformOrigin(0.5f, 1f)
                         }
                         // Mini visually yields over the same moving frame. Input has its own
@@ -471,6 +473,7 @@ fun BottomSheet(
                                 playerFrameCornerRadius(
                                     progress = raw,
                                     collapsedRadius = collapsedTopCornerRadius,
+                                    holdVisibleCorner = state.isMainPlayerPolished,
                                 )
                             shape =
                                 RoundedCornerShape(
@@ -654,6 +657,8 @@ class BottomSheetState internal constructor(
      */
     private var requestedAnchor by mutableStateOf(anchoredState.targetValue)
     private var userGestureInProgress by mutableStateOf(false)
+
+    internal val isMainPlayerPolished: Boolean get() = useMainPlayerMotionPolish
 
     internal var compactOpenPress by mutableStateOf(false)
         private set
