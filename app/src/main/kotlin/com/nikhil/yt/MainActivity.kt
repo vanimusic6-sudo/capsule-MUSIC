@@ -111,6 +111,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
@@ -907,6 +909,27 @@ class MainActivity : ComponentActivity() {
                             classicPlayerPresentation = true,
                         )
 
+                    // The compact nav's departure is a SHORT suction gesture, not
+                    // a passenger on the full player's long anchored travel.
+                    val playerNavTuckTarget by remember(playerBottomSheetState) {
+                        derivedStateOf {
+                            CapsuleMotion.navigationTucked(
+                                opening = playerBottomSheetState.isExpandedOrExpanding,
+                                compactPressed = playerBottomSheetState.compactOpenPress,
+                                progress = playerBottomSheetState.visualProgress,
+                                dismissed = playerBottomSheetState.isDismissed,
+                            )
+                        }
+                    }
+                    val playerNavTuck by animateFloatAsState(
+                        targetValue = if (playerNavTuckTarget) 1f else 0f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = if (playerNavTuckTarget) 1500f else 900f,
+                            visibilityThreshold = 0.005f,
+                        ),
+                        label = "capsule-nav-player-tuck",
+                    )
 
                     val playerBackAction = remember { PlayerBackAction() }
                     val playerOwnsBack by remember(playerBottomSheetState) {
@@ -1624,15 +1647,25 @@ class MainActivity : ComponentActivity() {
                                                         Modifier
                                                             .align(Alignment.BottomCenter)
                                                             .height(navSlideDistance)
-                                                            // Navigation stays in the app scene underneath the player.
+                                                            // Stay in the app scene (below fullscreen
+                                                            // player), but tuck BEFORE the page appears.
+                                                            // Move/scale one small nav layer on GPU;
+                                                            // no fullscreen blur, snapshot or clock.
                                                             .zIndex(1f)
                                                             .offset {
-                                                                val hidden =
-                                                                    1f - navigationBarReveal
+                                                                val hidden = CapsuleMotion.either(
+                                                                    playerNavTuck,
+                                                                    1f - navigationBarReveal,
+                                                                )
                                                                 IntOffset(
                                                                     x = 0,
                                                                     y = (navSlideDistance * hidden).roundToPx(),
                                                                 )
+                                                            }
+                                                            .graphicsLayer {
+                                                                scaleX = CapsuleMotion.navTuckScaleX(playerNavTuck)
+                                                                scaleY = CapsuleMotion.navTuckScaleY(playerNavTuck)
+                                                                transformOrigin = TransformOrigin(0.5f, 1f)
                                                             },
                                                 ) {
                                                     if (pureBlack) Color.Black
