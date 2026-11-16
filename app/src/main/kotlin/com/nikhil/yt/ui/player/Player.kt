@@ -79,6 +79,7 @@ import com.nikhil.yt.ui.component.BottomSheet
 import com.nikhil.yt.ui.component.BottomSheetState
 import com.nikhil.yt.ui.component.playerHandoffSurfaceAlpha
 import com.nikhil.yt.ui.component.playerClassicSurfaceAlpha
+import com.nikhil.yt.ui.component.playerOrganicBackdropOpacity
 import com.nikhil.yt.ui.component.playerBackdropContentAlpha
 import com.nikhil.yt.ui.component.LocalBottomSheetPageState
 import com.nikhil.yt.ui.component.LocalMenuState
@@ -429,7 +430,7 @@ fun BottomSheetPlayer(
         }
     val pageIsDrawn by remember(state) { derivedStateOf {
         !state.playerMotion || state.classicPlayerPresentation ||
-            com.nikhil.yt.ui.component.playerPageVisible(state.visualProgress)
+            com.nikhil.yt.ui.component.playerContentOpacity(state.visualProgress) > 0f
     } }
     val backdropTimelineRunning =
         backdropNeedsClock &&
@@ -482,7 +483,8 @@ fun BottomSheetPlayer(
     val showPlayerBackdrop by remember(state, effectivePlayerDesign) {
         derivedStateOf {
             effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
-                state.visualProgress > state.contentHandoffPoint
+                state.visualProgress > (if (state.playerMotion && !state.classicPlayerPresentation)
+                    0.30f else state.contentHandoffPoint)
         }
     }
 
@@ -502,6 +504,7 @@ fun BottomSheetPlayer(
         // instead of appearing as an unrelated full-width page behind it.
         collapsedHorizontalInset = 12.dp,
         collapsedTopCornerRadius = 14.dp,
+        motionEnabled = onScreen,
         // Paint the shell solid before artwork arrives; the old translucent material
         // revealed the Home UI THROUGH the cover in the middle of the rise.
         surfaceAlpha = if (state.classicPlayerPresentation)
@@ -543,8 +546,11 @@ fun BottomSheetPlayer(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            alpha = if (state.playerMotion && !state.classicPlayerPresentation) 1f else
-                                playerBackdropContentAlpha(state.visualProgress, state.contentHandoffPoint)
+                            alpha = if (state.playerMotion && !state.classicPlayerPresentation)
+                                playerOrganicBackdropOpacity(state.visualProgress)
+                            else playerBackdropContentAlpha(
+                                state.visualProgress, state.contentHandoffPoint,
+                            )
                         }
                         .background(playerSurfaceColor(useBlackBackground))
                         .drawWithContent { if (onScreen && playerSceneExposed) drawContent() },

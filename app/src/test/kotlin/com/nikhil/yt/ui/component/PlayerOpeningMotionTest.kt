@@ -217,7 +217,7 @@ class PlayerOpeningMotionTest {
         assertEquals(0f, playerPresentationOpacity(-1f), 0f)
         assertEquals(1f, playerPresentationOpacity(2f), 0f)
         assertEquals(1f, playerPresentationScale(1f), 0f)
-        assertEquals(0.95f, playerPresentationScale(0f), 0f)
+        assertEquals(1f, playerPresentationScale(0f), 0f)
         assertEquals(0f, playerPresentationContentY(1f, 0f, 1f), 0f)
 
         val source = playerPresentationBounds(0f, 360f, 700f, 590f, 48f, 12f)
@@ -237,9 +237,28 @@ class PlayerOpeningMotionTest {
             assertTrue("outer frame grows downward", frame.bottom >= previous.bottom)
             assertTrue("frame grows horizontally", frame.left <= previous.left && frame.right >= previous.right)
             assertTrue(opacity >= previousOpacity && opacity in 0f..1f)
-            assertTrue(scale >= previousScale && scale in 0.95f..1f)
+            assertTrue(scale >= previousScale && scale == 1f)
             previous = frame; previousOpacity = opacity; previousScale = scale
         }
+    }
+
+    @Test fun theShellNeverExposesHomeThroughItsArtworkOrKeepsAnIdleFadeLayer() {
+        assertEquals(0f, playerPresentationOpacity(0f), 0f)
+        for (p in listOf(0.001f, 0.06f, 0.22f, 0.40f, 0.67f, 0.95f, 1f)) {
+            assertEquals("the physical shell must stay opaque", 1f,
+                playerPresentationOpacity(p), 0f)
+        }
+        assertEquals(1f, playerMiniDrawAlpha(0f), 0f)
+        assertEquals(0f, playerMiniDrawAlpha(0.52f), 0f)
+        assertEquals(0f, playerContentOpacity(0.3f), 0f)
+        assertEquals(1f, playerContentOpacity(0.72f), 0f)
+        assertEquals(0f, playerOrganicBackdropOpacity(0.4f), 0f)
+        assertEquals(1f, playerOrganicBackdropOpacity(0.79f), 0f)
+        assertEquals(1f, playerPresentationScale(0.1f), 0f)
+        assertEquals(1f, playerPresentationScale(0.9f), 0f)
+        assertEquals(14f, playerPageContour(0f, 14f, 1f).radius, 0f)
+        assertEquals(0f, playerPageContour(1f, 14f, 1f).radius, 0f)
+        assertEquals(0f, playerPageContour(0.5f, 14f, 1f).bleed, 0f)
     }
 
     @Test fun realPageContentIsUniformAndFollowsTheExpandingClip() {
@@ -256,8 +275,7 @@ class PlayerOpeningMotionTest {
             val frame = playerPresentationBounds(p, with(compose.density) { 360.dp.toPx() },
                 with(compose.density) { 700.dp.toPx() }, with(compose.density) { 590.dp.toPx() },
                 with(compose.density) { 48.dp.toPx() }, with(compose.density) { 12.dp.toPx() })
-            assertEquals("content follows its clipped, physical source", frame.top -
-                with(compose.density) { 24.dp.toPx() } * (1f - p), a.y, 2f)
+            assertEquals("real artwork follows its containing frame without a zoom", frame.top, a.y, 2f)
             val poster = rawBounds("poster")
             assertEquals(with(compose.density) { 180.dp.toPx() } * actualScale, poster.width, 2f)
             assertEquals("cover stays attached to its moving content",
@@ -277,7 +295,7 @@ class PlayerOpeningMotionTest {
             val screenCenter = with(compose.density) { 180.dp.toPx() }
             assertEquals("content stays horizontally centered, even during close", screenCenter,
                 (a.x + b.x) / 2f, 2f)
-            assertEquals("content is never crushed below 95% width",
+            assertEquals("content remains exactly native width during the morph",
                 with(compose.density) { 360.dp.toPx() } * playerPresentationScale(p),
                 b.x - a.x, 2f)
             assertEquals("the content scale never stretches a portrait",
@@ -428,7 +446,8 @@ class PlayerOpeningMotionTest {
         advance(32)
         compose.runOnIdle {
             assertTrue("start moving on the first two display frames", state.visualProgress > 0.005f)
-            assertTrue("do not throw a fully opaque frame over Mini", playerPresentationOpacity(state.visualProgress) < 0.60f)
+            assertEquals("the changing contour must always be opaque, not ghost Home through artwork",
+                1f, playerPresentationOpacity(state.visualProgress), 0f)
         }
         advance(96)
         compose.runOnIdle {
@@ -552,8 +571,8 @@ class PlayerOpeningMotionTest {
         compose.runOnIdle {assertTrue(state.isCollapsed);assertEquals(0,backgroundBacks)}
     }
 
-    @Test fun cornersFinishOutsideTheSquareViewportInsteadOfLosingTheirRadius() {
-        val p=mutableStateOf(0.90f)
+    @Test fun cornersStartAtExactMiniRadiusAndResolveToSquareFullscreen() {
+        val p=mutableStateOf(0f)
         compose.setContent {
             Box(Modifier.size(260.dp,240.dp).background(Color.Green).testTag("scene")) {
                 Box(Modifier.fillMaxSize().graphicsLayer {
@@ -568,8 +587,8 @@ class PlayerOpeningMotionTest {
             val count=(0 until edge).sumOf{y->(0 until edge).count{x->AndroidColor.red(bitmap.getPixel(x,y))>200}}
             bitmap.recycle();return count
         }
-        val start=ink("rounded-attached");compose.runOnIdle{p.value=0.95f};val leaving=ink("rounded-leaving")
-        compose.runOnIdle{p.value=1f};val end=ink("rounded-outside")
+        val start=ink("rounded-mini");compose.runOnIdle{p.value=0.45f};val leaving=ink("rounded-growing")
+        compose.runOnIdle{p.value=1f};val end=ink("rounded-fullscreen")
         assertTrue(leaving>start);assertTrue(end>leaving)
     }
 
