@@ -24,7 +24,8 @@ import androidx.compose.ui.graphics.painter.Painter
  * All coordinates are measured once by Compose (boundsInRoot), not inferred from hardcoded
  * thumbnail offsets. An unready image simply falls back to the normal player presentation.
  */
-internal class PlayerArtworkHandoff {
+internal class PlayerArtworkHandoff(private val progress: () -> Float) {
+    var enabled by mutableStateOf(false)
     var mediaId by mutableStateOf<String?>(null)
         private set
     var sourceBoundsInRoot by mutableStateOf<Rect?>(null)
@@ -50,6 +51,12 @@ internal class PlayerArtworkHandoff {
         val next = Rect(0f, 0f, width, height)
         if (destinationBoundsInWindow != next) destinationBoundsInWindow = next
     }
+
+    /** The destination artwork should not appear huge BEHIND the moving source picture. */
+    fun destinationArtworkAlpha(): Float =
+        if (enabled && sourcePainter != null && destinationBoundsInWindow != null &&
+            sourceBoundsInRoot != null && rootBoundsInRoot != null
+        ) playerSharedArtworkDestinationAlpha(progress()) else 1f
 }
 
 internal val LocalPlayerArtworkHandoff = compositionLocalOf<PlayerArtworkHandoff?> { null }
@@ -65,6 +72,13 @@ internal fun playerSharedArtworkBounds(source: Rect, target: Rect, progress: Flo
 }
 
 /** Only one physical spring exists; this is a draw-time visibility envelope, not a tween. */
+/** Reveal the destination's high-resolution photo after the shared Mini image nears its slot. */
+internal fun playerSharedArtworkDestinationAlpha(progress: Float): Float {
+    val p = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 0f
+    val t = ((p - 0.66f) / 0.26f).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
+}
+
 internal fun playerSharedArtworkAlpha(progress: Float): Float {
     val p = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 0f
     return when {
