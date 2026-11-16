@@ -207,29 +207,31 @@ internal fun playerHandoffSurfaceAlpha(progress: Float): Float =
     transitionWindow(progress, 0f, PlayerContentHandoffPoint)
 
 /**
- * Main-sheet polish, intentionally separate from generic sheets and the retired PlayerWindow.
+ * HONOR 12915.mp4: the old transition revealed a solid grey background in progress 0.14..0.25
+ * while BOTH actual visual surfaces were almost transparent. Closing exposed the same slate
+ * in reverse. The photography must lead the material, not wait for an artificial grey shell.
  *
- * The HONOR recording showed a ghostly translucent album page from 0.25–0.45s: the compact
- * artwork had already vanished but the full material was still only ~25% opaque. Make the
- * physical sheet material solid BEFORE foreground artwork appears; no artificial colour wash.
+ * All of these sample ONE anchored sheet progress and are exactly reversible. This is not a
+ * second player animation or an extra picture: the existing Photo/Immersion component paints
+ * early, the original Mini yields late, and the optional solid backing catches up quietly.
  */
 internal fun playerClassicSurfaceAlpha(progress: Float): Float =
-    transitionWindow(progress, 0f, 0.14f)
+    transitionWindow(progress, 0.10f, 0.44f)
 
-/** Mini and full content overlap briefly while sharing a solid moving material. */
-// Preserve the 25% main handoff; do not leave two separate player interfaces visible.
+/** The same real Mini stays visible until the player has acquired visible artwork. */
 internal fun playerClassicMiniAlpha(progress: Float): Float =
-    1f - transitionWindow(progress, 0f, PlayerContentHandoffPoint)
+    1f - transitionWindow(progress, 0.05f, 0.47f)
 
-// Finish the big UI with the moving sheet, not late after its physical arrival.
+/** Full artwork is already in view while Mini still has its original silhouette. */
 internal fun playerClassicContentAlpha(progress: Float): Float =
-    transitionWindow(progress, PlayerContentHandoffPoint, 0.70f)
+    transitionWindow(progress, 0.055f, 0.60f)
 
+/** Colored Light background precedes text/control reveal; Immersion owns its own photograph. */
 internal fun playerClassicBackdropAlpha(progress: Float): Float =
-    transitionWindow(progress, PlayerContentHandoffPoint, 0.48f)
+    transitionWindow(progress, 0.035f, 0.36f)
 
-/** Mount the real player invisibly before the crossfade, not mid-flight at the old 25% mark. */
-internal const val PlayerClassicContentMountThreshold = 0.025f
+/** Mount the player invisibly before any opacity becomes nonzero; preserve its existing state. */
+internal const val PlayerClassicContentMountThreshold = 0.015f
 
 /** In the accepted main motion, the Mini belongs to the real rising BottomSheet.
  * No counter-travel: it rises and returns with its parent, without a phantom fixed card. */
@@ -568,10 +570,12 @@ private val BottomSheetSoftAnimationSpecPx: AnimationSpec<Float> =
 // Keep the main branch's anchored travel. Change ONLY the settling response:
 // a critically damped spring carries velocity through interruptions and reaches the last pixel
 // without a lingering tail. These specs apply to the player, never to menus or the queue.
+// Lower initial acceleration, soft near-critical settling, no visible bounce. Both travel the
+// exact same physical anchors; Back starts from the current offset and velocity.
 internal val PlayerClassicOpenAnimation: AnimationSpec<Float> =
-    spring(dampingRatio = 1f, stiffness = 216f, visibilityThreshold = 0.75f)
+    spring(dampingRatio = 0.98f, stiffness = 174f, visibilityThreshold = 0.75f)
 internal val PlayerClassicCloseAnimation: AnimationSpec<Float> =
-    spring(dampingRatio = 1f, stiffness = 236f, visibilityThreshold = 0.75f)
+    spring(dampingRatio = 0.98f, stiffness = 190f, visibilityThreshold = 0.75f)
 
 private fun SheetAnchor.legacyId(): Int =
     when (this) {
