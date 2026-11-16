@@ -55,7 +55,8 @@ internal fun capsuleArtistLabel(
             if (shown > 0) names.take(shown).joinToString(" • ") + " • " + suffix else suffix
         if (measurePx(candidate) <= limit) return candidate
     }
-    return "ещё +${names.size}"
+    val compact = "+${names.size}"
+    return if (measurePx(compact) <= limit) compact else ""
 }
 
 /**
