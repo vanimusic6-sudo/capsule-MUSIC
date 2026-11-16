@@ -216,15 +216,15 @@ internal fun playerHandoffSurfaceAlpha(progress: Float): Float =
  * early, the original Mini yields late, and the optional solid backing catches up quietly.
  */
 internal fun playerClassicSurfaceAlpha(progress: Float): Float =
-    transitionWindow(progress, 0.10f, 0.44f)
+    transitionWindow(progress, 0.12f, 0.48f)
 
 /** The same real Mini stays visible until the player has acquired visible artwork. */
 internal fun playerClassicMiniAlpha(progress: Float): Float =
-    1f - transitionWindow(progress, 0.05f, 0.47f)
+    1f - transitionWindow(progress, 0.07f, 0.47f)
 
 /** Full artwork is already in view while Mini still has its original silhouette. */
 internal fun playerClassicContentAlpha(progress: Float): Float =
-    transitionWindow(progress, 0.055f, 0.60f)
+    transitionWindow(progress, 0.045f, 0.48f)
 
 /** Colored Light background precedes text/control reveal; Immersion owns its own photograph. */
 internal fun playerClassicBackdropAlpha(progress: Float): Float =
