@@ -155,7 +155,9 @@ internal fun CapsuleTrackTitle(
                     }
                     if (right > left) {
                         clipRect(left = left, right = right.coerceAtMost(size.width)) {
-                            drawContent()
+                            // clipRect has DrawScope, while drawContent belongs to the
+                            // surrounding ContentDrawScope; use its explicit receiver.
+                            this@drawWithContent.drawContent()
                         }
                     }
                 }
