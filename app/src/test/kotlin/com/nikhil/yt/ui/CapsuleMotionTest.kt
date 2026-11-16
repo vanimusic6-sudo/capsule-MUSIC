@@ -14,6 +14,58 @@ import org.junit.Test
 class CapsuleMotionTest {
     private val samples = (0..400).map { it / 400f }
 
+    @Test fun `mini gently compresses then returns without overshoot in both directions`() {
+        assertEquals(1f, CapsuleMotion.miniScaleX(0f), 0f)
+        assertEquals(1f, CapsuleMotion.miniScaleY(0f), 0f)
+        assertEquals(1f, CapsuleMotion.miniScaleX(0.25f), 0f)
+        assertEquals(1f, CapsuleMotion.miniScaleY(0.25f), 0f)
+        assertEquals(1f, CapsuleMotion.miniScaleX(1f), 0f)
+        assertEquals(0.952f, CapsuleMotion.miniScaleX(0.125f), 0.00001f)
+        assertEquals(0.973f, CapsuleMotion.miniScaleY(0.125f), 0.00001f)
+        for (i in 0..100) {
+            val p = 0.25f * i / 100f
+            val opposite = 0.25f - p
+            val sx = CapsuleMotion.miniScaleX(p)
+            val sy = CapsuleMotion.miniScaleY(p)
+            assertTrue(sx in 0.952f..1f)
+            assertTrue(sy in 0.973f..1f)
+            assertEquals("opening and closing must use one exact compression path",
+                sx, CapsuleMotion.miniScaleX(opposite), 0.00001f)
+            assertEquals(sy, CapsuleMotion.miniScaleY(opposite), 0.00001f)
+        }
+        for (p in listOf(Float.NaN, Float.NEGATIVE_INFINITY, 2f)) {
+            assertTrue(CapsuleMotion.miniScaleX(p).isFinite())
+            assertTrue(CapsuleMotion.miniScaleY(p).isFinite())
+        }
+    }
+
+    @Test fun `navigation anticipates tap and stays hidden until close is nearly complete`() {
+        fun nav(open: Boolean, pressed: Boolean, p: Float, dismissed: Boolean = false) =
+            CapsuleMotion.navigationTucked(open, pressed, p, dismissed)
+        assertTrue(nav(false, true, 0f)) // press-down, before click and sheet spring
+        assertTrue(nav(true, false, 0f))
+        assertTrue(nav(false, false, 1f))
+        assertTrue(nav(false, false, 0.16f))
+        assertTrue(!nav(false, false, 0.159f))
+        assertTrue(!nav(false, false, 0f))
+        assertTrue(!nav(true, true, 1f, dismissed = true))
+        assertTrue(!nav(false, false, Float.NaN))
+        assertEquals(1f, CapsuleMotion.navTuckScaleX(0f), 0f)
+        assertEquals(1f, CapsuleMotion.navTuckScaleY(0f), 0f)
+        assertEquals(0.93f, CapsuleMotion.navTuckScaleX(1f), 1e-6f)
+        assertEquals(0.81f, CapsuleMotion.navTuckScaleY(1f), 1e-6f)
+        for (i in 0..100) {
+            val p = i / 100f
+            val x = CapsuleMotion.navTuckScaleX(p)
+            val y = CapsuleMotion.navTuckScaleY(p)
+            assertTrue(x in 0.93f..1f && y in 0.81f..1f)
+            if (i > 0) {
+                assertTrue(x <= CapsuleMotion.navTuckScaleX((i - 1) / 100f))
+                assertTrue(y <= CapsuleMotion.navTuckScaleY((i - 1) / 100f))
+            }
+        }
+    }
+
     @Test fun `approach is fully applied when docked and absent once open`() {
         assertEquals(0f, CapsuleMotion.approach(0f, 0.34f), 1e-6f)
         assertEquals(1f, CapsuleMotion.approach(0.34f, 0.34f), 1e-6f)
