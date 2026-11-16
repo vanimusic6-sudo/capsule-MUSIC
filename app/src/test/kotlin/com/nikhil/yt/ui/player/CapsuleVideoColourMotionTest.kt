@@ -155,7 +155,7 @@ class CapsuleVideoColourMotionTest {
         val perGradientMs = (cpu.currentThreadCpuTime - fieldStart) / 5.0 / 1_000_000.0
         val file = java.io.File("build/video-morph-preview/energy-preparation.json")
         file.parentFile?.mkdirs()
-        file.writeText("""{"scope":"Robolectric host CPU, not phone power","video_filter_and_upload_us":$perFrameUs,"cover_gradient_once_ms":$perGradientMs,"cached_image_backdrop_bytes":$outputBytes,"capture_limit_per_second":10}""")
+        file.writeText("""{"scope":"Robolectric host CPU, not phone power","video_filter_and_upload_us":$perFrameUs,"cover_gradient_once_ms":$perGradientMs,"cached_image_backdrop_bytes":$outputBytes,"capture_limit_per_second":7}""")
     }
 
 }
