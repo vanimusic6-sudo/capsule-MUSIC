@@ -902,9 +902,9 @@ class MainActivity : ComponentActivity() {
                                         MiniPlayerHeight,
                             expandedBound = maxHeight,
                             playerMotion = true,
-                            // Restore the main-branch moving BottomSheet; keep the newer
-                            // Back/lifetime/velocity safeguards and all current player features.
-                            classicPlayerPresentation = true,
+                            // One physically matched container from REAL Mini bounds to
+                            // fullscreen. Retain modern Back/lifecycle/velocity safeguards.
+                            classicPlayerPresentation = false,
                         )
 
 
