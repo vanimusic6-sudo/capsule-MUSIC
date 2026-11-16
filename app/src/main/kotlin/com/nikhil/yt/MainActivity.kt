@@ -1663,8 +1663,15 @@ class MainActivity : ComponentActivity() {
                                                                 )
                                                             }
                                                             .graphicsLayer {
-                                                                scaleX = CapsuleMotion.navTuckScaleX(playerNavTuck)
-                                                                scaleY = CapsuleMotion.navTuckScaleY(playerNavTuck)
+                                                                val returning = !playerNavTuckTarget
+                                                                // Just one tiny up-stretch as the bar comes back above
+                                                                // the screen edge; settled states are exactly 1f.
+                                                                val rebound = if (returning)
+                                                                    CapsuleMotion.navReturnStretch(playerNavTuck)
+                                                                else 1f
+                                                                scaleX = CapsuleMotion.navTuckScaleX(playerNavTuck) /
+                                                                    (1f + (rebound - 1f) * 0.22f)
+                                                                scaleY = CapsuleMotion.navTuckScaleY(playerNavTuck) * rebound
                                                                 transformOrigin = TransformOrigin(0.5f, 1f)
                                                             },
                                                 ) {
