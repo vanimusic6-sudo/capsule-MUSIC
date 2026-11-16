@@ -155,7 +155,7 @@ internal fun isAtSheetAnchor(
 ): Boolean =
     (value - anchor).value.absoluteValue <= ANCHOR_EPSILON_DP
 
-/** Generic opacity policy. The main player uses PlayerWindow's material/content handoff. */
+/** The stable main-branch player uses the physical BottomSheet travel and this handoff. */
 internal const val PlayerContentHandoffPoint = 0.25f
 internal const val PlayerWindowMountThreshold = SHEET_PROGRESS_EPSILON
 internal const val PlayerBackdropFadeEnd = 0.55f
@@ -296,7 +296,7 @@ fun BottomSheet(
     backgroundContent: @Composable BoxScope.() -> Unit = {},
     content: @Composable BoxScope.() -> Unit,
 ) {
-    if (state.playerMotion) {
+    if (state.playerMotion && !state.classicPlayerPresentation) {
         PlayerWindow(
             state, modifier, backgroundColor, onDismiss, compactSwipeDismissEnabled,
             backHandlerEnabled && gesturesEnabled, collapsedContentHeight ?: state.collapsedBound,
@@ -499,6 +499,14 @@ private val BottomSheetSoftAnimationSpecPx: AnimationSpec<Float> =
         stiffness = Spring.StiffnessLow,
     )
 
+// Keep the main branch's anchored travel. Change ONLY the settling response:
+// a critically damped spring carries velocity through interruptions and reaches the last pixel
+// without a lingering tail. These specs apply to the player, never to menus or the queue.
+internal val PlayerClassicOpenAnimation: AnimationSpec<Float> =
+    spring(dampingRatio = 1f, stiffness = 232f, visibilityThreshold = 1f)
+internal val PlayerClassicCloseAnimation: AnimationSpec<Float> =
+    spring(dampingRatio = 1f, stiffness = 250f, visibilityThreshold = 1f)
+
 private fun SheetAnchor.legacyId(): Int =
     when (this) {
         SheetAnchor.Dismissed -> DISMISSED_ANCHOR
@@ -583,6 +591,7 @@ class BottomSheetState internal constructor(
     collapsedBound: Dp,
     expandedBound: Dp,
     internal val playerMotion: Boolean = false,
+    internal val classicPlayerPresentation: Boolean = false,
 ) {
     private val dismissedBoundState = mutableStateOf(dismissedBound)
     private val collapsedBoundState = mutableStateOf(collapsedBound)
@@ -682,7 +691,7 @@ class BottomSheetState internal constructor(
         get() = requestedAnchor == SheetAnchor.Dismissed
 
     internal val contentHandoffPoint: Float
-        get() = if (playerMotion) PlayerWindowMountThreshold else PlayerContentHandoffPoint
+        get() = if (playerMotion && !classicPlayerPresentation) PlayerWindowMountThreshold else PlayerContentHandoffPoint
 
     internal val frameVelocityFraction: Float
         get() {
@@ -700,13 +709,13 @@ class BottomSheetState internal constructor(
         derivedStateOf {
             // Do not detach Mini children halfway through a queued measure/semantics traversal.
             // Keep them for the finite trip; their decorative clock is separately draw-gated.
-            if (playerMotion) !isDismissed && (!isExpanded || isAnimationRunning)
+            if (playerMotion && !classicPlayerPresentation) !isDismissed && (!isExpanded || isAnimationRunning)
             else shouldShowCompactSurface(visualProgress, isDismissed, contentHandoffPoint)
         }
 
     val compactForegroundAcceptsInput by
         derivedStateOf {
-            if (playerMotion) !isDismissed && visualProgress <= 0.10f
+            if (playerMotion && !classicPlayerPresentation) !isDismissed && visualProgress <= 0.10f
             else miniPlayerForegroundCanAcceptInput(visualProgress, isDismissed, contentHandoffPoint)
         }
 
@@ -835,11 +844,25 @@ class BottomSheetState internal constructor(
     }
 
     fun collapseSoft() {
-        launchAnimation(SheetAnchor.Collapsed, if (playerMotion) PlayerCloseAnimation else BottomSheetSoftAnimationSpecPx)
+        launchAnimation(
+            SheetAnchor.Collapsed,
+            when {
+                classicPlayerPresentation -> PlayerClassicCloseAnimation
+                playerMotion -> PlayerCloseAnimation
+                else -> BottomSheetSoftAnimationSpecPx
+            },
+        )
     }
 
     fun expandSoft() {
-        launchAnimation(SheetAnchor.Expanded, if (playerMotion) PlayerOpenAnimation else BottomSheetSoftAnimationSpecPx)
+        launchAnimation(
+            SheetAnchor.Expanded,
+            when {
+                classicPlayerPresentation -> PlayerClassicOpenAnimation
+                playerMotion -> PlayerOpenAnimation
+                else -> BottomSheetSoftAnimationSpecPx
+            },
+        )
     }
 
     fun dismiss() {
@@ -1107,6 +1130,7 @@ fun rememberBottomSheetState(
     collapsedBound: Dp = dismissedBound,
     initialAnchor: Int = DISMISSED_ANCHOR,
     playerMotion: Boolean = false,
+    classicPlayerPresentation: Boolean = false,
 ): BottomSheetState {
     val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
@@ -1137,7 +1161,7 @@ fun rememberBottomSheetState(
         }
 
     val state =
-        remember(anchoredState, coroutineScope, density, playerMotion) {
+        remember(anchoredState, coroutineScope, density, playerMotion, classicPlayerPresentation) {
             BottomSheetState(
                 coroutineScope = coroutineScope,
                 anchoredState = anchoredState,
@@ -1147,6 +1171,7 @@ fun rememberBottomSheetState(
                 collapsedBound = collapsedBound,
                 expandedBound = expandedBound,
                 playerMotion = playerMotion,
+                classicPlayerPresentation = classicPlayerPresentation,
             )
         }
 
