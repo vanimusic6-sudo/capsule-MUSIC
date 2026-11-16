@@ -27,12 +27,11 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import com.nikhil.yt.ui.motion.CapsuleMotion
 
-// One critically damped mutation preserves velocity when Back/tap reverses the window.
-// A nearby reversal settles sooner instead of replaying a full fixed-duration trip.
-// The anchor spans the whole screen, but the visible page travels only 44dp. An 8px anchor
-// threshold therefore retires an imperceptible end tail, not 8px of visible page movement.
-internal val PlayerOpenAnimation = spring<Float>(dampingRatio = 1f, stiffness = 200f, visibilityThreshold = 8f)
-internal val PlayerCloseAnimation = spring<Float>(dampingRatio = 1f, stiffness = 240f, visibilityThreshold = 8f)
+// One critically damped anchor drives frame, artwork and source Mini. A new target interrupts the
+// SAME spring with its existing velocity; no independent mini/page clocks or decorative rebound.
+// The anchor travels hundreds of pixels now, so stop within 3 px rather than jumping the last 8.
+internal val PlayerOpenAnimation = spring<Float>(dampingRatio = 1f, stiffness = 270f, visibilityThreshold = 3f)
+internal val PlayerCloseAnimation = spring<Float>(dampingRatio = 1f, stiffness = 290f, visibilityThreshold = 3f)
 
 /** Action ownership is separate from Scaffold's subcomposition order. No clock or retained UI. */
 class PlayerBackAction {
@@ -70,24 +69,59 @@ private fun window(progress: Float, start: Float, end: Float): Float {
 internal fun playerSceneDim(progress: Float): Float = 0.16f * boundedProgress(progress)
 internal fun playerSceneNeedsDrawing(progress: Float): Boolean = boundedProgress(progress) < 1f
 
-/** One reversible envelope for the WHOLE page, never independent child arrivals. */
+/**
+ * The visible frame is a true mini-card -> fullscreen container transform. The page stays in
+ * its final layout; only its GPU outline and a uniformly scaled content layer move.
+ * No bitmap snapshot, placeholder plate, second colour field or stretched artwork.
+ */
 internal fun playerPageVisible(progress: Float): Boolean = boundedProgress(progress) > 0f
-internal fun playerPageAcceptsInput(progress: Float): Boolean = boundedProgress(progress) >= 0.88f
+internal fun playerPageAcceptsInput(progress: Float): Boolean = boundedProgress(progress) >= 0.92f
 
-internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0f, 0.52f)
-internal fun playerMiniLift(progress: Float, density: Float): Float = 6f * density * window(progress, 0f, 0.52f)
+// Leave the real mini in view while the expanded frame is still near its source. The mini
+// contributes the actual artwork and material at the first/last frames; it never teleports.
+internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0.13f, 0.60f)
+internal fun playerMiniLift(progress: Float, density: Float): Float =
+    -8f * density * window(progress, 0f, 0.40f)
+internal fun playerMiniApproach(progress: Float): Float =
+    1f + 0.012f * window(progress, 0f, 0.45f)
 
-// Spread the optical handoff over the visible travel, then finish before the quiet settling.
-internal fun playerPresentationOpacity(progress: Float): Float = window(progress, 0f, 0.90f)
-internal fun playerPresentationScale(progress: Float): Float = 0.985f + 0.015f * boundedProgress(progress)
-internal fun playerPresentationLift(progress: Float, density: Float): Float = 44f * density * (1f - boundedProgress(progress))
+// Keep the content close to its natural size; the CONTOUR supplies the large size change.
+// A 24% page scale made the artwork collapse into a detached, left-anchored vertical strip
+// on device. The real mini card owns the first/last frames, not a tiny copy of the full UI.
+internal fun playerPresentationOpacity(progress: Float): Float = window(progress, 0.04f, 0.33f)
+internal fun playerContentOpacity(progress: Float): Float = window(progress, 0.24f, 0.72f)
+internal fun playerPresentationScale(progress: Float): Float = 0.95f + 0.05f * boundedProgress(progress)
 
-/** Bottom-pivot scale and translation, also used by input gating. No layout is animated. */
-internal fun playerPresentationBounds(progress: Float, width: Float, height: Float, density: Float): Rect {
-    val scale = playerPresentationScale(progress)
-    val lift = playerPresentationLift(progress, density)
-    val inset = width * (1f - scale) / 2f
-    return Rect(inset, height * (1f - scale) + lift, width - inset, height + lift)
+// The near-full-size page follows the ascending top edge of the morphing frame. The small
+// underlap keeps artwork IN the revealed card, not cropped to a one-sided strip. At rest both
+// scale and translation are exactly identity. No separate horizontal translation at all.
+internal fun playerPresentationContentY(
+    progress: Float, frameTop: Float, density: Float,
+): Float = frameTop - 24f * density * (1f - boundedProgress(progress))
+
+/**
+ * Coordinates are in the root player's viewport, not in a separately measured overlay.
+ * The source is the REAL compact bar (including its bottom-navigation gap), and the target is
+ * EXACTLY (0, 0, width, height). Progress is reused on closing, including mid-flight reversal.
+ */
+internal fun playerPresentationBounds(
+    progress: Float,
+    width: Float,
+    height: Float,
+    miniTop: Float,
+    miniHeight: Float,
+    miniInset: Float,
+): Rect {
+    val p = boundedProgress(progress)
+    val inset = miniInset.coerceIn(0f, width * 0.5f)
+    val sourceTop = miniTop.coerceIn(0f, height)
+    val sourceBottom = (sourceTop + miniHeight).coerceIn(sourceTop, height)
+    return Rect(
+        left = inset * (1f - p),
+        top = sourceTop * (1f - p),
+        right = width - inset * (1f - p),
+        bottom = sourceBottom + (height - sourceBottom) * p,
+    )
 }
 
 internal class PlayerWindowShape(private val bounds: Rect, private val radius: Float, private val bleed: Float) : Shape {
@@ -142,14 +176,10 @@ internal data class PlayerFrameContour(
     val bleed: Float,
 )
 
-/**
- * Corners never shrink to zero. During the last part of attachment the CLIP extends beyond the
- * window, carrying the rounded arcs behind its physical edges. A square display reveals those
- * last corner pixels progressively too. Media itself stays at its measured, undistorted size.
- */
+/** The mini's round corners follow the growing frame, then disappear outside the viewport. */
 internal fun playerPageContour(progress: Float, miniRadius: Float, density: Float): PlayerFrameContour {
     val p = boundedProgress(progress)
-    val radius = maxOf(miniRadius, 26f * density)
+    val radius = maxOf(miniRadius, 24f * density) + 2f * density * p
     return PlayerFrameContour(
         radius = radius.coerceAtLeast(0f),
         // At ~0.293r of diagonal overscan the circular arc is completely outside a square
