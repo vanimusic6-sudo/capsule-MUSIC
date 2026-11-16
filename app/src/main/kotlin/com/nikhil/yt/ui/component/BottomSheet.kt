@@ -204,6 +204,34 @@ internal fun playerContainerAlpha(progress: Float): Float =
 internal fun playerHandoffSurfaceAlpha(progress: Float): Float =
     transitionWindow(progress, 0f, PlayerContentHandoffPoint)
 
+/**
+ * Main-sheet polish, intentionally separate from generic sheets and the retired PlayerWindow.
+ *
+ * The HONOR recording showed a ghostly translucent album page from 0.25–0.45s: the compact
+ * artwork had already vanished but the full material was still only ~25% opaque. Make the
+ * physical sheet material solid BEFORE foreground artwork appears; no artificial colour wash.
+ */
+internal fun playerClassicSurfaceAlpha(progress: Float): Float =
+    transitionWindow(progress, 0f, 0.14f)
+
+/** Mini and full content overlap briefly while sharing a solid moving material. */
+internal fun playerClassicMiniAlpha(progress: Float): Float =
+    1f - transitionWindow(progress, 0.03f, 0.42f)
+
+internal fun playerClassicContentAlpha(progress: Float): Float =
+    transitionWindow(progress, 0.16f, 0.62f)
+
+/** Mount the real player invisibly before the crossfade, not mid-flight at the old 25% mark. */
+internal const val PlayerClassicContentMountThreshold = 0.025f
+
+/**
+ * Parent sheet rises by [travelPx]. Mini counter-translates 78% of the same distance, so
+ * it genuinely follows the opening (22% rise), but never flies to the top of the screen.
+ * At the dock the return is mathematically exact; reversal uses the same physical offset.
+ */
+internal fun playerClassicMiniCounterTravel(travelPx: Float): Float =
+    if (travelPx.isFinite()) travelPx.coerceAtLeast(0f) * 0.78f else 0f
+
 internal fun shouldRenderExpandedSurface(
     rawProgress: Float,
     isDismissed: Boolean,
@@ -336,7 +364,11 @@ fun BottomSheet(
     val renderExpandedContent by
         remember(state) {
             derivedStateOf {
-                shouldRenderExpandedContent(state.visualProgress, state.isDismissed, state.contentHandoffPoint)
+                shouldRenderExpandedContent(
+                    state.visualProgress, state.isDismissed,
+                    if (state.classicPlayerPresentation) PlayerClassicContentMountThreshold
+                    else state.contentHandoffPoint,
+                )
             }
         }
 
@@ -383,9 +415,20 @@ fun BottomSheet(
                 modifier =
                     Modifier
                         .graphicsLayer {
-                            alpha = miniPlayerContentAlpha(state.visualProgress, state.contentHandoffPoint)
+                            val p = state.visualProgress
+                            alpha = if (state.classicPlayerPresentation) playerClassicMiniAlpha(p)
+                                else miniPlayerContentAlpha(p, state.contentHandoffPoint)
+                            if (state.classicPlayerPresentation) {
+                                translationY = playerClassicMiniCounterTravel(
+                                    (state.value - state.collapsedBound).toPx(),
+                                )
+                            }
                         }
-                        .zIndex(if (state.compactSurfaceVisible) 2f else 0f)
+                        // A z-order flip WHILE Mini is translucent produced a thin stray card
+                        // at the side of the recording. Change order only after it is invisible.
+                        .zIndex(if (state.classicPlayerPresentation && state.visualProgress < 0.43f)
+                            2f else if (!state.classicPlayerPresentation && state.compactSurfaceVisible)
+                            2f else 0f)
                         .then(
                             if (compactSwipeDismissEnabled && onDismiss != null) {
                                 Modifier.bottomSheetDraggable(
@@ -467,7 +510,9 @@ fun BottomSheet(
                             Modifier
                                 .fillMaxSize()
                                 .graphicsLayer {
-                                    alpha = fullPlayerContentAlpha(state.visualProgress)
+                                    alpha = if (state.classicPlayerPresentation)
+                                        playerClassicContentAlpha(state.visualProgress)
+                                    else fullPlayerContentAlpha(state.visualProgress)
                                 },
                     ) {
                         content()
@@ -709,13 +754,14 @@ class BottomSheetState internal constructor(
         derivedStateOf {
             // Do not detach Mini children halfway through a queued measure/semantics traversal.
             // Keep them for the finite trip; their decorative clock is separately draw-gated.
-            if (playerMotion && !classicPlayerPresentation) !isDismissed && (!isExpanded || isAnimationRunning)
+            if (playerMotion) !isDismissed && (!isExpanded || isAnimationRunning)
             else shouldShowCompactSurface(visualProgress, isDismissed, contentHandoffPoint)
         }
 
     val compactForegroundAcceptsInput by
         derivedStateOf {
             if (playerMotion && !classicPlayerPresentation) !isDismissed && visualProgress <= 0.10f
+            else if (classicPlayerPresentation) !isDismissed && visualProgress <= 0.12f
             else miniPlayerForegroundCanAcceptInput(visualProgress, isDismissed, contentHandoffPoint)
         }
 
