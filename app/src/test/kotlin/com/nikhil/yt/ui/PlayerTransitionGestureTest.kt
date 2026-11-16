@@ -28,6 +28,10 @@ import com.nikhil.yt.ui.component.COLLAPSED_ANCHOR
 import com.nikhil.yt.ui.component.PlayerContentHandoffPoint
 import com.nikhil.yt.ui.component.rememberBottomSheetState
 import com.nikhil.yt.ui.component.miniPlayerContentAlpha
+import com.nikhil.yt.ui.component.playerClassicSurfaceAlpha
+import com.nikhil.yt.ui.component.playerClassicContentAlpha
+import com.nikhil.yt.ui.component.playerClassicMiniAlpha
+import com.nikhil.yt.ui.component.playerClassicMiniCounterTravel
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -147,6 +151,20 @@ class PlayerTransitionGestureTest {
         )
     }
 
+    @Test fun `restored player material never ghosts through its album content`() {
+        assertEquals(0f, playerClassicSurfaceAlpha(0f), 0f)
+        assertEquals(1f, playerClassicSurfaceAlpha(0.14f), 0.0001f)
+        assertEquals(1f, playerClassicSurfaceAlpha(0.35f), 0f)
+        assertEquals(0f, playerClassicContentAlpha(0.12f), 0f)
+        assertTrue(playerClassicContentAlpha(0.35f) > 0f)
+        assertEquals(1f, playerClassicContentAlpha(0.62f), 0f)
+        assertEquals(1f, playerClassicMiniAlpha(0.03f), 0f)
+        assertTrue(playerClassicMiniAlpha(0.25f) in 0.1f..0.9f)
+        assertEquals(0f, playerClassicMiniAlpha(0.42f), 0f)
+        assertEquals(0f, playerClassicMiniCounterTravel(Float.NaN), 0f)
+        assertEquals(78f, playerClassicMiniCounterTravel(100f), 0.0001f)
+    }
+
     @Test fun `main player spring moves the original sheet and returns Mini to its dock`() {
         showSheet(tapOnlyPlayer = true, classicPlayer = true)
         compose.mainClock.autoAdvance = false
@@ -160,8 +178,13 @@ class PlayerTransitionGestureTest {
             }
             advanceUntilProgress(min = 0.25f, max = 0.90f)
             val movingY = miniNode().fetchSemanticsNode().boundsInRoot.top
-            assertTrue("Main BottomSheet must physically lift Mini, not render a separate overlay",
+            val parentTravelPx = compose.runOnIdle {
+                with(compose.density) { (state.value - state.collapsedBound).toPx() }
+            }
+            assertTrue("Mini should rise gently with the main sheet, not fly up the screen",
                 movingY < dockY - 40f)
+            assertEquals("Mini's real position follows 22% of the parent's physical travel",
+                dockY - parentTravelPx * 0.22f, movingY, 5f)
             compose.runOnIdle { state.collapseSoft() }
             // The spring reverses from its *current position*, never teleports back to source.
             val reversingY = miniNode().fetchSemanticsNode().boundsInRoot.top
