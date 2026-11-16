@@ -32,6 +32,8 @@ import com.nikhil.yt.ui.component.playerClassicSurfaceAlpha
 import com.nikhil.yt.ui.component.playerClassicContentAlpha
 import com.nikhil.yt.ui.component.playerClassicMiniAlpha
 import com.nikhil.yt.ui.component.playerClassicMiniCounterTravel
+import com.nikhil.yt.ui.component.playerClassicBackdropAlpha
+import com.nikhil.yt.ui.component.playerFrameCornerRadius
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -155,14 +157,16 @@ class PlayerTransitionGestureTest {
         assertEquals(0f, playerClassicSurfaceAlpha(0f), 0f)
         assertEquals(1f, playerClassicSurfaceAlpha(0.14f), 0.0001f)
         assertEquals(1f, playerClassicSurfaceAlpha(0.35f), 0f)
-        assertEquals(0f, playerClassicContentAlpha(0.12f), 0f)
+        assertEquals(0f, playerClassicContentAlpha(0.25f), 0f)
         assertTrue(playerClassicContentAlpha(0.35f) > 0f)
-        assertEquals(1f, playerClassicContentAlpha(0.62f), 0f)
-        assertEquals(1f, playerClassicMiniAlpha(0.03f), 0f)
-        assertTrue(playerClassicMiniAlpha(0.25f) in 0.1f..0.9f)
-        assertEquals(0f, playerClassicMiniAlpha(0.42f), 0f)
+        assertEquals(1f, playerClassicContentAlpha(0.70f), 0f)
+        assertEquals(1f, playerClassicMiniAlpha(0f), 0f)
+        assertTrue(playerClassicMiniAlpha(0.12f) in 0.1f..0.9f)
+        assertEquals(0f, playerClassicMiniAlpha(0.25f), 0f)
+        assertEquals(0f, playerClassicBackdropAlpha(0.25f), 0f)
+        assertEquals(1f, playerClassicBackdropAlpha(0.48f), 0f)
         assertEquals(0f, playerClassicMiniCounterTravel(Float.NaN), 0f)
-        assertEquals(78f, playerClassicMiniCounterTravel(100f), 0.0001f)
+        assertEquals(0f, playerClassicMiniCounterTravel(100f), 0f)
     }
 
     @Test fun `main player spring moves the original sheet and returns Mini to its dock`() {
@@ -181,10 +185,10 @@ class PlayerTransitionGestureTest {
             val parentTravelPx = compose.runOnIdle {
                 with(compose.density) { (state.value - state.collapsedBound).toPx() }
             }
-            assertTrue("Mini should rise gently with the main sheet, not fly up the screen",
+            assertTrue("Mini must physically ride the real main sheet, not stay at the dock",
                 movingY < dockY - 40f)
-            assertEquals("Mini's real position follows 22% of the parent's physical travel",
-                dockY - parentTravelPx * 0.22f, movingY, 5f)
+            assertEquals("Mini's geometry is tied to the original parent sheet",
+                dockY - parentTravelPx, movingY, 6f)
             compose.runOnIdle { state.collapseSoft() }
             // The spring reverses from its *current position*, never teleports back to source.
             val reversingY = miniNode().fetchSemanticsNode().boundsInRoot.top
@@ -201,6 +205,16 @@ class PlayerTransitionGestureTest {
         } finally {
             compose.mainClock.autoAdvance = true
         }
+    }
+
+    @Test fun `original player corners hold until final approach to fullscreen`() {
+        for (p in listOf(0f, 0.12f, 0.25f, 0.48f, 0.70f, 0.88f))
+            assertEquals(14.dp, playerFrameCornerRadius(p, 14.dp, holdVisibleCorner = true))
+        val nearEnd = playerFrameCornerRadius(0.94f, 14.dp, holdVisibleCorner = true)
+        assertTrue(nearEnd > 0.dp && nearEnd < 14.dp)
+        assertEquals(0.dp, playerFrameCornerRadius(1f, 14.dp, holdVisibleCorner = true))
+        // Only classic player receives this. Queue/other sheets retain older curve.
+        assertTrue(playerFrameCornerRadius(0.5f, 14.dp) in 0.dp..14.dp)
     }
 
     @Test fun `child click is not stolen by vertical sheet gesture`() {
