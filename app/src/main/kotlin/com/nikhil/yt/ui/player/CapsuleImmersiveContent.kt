@@ -1186,7 +1186,7 @@ internal fun CapsuleImmersiveContent(
                         ) {
                             CapsuleLightReorderRow(
                                 order = immersiveMetadataOrder,
-                                widthFor = { if (it == CapsuleLightMetadataItem.FAVORITE) 48.dp else null },
+                                widthFor = { if (it == CapsuleLightMetadataItem.FAVORITE) 36.dp else null },
                                 editable = immersiveEditEnabled,
                                 weightFor = { item ->
                                     when (item) {
@@ -1270,7 +1270,7 @@ internal fun CapsuleImmersiveContent(
                                                             onToggleLike()
                                                         },
                                                     ),
-                                            contentAlignment = Alignment.CenterEnd,
+                                            contentAlignment = Alignment.Center,
                                         ) {
                                             CapsuleFavoriteIcon(
                                                 liked = liked,
@@ -1281,7 +1281,7 @@ internal fun CapsuleImmersiveContent(
                                                     } else {
                                                         metadataInk
                                                     },
-                                                modifier = Modifier.size(26.dp),
+                                                modifier = Modifier.size(32.dp),
                                                 userActionToken = favoriteActionToken,
                                             )
                                         }
@@ -1465,7 +1465,7 @@ internal fun CapsuleImmersiveContent(
                                             modifier = Modifier.fillMaxWidth(),
                                         ) {
                                             Icon(
-                                                painterResource(R.drawable.bedtime),
+                                                painterResource(R.drawable.capsule_transport_sleep),
                                                 stringResource(R.string.sleep_timer),
                                                 tint =
                                                     immersiveInk.copy(
