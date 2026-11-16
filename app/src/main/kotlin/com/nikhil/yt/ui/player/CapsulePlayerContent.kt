@@ -491,6 +491,16 @@ fun CapsulePlayerContent(
 
     val artistCredits = rememberArtistCredits(mediaMetadata.artists)
     val navigableArtists = rememberNavigableArtists(artistCredits)
+    // The entire metadata block gently catches up to the NEW cover, instead
+    // of its title changing sharply while the poster is still fading.
+    // One finite, small-layer animation per track; never an idle ticker.
+    val trackInkArrival = remember { Animatable(1f) }
+    LaunchedEffect(mediaMetadata.id, visible) {
+        if (visible) {
+            trackInkArrival.snapTo(0.72f)
+            trackInkArrival.animateTo(1f, tween(275))
+        } else trackInkArrival.snapTo(1f)
+    }
 
     // A chooser belongs to the track whose artist row was tapped.
     // Do not silently retarget an open dialog when autoplay changes tracks.
@@ -1138,7 +1148,11 @@ fun CapsulePlayerContent(
                                             modifier =
                                                 Modifier
                                                     .fillMaxWidth()
-                                                    .clipToBounds(),
+                                                    .clipToBounds()
+                                                    .graphicsLayer {
+                                                        alpha = trackInkArrival.value
+                                                        translationY = (1f - trackInkArrival.value) * 4.dp.toPx()
+                                                    },
                                         ) {
                                             CapsuleTrackTitle(
                                                 mediaId = mediaMetadata.id,
@@ -1428,7 +1442,11 @@ fun CapsulePlayerContent(
                         modifier =
                             Modifier
                                 .weight(1f)
-                                .clipToBounds(),
+                                .clipToBounds()
+                                .graphicsLayer {
+                                    alpha = trackInkArrival.value
+                                    translationY = (1f - trackInkArrival.value) * 4.dp.toPx()
+                                },
                     ) {
                         CapsuleTrackTitle(
                             mediaId = mediaMetadata.id,
