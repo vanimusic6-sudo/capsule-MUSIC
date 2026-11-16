@@ -343,7 +343,7 @@ internal fun CapsuleLightFavorite(
     var userActionToken by remember { mutableIntStateOf(0) }
     Box(
         modifier = Modifier
-            .size(48.dp)
+            .width(36.dp).height(48.dp)
             .clickable(
                 enabled = enabled,
                 interactionSource = favoriteInteraction,
@@ -362,7 +362,7 @@ internal fun CapsuleLightFavorite(
             liked = liked,
             interactionSource = favoriteInteraction,
             tint = if (liked) CapsuleFavoriteColors.selected(textColor) else textColor.copy(alpha = 0.72f),
-            modifier = Modifier.size(26.dp),
+            modifier = Modifier.size(32.dp),
             userActionToken = userActionToken,
         )
     }
