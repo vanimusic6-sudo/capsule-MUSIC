@@ -97,6 +97,7 @@ import com.nikhil.yt.playback.PlayerConnection
 import com.nikhil.yt.playback.video.CapsulePlaybackMode
 import com.nikhil.yt.playback.video.CapsuleVideoPhase
 import com.nikhil.yt.ui.component.CapsuleFavoriteColors
+import com.nikhil.yt.ui.component.LocalPlayerArtworkHandoff
 import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
 import com.nikhil.yt.utils.makeTimeString
 import com.nikhil.yt.utils.rememberPreference
@@ -183,9 +184,13 @@ internal fun ImmersiveAudioScene(
     sceneAlpha: () -> Float,
     artwork: @Composable () -> Unit,
 ) {
+    // While the same image is travelling from Mini, do not reveal a second enormous,
+    // stationary photograph beneath it. The native full-resolution photo fades in only
+    // as the moving shared cover arrives at the exact Immersion artwork slot.
+    val sharedArtwork = LocalPlayerArtworkHandoff.current
     Box(Modifier.fillMaxSize().graphicsLayer {
         compositingStrategy = CompositingStrategy.Auto
-        alpha = sceneAlpha()
+        alpha = sceneAlpha() * (sharedArtwork?.destinationArtworkAlpha() ?: 1f)
     }) {
         Image(
             bitmap = background, contentDescription = null,
@@ -733,6 +738,16 @@ internal fun CapsuleImmersiveContent(
         // and prematurely pull the title/controls upwards.
         val artworkHeight = immersiveArtworkHeight(maxHeight)
         val controlsTop = immersiveControlsTop(maxHeight)
+        // Destination is measured from the REAL Immersion viewport. Unlike the previous
+        // transition, the Mini artwork moves towards this cover slot, not an estimated offset.
+        val artworkHandoff = LocalPlayerArtworkHandoff.current
+        val artworkDensity = LocalDensity.current
+        LaunchedEffect(artworkHandoff, maxWidth, artworkHeight) {
+            artworkHandoff?.destination(
+                width = with(artworkDensity) { maxWidth.toPx() },
+                height = with(artworkDensity) { artworkHeight.toPx() },
+            )
+        }
         // The host samples this exact visible crop once for the player and Lyrics.
         val artworkAspect = maxWidth.value / artworkHeight.value.coerceAtLeast(1f)
         val edge = artworkTone.edge

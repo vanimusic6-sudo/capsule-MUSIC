@@ -15,6 +15,8 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.hideFromAccessibility
@@ -49,11 +51,18 @@ internal fun PlayerWindow(
     miniInset: Dp,
     miniRadius: Dp,
     motionEnabled: Boolean,
+    transitionMediaId: String?,
+    sharedArtworkEnabled: Boolean,
     collapsedContent: @Composable BoxScope.() -> Unit,
     backgroundContent: @Composable BoxScope.() -> Unit,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val arbiter = remember(state) { MiniPlayerGestureArbiter() }
+    val artworkHandoff = remember(state) { PlayerArtworkHandoff { state.visualProgress } }
+    SideEffect {
+        artworkHandoff.expect(transitionMediaId)
+        artworkHandoff.enabled = sharedArtworkEnabled
+    }
     val renderPage by remember(state) {
         derivedStateOf {
             !state.isDismissed && (
@@ -85,6 +94,11 @@ internal fun PlayerWindow(
 
     Box(
         modifier.fillMaxSize()
+            .onGloballyPositioned { coords ->
+                val bounds = coords.boundsInRoot()
+                if (artworkHandoff.rootBoundsInRoot != bounds)
+                    artworkHandoff.rootBoundsInRoot = bounds
+            }
             .offset {
                 IntOffset(
                     0,
@@ -166,6 +180,7 @@ internal fun PlayerWindow(
                 CompositionLocalProvider(
                     LocalCapsuleBackgroundMotionEnabled provides sourceClock,
                     LocalMiniPlayerGestureArbiter provides arbiter,
+                    LocalPlayerArtworkHandoff provides artworkHandoff,
                 ) { collapsedContent() }
             }
         }
@@ -202,6 +217,7 @@ internal fun PlayerWindow(
                 ) {
                     CompositionLocalProvider(
                         LocalCapsuleBackgroundMotionEnabled provides pageDraws,
+                        LocalPlayerArtworkHandoff provides artworkHandoff,
                     ) {
                         // This material is always OPAQUE. Fading a large full-screen background
                         // made the home screen bleed THROUGH the album on bright artwork.
@@ -247,6 +263,19 @@ internal fun PlayerWindow(
                     }
                 }
             }
+        }
+        // One shared bitmap travels between the actual Mini cover and the Immersion artwork.
+        // Render ONLY during the anchored spring; at rest there is no extra graphics layer.
+        if (sharedArtworkEnabled && motionEnabled && state.isAnimationRunning &&
+            artworkHandoff.sourcePainter != null &&
+            artworkHandoff.sourceBoundsInRoot != null &&
+            artworkHandoff.destinationBoundsInWindow != null
+        ) {
+            PlayerSharedArtwork(
+                handoff = artworkHandoff,
+                progress = { state.visualProgress },
+                modifier = Modifier.zIndex(4f),
+            )
         }
     }
 }
