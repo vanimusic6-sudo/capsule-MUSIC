@@ -14,20 +14,20 @@ import org.junit.Test
 class CapsuleMotionTest {
     private val samples = (0..400).map { it / 400f }
 
-    @Test fun `Mini compression is restrained reversible and has exact rest identity`() {
+    @Test fun `Mini releases softly into real full artwork without an early punch`() {
         assertEquals(1f, CapsuleMotion.miniScaleX(0f), 0f)
         assertEquals(1f, CapsuleMotion.miniScaleY(0f), 0f)
-        assertEquals(1f, CapsuleMotion.miniScaleX(0.25f), 0f)
-        assertEquals(1f, CapsuleMotion.miniScaleY(0.25f), 0f)
-        assertEquals(0.952f, CapsuleMotion.miniScaleX(0.125f), 1e-6f)
-        assertEquals(0.973f, CapsuleMotion.miniScaleY(0.125f), 1e-6f)
+        assertEquals(1f, CapsuleMotion.miniScaleX(0.47f), 0f)
+        assertEquals(1f, CapsuleMotion.miniScaleY(0.47f), 0f)
+        assertEquals(0.965f, CapsuleMotion.miniScaleX(0.235f), 1e-6f)
+        assertEquals(0.981f, CapsuleMotion.miniScaleY(0.235f), 1e-6f)
         for (i in 0..100) {
-            val p = 0.25f * i / 100
+            val p = 0.47f * i / 100
             val x = CapsuleMotion.miniScaleX(p)
             val y = CapsuleMotion.miniScaleY(p)
-            assertTrue(x in 0.9519f..1f && y in 0.9729f..1f)
-            assertEquals(x, CapsuleMotion.miniScaleX(0.25f - p), 1e-5f)
-            assertEquals(y, CapsuleMotion.miniScaleY(0.25f - p), 1e-5f)
+            assertTrue(x in 0.9649f..1f && y in 0.9809f..1f)
+            assertEquals(x, CapsuleMotion.miniScaleX(0.47f - p), 1e-5f)
+            assertEquals(y, CapsuleMotion.miniScaleY(0.47f - p), 1e-5f)
         }
     }
 
