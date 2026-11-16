@@ -476,13 +476,18 @@ fun BottomSheetPlayer(
         retry = playerConnection.service::retryCurrentFromFreshStream,
     )
 
+    // 12915.mp4: the extra full-height compact 'plate' was the grey rectangle left after the
+    // real album vanished on close. The accepted main-sheet presentation no longer needs it:
+    // it already retains the actual Mini and prepares the real fullscreen artwork early.
+    // Generic sheets still use the original compact transition material.
     val showCompactTransitionPlate by remember(state) {
-        derivedStateOf { (!state.playerMotion || state.classicPlayerPresentation) && state.visualProgress < 0.5f }
+        derivedStateOf { !state.playerMotion && state.visualProgress < 0.5f }
     }
     val showPlayerBackdrop by remember(state, effectivePlayerDesign) {
         derivedStateOf {
             effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
-                state.visualProgress > state.contentHandoffPoint
+                state.visualProgress >
+                    (if (state.classicPlayerPresentation) 0.015f else state.contentHandoffPoint)
         }
     }
 
@@ -527,8 +532,8 @@ fun BottomSheetPlayer(
             )
         },
         backgroundContent = {
-            // Generic sheets retain their old bridge. The physical card reveals its real page
-            // from the first frame and never paints the mini material as a temporary grey page.
+            // Generic sheets keep their old bridge. The classic player intentionally does NOT
+            // draw a second grey full-height placeholder; it reveals its actual artwork instead.
             if (showCompactTransitionPlate) {
                 CapsuleCompactSurfaceBackground(
                     style = miniPlayerBackground,
