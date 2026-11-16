@@ -319,6 +319,7 @@ fun BottomSheet(
     collapsedContentHeight: Dp? = null,
     collapsedHorizontalInset: Dp = 0.dp,
     collapsedTopCornerRadius: Dp = PlayerFrameCornerRadius,
+    motionEnabled: Boolean = true,
     surfaceAlpha: (Float) -> Float = ::playerContainerAlpha,
     collapsedContent: @Composable BoxScope.() -> Unit,
     backgroundContent: @Composable BoxScope.() -> Unit = {},
@@ -328,7 +329,7 @@ fun BottomSheet(
         PlayerWindow(
             state, modifier, backgroundColor, onDismiss, compactSwipeDismissEnabled,
             backHandlerEnabled && gesturesEnabled, collapsedContentHeight ?: state.collapsedBound,
-            collapsedHorizontalInset, collapsedTopCornerRadius,
+            collapsedHorizontalInset, collapsedTopCornerRadius, motionEnabled,
             collapsedContent, backgroundContent, content,
         )
         return
