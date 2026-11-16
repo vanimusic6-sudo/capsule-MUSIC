@@ -505,6 +505,12 @@ fun BottomSheetPlayer(
         collapsedHorizontalInset = 12.dp,
         collapsedTopCornerRadius = 14.dp,
         motionEnabled = onScreen,
+        transitionMediaId = mediaMetadata?.id,
+        // Immersion's artwork is full-bleed and can be measured exactly; the compact circle
+        // shares its painter and travels to that real slot. Video owns a TextureView and is
+        // deliberately not reparented or animated as a bitmap.
+        sharedArtworkEnabled = effectivePlayerDesign == CapsulePlayerDesign.IMMERSIVE &&
+            !videoPlaybackState.presentingVideo,
         // Paint the shell solid before artwork arrives; the old translucent material
         // revealed the Home UI THROUGH the cover in the middle of the rise.
         surfaceAlpha = if (state.classicPlayerPresentation)
