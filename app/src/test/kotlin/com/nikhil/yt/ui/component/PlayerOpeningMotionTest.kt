@@ -237,6 +237,19 @@ class PlayerOpeningMotionTest {
         assertEquals(1f, playerSharedArtworkAlpha(0.66f), 0f)
         assertEquals(0f, playerSharedArtworkAlpha(0.90f), 0f)
         assertEquals(0f, playerSharedArtworkAlpha(1f), 0f)
+        assertEquals(0f, playerSharedArtworkDestinationAlpha(0f), 0f)
+        assertEquals(0f, playerSharedArtworkDestinationAlpha(0.66f), 0f)
+        assertEquals(1f, playerSharedArtworkDestinationAlpha(0.92f), 0f)
+        assertEquals(1f, playerSharedArtworkDestinationAlpha(1f), 0f)
+        for (i in 1..100) {
+            val p = i / 100f
+            assertTrue(playerSharedArtworkDestinationAlpha(p) in 0f..1f)
+            if (p >= 0.66f) {
+                assertTrue("HQ destination should reveal continuously",
+                    playerSharedArtworkDestinationAlpha(p) >=
+                    playerSharedArtworkDestinationAlpha(p - 0.01f))
+            }
+        }
         assertEquals(source, playerSharedArtworkBounds(source, target, Float.NaN))
     }
 
