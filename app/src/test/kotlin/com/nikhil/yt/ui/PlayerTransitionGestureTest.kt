@@ -31,6 +31,7 @@ import com.nikhil.yt.ui.component.miniPlayerContentAlpha
 import com.nikhil.yt.ui.component.fullPlayerContentAlpha
 import com.nikhil.yt.ui.component.playerBackdropContentAlpha
 import com.nikhil.yt.ui.component.playerHandoffSurfaceAlpha
+import com.nikhil.yt.ui.component.playerFrameCornerRadius
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -147,6 +148,33 @@ class PlayerTransitionGestureTest {
             "transition never entered [" + min + ", " + max + "], last=" +
                 compose.runOnIdle { state.rawProgress },
         )
+    }
+
+    @Test fun `main corners hold their radius while visible and resolve only at fullscreen`() {
+        // ArchiveTune-style stable visible contour, not a radius shrinking for the entire ascent.
+        for (p in listOf(0f, 0.1f, 0.25f, 0.48f, 0.70f, 0.88f)) {
+            assertEquals(14.dp, playerFrameCornerRadius(
+                progress = p, collapsedRadius = 14.dp, holdVisibleCorner = true,
+            ))
+        }
+        val nearEnd = playerFrameCornerRadius(
+            progress = 0.94f, collapsedRadius = 14.dp, holdVisibleCorner = true,
+        )
+        assertTrue(nearEnd > 0.dp && nearEnd < 14.dp)
+        assertEquals(0.dp, playerFrameCornerRadius(
+            progress = 1f, collapsedRadius = 14.dp, holdVisibleCorner = true,
+        ))
+        // Every other BottomSheet retains the exact main-branch curve.
+        assertTrue(playerFrameCornerRadius(0.5f, 14.dp) < 14.dp)
+        assertTrue(playerFrameCornerRadius(0.5f, 14.dp) > 0.dp)
+        var previous = 14.dp
+        for (i in 0..100) {
+            val r = playerFrameCornerRadius(
+                progress = i / 100f, collapsedRadius = 14.dp, holdVisibleCorner = true,
+            )
+            assertTrue("no corner grow-back or visual wobble", r <= previous)
+            previous = r
+        }
     }
 
     @Test fun `main player polish keeps original sheet lift and exact dock on return`() {
