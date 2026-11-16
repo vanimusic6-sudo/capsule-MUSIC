@@ -544,7 +544,9 @@ fun BottomSheetPlayer(
                         .fillMaxSize()
                         .graphicsLayer {
                             alpha = if (state.playerMotion && !state.classicPlayerPresentation) 1f else
-                                playerBackdropContentAlpha(state.visualProgress, state.contentHandoffPoint)
+                                if (state.classicPlayerPresentation)
+                                    com.nikhil.yt.ui.component.playerClassicBackdropAlpha(state.visualProgress)
+                                else playerBackdropContentAlpha(state.visualProgress, state.contentHandoffPoint)
                         }
                         .background(playerSurfaceColor(useBlackBackground))
                         .drawWithContent { if (onScreen && playerSceneExposed) drawContent() },
