@@ -14,6 +14,38 @@ import org.junit.Test
 class CapsuleMotionTest {
     private val samples = (0..400).map { it / 400f }
 
+    @Test fun `Mini compression is restrained reversible and has exact rest identity`() {
+        assertEquals(1f, CapsuleMotion.miniScaleX(0f), 0f)
+        assertEquals(1f, CapsuleMotion.miniScaleY(0f), 0f)
+        assertEquals(1f, CapsuleMotion.miniScaleX(0.25f), 0f)
+        assertEquals(1f, CapsuleMotion.miniScaleY(0.25f), 0f)
+        assertEquals(0.952f, CapsuleMotion.miniScaleX(0.125f), 1e-6f)
+        assertEquals(0.973f, CapsuleMotion.miniScaleY(0.125f), 1e-6f)
+        for (i in 0..100) {
+            val p = 0.25f * i / 100
+            val x = CapsuleMotion.miniScaleX(p)
+            val y = CapsuleMotion.miniScaleY(p)
+            assertTrue(x in 0.9519f..1f && y in 0.9729f..1f)
+            assertEquals(x, CapsuleMotion.miniScaleX(0.25f - p), 1e-5f)
+            assertEquals(y, CapsuleMotion.miniScaleY(0.25f - p), 1e-5f)
+        }
+    }
+
+    @Test fun `Nav tuck starts on press and comes back only near the dock`() {
+        fun hidden(open: Boolean, pressed: Boolean, p: Float, dismissed: Boolean = false) =
+            CapsuleMotion.navigationTucked(open, pressed, p, dismissed)
+        assertTrue(hidden(false, true, 0f))
+        assertTrue(hidden(true, false, 0f))
+        assertTrue(hidden(false, false, 0.16f))
+        assertTrue(!hidden(false, false, 0.159f))
+        assertTrue(!hidden(false, false, 0f))
+        assertTrue(!hidden(true, false, 1f, dismissed = true))
+        assertEquals(1f, CapsuleMotion.navTuckScaleX(0f), 0f)
+        assertEquals(1f, CapsuleMotion.navTuckScaleY(0f), 0f)
+        assertEquals(0.93f, CapsuleMotion.navTuckScaleX(1f), 1e-6f)
+        assertEquals(0.81f, CapsuleMotion.navTuckScaleY(1f), 1e-6f)
+    }
+
     @Test fun `approach is fully applied when docked and absent once open`() {
         assertEquals(0f, CapsuleMotion.approach(0f, 0.34f), 1e-6f)
         assertEquals(1f, CapsuleMotion.approach(0.34f, 0.34f), 1e-6f)
