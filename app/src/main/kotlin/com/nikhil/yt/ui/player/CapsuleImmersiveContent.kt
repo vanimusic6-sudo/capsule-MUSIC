@@ -1281,7 +1281,7 @@ internal fun CapsuleImmersiveContent(
                                                     } else {
                                                         metadataInk
                                                     },
-                                                modifier = Modifier.size(32.dp),
+                                                modifier = Modifier.size(26.dp),
                                                 userActionToken = favoriteActionToken,
                                             )
                                         }
@@ -1394,7 +1394,7 @@ internal fun CapsuleImmersiveContent(
                                             modifier = Modifier.fillMaxWidth(),
                                         ) {
                                             Icon(
-                                                painterResource(R.drawable.shuffle),
+                                                painterResource(R.drawable.capsule_transport_shuffle),
                                                 stringResource(R.string.shuffle),
                                                 tint =
                                                     immersiveInk.copy(
