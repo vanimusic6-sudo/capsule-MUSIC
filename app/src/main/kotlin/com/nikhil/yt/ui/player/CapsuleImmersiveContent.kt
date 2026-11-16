@@ -615,6 +615,15 @@ internal fun CapsuleImmersiveContent(
      */
     val artistCredits = rememberArtistCredits(mediaMetadata.artists)
     val navigableArtists = rememberNavigableArtists(artistCredits)
+    // Photo + gradient share one prepared scene. Metadata settles on the same
+    // short optical cadence, never animating the entire full-screen background.
+    val trackInkArrival = remember { Animatable(1f) }
+    LaunchedEffect(mediaMetadata.id, visible) {
+        if (visible) {
+            trackInkArrival.snapTo(0.72f)
+            trackInkArrival.animateTo(1f, tween(durationMillis = 275, easing = ImmersiveTrackEasing))
+        } else trackInkArrival.snapTo(1f)
+    }
     // Match Light: close the chooser rather than retarget it on song change.
     var showArtistPicker by remember(mediaMetadata.id) { mutableStateOf(false) }
 
@@ -1218,7 +1227,10 @@ internal fun CapsuleImmersiveContent(
                             ) { item ->
                                 when (item) {
                                     CapsuleLightMetadataItem.TEXT -> {
-                                        Column(modifier = Modifier.fillMaxWidth()) {
+                                        Column(modifier = Modifier.fillMaxWidth().graphicsLayer {
+                                            alpha = trackInkArrival.value
+                                            translationY = (1f - trackInkArrival.value) * 4.dp.toPx()
+                                        }) {
                                             CapsuleTrackTitle(
                                                 mediaId = mediaMetadata.id,
                                                 title = mediaMetadata.title,
