@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.nikhil.yt.ui.motion.CapsuleMotion
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
@@ -160,8 +161,11 @@ internal fun isAtSheetAnchor(
  * expanded content appears, while the sheet/background itself remains continuous.
  */
 internal const val PlayerContentHandoffPoint = 0.25f
-internal const val PlayerBackdropFadeEnd = 0.55f
-internal const val FullPlayerContentFadeEnd = 0.88f
+// Keep main's original Mini → Full handoff at 25%: only the tail changes.
+// The former 0.88 full-UI fade lagged far behind the moving sheet. The background
+// should settle before the controls; all movement stays on the SAME anchored spring.
+internal const val PlayerBackdropFadeEnd = 0.48f
+internal const val FullPlayerContentFadeEnd = 0.70f
 
 private fun transitionWindow(
     progress: Float,
@@ -506,6 +510,15 @@ private val BottomSheetSoftAnimationSpecPx: AnimationSpec<Float> =
         stiffness = Spring.StiffnessLow,
     )
 
+// Player ONLY. Main's original anchored sheet, Mini lift, 25% handoff, and scale
+// are preserved verbatim. Slightly firmer critical springs improve response, and a
+// sub-pixel threshold removes the invisible multi-frame settlement tail.
+// Queue, lyrics and the other bottom sheets retain the original spec.
+internal val MainPlayerOpenSpecPx: AnimationSpec<Float> =
+    spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 216f, visibilityThreshold = 0.75f)
+internal val MainPlayerCloseSpecPx: AnimationSpec<Float> =
+    spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 236f, visibilityThreshold = 0.75f)
+
 private fun SheetAnchor.legacyId(): Int =
     when (this) {
         SheetAnchor.Dismissed -> DISMISSED_ANCHOR
@@ -586,6 +599,7 @@ class BottomSheetState internal constructor(
     private val anchoredState: AnchoredDraggableState<SheetAnchor>,
     private val density: Density,
     private val onAnchorChanged: (Int) -> Unit,
+    private val useMainPlayerMotionPolish: Boolean,
     dismissedBound: Dp,
     collapsedBound: Dp,
     expandedBound: Dp,
@@ -788,8 +802,23 @@ class BottomSheetState internal constructor(
         animationSpec: AnimationSpec<Float>,
         priority: MutatePriority = MutatePriority.Default,
     ) {
-        val requested = requestAnchor(target)
-        coroutineScope.launch {
+        val resolved = resolveRequestedAnchor(target)
+        // Do not restart the same player spring for duplicate taps/Back presses.
+        // An opposite target is still allowed to interrupt it at its LIVE position.
+        if (useMainPlayerMotionPolish && requestedAnchor == resolved &&
+            (isAnimationRunning || when (resolved) {
+                SheetAnchor.Collapsed -> isCollapsed
+                SheetAnchor.Expanded -> isExpanded
+                SheetAnchor.Dismissed -> isDismissed
+            })
+        ) return
+        val requested = requestAnchor(resolved)
+        // Dispatch the player's new intent on the calling frame, not one later
+        // after another Compose/coroutine turn. Generic sheets keep main behavior.
+        coroutineScope.launch(
+            start = if (useMainPlayerMotionPolish) CoroutineStart.UNDISPATCHED
+                else CoroutineStart.DEFAULT,
+        ) {
             if (requestedAnchor != requested) return@launch
             try {
                 animateToAnchor(
@@ -820,11 +849,17 @@ class BottomSheetState internal constructor(
     }
 
     fun collapseSoft() {
-        launchAnimation(SheetAnchor.Collapsed, BottomSheetSoftAnimationSpecPx)
+        launchAnimation(
+            SheetAnchor.Collapsed,
+            if (useMainPlayerMotionPolish) MainPlayerCloseSpecPx else BottomSheetSoftAnimationSpecPx,
+        )
     }
 
     fun expandSoft() {
-        launchAnimation(SheetAnchor.Expanded, BottomSheetSoftAnimationSpecPx)
+        launchAnimation(
+            SheetAnchor.Expanded,
+            if (useMainPlayerMotionPolish) MainPlayerOpenSpecPx else BottomSheetSoftAnimationSpecPx,
+        )
     }
 
     fun dismiss() {
@@ -1091,6 +1126,7 @@ fun rememberBottomSheetState(
     expandedBound: Dp,
     collapsedBound: Dp = dismissedBound,
     initialAnchor: Int = DISMISSED_ANCHOR,
+    useMainPlayerMotionPolish: Boolean = false,
 ): BottomSheetState {
     val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
@@ -1121,12 +1157,13 @@ fun rememberBottomSheetState(
         }
 
     val state =
-        remember(anchoredState, coroutineScope, density) {
+        remember(anchoredState, coroutineScope, density, useMainPlayerMotionPolish) {
             BottomSheetState(
                 coroutineScope = coroutineScope,
                 anchoredState = anchoredState,
                 density = density,
                 onAnchorChanged = { previousAnchor = it },
+                useMainPlayerMotionPolish = useMainPlayerMotionPolish,
                 dismissedBound = dismissedBound,
                 collapsedBound = collapsedBound,
                 expandedBound = expandedBound,
