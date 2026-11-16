@@ -145,9 +145,10 @@ internal fun PlayerWindow(
                                 } while (event.changes.any { it.pressed })
                             }
                         }, content = backgroundContent)
-                        // The foreground grows uniformly from the mini artwork side *inside* the
-                        // moving frame. Its final layout never changes, and no child/cover is
-                        // remeasured on each spring frame. The background is not scaled or tinted.
+                        // The complete foreground remains centered and close to full size as its
+                        // moving viewport grows upward from Mini. Only the frame performs
+                        // the large contraction, so artwork never collapses into a
+                        // left-anchored sliver. No layout or media decoder is restarted.
                         Box(
                             Modifier.fillMaxSize().graphicsLayer {
                                 val p = state.visualProgress
@@ -160,7 +161,6 @@ internal fun PlayerWindow(
                                 scaleX = playerPresentationScale(p)
                                 scaleY = scaleX
                                 transformOrigin = TransformOrigin(0.5f, 0f)
-                                translationX = playerPresentationContentX(p, size.width, miniInset.toPx(), density)
                                 translationY = playerPresentationContentY(p, frame.top, density)
                             },
                             content = content,
