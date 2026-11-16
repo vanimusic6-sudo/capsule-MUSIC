@@ -925,7 +925,7 @@ class MainActivity : ComponentActivity() {
                         targetValue = if (playerNavTuckTarget) 1f else 0f,
                         animationSpec = spring(
                             dampingRatio = Spring.DampingRatioNoBouncy,
-                            stiffness = if (playerNavTuckTarget) 1500f else 900f,
+                            stiffness = if (playerNavTuckTarget) 1160f else 840f,
                             visibilityThreshold = 0.005f,
                         ),
                         label = "capsule-nav-player-tuck",
