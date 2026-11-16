@@ -87,6 +87,21 @@ object CapsuleMotion {
     fun navTuckScaleY(progress: Float): Float = 1f - 0.19f * smooth(progress)
 
     /**
+     * Tiny return-only stretch around the moment navigation emerges above the screen edge.
+     * One pulse, peaking at 2.8%, no extra spring, no timing loop; always exactly 1 at rest.
+     */
+    fun navReturnStretch(progress: Float): Float {
+        val p = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 0f
+        if (p <= 0f || p >= 0.46f) return 1f
+        val t = p / 0.46f
+        val arch = 4f * t * (1f - t)
+        return 1f + 0.028f * arch * arch
+    }
+
+    /** Mini gains 1.8 physical dp of delayed lift while its source artwork is visible. */
+    fun miniAdhesionDp(progress: Float): Float = 1.8f * miniCompression(progress)
+
+    /**
      * Quintic smootherstep. Velocity and acceleration are both zero at the endpoints, so a
      * transition can be interrupted or handed to another surface without the tiny start/stop kick
      * that a cubic smoothstep still leaves in acceleration.
