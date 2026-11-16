@@ -98,8 +98,8 @@ object CapsuleMotion {
         return 1f + 0.028f * arch * arch
     }
 
-    /** Mini gains 1.8 physical dp of delayed lift while its source artwork is visible. */
-    fun miniAdhesionDp(progress: Float): Float = 1.8f * miniCompression(progress)
+    /** Mini gains at most 1.25 physical dp of delayed lift (including scale stays within the measured dock envelope). */
+    fun miniAdhesionDp(progress: Float): Float = 1.25f * miniCompression(progress)
 
     /**
      * Quintic smootherstep. Velocity and acceleration are both zero at the endpoints, so a
