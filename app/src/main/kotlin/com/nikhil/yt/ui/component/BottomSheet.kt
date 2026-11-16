@@ -22,6 +22,7 @@ import androidx.compose.foundation.gestures.DraggableState
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,6 +31,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
@@ -264,8 +266,12 @@ internal fun playerFrameCornerRadius(
     collapsedRadius: Dp = PlayerFrameCornerRadius,
 ): Dp {
     val p = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 1f
-    val eased = CapsuleMotion.smooth(p).coerceIn(0f, 1f)
-    return (collapsedRadius * (1f - eased)).coerceAtLeast(0.dp)
+    // ArchiveTune keeps its visible sheet corners rounded instead of slowly flattening
+    // them for the WHOLE ascent. Preserve Capsule's 14dp shape until the sheet nears
+    // the viewport edge, then resolve to an exact square fullscreen finish in the
+    // final 12% of travel; no last-frame radius jump or permanent fullscreen clip.
+    val finish = CapsuleMotion.smooth(((p - 0.88f) / 0.12f).coerceIn(0f, 1f))
+    return (collapsedRadius * (1f - finish)).coerceAtLeast(0.dp)
 }
 
 /**
@@ -336,6 +342,14 @@ fun BottomSheet(
             }
         }
     val miniGestureArbiter = remember(state) { MiniPlayerGestureArbiter() }
+    // The nav can start its exit on Mini background press BEFORE the opening click.
+    // Collect only press begin/end, not animation frames. Play/like children do not
+    // trigger this gesture; a cancelled press simply releases the nav back to its dock.
+    val compactOpenInteraction = remember(state) { MutableInteractionSource() }
+    val compactOpenPressed by compactOpenInteraction.collectIsPressedAsState()
+    LaunchedEffect(state, compactOpenPressed) {
+        state.setCompactOpenPress(compactOpenPressed && state.compactForegroundAcceptsInput)
+    }
     val renderExpandedSurface by
         remember(state) {
             derivedStateOf {
@@ -397,7 +411,13 @@ fun BottomSheet(
                         // physically travels upward and the opacity handoff only softens the morph
                         // instead of replacing movement with a dissolve.
                         .graphicsLayer {
-                            alpha = miniPlayerContentAlpha(state.visualProgress)
+                            val p = state.visualProgress
+                            alpha = miniPlayerContentAlpha(p)
+                            // No new motion controller: the existing anchored sheet lifts the
+                            // Mini. A tiny reversible 4.8% squash adds weight at the departure.
+                            scaleX = CapsuleMotion.miniScaleX(p)
+                            scaleY = CapsuleMotion.miniScaleY(p)
+                            transformOrigin = TransformOrigin(0.5f, 1f)
                         }
                         // Mini visually yields over the same moving frame. Input has its own
                         // progress gate, so an almost-gone Mini cannot steal full-player controls.
@@ -417,7 +437,7 @@ fun BottomSheet(
                         )
                         .clickable(
                             enabled = canReopen,
-                            interactionSource = remember { MutableInteractionSource() },
+                            interactionSource = compactOpenInteraction,
                             indication = null,
                             onClick = state::expandSoft,
                         )
@@ -634,6 +654,13 @@ class BottomSheetState internal constructor(
      */
     private var requestedAnchor by mutableStateOf(anchoredState.targetValue)
     private var userGestureInProgress by mutableStateOf(false)
+
+    internal var compactOpenPress by mutableStateOf(false)
+        private set
+
+    internal fun setCompactOpenPress(pressed: Boolean) {
+        if (useMainPlayerMotionPolish && compactOpenPress != pressed) compactOpenPress = pressed
+    }
 
     internal fun setUserGestureInProgress(inProgress: Boolean) {
         userGestureInProgress = inProgress
