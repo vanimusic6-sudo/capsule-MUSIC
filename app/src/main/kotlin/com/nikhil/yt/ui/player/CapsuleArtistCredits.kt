@@ -43,6 +43,8 @@ import androidx.compose.ui.res.painterResource
 import com.nikhil.yt.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Whole-name fit. Never crop a second artist halfway or replace them with an ellipsis.
@@ -129,16 +131,27 @@ internal fun CapsuleArtistCredits(
                             value = artist.thumbnailUrl?.takeIf { it.isNotBlank() }
                                 ?: ArtistPortraits.peek(artist.id)
                             val artistId = artist.id?.takeIf { it.isNotBlank() }
-                            if (value == null && artistId != null) {
+                            if (value == null) {
                                 try {
-                                    value = ArtistPortraits.resolve(
-                                        id = artistId,
-                                        hintedUrl = artist.thumbnailUrl,
-                                        allowNetwork = true,
-                                        localLookup = {
-                                            database.artist(artistId).first()?.thumbnailUrl
-                                        },
-                                    )
+                                    // Artist credits from video/search frequently have NO browse
+                                    // ID either. Resolve exact names from the local library first,
+                                    // off-main-thread. Never guess a portrait from fuzzy web search.
+                                    val local = if (artistId == null) withContext(Dispatchers.IO) {
+                                        database.artistByName(artist.name)
+                                    } else null
+                                    value = local?.thumbnailUrl?.takeIf { it.isNotBlank() }
+                                    val resolvedId = artistId
+                                        ?: local?.id?.takeUnless { it.startsWith("LA") }
+                                    if (value == null && resolvedId != null) {
+                                        value = ArtistPortraits.resolve(
+                                            id = resolvedId,
+                                            hintedUrl = artist.thumbnailUrl,
+                                            allowNetwork = true,
+                                            localLookup = {
+                                                database.artist(resolvedId).first()?.thumbnailUrl
+                                            },
+                                        )
+                                    }
                                 } catch (cancelled: CancellationException) {
                                     throw cancelled
                                 } catch (_: Exception) {
