@@ -90,6 +90,7 @@ import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
@@ -108,6 +109,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
@@ -895,6 +898,28 @@ class MainActivity : ComponentActivity() {
                             useMainPlayerMotionPolish = true,
                         )
 
+                    // Navigation is not a passenger on the player's long spring.
+                    // Start on the Mini background PRESS (before click/expansion) and tuck it
+                    // underneath the screen with a short, critically damped spring. On Back it
+                    // returns only in the last part of the original sheet's descent.
+                    // derivedStateOf prevents each spring frame from recomposing MainActivity.
+                    val playerNavTuckTarget by remember(playerBottomSheetState) {
+                        derivedStateOf {
+                            !playerBottomSheetState.isDismissed &&
+                                (playerBottomSheetState.compactOpenPress ||
+                                    playerBottomSheetState.isExpandedOrExpanding ||
+                                    playerBottomSheetState.visualProgress >= 0.16f)
+                        }
+                    }
+                    val playerNavTuck by animateFloatAsState(
+                        targetValue = if (playerNavTuckTarget) 1f else 0f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = if (playerNavTuckTarget) 1500f else 900f,
+                            visibilityThreshold = 0.005f,
+                        ),
+                        label = "capsule-nav-player-tuck",
+                    )
 
                     val capsuleMiniPlayerActuallyVisible =
                         playerConnection != null &&
@@ -1598,24 +1623,28 @@ class MainActivity : ComponentActivity() {
                                                     .align(Alignment.BottomCenter)
                                                     .height(navSlideDistance)
                                                     /*
-                                                     * Restore the original physical dock motion:
-                                                     * opening the player sends the app navigation
-                                                     * down out of the window; closing brings it
-                                                     * back up over the descending player. Route
-                                                     * visibility and player travel share one
-                                                     * bounded motion instead of fading the bar.
+                                                     * A short offscreen tuck, not a long synchronized
+                                                     * slide: compress the nav toward its bottom edge
+                                                     * as it exits. Touch-down on the Mini can lead
+                                                     * the sheet by a few frames. All pixel work is
+                                                     * deferred to offset/graphicsLayer (no relayout,
+                                                     * blur, extra snapshot or per-frame composition).
                                                      */
                                                     .zIndex(3f)
                                                     .offset {
-                                                        val hidden =
-                                                            CapsuleMotion.either(
-                                                                playerBottomSheetState.visualProgress,
-                                                                1f - navigationBarReveal,
-                                                            )
+                                                        val hidden = CapsuleMotion.either(
+                                                            playerNavTuck,
+                                                            1f - navigationBarReveal,
+                                                        )
                                                         IntOffset(
                                                             x = 0,
                                                             y = (navSlideDistance * hidden).roundToPx(),
                                                         )
+                                                    }
+                                                    .graphicsLayer {
+                                                        scaleX = CapsuleMotion.navTuckScaleX(playerNavTuck)
+                                                        scaleY = CapsuleMotion.navTuckScaleY(playerNavTuck)
+                                                        transformOrigin = TransformOrigin(0.5f, 1f)
                                                     },
                                         ) {
                                             if (pureBlack) Color.Black
