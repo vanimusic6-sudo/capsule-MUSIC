@@ -85,6 +85,22 @@ class PlayerTransitionArchitectureTest {
         assertTrue(videoArtwork.contains("onClick = onArtworkClick"))
     }
 
+    @Test fun classicPlayerNeverShowsSecondGreyFullscreenCompactPlate() {
+        val player = source("com/nikhil/yt/ui/player/Player.kt")
+        assertTrue(
+            "Only generic sheets can paint a compact transition plate",
+            player.contains("derivedStateOf { !state.playerMotion && state.visualProgress < 0.5f }"),
+        )
+        assertFalse(
+            "No grey full-screen dummy card while classic artwork is leaving",
+            player.contains("(!state.playerMotion || state.classicPlayerPresentation) && state.visualProgress < 0.5f"),
+        )
+        assertTrue(
+            "Real Light backdrop enters before the new photo handoff",
+            player.contains("(if (state.classicPlayerPresentation) 0.015f else state.contentHandoffPoint)"),
+        )
+    }
+
     @Test fun lyricsMovesOneContiguousCanvasAndOpticsFollowPosition() {
         val player = source("com/nikhil/yt/ui/player/Player.kt")
         assertEquals(1, Regex("then\\(lyricsFrame\\)").findAll(player).count())
