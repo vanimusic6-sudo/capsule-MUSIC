@@ -1232,35 +1232,19 @@ internal fun CapsuleImmersiveContent(
                                                     )
                                                     Spacer(Modifier.width(5.dp))
                                                 }
-                                                Text(
-                                                    text =
-                                                        artistCredits.joinToString { it.name },
+                                                CapsuleArtistCredits(
+                                                    artists = artistCredits,
                                                     color = metadataArtistInk,
-                                                    fontSize = CapsulePlayerArtistFontSize,
-                                                    lineHeight = CapsulePlayerArtistLineHeight,
-                                                    fontWeight = FontWeight.Normal,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                    modifier =
-                                                        Modifier.clickable(
-                                                            interactionSource =
-                                                                remember {
-                                                                    MutableInteractionSource()
-                                                                },
-                                                            indication = null,
-                                                            enabled =
-                                                                navigableArtists.isNotEmpty() &&
-                                                                    !immersiveEditEnabled,
-                                                        ) {
-                                                            when {
-                                                                navigableArtists.isEmpty() -> Unit
-                                                                artistCredits.size == 1 ->
-                                                                    onArtistSelected(
-                                                                        navigableArtists.first(),
-                                                                    )
-                                                                else -> showArtistPicker = true
-                                                            }
-                                                        },
+                                                    enabled = navigableArtists.isNotEmpty() && !immersiveEditEnabled,
+                                                    modifier = Modifier.weight(1f, fill = false),
+                                                    onClick = {
+                                                        when {
+                                                            navigableArtists.isEmpty() -> Unit
+                                                            artistCredits.size == 1 ->
+                                                                onArtistSelected(navigableArtists.first())
+                                                            else -> showArtistPicker = true
+                                                        }
+                                                    },
                                                 )
                                             }
                                         }
