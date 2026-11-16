@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -92,7 +94,7 @@ internal fun CapsuleArtistCredits(
         val avatarSize = 21.dp
         val overlap = 5.dp
         val avatarBlock = if (portraits.isEmpty()) 0.dp
-            else avatarSize + (portraits.size - 1) * (avatarSize - overlap) + 8.dp
+            else avatarSize + (avatarSize - overlap) * (portraits.size - 1) + 8.dp
         val availableTextPx = with(LocalDensity.current) {
             (maxWidth - avatarBlock).coerceAtLeast(0.dp).roundToPx()
         }
@@ -103,7 +105,7 @@ internal fun CapsuleArtistCredits(
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (portraits.isNotEmpty()) {
-                Box(modifier = Modifier.width(avatarBlock - 8.dp).size(avatarSize)) {
+                Box(modifier = Modifier.width(avatarBlock - 8.dp).height(avatarSize)) {
                     portraits.forEachIndexed { index, artist ->
                         val thumbnail = artist.thumbnailUrl
                         val photoRequest = remember(context, thumbnail) {
@@ -112,32 +114,26 @@ internal fun CapsuleArtistCredits(
                             }
                         }
                         val frame = Modifier
-                            .align(Alignment.CenterStart)
-                            .then(Modifier.width(avatarSize).size(avatarSize))
+                            .offset(x = (avatarSize - overlap) * index)
+                            .size(avatarSize)
                             .clip(CircleShape)
                             .background(color.copy(alpha = 0.12f))
                             .border(0.6.dp, color.copy(alpha = 0.25f), CircleShape)
-                        Box(modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .then(Modifier.width(avatarSize).size(avatarSize))
-                            .then(Modifier.padding(start = index * (avatarSize - overlap)))
-                        ) {
-                            if (photoRequest != null) {
-                                AsyncImage(
-                                    model = photoRequest,
-                                    contentDescription = null,
-                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                                    modifier = frame,
+                        if (photoRequest != null) {
+                            AsyncImage(
+                                model = photoRequest,
+                                contentDescription = null,
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                modifier = frame,
+                            )
+                        } else {
+                            Box(frame, contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = artist.name.take(1).uppercase(),
+                                    color = color,
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
                                 )
-                            } else {
-                                Box(frame, contentAlignment = Alignment.Center) {
-                                    Text(
-                                        text = artist.name.take(1).uppercase(),
-                                        color = color,
-                                        fontSize = 10.sp,
-                                        maxLines = 1,
-                                    )
-                                }
                             }
                         }
                     }
