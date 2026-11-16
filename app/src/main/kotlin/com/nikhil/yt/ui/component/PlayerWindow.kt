@@ -52,9 +52,7 @@ internal fun PlayerWindow(
     val pageDraws by remember(state) { derivedStateOf { playerPageVisible(state.visualProgress) } }
     val pageAccessible by remember(state) { derivedStateOf { playerPageAcceptsInput(state.visualProgress) } }
     val compactInteractive by remember(state) { derivedStateOf { state.compactForegroundAcceptsInput } }
-    // Keep Mini visually above the matching frame until its own opacity is nearly zero.
-    // Changing z-order at 10% used to expose a different surface halfway through the handoff.
-    val miniOverlaysPage by remember(state) { derivedStateOf { state.visualProgress < 0.43f } }
+    // Never switch source/destination z-order mid-flight. The Mini itself fades to zero.
     val windowInteractive by remember(state) { derivedStateOf {
         state.isExpandedOrExpanding || state.visualProgress > 0f
     } }
@@ -94,7 +92,7 @@ internal fun PlayerWindow(
         if (onDismiss == null || !state.isDismissed) {
             Box(Modifier
                 .offset { IntOffset(0, (state.expandedBound - state.collapsedBound).roundToPx()) }
-                .zIndex(if (miniOverlaysPage) 3f else 0f)
+                .zIndex(3f)
                 .semantics { if (!compactInteractive) hideFromAccessibility() }
                 .then(if (compactSwipeDismissEnabled && onDismiss != null) Modifier.bottomSheetDraggable(
                     state = state, onDismiss = onDismiss, dismissOnlyFromCollapsed = true,
