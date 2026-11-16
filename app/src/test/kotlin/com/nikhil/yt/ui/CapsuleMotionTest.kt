@@ -46,6 +46,21 @@ class CapsuleMotionTest {
         assertEquals(0.81f, CapsuleMotion.navTuckScaleY(1f), 1e-6f)
     }
 
+    @Test fun `return navigation stretches only once without a resting animation`() {
+        assertEquals(1f, CapsuleMotion.navReturnStretch(0f), 0f)
+        assertEquals(1f, CapsuleMotion.navReturnStretch(0.46f), 0f)
+        assertEquals(1f, CapsuleMotion.navReturnStretch(1f), 0f)
+        assertEquals(1.028f, CapsuleMotion.navReturnStretch(0.23f), 0.000001f)
+        for (i in 0..100) {
+            val value = CapsuleMotion.navReturnStretch(i / 100f)
+            assertTrue("No tall navigation bounce", value in 1f..1.02801f)
+        }
+        assertEquals(0f, CapsuleMotion.miniAdhesionDp(0f), 0f)
+        assertEquals(1.8f, CapsuleMotion.miniAdhesionDp(0.235f), 0.00001f)
+        assertEquals(0f, CapsuleMotion.miniAdhesionDp(0.47f), 0f)
+        assertEquals(0f, CapsuleMotion.miniAdhesionDp(1f), 0f)
+    }
+
     @Test fun `approach is fully applied when docked and absent once open`() {
         assertEquals(0f, CapsuleMotion.approach(0f, 0.34f), 1e-6f)
         assertEquals(1f, CapsuleMotion.approach(0.34f, 0.34f), 1e-6f)
