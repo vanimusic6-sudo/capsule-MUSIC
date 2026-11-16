@@ -46,7 +46,7 @@ internal fun CapsuleFavoriteIcon(
     val pressed = interactionSource?.collectIsPressedAsState()?.value == true
     val press by animateFloatAsState(
         if (pressed) 1f else 0f,
-        spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumHigh),
         label = "favoritePress",
     )
 
@@ -95,13 +95,17 @@ internal fun CapsuleFavoriteIcon(
     val path = remember { Path() }
 
     Canvas(modifier.size(24.dp).semantics { contentDescription = label }) {
-        val progress = fill.value.coerceIn(0f, 1f)
-        // Also deform while the fill travels, preserving the tactile squeeze from the Capsule skin.
-        val morph =
-            (
-                press +
-                    0.65f * 4f * progress * (1f - progress) * (1f - press)
-            ).coerceIn(-0.16f, 1f)
+        // Snap microscopically subpixel residues to their exact logical endpoints.
+        // Otherwise bitmap rasterisation can remain 1–2px narrower after a tap.
+        val progress = fill.value.coerceIn(0f, 1f).let {
+            when { it <= 0.003f -> 0f; it >= 0.997f -> 1f; else -> it }
+        }
+        val pressIntensity = press.coerceIn(0f, 1f).let { if (it < 0.008f) 0f else it }
+        // Crisp, optically stable rounded-heart contour at both rest endpoints.
+        val morph = (
+            pressIntensity +
+                0.65f * 4f * progress * (1f - progress) * (1f - pressIntensity)
+        ).coerceIn(0f, 1f)
         val opening = 1f - progress
 
         path.reset()
