@@ -70,6 +70,21 @@ object CapsuleMotion {
     fun miniScaleX(progress: Float): Float = 1f - 0.048f * miniCompression(progress)
     fun miniScaleY(progress: Float): Float = 1f - 0.027f * miniCompression(progress)
 
+    /**
+     * A Mini background PRESS anticipates opening, before the click causes sheet travel.
+     * On Back the bar stays tucked until the last 16% of the closing sheet's journey.
+     * One threshold means no nav target flutter while the visual spring is running.
+     */
+    fun navigationTucked(
+        opening: Boolean,
+        compactPressed: Boolean,
+        progress: Float,
+        dismissed: Boolean,
+    ): Boolean =
+        !dismissed &&
+            (opening || compactPressed ||
+                (progress.isFinite() && progress.coerceIn(0f, 1f) >= 0.16f))
+
     /** Navigation exits as a small bar sucked under the bottom edge, not a big page shift. */
     fun navTuckScaleX(progress: Float): Float = 1f - 0.07f * smooth(progress)
     fun navTuckScaleY(progress: Float): Float = 1f - 0.19f * smooth(progress)
