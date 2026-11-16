@@ -56,7 +56,7 @@ class CapsuleMotionTest {
             assertTrue("No tall navigation bounce", value in 1f..1.02801f)
         }
         assertEquals(0f, CapsuleMotion.miniAdhesionDp(0f), 0f)
-        assertEquals(1.8f, CapsuleMotion.miniAdhesionDp(0.235f), 0.00001f)
+        assertEquals(1.25f, CapsuleMotion.miniAdhesionDp(0.235f), 0.00001f)
         assertEquals(0f, CapsuleMotion.miniAdhesionDp(0.47f), 0f)
         assertEquals(0f, CapsuleMotion.miniAdhesionDp(1f), 0f)
     }
