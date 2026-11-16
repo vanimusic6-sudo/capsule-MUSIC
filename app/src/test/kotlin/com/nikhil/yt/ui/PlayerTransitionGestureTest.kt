@@ -28,6 +28,9 @@ import com.nikhil.yt.ui.component.COLLAPSED_ANCHOR
 import com.nikhil.yt.ui.component.PlayerContentHandoffPoint
 import com.nikhil.yt.ui.component.rememberBottomSheetState
 import com.nikhil.yt.ui.component.miniPlayerContentAlpha
+import com.nikhil.yt.ui.component.fullPlayerContentAlpha
+import com.nikhil.yt.ui.component.playerBackdropContentAlpha
+import com.nikhil.yt.ui.component.playerHandoffSurfaceAlpha
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -50,7 +53,7 @@ class PlayerTransitionGestureTest {
     private var mainScreenClicks = 0
     private var compactDockHeight by mutableStateOf(80.dp)
 
-    private fun showSheet(tapOnlyPlayer: Boolean = false) {
+    private fun showSheet(tapOnlyPlayer: Boolean = false, playerPolish: Boolean = false) {
         childClicks = 0
         horizontalDistance = 0f
         dismisses = 0
@@ -67,6 +70,7 @@ class PlayerTransitionGestureTest {
                             collapsedBound = compactDockHeight,
                             expandedBound = 851.dp,
                             initialAnchor = COLLAPSED_ANCHOR,
+                            useMainPlayerMotionPolish = playerPolish,
                         )
 
                     Button(
@@ -143,6 +147,62 @@ class PlayerTransitionGestureTest {
             "transition never entered [" + min + ", " + max + "], last=" +
                 compose.runOnIdle { state.rawProgress },
         )
+    }
+
+    @Test fun `main player polish keeps original sheet lift and exact dock on return`() {
+        showSheet(tapOnlyPlayer = true, playerPolish = true)
+        compose.mainClock.autoAdvance = false
+        try {
+            val originalY = miniNode().fetchSemanticsNode().boundsInRoot.top
+            compose.runOnIdle { state.expandSoft() }
+            advanceUntilProgress(0.28f, 0.65f)
+            val movingY = miniNode().fetchSemanticsNode().boundsInRoot.top
+            assertTrue("Mini must physically travel with main's original sheet",
+                movingY < originalY - 60f)
+            val beforeReverse = compose.runOnIdle { state.rawProgress }
+            compose.runOnIdle { state.collapseSoft() }
+            val atReverse = compose.runOnIdle { state.rawProgress }
+            assertEquals("Reversal starts at the same position", beforeReverse, atReverse, 0.01f)
+            repeat(85) { compose.mainClock.advanceTimeByFrame() }
+            val finalY = miniNode().fetchSemanticsNode().boundsInRoot.top
+            assertEquals("Mini must return to its exact original dock", originalY, finalY, 2f)
+            compose.runOnIdle { assertTrue(state.isCollapsed) }
+        } finally {
+            compose.mainClock.autoAdvance = true
+        }
+    }
+
+    @Test fun `main player early background settles before its full content`() {
+        assertEquals(0f, fullPlayerContentAlpha(PlayerContentHandoffPoint), 0f)
+        assertEquals(1f, fullPlayerContentAlpha(0.70f), 0f)
+        assertEquals(1f, fullPlayerContentAlpha(0.88f), 0f)
+        assertEquals(0f, playerBackdropContentAlpha(PlayerContentHandoffPoint), 0f)
+        assertEquals(1f, playerBackdropContentAlpha(0.48f), 0f)
+        assertTrue("Backdrop must precede controls", playerBackdropContentAlpha(0.40f) >
+            fullPlayerContentAlpha(0.40f))
+        assertEquals(1f, miniPlayerContentAlpha(0f), 0f)
+        assertEquals(0f, miniPlayerContentAlpha(PlayerContentHandoffPoint), 0f)
+        assertEquals(0f, playerHandoffSurfaceAlpha(0f), 0f)
+        assertEquals(1f, playerHandoffSurfaceAlpha(0.48f), 0f)
+    }
+
+    @Test fun `duplicate player intent does not restart the same spring`() {
+        showSheet(tapOnlyPlayer = true, playerPolish = true)
+        compose.mainClock.autoAdvance = false
+        try {
+            compose.runOnIdle { state.expandSoft() }
+            advanceUntilProgress(0.20f, 0.65f)
+            val before = compose.runOnIdle { state.rawProgress }
+            compose.runOnIdle { repeat(4) { state.expandSoft() } }
+            assertEquals(before, compose.runOnIdle { state.rawProgress }, 0.001f)
+            repeat(75) { compose.mainClock.advanceTimeByFrame() }
+            compose.runOnIdle { assertTrue(state.isExpanded) }
+            compose.runOnIdle { repeat(3) { state.collapseSoft() } }
+            repeat(75) { compose.mainClock.advanceTimeByFrame() }
+            compose.runOnIdle { assertTrue(state.isCollapsed) }
+        } finally {
+            compose.mainClock.autoAdvance = true
+        }
     }
 
     @Test fun `child click is not stolen by vertical sheet gesture`() {
