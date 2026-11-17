@@ -495,15 +495,9 @@ fun CapsulePlayerContent(
     // The entire metadata block gently catches up to the NEW cover, instead
     // of its title changing sharply while the poster is still fading.
     // One finite, small-layer animation per track; never an idle ticker.
-    // A new song's metadata arrives almost immediately; a brief optical easing is enough.
-    // Do not keep title/artist ghosting on rapid A -> B -> C skips.
+    // Metadata and controls follow Media3's selected track without an independent
+    // blink/translation. The single artwork settle handles the optical finish.
     val trackInkArrival = remember { Animatable(1f) }
-    LaunchedEffect(mediaMetadata.id, visible) {
-        if (visible) {
-            trackInkArrival.snapTo(0.94f)
-            trackInkArrival.animateTo(1f, tween(85))
-        } else trackInkArrival.snapTo(1f)
-    }
 
     // A chooser belongs to the track whose artist row was tapped.
     // Do not silently retarget an open dialog when autoplay changes tracks.
