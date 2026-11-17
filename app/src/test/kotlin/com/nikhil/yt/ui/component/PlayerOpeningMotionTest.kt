@@ -212,6 +212,26 @@ class PlayerOpeningMotionTest {
         return android.graphics.Rect(left,top,right+1,bottom+1)
     }
 
+    @Test fun closingGeometryCompressesTheActualWindowBeforeItsContentFades() {
+        assertEquals(0f, playerFrameGeometryProgress(Float.NaN), 0f)
+        assertEquals(0f, playerFrameGeometryProgress(0f), 0f)
+        assertEquals(1f, playerFrameGeometryProgress(1f), 0f)
+        var previous = 0f
+        for (step in 0..100) {
+            val progress = step / 100f
+            val contour = playerFrameGeometryProgress(progress)
+            assertTrue("no jump or inversion in the player outline", contour >= previous)
+            assertTrue("closing contracts toward Mini ahead of the raw sheet travel",
+                contour <= progress + 0.0001f)
+            previous = contour
+        }
+        val halfway = playerPresentationBounds(0.5f, 360f, 700f, 590f, 48f, 12f)
+        assertTrue("the frame is already shrinking rather than fading as a full-screen panel",
+            halfway.top > 295f)
+        assertTrue("the actual Mini is present during the close handoff",
+            playerMiniDrawAlpha(0.5f) > 0f)
+    }
+
     @Test fun presentationMorphsFromActualMiniBoundsToTheExactFullscreenViewport() {
         assertEquals(0f, playerPresentationOpacity(Float.NaN), 0f)
         assertEquals(0f, playerPresentationOpacity(-1f), 0f)
