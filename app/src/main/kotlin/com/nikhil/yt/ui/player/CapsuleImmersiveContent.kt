@@ -1479,7 +1479,7 @@ internal fun CapsuleImmersiveContent(
                                             modifier = Modifier.fillMaxWidth(),
                                         ) {
                                             Icon(
-                                                painterResource(R.drawable.capsule_transport_sleep),
+                                                painterResource(R.drawable.bedtime),
                                                 stringResource(R.string.sleep_timer),
                                                 tint =
                                                     immersiveInk.copy(
