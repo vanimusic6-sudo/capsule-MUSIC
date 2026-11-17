@@ -486,8 +486,15 @@ fun BottomSheetPlayer(
     val showPlayerBackdrop by remember(state, effectivePlayerDesign) {
         derivedStateOf {
             effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
-                state.visualProgress >
-                    (if (state.classicPlayerPresentation) 0.015f else state.contentHandoffPoint)
+                (
+                    state.visualProgress >
+                        (if (state.classicPlayerPresentation) 0.015f else state.contentHandoffPoint) ||
+                    // Compose the actual backdrop during the single stationary first-open frame.
+                    // Otherwise its first (sometimes expensive) tree/layout is mounted only after
+                    // the player shell has already started moving, which looks like a hitch.
+                    (state.playerMotion && !state.classicPlayerPresentation &&
+                        state.isExpandedOrExpanding)
+                )
         }
     }
 
