@@ -699,15 +699,9 @@ fun CapsulePlayerContent(
                                 }
                             }
                         }
-                        // Deliberately retain a neutral surface while rapidly
-                        // skipping (no wrong-track flash). Once this song's bitmap
-                        // is decoded, a short, softly defocused reveal replaces
-                        // the long abrupt grey-to-photo switch.
-                        val artworkReveal by animateFloatAsState(
-                            targetValue = if (retainedArtworkPainter != null) 1f else 0f,
-                            animationSpec = tween(durationMillis = if (visible) 230 else 0),
-                            label = "capsule-artwork-soft-reveal",
-                        )
+                        // Keep the last decoded artwork, never a neutral grey frame, until the
+                        // incoming full-resolution image is ready. The handoff owns its single
+                        // bounded GPU opacity transition, independent of Coil loading state.
                         val artworkContentScale =
                             if (cropAlbumArt ||
                                 (useClayLayout && (artworkResizeActive ||
@@ -719,15 +713,12 @@ fun CapsulePlayerContent(
                             // AsyncImage's transient state can be Loading even
                             // after this painter is fully usable; the image, not
                             // the view's request state, owns visible pixels.
-                            retainedArtworkPainter?.let { ready ->
-                                Image(
-                                    painter = ready,
-                                    contentDescription = null,
-                                    contentScale = artworkContentScale,
-                                    modifier = Modifier.fillMaxSize()
-                                        .graphicsLayer { alpha = artworkReveal },
-                                )
-                            }
+                            CapsuleTrackArtworkHandoff(
+                                mediaId = mediaMetadata.id,
+                                decodedPainter = retainedArtworkPainter,
+                                contentScale = artworkContentScale,
+                                modifier = Modifier.fillMaxSize(),
+                            )
                             // No low-resolution preview node: only the fully
                             // decoded artwork is ever placed on the canvas.
                             if (visible && (retainedArtworkPainter == null ||
