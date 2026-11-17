@@ -1,6 +1,7 @@
 /** Capsule MUSIC — whole-glyph manual title, both full player designs. GPL-3.0. */
 package com.nikhil.yt.ui.player
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.padding
@@ -25,11 +26,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -101,6 +104,14 @@ internal fun CapsuleTrackTitle(
     val scroll = androidx.compose.runtime.key(mediaId, title) { rememberScrollState() }
     val onScreen = appIsOnScreen()
     var layout by remember(mediaId, title) { mutableStateOf<TextLayoutResult?>(null) }
+    var viewportWidth by remember { mutableIntStateOf(0) }
+    val isOverflowing = viewportWidth > 0 && (layout?.size?.width ?: 0) > viewportWidth + 2
+    val fadeTarget = isOverflowing && capsuleTitleShouldMask(scroll.isScrollInProgress, scroll.value)
+    val smokeStrength by animateFloatAsState(
+        targetValue = if (fadeTarget) 1f else 0f,
+        animationSpec = tween(durationMillis = if (fadeTarget) 240 else 110),
+        label = "capsule-title-edge-smoke",
+    )
     LaunchedEffect(mediaId, title, scroll, enabled, onScreen) {
         if (!onScreen) return@LaunchedEffect
         if (!enabled) {
@@ -140,30 +151,26 @@ internal fun CapsuleTrackTitle(
         onTextLayout = { layout = it },
         modifier = modifier
             .clipToBounds()
-            // Use an offscreen layer only when the stationary title genuinely overflows.
+            .onSizeChanged { viewportWidth = it.width }
+            // Use an offscreen layer only while the ink mask is actually fading.
             // DstIn fades *glyph alpha*, never paints a dark rectangle over the background.
             .graphicsLayer {
-                val overflow = (layout?.size?.width?.toFloat() ?: 0f) > size.width + 2f
-                compositingStrategy = if (overflow &&
-                    capsuleTitleShouldMask(scroll.isScrollInProgress, scroll.value)
-                ) CompositingStrategy.Offscreen else CompositingStrategy.Auto
+                compositingStrategy = if (smokeStrength > 0.001f)
+                    CompositingStrategy.Offscreen else CompositingStrategy.Auto
             }
             .drawWithCache {
                 val fadeWidth = 30.dp.toPx().coerceAtMost(size.width * 0.29f)
                 val fadeStart = (size.width - fadeWidth).coerceAtLeast(0f)
                 val inkFade = Brush.horizontalGradient(
                     0f to Color.White,
-                    0.30f to Color.White.copy(alpha = 0.90f),
-                    1f to Color.Transparent,
+                    0.30f to Color.White.copy(alpha = 1f - 0.10f * smokeStrength),
+                    1f to Color.White.copy(alpha = 1f - smokeStrength),
                     startX = fadeStart,
                     endX = size.width,
                 )
                 onDrawWithContent {
                     drawContent()
-                    val overflow = (layout?.size?.width?.toFloat() ?: 0f) > size.width + 2f
-                    if (fadeWidth > 0f && overflow &&
-                        capsuleTitleShouldMask(scroll.isScrollInProgress, scroll.value)
-                    ) {
+                    if (fadeWidth > 0f && isOverflowing && smokeStrength > 0.001f) {
                         drawRect(
                             brush = inkFade,
                             topLeft = Offset(fadeStart, 0f),
