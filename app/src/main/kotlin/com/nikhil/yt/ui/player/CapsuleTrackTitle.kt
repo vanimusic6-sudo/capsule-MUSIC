@@ -9,8 +9,13 @@ import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -52,7 +57,7 @@ internal fun capsuleGraphemeBoundaries(text: String): List<Int> {
     return if (boundaries.isEmpty()) listOf(0) else boundaries
 }
 
-/** Use the old complete-letter crop only when the text is still at the start. */
+/** Show the soft right-edge ink fade only when the title is parked at its origin. */
 internal fun capsuleTitleShouldMask(isScrolling: Boolean, offsetPx: Int): Boolean =
     !isScrolling && offsetPx == 0
 
@@ -91,12 +96,10 @@ internal fun CapsuleTrackTitle(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    // At rest use the original *complete-grapheme* crop, never a sliced letter.
-    // Disable that crop for every pixel of manual scroll, inertia, parked offset
-    // and automatic return; the full name must remain legible while it moves.
+    // A long parked title softly dissolves at the right viewport edge. Never apply the
+    // fade while a finger, inertia or the automatic return is moving the whole name.
     val scroll = androidx.compose.runtime.key(mediaId, title) { rememberScrollState() }
     val onScreen = appIsOnScreen()
-    val boundaries = remember(title) { capsuleGraphemeBoundaries(title) }
     var layout by remember(mediaId, title) { mutableStateOf<TextLayoutResult?>(null) }
     LaunchedEffect(mediaId, title, scroll, enabled, onScreen) {
         if (!onScreen) return@LaunchedEffect
@@ -137,33 +140,36 @@ internal fun CapsuleTrackTitle(
         onTextLayout = { layout = it },
         modifier = modifier
             .clipToBounds()
-            // This mask is in *viewport* coordinates. Never put it after horizontalScroll:
-            // that would cut edge characters using the full intrinsic text width.
-            .drawWithContent {
-                val measured = layout
-                if (measured == null || !capsuleTitleShouldMask(scroll.isScrollInProgress, scroll.value) || boundaries.size < 2) {
+            // Use an offscreen layer only when the stationary title genuinely overflows.
+            // DstIn fades *glyph alpha*, never paints a dark rectangle over the background.
+            .graphicsLayer {
+                val overflow = (layout?.size?.width?.toFloat() ?: 0f) > size.width + 2f
+                compositingStrategy = if (overflow &&
+                    capsuleTitleShouldMask(scroll.isScrollInProgress, scroll.value)
+                ) CompositingStrategy.Offscreen else CompositingStrategy.Auto
+            }
+            .drawWithCache {
+                val fadeWidth = 30.dp.toPx().coerceAtMost(size.width * 0.29f)
+                val fadeStart = (size.width - fadeWidth).coerceAtLeast(0f)
+                val inkFade = Brush.horizontalGradient(
+                    0f to Color.White,
+                    0.30f to Color.White.copy(alpha = 0.90f),
+                    1f to Color.Transparent,
+                    startX = fadeStart,
+                    endX = size.width,
+                )
+                onDrawWithContent {
                     drawContent()
-                } else {
-                    var safeRight = 0f
-                    for (i in 0 until boundaries.lastIndex) {
-                        val start = boundaries[i]
-                        val end = boundaries[i + 1]
-                        if (start >= end) continue
-                        var clusterLeft = Float.POSITIVE_INFINITY
-                        var clusterRight = Float.NEGATIVE_INFINITY
-                        for (offset in start until end) {
-                            val bounds = measured.getBoundingBox(offset)
-                            clusterLeft = minOf(clusterLeft, bounds.left)
-                            clusterRight = maxOf(clusterRight, bounds.right)
-                        }
-                        if (clusterLeft >= -0.5f && clusterRight <= size.width - 2f) {
-                            safeRight = maxOf(safeRight, clusterRight)
-                        }
-                    }
-                    if (safeRight > 0f) {
-                        clipRect(left = 0f, right = safeRight.coerceAtMost(size.width)) {
-                            this@drawWithContent.drawContent()
-                        }
+                    val overflow = (layout?.size?.width?.toFloat() ?: 0f) > size.width + 2f
+                    if (fadeWidth > 0f && overflow &&
+                        capsuleTitleShouldMask(scroll.isScrollInProgress, scroll.value)
+                    ) {
+                        drawRect(
+                            brush = inkFade,
+                            topLeft = Offset(fadeStart, 0f),
+                            size = Size(fadeWidth, size.height),
+                            blendMode = BlendMode.DstIn,
+                        )
                     }
                 }
             }
