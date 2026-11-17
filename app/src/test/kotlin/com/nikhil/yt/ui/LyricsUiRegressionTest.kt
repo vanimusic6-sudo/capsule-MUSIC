@@ -47,6 +47,31 @@ class LyricsUiRegressionTest {
     }
 
     @Test
+    fun `compact lyrics has an artwork gradient even with plain mini player styling`() {
+        val compact = source("com/nikhil/yt/ui/player/CapsuleInlineLyricsCard.kt")
+        val player = source("com/nikhil/yt/ui/player/Player.kt")
+        assertTrue(compact.contains("capsuleInlineLyricsStops(colors)"))
+        assertTrue(compact.contains("Brush.verticalGradient(cardGradient)"))
+        assertTrue("The compact card keeps the existing mini player surface",
+            compact.contains("MiniPlayerSurface("))
+        assertTrue("THEME style must still extract the art palette",
+            player.contains("(scrollToLyricsPreference && !isLandscape)"))
+    }
+
+    @Test
+    fun `mini player artist is width constrained and can scroll on small screens`() {
+        val mini = source("com/nikhil/yt/ui/player/CapsuleMiniPlayer.kt")
+        val artist = mini.substringAfter("private fun CapsuleMiniSongInfo(")
+            .substringBefore("private fun CapsuleFavoriteButton(")
+        assertTrue("Artist row uses its actual measured slot",
+            artist.contains("Row(\n                modifier = Modifier.fillMaxWidth(),"))
+        assertTrue("Artist text cannot occupy the space reserved for the like button",
+            artist.contains("Modifier.weight(1f).then("))
+        assertTrue("Long artist names must remain readable after the first scroll",
+            artist.contains("iterations = Int.MAX_VALUE"))
+    }
+
+    @Test
     fun `lyrics header keeps physical cutout inset while status bar is hidden`() {
         val source = source("com/nikhil/yt/ui/player/CapsuleLyricsContent.kt")
         assertTrue(source.contains("WindowInsets.systemBarsIgnoringVisibility"))
