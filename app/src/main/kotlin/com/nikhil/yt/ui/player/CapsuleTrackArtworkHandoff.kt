@@ -28,8 +28,8 @@ internal fun CapsuleTrackArtworkHandoff(
     contentScale: ContentScale,
     modifier: Modifier = Modifier,
 ) {
-    var displayedId by remember { mutableStateOf<String?>(null) }
-    var incoming by remember { mutableStateOf<Painter?>(null) }
+    var displayedId by remember { mutableStateOf<String?>(mediaId) }
+    var incoming by remember { mutableStateOf<Painter?>(decodedPainter) }
     var outgoing by remember { mutableStateOf<Painter?>(null) }
     val incomingOpacity = remember { Animatable(1f) }
 
