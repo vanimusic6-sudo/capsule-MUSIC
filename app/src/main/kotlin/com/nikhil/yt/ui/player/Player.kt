@@ -19,6 +19,15 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.rememberCoroutineScope
+import com.nikhil.yt.constants.CapsuleScrollToLyricsKey
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -130,6 +139,9 @@ fun BottomSheetPlayer(
     var showInlineLyrics by rememberSaveable {
         mutableStateOf(false)
     }
+    val (scrollToLyricsPreference, _) = rememberPreference(CapsuleScrollToLyricsKey, false)
+    val inlineLyricsScroll = rememberScrollState()
+    val playerScope = rememberCoroutineScope()
 
     val queueSheetState =
         rememberBottomSheetState(
@@ -455,8 +467,13 @@ fun BottomSheetPlayer(
             showInlineLyrics && state.isExpandedOrExpanding -> showInlineLyrics = false
             queueSheetState.isExpandedOrExpanding ->
                 queueSheetState.collapseSoft()
-            state.isExpandedOrExpanding ->
-                state.collapseSoft()
+            state.isExpandedOrExpanding -> {
+                if (scrollToLyricsPreference && inlineLyricsScroll.value > 0) {
+                    playerScope.launch { inlineLyricsScroll.animateScrollTo(0) }
+                } else {
+                    state.collapseSoft()
+                }
+            }
         }
     }
     val currentPlayerBack by androidx.compose.runtime.rememberUpdatedState(handlePlayerBack)
@@ -612,6 +629,8 @@ fun BottomSheetPlayer(
                     warmedImmersiveTone = warmedImmersiveTone,
                     sceneMemory = immersiveSceneMemory,
                     showLyrics = showInlineLyrics,
+                    scrollToLyrics = scrollToLyricsPreference && !isLandscape,
+                    scrollState = inlineLyricsScroll,
                     mediaMetadata = metadata,
                     decodedArtworkCache = decodedArtworkCache,
                     playerArtworkColors = gradientColors,
@@ -717,6 +736,8 @@ private fun CapsulePlayerLyricsHost(
     warmedImmersiveTone: ImmersiveArtworkTone?,
     sceneMemory: ImmersiveSceneMemory,
     showLyrics: Boolean,
+    scrollToLyrics: Boolean,
+    scrollState: ScrollState,
     mediaMetadata: MediaMetadata,
     decodedArtworkCache: MutableMap<String, Pair<String, Painter>>,
     playerArtworkColors: List<Color>,
@@ -760,6 +781,11 @@ private fun CapsulePlayerLyricsHost(
     // interactive controls. Match the ACTUAL optical curve, not an unrelated
     // hard-coded threshold: the old 0.80 cutoff caused a visible sudden
     // disappearance while alpha was still > 0 at closing.
+    LaunchedEffect(playerState.isExpandedOrExpanding, scrollToLyrics) {
+        if ((!playerState.isExpandedOrExpanding || !scrollToLyrics) && scrollState.value > 0) {
+            scrollState.scrollTo(0)
+        }
+    }
     val lyricsInkMounted by remember(showLyrics) {
         derivedStateOf {
             showLyrics || capsuleLyricsForegroundOpacity(sheetOffset.value) > 0.0001f
@@ -838,6 +864,7 @@ private fun CapsulePlayerLyricsHost(
         val onScreen = appIsOnScreen()
         val immersiveArtworkTone =
             if (design == CapsulePlayerDesign.IMMERSIVE) warmedImmersiveTone else null
+        val renderPlayer: @Composable () -> Unit = {
         Box(
             modifier =
                 Modifier
@@ -921,6 +948,34 @@ private fun CapsulePlayerLyricsHost(
                     !playerState.isCollapsed &&
                         !playerState.isDismissed,
             )
+        }
+        }
+
+        if (scrollToLyrics) {
+            // Like a natural scrollable Now Playing document, not a swipe-to-open modal.
+            // This reuses the SAME player, with its normal measurements and touch targets.
+            // Only the card below the viewport is mounted when the user approaches it.
+            val viewportHeightPx = constraints.maxHeight.toFloat()
+            Column(
+                modifier = Modifier.fillMaxSize().verticalScroll(
+                    scrollState,
+                    enabled = playerState.isExpanded && !showLyrics && !queueState.isExpanded,
+                ),
+            ) {
+                Box(Modifier.fillMaxWidth().height(maxHeight)) { renderPlayer() }
+                CapsuleInlineLyricsCard(
+                    colors = playerArtworkColors,
+                    visible = onScreen && !showLyrics && playerState.isExpandedOrExpanding &&
+                        scrollState.value > viewportHeightPx * 0.12f,
+                    sliderPosition = sliderPosition,
+                    onLineSeek = { playerConnection.service.seekToCapsuleTimeline(it) },
+                    onFullScreen = onShowLyrics,
+                    modifier = Modifier.fillMaxWidth().height((maxHeight - 60.dp).coerceAtLeast(360.dp)),
+                )
+                Spacer(Modifier.height(16.dp))
+            }
+        } else {
+            renderPlayer()
         }
 
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
