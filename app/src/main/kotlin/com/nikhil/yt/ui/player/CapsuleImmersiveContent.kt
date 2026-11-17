@@ -786,31 +786,32 @@ internal fun CapsuleImmersiveContent(
         val staleSceneAlpha = remember { Animatable(1f) }
         var lastReadyFrame by remember { mutableStateOf(restoredFrame) }
         var outgoingStartAlpha by remember { mutableFloatStateOf(1f) }
-        // The next track may take seconds to decode. Never show a PREVIOUS
-        // song's gradient for that whole time. Fade both old photo and its
-        // page together, then show the new track's lightweight placeholder.
-        LaunchedEffect(shownGradient?.key, shownGradient?.key == visualKey) {
+        // The current full photo + its exact continuation stay together while the next
+        // decoded pair is prepared. Previously we ALWAYS faded them to a neutral plate first,
+        // even when the incoming photo arrived during the fade — the visible grey blink.
+        // A stalled download still has a bounded exit; no endless previous-song wallpaper.
+        LaunchedEffect(shownGradient?.key, shownGradient?.key == visualKey, coverAndGradientReady) {
             val previous = shownGradient?.key
             if (previous == null || previous == visualKey) {
                 staleSceneAlpha.snapTo(1f)
                 return@LaunchedEffect
             }
-            // A rapid next/next must not snap a half-visible photo to full
-            // opacity. Complete the one finite dissolve; coalesce the pending
-            // target rather than accumulating more full-screen image layers.
             if (outgoingFrame != null && gradientAlpha.isRunning) {
                 snapshotFlow { gradientAlpha.isRunning }.first { !it }
             }
+            // Incoming high-res pair already exists: NEVER pass through grey.
+            // The prepared-scene effect below performs the one direct crossfade.
+            if (coverAndGradientReady) return@LaunchedEffect
             staleSceneAlpha.snapTo(gradientAlpha.value)
-            // Give a cached incoming full-size pair time to arrive before
-            // dimming the old scene. The total stale lifetime is still bounded.
-            delay(90L)
-            // A shorter neutral exit lets the prepared incoming photo and its
-            // gradient take over as ONE scene, without a long old-colour afterglow.
+            // Give ordinary cache/disk requests a short window to finish. If they take
+            // longer, dissolve the old pair into this song's sampled base rather than
+            // dropping its photo one frame before the continuation.
+            delay(320L)
+            if (coverAndGradientReady) return@LaunchedEffect
             staleSceneAlpha.animateTo(
                 0f, tween(durationMillis = IMMERSIVE_STALE_SCENE_FADE_MS, easing = ImmersiveTrackEasing),
             )
-            if (shownGradient?.key == previous && previous != visualKey) {
+            if (shownGradient?.key == previous && previous != visualKey && !coverAndGradientReady) {
                 shownGradient = null
                 outgoingFrame = null
                 lastReadyFrame = null
