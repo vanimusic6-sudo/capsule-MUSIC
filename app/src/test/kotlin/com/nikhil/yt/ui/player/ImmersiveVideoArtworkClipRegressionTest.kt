@@ -20,15 +20,19 @@ class ImmersiveVideoArtworkClipRegressionTest {
         assertTrue(scene.contains(".clipToBounds()"))
         assertTrue(scene.contains("CompositingStrategy.Offscreen"))
         assertTrue(scene.contains("BlendMode.DstIn"))
-        assertTrue("Incoming and outgoing tracks must use the same joined scene",
-            content.split("ImmersiveAudioScene(").size - 1 == 3)
+        assertTrue("Exactly one current-track audio scene is allowed",
+            content.split("ImmersiveAudioScene(").size - 1 == 2)
+        assertTrue(content.contains("sceneAlpha = { 1f }"))
+        assertTrue(content.contains("if (!currentSceneReady)"))
+        assertTrue("There must not be a retained outgoing image/gradient layer",
+            !content.contains("val outgoingFrame"))
         assertTrue("The overlap must reveal the cached backdrop continuously",
             scene.contains("immersivePhotoFeatherAlpha(y)"))
         assertTrue("A second independently faded bloom would recreate the stripe",
             !content.contains("seamBloomMask"))
-        assertTrue(content.contains("scaleX = if (frame.landscape) 1.06f else 1f"))
-        assertTrue(content.contains("scaleY = if (frame.landscape) 1.06f else 1f"))
-        assertTrue(content.contains("matchedPaint?.let { bitmap ->"))
+        assertTrue(content.contains("scaleX = if (preparedFrame.landscape) 1.06f else 1f"))
+        assertTrue(content.contains("scaleY = if (preparedFrame.landscape) 1.06f else 1f"))
+        assertTrue(content.contains("val preparedPaint = requireNotNull(matchedPaint)"))
         assertTrue("Artwork must not be attenuated twice during VIDEO morph",
             !scene.contains("capsulePhotoOpacity("))
         assertTrue("VIDEO must attenuate the joined audio scene as a whole",
