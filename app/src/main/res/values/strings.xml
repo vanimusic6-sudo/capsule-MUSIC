@@ -1040,5 +1040,5 @@ Capsule will only extract your token, and everything else is stored locally.</st
     <string name="capsule_scroll_to_lyrics_description">Swipe up to expand a separate lyrics page. Lyrics become interactive only when fully open; use the button for fullscreen. Off by default.</string>
     <string name="capsule_inline_lyrics_heading">Lyrics</string>
     <string name="capsule_inline_lyrics_expand">Full screen</string>
-    <string name="capsule_inline_lyrics_hint">Release to expand synchronized lyrics</string>
+    <string name="capsule_inline_lyrics_hint">Scroll to see synced lyrics</string>
 </resources>
