@@ -17,6 +17,36 @@ class LyricsUiRegressionTest {
     }
 
     @Test
+    fun `embedded lyrics keep the original player scroll and only a fullscreen button`() {
+        val player = source("com/nikhil/yt/ui/player/Player.kt")
+        val compact = source("com/nikhil/yt/ui/player/CapsuleInlineLyricsCard.kt")
+        assertTrue("Keep the original player-to-lyrics scrolling", player.contains(".verticalScroll("))
+        assertTrue(player.contains("Box(Modifier.fillMaxWidth().height(viewportHeight)) { renderPlayer() }"))
+        assertFalse("A snap pager changes the entire interaction model", player.contains("VerticalPager("))
+        assertFalse(player.contains("rememberPagerState("))
+        assertTrue("The compact surface follows the selected mini-player theme", compact.contains("MiniPlayerSurface("))
+        assertTrue("Fullscreen is a real button", compact.contains("FilledTonalButton(onClick = onFullScreen)"))
+        assertTrue("The normal fullscreen lyrics tree stays intact", player.contains("LyricsScreen("))
+        assertTrue("Fullscreen grows in place only from the inline lyrics mode",
+            player.contains("if (scrollToLyrics) {\n                    // The mini lyrics card explicitly requested"))
+        assertTrue(player.contains("scaleX = 0.90f + 0.10f * open"))
+    }
+
+    @Test
+    fun `compact lyrics are read only and do not consume the parent scroll`() {
+        val compact = source("com/nikhil/yt/ui/player/CapsuleInlineLyricsCard.kt")
+        val lyrics = source("com/nikhil/yt/ui/component/Lyrics.kt")
+        assertTrue(compact.contains("allowUserInteraction = false"))
+        assertFalse("Preview must never seek Media3", compact.contains("onLineSeek = onLineSeek"))
+        assertTrue(lyrics.contains("userScrollEnabled = allowUserInteraction && hasDisplayableLyrics"))
+        assertTrue(lyrics.contains("enabled = allowUserInteraction && !isReturningToSync"))
+        assertTrue("Nested scroll must return unconsumed drag to the parent",
+            lyrics.contains("if (!allowUserInteraction) return Offset.Zero"))
+        assertTrue("Nested fling must return unconsumed velocity to the parent",
+            lyrics.contains("if (!allowUserInteraction) return Velocity.Zero"))
+    }
+
+    @Test
     fun `lyrics header keeps physical cutout inset while status bar is hidden`() {
         val source = source("com/nikhil/yt/ui/player/CapsuleLyricsContent.kt")
         assertTrue(source.contains("WindowInsets.systemBarsIgnoringVisibility"))
