@@ -42,7 +42,7 @@ class PlayerTransitionArchitectureTest {
         assertTrue(immersive.contains("val currentSceneReady = frame?.key == visualKey && matchedPaint != null"))
         assertTrue(immersive.contains("ImmersiveAudioScene("))
         assertTrue("An exact matched bitmap is displayed opaquely, not as a flashing scrim",
-            immersive.contains("sceneAlpha = { 1f }"))
+            immersive.contains("sceneAlpha = { sceneRevealAlpha.value }"))
         assertFalse("No second tinted photo overlay", immersive.contains("matchedPaint?.second?.let"))
         assertFalse("A raw thumbnail cannot flash during foreground restoration",
             immersive.contains("model = mediaMetadata.thumbnailUrl"))
@@ -113,7 +113,7 @@ class PlayerTransitionArchitectureTest {
         assertEquals(
             "Both heavy composables must stay screen-fixed beneath ONE mask",
             2,
-            Regex("translationY = -displacement").findAll(player).count(),
+            Regex("translationY = if \\(scrollToLyrics\\) 0f else -displacement").findAll(player).count(),
         )
         assertTrue(player.contains("topStart = LyricsFrameCornerRadius"))
         assertTrue(player.contains("instantBackdrop = true"))
