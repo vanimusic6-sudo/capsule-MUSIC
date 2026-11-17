@@ -282,7 +282,7 @@ internal fun rememberArtworkScene(
                 label = "capsuleArtworkTertiary",
             )
     
-        return remember(first, second, third, targetScene.field) {
+        remember(first, second, third, targetScene.field) {
             CapsuleArtworkScene(listOf(first, second, third), targetScene.field)
         }
     }
