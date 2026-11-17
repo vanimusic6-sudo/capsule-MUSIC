@@ -19,9 +19,11 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.pager.PagerState
-import androidx.compose.foundation.pager.VerticalPager
-import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.rememberCoroutineScope
@@ -138,9 +140,7 @@ fun BottomSheetPlayer(
         mutableStateOf(false)
     }
     val (scrollToLyricsPreference, _) = rememberPreference(CapsuleScrollToLyricsKey, false)
-    // Two discrete, full-height pages: a drag either opens Lyrics completely or
-    // returns to the player. The old free-scrolling column fought the Lyrics list.
-    val inlineLyricsPager = rememberPagerState(pageCount = { 2 })
+    val inlineLyricsScroll = rememberScrollState()
     val playerScope = rememberCoroutineScope()
 
     val queueSheetState =
@@ -417,11 +417,10 @@ fun BottomSheetPlayer(
             mediaMetadata = enrichedMetadata,
             enabled = needsArtworkPalette,
             refreshOnOpen = state.isExpandedOrExpanding,
-            // Spatial SCENE_LIGHT has its own unified field interpolation.
-            // All procedural backdrops draw from colours only: soften the new
-            // song's neutral -> extracted palette rather than snapping it at
-            // decode completion. Both paths reset at every media-ID boundary.
-            animatePalette = playerBackground != PlayerBackgroundStyle.SCENE_LIGHT,
+            // Keep the sampled colours and spatial field in one frame. Animating
+            // three colour channels while replacing the field immediately made
+            // complex album backgrounds visibly flicker on track changes.
+            animatePalette = false,
         )
 
     val gradientColors = artworkScene.colors
@@ -473,11 +472,8 @@ fun BottomSheetPlayer(
             queueSheetState.isExpandedOrExpanding ->
                 queueSheetState.collapseSoft()
             state.isExpandedOrExpanding -> {
-                if (scrollToLyricsPreference &&
-                    (inlineLyricsPager.currentPage != 0 ||
-                        inlineLyricsPager.currentPageOffsetFraction != 0f)
-                ) {
-                    playerScope.launch { inlineLyricsPager.animateScrollToPage(0) }
+                if (scrollToLyricsPreference && inlineLyricsScroll.value > 0) {
+                    playerScope.launch { inlineLyricsScroll.animateScrollTo(0) }
                 } else {
                     state.collapseSoft()
                 }
@@ -638,7 +634,7 @@ fun BottomSheetPlayer(
                     sceneMemory = immersiveSceneMemory,
                     showLyrics = showInlineLyrics,
                     scrollToLyrics = scrollToLyricsPreference && !isLandscape,
-                    pagerState = inlineLyricsPager,
+                    scrollState = inlineLyricsScroll,
                     miniBackground = miniPlayerBackground,
                     pureBlack = pureBlack,
                     mediaMetadata = metadata,
@@ -747,7 +743,7 @@ private fun CapsulePlayerLyricsHost(
     sceneMemory: ImmersiveSceneMemory,
     showLyrics: Boolean,
     scrollToLyrics: Boolean,
-    pagerState: PagerState,
+    scrollState: ScrollState,
     miniBackground: MiniPlayerBackgroundStyle,
     pureBlack: Boolean,
     mediaMetadata: MediaMetadata,
@@ -783,15 +779,8 @@ private fun CapsulePlayerLyricsHost(
     // arbitrary millisecond delay and no de-synchronised close/reopen fade.
     // The outgoing player stays fully present while Lyrics travels across it. Once the page has
     // covered the last pixel, its lyric row and decorative orbit can sleep until closing starts.
-    val playerMotionActive by remember(showLyrics, scrollToLyrics, pagerState) {
-        derivedStateOf {
-            (!showLyrics || sheetOffset.value > 0.001f) &&
-                !queueState.isExpanded &&
-                // At rest on the second page, release heavy player frame clocks.
-                // Re-enable them as soon as the user begins swiping home.
-                (!scrollToLyrics || pagerState.settledPage == 0 ||
-                    pagerState.isScrollInProgress)
-        }
+    val playerMotionActive by remember(showLyrics) {
+        derivedStateOf { (!showLyrics || sheetOffset.value > 0.001f) && !queueState.isExpanded }
     }
     LaunchedEffect(playerMotionActive) { onPlayerExposureChanged(playerMotionActive) }
     var lyricsLayerMounted by remember { mutableStateOf(showLyrics) }
@@ -801,10 +790,8 @@ private fun CapsulePlayerLyricsHost(
     // hard-coded threshold: the old 0.80 cutoff caused a visible sudden
     // disappearance while alpha was still > 0 at closing.
     LaunchedEffect(playerState.isExpandedOrExpanding, scrollToLyrics) {
-        if ((!playerState.isExpandedOrExpanding || !scrollToLyrics) &&
-            (pagerState.currentPage != 0 || pagerState.currentPageOffsetFraction != 0f)
-        ) {
-            pagerState.scrollToPage(0)
+        if ((!playerState.isExpandedOrExpanding || !scrollToLyrics) && scrollState.value > 0) {
+            scrollState.scrollTo(0)
         }
     }
     val lyricsInkMounted by remember(showLyrics) {
@@ -975,54 +962,33 @@ private fun CapsulePlayerLyricsHost(
         }
 
         if (scrollToLyrics) {
-            // A fixed two-page vertical pager, never a free-scroll document:
-            // page 0 = untouched player, page 1 = standalone lyrics surface.
-            // The pager owns the reveal swipe until it is fully settled, so
-            // the nested lyric list cannot take over half-way through.
-            val lyricsInteractive by remember(pagerState) {
-                derivedStateOf {
-                    pagerState.settledPage == 1 && !pagerState.isScrollInProgress
-                }
+            // Like a natural scrollable Now Playing document, not a swipe-to-open modal.
+            // This reuses the SAME player, with its normal measurements and touch targets.
+            // Only the card below the viewport is mounted when the user approaches it.
+            val viewportHeight = maxHeight
+            val viewportHeightPx = constraints.maxHeight.toFloat()
+            val lyricsCardReady by remember(scrollState, viewportHeightPx) {
+                derivedStateOf { scrollState.value > viewportHeightPx * 0.12f }
             }
-            VerticalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize(),
-                userScrollEnabled =
-                    playerState.isExpanded && !showLyrics && !queueState.isExpanded,
-            ) { page ->
-                if (page == 0) {
-                    Box(Modifier.fillMaxSize()) { renderPlayer() }
-                } else {
-                    Box(
-                        Modifier.fillMaxSize().graphicsLayer {
-                            // The lyric surface grows into the second viewport
-                            // from its own softened card, not out of album art.
-                            val distance = kotlin.math.abs(
-                                (pagerState.currentPage - page) +
-                                    pagerState.currentPageOffsetFraction,
-                            ).coerceIn(0f, 1f)
-                            val openFraction = 1f - distance
-                            scaleX = 0.92f + 0.08f * openFraction
-                            scaleY = 0.90f + 0.10f * openFraction
-                            alpha = 0.78f + 0.22f * openFraction
-                            clip = false
-                        },
-                    ) {
-                        CapsuleInlineLyricsCard(
-                            colors = playerArtworkColors,
-                            miniBackground = miniBackground,
-                            pureBlack = pureBlack,
-                            // Only a FULLY opened page may scroll synced lyrics
-                            // or seek playback via line taps.
-                            visible = onScreen && lyricsInteractive &&
-                                !showLyrics && playerState.isExpandedOrExpanding,
-                            sliderPosition = sliderPosition,
-                            onLineSeek = { playerConnection.service.seekToCapsuleTimeline(it) },
-                            onFullScreen = onShowLyrics,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                }
+            Column(
+                modifier = Modifier.fillMaxSize().verticalScroll(
+                    scrollState,
+                    enabled = playerState.isExpanded && !showLyrics && !queueState.isExpanded,
+                ),
+            ) {
+                Box(Modifier.fillMaxWidth().height(viewportHeight)) { renderPlayer() }
+                CapsuleInlineLyricsCard(
+                    colors = playerArtworkColors,
+                    miniBackground = miniBackground,
+                    pureBlack = pureBlack,
+                    visible = onScreen && !showLyrics && playerState.isExpandedOrExpanding &&
+                        lyricsCardReady,
+                    sliderPosition = sliderPosition,
+                    onLineSeek = { playerConnection.service.seekToCapsuleTimeline(it) },
+                    onFullScreen = onShowLyrics,
+                    modifier = Modifier.fillMaxWidth().height((viewportHeight - 60.dp).coerceAtLeast(360.dp)),
+                )
+                Spacer(Modifier.height(16.dp))
             }
         } else {
             renderPlayer()
@@ -1043,15 +1009,16 @@ private fun CapsulePlayerLyricsHost(
             // No compose/layout state reads per frame. Only RenderNode work.
             val lyricsFrame = Modifier.graphicsLayer {
                 if (scrollToLyrics) {
-                    // Fullscreen was invoked by the dedicated lyrics button:
-                    // grow the lyrics surface in place, NEVER from the cover.
-                    val openness = (1f - sheetOffset.value).coerceIn(0f, 1f)
+                    // The mini lyrics card explicitly requested the ordinary
+                    // fullscreen LyricsScreen. Expand the page in place; do
+                    // not fly it out from the album or translate the viewport.
+                    val open = (1f - sheetOffset.value).coerceIn(0f, 1f)
                     translationY = 0f
-                    scaleX = 0.94f + 0.06f * openness
-                    scaleY = 0.93f + 0.07f * openness
-                    alpha = openness
-                    shape = RoundedCornerShape((24f * (1f - openness)).dp)
-                    clip = sheetOffset.value > 0.0001f
+                    scaleX = 0.90f + 0.10f * open
+                    scaleY = 0.88f + 0.12f * open
+                    alpha = open
+                    shape = RoundedCornerShape((28f * (1f - open)).dp)
+                    clip = open < 0.999f
                 } else {
                 val displacement = capsuleLyricsTranslation(
                     sheetOffset.value,
@@ -1092,28 +1059,15 @@ private fun CapsulePlayerLyricsHost(
                             translationY = if (scrollToLyrics) 0f else -displacement
                         },
                     ) {
-                        if (scrollToLyrics) {
-                            // The embedded page and fullscreen lyrics share
-                            // the exact selected MINI skin, not two mismatched
-                            // palettes that flash during the expansion.
-                            CapsuleCompactSurfaceBackground(
-                                style = miniBackground,
-                                pureBlack = pureBlack,
-                                colors = playerArtworkColors,
-                                modifier = Modifier.fillMaxSize(),
-                                animated = false,
-                            )
-                        } else {
-                            CapsuleLyricsBackdropLayer(
-                                mediaMetadata = mediaMetadata,
-                                immersiveArtworkTone = immersiveArtworkTone,
-                                playerArtworkColors = playerArtworkColors,
-                                backdropAnimationTime = backdropAnimationTime,
-                                isVisible = showLyrics && !queueState.isExpanded,
-                                instantBackdrop = true,
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        }
+                        CapsuleLyricsBackdropLayer(
+                            mediaMetadata = mediaMetadata,
+                            immersiveArtworkTone = immersiveArtworkTone,
+                            playerArtworkColors = playerArtworkColors,
+                            backdropAnimationTime = backdropAnimationTime,
+                            isVisible = showLyrics && !queueState.isExpanded,
+                            instantBackdrop = true,
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     }
 
                     // No extra translucent edge scrim: on bright artwork,
