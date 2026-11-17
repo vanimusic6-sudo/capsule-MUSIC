@@ -43,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -694,6 +695,9 @@ class BottomSheetState internal constructor(
      * This prevents a closing spring from leaving Player as owner after close is requested.
      */
     private var playerAnimationJob: Job? = null
+    // Only the first expansion (or a changed compact geometry) waits for one composition
+    // frame. This gives the real destination page a chance to mount before its GPU clip moves.
+    private var playerPageNeedsFirstFrame = true
     internal var compactOpenPress by mutableStateOf(false)
         private set
 
@@ -827,6 +831,9 @@ class BottomSheetState internal constructor(
             return
         }
 
+        if (playerMotion && requestedAnchor != SheetAnchor.Expanded) {
+            playerPageNeedsFirstFrame = true
+        }
         dismissedBoundState.value = newDismissedBound
         collapsedBoundState.value = newCollapsedBound
         expandedBoundState.value = newExpandedBound
@@ -895,6 +902,14 @@ class BottomSheetState internal constructor(
             start = if (playerMotion) CoroutineStart.UNDISPATCHED else CoroutineStart.DEFAULT,
         ) {
             if (requestedAnchor != requested) return@launch
+            // First open or a geometry/layout switch: compose the destination while the real
+            // mini remains still. Do not spend the first moving frame constructing a player.
+            // A single frame (not a timer) also works on 60/90/120 Hz screens.
+            if (playerMotion && requested == SheetAnchor.Expanded && playerPageNeedsFirstFrame) {
+                withFrameNanos { }
+                if (requestedAnchor != requested) return@launch
+                playerPageNeedsFirstFrame = false
+            }
             try {
                 animateToAnchor(
                     target = requested,
