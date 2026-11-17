@@ -55,6 +55,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.Brush
@@ -775,6 +779,13 @@ private fun CapsulePlayerLyricsHost(
     // A subtle contour-only leading edge shares a single physical target
     // with the aperture. It never stretches the heavy LyricsScreen subtree.
     val sheetEdge = remember { Animatable(if (showLyrics) 0f else 1f) }
+    // Geometry holders do not recompose on scroll. Only the button snapshots
+    // the exact real compact-card rectangle before the spring starts.
+    val hostBoundsInRoot = remember { arrayOf<Rect?>(null) }
+    val cardBoundsInRoot = remember { arrayOf<Rect?>(null) }
+    var frozenCardBounds by remember(mediaMetadata.id) { mutableStateOf<Rect?>(null) }
+    var frozenCardPalette by remember(mediaMetadata.id) { mutableStateOf<List<Color>?>(null) }
+    val transitioningPalette = frozenCardPalette ?: playerArtworkColors
     // Opacity derives directly from sheet position: no third coroutine, no
     // arbitrary millisecond delay and no de-synchronised close/reopen fade.
     // The outgoing player stays fully present while Lyrics travels across it. Once the page has
@@ -869,10 +880,15 @@ private fun CapsulePlayerLyricsHost(
             }
             lyricsRuntimeActive = false
             lyricsLayerMounted = false
+            frozenCardPalette = null
+            frozenCardBounds = null
         }
     }
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxSize()
+            .onGloballyPositioned { hostBoundsInRoot[0] = it.boundsInRoot() },
+    ) {
         // Both surfaces consume one sample of the player's actual visible cover crop.
         // Hoisting it also avoids a second decode/extraction when Lyrics opens.
         val onScreen = appIsOnScreen()
@@ -990,11 +1006,25 @@ private fun CapsulePlayerLyricsHost(
             ) {
                 Box(Modifier.fillMaxWidth().height(viewportHeight)) { renderPlayer() }
                 CapsuleInlineLyricsCard(
-                    colors = playerArtworkColors,
+                    colors = transitioningPalette,
                     visible = onScreen && playerState.isExpandedOrExpanding &&
                         lyricsCardReady && compactPreviewActive,
                     sliderPosition = sliderPosition,
-                    onFullScreen = onShowLyrics,
+                    onBoundsChanged = { cardBoundsInRoot[0] = it },
+                    onFullScreen = {
+                        val card = cardBoundsInRoot[0]
+                        val host = hostBoundsInRoot[0]
+                        frozenCardBounds = if (card != null && host != null) {
+                            Rect(
+                                card.left - host.left, card.top - host.top,
+                                card.right - host.left, card.bottom - host.top,
+                            )
+                        } else null
+                        // Prevent late artwork extraction from changing either
+                        // side of an active expansion independently.
+                        frozenCardPalette = playerArtworkColors.toList()
+                        onShowLyrics()
+                    },
                     modifier = Modifier.fillMaxWidth().height((viewportHeight - 60.dp).coerceAtLeast(360.dp)),
                 )
                 Spacer(Modifier.height(16.dp))
@@ -1018,14 +1048,24 @@ private fun CapsulePlayerLyricsHost(
             // No compose/layout state reads per frame. Only RenderNode work.
             val lyricsFrame = Modifier.graphicsLayer {
                 if (scrollToLyrics) {
-                    // The mini lyrics card explicitly requested the ordinary
-                    // fullscreen LyricsScreen. Expand the page in place; do
-                    // not fly it out from the album or translate the viewport.
+                    // One matched-bounds surface grows from the card's REAL
+                    // on-screen position to the fullscreen lyrics viewport.
                     val open = (1f - sheetOffset.value).coerceIn(0f, 1f)
-                    translationY = 0f
-                    scaleX = 0.90f + 0.10f * open
-                    scaleY = 0.88f + 0.12f * open
-                    alpha = open
+                    val widthPx = size.width.coerceAtLeast(1f)
+                    val heightPx = size.height.coerceAtLeast(1f)
+                    val fallback = Rect(
+                        widthPx * 0.04f, heightPx * 0.13f,
+                        widthPx * 0.96f, heightPx * 0.92f,
+                    )
+                    val bounds = capsuleInlineLyricsMorphBounds(
+                        frozenCardBounds ?: fallback, widthPx, heightPx, open,
+                    )
+                    transformOrigin = TransformOrigin(0f, 0f)
+                    translationX = bounds.left
+                    translationY = bounds.top
+                    scaleX = (bounds.width / widthPx).coerceIn(0.05f, 1f)
+                    scaleY = (bounds.height / heightPx).coerceIn(0.05f, 1f)
+                    alpha = capsuleInlineMorphSurfaceOpacity(open)
                     shape = RoundedCornerShape((28f * (1f - open)).dp)
                     clip = open < 0.999f
                 } else {
@@ -1073,7 +1113,7 @@ private fun CapsulePlayerLyricsHost(
                             // use the SAME cover gradient, with no extra sampler,
                             // animated wallpaper or independently fading theme.
                             CapsuleInlineLyricsBackdrop(
-                                colors = playerArtworkColors,
+                                colors = transitioningPalette,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         } else {
@@ -1116,6 +1156,13 @@ private fun CapsulePlayerLyricsHost(
                                 // below and fades naturally as the aperture
                                 // reaches its resting coordinates.
                                 translationY = if (scrollToLyrics) 0f else -displacement
+                                // One spring also controls all fullscreen ink.
+                                // No second screen-wide popup or staged zones.
+                                if (scrollToLyrics) {
+                                    alpha = capsuleInlineMorphContentOpacity(
+                                        1f - sheetOffset.value,
+                                    )
+                                }
                             }
                             .drawWithContent {
                                 clipRect(top = safeTopPx, bottom = size.height - safeBottomPx) {

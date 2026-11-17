@@ -21,6 +21,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
@@ -70,12 +73,14 @@ internal fun CapsuleInlineLyricsCard(
     visible: Boolean,
     sliderPosition: Long?,
     onFullScreen: () -> Unit,
+    onBoundsChanged: (Rect) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Box(
         modifier = modifier
             .padding(horizontal = 16.dp, vertical = 16.dp)
-            .clip(RoundedCornerShape(28.dp)),
+            .clip(RoundedCornerShape(28.dp))
+            .onGloballyPositioned { onBoundsChanged(it.boundsInRoot()) },
     ) {
         CapsuleInlineLyricsBackdrop(
             colors = colors,

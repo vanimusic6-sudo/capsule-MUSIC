@@ -52,9 +52,12 @@ class LyricsUiRegressionTest {
             compact.contains("MiniPlayerSurface("))
         assertTrue("Fullscreen is a real button", compact.contains("FilledTonalButton(onClick = onFullScreen)"))
         assertTrue("The normal fullscreen lyrics tree stays intact", player.contains("LyricsScreen("))
-        assertTrue("Fullscreen grows in place only from the inline lyrics mode",
-            player.contains("if (scrollToLyrics) {\n                    // The mini lyrics card explicitly requested"))
-        assertTrue(player.contains("scaleX = 0.90f + 0.10f * open"))
+        assertTrue("Real card coordinates anchor the fullscreen morph",
+            player.contains("frozenCardBounds ?: fallback"))
+        assertTrue(player.contains("onBoundsChanged = { cardBoundsInRoot[0] = it }"))
+        assertTrue(player.contains("capsuleInlineLyricsMorphBounds("))
+        assertFalse("A centered popup is not a matched-bounds transition",
+            player.contains("scaleX = 0.90f + 0.10f * open"))
     }
 
     @Test

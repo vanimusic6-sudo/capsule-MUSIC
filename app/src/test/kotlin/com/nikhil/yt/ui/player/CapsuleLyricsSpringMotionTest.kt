@@ -119,4 +119,32 @@ class CapsuleLyricsSpringMotionTest {
             capsuleLyricsZoneOpacity(0.70f, LyricsInkZone.HEADER))
     }
 
+    @Test fun compactLyricsMorphStartsExactlyAtTheMeasuredCard() {
+        val card = androidx.compose.ui.geometry.Rect(18f, 335f, 342f, 810f)
+        assertEquals(card, capsuleInlineLyricsMorphBounds(card, 360f, 880f, 0f))
+        assertEquals(
+            androidx.compose.ui.geometry.Rect(0f, 0f, 360f, 880f),
+            capsuleInlineLyricsMorphBounds(card, 360f, 880f, 1f),
+        )
+        var previous = card
+        for (i in 1..100) {
+            val now = capsuleInlineLyricsMorphBounds(card, 360f, 880f, i / 100f)
+            assertTrue(now.left <= previous.left && now.top <= previous.top)
+            assertTrue(now.right >= previous.right && now.bottom >= previous.bottom)
+            previous = now
+        }
+    }
+
+    @Test fun compactLyricsMorphSharesOneReversibleSpringPosition() {
+        assertEquals(0f, capsuleInlineMorphSurfaceOpacity(0f), 0f)
+        assertEquals(1f, capsuleInlineMorphSurfaceOpacity(1f), 0f)
+        assertEquals(0f, capsuleInlineMorphContentOpacity(0f), 0f)
+        assertEquals(1f, capsuleInlineMorphContentOpacity(1f), 0f)
+        for (i in 1..100) {
+            val before = (i-1)/100f
+            val after = i/100f
+            assertTrue(capsuleInlineMorphSurfaceOpacity(after) >= capsuleInlineMorphSurfaceOpacity(before))
+            assertTrue(capsuleInlineMorphContentOpacity(after) >= capsuleInlineMorphContentOpacity(before))
+        }
+    }
 }
