@@ -417,10 +417,11 @@ fun BottomSheetPlayer(
             mediaMetadata = enrichedMetadata,
             enabled = needsArtworkPalette,
             refreshOnOpen = state.isExpandedOrExpanding,
-            // Keep the sampled colours and spatial field in one frame. Animating
-            // three colour channels while replacing the field immediately made
-            // complex album backgrounds visibly flicker on track changes.
-            animatePalette = false,
+            // Spatial SCENE_LIGHT has its own unified field interpolation.
+            // All procedural backdrops draw from colours only: soften the new
+            // song's neutral -> extracted palette rather than snapping it at
+            // decode completion. Both paths reset at every media-ID boundary.
+            animatePalette = playerBackground != PlayerBackgroundStyle.SCENE_LIGHT,
         )
 
     val gradientColors = artworkScene.colors
