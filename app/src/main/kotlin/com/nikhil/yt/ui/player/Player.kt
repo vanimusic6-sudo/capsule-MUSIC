@@ -901,6 +901,7 @@ private fun CapsulePlayerLyricsHost(
                         }
                     },
                     onShowLyrics = onShowLyrics,
+                    artworkClickEnabled = !scrollToLyrics,
                     onMenuClick = onShowMenu,
                     onExpandQueue = {
                         if (!showLyrics) {
@@ -934,6 +935,7 @@ private fun CapsulePlayerLyricsHost(
                 },
                 onCollapse = playerState::collapseSoft,
                 onArtworkClick = onShowLyrics,
+                artworkClickEnabled = !scrollToLyrics,
                 onArtistSelected = { artist ->
                     artist.id?.let { artistId ->
                         onHideLyrics()
