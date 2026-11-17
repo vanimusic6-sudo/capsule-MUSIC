@@ -39,8 +39,10 @@ class PlayerTransitionArchitectureTest {
         assertTrue(immersive.contains("matchedPaint = immersivePaintCache[paintKey]"))
         assertTrue(immersive.contains("entryScene?.takeIf { it.paintKey == paintKey }?.bitmap"))
         assertTrue(immersive.contains("?: withContext(Dispatchers.Default)"))
-        assertTrue(immersive.contains("matchedPaint?.let { bitmap ->"))
-        assertTrue(immersive.contains("if (frame != null) ImmersiveAudioScene("))
+        assertTrue(immersive.contains("val currentSceneReady = frame?.key == visualKey && matchedPaint != null"))
+        assertTrue(immersive.contains("ImmersiveAudioScene("))
+        assertTrue("An exact matched bitmap is displayed opaquely, not as a flashing scrim",
+            immersive.contains("sceneAlpha = { 1f }"))
         assertFalse("No second tinted photo overlay", immersive.contains("matchedPaint?.second?.let"))
         assertFalse("A raw thumbnail cannot flash during foreground restoration",
             immersive.contains("model = mediaMetadata.thumbnailUrl"))
@@ -48,8 +50,9 @@ class PlayerTransitionArchitectureTest {
             immersive.contains("alpha = capsuleImmersiveArtworkOpacity("))
         assertFalse("The palette miniature is not an outgoing fullscreen photo",
             immersive.contains("painter = frame.preview") || immersive.contains("bitmap = frame.preview"))
-        assertTrue(immersive.contains("painter = frame.painter"))
-        assertTrue(immersive.contains("painter = leaving.painter"))
+        assertTrue(immersive.contains("painter = preparedFrame.painter"))
+        assertFalse("A previous song must never be drawn below the current cover",
+            immersive.contains("painter = leaving.painter") || immersive.contains("val outgoingFrame"))
         assertTrue(immersive.contains("sharedProgress = sharedVideoProgress"))
         assertTrue(immersive.contains("capsuleImmersiveVideoBackplateAlpha(sharedVideoProgress.value)"))
         assertFalse(immersive.contains("pageTextureReadyFor"))
