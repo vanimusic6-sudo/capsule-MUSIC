@@ -616,14 +616,9 @@ internal fun CapsuleImmersiveContent(
     val navigableArtists = rememberNavigableArtists(artistCredits)
     // Photo + gradient share one prepared scene. Metadata settles on the same
     // short optical cadence, never animating the entire full-screen background.
-    // The controls follow the selected track, not the old gradient's lengthy dissolve.
+    // Metadata and controls follow Media3's selected track without an independent
+    // blink/translation. The single artwork settle handles the optical finish.
     val trackInkArrival = remember { Animatable(1f) }
-    LaunchedEffect(mediaMetadata.id, visible) {
-        if (visible) {
-            trackInkArrival.snapTo(0.94f)
-            trackInkArrival.animateTo(1f, tween(durationMillis = 85, easing = ImmersiveTrackEasing))
-        } else trackInkArrival.snapTo(1f)
-    }
     // Match Light: close the chooser rather than retarget it on song change.
     var showArtistPicker by remember(mediaMetadata.id) { mutableStateOf(false) }
 
@@ -782,9 +777,6 @@ internal fun CapsuleImmersiveContent(
         // rendering while B or C is selected, regardless of pending async work.
         var shownGradient by remember(mediaMetadata.id) { mutableStateOf(restoredFrame) }
         // Exactly one current-song photo+gradient, never a retained outgoing song.
-        val gradientAlpha = remember(mediaMetadata.id) {
-            Animatable(if (restoredFrame == null) 0f else 1f)
-        }
         // The previous A -> B -> C pipeline waited for an outgoing animation,
         // faded old artwork to a neutral plate, then faded the new pair back in.
         // That was the reason a stale first cover could linger and the whole
@@ -804,9 +796,8 @@ internal fun CapsuleImmersiveContent(
             shownGradient = immersiveGradientFrame(
                 visualKey, mediaMetadata.id, artworkTone, readyPainter,
             )
-            // The only fade remaining is 85 ms, within this very same song:
-            // there is no cross-song outgoing layer or queue of animations.
-            gradientAlpha.snapTo(0f)
+            // Ready decoded artwork + its corresponding backdrop appear as one
+            // opaque scene. There is no separate whole-page alpha animation.
         }
         // Every cover uses the same photographic composition.
         val frame = shownGradient
@@ -863,16 +854,8 @@ internal fun CapsuleImmersiveContent(
                 sceneMemory.prepared = ImmersivePreparedScene(readyFrame, paintKey, it)
             }
         }
-        LaunchedEffect(frame?.key, matchedPaint, isVideo) {
-            if (frame == null || matchedPaint == null ||
-                frame.key != visualKey
-            ) return@LaunchedEffect
-            // Avoid a hard cut, but do not animate the background for hundreds
-            // of milliseconds. Unrelated songs never overlap.
-            gradientAlpha.animateTo(
-                1f, tween(durationMillis = IMMERSIVE_TRACK_FADE_MS, easing = ImmersiveTrackEasing),
-            )
-        }
+        // A prepared bitmap and its album photo are committed in one draw.
+        // Animated opacity used to repaint the entire page twice on each song.
         // The VIDEO window and its entire backdrop use the same spring.
         // Independent 220/280/290ms fades made the backing vanish while the
         // photo was still visible (or vice versa) on reverse transitions.
@@ -956,7 +939,7 @@ internal fun CapsuleImmersiveContent(
             immersivePageBaseColor(isVideo, artworkTone.ready, artworkTone.edge),
         )) {
             if (audioSceneVisible) {
-                if (!currentSceneReady || gradientAlpha.value < 0.999f) {
+                if (!currentSceneReady) {
                     CapsuleImmersiveCurrentTrackPreview(
                         mediaId = mediaMetadata.id,
                         imageUrl = mediaMetadata.thumbnailUrl,
@@ -971,7 +954,7 @@ internal fun CapsuleImmersiveContent(
                     ImmersiveAudioScene(
                         background = preparedPaint,
                         artworkHeight = artworkHeight,
-                        sceneAlpha = { gradientAlpha.value },
+                        sceneAlpha = { 1f },
                     ) {
                         Image(
                             painter = preparedFrame.painter,
