@@ -229,6 +229,7 @@ internal fun capsuleImmersiveVideoBackplateAlpha(progress: Float): Float =
 /** One cap for artwork and backdrop when a selected track has changed. */
 internal const val IMMERSIVE_STALE_SCENE_FADE_MS = 85
 internal const val IMMERSIVE_TRACK_FADE_MS = 85
+internal const val IMMERSIVE_CURRENT_SCENE_REVEAL_MS = 210
 internal val ImmersiveTrackEasing = CubicBezierEasing(0.22f, 0.08f, 0.50f, 1f)
 internal fun immersiveSceneOpacity(
     displayedKey: String?,
@@ -935,11 +936,23 @@ internal fun CapsuleImmersiveContent(
         // final composed photo+gradient for at most 85 ms, preventing a sudden
         // blank/grey base while async palette work completes.
         val currentSceneReady = frame?.key == visualKey && matchedPaint != null
+        // Only the CURRENT song is ever shown. Its thumbnail remains beneath
+        // the ready full photo + derived gradient until their shared 210 ms
+        // reveal completes. No previous-track hold or two-stage background fade.
+        val sceneRevealAlpha = remember(mediaMetadata.id) {
+            Animatable(if (entryScene?.paintKey == paintKey) 1f else 0f)
+        }
+        LaunchedEffect(mediaMetadata.id, visualKey, currentSceneReady) {
+            if (!currentSceneReady) sceneRevealAlpha.snapTo(0f)
+            else sceneRevealAlpha.animateTo(
+                1f, tween(durationMillis = IMMERSIVE_CURRENT_SCENE_REVEAL_MS),
+            )
+        }
         Box(Modifier.fillMaxSize().background(
             immersivePageBaseColor(isVideo, artworkTone.ready, artworkTone.edge),
         )) {
             if (audioSceneVisible) {
-                if (!currentSceneReady) {
+                if (!currentSceneReady || sceneRevealAlpha.value < 0.999f) {
                     CapsuleImmersiveCurrentTrackPreview(
                         mediaId = mediaMetadata.id,
                         imageUrl = mediaMetadata.thumbnailUrl,
@@ -954,7 +967,7 @@ internal fun CapsuleImmersiveContent(
                     ImmersiveAudioScene(
                         background = preparedPaint,
                         artworkHeight = artworkHeight,
-                        sceneAlpha = { 1f },
+                        sceneAlpha = { sceneRevealAlpha.value },
                     ) {
                         Image(
                             painter = preparedFrame.painter,
@@ -1538,6 +1551,12 @@ private fun CapsuleImmersiveCurrentTrackPreview(
     artworkHeight: Dp,
 ) {
     val context = LocalContext.current
+    var thumbnailReady by remember(mediaId, imageUrl) { mutableStateOf(false) }
+    val thumbnailAlpha by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (thumbnailReady) 1f else 0f,
+        animationSpec = tween(durationMillis = 175),
+        label = "capsuleImmersiveCurrentPreview",
+    )
     val request = remember(context, mediaId, imageUrl) {
         ImageRequest.Builder(context)
             .data(imageUrl?.takeIf(String::isNotBlank))
@@ -1575,8 +1594,10 @@ private fun CapsuleImmersiveCurrentTrackPreview(
                     AsyncImage(
                         model = request,
                         contentDescription = null,
+                        onSuccess = { thumbnailReady = true },
+                        onError = { thumbnailReady = false },
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().graphicsLayer { alpha = thumbnailAlpha },
                     )
                 }
             }
