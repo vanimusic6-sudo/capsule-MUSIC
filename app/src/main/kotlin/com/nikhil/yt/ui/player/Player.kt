@@ -984,7 +984,6 @@ private fun CapsulePlayerLyricsHost(
                     visible = onScreen && !showLyrics && playerState.isExpandedOrExpanding &&
                         lyricsCardReady,
                     sliderPosition = sliderPosition,
-                    onLineSeek = { playerConnection.service.seekToCapsuleTimeline(it) },
                     onFullScreen = onShowLyrics,
                     modifier = Modifier.fillMaxWidth().height((viewportHeight - 60.dp).coerceAtLeast(360.dp)),
                 )
