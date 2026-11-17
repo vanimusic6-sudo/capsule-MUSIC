@@ -110,28 +110,29 @@ internal fun CapsuleFavoriteIcon(
 
         path.reset()
         path.fillType = PathFillType.EvenOdd
-        // A single clean Capsule contour: rounded shoulders, balanced lower point,
-        // calm 1.8dp outline. Keep the existing interaction-only fill animation.
-        path.moveTo(12f, 20.9f - morph * 0.8f)
-        path.cubicTo(10.55f, 19.53f, 3.05f, 14.5f, 3.05f, 8.84f)
-        path.cubicTo(3.05f, 5.54f, 5.40f, 3.15f, 8.46f, 3.15f)
-        path.cubicTo(10.16f, 3.15f, 11.32f, 3.91f, 12f, 4.91f)
-        path.cubicTo(12.68f, 3.91f, 13.84f, 3.15f, 15.54f, 3.15f)
-        path.cubicTo(18.60f, 3.15f, 20.95f, 5.54f, 20.95f, 8.84f)
-        path.cubicTo(20.95f, 14.5f, 13.45f, 19.53f, 12f, 20.9f - morph * 0.8f)
+        // Original Capsule heart outline, restored from before the recent visual redraw.
+        path.moveTo(12f, 21.35f - morph * 1.1f)
+        path.lineTo(10.55f, 20.03f)
+        path.cubicTo(5.4f, 15.36f, 2f, 12.28f, 2f, 8.5f)
+        path.cubicTo(2f, 5.42f, 4.42f, 3f, 7.5f, 3f)
+        path.cubicTo(9.24f, 3f, 10.91f, 3.81f, 12f, 5.09f)
+        path.cubicTo(13.09f, 3.81f, 14.76f, 3f, 16.5f, 3f)
+        path.cubicTo(19.58f, 3f, 22f, 5.42f, 22f, 8.5f)
+        path.cubicTo(22f, 12.28f, 18.6f, 15.36f, 13.45f, 20.04f)
         path.close()
 
         if (opening > 0f) {
             fun x(value: Float) = 12f + (value - 12f) * opening
-            fun y(value: Float) = 11.75f + (value - 11.75f) * opening
+            fun y(value: Float) = 11.8f + (value - 11.8f) * opening
 
-            path.moveTo(x(12f), y(18.48f))
-            path.cubicTo(x(10.55f), y(17.1f), x(4.78f), y(12.70f), x(4.78f), y(8.84f))
-            path.cubicTo(x(4.78f), y(6.55f), x(6.24f), y(4.88f), x(8.46f), y(4.88f))
-            path.cubicTo(x(10.03f), y(4.88f), x(11.15f), y(5.76f), x(12f), y(7.30f))
-            path.cubicTo(x(12.85f), y(5.76f), x(13.97f), y(4.88f), x(15.54f), y(4.88f))
-            path.cubicTo(x(17.76f), y(4.88f), x(19.22f), y(6.55f), x(19.22f), y(8.84f))
-            path.cubicTo(x(19.22f), y(12.70f), x(13.45f), y(17.1f), x(12f), y(18.48f))
+            path.moveTo(x(12f), y(18.65f))
+            path.cubicTo(x(7.14f), y(14.24f), x(4f), y(11.39f), x(4f), y(8.5f))
+            path.cubicTo(x(4f), y(6.5f), x(5.5f), y(5f), x(7.5f), y(5f))
+            path.cubicTo(x(9.04f), y(5f), x(10.54f), y(5.99f), x(11.07f), y(7.36f))
+            path.lineTo(x(12.94f), y(7.36f))
+            path.cubicTo(x(13.46f), y(5.99f), x(14.96f), y(5f), x(16.5f), y(5f))
+            path.cubicTo(x(18.5f), y(5f), x(20f), y(6.5f), x(20f), y(8.5f))
+            path.cubicTo(x(20f), y(11.39f), x(16.86f), y(14.24f), x(12f), y(18.65f))
             path.close()
         }
 
