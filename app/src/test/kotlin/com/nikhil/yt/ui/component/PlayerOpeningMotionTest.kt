@@ -425,11 +425,17 @@ class PlayerOpeningMotionTest {
         assertEquals(dock,top(),1f)
     }
 
-    @Test fun aTapMovesTheWindowWithinTwoDisplayFrames() {
+    @Test fun firstTapPreparesThePlayerThenMovesWithinThreeDisplayFrames() {
         mount()
         compose.onNodeWithTag("mini",useUnmergedTree=true).performTouchInput {click(center)}
-        advance(32)
-        compose.runOnIdle {assertTrue(state.isExpandedOrExpanding);assertTrue(state.visualProgress>0.005f)}
+        // One frame is reserved for mounting the actual artwork/backdrop before
+        // the spring moves. This avoids measuring the large player on its first motion frame.
+        advance(48)
+        compose.runOnIdle {
+            assertTrue(state.isExpandedOrExpanding)
+            assertEquals(1, contentMounts)
+            assertTrue(state.visualProgress > 0.005f)
+        }
     }
 
     @Test fun repeatedRequestsDoNotRestartTheSpringAndItSettlesWithoutALongTail() {
@@ -445,9 +451,9 @@ class PlayerOpeningMotionTest {
     @Test fun openingAndClosingUseTheSameMovingFrameWithoutAVisualTeleport() {
         mount()
         compose.runOnIdle { state.expandSoft() }
-        advance(32)
+        advance(48)
         compose.runOnIdle {
-            assertTrue("start moving on the first two display frames", state.visualProgress > 0.005f)
+            assertTrue("prepare the first frame before the motion starts", state.visualProgress > 0.005f)
             assertTrue("do not throw a fully opaque frame over Mini", playerPresentationOpacity(state.visualProgress) < 0.60f)
         }
         advance(96)
