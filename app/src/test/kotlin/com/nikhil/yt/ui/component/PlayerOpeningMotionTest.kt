@@ -2,6 +2,8 @@ package com.nikhil.yt.ui.component
 
 import android.app.Application
 import com.nikhil.yt.ui.player.CapsuleVideoArtworkTransition
+import com.nikhil.yt.ui.player.capsuleInlineLyricsStops
+import com.nikhil.yt.ui.player.CAPSULE_COVER_HANDOFF_MS
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color as AndroidColor
@@ -230,6 +232,21 @@ class PlayerOpeningMotionTest {
             halfway.top > 295f)
         assertTrue("the actual Mini is present during the close handoff",
             playerMiniDrawAlpha(0.5f) > 0f)
+    }
+
+    @Test fun embeddedLyricsPaletteIsReadableEvenForWhiteOrEmptyCovers() {
+        val empty = capsuleInlineLyricsStops(emptyList())
+        val bright = capsuleInlineLyricsStops(listOf(Color.White, Color.Yellow))
+        assertEquals(3, empty.size)
+        assertEquals(3, bright.size)
+        assertEquals("the Capsule ink floor never changes per track", empty.last(), bright.last())
+        for (stop in bright) {
+            assertTrue("the lyrics card must never flash a white background", stop.red < 0.65f)
+            assertTrue("the lyrics card must never flash a white background", stop.green < 0.65f)
+            assertTrue("the lyrics card must never flash a white background", stop.blue < 0.65f)
+        }
+        assertTrue("cover crossfade must be finite, not a perpetual animated layer",
+            CAPSULE_COVER_HANDOFF_MS in 260..500)
     }
 
     @Test fun presentationMorphsFromActualMiniBoundsToTheExactFullscreenViewport() {
