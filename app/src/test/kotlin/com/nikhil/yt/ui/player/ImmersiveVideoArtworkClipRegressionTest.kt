@@ -22,8 +22,8 @@ class ImmersiveVideoArtworkClipRegressionTest {
         assertTrue(scene.contains("BlendMode.DstIn"))
         assertTrue("Exactly one current-track audio scene is allowed",
             content.split("ImmersiveAudioScene(").size - 1 == 2)
-        assertTrue(content.contains("sceneAlpha = { 1f }"))
-        assertTrue(content.contains("if (!currentSceneReady)"))
+        assertTrue(content.contains("sceneAlpha = { sceneRevealAlpha.value }"))
+        assertTrue(content.contains("if (!currentSceneReady || sceneRevealAlpha.value < 0.999f)"))
         assertTrue("There must not be a retained outgoing image/gradient layer",
             !content.contains("val outgoingFrame"))
         assertTrue("The overlap must reveal the cached backdrop continuously",
