@@ -79,6 +79,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
@@ -804,7 +805,11 @@ fun OverlayPlaylistListItem(
             onDismissRequest = { showPreview = false },
             confirmButton = { TextButton(onClick = { showPreview = false }) { Text(stringResource(R.string.close_dialog)) } },
             text = {
-                Box(modifier = Modifier.fillMaxWidth().height(360.dp)) {
+                // Dialog artwork must fit landscape phones and freeform tablet windows.
+                // A fixed 360dp image plus buttons once exceeded short viewports.
+                val previewHeight = (LocalConfiguration.current.screenHeightDp.dp * 0.48f)
+                    .coerceIn(140.dp, 360.dp)
+                Box(modifier = Modifier.fillMaxWidth().height(previewHeight)) {
                     CapsuleFadeAsyncImage(model = backgroundUrl, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 }
             }
