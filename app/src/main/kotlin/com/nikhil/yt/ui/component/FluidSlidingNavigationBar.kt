@@ -152,7 +152,9 @@ internal fun StandardNavigationBar(
         if (items.isEmpty()) return@BoxWithConstraints
         val compact = maxHeight < 72.dp
         val tabWidth = maxWidth / items.size
-        val pillWidth = 54.dp
+        // A fixed 54dp pill crosses adjacent tabs in split-screen, landscape,
+        // and large-font layouts. Keep at least 6dp breathing room in each slot.
+        val pillWidth = (tabWidth - 6.dp).coerceAtLeast(1.dp).coerceAtMost(54.dp)
         val indicatorOffset = animateDpAsState(
             targetValue = tabWidth * selectedIndex + (tabWidth - pillWidth) / 2,
             animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow),
