@@ -130,7 +130,8 @@ class PlayerArtworkReliabilityTest {
             handoff.contains("key(mediaId)") && handoff.contains("if (decodedPainter == null"))
         assertTrue("The previous song must not be retained while the next one loads",
             !handoff.contains("outgoing"))
-        assertTrue(handoff.contains("CAPSULE_COVER_HANDOFF_MS = 95"))
+        assertTrue(handoff.contains("CAPSULE_COVER_HANDOFF_MS = 205") &&
+            handoff.contains("CAPSULE_PREVIEW_ARRIVAL_MS = 180"))
         assertTrue(full.contains("onError = {"))
         assertTrue(full.contains("artworkFailed = true"))
         assertTrue(full.contains("if (artworkFailed && retainedArtworkPainter == null)"))
