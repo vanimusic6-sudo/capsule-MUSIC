@@ -956,6 +956,9 @@ private fun CapsulePlayerLyricsHost(
             // This reuses the SAME player, with its normal measurements and touch targets.
             // Only the card below the viewport is mounted when the user approaches it.
             val viewportHeightPx = constraints.maxHeight.toFloat()
+            val lyricsCardReady by remember(scrollState, viewportHeightPx) {
+                derivedStateOf { scrollState.value > viewportHeightPx * 0.12f }
+            }
             Column(
                 modifier = Modifier.fillMaxSize().verticalScroll(
                     scrollState,
@@ -966,7 +969,7 @@ private fun CapsulePlayerLyricsHost(
                 CapsuleInlineLyricsCard(
                     colors = playerArtworkColors,
                     visible = onScreen && !showLyrics && playerState.isExpandedOrExpanding &&
-                        scrollState.value > viewportHeightPx * 0.12f,
+                        lyricsCardReady,
                     sliderPosition = sliderPosition,
                     onLineSeek = { playerConnection.service.seekToCapsuleTimeline(it) },
                     onFullScreen = onShowLyrics,
