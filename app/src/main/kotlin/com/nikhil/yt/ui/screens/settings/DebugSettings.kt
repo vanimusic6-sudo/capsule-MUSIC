@@ -684,32 +684,60 @@ private fun LogViewerPanel() {
                 }
             }
 
-            SingleChoiceSegmentedButtonRow(
-                modifier = Modifier.fillMaxWidth()
+            // Three long labels cannot coexist at 320dp / large font scale.
+            // On narrow or split-screen windows wrap real text chips instead of
+            // clipping a fixed three-column segmented control.
+            androidx.compose.foundation.layout.BoxWithConstraints(
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                SegmentedButton(
-                    selected = filterMode == 0,
-                    onClick = { filterMode = 0 },
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
-                    icon = { }
+                if (maxWidth < 385.dp) {
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        for (mode in 0..2) {
+                            androidx.compose.material3.FilterChip(
+                                selected = filterMode == mode,
+                                onClick = { filterMode = mode },
+                                label = {
+                                    Text(stringResource(when (mode) {
+                                        0 -> R.string.filter_discord_only
+                                        1 -> R.string.filter_youtube_only
+                                        else -> R.string.filter_all_logs
+                                    }))
+                                },
+                            )
+                        }
+                    }
+                } else {
+                SingleChoiceSegmentedButtonRow(
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(stringResource(R.string.filter_discord_only))
+                    SegmentedButton(
+                        selected = filterMode == 0,
+                        onClick = { filterMode = 0 },
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
+                        icon = { }
+                    ) {
+                        Text(stringResource(R.string.filter_discord_only))
+                    }
+                    SegmentedButton(
+                        selected = filterMode == 1,
+                        onClick = { filterMode = 1 },
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
+                        icon = { }
+                    ) {
+                        Text(stringResource(R.string.filter_youtube_only))
+                    }
+                    SegmentedButton(
+                        selected = filterMode == 2,
+                        onClick = { filterMode = 2 },
+                        shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
+                        icon = { }
+                    ) {
+                        Text(stringResource(R.string.filter_all_logs))
+                    }
                 }
-                SegmentedButton(
-                    selected = filterMode == 1,
-                    onClick = { filterMode = 1 },
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
-                    icon = { }
-                ) {
-                    Text(stringResource(R.string.filter_youtube_only))
-                }
-                SegmentedButton(
-                    selected = filterMode == 2,
-                    onClick = { filterMode = 2 },
-                    shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
-                    icon = { }
-                ) {
-                    Text(stringResource(R.string.filter_all_logs))
                 }
             }
 
