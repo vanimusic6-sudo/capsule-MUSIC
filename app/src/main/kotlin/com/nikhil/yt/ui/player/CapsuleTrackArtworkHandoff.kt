@@ -2,6 +2,7 @@
 package com.nikhil.yt.ui.player
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
@@ -23,14 +24,16 @@ import coil3.request.ImageRequest
 import coil3.request.crossfade
 
 /** The only remaining optical softening: the preview -> full-resolution bitmap of ONE song. */
-internal const val CAPSULE_COVER_HANDOFF_MS = 95
+internal const val CAPSULE_COVER_HANDOFF_MS = 205
+internal const val CAPSULE_PREVIEW_ARRIVAL_MS = 180
 
 /**
  * A -> B -> C must show C, never retain A while C's full-size bitmap downloads.
  *
  * The current song's thumbnail is a temporary same-song visual fallback. Coil usually has
  * it in memory from the mini-player; no extra preview coroutine or frame timer is needed.
- * The last 95 ms only soften the SAME song's preview -> decoded full-size replacement.
+ * A 180 ms arrival softens the *current* thumbnail, followed by a 205 ms
+ * same-track HQ replacement. Old-song painters never participate in either fade.
  */
 @Composable
 internal fun CapsuleTrackArtworkHandoff(
@@ -47,17 +50,22 @@ internal fun CapsuleTrackArtworkHandoff(
         val previewRequest = remember(context, thumbnailUrl) {
             ImageRequest.Builder(context)
                 .data(thumbnailUrl?.takeIf(String::isNotBlank))
-                .size(640, 640)
+                .size(360, 360)
                 .crossfade(false)
                 .build()
         }
-        val coverAlpha = remember { Animatable(if (decodedPainter == null) 0f else 1f) }
+        var previewReady by remember { mutableStateOf(false) }
+        val previewAlpha by animateFloatAsState(
+            targetValue = if (previewReady) 1f else 0f,
+            animationSpec = tween(CAPSULE_PREVIEW_ARRIVAL_MS),
+            label = "capsuleCurrentCoverPreview",
+        )
+        // Even if Coil returns a cached painter immediately after a track skip,
+        // one short optical settle makes the cover switch less like a hard cut.
+        val coverAlpha = remember { Animatable(0f) }
         LaunchedEffect(decodedPainter) {
-            if (decodedPainter == null) {
-                coverAlpha.snapTo(0f)
-            } else {
-                coverAlpha.animateTo(1f, tween(CAPSULE_COVER_HANDOFF_MS))
-            }
+            if (decodedPainter == null) coverAlpha.snapTo(0f)
+            else coverAlpha.animateTo(1f, tween(CAPSULE_COVER_HANDOFF_MS))
         }
         Box(modifier) {
             // A preview is only ever from the CURRENT media ID, not a former track.
@@ -66,8 +74,10 @@ internal fun CapsuleTrackArtworkHandoff(
                     AsyncImage(
                         model = previewRequest,
                         contentDescription = null,
+                        onSuccess = { previewReady = true },
+                        onError = { previewReady = false },
                         contentScale = contentScale,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().graphicsLayer { alpha = previewAlpha },
                     )
                 }
             }
