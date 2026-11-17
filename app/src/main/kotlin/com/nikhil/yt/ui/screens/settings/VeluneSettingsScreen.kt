@@ -120,6 +120,23 @@ fun VeluneSettingsScreen(
     }
     val playerAwareInsets = LocalPlayerAwareWindowInsets.current
     val playerAwareBottomPadding = playerAwareInsets.asPaddingValues().calculateBottomPadding()
+    // App-bar actions cannot reserve their required width on narrow/multi-window
+    // devices. Keep the toggle in a dedicated row when the title and back button
+    // would otherwise compete for pixels. Font scaling is part of the constraint.
+    val settingsWidthDp = LocalConfiguration.current.screenWidthDp
+    val settingsFontScale = LocalDensity.current.fontScale
+    val separateModeRow = settingsWidthDp < if (settingsFontScale > 1.15f) 550 else 480
+    val requestSettingsMode: (Boolean) -> Unit = { requestedAdvanced ->
+        if (shouldShowAdvancedModeWarning(
+                wasAdvanced = advancedSettings,
+                requestedAdvanced = requestedAdvanced,
+                warningSeen = advancedWarningSeen,
+            )) {
+            showAdvancedWarning = true
+        }
+        onAdvancedSettingsChange(requestedAdvanced)
+    }
+
 
 
     Scaffold(
@@ -130,52 +147,56 @@ fun VeluneSettingsScreen(
             playerAwareInsets
                 .only(WindowInsetsSides.Horizontal),
         topBar = {
-            TopAppBar(
-        modifier = Modifier.capsuleTopBarHairline(StandardChrome.muted),
-                title = {
-                    Text(
-                        text = stringResource(R.string.capsule_settings_title),
-                        fontSize = 20.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(
-                            painter = painterResource(R.drawable.arrow_back),
-                            contentDescription = stringResource(R.string.capsule_settings_back),
-                            modifier = Modifier.size(24.dp)
+            Column {
+                TopAppBar(
+                    modifier = Modifier.capsuleTopBarHairline(StandardChrome.muted),
+                    title = {
+                        Text(
+                            text = stringResource(R.string.capsule_settings_title),
+                            fontSize = 20.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(
+                                painter = painterResource(R.drawable.arrow_back),
+                                contentDescription = stringResource(R.string.capsule_settings_back),
+                                modifier = Modifier.size(24.dp),
+                            )
+                        }
+                    },
+                    actions = {
+                        if (!separateModeRow) {
+                            SettingsModeSegmentedToggle(
+                                advancedSettings = advancedSettings,
+                                onModeChange = requestSettingsMode,
+                                compactLabels = false,
+                                modifier = Modifier.padding(end = 10.dp),
+                                width = 188.dp,
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                    ),
+                )
+                if (separateModeRow) {
+                    BoxWithConstraints(
+                        modifier = Modifier.fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 3.dp),
+                        contentAlignment = Alignment.CenterEnd,
+                    ) {
+                        SettingsModeSegmentedToggle(
+                            advancedSettings = advancedSettings,
+                            onModeChange = requestSettingsMode,
+                            compactLabels = maxWidth < 280.dp,
+                            width = maxWidth.coerceAtMost(320.dp),
                         )
                     }
-                },
-                actions = {
-                    // Give the longer label its natural space without shifting
-                    // the Settings title. On narrow screens use a short label.
-                    val compactHeader = LocalConfiguration.current.screenWidthDp < 350
-                    SettingsModeSegmentedToggle(
-                        advancedSettings = advancedSettings,
-                        onModeChange = { requestedAdvanced ->
-                            if (
-                                shouldShowAdvancedModeWarning(
-                                    wasAdvanced = advancedSettings,
-                                    requestedAdvanced = requestedAdvanced,
-                                    warningSeen = advancedWarningSeen,
-                                )
-                            ) {
-                                showAdvancedWarning = true
-                            }
-                            onAdvancedSettingsChange(requestedAdvanced)
-                        },
-                        compactLabels = compactHeader,
-                        modifier = Modifier.padding(end = if (compactHeader) 8.dp else 10.dp),
-                        width = if (compactHeader) 154.dp else 174.dp,
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
-            )
+                }
+            }
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
