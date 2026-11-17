@@ -783,8 +783,15 @@ private fun CapsulePlayerLyricsHost(
     // arbitrary millisecond delay and no de-synchronised close/reopen fade.
     // The outgoing player stays fully present while Lyrics travels across it. Once the page has
     // covered the last pixel, its lyric row and decorative orbit can sleep until closing starts.
-    val playerMotionActive by remember(showLyrics) {
-        derivedStateOf { (!showLyrics || sheetOffset.value > 0.001f) && !queueState.isExpanded }
+    val playerMotionActive by remember(showLyrics, scrollToLyrics, pagerState) {
+        derivedStateOf {
+            (!showLyrics || sheetOffset.value > 0.001f) &&
+                !queueState.isExpanded &&
+                // At rest on the second page, release heavy player frame clocks.
+                // Re-enable them as soon as the user begins swiping home.
+                (!scrollToLyrics || pagerState.settledPage == 0 ||
+                    pagerState.isScrollInProgress)
+        }
     }
     LaunchedEffect(playerMotionActive) { onPlayerExposureChanged(playerMotionActive) }
     var lyricsLayerMounted by remember { mutableStateOf(showLyrics) }
@@ -1085,15 +1092,28 @@ private fun CapsulePlayerLyricsHost(
                             translationY = if (scrollToLyrics) 0f else -displacement
                         },
                     ) {
-                        CapsuleLyricsBackdropLayer(
-                            mediaMetadata = mediaMetadata,
-                            immersiveArtworkTone = immersiveArtworkTone,
-                            playerArtworkColors = playerArtworkColors,
-                            backdropAnimationTime = backdropAnimationTime,
-                            isVisible = showLyrics && !queueState.isExpanded,
-                            instantBackdrop = true,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                        if (scrollToLyrics) {
+                            // The embedded page and fullscreen lyrics share
+                            // the exact selected MINI skin, not two mismatched
+                            // palettes that flash during the expansion.
+                            CapsuleCompactSurfaceBackground(
+                                style = miniBackground,
+                                pureBlack = pureBlack,
+                                colors = playerArtworkColors,
+                                modifier = Modifier.fillMaxSize(),
+                                animated = false,
+                            )
+                        } else {
+                            CapsuleLyricsBackdropLayer(
+                                mediaMetadata = mediaMetadata,
+                                immersiveArtworkTone = immersiveArtworkTone,
+                                playerArtworkColors = playerArtworkColors,
+                                backdropAnimationTime = backdropAnimationTime,
+                                isVisible = showLyrics && !queueState.isExpanded,
+                                instantBackdrop = true,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     }
 
                     // No extra translucent edge scrim: on bright artwork,
