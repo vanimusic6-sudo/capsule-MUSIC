@@ -955,6 +955,7 @@ private fun CapsulePlayerLyricsHost(
             // Like a natural scrollable Now Playing document, not a swipe-to-open modal.
             // This reuses the SAME player, with its normal measurements and touch targets.
             // Only the card below the viewport is mounted when the user approaches it.
+            val viewportHeight = maxHeight
             val viewportHeightPx = constraints.maxHeight.toFloat()
             val lyricsCardReady by remember(scrollState, viewportHeightPx) {
                 derivedStateOf { scrollState.value > viewportHeightPx * 0.12f }
@@ -965,7 +966,7 @@ private fun CapsulePlayerLyricsHost(
                     enabled = playerState.isExpanded && !showLyrics && !queueState.isExpanded,
                 ),
             ) {
-                Box(Modifier.fillMaxWidth().height(maxHeight)) { renderPlayer() }
+                Box(Modifier.fillMaxWidth().height(viewportHeight)) { renderPlayer() }
                 CapsuleInlineLyricsCard(
                     colors = playerArtworkColors,
                     visible = onScreen && !showLyrics && playerState.isExpandedOrExpanding &&
@@ -973,7 +974,7 @@ private fun CapsulePlayerLyricsHost(
                     sliderPosition = sliderPosition,
                     onLineSeek = { playerConnection.service.seekToCapsuleTimeline(it) },
                     onFullScreen = onShowLyrics,
-                    modifier = Modifier.fillMaxWidth().height((maxHeight - 60.dp).coerceAtLeast(360.dp)),
+                    modifier = Modifier.fillMaxWidth().height((viewportHeight - 60.dp).coerceAtLeast(360.dp)),
                 )
                 Spacer(Modifier.height(16.dp))
             }
