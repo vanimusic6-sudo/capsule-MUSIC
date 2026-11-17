@@ -7,6 +7,15 @@ import org.junit.Test
 
 /** Pure, deterministic regression gates for 12931.jpg / 12933.jpg / 12935.jpg. */
 class CapsuleMetadataPolishTest {
+    @Test fun titleCroppingIsDisabledDuringEveryPhaseOfManualScrolling() {
+        assertTrue(capsuleTitleShouldMask(isScrolling = false, offsetPx = 0))
+        assertFalse(capsuleTitleShouldMask(isScrolling = true, offsetPx = 0))
+        assertFalse(capsuleTitleShouldMask(isScrolling = true, offsetPx = 20))
+        assertFalse(capsuleTitleShouldMask(isScrolling = false, offsetPx = 20))
+        // The old complete-letter mask returns only after auto-return reaches origin.
+        assertTrue(capsuleTitleShouldMask(isScrolling = false, offsetPx = 0))
+    }
+
     @Test fun titleNeverBisectsCyrillicEmojiOrCombiningAccents() {
         val title = "Кооператив «Лебедин» 👩‍🎤 e\u0301"
         val bounds = capsuleGraphemeBoundaries(title)

@@ -29,9 +29,9 @@ import com.nikhil.yt.ui.motion.CapsuleMotion
 
 // One critically damped anchor drives frame, artwork and source Mini. A new target interrupts the
 // SAME spring with its existing velocity; no independent mini/page clocks or decorative rebound.
-// The anchor travels hundreds of pixels now, so stop within 3 px rather than jumping the last 8.
-internal val PlayerOpenAnimation = spring<Float>(dampingRatio = 1f, stiffness = 270f, visibilityThreshold = 3f)
-internal val PlayerCloseAnimation = spring<Float>(dampingRatio = 1f, stiffness = 290f, visibilityThreshold = 3f)
+// The anchor travels hundreds of pixels: settle inside 1.25 px, with no perceptible late snap.
+internal val PlayerOpenAnimation = spring<Float>(dampingRatio = 1f, stiffness = 255f, visibilityThreshold = 1.25f)
+internal val PlayerCloseAnimation = spring<Float>(dampingRatio = 1f, stiffness = 280f, visibilityThreshold = 1.25f)
 
 /** Action ownership is separate from Scaffold's subcomposition order. No clock or retained UI. */
 class PlayerBackAction {
@@ -79,18 +79,20 @@ internal fun playerPageAcceptsInput(progress: Float): Boolean = boundedProgress(
 
 // Leave the real mini in view while the expanded frame is still near its source. The mini
 // contributes the actual artwork and material at the first/last frames; it never teleports.
-internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0.13f, 0.60f)
+internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0.14f, 0.63f)
 internal fun playerMiniLift(progress: Float, density: Float): Float =
     -8f * density * window(progress, 0f, 0.40f)
 internal fun playerMiniApproach(progress: Float): Float =
     1f + 0.012f * window(progress, 0f, 0.45f)
 
+// Let the real page content become readable slightly earlier as the Mini recedes.
+// The contour still supplies the large size change; the small scale settle eases at both ends.
 // Keep the content close to its natural size; the CONTOUR supplies the large size change.
 // A 24% page scale made the artwork collapse into a detached, left-anchored vertical strip
 // on device. The real mini card owns the first/last frames, not a tiny copy of the full UI.
-internal fun playerPresentationOpacity(progress: Float): Float = window(progress, 0.04f, 0.33f)
-internal fun playerContentOpacity(progress: Float): Float = window(progress, 0.24f, 0.72f)
-internal fun playerPresentationScale(progress: Float): Float = 0.95f + 0.05f * boundedProgress(progress)
+internal fun playerPresentationOpacity(progress: Float): Float = window(progress, 0.035f, 0.37f)
+internal fun playerContentOpacity(progress: Float): Float = window(progress, 0.14f, 0.63f)
+internal fun playerPresentationScale(progress: Float): Float = 0.95f + 0.05f * CapsuleMotion.smooth(boundedProgress(progress))
 
 // The near-full-size page follows the ascending top edge of the morphing frame. The small
 // underlap keeps artwork IN the revealed card, not cropped to a one-sided strip. At rest both

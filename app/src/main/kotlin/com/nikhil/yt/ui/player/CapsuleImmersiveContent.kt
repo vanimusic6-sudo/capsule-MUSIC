@@ -1227,8 +1227,13 @@ internal fun CapsuleImmersiveContent(
                             ) { item ->
                                 when (item) {
                                     CapsuleLightMetadataItem.TEXT -> {
-                                        Column(modifier = Modifier.fillMaxWidth().graphicsLayer {
-                                            alpha = trackInkArrival.value
+                                        Column(modifier = Modifier.fillMaxWidth()
+                                            .padding(
+                                                start = if (immersiveMetadataOrder.firstOrNull() == CapsuleLightMetadataItem.FAVORITE) 12.dp else 0.dp,
+                                                end = if (immersiveMetadataOrder.firstOrNull() == CapsuleLightMetadataItem.TEXT) 12.dp else 0.dp,
+                                            )
+                                            .graphicsLayer {
+                                                alpha = trackInkArrival.value
                                             translationY = (1f - trackInkArrival.value) * 4.dp.toPx()
                                         }) {
                                             CapsuleTrackTitle(

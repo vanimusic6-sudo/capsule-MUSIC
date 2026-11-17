@@ -1080,9 +1080,10 @@ fun CapsulePlayerContent(
                                         Box(Modifier.fillMaxWidth().padding(horizontal = CapsuleLightTransportEdgeInset)) {
                                             CapsuleLightLyricLine(
                                                 line = lyricEntry?.text?.trim()?.replace('\n', ' '),
-                        instrumental = lyricEntry?.takeIf { it.isInstrumental },
-                        playbackPosition = lyricPlaybackPosition,
-                        animate = lyricLineActive,
+                                                trackKey = mediaMetadata.id,
+                                                instrumental = lyricEntry?.takeIf { it.isInstrumental },
+                                                playbackPosition = lyricPlaybackPosition,
+                                                animate = lyricLineActive,
                                                 textColor = textColor,
                                             )
                                         }
@@ -1148,6 +1149,12 @@ fun CapsulePlayerContent(
                                             modifier =
                                                 Modifier
                                                     .fillMaxWidth()
+                                                    // The heart remains centered in its 36dp hit zone;
+                                                    // space the title from it without shrinking the icon.
+                                                    .padding(
+                                                        start = if (lightMetadataOrder.firstOrNull() == CapsuleLightMetadataItem.FAVORITE) 12.dp else 0.dp,
+                                                        end = if (lightMetadataOrder.firstOrNull() == CapsuleLightMetadataItem.TEXT) 12.dp else 0.dp,
+                                                    )
                                                     .clipToBounds()
                                                     .graphicsLayer {
                                                         alpha = trackInkArrival.value
@@ -1442,6 +1449,7 @@ fun CapsulePlayerContent(
                         modifier =
                             Modifier
                                 .weight(1f)
+                                .padding(end = 12.dp)
                                 .clipToBounds()
                                 .graphicsLayer {
                                     alpha = trackInkArrival.value

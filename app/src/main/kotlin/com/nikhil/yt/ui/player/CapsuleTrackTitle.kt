@@ -52,6 +52,10 @@ internal fun capsuleGraphemeBoundaries(text: String): List<Int> {
     return if (boundaries.isEmpty()) listOf(0) else boundaries
 }
 
+/** Use the old complete-letter crop only when the text is still at the start. */
+internal fun capsuleTitleShouldMask(isScrolling: Boolean, offsetPx: Int): Boolean =
+    !isScrolling && offsetPx == 0
+
 /**
  * Find the largest *complete* displayed substring that actually fits. The text is measured with
  * the same font/weight as the rendered Text and leaves a 2px safety margin for antialiasing.
@@ -87,10 +91,13 @@ internal fun CapsuleTrackTitle(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    // Draw every glyph while the user scrolls. The previous whole-character
-    // draw mask abruptly erased letters at idle and obscured the title.
+    // At rest use the original *complete-grapheme* crop, never a sliced letter.
+    // Disable that crop for every pixel of manual scroll, inertia, parked offset
+    // and automatic return; the full name must remain legible while it moves.
     val scroll = androidx.compose.runtime.key(mediaId, title) { rememberScrollState() }
     val onScreen = appIsOnScreen()
+    val boundaries = remember(title) { capsuleGraphemeBoundaries(title) }
+    var layout by remember(mediaId, title) { mutableStateOf<TextLayoutResult?>(null) }
     LaunchedEffect(mediaId, title, scroll, enabled, onScreen) {
         if (!onScreen) return@LaunchedEffect
         if (!enabled) {
@@ -127,8 +134,39 @@ internal fun CapsuleTrackTitle(
         maxLines = 1,
         softWrap = false,
         overflow = TextOverflow.Clip,
+        onTextLayout = { layout = it },
         modifier = modifier
             .clipToBounds()
+            // This mask is in *viewport* coordinates. Never put it after horizontalScroll:
+            // that would cut edge characters using the full intrinsic text width.
+            .drawWithContent {
+                val measured = layout
+                if (measured == null || !capsuleTitleShouldMask(scroll.isScrollInProgress, scroll.value) || boundaries.size < 2) {
+                    drawContent()
+                } else {
+                    var safeRight = 0f
+                    for (i in 0 until boundaries.lastIndex) {
+                        val start = boundaries[i]
+                        val end = boundaries[i + 1]
+                        if (start >= end) continue
+                        var clusterLeft = Float.POSITIVE_INFINITY
+                        var clusterRight = Float.NEGATIVE_INFINITY
+                        for (offset in start until end) {
+                            val bounds = measured.getBoundingBox(offset)
+                            clusterLeft = minOf(clusterLeft, bounds.left)
+                            clusterRight = maxOf(clusterRight, bounds.right)
+                        }
+                        if (clusterLeft >= -0.5f && clusterRight <= size.width - 2f) {
+                            safeRight = maxOf(safeRight, clusterRight)
+                        }
+                    }
+                    if (safeRight > 0f) {
+                        clipRect(left = 0f, right = safeRight.coerceAtMost(size.width)) {
+                            this@drawWithContent.drawContent()
+                        }
+                    }
+                }
+            }
             .horizontalScroll(scroll, enabled = enabled)
             .padding(end = 10.dp),
     )
