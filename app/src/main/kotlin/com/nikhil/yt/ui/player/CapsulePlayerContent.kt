@@ -1344,7 +1344,7 @@ fun CapsulePlayerContent(
                                             modifier = Modifier.fillMaxWidth(),
                                         ) {
                                             Icon(
-                                                painterResource(R.drawable.bedtime),
+                                                painterResource(R.drawable.capsule_transport_sleep),
                                                 stringResource(R.string.sleep_timer),
                                                 tint =
                                                     textColor.copy(
@@ -1615,7 +1615,7 @@ fun CapsulePlayerContent(
                             enabled = !isListenTogetherGuest,
                             modifier = Modifier.size(48.dp),
                         ) {
-                            Icon(painterResource(R.drawable.bedtime), stringResource(R.string.sleep_timer),
+                            Icon(painterResource(R.drawable.capsule_transport_sleep), stringResource(R.string.sleep_timer),
                                 tint = textColor.copy(alpha = if (sleepTimerEnabled) 1f else 0.5f),
                                 modifier = Modifier.size(21.dp))
                         }

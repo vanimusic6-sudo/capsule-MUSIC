@@ -3,6 +3,7 @@ package com.nikhil.yt.ui.player
 
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.collect
@@ -77,6 +78,7 @@ internal fun capsuleTitleWindowEnd(
     return lo
 }
 
+
 @Composable
 internal fun CapsuleTrackTitle(
     mediaId: String,
@@ -85,13 +87,10 @@ internal fun CapsuleTrackTitle(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    // A finger must move pixels, not jump from one letter to the next. Restore
-    // Compose's native gesture/inertia engine, and apply a whole-grapheme draw clip
-    // only AFTER the scroll settles. No idle marquee, no per-letter recomposition.
+    // Draw every glyph while the user scrolls. The previous whole-character
+    // draw mask abruptly erased letters at idle and obscured the title.
     val scroll = androidx.compose.runtime.key(mediaId, title) { rememberScrollState() }
     val onScreen = appIsOnScreen()
-    val boundaries = remember(title) { capsuleGraphemeBoundaries(title) }
-    var layout by remember(mediaId, title) { mutableStateOf<TextLayoutResult?>(null) }
     LaunchedEffect(mediaId, title, scroll, enabled, onScreen) {
         if (!onScreen) return@LaunchedEffect
         if (!enabled) {
@@ -119,7 +118,6 @@ internal fun CapsuleTrackTitle(
             }
         }
     }
-
     Text(
         text = title,
         color = color,
@@ -129,39 +127,9 @@ internal fun CapsuleTrackTitle(
         maxLines = 1,
         softWrap = false,
         overflow = TextOverflow.Clip,
-        onTextLayout = { layout = it },
         modifier = modifier
             .clipToBounds()
-            // Outside horizontalScroll: clip in viewport coordinates, not in the
-            // full intrinsic text width. Draw-time only, no relayout or new layer.
-            .drawWithContent {
-                val measured = layout
-                if (measured == null || scroll.isScrollInProgress || boundaries.size < 2) {
-                    drawContent()
-                } else {
-                    val shift = scroll.value.toFloat()
-                    var left = size.width
-                    var right = 0f
-                    for (i in 0 until boundaries.lastIndex) {
-                        val start = boundaries[i]
-                        val end = boundaries[i + 1]
-                        if (end <= start) continue
-                        val startX = measured.getBoundingBox(start).left - shift
-                        val endX = measured.getBoundingBox(end - 1).right - shift
-                        if (startX >= -0.5f && endX <= size.width - 2f) {
-                            left = minOf(left, startX.coerceAtLeast(0f))
-                            right = maxOf(right, endX)
-                        }
-                    }
-                    if (right > left) {
-                        clipRect(left = left, right = right.coerceAtMost(size.width)) {
-                            // clipRect has DrawScope, while drawContent belongs to the
-                            // surrounding ContentDrawScope; use its explicit receiver.
-                            this@drawWithContent.drawContent()
-                        }
-                    }
-                }
-            }
-            .horizontalScroll(scroll, enabled = enabled),
+            .horizontalScroll(scroll, enabled = enabled)
+            .padding(end = 10.dp),
     )
 }
