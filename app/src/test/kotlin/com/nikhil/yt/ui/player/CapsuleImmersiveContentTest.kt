@@ -416,7 +416,7 @@ class CapsuleImmersiveContentTest {
         assertTrue(source.contains("remember(mediaMetadata.id) { mutableStateOf(restoredFrame) }"))
         assertTrue(source.contains("val currentSceneReady = frame?.key == visualKey && matchedPaint != null"))
         assertTrue(source.contains("if (!currentSceneReady || sceneRevealAlpha.value < 0.999f)"))
-        assertTrue(source.contains("sceneAlpha = { 1f }"))
+        assertTrue(source.contains("sceneAlpha = { sceneRevealAlpha.value }"))
         assertFalse(source.contains("val outgoingFrame"))
         assertFalse(source.contains("gradientAlpha.animateTo("))
     }
