@@ -98,7 +98,7 @@ class PlayerArtworkReliabilityTest {
         assertTrue(content.contains("entryScene?.frame"))
         assertTrue(content.contains("sceneMemory.prepared = ImmersivePreparedScene"))
         assertTrue(content.contains("val currentSceneReady = frame?.key == visualKey && matchedPaint != null"))
-        assertTrue(content.contains("sceneAlpha = { 1f }"))
+        assertTrue(content.contains("sceneAlpha = { sceneRevealAlpha.value }"))
         assertFalse("No full-page opacity sweep on each track", content.contains("gradientAlpha.animateTo("))
         assertTrue(content.contains("mutableStateOf(immersivePaintCache[paintKey] ?: entryScene"))
         assertTrue(player.contains("val immersiveSceneMemory = remember { ImmersiveSceneMemory() }"))
