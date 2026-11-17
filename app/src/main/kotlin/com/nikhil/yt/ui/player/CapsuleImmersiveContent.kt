@@ -38,8 +38,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.structuralEqualityPolicy
-import androidx.compose.runtime.snapshotFlow
-import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -783,15 +781,10 @@ internal fun CapsuleImmersiveContent(
         // A media-ID boundary is absolute. Nothing decoded or painted for A may keep
         // rendering while B or C is selected, regardless of pending async work.
         var shownGradient by remember(mediaMetadata.id) { mutableStateOf(restoredFrame) }
-        // The last actual photo and page live underneath the next prepared
-        // pair. Never fade to neutral, then mount a new bitmap 630ms later.
-        var outgoingFrame by remember(mediaMetadata.id) { mutableStateOf<ImmersiveGradientFrame?>(null) }
+        // Exactly one current-song photo+gradient, never a retained outgoing song.
         val gradientAlpha = remember(mediaMetadata.id) {
             Animatable(if (restoredFrame == null) 0f else 1f)
         }
-        val staleSceneAlpha = remember(mediaMetadata.id) { Animatable(1f) }
-        var lastReadyFrame by remember(mediaMetadata.id) { mutableStateOf(restoredFrame) }
-        var outgoingStartAlpha by remember(mediaMetadata.id) { mutableFloatStateOf(1f) }
         // The previous A -> B -> C pipeline waited for an outgoing animation,
         // faded old artwork to a neutral plate, then faded the new pair back in.
         // That was the reason a stale first cover could linger and the whole
@@ -811,7 +804,6 @@ internal fun CapsuleImmersiveContent(
             shownGradient = immersiveGradientFrame(
                 visualKey, mediaMetadata.id, artworkTone, readyPainter,
             )
-            outgoingFrame = null
             // The only fade remaining is 85 ms, within this very same song:
             // there is no cross-song outgoing layer or queue of animations.
             gradientAlpha.snapTo(0f)
@@ -847,20 +839,8 @@ internal fun CapsuleImmersiveContent(
         val paintKey = remember(frame?.key, coverFraction) {
             "image-original-direction-v6|${frame?.key}|$coverFraction"
         }
-        // One prepared page texture for one decoded cover. The previous
-        // pair also built a separate tinted PHOTO overlay, which repeatedly
-        // caused horizontal lines and made the real image look washed out.
-        // In rapid A -> B -> C skips, the latest cached bitmap may belong
-        // to A even if the most recently selected frame is B. Associate
-        // the texture with its actual song so colours never linger as a
-        // mismatched old-gradient layer underneath the new cover.
-        var lastReadyPaint by remember(mediaMetadata.id) {
-            mutableStateOf(immersivePaintCache[paintKey]?.let { requireNotNull(frame).key to it }
-                ?: entryScene?.let { it.frame.key to it.bitmap })
-        }
-        val outgoingPaint = remember(paintKey, outgoingFrame?.key) {
-            lastReadyPaint?.takeIf { it.first == outgoingFrame?.key }?.second
-        }
+        // This texture is keyed to the currently displayed frame. No outgoing
+        // bitmap is retained, so there is no cross-song GPU layer to draw.
         var matchedPaint by remember(paintKey) {
             mutableStateOf(immersivePaintCache[paintKey] ?: entryScene?.takeIf {
                 it.frame.key == frame?.key
@@ -880,8 +860,6 @@ internal fun CapsuleImmersiveContent(
                 }
             matchedPaint?.let {
                 immersivePaintCache[paintKey] = it
-                lastReadyPaint = readyFrame.key to it
-                lastReadyFrame = readyFrame
                 sceneMemory.prepared = ImmersivePreparedScene(readyFrame, paintKey, it)
             }
         }
@@ -894,7 +872,6 @@ internal fun CapsuleImmersiveContent(
             gradientAlpha.animateTo(
                 1f, tween(durationMillis = IMMERSIVE_TRACK_FADE_MS, easing = ImmersiveTrackEasing),
             )
-            outgoingFrame = null
         }
         // The VIDEO window and its entire backdrop use the same spring.
         // Independent 220/280/290ms fades made the backing vanish while the
@@ -915,19 +892,13 @@ internal fun CapsuleImmersiveContent(
         val targetMetadataInk = remember(matchedPaint, metadataPageFraction) {
             immersiveMetadataInk(immersiveMetadataBackground(matchedPaint, metadataPageFraction))
         }
-        val leavingMetadataInk = remember(outgoingPaint, metadataPageFraction) {
-            immersiveMetadataInk(immersiveMetadataBackground(outgoingPaint, metadataPageFraction))
-        }
-        // Observe animation values in a derived state: the common white ->
-        // white case must not recompose the entire player at display cadence.
-        val metadataInks by remember(targetMetadataInk, leavingMetadataInk, frame?.key, visualKey) {
+        // No outgoing title/artist colour: their ink must match THIS track immediately.
+        // VIDEO may still soften its independent white-on-dark presentation.
+        val metadataInks by remember(targetMetadataInk, sharedVideoProgress) {
             derivedStateOf(structuralEqualityPolicy()) {
-                val track = immersiveSceneOpacity(frame?.key, visualKey,
-                    gradientAlpha.value, staleSceneAlpha.value)
                 val video = capsuleImmersiveVideoBackplateAlpha(sharedVideoProgress.value)
-                lerp(lerp(leavingMetadataInk.title, targetMetadataInk.title, track), Color.White, video) to
-                    lerp(lerp(leavingMetadataInk.artist, targetMetadataInk.artist, track),
-                        Color.White.copy(alpha = 0.62f), video)
+                lerp(targetMetadataInk.title, Color.White, video) to
+                    lerp(targetMetadataInk.artist, Color.White.copy(alpha = 0.62f), video)
             }
         }
         val metadataInk = metadataInks.first
