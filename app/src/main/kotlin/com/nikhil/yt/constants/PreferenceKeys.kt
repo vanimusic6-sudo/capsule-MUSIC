@@ -411,6 +411,8 @@ enum class MiniPlayerBackgroundStyle {
 
 val LyricsBackgroundStyleKey = stringPreferencesKey("lyricsBackgroundStyle")
 val LyricsUsePlayerThemeKey = booleanPreferencesKey("lyricsUsePlayerTheme")
+/** Optional Spotify-like scrollable lyrics card below the player, default off. */
+val CapsuleScrollToLyricsKey = booleanPreferencesKey("capsuleScrollToLyricsV1")
 enum class LyricsBackgroundStyle {
     SOLID,
     CAPSULE_STAR,
