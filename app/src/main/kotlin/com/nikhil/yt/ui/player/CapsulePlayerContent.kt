@@ -494,11 +494,13 @@ fun CapsulePlayerContent(
     // The entire metadata block gently catches up to the NEW cover, instead
     // of its title changing sharply while the poster is still fading.
     // One finite, small-layer animation per track; never an idle ticker.
+    // A new song's metadata arrives almost immediately; a brief optical easing is enough.
+    // Do not keep title/artist ghosting on rapid A -> B -> C skips.
     val trackInkArrival = remember { Animatable(1f) }
     LaunchedEffect(mediaMetadata.id, visible) {
         if (visible) {
-            trackInkArrival.snapTo(0.72f)
-            trackInkArrival.animateTo(1f, tween(275))
+            trackInkArrival.snapTo(0.94f)
+            trackInkArrival.animateTo(1f, tween(85))
         } else trackInkArrival.snapTo(1f)
     }
 
@@ -716,6 +718,7 @@ fun CapsulePlayerContent(
                             CapsuleTrackArtworkHandoff(
                                 mediaId = mediaMetadata.id,
                                 decodedPainter = retainedArtworkPainter,
+                                thumbnailUrl = mediaMetadata.thumbnailUrl,
                                 contentScale = artworkContentScale,
                                 modifier = Modifier.fillMaxSize(),
                             )
