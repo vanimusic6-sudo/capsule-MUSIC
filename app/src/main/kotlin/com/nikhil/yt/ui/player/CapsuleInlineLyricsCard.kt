@@ -34,17 +34,21 @@ import com.nikhil.yt.R
 import com.nikhil.yt.ui.component.Lyrics
 
 /**
- * Palette shaping utility retained for existing colour regression tests.
- * The visible card uses MiniPlayerSurface with the user's existing mini style.
+ * Keep the compact lyric card at a consistent luminance while the document
+ * scrolls over it. A former hard-coded near-black bottom stop made the card
+ * appear to dim continuously as more of its lower half became visible.
+ * All three tones now come from the CURRENT cover and share a muted anchor.
  */
 internal fun capsuleInlineLyricsStops(colors: List<Color>): List<Color> {
-    val ink = Color(0xFF0E1420)
+    val ink = Color(0xFF1B2028)
     val upper = colors.getOrNull(0) ?: Color(0xFF35506C)
     val lower = colors.getOrNull(1) ?: upper
+    val tail = colors.getOrNull(2) ?: lower
+    val anchor = lerp(ink, upper, 0.32f)
     return listOf(
-        lerp(ink, upper, 0.37f),
-        lerp(ink, lower, 0.21f),
-        Color(0xFF0A0F18),
+        anchor,
+        lerp(anchor, lower, 0.12f),
+        lerp(anchor, tail, 0.14f),
     )
 }
 
@@ -67,7 +71,9 @@ internal fun CapsuleInlineLyricsCard(
     val cardGradient = if (lightThemeSurface) {
         sampledGradient.map { lerp(MaterialTheme.colorScheme.surface, it, 0.20f) }
     } else {
-        sampledGradient.map { it.copy(alpha = 0.84f) }
+        // Opaque stops prevent the independently shaded mini surface beneath
+        // this card from adding a second, scroll-revealed dark gradient.
+        sampledGradient
     }
     Box(
         modifier = modifier
