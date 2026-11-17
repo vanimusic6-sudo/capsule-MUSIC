@@ -1,11 +1,33 @@
 package com.nikhil.yt.ui
 
 import java.io.File
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import com.nikhil.yt.ui.player.capsuleInlineLyricsStops
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LyricsUiRegressionTest {
+    @Test
+    fun `compact lyrics gradient never dims into a fixed black floor`() {
+        // Even a bright image with dark secondary bands must not dive into
+        // black at the bottom when the card is revealed by a scroll.
+        val stops = capsuleInlineLyricsStops(
+            listOf(Color(0xFFB9A88A), Color.Black, Color.Black),
+        )
+        assertTrue(stops.size == 3)
+        assertTrue(
+            "Lower compact-lyrics stop should remain close to the cover-based anchor",
+            stops.last().luminance() >= stops.first().luminance() * 0.65f,
+        )
+        val compact = source("com/nikhil/yt/ui/player/CapsuleInlineLyricsCard.kt")
+        assertFalse("Do not restore the dark near-black gradient floor",
+            compact.contains("Color(0xFF0A0F18)"))
+        assertFalse("Avoid a second alpha-mixed backdrop over the mini surface",
+            compact.contains("it.copy(alpha = 0.84f)"))
+    }
+
     private fun source(relative: String): String {
         val candidates =
             listOf(
