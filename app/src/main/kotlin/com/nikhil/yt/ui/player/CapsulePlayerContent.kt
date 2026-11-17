@@ -157,6 +157,7 @@ fun CapsulePlayerContent(
     onToggleLike: () -> Unit,
     onExpandQueue: () -> Unit,
     onArtworkClick: () -> Unit,
+    artworkClickEnabled: Boolean = true,
     onArtistSelected: (MediaMetadata.Artist) -> Unit,
     onMenuClick: () -> Unit,
     onCollapse: () -> Unit,
@@ -614,7 +615,7 @@ fun CapsulePlayerContent(
                     artworkBackground = Color(0xFF141414),
                     outline = Color.Transparent,
                     onArtworkClick = onArtworkClick,
-                    artworkClickable = !isCapsuleVideoPlaying && !lightEditorEnabled,
+                    artworkClickable = artworkClickEnabled && !isCapsuleVideoPlaying && !lightEditorEnabled,
                     video = { active ->
                         CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active && visible)
                     },
