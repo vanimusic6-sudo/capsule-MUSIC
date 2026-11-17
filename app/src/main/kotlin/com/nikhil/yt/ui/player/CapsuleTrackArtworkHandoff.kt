@@ -1,8 +1,7 @@
-/* Capsule MUSIC — stable decoded-cover handoff between tracks. GPL-3.0. */
+/* Capsule MUSIC — immediate, track-scoped artwork without stale-song ghosts. GPL-3.0. */
 package com.nikhil.yt.ui.player
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
@@ -10,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -17,61 +17,68 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 
-internal const val CAPSULE_COVER_HANDOFF_MS = 390
+/** The only remaining optical softening: the preview -> full-resolution bitmap of ONE song. */
+internal const val CAPSULE_COVER_HANDOFF_MS = 95
 
-/** One visual pair, not an animated grey placeholder or two independent artwork clocks. */
+/**
+ * A -> B -> C must show C, never retain A while C's full-size bitmap downloads.
+ *
+ * The current song's thumbnail is a temporary same-song visual fallback. Coil usually has
+ * it in memory from the mini-player; no extra preview coroutine or frame timer is needed.
+ * The last 95 ms only soften the SAME song's preview -> decoded full-size replacement.
+ */
 @Composable
 internal fun CapsuleTrackArtworkHandoff(
     mediaId: String,
     decodedPainter: Painter?,
+    thumbnailUrl: String?,
     contentScale: ContentScale,
     modifier: Modifier = Modifier,
 ) {
-    var displayedId by remember { mutableStateOf<String?>(mediaId) }
-    var incoming by remember { mutableStateOf<Painter?>(decodedPainter) }
-    var outgoing by remember { mutableStateOf<Painter?>(null) }
-    val incomingOpacity = remember { Animatable(1f) }
-
-    LaunchedEffect(mediaId, decodedPainter) {
-        if (displayedId != mediaId) {
-            // A -> B -> C mid-dissolve: keep the more visible real bitmap as the outgoing one.
-            // Never brighten a half-faded old frame back to full by replacing the whole layer.
-            outgoing = if (incomingOpacity.value >= 0.5f) incoming ?: outgoing
-                else outgoing ?: incoming
-            incoming = null
-            displayedId = mediaId
-            incomingOpacity.snapTo(0f)
+    key(mediaId) {
+        val context = LocalContext.current
+        // Scope the fallback request to this song. Retiring the old ID disposes both images
+        // immediately, even if the next high-resolution request stalls for seconds.
+        val previewRequest = remember(context, thumbnailUrl) {
+            ImageRequest.Builder(context)
+                .data(thumbnailUrl?.takeIf(String::isNotBlank))
+                .size(640, 640)
+                .crossfade(false)
+                .build()
         }
-
-        if (decodedPainter != null && incoming !== decodedPainter) {
-            // Only decoded, full-size imagery reaches this node. Coil Loading/Retry never
-            // changes the outgoing picture, so background or network stalls cannot grey it.
-            outgoing = incoming ?: outgoing
-            incoming = decodedPainter
-            incomingOpacity.snapTo(if (outgoing == null) 1f else 0f)
+        val coverAlpha = remember { Animatable(if (decodedPainter == null) 0f else 1f) }
+        LaunchedEffect(decodedPainter) {
+            if (decodedPainter == null) {
+                coverAlpha.snapTo(0f)
+            } else {
+                coverAlpha.animateTo(1f, tween(CAPSULE_COVER_HANDOFF_MS))
+            }
         }
-
-        if (incoming != null && outgoing != null) {
-            incomingOpacity.animateTo(
-                1f,
-                tween(durationMillis = CAPSULE_COVER_HANDOFF_MS, easing = FastOutSlowInEasing),
-            )
-            outgoing = null
-        }
-    }
-
-    Box(modifier) {
-        outgoing?.let { painter ->
-            Image(painter, null, Modifier.fillMaxSize(), contentScale = contentScale)
-        }
-        incoming?.let { painter ->
-            Image(
-                painter = painter,
-                contentDescription = null,
-                contentScale = contentScale,
-                modifier = Modifier.fillMaxSize().graphicsLayer { alpha = incomingOpacity.value },
-            )
+        Box(modifier) {
+            // A preview is only ever from the CURRENT media ID, not a former track.
+            if (decodedPainter == null || coverAlpha.value < 0.999f) {
+                if (!thumbnailUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = previewRequest,
+                        contentDescription = null,
+                        contentScale = contentScale,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+            decodedPainter?.let { ready ->
+                Image(
+                    painter = ready,
+                    contentDescription = null,
+                    contentScale = contentScale,
+                    modifier = Modifier.fillMaxSize().graphicsLayer { alpha = coverAlpha.value },
+                )
+            }
         }
     }
 }
