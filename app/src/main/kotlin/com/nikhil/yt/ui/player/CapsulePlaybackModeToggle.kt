@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -44,6 +45,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import kotlin.math.sin
 import kotlin.math.PI
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -180,7 +182,8 @@ internal fun CapsuleAudioVideoToggle(
         Box(
             modifier =
                 modifier
-                    .width(190.dp)
+                    .widthIn(max = 190.dp)
+                    .fillMaxWidth()
                     .height(36.dp)
                     .clip(shape)
                     .background(textColor.copy(alpha = 0.018f))
@@ -323,6 +326,11 @@ private fun CapsuleModeSegment(
                 fontWeight = FontWeight.Medium,
                 letterSpacing = 0.35.sp,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth().padding(
+                    start = 6.dp,
+                    end = if (loading) 22.dp else 6.dp,
+                ),
             )
 
             if (loading) {
