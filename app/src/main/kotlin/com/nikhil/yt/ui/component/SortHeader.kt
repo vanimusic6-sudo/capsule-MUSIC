@@ -30,7 +30,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nikhil.yt.R
@@ -57,11 +56,8 @@ inline fun <reified T : Enum<T>> SortHeader(
             text = stringResource(sortTypeText(sortType)),
             color = MaterialTheme.colorScheme.primary,
             style = MaterialTheme.typography.labelLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
             modifier =
             Modifier
-                .weight(1f, fill = false)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = ripple(bounded = false),
@@ -73,7 +69,7 @@ inline fun <reified T : Enum<T>> SortHeader(
         DropdownMenu(
             expanded = menuExpanded,
             onDismissRequest = { menuExpanded = false },
-            modifier = Modifier.widthIn(min = 128.dp, max = 260.dp),
+            modifier = Modifier.widthIn(min = 172.dp),
         ) {
             enumValues<T>().forEach { type ->
                 DropdownMenuItem(
@@ -82,8 +78,6 @@ inline fun <reified T : Enum<T>> SortHeader(
                             text = stringResource(sortTypeText(type)),
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Normal,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
                         )
                     },
                     trailingIcon = {
