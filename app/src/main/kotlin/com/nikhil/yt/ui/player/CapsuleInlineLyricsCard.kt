@@ -1,7 +1,6 @@
 /* Capsule MUSIC — familiar scroll-to-mini-lyrics page, with a read-only preview. GPL-3.0. */
 package com.nikhil.yt.ui.player
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,11 +19,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import com.nikhil.yt.constants.MiniPlayerBackgroundStyle
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,9 +31,8 @@ import com.nikhil.yt.R
 import com.nikhil.yt.ui.component.Lyrics
 
 /**
- * An intentionally quiet, Capsule-owned ink gradient: no bitmap blur, no second animated
- * palette/clock, no grey panel that can flash during track changes. Sampled player colours are
- * mixed into a stable midnight base, making the typography legible even for near-white covers.
+ * Palette shaping utility retained for existing colour regression tests.
+ * The visible card uses MiniPlayerSurface with the user's existing mini style.
  */
 internal fun capsuleInlineLyricsStops(colors: List<Color>): List<Color> {
     val ink = Color(0xFF0E1420)
@@ -54,7 +52,6 @@ internal fun CapsuleInlineLyricsCard(
     pureBlack: Boolean,
     visible: Boolean,
     sliderPosition: Long?,
-    onLineSeek: (Long) -> Unit,
     onFullScreen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -70,7 +67,7 @@ internal fun CapsuleInlineLyricsCard(
             modifier = Modifier.fillMaxSize(),
             animated = false,
         ) {
-        Column(Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 16.dp)) {
+            Column(Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -81,6 +78,9 @@ internal fun CapsuleInlineLyricsCard(
                     color = LocalContentColor.current,
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 20.sp,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 FilledTonalButton(onClick = onFullScreen) {
                     Text(
@@ -93,13 +93,12 @@ internal fun CapsuleInlineLyricsCard(
             Spacer(Modifier.height(4.dp))
             Box(Modifier.fillMaxWidth().weight(1f)) {
                 if (visible) {
-                    // Reuse Capsule's existing lyric synchronization and interaction, rather
-                    // than creating a second parser, polling clock or lyric provider pipeline.
+                    // The ordinary Lyrics pipeline stays synchronized, but this
+                    // preview cannot scroll, select words or seek playback.
                     Lyrics(
                         sliderPositionProvider = { sliderPosition },
                         isVisible = true,
                         modifier = Modifier.fillMaxSize(),
-                        onLineSeek = onLineSeek,
                         allowUserInteraction = false,
                     )
                 } else {
