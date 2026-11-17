@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
@@ -239,7 +240,10 @@ class PlayerOpeningMotionTest {
         val bright = capsuleInlineLyricsStops(listOf(Color.White, Color.Yellow))
         assertEquals(3, empty.size)
         assertEquals(3, bright.size)
-        assertEquals("the Capsule ink floor never changes per track", empty.last(), bright.last())
+        assertTrue("the lyric floor is now cover-derived, not a fixed black stop",
+            empty.last() != bright.last())
+        assertTrue("The bright cover remains legible without darkening at the bottom",
+            bright.last().luminance() >= bright.first().luminance() * 0.65f)
         for (stop in bright) {
             assertTrue("the lyrics card must never flash a white background", stop.red < 0.65f)
             assertTrue("the lyrics card must never flash a white background", stop.green < 0.65f)
