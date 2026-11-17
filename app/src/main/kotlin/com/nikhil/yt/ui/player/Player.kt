@@ -417,6 +417,10 @@ fun BottomSheetPlayer(
             mediaMetadata = enrichedMetadata,
             enabled = needsArtworkPalette,
             refreshOnOpen = state.isExpandedOrExpanding,
+            // Keep the sampled colours and spatial field in one frame. Animating
+            // three colour channels while replacing the field immediately made
+            // complex album backgrounds visibly flicker on track changes.
+            animatePalette = false,
         )
 
     val gradientColors = artworkScene.colors
