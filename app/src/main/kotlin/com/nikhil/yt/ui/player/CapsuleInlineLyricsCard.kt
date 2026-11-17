@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -24,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nikhil.yt.R
@@ -97,12 +99,21 @@ internal fun CapsuleInlineLyricsCard(
                             color = LocalContentColor.current,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 20.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
                         )
-                        TextButton(onClick = onFullScreen, enabled = visible) {
+                        TextButton(
+                            onClick = onFullScreen,
+                            enabled = visible,
+                            modifier = Modifier.widthIn(max = 142.dp),
+                        ) {
                             Text(
                                 stringResource(R.string.capsule_inline_lyrics_expand),
                                 color = LocalContentColor.current.copy(alpha = 0.90f),
                                 fontSize = 13.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                     }
