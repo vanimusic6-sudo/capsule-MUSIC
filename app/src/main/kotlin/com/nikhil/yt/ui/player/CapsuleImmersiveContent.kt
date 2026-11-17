@@ -229,8 +229,8 @@ internal fun capsuleImmersiveVideoBackplateAlpha(progress: Float): Float =
     1f - capsulePhotoOpacity(progress, CapsuleVideoBlendStyle.IMMERSION)
 
 /** One cap for artwork and backdrop when a selected track has changed. */
-internal const val IMMERSIVE_STALE_SCENE_FADE_MS = 400
-internal const val IMMERSIVE_TRACK_FADE_MS = 390
+internal const val IMMERSIVE_STALE_SCENE_FADE_MS = 85
+internal const val IMMERSIVE_TRACK_FADE_MS = 85
 internal val ImmersiveTrackEasing = CubicBezierEasing(0.22f, 0.08f, 0.50f, 1f)
 internal fun immersiveSceneOpacity(
     displayedKey: String?,
@@ -617,11 +617,12 @@ internal fun CapsuleImmersiveContent(
     val navigableArtists = rememberNavigableArtists(artistCredits)
     // Photo + gradient share one prepared scene. Metadata settles on the same
     // short optical cadence, never animating the entire full-screen background.
+    // The controls follow the selected track, not the old gradient's lengthy dissolve.
     val trackInkArrival = remember { Animatable(1f) }
     LaunchedEffect(mediaMetadata.id, visible) {
         if (visible) {
-            trackInkArrival.snapTo(0.72f)
-            trackInkArrival.animateTo(1f, tween(durationMillis = 275, easing = ImmersiveTrackEasing))
+            trackInkArrival.snapTo(0.94f)
+            trackInkArrival.animateTo(1f, tween(durationMillis = 85, easing = ImmersiveTrackEasing))
         } else trackInkArrival.snapTo(1f)
     }
     // Match Light: close the chooser rather than retarget it on song change.
@@ -778,70 +779,41 @@ internal fun CapsuleImmersiveContent(
                 artworkTone.ready && artworkTone.displayUrl != null
             }?.let { immersiveGradientFrame(visualKey, mediaMetadata.id, artworkTone, it) }
         }
-        var shownGradient by remember { mutableStateOf(restoredFrame) }
+        // A media-ID boundary is absolute. Nothing decoded or painted for A may keep
+        // rendering while B or C is selected, regardless of pending async work.
+        var shownGradient by remember(mediaMetadata.id) { mutableStateOf(restoredFrame) }
         // The last actual photo and page live underneath the next prepared
         // pair. Never fade to neutral, then mount a new bitmap 630ms later.
-        var outgoingFrame by remember { mutableStateOf<ImmersiveGradientFrame?>(null) }
-        val gradientAlpha = remember { Animatable(1f) }
-        val staleSceneAlpha = remember { Animatable(1f) }
-        var lastReadyFrame by remember { mutableStateOf(restoredFrame) }
-        var outgoingStartAlpha by remember { mutableFloatStateOf(1f) }
-        // The current full photo + its exact continuation stay together while the next
-        // decoded pair is prepared. Previously we ALWAYS faded them to a neutral plate first,
-        // even when the incoming photo arrived during the fade — the visible grey blink.
-        // A stalled download still has a bounded exit; no endless previous-song wallpaper.
-        LaunchedEffect(shownGradient?.key, shownGradient?.key == visualKey, coverAndGradientReady) {
-            val previous = shownGradient?.key
-            if (previous == null || previous == visualKey) {
-                staleSceneAlpha.snapTo(1f)
-                return@LaunchedEffect
-            }
-            if (outgoingFrame != null && gradientAlpha.isRunning) {
-                snapshotFlow { gradientAlpha.isRunning }.first { !it }
-            }
-            // Incoming high-res pair already exists: NEVER pass through grey.
-            // The prepared-scene effect below performs the one direct crossfade.
-            if (coverAndGradientReady) return@LaunchedEffect
-            staleSceneAlpha.snapTo(gradientAlpha.value)
-            // Give ordinary cache/disk requests a short window to finish. If they take
-            // longer, dissolve the old pair into this song's sampled base rather than
-            // dropping its photo one frame before the continuation.
-            delay(320L)
-            if (coverAndGradientReady) return@LaunchedEffect
-            staleSceneAlpha.animateTo(
-                0f, tween(durationMillis = IMMERSIVE_STALE_SCENE_FADE_MS, easing = ImmersiveTrackEasing),
-            )
-            if (shownGradient?.key == previous && previous != visualKey && !coverAndGradientReady) {
-                shownGradient = null
-                outgoingFrame = null
-                lastReadyFrame = null
-            }
+        var outgoingFrame by remember(mediaMetadata.id) { mutableStateOf<ImmersiveGradientFrame?>(null) }
+        val gradientAlpha = remember(mediaMetadata.id) {
+            Animatable(if (restoredFrame == null) 0f else 1f)
         }
+        val staleSceneAlpha = remember(mediaMetadata.id) { Animatable(1f) }
+        var lastReadyFrame by remember(mediaMetadata.id) { mutableStateOf(restoredFrame) }
+        var outgoingStartAlpha by remember(mediaMetadata.id) { mutableFloatStateOf(1f) }
+        // The previous A -> B -> C pipeline waited for an outgoing animation,
+        // faded old artwork to a neutral plate, then faded the new pair back in.
+        // That was the reason a stale first cover could linger and the whole
+        // gradient would visibly blink when skipping rapidly.
+        //
+        // Select the CURRENT track's prepared pair as soon as its bitmap exists.
+        // An inexpensive CURRENT-track thumbnail fills the gap while the complete
+        // high-res photo + sampled background are generated in parallel.
         LaunchedEffect(
             visualKey, coverAndGradientReady, edge, floor,
             artworkTone.bottomTexture, artworkTone.displayUrl, visible, isVideo,
         ) {
-            if (!visible || !coverAndGradientReady ||
-                shownGradient?.key == visualKey
-            ) return@LaunchedEffect
-            if (outgoingFrame != null && gradientAlpha.isRunning) {
-                snapshotFlow { gradientAlpha.isRunning }.first { !it }
+            if (!visible || !coverAndGradientReady || shownGradient?.key == visualKey) {
+                return@LaunchedEffect
             }
             val readyPainter = decodedCoverPainter ?: return@LaunchedEffect
-            // A frame whose continuation is still being prepared has never
-            // appeared. Rapid A -> B -> C skips must retain A's matching pair.
-            val old = lastReadyFrame?.takeIf { it.key == shownGradient?.key }
-                ?: outgoingFrame
-            outgoingStartAlpha = if (old?.key == outgoingFrame?.key)
-                outgoingStartAlpha else staleSceneAlpha.value
-            val geometryOnly = old?.mediaId == mediaMetadata.id
-            // A same-song crop/inset refresh still needs its last complete pair until the
-            // replacement page texture arrives. Dropping it here exposed a neutral frame.
-            outgoingFrame = old
-            shownGradient = immersiveGradientFrame(visualKey, mediaMetadata.id, artworkTone, readyPainter)
-            // New background + photo appear together only after their first
-            // render has completed, instead of sequential fade-out/in.
-            gradientAlpha.snapTo(if (isVideo || geometryOnly) 1f else 0f)
+            shownGradient = immersiveGradientFrame(
+                visualKey, mediaMetadata.id, artworkTone, readyPainter,
+            )
+            outgoingFrame = null
+            // The only fade remaining is 85 ms, within this very same song:
+            // there is no cross-song outgoing layer or queue of animations.
+            gradientAlpha.snapTo(0f)
         }
         // Every cover uses the same photographic composition.
         val frame = shownGradient
@@ -881,7 +853,7 @@ internal fun CapsuleImmersiveContent(
         // to A even if the most recently selected frame is B. Associate
         // the texture with its actual song so colours never linger as a
         // mismatched old-gradient layer underneath the new cover.
-        var lastReadyPaint by remember {
+        var lastReadyPaint by remember(mediaMetadata.id) {
             mutableStateOf(immersivePaintCache[paintKey]?.let { requireNotNull(frame).key to it }
                 ?: entryScene?.let { it.frame.key to it.bitmap })
         }
@@ -916,18 +888,12 @@ internal fun CapsuleImmersiveContent(
             if (frame == null || matchedPaint == null ||
                 frame.key != visualKey
             ) return@LaunchedEffect
-            if (isVideo || gradientAlpha.value >= 0.999f) {
-                gradientAlpha.snapTo(1f)
-                outgoingFrame = null
-            } else {
-                // Every prepared scene gets a legible, soft reveal, even if
-                // the previous cover already expired while decoding. Never
-                // snap a newly loaded bright image straight onto the screen.
-                gradientAlpha.animateTo(
-                    1f, tween(durationMillis = IMMERSIVE_TRACK_FADE_MS, easing = ImmersiveTrackEasing),
-                )
-                outgoingFrame = null
-            }
+            // Avoid a hard cut, but do not animate the background for hundreds
+            // of milliseconds. Unrelated songs never overlap.
+            gradientAlpha.animateTo(
+                1f, tween(durationMillis = IMMERSIVE_TRACK_FADE_MS, easing = ImmersiveTrackEasing),
+            )
+            outgoingFrame = null
         }
         // The VIDEO window and its entire backdrop use the same spring.
         // Independent 220/280/290ms fades made the backing vanish while the
@@ -1010,47 +976,38 @@ internal fun CapsuleImmersiveContent(
             }
         }
 
-        // Compose each photo and its continuation into ONE scene before
-        // applying track opacity. Independent alpha layers mix the old photo
-        // with the new floor most strongly at the feather, drawing a stripe.
+        // Preview exists ONLY for the current media ID. It is kept under the
+        // final composed photo+gradient for at most 85 ms, preventing a sudden
+        // blank/grey base while async palette work completes.
+        val currentSceneReady = frame?.key == visualKey && matchedPaint != null
         Box(Modifier.fillMaxSize().background(
             immersivePageBaseColor(isVideo, artworkTone.ready, artworkTone.edge),
         )) {
             if (audioSceneVisible) {
-                val leaving = outgoingFrame
-                if (leaving != null && outgoingPaint != null) {
-                    ImmersiveAudioScene(
-                        background = outgoingPaint,
+                if (!currentSceneReady || gradientAlpha.value < 0.999f) {
+                    CapsuleImmersiveCurrentTrackPreview(
+                        mediaId = mediaMetadata.id,
+                        imageUrl = mediaMetadata.thumbnailUrl,
+                        edge = edge,
+                        floor = floor,
                         artworkHeight = artworkHeight,
-                        sceneAlpha = { outgoingStartAlpha },
-                    ) {
-                        val photoModifier = Modifier.fillMaxSize().graphicsLayer(
-                            scaleX = if (leaving.landscape) 1.06f else 1f,
-                            scaleY = if (leaving.landscape) 1.06f else 1f,
-                        )
-                        Image(
-                            painter = leaving.painter, contentDescription = null,
-                            contentScale = ContentScale.Crop, modifier = photoModifier,
-                        )
-                    }
+                    )
                 }
-                matchedPaint?.let { bitmap ->
-                    if (frame != null) ImmersiveAudioScene(
-                        background = bitmap,
+                if (currentSceneReady) {
+                    val preparedFrame = requireNotNull(frame)
+                    val preparedPaint = requireNotNull(matchedPaint)
+                    ImmersiveAudioScene(
+                        background = preparedPaint,
                         artworkHeight = artworkHeight,
-                        sceneAlpha = {
-                            immersiveSceneOpacity(
-                                frame.key, visualKey, gradientAlpha.value, staleSceneAlpha.value,
-                            )
-                        },
+                        sceneAlpha = { gradientAlpha.value },
                     ) {
                         Image(
-                            painter = frame.painter,
+                            painter = preparedFrame.painter,
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize().graphicsLayer(
-                                scaleX = if (frame.landscape) 1.06f else 1f,
-                                scaleY = if (frame.landscape) 1.06f else 1f,
+                                scaleX = if (preparedFrame.landscape) 1.06f else 1f,
+                                scaleY = if (preparedFrame.landscape) 1.06f else 1f,
                             ),
                         )
                     }
@@ -1608,6 +1565,66 @@ internal fun CapsuleImmersiveContent(
                         .clip(CircleShape)
                         .background(immersiveInk.copy(alpha = 0.32f)),
             )
+        }
+    }
+}
+
+/**
+ * Minimal placeholder with ONLY this song's thumbnail and palette. Both surfaces
+ * have the same bottom floor; no unrelated cover or stale gradient can leak in.
+ * Offscreen feather is only mounted during a pending high-res decode, not always.
+ */
+@Composable
+private fun CapsuleImmersiveCurrentTrackPreview(
+    mediaId: String,
+    imageUrl: String?,
+    edge: Color,
+    floor: Color,
+    artworkHeight: Dp,
+) {
+    val context = LocalContext.current
+    val request = remember(context, mediaId, imageUrl) {
+        ImageRequest.Builder(context)
+            .data(imageUrl?.takeIf(String::isNotBlank))
+            .size(640, 640)
+            .crossfade(false)
+            .build()
+    }
+    Box(
+        Modifier.fillMaxSize().background(
+            Brush.verticalGradient(
+                0f to edge,
+                0.66f to floor,
+                1f to floor,
+            ),
+        ),
+    ) {
+        if (!imageUrl.isNullOrBlank()) {
+            Box(
+                Modifier.fillMaxWidth().height(artworkHeight + 1.dp)
+                    .clipToBounds()
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                    .drawWithCache {
+                        val feather = Brush.verticalGradient(
+                            0f to Color.White,
+                            0.68f to Color.White,
+                            1f to Color.Transparent,
+                        )
+                        onDrawWithContent {
+                            drawContent()
+                            drawRect(brush = feather, blendMode = BlendMode.DstIn)
+                        }
+                    },
+            ) {
+                key(mediaId) {
+                    AsyncImage(
+                        model = request,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
         }
     }
 }
