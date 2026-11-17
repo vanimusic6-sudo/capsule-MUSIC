@@ -424,10 +424,13 @@ fun BottomSheetPlayer(
             mediaMetadata = enrichedMetadata,
             enabled = needsArtworkPalette,
             refreshOnOpen = state.isExpandedOrExpanding,
-            // Keep the sampled colours and spatial field in one frame. Animating
-            // three colour channels while replacing the field immediately made
-            // complex album backgrounds visibly flicker on track changes.
-            animatePalette = false,
+            // Colour-only backdrops can gently settle after a delayed decode
+            // instead of snapping from their neutral first frame. Immersion,
+            // Scene Light and Star retain atomic colour + spatial-field swaps,
+            // preventing the old stripe/threshold flicker regressions.
+            animatePalette = effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
+                playerBackground != PlayerBackgroundStyle.SCENE_LIGHT &&
+                playerBackground != PlayerBackgroundStyle.CAPSULE_STAR,
         )
 
     val gradientColors = artworkScene.colors
@@ -1069,6 +1072,12 @@ private fun CapsulePlayerLyricsHost(
                     shape = RoundedCornerShape((28f * (1f - open)).dp)
                     clip = open < 0.999f
                 } else {
+                // The same host survives a live settings change. Never carry
+                // the inline morph's opacity, X offset or top-left pivot into
+                // the ordinary (non-scroll) lyrics sheet.
+                alpha = 1f
+                translationX = 0f
+                transformOrigin = TransformOrigin.Center
                 val displacement = capsuleLyricsTranslation(
                     sheetOffset.value,
                     capsuleLyricsEdgeRecoil(sheetOffset.value, sheetEdge.value),

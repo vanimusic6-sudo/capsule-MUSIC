@@ -15,6 +15,20 @@ class PlayerArtworkReliabilityTest {
             ?: error("Missing $name")
     }
 
+
+    @Test fun artworkPaletteEntersWithoutSuddenColourSwapOnNormalPlayer() {
+        val player = source("Player.kt")
+        assertTrue("Only colour-backed styles should tween on a late bitmap",
+            player.contains("animatePalette = effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE"))
+        assertTrue("Spatial field and palette must stay atomic",
+            player.contains("playerBackground != PlayerBackgroundStyle.SCENE_LIGHT"))
+        assertTrue("The star's black-cover threshold must not flip midway through a colour tween",
+            player.contains("playerBackground != PlayerBackgroundStyle.CAPSULE_STAR"))
+        assertTrue("The current lyric morph snapshots both sides of its gradient",
+            player.contains("frozenCardPalette = playerArtworkColors.toList()"))
+        assertTrue(player.contains("colors = transitioningPalette"))
+    }
+
     @Test fun staleRoomTrackCannotOverrideMedia3Artwork() {
         val block = source("Player.kt")
             .substringAfter("val enrichedMetadata =").substringBefore("val onScreen = appIsOnScreen()")
