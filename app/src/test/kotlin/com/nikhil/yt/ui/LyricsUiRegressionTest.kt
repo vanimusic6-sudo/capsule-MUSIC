@@ -46,7 +46,10 @@ class LyricsUiRegressionTest {
         assertTrue(player.contains("Box(Modifier.fillMaxWidth().height(viewportHeight)) { renderPlayer() }"))
         assertFalse("A snap pager changes the entire interaction model", player.contains("VerticalPager("))
         assertFalse(player.contains("rememberPagerState("))
-        assertTrue("The compact surface follows the selected mini-player theme", compact.contains("MiniPlayerSurface("))
+        assertTrue("Compact and full lyrics share a single gradient surface",
+            compact.contains("CapsuleInlineLyricsBackdrop("))
+        assertFalse("An opaque gradient must not hide expensive mini-player effects",
+            compact.contains("MiniPlayerSurface("))
         assertTrue("Fullscreen is a real button", compact.contains("FilledTonalButton(onClick = onFullScreen)"))
         assertTrue("The normal fullscreen lyrics tree stays intact", player.contains("LyricsScreen("))
         assertTrue("Fullscreen grows in place only from the inline lyrics mode",
@@ -73,11 +76,30 @@ class LyricsUiRegressionTest {
         val compact = source("com/nikhil/yt/ui/player/CapsuleInlineLyricsCard.kt")
         val player = source("com/nikhil/yt/ui/player/Player.kt")
         assertTrue(compact.contains("capsuleInlineLyricsStops(colors)"))
-        assertTrue(compact.contains("Brush.verticalGradient(cardGradient)"))
-        assertTrue("The compact card keeps the existing mini player surface",
-            compact.contains("MiniPlayerSurface("))
+        assertTrue(compact.contains("Brush.verticalGradient(capsuleInlineLyricsStops(colors))"))
+        assertTrue("The compact card reuses the fullscreen backdrop implementation",
+            compact.contains("CapsuleInlineLyricsBackdrop("))
         assertTrue("THEME style must still extract the art palette",
             player.contains("(scrollToLyricsPreference && !isLandscape)"))
+    }
+
+    @Test
+    fun `scroll mode expands one unified gradient without hint or hidden GPU work`() {
+        val compact = source("com/nikhil/yt/ui/player/CapsuleInlineLyricsCard.kt")
+        val player = source("com/nikhil/yt/ui/player/Player.kt")
+        assertFalse("No scroll-down label can flash under the transitioning page",
+            compact.contains("capsule_inline_lyrics_hint"))
+        assertTrue("Fullscreen uses exactly the same gradient composable as compact lyrics",
+            player.contains("if (scrollToLyrics) {\n                            // The compact preview"))
+        assertTrue(player.contains("CapsuleInlineLyricsBackdrop("))
+        assertTrue("One spring governs the inline transition",
+            player.contains("if (!scrollToLyrics) {\n                    launch {\n                        sheetEdge.animateTo("))
+        assertTrue("Ink zones must not run independent staged animations in inline mode",
+            player.contains("motionPosition = { if (scrollToLyrics) 0f else sheetOffset.value }"))
+        assertTrue("The hidden regular wallpaper clock must stop in inline-fullscreen mode",
+            player.contains("!(scrollToLyricsPreference && !isLandscape)"))
+        assertTrue("Compact text sleeps after being covered",
+            player.contains("sheetOffset.value > 0.10f"))
     }
 
     @Test

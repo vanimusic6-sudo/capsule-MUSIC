@@ -460,7 +460,8 @@ fun BottomSheetPlayer(
             playbackState == Player.STATE_READY &&
             !videoPlaybackState.presentingVideo &&
             !queueSheetState.isExpanded &&
-            (playerSceneExposed || (showInlineLyrics && lyricsUsePlayerTheme))
+            (playerSceneExposed || (showInlineLyrics && lyricsUsePlayerTheme &&
+                !(scrollToLyricsPreference && !isLandscape)))
     val sharedBackdropAnimationTime =
         rememberCapsuleAnimationTime(
             compact = false,
@@ -638,8 +639,6 @@ fun BottomSheetPlayer(
                     showLyrics = showInlineLyrics,
                     scrollToLyrics = scrollToLyricsPreference && !isLandscape,
                     scrollState = inlineLyricsScroll,
-                    miniBackground = miniPlayerBackground,
-                    pureBlack = pureBlack,
                     mediaMetadata = metadata,
                     decodedArtworkCache = decodedArtworkCache,
                     playerArtworkColors = gradientColors,
@@ -747,8 +746,6 @@ private fun CapsulePlayerLyricsHost(
     showLyrics: Boolean,
     scrollToLyrics: Boolean,
     scrollState: ScrollState,
-    miniBackground: MiniPlayerBackgroundStyle,
-    pureBlack: Boolean,
     mediaMetadata: MediaMetadata,
     decodedArtworkCache: MutableMap<String, Pair<String, Painter>>,
     playerArtworkColors: List<Color>,
@@ -824,15 +821,19 @@ private fun CapsulePlayerLyricsHost(
                         ),
                     )
                 }
-                launch {
-                    sheetEdge.animateTo(
-                        0f,
-                        spring(
-                            dampingRatio = 0.87f,
-                            stiffness = 183f,
-                            visibilityThreshold = 0.001f,
-                        ),
-                    )
+                // The compact-to-fullscreen mode uses ONLY the page spring.
+                // The ordinary lyrics sheet retains its contour spring.
+                if (!scrollToLyrics) {
+                    launch {
+                        sheetEdge.animateTo(
+                            0f,
+                            spring(
+                                dampingRatio = 0.87f,
+                                stiffness = 183f,
+                                visibilityThreshold = 0.001f,
+                            ),
+                        )
+                    }
                 }
             }
         } else if (lyricsLayerMounted) {
@@ -853,15 +854,17 @@ private fun CapsulePlayerLyricsHost(
                         ),
                     )
                 }
-                launch {
-                    sheetEdge.animateTo(
-                        1f,
-                        spring(
-                            dampingRatio = 0.99f,
-                            stiffness = LyricsCloseSpringStiffness,
-                            visibilityThreshold = 0.001f,
-                        ),
-                    )
+                if (!scrollToLyrics) {
+                    launch {
+                        sheetEdge.animateTo(
+                            1f,
+                            spring(
+                                dampingRatio = 0.99f,
+                                stiffness = LyricsCloseSpringStiffness,
+                                visibilityThreshold = 0.001f,
+                            ),
+                        )
+                    }
                 }
             }
             lyricsRuntimeActive = false
@@ -973,6 +976,12 @@ private fun CapsulePlayerLyricsHost(
             val lyricsCardReady by remember(scrollState, viewportHeightPx) {
                 derivedStateOf { scrollState.value > viewportHeightPx * 0.12f }
             }
+            // Keep the actual compact lyrics in place while the fullscreen
+            // layer grows over them. Unmount their lyric renderer only once
+            // the full layer is practically opaque; no hint/text flash.
+            val compactPreviewActive by remember(showLyrics) {
+                derivedStateOf { !showLyrics || sheetOffset.value > 0.10f }
+            }
             Column(
                 modifier = Modifier.fillMaxSize().verticalScroll(
                     scrollState,
@@ -982,10 +991,8 @@ private fun CapsulePlayerLyricsHost(
                 Box(Modifier.fillMaxWidth().height(viewportHeight)) { renderPlayer() }
                 CapsuleInlineLyricsCard(
                     colors = playerArtworkColors,
-                    miniBackground = miniBackground,
-                    pureBlack = pureBlack,
-                    visible = onScreen && !showLyrics && playerState.isExpandedOrExpanding &&
-                        lyricsCardReady,
+                    visible = onScreen && playerState.isExpandedOrExpanding &&
+                        lyricsCardReady && compactPreviewActive,
                     sliderPosition = sliderPosition,
                     onFullScreen = onShowLyrics,
                     modifier = Modifier.fillMaxWidth().height((viewportHeight - 60.dp).coerceAtLeast(360.dp)),
@@ -1061,15 +1068,25 @@ private fun CapsulePlayerLyricsHost(
                             translationY = if (scrollToLyrics) 0f else -displacement
                         },
                     ) {
-                        CapsuleLyricsBackdropLayer(
-                            mediaMetadata = mediaMetadata,
-                            immersiveArtworkTone = immersiveArtworkTone,
-                            playerArtworkColors = playerArtworkColors,
-                            backdropAnimationTime = backdropAnimationTime,
-                            isVisible = showLyrics && !queueState.isExpanded,
-                            instantBackdrop = true,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                        if (scrollToLyrics) {
+                            // The compact preview and normal fullscreen Lyrics
+                            // use the SAME cover gradient, with no extra sampler,
+                            // animated wallpaper or independently fading theme.
+                            CapsuleInlineLyricsBackdrop(
+                                colors = playerArtworkColors,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        } else {
+                            CapsuleLyricsBackdropLayer(
+                                mediaMetadata = mediaMetadata,
+                                immersiveArtworkTone = immersiveArtworkTone,
+                                playerArtworkColors = playerArtworkColors,
+                                backdropAnimationTime = backdropAnimationTime,
+                                isVisible = showLyrics && !queueState.isExpanded,
+                                instantBackdrop = true,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     }
 
                     // No extra translucent edge scrim: on bright artwork,
@@ -1113,7 +1130,10 @@ private fun CapsulePlayerLyricsHost(
                             backdropAnimationTime = backdropAnimationTime,
                             drawBackdrop = false,
                             isVisible = lyricsRuntimeActive && !queueState.isExpanded,
-                            motionPosition = { sheetOffset.value },
+                            // In inline mode, one parent layer owns alpha and
+                            // expansion. Do not animate header, lyric lines and
+                            // controls independently as four separate screens.
+                            motionPosition = { if (scrollToLyrics) 0f else sheetOffset.value },
                             backHandlerEnabled =
                                 showLyrics && playerState.isExpandedOrExpanding,
                             modifier = Modifier.fillMaxSize(),
