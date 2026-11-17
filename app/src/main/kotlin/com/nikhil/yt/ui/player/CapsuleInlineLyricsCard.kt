@@ -98,7 +98,7 @@ internal fun CapsuleInlineLyricsCard(
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 20.sp,
                         )
-                        TextButton(onClick = onFullScreen) {
+                        TextButton(onClick = onFullScreen, enabled = visible) {
                             Text(
                                 stringResource(R.string.capsule_inline_lyrics_expand),
                                 color = LocalContentColor.current.copy(alpha = 0.90f),
