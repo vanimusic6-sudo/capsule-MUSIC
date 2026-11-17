@@ -940,7 +940,7 @@ private fun CapsuleMiniSongInfo(
         }
 
     Column(
-        modifier = modifier,
+        modifier = modifier.fillMaxWidth(),
         verticalArrangement =
             Arrangement.Center,
     ) {
@@ -956,21 +956,21 @@ private fun CapsuleMiniSongInfo(
                 maxLines = 1,
                 overflow =
                     TextOverflow.Clip,
-                modifier =
-                    (if (visible) {
-                        Modifier.basicMarquee(
-                            iterations = 1,
-                            initialDelayMillis = 3000,
-                            velocity = 30.dp,
-                        )
-                    } else {
-                        Modifier
-                    }),
+                modifier = Modifier.fillMaxWidth().then(
+                    if (visible) Modifier.basicMarquee(
+                        iterations = 1,
+                        initialDelayMillis = 3000,
+                        velocity = 30.dp,
+                    ) else Modifier,
+                ),
             )
 
+            // Fill only the allotted mini-player metadata slot. Without a
+            // weighted artist the Row measured its full intrinsic text width
+            // and the right edge was clipped behind the favorite control.
             Row(
-                verticalAlignment =
-                    Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (metadata.explicit) {
                     ExplicitBadge(
@@ -994,16 +994,17 @@ private fun CapsuleMiniSongInfo(
                     maxLines = 1,
                     overflow =
                         TextOverflow.Clip,
-                    modifier =
-                    if (visible) {
-                        Modifier.basicMarquee(
-                            iterations = 1,
-                            initialDelayMillis = 3000,
-                            velocity = 30.dp,
-                        )
-                    } else {
-                        Modifier
-                    },
+                    // The badge reserves its own width; the rest belongs to
+                    // the artist. Loop the marquee rather than truncating the
+                    // full name permanently on narrower phones.
+                    modifier = Modifier.weight(1f).then(
+                        if (visible) Modifier.basicMarquee(
+                            iterations = Int.MAX_VALUE,
+                            initialDelayMillis = 1700,
+                            repeatDelayMillis = 2000,
+                            velocity = 28.dp,
+                        ) else Modifier,
+                    ),
                 )
             }
 
