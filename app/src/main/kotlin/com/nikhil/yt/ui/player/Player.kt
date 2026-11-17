@@ -410,6 +410,9 @@ fun BottomSheetPlayer(
         onScreen &&
             enrichedMetadata != null &&
             (miniPlayerBackground != MiniPlayerBackgroundStyle.THEME ||
+                // Even a THEME mini-player needs an artwork palette for the
+                // compact lyrics gradient; it must not fall back to flat ink.
+                (scrollToLyricsPreference && !isLandscape) ||
                 (effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
                     playerBackground != PlayerBackgroundStyle.DEFAULT))
     val artworkScene =
