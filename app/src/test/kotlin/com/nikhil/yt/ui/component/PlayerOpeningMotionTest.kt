@@ -246,7 +246,7 @@ class PlayerOpeningMotionTest {
             assertTrue("the lyrics card must never flash a white background", stop.blue < 0.65f)
         }
         assertTrue("cover crossfade must be finite, not a perpetual animated layer",
-            CAPSULE_COVER_HANDOFF_MS in 260..500)
+            CAPSULE_COVER_HANDOFF_MS in 60..120)
     }
 
     @Test fun presentationMorphsFromActualMiniBoundsToTheExactFullscreenViewport() {
