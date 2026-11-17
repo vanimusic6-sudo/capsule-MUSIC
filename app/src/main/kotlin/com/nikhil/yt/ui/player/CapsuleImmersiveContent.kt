@@ -546,6 +546,7 @@ internal fun CapsuleImmersiveContent(
     onToggleLike: () -> Unit,
     onArtistSelected: (MediaMetadata.Artist) -> Unit,
     onShowLyrics: () -> Unit,
+    artworkClickEnabled: Boolean = true,
     onMenuClick: () -> Unit,
     onExpandQueue: () -> Unit,
     bottomPadding: Dp,
@@ -1071,7 +1072,7 @@ internal fun CapsuleImmersiveContent(
             // Never place a solid matté under the photo's transparent edge:
             // the actual long diffuse background must show through.
             artworkBackground = Color.Transparent,
-            artworkClickable = !isVideo,
+            artworkClickable = artworkClickEnabled && !isVideo,
             onArtworkClick = onShowLyrics,
             video = { active -> CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active) },
         ) {
