@@ -751,7 +751,7 @@ internal fun CapsuleImmersiveContent(
         // foreground accent (a green logo on white paper is not a green background).
         val floor = artworkTone.accent
 
-        val entryScene = remember {
+        val entryScene = remember(mediaMetadata.id) {
             sceneMemory.prepared?.takeIf { it.frame.mediaId == mediaMetadata.id }
         }
         val retainedCover = decodedArtworkCache[mediaMetadata.id]
@@ -775,7 +775,7 @@ internal fun CapsuleImmersiveContent(
         // switched its metadata to the NEXT song.
         val visualKey = if (!artworkTone.ready && entryScene?.frame?.mediaId == mediaMetadata.id)
             entryScene.frame.key else "${mediaMetadata.id}|${artworkTone.displayUrl}|${artworkAspect}"
-        val restoredFrame = remember {
+        val restoredFrame = remember(mediaMetadata.id, visualKey, retainedCover, artworkTone.ready) {
             entryScene?.frame ?: retainedCover?.takeIf {
                 artworkTone.ready && artworkTone.displayUrl != null
             }?.let { immersiveGradientFrame(visualKey, mediaMetadata.id, artworkTone, it) }
