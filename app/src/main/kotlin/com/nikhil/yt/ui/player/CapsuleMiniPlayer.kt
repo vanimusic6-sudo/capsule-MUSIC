@@ -954,10 +954,10 @@ private fun CapsuleMiniSongInfo(
                 fontWeight =
                     FontWeight.Medium,
                 maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth().then(
-                    if (visible) {
+                overflow =
+                    TextOverflow.Clip,
+                modifier =
+                    (if (visible) {
                         Modifier.basicMarquee(
                             iterations = 1,
                             initialDelayMillis = 3000,
@@ -968,12 +968,9 @@ private fun CapsuleMiniSongInfo(
                     }),
             )
 
-            // The credit shares one *measured* width with its explicit badge.
-            // Without fillMaxWidth + weight, a long name can measure wider than the
-            // remaining mini-player strip on narrow or split-screen windows.
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment =
+                    Alignment.CenterVertically,
             ) {
                 if (metadata.explicit) {
                     ExplicitBadge(
@@ -995,17 +992,18 @@ private fun CapsuleMiniSongInfo(
                         ),
                     fontSize = 12.sp,
                     maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .weight(1f)
-                        .then(
-                            if (visible) Modifier.basicMarquee(
-                                iterations = 1,
-                                initialDelayMillis = 1900,
-                                velocity = 30.dp,
-                            ) else Modifier,
-                        ),
+                    overflow =
+                        TextOverflow.Clip,
+                    modifier =
+                    if (visible) {
+                        Modifier.basicMarquee(
+                            iterations = 1,
+                            initialDelayMillis = 3000,
+                            velocity = 30.dp,
+                        )
+                    } else {
+                        Modifier
+                    },
                 )
             }
 
