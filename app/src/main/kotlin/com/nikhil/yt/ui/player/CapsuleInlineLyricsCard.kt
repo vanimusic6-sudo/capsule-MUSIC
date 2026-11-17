@@ -1,6 +1,7 @@
 /* Capsule MUSIC — familiar scroll-to-mini-lyrics page, with a read-only preview. GPL-3.0. */
 package com.nikhil.yt.ui.player
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,7 +20,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import com.nikhil.yt.constants.MiniPlayerBackgroundStyle
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.res.stringResource
@@ -55,6 +58,17 @@ internal fun CapsuleInlineLyricsCard(
     onFullScreen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // The compact lyrics card is still the original mini-style surface,
+    // but its artwork gradient must be painted independently of the user's
+    // mini-player theme (THEME otherwise left this card flat).
+    val sampledGradient = capsuleInlineLyricsStops(colors)
+    val lightThemeSurface = miniBackground == MiniPlayerBackgroundStyle.THEME &&
+        !pureBlack && MaterialTheme.colorScheme.surface.luminance() > 0.55f
+    val cardGradient = if (lightThemeSurface) {
+        sampledGradient.map { lerp(MaterialTheme.colorScheme.surface, it, 0.20f) }
+    } else {
+        sampledGradient.map { it.copy(alpha = 0.84f) }
+    }
     Box(
         modifier = modifier
             .padding(horizontal = 16.dp, vertical = 16.dp)
@@ -67,7 +81,11 @@ internal fun CapsuleInlineLyricsCard(
             modifier = Modifier.fillMaxSize(),
             animated = false,
         ) {
-            Column(Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 16.dp)) {
+            Column(
+                Modifier.fillMaxSize()
+                    .background(Brush.verticalGradient(cardGradient))
+                    .padding(horizontal = 22.dp, vertical = 16.dp),
+            ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
