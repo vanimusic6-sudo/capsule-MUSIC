@@ -961,5 +961,5 @@
     <string name="capsule_scroll_to_lyrics_description">Свайп вверх раскрывает отдельный экран текста. Управлять строками можно после полного раскрытия; полноэкранный режим открывается кнопкой. По умолчанию выключено.</string>
     <string name="capsule_inline_lyrics_heading">Текст песни</string>
     <string name="capsule_inline_lyrics_expand">На весь экран</string>
-    <string name="capsule_inline_lyrics_hint">Отпустите, чтобы раскрыть текст песни</string>
+    <string name="capsule_inline_lyrics_hint">Листайте вниз к тексту песни</string>
 </resources>
