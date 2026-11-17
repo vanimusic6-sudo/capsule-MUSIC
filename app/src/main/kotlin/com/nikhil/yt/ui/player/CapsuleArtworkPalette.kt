@@ -31,9 +31,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
-// The old 1.4s RGB morph kept repainting after the NEW cover was visible.
-// A short shared colour handoff feels tied to the artwork, not a late wave.
-private const val ARTWORK_PALETTE_TRANSITION_MS = 420
+// Keep the colour adjustment almost imperceptible; a long RGB interpolation
+// causes a second visible "gradient blink" after the new song is already playing.
+private const val ARTWORK_PALETTE_TRANSITION_MS = 95
 
 internal data class CapsuleArtworkScene(
     val colors: List<Color>,
