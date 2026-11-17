@@ -958,8 +958,8 @@
     <string name="capsule_video_ambient_description">Цветовые области видео плавно продолжаются в фоне плеера и следуют за движением в кадре. Работает только при видимом видео.</string>
     <string name="background_scene_light">Свет сцены</string>
     <string name="capsule_scroll_to_lyrics_title">Текст под плеером</string>
-    <string name="capsule_scroll_to_lyrics_description">Прокрутите плеер вверх, чтобы увидеть карточку текста под кнопками, как в Spotify. Полноэкранный текст остаётся. По умолчанию выключено.</string>
+    <string name="capsule_scroll_to_lyrics_description">Свайп вверх раскрывает отдельный экран текста. Управлять строками можно после полного раскрытия; полноэкранный режим открывается кнопкой. По умолчанию выключено.</string>
     <string name="capsule_inline_lyrics_heading">Текст песни</string>
     <string name="capsule_inline_lyrics_expand">На весь экран</string>
-    <string name="capsule_inline_lyrics_hint">Листайте вниз к тексту песни</string>
+    <string name="capsule_inline_lyrics_hint">Отпустите, чтобы раскрыть текст песни</string>
 </resources>
