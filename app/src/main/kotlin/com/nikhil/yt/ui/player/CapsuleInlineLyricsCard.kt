@@ -1,6 +1,8 @@
 /* Capsule MUSIC — compact read-only lyrics and its shared fullscreen backdrop. GPL-3.0. */
 package com.nikhil.yt.ui.player
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +20,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.ui.draw.drawWithCache
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,8 +67,21 @@ internal fun CapsuleInlineLyricsBackdrop(
     colors: List<Color>,
     modifier: Modifier = Modifier,
 ) {
-    val brush = remember(colors) { Brush.verticalGradient(capsuleInlineLyricsStops(colors)) }
-    Box(modifier.background(brush))
+    // Track changes share the same 1400ms restrained palette interpolation as the
+    // regular player. Retain one backdrop and let three draw-state colors move;
+    // never recreate the opaque brush in a single abrupt frame.
+    val stops = remember(colors) { capsuleInlineLyricsStops(colors) }
+    val channels = stops.mapIndexed { index, target ->
+        animateColorAsState(
+            targetValue = target,
+            animationSpec = tween(1400, easing = CapsuleStandardEasing),
+            label = "inlineLyricsPalette$index",
+        )
+    }
+    Box(modifier.drawWithCache {
+        val brush = Brush.verticalGradient(channels.map { it.value })
+        onDrawBehind { drawRect(brush) }
+    })
 }
 
 @Composable
