@@ -134,7 +134,8 @@ class PlayerArtworkReliabilityTest {
         assertTrue(full.contains("artworkRebind"))
         assertTrue(full.contains("retainedArtworkPainter = success.painter"))
         assertTrue(full.contains("CapsuleTrackArtworkHandoff("))
-        assertTrue(full.contains("thumbnailUrl = mediaMetadata.thumbnailUrl"))
+        assertFalse("Do not request a 360px preview in the full player",
+            full.contains("thumbnailUrl = mediaMetadata.thumbnailUrl"))
         assertTrue(full.contains("delay(8_000L)"))
         assertTrue(full.contains("val fullArtworkCandidates ="))
         assertTrue(full.contains("capsuleFullPlayerArtworkCandidates(originalArtworkUrl)"))
@@ -143,12 +144,13 @@ class PlayerArtworkReliabilityTest {
             full.contains("previewRequest") || full.contains(".size(256, 256)") ||
             full.contains("useOriginalArtwork"))
         val handoff = source("CapsuleTrackArtworkHandoff.kt")
-        assertTrue("Selected track must own its current thumbnail and decoded cover",
-            handoff.contains("key(mediaId)") && handoff.contains("if (decodedPainter == null"))
-        assertTrue("The previous song must not be retained while the next one loads",
-            !handoff.contains("outgoing"))
-        assertTrue(handoff.contains("CAPSULE_COVER_HANDOFF_MS = 205") &&
-            handoff.contains("CAPSULE_PREVIEW_ARRIVAL_MS = 180"))
+        assertTrue("Only the current song's fully decoded cover is rendered",
+            handoff.contains("key(mediaId)") && handoff.contains("if (decodedPainter != null)"))
+        assertFalse("No separate low-resolution image request",
+            handoff.contains("AsyncImage") || handoff.contains("previewRequest") ||
+                handoff.contains("CAPSULE_PREVIEW_ARRIVAL_MS"))
+        assertTrue("Keep one brief high-resolution arrival, never two stages",
+            handoff.contains("CAPSULE_COVER_HANDOFF_MS = 205"))
         assertTrue(full.contains("onError = {"))
         assertTrue(full.contains("artworkFailed = true"))
         assertTrue(full.contains("if (artworkFailed && retainedArtworkPainter == null)"))
