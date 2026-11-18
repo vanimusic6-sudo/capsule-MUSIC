@@ -58,6 +58,8 @@ jobs:
           --tests 'com.nikhil.yt.ui.ArtworkPaletteCacheTest'
           --tests 'com.nikhil.yt.ui.ArtworkPaletteStateTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleLyricsThemeTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleLyricsPaletteRecoveryTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleLyricsVolumeSliderTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveFieldTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveImageBackdropTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveTailTest'
