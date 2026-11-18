@@ -27,8 +27,9 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.min
 
 /**
- * A single rounded capsule with a pale active fill and seven identical dark cuts.
- * The marks are part of the active fill, never extra thumbs or individual touch targets.
+ * A softly rounded capsule with a pale active fill and uniform dark cuts.
+ * The number of marks follows the filled width, right up to its rounded moving end.
+ * The marks are not separate thumbs or touch targets.
  * No perpetual animation, blur, shader, image, or composition on each drag frame.
  */
 @Composable
@@ -71,7 +72,8 @@ internal fun CapsuleLyricsVolumeSlider(
         val trackHeight = 30.dp.toPx().coerceAtMost(size.height)
         val top = (size.height - trackHeight) * 0.5f
         val bounds = Rect(0f, top, size.width, top + trackHeight)
-        val radius = trackHeight * 0.5f
+        // Less rounded than a pill: a deliberate 9dp corner, shared by both segments.
+        val radius = min(9.dp.toPx(), trackHeight * 0.5f)
         val corner = CornerRadius(radius)
         val outline = Path().apply { addRoundRect(RoundRect(bounds, corner)) }
         val activeWidth = size.width * volume
@@ -97,16 +99,21 @@ internal fun CapsuleLyricsVolumeSlider(
                 val firstX = 10.dp.toPx()
                 val stride = 12.dp.toPx()
                 val dashY = top + (trackHeight - dashHeight) * 0.5f
-                repeat(7) { index ->
+                val count = capsuleLyricsVolumeDashCount(
+                    activeWidthPx = activeWidth,
+                    firstX = firstX,
+                    dashWidth = dashWidth,
+                    stride = stride,
+                    endInset = 8.dp.toPx(),
+                )
+                repeat(count) { index ->
                     val x = firstX + index * stride
-                    if (x + dashWidth <= activeWidth - 3.dp.toPx()) {
-                        drawRoundRect(
-                            color = Color(0xFF111111),
-                            topLeft = Offset(x, dashY),
-                            size = Size(dashWidth, dashHeight),
-                            cornerRadius = CornerRadius(dashWidth * 0.5f),
-                        )
-                    }
+                    drawRoundRect(
+                        color = Color(0xFF111111),
+                        topLeft = Offset(x, dashY),
+                        size = Size(dashWidth, dashHeight),
+                        cornerRadius = CornerRadius(dashWidth * 0.5f),
+                    )
                 }
             }
         }
@@ -118,4 +125,24 @@ internal fun CapsuleLyricsVolumeSlider(
             style = Stroke(width = 1.25.dp.toPx()),
         )
     }
+}
+
+/**
+ * Geometry only: add each whole dash that fits before the moving fill edge.
+ * The old hard-coded repeat(7) left a large blank patch at medium/high volume.
+ */
+internal fun capsuleLyricsVolumeDashCount(
+    activeWidthPx: Float,
+    firstX: Float,
+    dashWidth: Float,
+    stride: Float,
+    endInset: Float,
+): Int {
+    if (!activeWidthPx.isFinite() || !firstX.isFinite() ||
+        !dashWidth.isFinite() || !stride.isFinite() || !endInset.isFinite() ||
+        stride <= 0f || dashWidth <= 0f
+    ) return 0
+    val available = activeWidthPx - endInset - firstX - dashWidth
+    if (available < 0f) return 0
+    return (kotlin.math.floor(available / stride).toInt() + 1).coerceIn(0, 512)
 }
