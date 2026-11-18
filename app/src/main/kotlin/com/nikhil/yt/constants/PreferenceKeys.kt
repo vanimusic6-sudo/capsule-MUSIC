@@ -37,6 +37,7 @@ val EnableLrcLibKey = booleanPreferencesKey("enableLrclib")
 val EnableBetterLyricsKey = booleanPreferencesKey("enableBetterLyrics")
 val EnableBetterLyricsPortatoKey = booleanPreferencesKey("enableBetterLyricsPortato")
 val EnableSimpMusicKey = booleanPreferencesKey("enableSimpMusic")
+val EnableKuGouLyricsKey = booleanPreferencesKey("enableKuGouLyrics")
 val EnableLyricsPlusKey = booleanPreferencesKey("enableLyricsPlus")
 
 /**
