@@ -1,8 +1,6 @@
 /* Capsule MUSIC — compact read-only lyrics and its shared fullscreen backdrop. GPL-3.0. */
 package com.nikhil.yt.ui.player
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,7 +19,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.draw.drawWithCache
-import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -83,19 +80,14 @@ internal fun CapsuleInlineLyricsBackdrop(
     colors: List<Color>,
     modifier: Modifier = Modifier,
 ) {
-    // Track changes share the same 1400ms restrained palette interpolation as the
-    // regular player. Retain one backdrop and let three draw-state colors move;
-    // never recreate the opaque brush in a single abrupt frame.
+    // The regular player already animates its shared artworkScene.colors.
+    // Re-animating the same RGB values here for 1400ms made Lyrics lag behind
+    // the player and left a gray/old gradient after a series of rapid skips.
+    // Use those SAME prepared/animated colors, at the SAME frame, with one
+    // inexpensive draw-cache brush and no independent timing coroutine.
     val stops = remember(colors) { capsuleInlineLyricsStops(colors) }
-    val channels = stops.mapIndexed { index, target ->
-        animateColorAsState(
-            targetValue = target,
-            animationSpec = tween(1400, easing = CapsuleStandardEasing),
-            label = "inlineLyricsPalette$index",
-        )
-    }
     Box(modifier.drawWithCache {
-        val brush = Brush.verticalGradient(channels.map { it.value })
+        val brush = Brush.verticalGradient(stops)
         onDrawBehind { drawRect(brush) }
     })
 }
