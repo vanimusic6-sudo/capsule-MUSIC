@@ -813,10 +813,12 @@ private fun CapsulePlayerLyricsHost(
             lastPreparedInlinePalette = List(3) { Color(0xFF1A1B21) }
         }
     }
-    val liveInlinePalette = if (playerArtworkReady) playerArtworkColors else emptyList()
-    val transitioningPalette = frozenCardPalette
-        ?: liveInlinePalette.ifEmpty { lastPreparedInlinePalette }
-            .ifEmpty { List(3) { Color(0xFF1A1B21) } }
+    val transitioningPalette = capsuleStableLyricsPalette(
+        frozenDuringOpening = frozenCardPalette,
+        currentTrackColors = playerArtworkColors,
+        currentTrackReady = playerArtworkReady,
+        lastDecodedColors = lastPreparedInlinePalette,
+    )
     // Opacity derives directly from sheet position: no third coroutine, no
     // arbitrary millisecond delay and no de-synchronised close/reopen fade.
     // The outgoing player stays fully present while Lyrics travels across it. Once the page has
