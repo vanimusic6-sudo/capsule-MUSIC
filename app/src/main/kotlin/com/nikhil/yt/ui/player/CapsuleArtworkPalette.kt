@@ -34,7 +34,7 @@ import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 // Keep the colour adjustment almost imperceptible; a long RGB interpolation
 // causes a second visible "gradient blink" after the new song is already playing.
-private const val ARTWORK_PALETTE_TRANSITION_MS = 210
+private const val ARTWORK_PALETTE_TRANSITION_MS = 460
 
 internal data class CapsuleArtworkScene(
     val colors: List<Color>,
