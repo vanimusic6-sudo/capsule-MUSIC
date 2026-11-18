@@ -54,9 +54,15 @@ internal fun PlayerWindow(
     val compactInteractive by remember(state) { derivedStateOf { state.compactForegroundAcceptsInput } }
     // Never switch source/destination z-order mid-flight. The Mini itself fades to zero.
     val windowInteractive by remember(state) { derivedStateOf {
-        playerSceneShouldInterceptTouch(
-            state.visualProgress, state.isExpandedOrExpanding, state.isDismissed,
-        )
+        // The Mini is already clickable during the last ~10% of close.
+        // Stop the full-viewport Initial-pass blocker at that *same* handoff,
+        // otherwise a tap in the narrow 7.5–10% window is stolen and the
+        // compact card cannot reopen without tapping again.
+        state.isExpandedOrExpanding ||
+            (!state.compactForegroundAcceptsInput &&
+                playerSceneShouldInterceptTouch(
+                    state.visualProgress, state.isExpandedOrExpanding, state.isDismissed,
+                ))
     } }
     val dismissingMini by remember(state) { derivedStateOf { state.rawProgress < 0f } }
 
