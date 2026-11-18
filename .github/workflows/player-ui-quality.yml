@@ -68,7 +68,7 @@ jobs:
           --tests 'com.nikhil.yt.ui.CapsuleMotionTest'
           --tests 'com.nikhil.yt.ui.DockHandoverTest'
           --tests 'com.nikhil.yt.ui.component.PlayerOpeningMotionTest' \
-          --tests 'com.nikhil.yt.ui.component.PlayerFinalPolishTest'
+          --tests 'com.nikhil.yt.ui.component.PlayerFinalPolishTest' \
           --tests 'com.nikhil.yt.ui.component.PlayerWindowAccessibilityTest'
           --tests 'com.nikhil.yt.ui.PlayerTransitionGestureTest'
           --tests 'com.nikhil.yt.ui.PlayerTransitionArchitectureTest'
