@@ -657,6 +657,7 @@ fun BottomSheetPlayer(
                     mediaMetadata = metadata,
                     decodedArtworkCache = decodedArtworkCache,
                     playerArtworkColors = gradientColors,
+                    playerArtworkReady = artworkScene.ready,
                     videoAmbientBands = activeVideoAmbientBands.orEmpty(),
                     videoAmbientField = activeVideoAmbientField,
                     backdropAnimationTime = sharedBackdropAnimationTime,
@@ -764,6 +765,7 @@ private fun CapsulePlayerLyricsHost(
     mediaMetadata: MediaMetadata,
     decodedArtworkCache: MutableMap<String, Pair<String, Painter>>,
     playerArtworkColors: List<Color>,
+    playerArtworkReady: Boolean,
     videoAmbientBands: List<Color>,
     videoAmbientField: CapsuleColorField?,
     backdropAnimationTime: State<Long>,
@@ -796,7 +798,25 @@ private fun CapsulePlayerLyricsHost(
     val cardBoundsInRoot = remember { arrayOf<Rect?>(null) }
     var frozenCardBounds by remember(mediaMetadata.id) { mutableStateOf<Rect?>(null) }
     var frozenCardPalette by remember(mediaMetadata.id) { mutableStateOf<List<Color>?>(null) }
-    val transitioningPalette = frozenCardPalette ?: playerArtworkColors
+    var lastPreparedInlinePalette by remember { mutableStateOf<List<Color>>(emptyList()) }
+    // The parent palette exposes neutral RGB while a song is being decoded.
+    // It is not a real album gradient: hold the outgoing valid palette until
+    // the current song's preparation completes, even after 30 quick skips.
+    LaunchedEffect(playerArtworkColors, playerArtworkReady, scrollToLyrics) {
+        if (scrollToLyrics && playerArtworkReady && playerArtworkColors.size >= 3) {
+            lastPreparedInlinePalette = playerArtworkColors
+        }
+    }
+    LaunchedEffect(mediaMetadata.id, playerArtworkReady, scrollToLyrics) {
+        if (scrollToLyrics && !playerArtworkReady) {
+            kotlinx.coroutines.delay(2600L)
+            lastPreparedInlinePalette = List(3) { Color(0xFF1A1B21) }
+        }
+    }
+    val liveInlinePalette = if (playerArtworkReady) playerArtworkColors else emptyList()
+    val transitioningPalette = frozenCardPalette
+        ?: liveInlinePalette.ifEmpty { lastPreparedInlinePalette }
+            .ifEmpty { List(3) { Color(0xFF1A1B21) } }
     // Opacity derives directly from sheet position: no third coroutine, no
     // arbitrary millisecond delay and no de-synchronised close/reopen fade.
     // The outgoing player stays fully present while Lyrics travels across it. Once the page has
@@ -858,6 +878,10 @@ private fun CapsulePlayerLyricsHost(
                     }
                 }
             }
+            // Freeze only the geometrical expansion, not the whole lyrics session.
+            // Leaving this snapshot pinned until Back caused late artwork responses
+            // to have no effect until Lyrics was closed and reopened.
+            frozenCardPalette = null
         } else if (lyricsLayerMounted) {
             // Keep the text rendering stable until its position-coupled fade
             // finishes. Disabling lyrics on the first closing frame used to
@@ -1034,7 +1058,7 @@ private fun CapsulePlayerLyricsHost(
                         } else null
                         // Prevent late artwork extraction from changing either
                         // side of an active expansion independently.
-                        frozenCardPalette = playerArtworkColors.toList()
+                        frozenCardPalette = transitioningPalette.toList()
                         onShowLyrics()
                     },
                     modifier = Modifier.fillMaxWidth().height((viewportHeight - 60.dp).coerceAtLeast(360.dp)),
