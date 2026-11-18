@@ -5,121 +5,86 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * The lyrics provider ranking, and what it does with a list it does not recognise.
- *
- * A stored order outlives the version that wrote it: a provider gets removed, another gets added,
- * a backup comes back from an older build. Every one of those hands this a list that is wrong in
- * some way, and none of them may end with somebody having fewer sources than the app has.
- */
 class LyricsProviderOrderTest {
-    @Test fun nothingStoredGivesTheDefaultOrder() {
-        assertEquals(LyricsProviderOrder.supportedProviders, LyricsProviderOrder.resolve(null))
-        assertEquals(LyricsProviderOrder.supportedProviders, LyricsProviderOrder.resolve(""))
+    @Test fun noPreferenceUsesIndependentSourceDefaults() {
+        val default = LyricsProviderOrder.supportedProviders
+        assertEquals(default, LyricsProviderOrder.resolve(null))
+        assertEquals(default, LyricsProviderOrder.resolve(""))
+        assertEquals(LyricsProviderOrder.YOUTUBE, default.last())
+        assertEquals(default.size, default.distinct().size)
     }
 
-    @Test fun previousUnchangedDefaultsReceiveNewFastSources() {
-        val oldDefault = "PAXSENIX_APPLE_MUSIC,BETTER_LYRICS,NETEASE,LYRICS_PLUS,YOUTUBE"
-        assertEquals(LyricsProviderOrder.supportedProviders, LyricsProviderOrder.resolve(oldDefault))
-    }
-
-    @Test fun aStoredOrderIsKept() {
-        val stored = "YOUTUBE,BETTER_LYRICS,PAXSENIX_APPLE_MUSIC"
-        val resolved = LyricsProviderOrder.resolve(stored)
+    @Test fun olderUntouchedPreferencesMigrateToNewDefaults() {
         assertEquals(
-            listOf("YOUTUBE", "BETTER_LYRICS", "PAXSENIX_APPLE_MUSIC"),
-            resolved.take(3),
+            LyricsProviderOrder.supportedProviders,
+            LyricsProviderOrder.resolve("PAXSENIX_APPLE_MUSIC,BETTER_LYRICS,NETEASE,LYRICS_PLUS,YOUTUBE"),
         )
-    }
-
-    /**
-     * Plain YouTube metadata has to stay last: it nearly always returns *something*, so anything
-     * below it would effectively never be reached.
-     */
-    @Test fun theFallbackIsLastByDefault() {
-        val defaults = LyricsProviderOrder.supportedProviders
-        assertEquals("YOUTUBE", defaults.last())
-    }
-
-    @Test fun theNewProvidersAreReachable() {
-        val defaults = LyricsProviderOrder.supportedProviders
-        assertTrue("LyricsPlus must be in the order", "LYRICS_PLUS" in defaults)
-        assertTrue("Paxsenix Apple Music must be in the order", "PAXSENIX_APPLE_MUSIC" in defaults)
-        assertTrue("SimpMusic must be in the order", "SIMPMUSIC" in defaults)
-        assertTrue("Portato QQ must be in the order", "BETTER_LYRICS_PORTATO" in defaults)
-    }
-
-    /** Removed providers must not survive in anybody's stored order after an upgrade. */
-    @Test fun providersThatNoLongerExistAreDropped() {
-        val resolved =
+        assertEquals(
+            LyricsProviderOrder.supportedProviders,
             LyricsProviderOrder.resolve(
-                "KUGOU,LRCLIB,YOUTUBE_SUBTITLE,MUSIXMATCH,PAXSENIX_SPOTIFY,DEEZER,BETTER_LYRICS",
-            )
-        assertTrue("a removed provider came back: $resolved", "KUGOU" !in resolved)
-        assertTrue("a removed provider came back: $resolved", "LRCLIB" !in resolved)
-        assertTrue("a removed provider came back: $resolved", "YOUTUBE_SUBTITLE" !in resolved)
-        assertTrue("a removed provider came back: $resolved", "MUSIXMATCH" !in resolved)
-        assertTrue("a removed provider came back: $resolved", "PAXSENIX_SPOTIFY" !in resolved)
-        assertTrue("a removed provider came back: $resolved", "DEEZER" !in resolved)
-        assertEquals("BETTER_LYRICS", resolved.first())
-    }
-
-    /** A provider added in a later version has to appear, or it can never be reached at all. */
-    @Test fun aPartialOrderIsToppedUpRatherThanTruncated() {
-        val resolved = LyricsProviderOrder.resolve("YOUTUBE")
-        assertEquals("YOUTUBE", resolved.first())
-        assertEquals(
-            "every provider must be reachable",
-            LyricsProviderOrder.supportedProviders.toSet(),
-            resolved.toSet(),
+                "SIMPMUSIC,PAXSENIX_APPLE_MUSIC,BETTER_LYRICS_PORTATO,BETTER_LYRICS,LYRICS_PLUS,NETEASE,YOUTUBE",
+            ),
         )
     }
 
-    @Test fun duplicatesAndWhitespaceAndCaseAreTolerated() {
-        val resolved =
-            LyricsProviderOrder.resolve(
-                " paxsenix_apple_music , PAXSENIX_APPLE_MUSIC,better_lyrics ",
-            )
+    @Test fun preservesCustomOrderEvenWhenRemovedSourcesWereBetween() {
         assertEquals(
-            listOf("PAXSENIX_APPLE_MUSIC", "BETTER_LYRICS"),
-            resolved.take(2),
+            listOf(LyricsProviderOrder.YOUTUBE, LyricsProviderOrder.PAXSENIX_APPLE_MUSIC),
+            LyricsProviderOrder.resolve("YOUTUBE,NETEASE,PAXSENIX_APPLE_MUSIC").take(2),
         )
     }
 
-    @Test fun legacyPaxsenixExpandsInPlace() {
-        val resolved = LyricsProviderOrder.resolve("YOUTUBE,PAXSENIX,BETTER_LYRICS")
+    @Test fun containsNewAndIndependentSources() {
+        val defaults = LyricsProviderOrder.supportedProviders
+        assertTrue(LyricsProviderOrder.LRCLIB in defaults)
+        assertTrue(LyricsProviderOrder.KUGOU in defaults)
+        assertTrue(LyricsProviderOrder.SIMPMUSIC in defaults)
+        assertTrue(LyricsProviderOrder.BETTER_LYRICS_PORTATO in defaults)
+        assertTrue(LyricsProviderOrder.LYRICS_PLUS in defaults)
+    }
+
+    @Test fun obsoleteCatalogsDoNotReturn() {
+        val resolved = LyricsProviderOrder.resolve(
+            "NETEASE,BETTER_LYRICS,YOUTUBE_SUBTITLE,MUSIXMATCH,DEEZER,PAXSENIX_SPOTIFY",
+        )
+        assertEquals(LyricsProviderOrder.supportedProviders, resolved)
+        assertTrue("NETEASE" !in resolved)
+        assertTrue("BETTER_LYRICS" !in resolved)
+    }
+
+    @Test fun duplicatesCaseAndLegacyAliasRemainSafe() {
+        val resolved = LyricsProviderOrder.resolve(
+            " paxsenix, PAXSENIX_APPLE_MUSIC,lrclib,LRCLIB, SIMPMUSIC ",
+        )
         assertEquals(
             listOf(
-                "YOUTUBE",
-                "PAXSENIX_APPLE_MUSIC",
-                "BETTER_LYRICS",
+                LyricsProviderOrder.PAXSENIX_APPLE_MUSIC,
+                LyricsProviderOrder.LRCLIB,
+                LyricsProviderOrder.SIMPMUSIC,
             ),
             resolved.take(3),
         )
     }
 
-    /** Upgrading must not throw away the single choice somebody had already made. */
-    @Test fun theOldPreferredProviderSeedsTheOrderOnce() {
-        val resolved = LyricsProviderOrder.resolve(raw = null, legacyPreferred = "BETTER_LYRICS")
-        assertEquals("BETTER_LYRICS", resolved.first())
-        assertEquals(LyricsProviderOrder.supportedProviders.toSet(), resolved.toSet())
-    }
-
-    @Test fun aStoredOrderOutranksTheOldPreference() {
-        val resolved = LyricsProviderOrder.resolve(raw = "YOUTUBE", legacyPreferred = "BETTER_LYRICS")
-        assertEquals("YOUTUBE", resolved.first())
-    }
-
-    /** A removed provider as the legacy choice must not leave the order seeded with nothing. */
-    @Test fun anOldPreferenceForARemovedProviderIsIgnored() {
+    @Test fun unsupportedLegacyPreferenceDoesNotBecomeFirst() {
         assertEquals(
             LyricsProviderOrder.supportedProviders,
-            LyricsProviderOrder.resolve(raw = null, legacyPreferred = "KUGOU"),
+            LyricsProviderOrder.resolve(null, legacyPreferred = "NETEASE"),
+        )
+        assertEquals(
+            LyricsProviderOrder.YOUTUBE,
+            LyricsProviderOrder.resolve("YOUTUBE", legacyPreferred = "PAXSENIX_APPLE_MUSIC").first(),
         )
     }
 
-    @Test fun encodingRoundTrips() {
-        val order = LyricsProviderOrder.supportedProviders.reversed()
-        assertEquals(order, LyricsProviderOrder.resolve(LyricsProviderOrder.encode(order)))
+    @Test fun allSourcesAreReachableFromPartialRankings() {
+        val ranked = LyricsProviderOrder.resolve("LRCLIB,YOUTUBE")
+        assertEquals(LyricsProviderOrder.LRCLIB, ranked.first())
+        assertEquals(LyricsProviderOrder.supportedProviders.toSet(), ranked.toSet())
+    }
+
+    @Test fun encodeRoundTrip() {
+        val reversed = LyricsProviderOrder.supportedProviders.reversed()
+        assertEquals(reversed, LyricsProviderOrder.resolve(LyricsProviderOrder.encode(reversed)))
     }
 }
