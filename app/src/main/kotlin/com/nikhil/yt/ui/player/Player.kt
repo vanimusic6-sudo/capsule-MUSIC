@@ -1114,7 +1114,7 @@ private fun CapsulePlayerLyricsHost(
                     val aperture = Path().apply {
                         addRoundRect(RoundRect(bounds, CornerRadius(radius)))
                     }
-                    clipPath(aperture) { drawContent() }
+                    clipPath(aperture) { this@drawWithContent.drawContent() }
                 } else {
                     drawContent()
                 }
