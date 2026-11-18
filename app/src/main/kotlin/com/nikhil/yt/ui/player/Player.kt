@@ -658,7 +658,6 @@ fun BottomSheetPlayer(
                     decodedArtworkCache = decodedArtworkCache,
                     playerArtworkColors = gradientColors,
                     playerArtworkField = artworkScene.field,
-                    playerArtworkReady = artworkScene.ready,
                     videoAmbientBands = activeVideoAmbientBands.orEmpty(),
                     videoAmbientField = activeVideoAmbientField,
                     backdropAnimationTime = sharedBackdropAnimationTime,
@@ -767,7 +766,6 @@ private fun CapsulePlayerLyricsHost(
     decodedArtworkCache: MutableMap<String, Pair<String, Painter>>,
     playerArtworkColors: List<Color>,
     playerArtworkField: CapsuleColorField?,
-    playerArtworkReady: Boolean,
     videoAmbientBands: List<Color>,
     videoAmbientField: CapsuleColorField?,
     backdropAnimationTime: State<Long>,
@@ -800,26 +798,13 @@ private fun CapsulePlayerLyricsHost(
     val cardBoundsInRoot = remember { arrayOf<Rect?>(null) }
     var frozenCardBounds by remember(mediaMetadata.id) { mutableStateOf<Rect?>(null) }
     var frozenCardPalette by remember(mediaMetadata.id) { mutableStateOf<List<Color>?>(null) }
-    var lastPreparedInlinePalette by remember { mutableStateOf<List<Color>>(emptyList()) }
-    // The parent palette exposes neutral RGB while a song is being decoded.
-    // It is not a real album gradient: hold the outgoing valid palette until
-    // the current song's preparation completes, even after 30 quick skips.
-    LaunchedEffect(playerArtworkColors, playerArtworkReady, scrollToLyrics) {
-        if (scrollToLyrics && playerArtworkReady && playerArtworkColors.size >= 3) {
-            lastPreparedInlinePalette = playerArtworkColors
-        }
-    }
-    LaunchedEffect(mediaMetadata.id, playerArtworkReady, scrollToLyrics) {
-        if (scrollToLyrics && !playerArtworkReady) {
-            kotlinx.coroutines.delay(2600L)
-            lastPreparedInlinePalette = List(3) { Color(0xFF1A1B21) }
-        }
-    }
-    val transitioningPalette = capsuleStableLyricsPalette(
+    // The player's gradient is already animated and cached. Any independent
+    // retained/neutral policy here introduces a second (late) transition.
+    // Freeze only during the physical aperture opening, then paint the exact
+    // same RGB values as the regular player, including its pending frame.
+    val transitioningPalette = capsuleLyricsSharedColors(
         frozenDuringOpening = frozenCardPalette,
-        currentTrackColors = playerArtworkColors,
-        currentTrackReady = playerArtworkReady,
-        lastDecodedColors = lastPreparedInlinePalette,
+        playerColors = playerArtworkColors,
     )
     // Opacity derives directly from sheet position: no third coroutine, no
     // arbitrary millisecond delay and no de-synchronised close/reopen fade.
