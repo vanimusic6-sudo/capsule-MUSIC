@@ -10,8 +10,8 @@ object LyricsProviderOrder {
     const val PAXSENIX_APPLE_MUSIC = "PAXSENIX_APPLE_MUSIC" // Apple
     const val BETTER_LYRICS_PORTATO = "BETTER_LYRICS_PORTATO" // QQ / Portato
     const val LYRICS_PLUS = "LYRICS_PLUS"          // YouLy+ community
-    const val LRCLIB = "LRCLIB"
-    const val KUGOU = "KUGOU"                     // KuGou line-synced catalog                    // Community LRC
+    const val LRCLIB = "LRCLIB"                    // Community LRC
+    const val KUGOU = "KUGOU"                     // KuGou line-synced catalog
     const val YOUTUBE = "YOUTUBE"                  // Description fallback
 
     val supportedProviders = listOf(
@@ -44,7 +44,11 @@ object LyricsProviderOrder {
         val parsed = stored.filter { it in supportedSet }
         val seed = parsed.ifEmpty {
             val legacy = expandLegacy(legacyPreferred.orEmpty().trim().uppercase()).firstOrNull()
-            listOfNotNull(legacy?.takeIf { it in supportedSet })
+            // Velune's historical default was LRCLIB. The old single-choice
+            // preference is often present even when the user never chose it.
+            // Do not silently promote that stale default above Capsule's new
+            // providers; only an explicit reordered list may do that.
+            listOfNotNull(legacy?.takeIf { it in supportedSet && it != LRCLIB })
         }
         return (seed + supportedProviders).distinct()
     }
