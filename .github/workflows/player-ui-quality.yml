@@ -1,7 +1,15 @@
 name: Capsule Player UI Quality
 
 # Reusable quality gate for player skin, motion and gesture changes.
+# Verify this release-polish branch on every code/test revision as well as PRs.
 on:
+  push:
+    branches:
+      - feature/lyrics-release-polish-20261118
+    paths:
+      - 'app/src/main/kotlin/com/nikhil/yt/ui/player/**'
+      - 'app/src/test/kotlin/com/nikhil/yt/ui/**'
+      - '.github/workflows/player-ui-quality.yml'
   pull_request:
     paths:
       - 'app/src/main/kotlin/com/nikhil/yt/ui/player/**'
