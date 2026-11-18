@@ -28,6 +28,7 @@ import com.nikhil.yt.innertube.toHighResThumbnail
 import com.nikhil.yt.models.MediaMetadata
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
@@ -206,6 +207,13 @@ internal fun rememberImmersiveEdgeColor(
         }
         resolved = finalTone
         resolvedKey = key
+        if (resultTone == null && failureRetry < 2) {
+            // Rapid skips can cancel a Coil request at precisely the wrong moment.
+            // The currently selected song gets two bounded, cancellable retries
+            // without having to close/open Lyrics. Never cache a failed sample.
+            delay(if (failureRetry == 0) 600L else 1_200L)
+            failureRetry++
+        }
     }
 
     val target = when {
