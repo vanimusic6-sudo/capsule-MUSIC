@@ -130,6 +130,7 @@ internal fun CapsuleLyricsBackdropLayer(
     mediaMetadata: MediaMetadata,
     immersiveArtworkTone: ImmersiveArtworkTone? = null,
     playerArtworkColors: List<Color> = emptyList(),
+    playerArtworkField: CapsuleColorField? = null,
     backdropAnimationTime: State<Long>? = null,
     isVisible: Boolean = true,
     instantBackdrop: Boolean = false,
@@ -162,62 +163,26 @@ internal fun CapsuleLyricsBackdropLayer(
             playerDesign = playerDesign,
             playerBackground = playerBackground,
         )
-    // Immersion uses its cropped lower-edge sample, never the whole-cover palette.
-    val needsArtworkColors =
-        lyricsBackdrop is CapsuleLyricsBackdrop.PlayerTheme &&
-            lyricsBackdrop.style != PlayerBackgroundStyle.DEFAULT
-    val localArtworkScene =
-        rememberCapsuleArtworkScene(
-            mediaMetadata = mediaMetadata,
-            // Lyrics must request its own CURRENT track, even if the parent supplies
-            // three placeholder RGB values. Those placeholders used to suppress the
-            // fetch permanently after many rapid skips.
-            enabled = onScreen && needsArtworkColors,
-            animatePalette = false,
-            retainWhenDisabled = true,
-        )
-    // Keep ONE scene across media IDs, not one palette per track. A fresh track's
-    // neutral pending palette is not decoded artwork and must not replace a warm
-    // scene in one frame (the reported bright -> grey "light switch").
-    var lastUsablePalette by remember { mutableStateOf<List<Color>>(emptyList()) }
-    var lastUsableField by remember { mutableStateOf<CapsuleColorField?>(null) }
-    // The parent palette is frequently the synthetic neutral scene while a thumbnail
-    // is being loaded. Let the shared cache/local decoder certify the CURRENT mediaId;
-    // taking an apparently nonempty parent RGB list previously suppressed extraction.
-    val currentPalette = localArtworkScene.colors
-        .takeIf { localArtworkScene.ready && it.size >= 3 }
-        .orEmpty()
-    LaunchedEffect(mediaMetadata.id, currentPalette, localArtworkScene.field) {
-        if (currentPalette.isNotEmpty()) {
-            lastUsablePalette = currentPalette
-            lastUsableField = localArtworkScene.field
-        } else {
-            // Bounded retry may still be processing. Keep the outgoing palette and
-            // spatial field alive, then let both settle to neutral if no art exists.
-            kotlinx.coroutines.delay(2600L)
-            lastUsablePalette = List(3) { Color(0xFF1A1B21) }
-            lastUsableField = null
-        }
-    }
-    val paletteTarget = currentPalette.ifEmpty { lastUsablePalette }
-        .ifEmpty { List(3) { Color(0xFF1A1B21) } }
-    val artworkColors = paletteTarget.mapIndexed { index, target ->
-        animateColorAsState(
-            targetValue = target,
-            animationSpec = tween(1150, easing = CapsuleStandardEasing),
-            label = "lyricsSharedTrackColor$index",
-        ).value
-    }
-    // Keep the spatial field paired with a decoded current image. An unsuccessful
-    // source must not erase the previous field in the middle of a transition.
-
-
+    // The full player already resolves/animates one shared artworkScene.
+    // Consume the SAME RGB frames and spatial field, instead of a second image
+    // request plus independent 1150ms tween (a source of lag and stale grey).
+    val parentSuppliesScene = playerArtworkColors.size >= 3
+    val needsLocalScene = lyricsBackdrop is CapsuleLyricsBackdrop.PlayerTheme &&
+        lyricsBackdrop.style != PlayerBackgroundStyle.DEFAULT && !parentSuppliesScene
+    val localArtworkScene = rememberCapsuleArtworkScene(
+        mediaMetadata = mediaMetadata,
+        enabled = onScreen && isVisible && needsLocalScene,
+        animatePalette = true,
+        retainWhenDisabled = false,
+    )
+    val artworkColors = if (parentSuppliesScene) playerArtworkColors else localArtworkScene.colors
+    val artworkField = if (parentSuppliesScene) playerArtworkField else localArtworkScene.field
 
     BoxWithConstraints(modifier = modifier.fillMaxSize().background(CapsuleLyricsBackground)) {
         val artworkAspectRatio = maxWidth.value /
             immersiveArtworkHeight(maxHeight).value.coerceAtLeast(1f)
-        // Crossfade only changes of layout/style. Track palettes keep the same renderer and
-        // the same 1400ms interpolation as the player; no permanent second backdrop layer.
+        // Crossfade only layout/style changes; track colors and timing are
+        // the same already-animated scene that the regular player draws.
         // When the Lyrics aperture itself is travelling, never blend
         // two FULL-SCREEN backdrops through an offscreen alpha layer.
         // That composited pale backgrounds over dark ones as the reported
@@ -239,23 +204,14 @@ internal fun CapsuleLyricsBackdropLayer(
                                 lyricsBackdrop == CapsuleLyricsBackdrop.ImmersiveColoring,
                             visibleArtworkAspectRatio = artworkAspectRatio,
                         )
-                        var retainedToneEdge by remember { mutableStateOf(IMMERSIVE_NEUTRAL_COLOR) }
-                        LaunchedEffect(mediaMetadata.id, mediaMetadata.thumbnailUrl, tone.ready, tone.edge) {
-                            if (tone.ready) {
-                                retainedToneEdge = tone.edge
-                            } else {
-                                // The previous hue remains painted while the next track is sampled;
-                                // grey enters only after a bounded failed/missing-cover interval.
-                                kotlinx.coroutines.delay(2600L)
-                                retainedToneEdge = IMMERSIVE_NEUTRAL_COLOR
-                            }
-                        }
-                        ImmersiveLyricsColoring(if (tone.ready) tone.edge else retainedToneEdge)
+                        // Immersion's artwork sample owns its ready/neutral switch.
+                        // A single short reveal matches the prepared scene.
+                        ImmersiveLyricsColoring(if (tone.ready) tone.edge else IMMERSIVE_NEUTRAL_COLOR)
                     }
                     is CapsuleLyricsBackdrop.PlayerTheme -> PlayerBackground(
                         playerBackground = backdrop.style,
                         gradientColors = artworkColors,
-                        artworkField = if (localArtworkScene.ready) localArtworkScene.field else lastUsableField,
+                        artworkField = artworkField,
                         animated = isVisible && onScreen && isPlaying &&
                             playbackState == Player.STATE_READY && backdrop == lyricsBackdrop,
                         sharedAnimationTime = backdropAnimationTime,
@@ -285,7 +241,7 @@ private fun ImmersiveLyricsColoring(edge: Color) {
     val colors = stops.mapIndexed { index, stop ->
         animateColorAsState(
             targetValue = stop.second,
-            animationSpec = tween(1400, easing = CapsuleStandardEasing),
+            animationSpec = tween(IMMERSIVE_CURRENT_SCENE_REVEAL_MS, easing = CapsuleStandardEasing),
             label = "immersiveLyricsColor$index",
         )
     }
