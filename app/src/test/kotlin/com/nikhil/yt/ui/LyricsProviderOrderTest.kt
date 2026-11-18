@@ -14,6 +14,19 @@ class LyricsProviderOrderTest {
         assertEquals(default.size, default.distinct().size)
     }
 
+    @Test fun theOldLrcLibDefaultCannotHijackCapsulesNewSourceOrder() {
+        // Old Velune installs had LRCLIB as a default single-provider preference.
+        // This is not the same as a deliberate custom order.
+        assertEquals(
+            LyricsProviderOrder.supportedProviders,
+            LyricsProviderOrder.resolve(raw = null, legacyPreferred = "LRCLIB"),
+        )
+        assertEquals(
+            LyricsProviderOrder.LRCLIB,
+            LyricsProviderOrder.resolve(raw = "LRCLIB,SIMPMUSIC").first(),
+        )
+    }
+
     @Test fun olderUntouchedPreferencesMigrateToNewDefaults() {
         assertEquals(
             LyricsProviderOrder.supportedProviders,
