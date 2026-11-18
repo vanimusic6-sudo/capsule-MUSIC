@@ -67,6 +67,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import coil3.request.allowHardware
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -1540,6 +1541,10 @@ private fun rememberImmersiveArtworkRequest(url: String?): ImageRequest {
             // Same decode/cache target for the invisible preload and the
             // visible frame; avoids a second full-size GPU allocation.
             .size(960, 960)
+            // The tone sampler uses the same URL, requested dimensions and
+            // software decoder. Reuse the decoded Coil cache entry instead of
+            // allocating a separate hardware bitmap for the visible painter.
+            .allowHardware(false)
             .crossfade(false)
             .build()
     }
