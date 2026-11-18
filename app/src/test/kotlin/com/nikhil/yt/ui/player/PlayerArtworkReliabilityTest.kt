@@ -153,7 +153,9 @@ class PlayerArtworkReliabilityTest {
             handoff.contains("CAPSULE_COVER_HANDOFF_MS = 205"))
         assertTrue(full.contains("onError = {"))
         assertTrue(full.contains("artworkFailed = true"))
-        assertTrue(full.contains("if (artworkFailed && retainedArtworkPainter == null)"))
+        assertTrue(full.contains("if (artworkFailed && retainedArtworkPainter == null &&"))
+        assertTrue("Video frame must never be covered by a fake empty-album glyph",
+            full.contains("!isCapsuleVideoPlaying && !needsVideoSurface"))
         // The animation and gradient extraction algorithms must not be replaced.
         assertTrue(full.contains("CapsuleVideoArtworkTransition("))
     }
