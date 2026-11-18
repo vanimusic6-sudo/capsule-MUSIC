@@ -39,8 +39,10 @@ class PlayerTransitionArchitectureTest {
         assertTrue(immersive.contains("matchedPaint = immersivePaintCache[paintKey]"))
         assertTrue(immersive.contains("entryScene?.takeIf { it.paintKey == paintKey }?.bitmap"))
         assertTrue(immersive.contains("?: withContext(Dispatchers.Default)"))
-        assertTrue(immersive.contains("matchedPaint?.let { bitmap ->"))
-        assertTrue(immersive.contains("if (frame != null) ImmersiveAudioScene("))
+        assertTrue(immersive.contains("val currentSceneReady = frame?.key == visualKey && matchedPaint != null"))
+        assertTrue(immersive.contains("ImmersiveAudioScene("))
+        assertTrue("An exact matched bitmap is displayed opaquely, not as a flashing scrim",
+            immersive.contains("sceneAlpha = { sceneRevealAlpha.value }"))
         assertFalse("No second tinted photo overlay", immersive.contains("matchedPaint?.second?.let"))
         assertFalse("A raw thumbnail cannot flash during foreground restoration",
             immersive.contains("model = mediaMetadata.thumbnailUrl"))
@@ -48,8 +50,9 @@ class PlayerTransitionArchitectureTest {
             immersive.contains("alpha = capsuleImmersiveArtworkOpacity("))
         assertFalse("The palette miniature is not an outgoing fullscreen photo",
             immersive.contains("painter = frame.preview") || immersive.contains("bitmap = frame.preview"))
-        assertTrue(immersive.contains("painter = frame.painter"))
-        assertTrue(immersive.contains("painter = leaving.painter"))
+        assertTrue(immersive.contains("painter = preparedFrame.painter"))
+        assertFalse("A previous song must never be drawn below the current cover",
+            immersive.contains("painter = leaving.painter") || immersive.contains("val outgoingFrame"))
         assertTrue(immersive.contains("sharedProgress = sharedVideoProgress"))
         assertTrue(immersive.contains("capsuleImmersiveVideoBackplateAlpha(sharedVideoProgress.value)"))
         assertFalse(immersive.contains("pageTextureReadyFor"))
@@ -85,6 +88,22 @@ class PlayerTransitionArchitectureTest {
         assertTrue(videoArtwork.contains("onClick = onArtworkClick"))
     }
 
+    @Test fun classicPlayerNeverShowsSecondGreyFullscreenCompactPlate() {
+        val player = source("com/nikhil/yt/ui/player/Player.kt")
+        assertTrue(
+            "Only generic sheets can paint a compact transition plate",
+            player.contains("derivedStateOf { !state.playerMotion && state.visualProgress < 0.5f }"),
+        )
+        assertFalse(
+            "No grey full-screen dummy card while classic artwork is leaving",
+            player.contains("(!state.playerMotion || state.classicPlayerPresentation) && state.visualProgress < 0.5f"),
+        )
+        assertTrue(
+            "Real Light backdrop enters before the new photo handoff",
+            player.contains("(if (state.classicPlayerPresentation) 0.015f else state.contentHandoffPoint)"),
+        )
+    }
+
     @Test fun lyricsMovesOneContiguousCanvasAndOpticsFollowPosition() {
         val player = source("com/nikhil/yt/ui/player/Player.kt")
         assertEquals(1, Regex("then\\(lyricsFrame\\)").findAll(player).count())
@@ -94,7 +113,7 @@ class PlayerTransitionArchitectureTest {
         assertEquals(
             "Both heavy composables must stay screen-fixed beneath ONE mask",
             2,
-            Regex("translationY = -displacement").findAll(player).count(),
+            Regex("translationY = if \\(scrollToLyrics\\) 0f else -displacement").findAll(player).count(),
         )
         assertTrue(player.contains("topStart = LyricsFrameCornerRadius"))
         assertTrue(player.contains("instantBackdrop = true"))

@@ -38,8 +38,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.structuralEqualityPolicy
-import androidx.compose.runtime.snapshotFlow
-import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -229,9 +227,10 @@ internal fun capsuleImmersiveVideoBackplateAlpha(progress: Float): Float =
     1f - capsulePhotoOpacity(progress, CapsuleVideoBlendStyle.IMMERSION)
 
 /** One cap for artwork and backdrop when a selected track has changed. */
-internal const val IMMERSIVE_STALE_SCENE_FADE_MS = 420
-internal const val IMMERSIVE_TRACK_FADE_MS = 380
-internal val ImmersiveTrackEasing = CubicBezierEasing(0.25f, 0.12f, 0.60f, 1f)
+internal const val IMMERSIVE_STALE_SCENE_FADE_MS = 85
+internal const val IMMERSIVE_TRACK_FADE_MS = 85
+internal const val IMMERSIVE_CURRENT_SCENE_REVEAL_MS = 210
+internal val ImmersiveTrackEasing = CubicBezierEasing(0.22f, 0.08f, 0.50f, 1f)
 internal fun immersiveSceneOpacity(
     displayedKey: String?,
     selectedKey: String,
@@ -546,6 +545,7 @@ internal fun CapsuleImmersiveContent(
     onToggleLike: () -> Unit,
     onArtistSelected: (MediaMetadata.Artist) -> Unit,
     onShowLyrics: () -> Unit,
+    artworkClickEnabled: Boolean = true,
     onMenuClick: () -> Unit,
     onExpandQueue: () -> Unit,
     bottomPadding: Dp,
@@ -615,6 +615,11 @@ internal fun CapsuleImmersiveContent(
      */
     val artistCredits = rememberArtistCredits(mediaMetadata.artists)
     val navigableArtists = rememberNavigableArtists(artistCredits)
+    // Photo + gradient share one prepared scene. Metadata settles on the same
+    // short optical cadence, never animating the entire full-screen background.
+    // Metadata and controls follow Media3's selected track without an independent
+    // blink/translation. The single artwork settle handles the optical finish.
+    val trackInkArrival = remember { Animatable(1f) }
     // Match Light: close the chooser rather than retarget it on song change.
     var showArtistPicker by remember(mediaMetadata.id) { mutableStateOf(false) }
 
@@ -740,7 +745,7 @@ internal fun CapsuleImmersiveContent(
         // foreground accent (a green logo on white paper is not a green background).
         val floor = artworkTone.accent
 
-        val entryScene = remember {
+        val entryScene = remember(mediaMetadata.id) {
             sceneMemory.prepared?.takeIf { it.frame.mediaId == mediaMetadata.id }
         }
         val retainedCover = decodedArtworkCache[mediaMetadata.id]
@@ -764,72 +769,36 @@ internal fun CapsuleImmersiveContent(
         // switched its metadata to the NEXT song.
         val visualKey = if (!artworkTone.ready && entryScene?.frame?.mediaId == mediaMetadata.id)
             entryScene.frame.key else "${mediaMetadata.id}|${artworkTone.displayUrl}|${artworkAspect}"
-        val restoredFrame = remember {
+        val restoredFrame = remember(mediaMetadata.id, visualKey, retainedCover, artworkTone.ready) {
             entryScene?.frame ?: retainedCover?.takeIf {
                 artworkTone.ready && artworkTone.displayUrl != null
             }?.let { immersiveGradientFrame(visualKey, mediaMetadata.id, artworkTone, it) }
         }
-        var shownGradient by remember { mutableStateOf(restoredFrame) }
-        // The last actual photo and page live underneath the next prepared
-        // pair. Never fade to neutral, then mount a new bitmap 630ms later.
-        var outgoingFrame by remember { mutableStateOf<ImmersiveGradientFrame?>(null) }
-        val gradientAlpha = remember { Animatable(1f) }
-        val staleSceneAlpha = remember { Animatable(1f) }
-        var lastReadyFrame by remember { mutableStateOf(restoredFrame) }
-        var outgoingStartAlpha by remember { mutableFloatStateOf(1f) }
-        // The next track may take seconds to decode. Never show a PREVIOUS
-        // song's gradient for that whole time. Fade both old photo and its
-        // page together, then show the new track's lightweight placeholder.
-        LaunchedEffect(shownGradient?.key, shownGradient?.key == visualKey) {
-            val previous = shownGradient?.key
-            if (previous == null || previous == visualKey) {
-                staleSceneAlpha.snapTo(1f)
-                return@LaunchedEffect
-            }
-            // A rapid next/next must not snap a half-visible photo to full
-            // opacity. Complete the one finite dissolve; coalesce the pending
-            // target rather than accumulating more full-screen image layers.
-            if (outgoingFrame != null && gradientAlpha.isRunning) {
-                snapshotFlow { gradientAlpha.isRunning }.first { !it }
-            }
-            staleSceneAlpha.snapTo(gradientAlpha.value)
-            // Give a cached incoming full-size pair time to arrive before
-            // dimming the old scene. The total stale lifetime is still bounded.
-            delay(160L)
-            staleSceneAlpha.animateTo(
-                0f, tween(durationMillis = IMMERSIVE_STALE_SCENE_FADE_MS, easing = ImmersiveTrackEasing),
-            )
-            if (shownGradient?.key == previous && previous != visualKey) {
-                shownGradient = null
-                outgoingFrame = null
-                lastReadyFrame = null
-            }
-        }
+        // A media-ID boundary is absolute. Nothing decoded or painted for A may keep
+        // rendering while B or C is selected, regardless of pending async work.
+        var shownGradient by remember(mediaMetadata.id) { mutableStateOf(restoredFrame) }
+        // Exactly one current-song photo+gradient, never a retained outgoing song.
+        // The previous A -> B -> C pipeline waited for an outgoing animation,
+        // faded old artwork to a neutral plate, then faded the new pair back in.
+        // That was the reason a stale first cover could linger and the whole
+        // gradient would visibly blink when skipping rapidly.
+        //
+        // Select the CURRENT track's prepared pair as soon as its bitmap exists.
+        // An inexpensive CURRENT-track thumbnail fills the gap while the complete
+        // high-res photo + sampled background are generated in parallel.
         LaunchedEffect(
             visualKey, coverAndGradientReady, edge, floor,
             artworkTone.bottomTexture, artworkTone.displayUrl, visible, isVideo,
         ) {
-            if (!visible || !coverAndGradientReady ||
-                shownGradient?.key == visualKey
-            ) return@LaunchedEffect
-            if (outgoingFrame != null && gradientAlpha.isRunning) {
-                snapshotFlow { gradientAlpha.isRunning }.first { !it }
+            if (!visible || !coverAndGradientReady || shownGradient?.key == visualKey) {
+                return@LaunchedEffect
             }
             val readyPainter = decodedCoverPainter ?: return@LaunchedEffect
-            // A frame whose continuation is still being prepared has never
-            // appeared. Rapid A -> B -> C skips must retain A's matching pair.
-            val old = lastReadyFrame?.takeIf { it.key == shownGradient?.key }
-                ?: outgoingFrame
-            outgoingStartAlpha = if (old?.key == outgoingFrame?.key)
-                outgoingStartAlpha else staleSceneAlpha.value
-            val geometryOnly = old?.mediaId == mediaMetadata.id
-            // A same-song crop/inset refresh still needs its last complete pair until the
-            // replacement page texture arrives. Dropping it here exposed a neutral frame.
-            outgoingFrame = old
-            shownGradient = immersiveGradientFrame(visualKey, mediaMetadata.id, artworkTone, readyPainter)
-            // New background + photo appear together only after their first
-            // render has completed, instead of sequential fade-out/in.
-            gradientAlpha.snapTo(if (isVideo || geometryOnly) 1f else 0f)
+            shownGradient = immersiveGradientFrame(
+                visualKey, mediaMetadata.id, artworkTone, readyPainter,
+            )
+            // Ready decoded artwork + its corresponding backdrop appear as one
+            // opaque scene. There is no separate whole-page alpha animation.
         }
         // Every cover uses the same photographic composition.
         val frame = shownGradient
@@ -862,20 +831,8 @@ internal fun CapsuleImmersiveContent(
         val paintKey = remember(frame?.key, coverFraction) {
             "image-original-direction-v6|${frame?.key}|$coverFraction"
         }
-        // One prepared page texture for one decoded cover. The previous
-        // pair also built a separate tinted PHOTO overlay, which repeatedly
-        // caused horizontal lines and made the real image look washed out.
-        // In rapid A -> B -> C skips, the latest cached bitmap may belong
-        // to A even if the most recently selected frame is B. Associate
-        // the texture with its actual song so colours never linger as a
-        // mismatched old-gradient layer underneath the new cover.
-        var lastReadyPaint by remember {
-            mutableStateOf(immersivePaintCache[paintKey]?.let { requireNotNull(frame).key to it }
-                ?: entryScene?.let { it.frame.key to it.bitmap })
-        }
-        val outgoingPaint = remember(paintKey, outgoingFrame?.key) {
-            lastReadyPaint?.takeIf { it.first == outgoingFrame?.key }?.second
-        }
+        // This texture is keyed to the currently displayed frame. No outgoing
+        // bitmap is retained, so there is no cross-song GPU layer to draw.
         var matchedPaint by remember(paintKey) {
             mutableStateOf(immersivePaintCache[paintKey] ?: entryScene?.takeIf {
                 it.frame.key == frame?.key
@@ -895,28 +852,11 @@ internal fun CapsuleImmersiveContent(
                 }
             matchedPaint?.let {
                 immersivePaintCache[paintKey] = it
-                lastReadyPaint = readyFrame.key to it
-                lastReadyFrame = readyFrame
                 sceneMemory.prepared = ImmersivePreparedScene(readyFrame, paintKey, it)
             }
         }
-        LaunchedEffect(frame?.key, matchedPaint, isVideo) {
-            if (frame == null || matchedPaint == null ||
-                frame.key != visualKey
-            ) return@LaunchedEffect
-            if (isVideo || gradientAlpha.value >= 0.999f) {
-                gradientAlpha.snapTo(1f)
-                outgoingFrame = null
-            } else {
-                // Every prepared scene gets a legible, soft reveal, even if
-                // the previous cover already expired while decoding. Never
-                // snap a newly loaded bright image straight onto the screen.
-                gradientAlpha.animateTo(
-                    1f, tween(durationMillis = IMMERSIVE_TRACK_FADE_MS, easing = ImmersiveTrackEasing),
-                )
-                outgoingFrame = null
-            }
-        }
+        // A prepared bitmap and its album photo are committed in one draw.
+        // Animated opacity used to repaint the entire page twice on each song.
         // The VIDEO window and its entire backdrop use the same spring.
         // Independent 220/280/290ms fades made the backing vanish while the
         // photo was still visible (or vice versa) on reverse transitions.
@@ -936,19 +876,13 @@ internal fun CapsuleImmersiveContent(
         val targetMetadataInk = remember(matchedPaint, metadataPageFraction) {
             immersiveMetadataInk(immersiveMetadataBackground(matchedPaint, metadataPageFraction))
         }
-        val leavingMetadataInk = remember(outgoingPaint, metadataPageFraction) {
-            immersiveMetadataInk(immersiveMetadataBackground(outgoingPaint, metadataPageFraction))
-        }
-        // Observe animation values in a derived state: the common white ->
-        // white case must not recompose the entire player at display cadence.
-        val metadataInks by remember(targetMetadataInk, leavingMetadataInk, frame?.key, visualKey) {
+        // No outgoing title/artist colour: their ink must match THIS track immediately.
+        // VIDEO may still soften its independent white-on-dark presentation.
+        val metadataInks by remember(targetMetadataInk, sharedVideoProgress) {
             derivedStateOf(structuralEqualityPolicy()) {
-                val track = immersiveSceneOpacity(frame?.key, visualKey,
-                    gradientAlpha.value, staleSceneAlpha.value)
                 val video = capsuleImmersiveVideoBackplateAlpha(sharedVideoProgress.value)
-                lerp(lerp(leavingMetadataInk.title, targetMetadataInk.title, track), Color.White, video) to
-                    lerp(lerp(leavingMetadataInk.artist, targetMetadataInk.artist, track),
-                        Color.White.copy(alpha = 0.62f), video)
+                lerp(targetMetadataInk.title, Color.White, video) to
+                    lerp(targetMetadataInk.artist, Color.White.copy(alpha = 0.62f), video)
             }
         }
         val metadataInk = metadataInks.first
@@ -998,47 +932,50 @@ internal fun CapsuleImmersiveContent(
             }
         }
 
-        // Compose each photo and its continuation into ONE scene before
-        // applying track opacity. Independent alpha layers mix the old photo
-        // with the new floor most strongly at the feather, drawing a stripe.
+        // Preview exists ONLY for the current media ID. It is kept under the
+        // final composed photo+gradient for at most 85 ms, preventing a sudden
+        // blank/grey base while async palette work completes.
+        val currentSceneReady = frame?.key == visualKey && matchedPaint != null
+        // Only the CURRENT song is ever shown. Its thumbnail remains beneath
+        // the ready full photo + derived gradient until their shared 210 ms
+        // reveal completes. No previous-track hold or two-stage background fade.
+        val sceneRevealAlpha = remember(mediaMetadata.id) {
+            Animatable(if (entryScene?.paintKey == paintKey) 1f else 0f)
+        }
+        LaunchedEffect(mediaMetadata.id, visualKey, currentSceneReady) {
+            if (!currentSceneReady) sceneRevealAlpha.snapTo(0f)
+            else sceneRevealAlpha.animateTo(
+                1f, tween(durationMillis = IMMERSIVE_CURRENT_SCENE_REVEAL_MS),
+            )
+        }
         Box(Modifier.fillMaxSize().background(
             immersivePageBaseColor(isVideo, artworkTone.ready, artworkTone.edge),
         )) {
             if (audioSceneVisible) {
-                val leaving = outgoingFrame
-                if (leaving != null && outgoingPaint != null) {
-                    ImmersiveAudioScene(
-                        background = outgoingPaint,
+                if (!currentSceneReady || sceneRevealAlpha.value < 0.999f) {
+                    CapsuleImmersiveCurrentTrackPreview(
+                        mediaId = mediaMetadata.id,
+                        imageUrl = mediaMetadata.thumbnailUrl,
+                        edge = edge,
+                        floor = floor,
                         artworkHeight = artworkHeight,
-                        sceneAlpha = { outgoingStartAlpha },
-                    ) {
-                        val photoModifier = Modifier.fillMaxSize().graphicsLayer(
-                            scaleX = if (leaving.landscape) 1.06f else 1f,
-                            scaleY = if (leaving.landscape) 1.06f else 1f,
-                        )
-                        Image(
-                            painter = leaving.painter, contentDescription = null,
-                            contentScale = ContentScale.Crop, modifier = photoModifier,
-                        )
-                    }
+                    )
                 }
-                matchedPaint?.let { bitmap ->
-                    if (frame != null) ImmersiveAudioScene(
-                        background = bitmap,
+                if (currentSceneReady) {
+                    val preparedFrame = requireNotNull(frame)
+                    val preparedPaint = requireNotNull(matchedPaint)
+                    ImmersiveAudioScene(
+                        background = preparedPaint,
                         artworkHeight = artworkHeight,
-                        sceneAlpha = {
-                            immersiveSceneOpacity(
-                                frame.key, visualKey, gradientAlpha.value, staleSceneAlpha.value,
-                            )
-                        },
+                        sceneAlpha = { sceneRevealAlpha.value },
                     ) {
                         Image(
-                            painter = frame.painter,
+                            painter = preparedFrame.painter,
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize().graphicsLayer(
-                                scaleX = if (frame.landscape) 1.06f else 1f,
-                                scaleY = if (frame.landscape) 1.06f else 1f,
+                                scaleX = if (preparedFrame.landscape) 1.06f else 1f,
+                                scaleY = if (preparedFrame.landscape) 1.06f else 1f,
                             ),
                         )
                     }
@@ -1102,7 +1039,7 @@ internal fun CapsuleImmersiveContent(
             // Never place a solid matté under the photo's transparent edge:
             // the actual long diffuse background must show through.
             artworkBackground = Color.Transparent,
-            artworkClickable = !isVideo,
+            artworkClickable = artworkClickEnabled && !isVideo,
             onArtworkClick = onShowLyrics,
             video = { active -> CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active) },
         ) {
@@ -1186,7 +1123,7 @@ internal fun CapsuleImmersiveContent(
                         ) {
                             CapsuleLightReorderRow(
                                 order = immersiveMetadataOrder,
-                                widthFor = { if (it == CapsuleLightMetadataItem.FAVORITE) 48.dp else null },
+                                widthFor = { if (it == CapsuleLightMetadataItem.FAVORITE) 36.dp else null },
                                 editable = immersiveEditEnabled,
                                 weightFor = { item ->
                                     when (item) {
@@ -1216,7 +1153,15 @@ internal fun CapsuleImmersiveContent(
                             ) { item ->
                                 when (item) {
                                     CapsuleLightMetadataItem.TEXT -> {
-                                        Column(modifier = Modifier.fillMaxWidth()) {
+                                        Column(modifier = Modifier.fillMaxWidth()
+                                            .padding(
+                                                start = if (immersiveMetadataOrder.firstOrNull() == CapsuleLightMetadataItem.FAVORITE) 12.dp else 0.dp,
+                                                end = if (immersiveMetadataOrder.firstOrNull() == CapsuleLightMetadataItem.TEXT) 12.dp else 0.dp,
+                                            )
+                                            .graphicsLayer {
+                                                alpha = trackInkArrival.value
+                                            translationY = (1f - trackInkArrival.value) * 4.dp.toPx()
+                                        }) {
                                             CapsuleTrackTitle(
                                                 mediaId = mediaMetadata.id,
                                                 title = mediaMetadata.title,
@@ -1232,35 +1177,19 @@ internal fun CapsuleImmersiveContent(
                                                     )
                                                     Spacer(Modifier.width(5.dp))
                                                 }
-                                                Text(
-                                                    text =
-                                                        artistCredits.joinToString { it.name },
+                                                CapsuleArtistCredits(
+                                                    artists = artistCredits,
                                                     color = metadataArtistInk,
-                                                    fontSize = CapsulePlayerArtistFontSize,
-                                                    lineHeight = CapsulePlayerArtistLineHeight,
-                                                    fontWeight = FontWeight.Normal,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                    modifier =
-                                                        Modifier.clickable(
-                                                            interactionSource =
-                                                                remember {
-                                                                    MutableInteractionSource()
-                                                                },
-                                                            indication = null,
-                                                            enabled =
-                                                                navigableArtists.isNotEmpty() &&
-                                                                    !immersiveEditEnabled,
-                                                        ) {
-                                                            when {
-                                                                navigableArtists.isEmpty() -> Unit
-                                                                artistCredits.size == 1 ->
-                                                                    onArtistSelected(
-                                                                        navigableArtists.first(),
-                                                                    )
-                                                                else -> showArtistPicker = true
-                                                            }
-                                                        },
+                                                    enabled = navigableArtists.isNotEmpty() && !immersiveEditEnabled,
+                                                    modifier = Modifier.weight(1f, fill = false),
+                                                    onClick = {
+                                                        when {
+                                                            navigableArtists.isEmpty() -> Unit
+                                                            artistCredits.size == 1 ->
+                                                                onArtistSelected(navigableArtists.first())
+                                                            else -> showArtistPicker = true
+                                                        }
+                                                    },
                                                 )
                                             }
                                         }
@@ -1286,7 +1215,7 @@ internal fun CapsuleImmersiveContent(
                                                             onToggleLike()
                                                         },
                                                     ),
-                                            contentAlignment = Alignment.CenterEnd,
+                                            contentAlignment = Alignment.Center,
                                         ) {
                                             CapsuleFavoriteIcon(
                                                 liked = liked,
@@ -1410,7 +1339,7 @@ internal fun CapsuleImmersiveContent(
                                             modifier = Modifier.fillMaxWidth(),
                                         ) {
                                             Icon(
-                                                painterResource(R.drawable.shuffle),
+                                                painterResource(R.drawable.capsule_transport_shuffle),
                                                 stringResource(R.string.shuffle),
                                                 tint =
                                                     immersiveInk.copy(
@@ -1481,7 +1410,7 @@ internal fun CapsuleImmersiveContent(
                                             modifier = Modifier.fillMaxWidth(),
                                         ) {
                                             Icon(
-                                                painterResource(R.drawable.bedtime),
+                                                painterResource(R.drawable.capsule_transport_sleep),
                                                 stringResource(R.string.sleep_timer),
                                                 tint =
                                                     immersiveInk.copy(
@@ -1604,6 +1533,74 @@ internal fun CapsuleImmersiveContent(
                         .clip(CircleShape)
                         .background(immersiveInk.copy(alpha = 0.32f)),
             )
+        }
+    }
+}
+
+/**
+ * Minimal placeholder with ONLY this song's thumbnail and palette. Both surfaces
+ * have the same bottom floor; no unrelated cover or stale gradient can leak in.
+ * Offscreen feather is only mounted during a pending high-res decode, not always.
+ */
+@Composable
+private fun CapsuleImmersiveCurrentTrackPreview(
+    mediaId: String,
+    imageUrl: String?,
+    edge: Color,
+    floor: Color,
+    artworkHeight: Dp,
+) {
+    val context = LocalContext.current
+    var thumbnailReady by remember(mediaId, imageUrl) { mutableStateOf(false) }
+    val thumbnailAlpha by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (thumbnailReady) 1f else 0f,
+        animationSpec = tween(durationMillis = 175),
+        label = "capsuleImmersiveCurrentPreview",
+    )
+    val request = remember(context, mediaId, imageUrl) {
+        ImageRequest.Builder(context)
+            .data(imageUrl?.takeIf(String::isNotBlank))
+            .size(640, 640)
+            .crossfade(false)
+            .build()
+    }
+    Box(
+        Modifier.fillMaxSize().background(
+            Brush.verticalGradient(
+                0f to edge,
+                0.66f to floor,
+                1f to floor,
+            ),
+        ),
+    ) {
+        if (!imageUrl.isNullOrBlank()) {
+            Box(
+                Modifier.fillMaxWidth().height(artworkHeight + 1.dp)
+                    .clipToBounds()
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                    .drawWithCache {
+                        val feather = Brush.verticalGradient(
+                            0f to Color.White,
+                            0.68f to Color.White,
+                            1f to Color.Transparent,
+                        )
+                        onDrawWithContent {
+                            drawContent()
+                            drawRect(brush = feather, blendMode = BlendMode.DstIn)
+                        }
+                    },
+            ) {
+                key(mediaId) {
+                    AsyncImage(
+                        model = request,
+                        contentDescription = null,
+                        onSuccess = { thumbnailReady = true },
+                        onError = { thumbnailReady = false },
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().graphicsLayer { alpha = thumbnailAlpha },
+                    )
+                }
+            }
         }
     }
 }

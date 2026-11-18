@@ -111,6 +111,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
@@ -902,8 +904,32 @@ class MainActivity : ComponentActivity() {
                                         MiniPlayerHeight,
                             expandedBound = maxHeight,
                             playerMotion = true,
+                            // Restore the main-branch moving BottomSheet; keep the newer
+                            // Back/lifetime/velocity safeguards and all current player features.
+                            classicPlayerPresentation = true,
                         )
 
+                    // The compact nav's departure is a SHORT suction gesture, not
+                    // a passenger on the full player's long anchored travel.
+                    val playerNavTuckTarget by remember(playerBottomSheetState) {
+                        derivedStateOf {
+                            CapsuleMotion.navigationTucked(
+                                opening = playerBottomSheetState.isExpandedOrExpanding,
+                                compactPressed = playerBottomSheetState.compactOpenPress,
+                                progress = playerBottomSheetState.visualProgress,
+                                dismissed = playerBottomSheetState.isDismissed,
+                            )
+                        }
+                    }
+                    val playerNavTuck by animateFloatAsState(
+                        targetValue = if (playerNavTuckTarget) 1f else 0f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = if (playerNavTuckTarget) 640f else 520f,
+                            visibilityThreshold = 0.005f,
+                        ),
+                        label = "capsule-nav-player-tuck",
+                    )
 
                     val playerBackAction = remember { PlayerBackAction() }
                     val playerOwnsBack by remember(playerBottomSheetState) {
@@ -1616,53 +1642,9 @@ class MainActivity : ComponentActivity() {
                                                 val navSlideDistance =
                                                     bottomInset + floatingBarsBottomPadding + navVisibleHeight
 
-                                                Box(
-                                                    modifier =
-                                                        Modifier
-                                                            .align(Alignment.BottomCenter)
-                                                            .height(navSlideDistance)
-                                                            // Navigation stays in the app scene underneath the player.
-                                                            .zIndex(1f)
-                                                            .offset {
-                                                                val hidden =
-                                                                    1f - navigationBarReveal
-                                                                IntOffset(
-                                                                    x = 0,
-                                                                    y = (navSlideDistance * hidden).roundToPx(),
-                                                                )
-                                                            },
-                                                ) {
-                                                    if (pureBlack) Color.Black
-                                                    else MaterialTheme.colorScheme.surfaceContainer
-
-                                                    FluidSlidingNavigationBar(
-                                                        modifier =
-                                                            Modifier
-                                                                .align(Alignment.BottomCenter)
-                                                                .fillMaxWidth()
-                                                                .height(bottomInset + navVisibleHeight),
-                                                        items = navigationItems,
-                                                        currentRoute =
-                                                            if (active) Screens.Search.route
-                                                            else navBackStackEntry?.destination?.route ?: "",
-                                                        pureBlack = pureBlack,
-                                                        capsuleMiniPlayerVisible = capsuleMiniPlayerActuallyVisible,
-                                                        onTabSelected = { screen ->
-                                                            if (screen.route == Screens.Search.route) {
-                                                                onActiveChange(true)
-                                                            } else {
-                                                                if (active) onActiveChange(false)
-                                                                mainTabNavigator.select(screen.route) {
-                                                                    navController.currentBackStackEntry?.liveSavedStateHandle()?.set("scrollToTop", true)
-                                                                    coroutineScope.launch {
-                                                                        searchBarScrollBehavior.state.resetHeightOffset()
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                    )
-
-                                                }
+                                                // Keep Scaffold's content inset unchanged; the ONLY real
+                                                // navigation view is now painted as a sibling above the player.
+                                                Spacer(Modifier.height(navSlideDistance))
                                             }
                                         },
                                         modifier = Modifier
@@ -1779,6 +1761,77 @@ class MainActivity : ComponentActivity() {
                                             else -> miniPlayerGlassBackdrop
                                         },
                                 )
+                                // Same real nav (not a duplicate): physical sibling drawn above the
+                                // expanded player during departure/return, independently tucked away.
+                                // Scaffold retains only a height spacer so page geometry is unchanged.
+                                if (!useRail) {
+                                    val navSlideDistance =
+                                        bottomInset + floatingBarsBottomPadding + navVisibleHeight
+                                    Box(
+                                        modifier =
+                                            Modifier
+                                                .align(Alignment.BottomCenter)
+                                                .height(navSlideDistance)
+                                                // A sibling ABOVE the physical player, but tuck BEFORE its
+                                                // artwork arrives. Never draw under the sheet.
+                                                // Move/scale one small nav layer on GPU;
+                                                // no fullscreen blur, snapshot or clock.
+                                                .zIndex(3f)
+                                                .offset {
+                                                    val hidden = CapsuleMotion.either(
+                                                        playerNavTuck,
+                                                        1f - navigationBarReveal,
+                                                    )
+                                                    IntOffset(
+                                                        x = 0,
+                                                        y = (navSlideDistance * hidden).roundToPx(),
+                                                    )
+                                                }
+                                                .graphicsLayer {
+                                                    val returning = !playerNavTuckTarget
+                                                    // Just one tiny up-stretch as the bar comes back above
+                                                    // the screen edge; settled states are exactly 1f.
+                                                    val rebound = if (returning)
+                                                        CapsuleMotion.navReturnStretch(playerNavTuck)
+                                                    else 1f
+                                                    scaleX = CapsuleMotion.navTuckScaleX(playerNavTuck) /
+                                                        (1f + (rebound - 1f) * 0.22f)
+                                                    scaleY = CapsuleMotion.navTuckScaleY(playerNavTuck) * rebound
+                                                    transformOrigin = TransformOrigin(0.5f, 1f)
+                                                },
+                                    ) {
+                                        if (pureBlack) Color.Black
+                                        else MaterialTheme.colorScheme.surfaceContainer
+
+                                        FluidSlidingNavigationBar(
+                                            modifier =
+                                                Modifier
+                                                    .align(Alignment.BottomCenter)
+                                                    .fillMaxWidth()
+                                                    .height(bottomInset + navVisibleHeight),
+                                            items = navigationItems,
+                                            currentRoute =
+                                                if (active) Screens.Search.route
+                                                else navBackStackEntry?.destination?.route ?: "",
+                                            pureBlack = pureBlack,
+                                            capsuleMiniPlayerVisible = capsuleMiniPlayerActuallyVisible,
+                                            onTabSelected = { screen ->
+                                                if (screen.route == Screens.Search.route) {
+                                                    onActiveChange(true)
+                                                } else {
+                                                    if (active) onActiveChange(false)
+                                                    mainTabNavigator.select(screen.route) {
+                                                        navController.currentBackStackEntry?.liveSavedStateHandle()?.set("scrollToTop", true)
+                                                        coroutineScope.launch {
+                                                            searchBarScrollBehavior.state.resetHeightOffset()
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        )
+
+                                    }
+                                }
                             }
                         }
 

@@ -15,6 +15,20 @@ class PlayerArtworkReliabilityTest {
             ?: error("Missing $name")
     }
 
+
+    @Test fun artworkPaletteEntersWithoutSuddenColourSwapOnNormalPlayer() {
+        val player = source("Player.kt")
+        assertTrue("Only colour-backed styles should tween on a late bitmap",
+            player.contains("animatePalette = effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE"))
+        assertTrue("Spatial field and palette must stay atomic",
+            player.contains("playerBackground != PlayerBackgroundStyle.SCENE_LIGHT"))
+        assertTrue("The star's black-cover threshold must not flip midway through a colour tween",
+            player.contains("playerBackground != PlayerBackgroundStyle.CAPSULE_STAR"))
+        assertTrue("The current lyric morph snapshots both sides of its gradient",
+            player.contains("frozenCardPalette = playerArtworkColors.toList()"))
+        assertTrue(player.contains("colors = transitioningPalette"))
+    }
+
     @Test fun staleRoomTrackCannotOverrideMedia3Artwork() {
         val block = source("Player.kt")
             .substringAfter("val enrichedMetadata =").substringBefore("val onScreen = appIsOnScreen()")
@@ -97,7 +111,9 @@ class PlayerArtworkReliabilityTest {
         assertTrue(content.contains("mutableStateOf(restoredFrame)"))
         assertTrue(content.contains("entryScene?.frame"))
         assertTrue(content.contains("sceneMemory.prepared = ImmersivePreparedScene"))
-        assertTrue(content.contains("gradientAlpha.value >= 0.999f"))
+        assertTrue(content.contains("val currentSceneReady = frame?.key == visualKey && matchedPaint != null"))
+        assertTrue(content.contains("sceneAlpha = { sceneRevealAlpha.value }"))
+        assertFalse("No full-page opacity sweep on each track", content.contains("gradientAlpha.animateTo("))
         assertTrue(content.contains("mutableStateOf(immersivePaintCache[paintKey] ?: entryScene"))
         assertTrue(player.contains("val immersiveSceneMemory = remember { ImmersiveSceneMemory() }"))
         assertTrue(content.contains("decodedArtworkCache[mediaMetadata.id] = url to success.painter"))
@@ -114,7 +130,8 @@ class PlayerArtworkReliabilityTest {
         assertTrue(full.contains(".crossfade(false)"))
         assertTrue(full.contains("artworkRebind"))
         assertTrue(full.contains("retainedArtworkPainter = success.painter"))
-        assertTrue(full.contains("retainedArtworkPainter?.let { ready ->"))
+        assertTrue(full.contains("CapsuleTrackArtworkHandoff("))
+        assertTrue(full.contains("thumbnailUrl = mediaMetadata.thumbnailUrl"))
         assertTrue(full.contains("delay(8_000L)"))
         assertTrue(full.contains("val fullArtworkCandidates ="))
         assertTrue(full.contains("capsuleFullPlayerArtworkCandidates(originalArtworkUrl)"))
@@ -122,8 +139,13 @@ class PlayerArtworkReliabilityTest {
         assertFalse("Tiny preview must never be decoded as fullscreen artwork",
             full.contains("previewRequest") || full.contains(".size(256, 256)") ||
             full.contains("useOriginalArtwork"))
-        assertTrue("Decoded cover owns visible pixels during loading", full.contains("retainedArtworkPainter?.let { ready ->"))
-        assertTrue(full.contains("capsule-artwork-soft-reveal"))
+        val handoff = source("CapsuleTrackArtworkHandoff.kt")
+        assertTrue("Selected track must own its current thumbnail and decoded cover",
+            handoff.contains("key(mediaId)") && handoff.contains("if (decodedPainter == null"))
+        assertTrue("The previous song must not be retained while the next one loads",
+            !handoff.contains("outgoing"))
+        assertTrue(handoff.contains("CAPSULE_COVER_HANDOFF_MS = 205") &&
+            handoff.contains("CAPSULE_PREVIEW_ARRIVAL_MS = 180"))
         assertTrue(full.contains("onError = {"))
         assertTrue(full.contains("artworkFailed = true"))
         assertTrue(full.contains("if (artworkFailed && retainedArtworkPainter == null)"))

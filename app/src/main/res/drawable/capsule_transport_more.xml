@@ -1,0 +1,9 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <!-- Balanced little round beads rather than sharp micro-dots. -->
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M12,3.75 C12.94,3.75 13.7,4.51 13.7,5.45 C13.7,6.39 12.94,7.15 12,7.15 C11.06,7.15 10.3,6.39 10.3,5.45 C10.3,4.51 11.06,3.75 12,3.75 Z
+                          M12,10.3 C12.94,10.3 13.7,11.06 13.7,12 C13.7,12.94 12.94,13.7 12,13.7 C11.06,13.7 10.3,12.94 10.3,12 C10.3,11.06 11.06,10.3 12,10.3 Z
+                          M12,16.85 C12.94,16.85 13.7,17.61 13.7,18.55 C13.7,19.49 12.94,20.25 12,20.25 C11.06,20.25 10.3,19.49 10.3,18.55 C10.3,17.61 11.06,16.85 12,16.85 Z"/>
+</vector>

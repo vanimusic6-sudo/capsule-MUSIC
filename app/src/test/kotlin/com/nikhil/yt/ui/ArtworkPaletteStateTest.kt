@@ -50,7 +50,7 @@ class ArtworkPaletteStateTest {
         compose.runOnIdle { assertTrue(frames.all { it == red }) }
     }
 
-    @Test fun newTrackRetainsPreviousColorsUntilItsCoverIsReadyThenTransitions() {
+    @Test fun aNewTrackNeverDisplaysStalePaletteFromThePreviousSong() {
         var key by mutableStateOf(capsuleArtworkPaletteKey("first"))
         var thumbnail by mutableStateOf<String?>(null)
         val cache = ArtworkPaletteCache().apply { put(key, red) }
@@ -62,7 +62,10 @@ class ArtworkPaletteStateTest {
             }
         }
         compose.runOnIdle { key = capsuleArtworkPaletteKey("second") }
-        compose.runOnIdle { assertEquals(red, observed) }
+        compose.runOnIdle {
+            assertEquals("Uncached B must not inherit A's red gradient",
+                List(3) { Color(0xFF1A1B21) }, observed)
+        }
         compose.runOnIdle {
             cache.put(key, blue)
             thumbnail = "ready-cover"

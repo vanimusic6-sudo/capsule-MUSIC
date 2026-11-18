@@ -28,6 +28,12 @@ import com.nikhil.yt.ui.component.COLLAPSED_ANCHOR
 import com.nikhil.yt.ui.component.PlayerContentHandoffPoint
 import com.nikhil.yt.ui.component.rememberBottomSheetState
 import com.nikhil.yt.ui.component.miniPlayerContentAlpha
+import com.nikhil.yt.ui.component.playerClassicSurfaceAlpha
+import com.nikhil.yt.ui.component.playerClassicContentAlpha
+import com.nikhil.yt.ui.component.playerClassicMiniAlpha
+import com.nikhil.yt.ui.component.playerClassicMiniCounterTravel
+import com.nikhil.yt.ui.component.playerClassicBackdropAlpha
+import com.nikhil.yt.ui.component.playerFrameCornerRadius
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -50,7 +56,7 @@ class PlayerTransitionGestureTest {
     private var mainScreenClicks = 0
     private var compactDockHeight by mutableStateOf(80.dp)
 
-    private fun showSheet(tapOnlyPlayer: Boolean = false) {
+    private fun showSheet(tapOnlyPlayer: Boolean = false, classicPlayer: Boolean = false) {
         childClicks = 0
         horizontalDistance = 0f
         dismisses = 0
@@ -67,6 +73,8 @@ class PlayerTransitionGestureTest {
                             collapsedBound = compactDockHeight,
                             expandedBound = 851.dp,
                             initialAnchor = COLLAPSED_ANCHOR,
+                            playerMotion = classicPlayer,
+                            classicPlayerPresentation = classicPlayer,
                         )
 
                     Button(
@@ -143,6 +151,84 @@ class PlayerTransitionGestureTest {
             "transition never entered [" + min + ", " + max + "], last=" +
                 compose.runOnIdle { state.rawProgress },
         )
+    }
+
+    @Test fun `12915 real photo leads the solid shell and mini never yields into grey`() {
+        assertEquals(0f, playerClassicSurfaceAlpha(0.0f), 0f)
+        assertEquals(0f, playerClassicSurfaceAlpha(0.12f), 0f)
+        assertEquals(1f, playerClassicSurfaceAlpha(0.64f), 0f)
+        assertEquals(0f, playerClassicContentAlpha(0.045f), 0f)
+        assertTrue(playerClassicContentAlpha(0.15f) > 0f)
+        assertEquals(1f, playerClassicContentAlpha(0.63f), 0f)
+        assertEquals(1f, playerClassicMiniAlpha(0.07f), 0f)
+        assertTrue(playerClassicMiniAlpha(0.25f) in 0.1f..0.9f)
+        assertEquals(0f, playerClassicMiniAlpha(0.64f), 0f)
+        assertEquals(0f, playerClassicBackdropAlpha(0.035f), 0f)
+        assertEquals(1f, playerClassicBackdropAlpha(0.51f), 0f)
+        assertEquals(0f, playerClassicMiniCounterTravel(Float.NaN), 0f)
+        assertEquals(0f, playerClassicMiniCounterTravel(100f), 0f)
+
+        // An opening or closing frame must never reveal solid gray under an absent photograph.
+        // Both directions use these exact same curves, and are safe under quick Back/reopen.
+        for (i in 0..200) {
+            val p = i / 200f
+            val fullPhoto = playerClassicContentAlpha(p)
+            val backing = playerClassicSurfaceAlpha(p)
+            val mini = playerClassicMiniAlpha(p)
+            assertTrue("grey sheet would show ahead of photo at progress=$p",
+                fullPhoto + 0.0001f >= backing)
+            val combinedCoverage = 1f - (1f - mini) * (1f - fullPhoto)
+            assertTrue("Mini/photo handoff has an empty frame at progress=$p: $combinedCoverage",
+                combinedCoverage >= 0.75f)
+        }
+    }
+
+    @Test fun `main player spring moves the original sheet and returns Mini to its dock`() {
+        showSheet(tapOnlyPlayer = true, classicPlayer = true)
+        compose.mainClock.autoAdvance = false
+        try {
+            val dockY = miniNode().fetchSemanticsNode().boundsInRoot.top
+            compose.runOnIdle {
+                assertTrue(state.classicPlayerPresentation)
+                assertTrue(state.playerMotion)
+                assertEquals(0f, state.visualProgress, 0f)
+                state.expandSoft()
+            }
+            advanceUntilProgress(min = 0.25f, max = 0.90f)
+            val movingY = miniNode().fetchSemanticsNode().boundsInRoot.top
+            val parentTravelPx = compose.runOnIdle {
+                with(compose.density) { (state.value - state.collapsedBound).toPx() }
+            }
+            assertTrue("Mini must physically ride the real main sheet, not stay at the dock",
+                movingY < dockY - 40f)
+            assertEquals("Mini's geometry is tied to the original parent sheet",
+                dockY - parentTravelPx, movingY, 6f)
+            compose.runOnIdle { state.collapseSoft() }
+            // The spring reverses from its *current position*, never teleports back to source.
+            val reversingY = miniNode().fetchSemanticsNode().boundsInRoot.top
+            assertTrue("Reversal must retain the current physical position", reversingY < dockY - 40f)
+            repeat(75) { compose.mainClock.advanceTimeByFrame() }
+            compose.waitForIdle()
+            val settledY = miniNode().fetchSemanticsNode().boundsInRoot.top
+            assertEquals("The original Mini must return to its exact dock", dockY, settledY, 2f)
+            compose.runOnIdle {
+                assertTrue(state.isCollapsed)
+                assertTrue(!state.isAnimationRunning)
+                assertEquals(1f, miniPlayerContentAlpha(state.visualProgress), 0f)
+            }
+        } finally {
+            compose.mainClock.autoAdvance = true
+        }
+    }
+
+    @Test fun `original player corners hold until final approach to fullscreen`() {
+        for (p in listOf(0f, 0.12f, 0.25f, 0.48f, 0.70f, 0.88f))
+            assertEquals(14.dp, playerFrameCornerRadius(p, 14.dp, holdVisibleCorner = true))
+        val nearEnd = playerFrameCornerRadius(0.94f, 14.dp, holdVisibleCorner = true)
+        assertTrue(nearEnd > 0.dp && nearEnd < 14.dp)
+        assertEquals(0.dp, playerFrameCornerRadius(1f, 14.dp, holdVisibleCorner = true))
+        // Only classic player receives this. Queue/other sheets retain older curve.
+        assertTrue(playerFrameCornerRadius(0.5f, 14.dp) in 0.dp..14.dp)
     }
 
     @Test fun `child click is not stolen by vertical sheet gesture`() {

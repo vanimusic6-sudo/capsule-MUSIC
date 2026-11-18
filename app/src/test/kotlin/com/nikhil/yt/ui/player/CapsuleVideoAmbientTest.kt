@@ -41,7 +41,7 @@ class CapsuleVideoAmbientTest {
         val interrupted = capsuleAmbientPaletteAt(partlyMixed, cool, 0f)
         assertTrue(kotlin.math.abs(partlyMixed[0].red - interrupted[0].red) < 0.0001f)
         assertTrue(partlyMixed[0].red > cool[0].red)
-        assertTrue(VIDEO_AMBIENT_CAPTURE_INTERVAL_MS in 80L..120L)
+        assertTrue(VIDEO_AMBIENT_CAPTURE_INTERVAL_MS in 130L..170L)
         assertTrue("Motion interpolation must track frames within a small fraction of a second",
             VIDEO_AMBIENT_BLEND_DURATION_MS in 80..180)
     }

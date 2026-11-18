@@ -76,6 +76,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
@@ -128,6 +130,19 @@ private val CapsuleMiniMuted =
 
 private val CapsuleMiniError =
     Color(0xFFFF8A8A)
+
+// Avoid Material's inherited 24sp line height being applied to both metadata
+// lines in a fixed 64dp mini player. Keep the actual text sizes unchanged.
+private val CapsuleMiniMetadataTextStyle =
+    TextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false))
+
+/** Reserve vertical space for full glyphs even with large system text scaling. */
+internal fun capsuleMiniMetadataVerticalPadding(fontScale: Float) =
+    when {
+        fontScale >= 1.9f -> 0.dp
+        fontScale >= 1.65f -> 2.dp
+        else -> 4.dp
+    }
 
 @Composable
 fun CapsuleMiniPlayer(
@@ -607,7 +622,7 @@ fun CapsuleMiniPlayer(
                         }
                         .padding(
                             horizontal = 10.dp,
-                            vertical = 8.dp,
+                            vertical = capsuleMiniMetadataVerticalPadding(LocalDensity.current.fontScale),
                         ),
             ) {
                 CapsuleMiniPlayButton(
@@ -630,8 +645,13 @@ fun CapsuleMiniPlayer(
                 )
 
                 CapsuleMiniSongInfo(
-                    mediaMetadata =
-                        mediaMetadata,
+                    mediaMetadata = remember(mediaMetadata, currentSong) {
+                        mediaMetadata?.let { metadata ->
+                            val matchingSong = currentSong?.takeIf { it.id == metadata.id }
+                            if (metadata.explicit || matchingSong?.song?.explicit != true) metadata
+                            else metadata.copy(explicit = true)
+                        }
+                    },
                     visible = visualsActive,
                     modifier =
                         Modifier.weight(1f),
@@ -939,8 +959,20 @@ private fun CapsuleMiniSongInfo(
             }
         }
 
+    CapsuleMiniSongMetadata(mediaMetadata, error != null, visible, modifier)
+}
+
+// A pure UI unit, so real narrow-screen typography can be regression-tested
+// without booting playback. The same marquees remain enabled in the live player.
+@Composable
+internal fun CapsuleMiniSongMetadata(
+    mediaMetadata: MediaMetadata?,
+    hasError: Boolean,
+    visible: Boolean,
+    modifier: Modifier = Modifier,
+) {
     Column(
-        modifier = modifier,
+        modifier = modifier.fillMaxWidth(),
         verticalArrangement =
             Arrangement.Center,
     ) {
@@ -951,26 +983,28 @@ private fun CapsuleMiniSongInfo(
                 color =
                     LocalContentColor.current,
                 fontSize = 14.sp,
+                lineHeight = 17.sp,
+                style = CapsuleMiniMetadataTextStyle,
                 fontWeight =
                     FontWeight.Medium,
                 maxLines = 1,
                 overflow =
                     TextOverflow.Clip,
-                modifier =
-                    (if (visible) {
-                        Modifier.basicMarquee(
-                            iterations = 1,
-                            initialDelayMillis = 3000,
-                            velocity = 30.dp,
-                        )
-                    } else {
-                        Modifier
-                    }),
+                modifier = Modifier.fillMaxWidth().then(
+                    if (visible) Modifier.basicMarquee(
+                        iterations = 1,
+                        initialDelayMillis = 3000,
+                        velocity = 30.dp,
+                    ) else Modifier,
+                ),
             )
 
+            // Fill only the allotted mini-player metadata slot. Without a
+            // weighted artist the Row measured its full intrinsic text width
+            // and the right edge was clipped behind the favorite control.
             Row(
-                verticalAlignment =
-                    Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (metadata.explicit) {
                     ExplicitBadge(
@@ -991,29 +1025,34 @@ private fun CapsuleMiniSongInfo(
                             alpha = 0.7f,
                         ),
                     fontSize = 12.sp,
+                    lineHeight = 15.sp,
+                    style = CapsuleMiniMetadataTextStyle,
                     maxLines = 1,
                     overflow =
                         TextOverflow.Clip,
-                    modifier =
-                    if (visible) {
-                        Modifier.basicMarquee(
-                            iterations = 1,
-                            initialDelayMillis = 3000,
-                            velocity = 30.dp,
-                        )
-                    } else {
-                        Modifier
-                    },
+                    // The badge reserves its own width; the rest belongs to
+                    // the artist. Loop the marquee rather than truncating the
+                    // full name permanently on narrower phones.
+                    modifier = Modifier.weight(1f).then(
+                        if (visible) Modifier.basicMarquee(
+                            iterations = Int.MAX_VALUE,
+                            initialDelayMillis = 1700,
+                            repeatDelayMillis = 2000,
+                            velocity = 28.dp,
+                        ) else Modifier,
+                    ),
                 )
             }
 
-            if (error != null) {
+            if (hasError) {
                 Text(
                     text =
                         stringResource(R.string.error_unknown),
                     color =
                         CapsuleMiniError,
                     fontSize = 10.sp,
+                    lineHeight = 12.sp,
+                    style = CapsuleMiniMetadataTextStyle,
                     maxLines = 1,
                     overflow =
                         TextOverflow.Ellipsis,

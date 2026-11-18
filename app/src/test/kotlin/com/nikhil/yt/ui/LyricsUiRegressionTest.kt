@@ -1,11 +1,50 @@
 package com.nikhil.yt.ui
 
 import java.io.File
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import com.nikhil.yt.ui.player.capsuleInlineLyricsStops
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LyricsUiRegressionTest {
+    @Test
+    fun `lyrics renderer keeps current-track colors and does not zoom fullscreen glyphs`() {
+        val backdrop = source("com/nikhil/yt/ui/player/CapsuleLyricsContent.kt")
+        val card = source("com/nikhil/yt/ui/player/CapsuleInlineLyricsCard.kt")
+        val player = source("com/nikhil/yt/ui/player/Player.kt")
+        // A -> B with B still decoding: neither a retained spatial field nor
+        // a prior lyric palette is allowed to repaint B's neutral preview.
+        assertTrue(backdrop.contains("val retainedField = remember(mediaMetadata.id)"))
+        assertTrue(backdrop.contains("val retainedArtworkColors = remember(mediaMetadata.id)"))
+        assertFalse(card.contains("Color(0xFF35506C)"))
+        // Full text always has final pixel coordinates; only the rounded
+        // aperture is allowed to move. Once open, the mask is not drawn.
+        assertTrue(player.contains("clipPath(aperture) { this@drawWithContent.drawContent() }"))
+        assertTrue(player.contains("scrollToLyrics && sheetOffset.value > 0.0001f"))
+        assertFalse(player.contains("scaleX = (bounds.width / widthPx)"))
+        assertFalse(player.contains("scaleY = (bounds.height / heightPx)"))
+    }
+    @Test
+    fun `compact lyrics gradient never dims into a fixed black floor`() {
+        // Even a bright image with dark secondary bands must not dive into
+        // black at the bottom when the card is revealed by a scroll.
+        val stops = capsuleInlineLyricsStops(
+            listOf(Color(0xFFB9A88A), Color.Black, Color.Black),
+        )
+        assertTrue(stops.size == 3)
+        assertTrue(
+            "Lower compact-lyrics stop should remain close to the cover-based anchor",
+            stops.last().luminance() >= stops.first().luminance() * 0.65f,
+        )
+        val compact = source("com/nikhil/yt/ui/player/CapsuleInlineLyricsCard.kt")
+        assertFalse("Do not restore the dark near-black gradient floor",
+            compact.contains("Color(0xFF0A0F18)"))
+        assertFalse("Avoid a second alpha-mixed backdrop over the mini surface",
+            compact.contains("it.copy(alpha = 0.84f)"))
+    }
+
     private fun source(relative: String): String {
         val candidates =
             listOf(
@@ -14,6 +53,86 @@ class LyricsUiRegressionTest {
             )
         return candidates.firstOrNull(File::isFile)?.readText()
             ?: error("Could not find $relative")
+    }
+
+    @Test
+    fun `embedded lyrics keep the original player scroll and only a fullscreen button`() {
+        val player = source("com/nikhil/yt/ui/player/Player.kt")
+        val compact = source("com/nikhil/yt/ui/player/CapsuleInlineLyricsCard.kt")
+        assertTrue("Keep the original player-to-lyrics scrolling", player.contains(".verticalScroll("))
+        assertTrue(player.contains("Box(Modifier.fillMaxWidth().height(viewportHeight)) { renderPlayer() }"))
+        assertFalse("A snap pager changes the entire interaction model", player.contains("VerticalPager("))
+        assertFalse(player.contains("rememberPagerState("))
+        assertTrue("Compact and full lyrics share a single gradient surface",
+            compact.contains("CapsuleInlineLyricsBackdrop("))
+        assertFalse("An opaque gradient must not hide expensive mini-player effects",
+            compact.contains("MiniPlayerSurface("))
+        assertTrue("Fullscreen is a real button", compact.contains("FilledTonalButton(onClick = onFullScreen)"))
+        assertTrue("The normal fullscreen lyrics tree stays intact", player.contains("LyricsScreen("))
+        assertTrue("Real card coordinates anchor the fullscreen morph",
+            player.contains("frozenCardBounds ?: fallback"))
+        assertTrue(player.contains("onBoundsChanged = { cardBoundsInRoot[0] = it }"))
+        assertTrue(player.contains("capsuleInlineLyricsMorphBounds("))
+        assertFalse("A centered popup is not a matched-bounds transition",
+            player.contains("scaleX = 0.90f + 0.10f * open"))
+    }
+
+    @Test
+    fun `compact lyrics are read only and do not consume the parent scroll`() {
+        val compact = source("com/nikhil/yt/ui/player/CapsuleInlineLyricsCard.kt")
+        val lyrics = source("com/nikhil/yt/ui/component/Lyrics.kt")
+        assertTrue(compact.contains("allowUserInteraction = false"))
+        assertFalse("Preview must never seek Media3", compact.contains("onLineSeek = onLineSeek"))
+        assertTrue(lyrics.contains("userScrollEnabled = allowUserInteraction && hasDisplayableLyrics"))
+        assertTrue(lyrics.contains("enabled = allowUserInteraction && !isReturningToSync"))
+        assertTrue("Nested scroll must return unconsumed drag to the parent",
+            lyrics.contains("if (!allowUserInteraction) return Offset.Zero"))
+        assertTrue("Nested fling must return unconsumed velocity to the parent",
+            lyrics.contains("if (!allowUserInteraction) return Velocity.Zero"))
+    }
+
+    @Test
+    fun `compact lyrics has an artwork gradient even with plain mini player styling`() {
+        val compact = source("com/nikhil/yt/ui/player/CapsuleInlineLyricsCard.kt")
+        val player = source("com/nikhil/yt/ui/player/Player.kt")
+        assertTrue(compact.contains("capsuleInlineLyricsStops(colors)"))
+        assertTrue(compact.contains("Brush.verticalGradient(capsuleInlineLyricsStops(colors))"))
+        assertTrue("The compact card reuses the fullscreen backdrop implementation",
+            compact.contains("CapsuleInlineLyricsBackdrop("))
+        assertTrue("THEME style must still extract the art palette",
+            player.contains("(scrollToLyricsPreference && !isLandscape)"))
+    }
+
+    @Test
+    fun `scroll mode expands one unified gradient without hint or hidden GPU work`() {
+        val compact = source("com/nikhil/yt/ui/player/CapsuleInlineLyricsCard.kt")
+        val player = source("com/nikhil/yt/ui/player/Player.kt")
+        assertFalse("No scroll-down label can flash under the transitioning page",
+            compact.contains("capsule_inline_lyrics_hint"))
+        assertTrue("Fullscreen uses exactly the same gradient composable as compact lyrics",
+            player.contains("if (scrollToLyrics) {\n                            // The compact preview"))
+        assertTrue(player.contains("CapsuleInlineLyricsBackdrop("))
+        assertTrue("One spring governs the inline transition",
+            player.contains("if (!scrollToLyrics) {\n                    launch {\n                        sheetEdge.animateTo("))
+        assertTrue("Ink zones must not run independent staged animations in inline mode",
+            player.contains("motionPosition = { if (scrollToLyrics) 0f else sheetOffset.value }"))
+        assertTrue("The hidden regular wallpaper clock must stop in inline-fullscreen mode",
+            player.contains("!(scrollToLyricsPreference && !isLandscape)"))
+        assertTrue("Compact text sleeps after being covered",
+            player.contains("sheetOffset.value > 0.10f"))
+    }
+
+    @Test
+    fun `mini player artist is width constrained and can scroll on small screens`() {
+        val mini = source("com/nikhil/yt/ui/player/CapsuleMiniPlayer.kt")
+        val artist = mini.substringAfter("private fun CapsuleMiniSongInfo(")
+            .substringBefore("private fun CapsuleFavoriteButton(")
+        assertTrue("Artist row uses its actual measured slot",
+            artist.contains("Row(\n                modifier = Modifier.fillMaxWidth(),"))
+        assertTrue("Artist text cannot occupy the space reserved for the like button",
+            artist.contains("Modifier.weight(1f).then("))
+        assertTrue("Long artist names must remain readable after the first scroll",
+            artist.contains("iterations = Int.MAX_VALUE"))
     }
 
     @Test

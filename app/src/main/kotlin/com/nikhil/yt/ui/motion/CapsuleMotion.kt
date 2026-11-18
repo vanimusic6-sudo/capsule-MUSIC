@@ -55,6 +55,57 @@ object CapsuleMotion {
     }
 
     /**
+     * A soft, sticky release of the ORIGINAL Mini from the ascending sheet.
+     *
+     * 12915.mp4: compressing almost 5% in the first quarter of a very stiff spring
+     * read as a hard punch. Spread a gentler squeeze across the whole real Mini -> image
+     * overlap, preserving zero velocity at the start, at its middle, and at the return.
+     * Pure geometry of the same anchored progress: no per-frame allocations or second clock.
+     */
+    fun miniCompression(progress: Float): Float {
+        val p = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 0f
+        if (p <= 0f || p >= 0.47f) return 0f
+        val t = p / 0.47f
+        val arch = 4f * t * (1f - t)
+        return (arch * arch).coerceIn(0f, 1f)
+    }
+
+    fun miniScaleX(progress: Float): Float = 1f - 0.035f * miniCompression(progress)
+    fun miniScaleY(progress: Float): Float = 1f - 0.019f * miniCompression(progress)
+
+    /** The app's navigation tucks early and only returns near the Mini's final dock. */
+    fun navigationTucked(
+        opening: Boolean,
+        compactPressed: Boolean,
+        progress: Float,
+        dismissed: Boolean,
+    ): Boolean {
+        if (dismissed) return false
+        val p = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 0f
+        // Never move the nav during the stationary player preparation frame.
+        val threshold = if (opening || compactPressed) 0.025f else 0.16f
+        return p >= threshold
+    }
+
+    fun navTuckScaleX(progress: Float): Float = 1f - 0.07f * smooth(progress)
+    fun navTuckScaleY(progress: Float): Float = 1f - 0.19f * smooth(progress)
+
+    /**
+     * Tiny return-only stretch around the moment navigation emerges above the screen edge.
+     * One pulse, peaking at 2.8%, no extra spring, no timing loop; always exactly 1 at rest.
+     */
+    fun navReturnStretch(progress: Float): Float {
+        val p = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 0f
+        if (p <= 0f || p >= 0.46f) return 1f
+        val t = p / 0.46f
+        val arch = 4f * t * (1f - t)
+        return 1f + 0.028f * arch * arch
+    }
+
+    /** Mini gains at most 1.25 physical dp of delayed lift (including scale stays within the measured dock envelope). */
+    fun miniAdhesionDp(progress: Float): Float = 1.25f * miniCompression(progress)
+
+    /**
      * Quintic smootherstep. Velocity and acceleration are both zero at the endpoints, so a
      * transition can be interrupted or handed to another surface without the tiny start/stop kick
      * that a cubic smoothstep still leaves in acceleration.

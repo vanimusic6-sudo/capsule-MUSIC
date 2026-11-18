@@ -2,6 +2,8 @@ package com.nikhil.yt.ui.component
 
 import android.app.Application
 import com.nikhil.yt.ui.player.CapsuleVideoArtworkTransition
+import com.nikhil.yt.ui.player.capsuleInlineLyricsStops
+import com.nikhil.yt.ui.player.CAPSULE_COVER_HANDOFF_MS
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color as AndroidColor
@@ -30,6 +32,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
@@ -210,6 +213,44 @@ class PlayerOpeningMotionTest {
         }
         assertTrue("the actual shared artwork must paint",right>=left && bottom>=top)
         return android.graphics.Rect(left,top,right+1,bottom+1)
+    }
+
+    @Test fun closingGeometryCompressesTheActualWindowBeforeItsContentFades() {
+        assertEquals(0f, playerFrameGeometryProgress(Float.NaN), 0f)
+        assertEquals(0f, playerFrameGeometryProgress(0f), 0f)
+        assertEquals(1f, playerFrameGeometryProgress(1f), 0f)
+        var previous = 0f
+        for (step in 0..100) {
+            val progress = step / 100f
+            val contour = playerFrameGeometryProgress(progress)
+            assertTrue("no jump or inversion in the player outline", contour >= previous)
+            assertTrue("closing contracts toward Mini ahead of the raw sheet travel",
+                contour <= progress + 0.0001f)
+            previous = contour
+        }
+        val halfway = playerPresentationBounds(0.5f, 360f, 700f, 590f, 48f, 12f)
+        assertTrue("the frame is already shrinking rather than fading as a full-screen panel",
+            halfway.top > 295f)
+        assertTrue("the actual Mini is present during the close handoff",
+            playerMiniDrawAlpha(0.5f) > 0f)
+    }
+
+    @Test fun embeddedLyricsPaletteIsReadableEvenForWhiteOrEmptyCovers() {
+        val empty = capsuleInlineLyricsStops(emptyList())
+        val bright = capsuleInlineLyricsStops(listOf(Color.White, Color.Yellow))
+        assertEquals(3, empty.size)
+        assertEquals(3, bright.size)
+        assertTrue("the lyric floor is now cover-derived, not a fixed black stop",
+            empty.last() != bright.last())
+        assertTrue("The bright cover remains legible without darkening at the bottom",
+            bright.last().luminance() >= bright.first().luminance() * 0.65f)
+        for (stop in bright) {
+            assertTrue("the lyrics card must never flash a white background", stop.red < 0.65f)
+            assertTrue("the lyrics card must never flash a white background", stop.green < 0.65f)
+            assertTrue("the lyrics card must never flash a white background", stop.blue < 0.65f)
+        }
+        assertTrue("cover crossfade must be finite, not a perpetual animated layer",
+            CAPSULE_COVER_HANDOFF_MS in 160..260)
     }
 
     @Test fun presentationMorphsFromActualMiniBoundsToTheExactFullscreenViewport() {
@@ -405,11 +446,17 @@ class PlayerOpeningMotionTest {
         assertEquals(dock,top(),1f)
     }
 
-    @Test fun aTapMovesTheWindowWithinTwoDisplayFrames() {
+    @Test fun firstTapPreparesThePlayerThenMovesWithinThreeDisplayFrames() {
         mount()
         compose.onNodeWithTag("mini",useUnmergedTree=true).performTouchInput {click(center)}
-        advance(32)
-        compose.runOnIdle {assertTrue(state.isExpandedOrExpanding);assertTrue(state.visualProgress>0.005f)}
+        // One frame is reserved for mounting the actual artwork/backdrop before
+        // the spring moves. This avoids measuring the large player on its first motion frame.
+        advance(48)
+        compose.runOnIdle {
+            assertTrue(state.isExpandedOrExpanding)
+            assertEquals(1, contentMounts)
+            assertTrue(state.visualProgress > 0.005f)
+        }
     }
 
     @Test fun repeatedRequestsDoNotRestartTheSpringAndItSettlesWithoutALongTail() {
@@ -425,9 +472,9 @@ class PlayerOpeningMotionTest {
     @Test fun openingAndClosingUseTheSameMovingFrameWithoutAVisualTeleport() {
         mount()
         compose.runOnIdle { state.expandSoft() }
-        advance(32)
+        advance(48)
         compose.runOnIdle {
-            assertTrue("start moving on the first two display frames", state.visualProgress > 0.005f)
+            assertTrue("prepare the first frame before the motion starts", state.visualProgress > 0.005f)
             assertTrue("do not throw a fully opaque frame over Mini", playerPresentationOpacity(state.visualProgress) < 0.60f)
         }
         advance(96)

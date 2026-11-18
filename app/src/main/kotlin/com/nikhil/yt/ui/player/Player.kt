@@ -19,6 +19,15 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.rememberCoroutineScope
+import com.nikhil.yt.constants.CapsuleScrollToLyricsKey
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -46,12 +55,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -78,6 +95,7 @@ import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.ui.component.BottomSheet
 import com.nikhil.yt.ui.component.BottomSheetState
 import com.nikhil.yt.ui.component.playerHandoffSurfaceAlpha
+import com.nikhil.yt.ui.component.playerClassicSurfaceAlpha
 import com.nikhil.yt.ui.component.playerBackdropContentAlpha
 import com.nikhil.yt.ui.component.LocalBottomSheetPageState
 import com.nikhil.yt.ui.component.LocalMenuState
@@ -129,6 +147,9 @@ fun BottomSheetPlayer(
     var showInlineLyrics by rememberSaveable {
         mutableStateOf(false)
     }
+    val (scrollToLyricsPreference, _) = rememberPreference(CapsuleScrollToLyricsKey, false)
+    val inlineLyricsScroll = rememberScrollState()
+    val playerScope = rememberCoroutineScope()
 
     val queueSheetState =
         rememberBottomSheetState(
@@ -250,6 +271,9 @@ fun BottomSheetPlayer(
                     metadata.thumbnailUrl, currentSongForTrack?.song?.thumbnailUrl,
                 ),
                 album = album,
+                // Media3 can temporarily omit the explicit flag; never borrow
+                // the previous track's E, only the matching local song's flag.
+                explicit = metadata.explicit || currentSongForTrack?.song?.explicit == true,
             )
         }
 
@@ -397,6 +421,9 @@ fun BottomSheetPlayer(
         onScreen &&
             enrichedMetadata != null &&
             (miniPlayerBackground != MiniPlayerBackgroundStyle.THEME ||
+                // Even a THEME mini-player needs an artwork palette for the
+                // compact lyrics gradient; it must not fall back to flat ink.
+                (scrollToLyricsPreference && !isLandscape) ||
                 (effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
                     playerBackground != PlayerBackgroundStyle.DEFAULT))
     val artworkScene =
@@ -404,6 +431,15 @@ fun BottomSheetPlayer(
             mediaMetadata = enrichedMetadata,
             enabled = needsArtworkPalette,
             refreshOnOpen = state.isExpandedOrExpanding,
+            // Colour-only backdrops can gently settle after a delayed decode
+            // instead of snapping from their neutral first frame. Immersion,
+            // Scene Light and Star retain atomic colour + spatial-field swaps,
+            // preventing the old stripe/threshold flicker regressions.
+            animatePalette = effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
+                playerBackground != PlayerBackgroundStyle.SCENE_LIGHT &&
+                playerBackground != PlayerBackgroundStyle.CAPSULE_STAR,
+            // Preserve the last painted palette across STOP/START; pause extraction, not pixels.
+            retainWhenDisabled = true,
         )
 
     val gradientColors = artworkScene.colors
@@ -427,10 +463,12 @@ fun BottomSheetPlayer(
             else -> false
         }
     val pageIsDrawn by remember(state) { derivedStateOf {
-        !state.playerMotion || com.nikhil.yt.ui.component.playerPageVisible(state.visualProgress)
+        !state.playerMotion || state.classicPlayerPresentation ||
+            com.nikhil.yt.ui.component.playerPageVisible(state.visualProgress)
     } }
     val backdropTimelineRunning =
         backdropNeedsClock &&
+            !state.isAnimationRunning &&
             effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
             state.shouldLayerAboveCollapsedChrome &&
             pageIsDrawn &&
@@ -439,7 +477,8 @@ fun BottomSheetPlayer(
             playbackState == Player.STATE_READY &&
             !videoPlaybackState.presentingVideo &&
             !queueSheetState.isExpanded &&
-            (playerSceneExposed || (showInlineLyrics && lyricsUsePlayerTheme))
+            (playerSceneExposed || (showInlineLyrics && lyricsUsePlayerTheme &&
+                !(scrollToLyricsPreference && !isLandscape)))
     val sharedBackdropAnimationTime =
         rememberCapsuleAnimationTime(
             compact = false,
@@ -453,8 +492,13 @@ fun BottomSheetPlayer(
             showInlineLyrics && state.isExpandedOrExpanding -> showInlineLyrics = false
             queueSheetState.isExpandedOrExpanding ->
                 queueSheetState.collapseSoft()
-            state.isExpandedOrExpanding ->
-                state.collapseSoft()
+            state.isExpandedOrExpanding -> {
+                if (scrollToLyricsPreference && inlineLyricsScroll.value > 0) {
+                    playerScope.launch { inlineLyricsScroll.animateScrollTo(0) }
+                } else {
+                    state.collapseSoft()
+                }
+            }
         }
     }
     val currentPlayerBack by androidx.compose.runtime.rememberUpdatedState(handlePlayerBack)
@@ -474,13 +518,22 @@ fun BottomSheetPlayer(
         retry = playerConnection.service::retryCurrentFromFreshStream,
     )
 
+    // 12915.mp4: the extra full-height compact 'plate' was the grey rectangle left after the
+    // real album vanished on close. The accepted main-sheet presentation no longer needs it:
+    // it already retains the actual Mini and prepares the real fullscreen artwork early.
+    // Generic sheets still use the original compact transition material.
     val showCompactTransitionPlate by remember(state) {
         derivedStateOf { !state.playerMotion && state.visualProgress < 0.5f }
     }
     val showPlayerBackdrop by remember(state, effectivePlayerDesign) {
         derivedStateOf {
             effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
-                state.visualProgress > state.contentHandoffPoint
+                (
+                    state.visualProgress >
+                        (if (state.classicPlayerPresentation) 0.015f else state.contentHandoffPoint) ||
+                    // Prepare the same real backdrop while the mini remains still.
+                    (state.playerMotion && state.isExpandedOrExpanding)
+                )
         }
     }
 
@@ -500,7 +553,11 @@ fun BottomSheetPlayer(
         // instead of appearing as an unrelated full-width page behind it.
         collapsedHorizontalInset = 12.dp,
         collapsedTopCornerRadius = 14.dp,
-        surfaceAlpha = ::playerHandoffSurfaceAlpha,
+        // Paint the shell solid before artwork arrives; the old translucent material
+        // revealed the Home UI THROUGH the cover in the middle of the rise.
+        surfaceAlpha = if (state.classicPlayerPresentation)
+            ::playerClassicSurfaceAlpha
+        else ::playerHandoffSurfaceAlpha,
         onDismiss = {
             playerConnection.service.stopAndClearPlayback()
         },
@@ -521,8 +578,8 @@ fun BottomSheetPlayer(
             )
         },
         backgroundContent = {
-            // Generic sheets retain their old bridge. The physical card reveals its real page
-            // from the first frame and never paints the mini material as a temporary grey page.
+            // Generic sheets keep their old bridge. The classic player intentionally does NOT
+            // draw a second grey full-height placeholder; it reveals its actual artwork instead.
             if (showCompactTransitionPlate) {
                 CapsuleCompactSurfaceBackground(
                     style = miniPlayerBackground,
@@ -537,11 +594,13 @@ fun BottomSheetPlayer(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            alpha = if (state.playerMotion) 1f else
-                                playerBackdropContentAlpha(state.visualProgress, state.contentHandoffPoint)
+                            alpha = if (state.playerMotion && !state.classicPlayerPresentation) 1f else
+                                if (state.classicPlayerPresentation)
+                                    com.nikhil.yt.ui.component.playerClassicBackdropAlpha(state.visualProgress)
+                                else playerBackdropContentAlpha(state.visualProgress, state.contentHandoffPoint)
                         }
                         .background(playerSurfaceColor(useBlackBackground))
-                        .drawWithContent { if (onScreen && playerSceneExposed) drawContent() },
+                        .drawWithContent { if (playerSceneExposed) drawContent() },
                 ) {
                     // Keep the original artwork backdrop alive under the
                     // temporary video ambience. Both entry and exit crossfade
@@ -549,7 +608,7 @@ fun BottomSheetPlayer(
                     // Keep the prepared artwork scene for reversal, but do not
                     // shade another full-page layer beneath opaque video light.
                     Box(Modifier.fillMaxSize().drawWithContent {
-                        if (onScreen && playerSceneExposed &&
+                        if (playerSceneExposed &&
                             (!videoAmbientOverlayMounted || retainedVideoAmbientBands == null ||
                                 videoAmbientOverlayAlpha.value < 0.999f)) drawContent()
                     }) {
@@ -558,7 +617,8 @@ fun BottomSheetPlayer(
                             gradientColors = gradientColors,
                             artworkField = artworkScene.field,
                             animated = if (playerBackground == PlayerBackgroundStyle.SCENE_LIGHT)
-                                onScreen && pageIsDrawn && playerSceneExposed && state.shouldLayerAboveCollapsedChrome else backdropTimelineRunning,
+                                onScreen && pageIsDrawn && playerSceneExposed &&
+                                    !state.isAnimationRunning && state.shouldLayerAboveCollapsedChrome else backdropTimelineRunning,
                             sharedAnimationTime = sharedBackdropAnimationTime,
                         )
                     }
@@ -592,6 +652,8 @@ fun BottomSheetPlayer(
                     warmedImmersiveTone = warmedImmersiveTone,
                     sceneMemory = immersiveSceneMemory,
                     showLyrics = showInlineLyrics,
+                    scrollToLyrics = scrollToLyricsPreference && !isLandscape,
+                    scrollState = inlineLyricsScroll,
                     mediaMetadata = metadata,
                     decodedArtworkCache = decodedArtworkCache,
                     playerArtworkColors = gradientColors,
@@ -697,6 +759,8 @@ private fun CapsulePlayerLyricsHost(
     warmedImmersiveTone: ImmersiveArtworkTone?,
     sceneMemory: ImmersiveSceneMemory,
     showLyrics: Boolean,
+    scrollToLyrics: Boolean,
+    scrollState: ScrollState,
     mediaMetadata: MediaMetadata,
     decodedArtworkCache: MutableMap<String, Pair<String, Painter>>,
     playerArtworkColors: List<Color>,
@@ -726,6 +790,13 @@ private fun CapsulePlayerLyricsHost(
     // A subtle contour-only leading edge shares a single physical target
     // with the aperture. It never stretches the heavy LyricsScreen subtree.
     val sheetEdge = remember { Animatable(if (showLyrics) 0f else 1f) }
+    // Geometry holders do not recompose on scroll. Only the button snapshots
+    // the exact real compact-card rectangle before the spring starts.
+    val hostBoundsInRoot = remember { arrayOf<Rect?>(null) }
+    val cardBoundsInRoot = remember { arrayOf<Rect?>(null) }
+    var frozenCardBounds by remember(mediaMetadata.id) { mutableStateOf<Rect?>(null) }
+    var frozenCardPalette by remember(mediaMetadata.id) { mutableStateOf<List<Color>?>(null) }
+    val transitioningPalette = frozenCardPalette ?: playerArtworkColors
     // Opacity derives directly from sheet position: no third coroutine, no
     // arbitrary millisecond delay and no de-synchronised close/reopen fade.
     // The outgoing player stays fully present while Lyrics travels across it. Once the page has
@@ -740,6 +811,11 @@ private fun CapsulePlayerLyricsHost(
     // interactive controls. Match the ACTUAL optical curve, not an unrelated
     // hard-coded threshold: the old 0.80 cutoff caused a visible sudden
     // disappearance while alpha was still > 0 at closing.
+    LaunchedEffect(playerState.isExpandedOrExpanding, scrollToLyrics) {
+        if ((!playerState.isExpandedOrExpanding || !scrollToLyrics) && scrollState.value > 0) {
+            scrollState.scrollTo(0)
+        }
+    }
     val lyricsInkMounted by remember(showLyrics) {
         derivedStateOf {
             showLyrics || capsuleLyricsForegroundOpacity(sheetOffset.value) > 0.0001f
@@ -767,15 +843,19 @@ private fun CapsulePlayerLyricsHost(
                         ),
                     )
                 }
-                launch {
-                    sheetEdge.animateTo(
-                        0f,
-                        spring(
-                            dampingRatio = 0.87f,
-                            stiffness = 183f,
-                            visibilityThreshold = 0.001f,
-                        ),
-                    )
+                // The compact-to-fullscreen mode uses ONLY the page spring.
+                // The ordinary lyrics sheet retains its contour spring.
+                if (!scrollToLyrics) {
+                    launch {
+                        sheetEdge.animateTo(
+                            0f,
+                            spring(
+                                dampingRatio = 0.87f,
+                                stiffness = 183f,
+                                visibilityThreshold = 0.001f,
+                            ),
+                        )
+                    }
                 }
             }
         } else if (lyricsLayerMounted) {
@@ -796,28 +876,36 @@ private fun CapsulePlayerLyricsHost(
                         ),
                     )
                 }
-                launch {
-                    sheetEdge.animateTo(
-                        1f,
-                        spring(
-                            dampingRatio = 0.99f,
-                            stiffness = LyricsCloseSpringStiffness,
-                            visibilityThreshold = 0.001f,
-                        ),
-                    )
+                if (!scrollToLyrics) {
+                    launch {
+                        sheetEdge.animateTo(
+                            1f,
+                            spring(
+                                dampingRatio = 0.99f,
+                                stiffness = LyricsCloseSpringStiffness,
+                                visibilityThreshold = 0.001f,
+                            ),
+                        )
+                    }
                 }
             }
             lyricsRuntimeActive = false
             lyricsLayerMounted = false
+            frozenCardPalette = null
+            frozenCardBounds = null
         }
     }
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxSize()
+            .onGloballyPositioned { hostBoundsInRoot[0] = it.boundsInRoot() },
+    ) {
         // Both surfaces consume one sample of the player's actual visible cover crop.
         // Hoisting it also avoids a second decode/extraction when Lyrics opens.
         val onScreen = appIsOnScreen()
         val immersiveArtworkTone =
             if (design == CapsulePlayerDesign.IMMERSIVE) warmedImmersiveTone else null
+        val renderPlayer: @Composable () -> Unit = {
         Box(
             modifier =
                 Modifier
@@ -854,6 +942,7 @@ private fun CapsulePlayerLyricsHost(
                         }
                     },
                     onShowLyrics = onShowLyrics,
+                    artworkClickEnabled = !scrollToLyrics,
                     onMenuClick = onShowMenu,
                     onExpandQueue = {
                         if (!showLyrics) {
@@ -861,7 +950,8 @@ private fun CapsulePlayerLyricsHost(
                         }
                     },
                     bottomPadding = 0.dp,
-                    open = !playerState.isCollapsed && !playerState.isDismissed,
+                    open = playerState.isExpandedOrExpanding ||
+                        (!playerState.isCollapsed && !playerState.isDismissed),
                     controlsActive = playerMotionActive,
                     transitionForegroundAlpha = transitionForegroundAlpha,
                 )
@@ -887,6 +977,7 @@ private fun CapsulePlayerLyricsHost(
                 },
                 onCollapse = playerState::collapseSoft,
                 onArtworkClick = onShowLyrics,
+                artworkClickEnabled = !scrollToLyrics,
                 onArtistSelected = { artist ->
                     artist.id?.let { artistId ->
                         onHideLyrics()
@@ -898,9 +989,60 @@ private fun CapsulePlayerLyricsHost(
                 bottomPadding = 0.dp,
                 motionActive = playerMotionActive,
                 open =
-                    !playerState.isCollapsed &&
-                        !playerState.isDismissed,
+                    playerState.isExpandedOrExpanding ||
+                        (!playerState.isCollapsed && !playerState.isDismissed),
             )
+        }
+        }
+
+        if (scrollToLyrics) {
+            // Like a natural scrollable Now Playing document, not a swipe-to-open modal.
+            // This reuses the SAME player, with its normal measurements and touch targets.
+            // Only the card below the viewport is mounted when the user approaches it.
+            val viewportHeight = maxHeight
+            val viewportHeightPx = constraints.maxHeight.toFloat()
+            val lyricsCardReady by remember(scrollState, viewportHeightPx) {
+                derivedStateOf { scrollState.value > viewportHeightPx * 0.12f }
+            }
+            // Keep the actual compact lyrics in place while the fullscreen
+            // layer grows over them. Unmount their lyric renderer only once
+            // the full layer is practically opaque; no hint/text flash.
+            val compactPreviewActive by remember(showLyrics) {
+                derivedStateOf { !showLyrics || sheetOffset.value > 0.10f }
+            }
+            Column(
+                modifier = Modifier.fillMaxSize().verticalScroll(
+                    scrollState,
+                    enabled = playerState.isExpanded && !showLyrics && !queueState.isExpanded,
+                ),
+            ) {
+                Box(Modifier.fillMaxWidth().height(viewportHeight)) { renderPlayer() }
+                CapsuleInlineLyricsCard(
+                    colors = transitioningPalette,
+                    visible = onScreen && playerState.isExpandedOrExpanding &&
+                        lyricsCardReady && compactPreviewActive,
+                    sliderPosition = sliderPosition,
+                    onBoundsChanged = { cardBoundsInRoot[0] = it },
+                    onFullScreen = {
+                        val card = cardBoundsInRoot[0]
+                        val host = hostBoundsInRoot[0]
+                        frozenCardBounds = if (card != null && host != null) {
+                            Rect(
+                                card.left - host.left, card.top - host.top,
+                                card.right - host.left, card.bottom - host.top,
+                            )
+                        } else null
+                        // Prevent late artwork extraction from changing either
+                        // side of an active expansion independently.
+                        frozenCardPalette = playerArtworkColors.toList()
+                        onShowLyrics()
+                    },
+                    modifier = Modifier.fillMaxWidth().height((viewportHeight - 60.dp).coerceAtLeast(360.dp)),
+                )
+                Spacer(Modifier.height(16.dp))
+            }
+        } else {
+            renderPlayer()
         }
 
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -917,6 +1059,25 @@ private fun CapsulePlayerLyricsHost(
             //
             // No compose/layout state reads per frame. Only RenderNode work.
             val lyricsFrame = Modifier.graphicsLayer {
+                if (scrollToLyrics) {
+                    // The FULLSCREEN renderer stays at its final screen coordinates.
+                    // Only a single measured rounded aperture grows from the card;
+                    // scaling the whole Lyrics tree distorted text and made it pop.
+                    val open = (1f - sheetOffset.value).coerceIn(0f, 1f)
+                    transformOrigin = TransformOrigin.Center
+                    translationX = 0f
+                    translationY = 0f
+                    scaleX = 1f
+                    scaleY = 1f
+                    alpha = capsuleInlineMorphSurfaceOpacity(open)
+                    clip = false
+                } else {
+                // The same host survives a live settings change. Never carry
+                // the inline morph's opacity, X offset or top-left pivot into
+                // the ordinary (non-scroll) lyrics sheet.
+                alpha = 1f
+                translationX = 0f
+                transformOrigin = TransformOrigin.Center
                 val displacement = capsuleLyricsTranslation(
                     sheetOffset.value,
                     capsuleLyricsEdgeRecoil(sheetOffset.value, sheetEdge.value),
@@ -938,6 +1099,30 @@ private fun CapsulePlayerLyricsHost(
                 // offscreen mask; suspend clipping after both springs rest.
                 // During every actual move, keep the stencil on.
                 clip = sheetOffset.value > 0.0001f || sheetEdge.value > 0.0001f
+                }
+            }.drawWithContent {
+                if (scrollToLyrics && sheetOffset.value > 0.0001f) {
+                    // One cheap GPU scissor/stencil instead of a full-screen
+                    // rescale. Gradient and text remain upright and pixel-sharp
+                    // while the real card contour expands to the viewport.
+                    val open = (1f - sheetOffset.value).coerceIn(0f, 1f)
+                    val widthPx = size.width.coerceAtLeast(1f)
+                    val heightPx = size.height.coerceAtLeast(1f)
+                    val fallback = Rect(
+                        widthPx * 0.04f, heightPx * 0.13f,
+                        widthPx * 0.96f, heightPx * 0.92f,
+                    )
+                    val bounds = capsuleInlineLyricsMorphBounds(
+                        frozenCardBounds ?: fallback, widthPx, heightPx, open,
+                    )
+                    val radius = 28.dp.toPx() * (1f - open)
+                    val aperture = Path().apply {
+                        addRoundRect(RoundRect(bounds, CornerRadius(radius)))
+                    }
+                    clipPath(aperture) { this@drawWithContent.drawContent() }
+                } else {
+                    drawContent()
+                }
             }
 
             if (lyricsLayerMounted) {
@@ -952,18 +1137,28 @@ private fun CapsulePlayerLyricsHost(
                                 fullHeightPx,
                                 lipBudgetPx,
                             )
-                            translationY = -displacement
+                            translationY = if (scrollToLyrics) 0f else -displacement
                         },
                     ) {
-                        CapsuleLyricsBackdropLayer(
-                            mediaMetadata = mediaMetadata,
-                            immersiveArtworkTone = immersiveArtworkTone,
-                            playerArtworkColors = playerArtworkColors,
-                            backdropAnimationTime = backdropAnimationTime,
-                            isVisible = showLyrics && !queueState.isExpanded,
-                            instantBackdrop = true,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                        if (scrollToLyrics) {
+                            // The compact preview and normal fullscreen Lyrics
+                            // use the SAME cover gradient, with no extra sampler,
+                            // animated wallpaper or independently fading theme.
+                            CapsuleInlineLyricsBackdrop(
+                                colors = transitioningPalette,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        } else {
+                            CapsuleLyricsBackdropLayer(
+                                mediaMetadata = mediaMetadata,
+                                immersiveArtworkTone = immersiveArtworkTone,
+                                playerArtworkColors = playerArtworkColors,
+                                backdropAnimationTime = backdropAnimationTime,
+                                isVisible = showLyrics && !queueState.isExpanded,
+                                instantBackdrop = true,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     }
 
                     // No extra translucent edge scrim: on bright artwork,
@@ -992,7 +1187,14 @@ private fun CapsulePlayerLyricsHost(
                                 // now reads the SAME physical sheet position
                                 // below and fades naturally as the aperture
                                 // reaches its resting coordinates.
-                                translationY = -displacement
+                                translationY = if (scrollToLyrics) 0f else -displacement
+                                // One spring also controls all fullscreen ink.
+                                // No second screen-wide popup or staged zones.
+                                if (scrollToLyrics) {
+                                    alpha = capsuleInlineMorphContentOpacity(
+                                        1f - sheetOffset.value,
+                                    )
+                                }
                             }
                             .drawWithContent {
                                 clipRect(top = safeTopPx, bottom = size.height - safeBottomPx) {
@@ -1007,7 +1209,10 @@ private fun CapsulePlayerLyricsHost(
                             backdropAnimationTime = backdropAnimationTime,
                             drawBackdrop = false,
                             isVisible = lyricsRuntimeActive && !queueState.isExpanded,
-                            motionPosition = { sheetOffset.value },
+                            // In inline mode, one parent layer owns alpha and
+                            // expansion. Do not animate header, lyric lines and
+                            // controls independently as four separate screens.
+                            motionPosition = { if (scrollToLyrics) 0f else sheetOffset.value },
                             backHandlerEnabled =
                                 showLyrics && playerState.isExpandedOrExpanding,
                             modifier = Modifier.fillMaxSize(),

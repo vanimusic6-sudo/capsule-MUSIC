@@ -11,7 +11,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import kotlin.math.abs
 
-internal const val VIDEO_AMBIENT_CAPTURE_INTERVAL_MS = 100L
+// ~6.7 bounded low-res readbacks per second instead of 10. The decoded video
+// itself remains unrestricted; backdrop interpolation retains its existing physics.
+internal const val VIDEO_AMBIENT_CAPTURE_INTERVAL_MS = 150L
 internal const val VIDEO_AMBIENT_SAMPLE_WIDTH = 48
 internal const val VIDEO_AMBIENT_SAMPLE_HEIGHT = 28
 

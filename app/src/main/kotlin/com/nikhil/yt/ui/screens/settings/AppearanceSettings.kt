@@ -68,6 +68,7 @@ import com.nikhil.yt.constants.LyricsAnimationStyleKey
 import com.nikhil.yt.constants.LyricsClickKey
 import com.nikhil.yt.constants.LyricsLineSpacingKey
 import com.nikhil.yt.constants.LyricsUsePlayerThemeKey
+import com.nikhil.yt.constants.CapsuleScrollToLyricsKey
 import com.nikhil.yt.constants.LyricsScrollKey
 import com.nikhil.yt.constants.LyricsTextPositionKey
 import com.nikhil.yt.constants.LyricsTextSizeKey
@@ -116,6 +117,9 @@ fun AppearanceSettings(
             CapsuleLightLyricLineKey,
             defaultValue = ReleaseAppearanceDefaults.lightLyricLine,
         )
+    val (scrollToLyrics, onScrollToLyricsChange) =
+        rememberPreference(CapsuleScrollToLyricsKey, defaultValue = false)
+
 
     /*
      * =========================
@@ -693,6 +697,14 @@ fun AppearanceSettings(
                     CapsulePlayerDesign.IMMERSIVE -> R.string.capsule_player_immersive
                 })
             },
+        )
+
+        SwitchPreference(
+            title = { Text(stringResource(R.string.capsule_scroll_to_lyrics_title)) },
+            description = stringResource(R.string.capsule_scroll_to_lyrics_description),
+            icon = { Icon(painterResource(R.drawable.lyrics), contentDescription = null) },
+            checked = scrollToLyrics,
+            onCheckedChange = onScrollToLyricsChange,
         )
 
         // Lyrics are visual appearance. Structural editing lives in "Capsule под себя".

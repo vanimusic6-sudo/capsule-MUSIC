@@ -157,6 +157,7 @@ fun CapsulePlayerContent(
     onToggleLike: () -> Unit,
     onExpandQueue: () -> Unit,
     onArtworkClick: () -> Unit,
+    artworkClickEnabled: Boolean = true,
     onArtistSelected: (MediaMetadata.Artist) -> Unit,
     onMenuClick: () -> Unit,
     onCollapse: () -> Unit,
@@ -491,6 +492,12 @@ fun CapsulePlayerContent(
 
     val artistCredits = rememberArtistCredits(mediaMetadata.artists)
     val navigableArtists = rememberNavigableArtists(artistCredits)
+    // The entire metadata block gently catches up to the NEW cover, instead
+    // of its title changing sharply while the poster is still fading.
+    // One finite, small-layer animation per track; never an idle ticker.
+    // Metadata and controls follow Media3's selected track without an independent
+    // blink/translation. The single artwork settle handles the optical finish.
+    val trackInkArrival = remember { Animatable(1f) }
 
     // A chooser belongs to the track whose artist row was tapped.
     // Do not silently retarget an open dialog when autoplay changes tracks.
@@ -602,7 +609,7 @@ fun CapsulePlayerContent(
                     artworkBackground = Color(0xFF141414),
                     outline = Color.Transparent,
                     onArtworkClick = onArtworkClick,
-                    artworkClickable = !isCapsuleVideoPlaying && !lightEditorEnabled,
+                    artworkClickable = artworkClickEnabled && !isCapsuleVideoPlaying && !lightEditorEnabled,
                     video = { active ->
                         CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active && visible)
                     },
@@ -689,15 +696,9 @@ fun CapsulePlayerContent(
                                 }
                             }
                         }
-                        // Deliberately retain a neutral surface while rapidly
-                        // skipping (no wrong-track flash). Once this song's bitmap
-                        // is decoded, a short, softly defocused reveal replaces
-                        // the long abrupt grey-to-photo switch.
-                        val artworkReveal by animateFloatAsState(
-                            targetValue = if (retainedArtworkPainter != null) 1f else 0f,
-                            animationSpec = tween(durationMillis = if (visible) 230 else 0),
-                            label = "capsule-artwork-soft-reveal",
-                        )
+                        // Keep the last decoded artwork, never a neutral grey frame, until the
+                        // incoming full-resolution image is ready. The handoff owns its single
+                        // bounded GPU opacity transition, independent of Coil loading state.
                         val artworkContentScale =
                             if (cropAlbumArt ||
                                 (useClayLayout && (artworkResizeActive ||
@@ -709,15 +710,13 @@ fun CapsulePlayerContent(
                             // AsyncImage's transient state can be Loading even
                             // after this painter is fully usable; the image, not
                             // the view's request state, owns visible pixels.
-                            retainedArtworkPainter?.let { ready ->
-                                Image(
-                                    painter = ready,
-                                    contentDescription = null,
-                                    contentScale = artworkContentScale,
-                                    modifier = Modifier.fillMaxSize()
-                                        .graphicsLayer { alpha = artworkReveal },
-                                )
-                            }
+                            CapsuleTrackArtworkHandoff(
+                                mediaId = mediaMetadata.id,
+                                decodedPainter = retainedArtworkPainter,
+                                thumbnailUrl = mediaMetadata.thumbnailUrl,
+                                contentScale = artworkContentScale,
+                                modifier = Modifier.fillMaxSize(),
+                            )
                             // No low-resolution preview node: only the fully
                             // decoded artwork is ever placed on the canvas.
                             if (visible && (retainedArtworkPainter == null ||
@@ -1070,9 +1069,10 @@ fun CapsulePlayerContent(
                                         Box(Modifier.fillMaxWidth().padding(horizontal = CapsuleLightTransportEdgeInset)) {
                                             CapsuleLightLyricLine(
                                                 line = lyricEntry?.text?.trim()?.replace('\n', ' '),
-                        instrumental = lyricEntry?.takeIf { it.isInstrumental },
-                        playbackPosition = lyricPlaybackPosition,
-                        animate = lyricLineActive,
+                                                trackKey = mediaMetadata.id,
+                                                instrumental = lyricEntry?.takeIf { it.isInstrumental },
+                                                playbackPosition = lyricPlaybackPosition,
+                                                animate = lyricLineActive,
                                                 textColor = textColor,
                                             )
                                         }
@@ -1100,7 +1100,7 @@ fun CapsulePlayerContent(
                         CapsuleLightBlock.METADATA -> {
                             CapsuleLightReorderRow(
                                 order = lightMetadataOrder,
-                                widthFor = { if (it == CapsuleLightMetadataItem.FAVORITE) 48.dp else null },
+                                widthFor = { if (it == CapsuleLightMetadataItem.FAVORITE) 36.dp else null },
                                 editable = lightEditorEnabled,
                                 weightFor = { item ->
                                     when (item) {
@@ -1138,7 +1138,17 @@ fun CapsulePlayerContent(
                                             modifier =
                                                 Modifier
                                                     .fillMaxWidth()
-                                                    .clipToBounds(),
+                                                    // The heart remains centered in its 36dp hit zone;
+                                                    // space the title from it without shrinking the icon.
+                                                    .padding(
+                                                        start = if (lightMetadataOrder.firstOrNull() == CapsuleLightMetadataItem.FAVORITE) 12.dp else 0.dp,
+                                                        end = if (lightMetadataOrder.firstOrNull() == CapsuleLightMetadataItem.TEXT) 12.dp else 0.dp,
+                                                    )
+                                                    .clipToBounds()
+                                                    .graphicsLayer {
+                                                        alpha = trackInkArrival.value
+                                                        translationY = (1f - trackInkArrival.value) * 4.dp.toPx()
+                                                    },
                                         ) {
                                             CapsuleTrackTitle(
                                                 mediaId = mediaMetadata.id,
@@ -1154,26 +1164,12 @@ fun CapsulePlayerContent(
                                                     Spacer(Modifier.width(5.dp))
                                                 }
 
-                                                Text(
-                                                    text = artistCredits.joinToString { it.name },
+                                                CapsuleArtistCredits(
+                                                    artists = artistCredits,
                                                     color = secondaryText,
-                                                    fontSize = CapsulePlayerArtistFontSize,
-                                                    lineHeight = CapsulePlayerArtistLineHeight,
-                                                    fontWeight = FontWeight.Normal,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                    modifier =
-                                                        Modifier
-                                                            .weight(1f, fill = false)
-                                                            .clip(RoundedCornerShape(8.dp))
-                                                            .clickable(
-                                                                enabled =
-                                                                    navigableArtists.isNotEmpty() &&
-                                                                        !lightEditorEnabled,
-                                                            ) {
-                                                                handleArtistClick()
-                                                            }
-                                                            .padding(vertical = 2.dp),
+                                                    enabled = navigableArtists.isNotEmpty() && !lightEditorEnabled,
+                                                    onClick = ::handleArtistClick,
+                                                    modifier = Modifier.weight(1f, fill = false).padding(vertical = 2.dp),
                                                 )
                                             }
                                         }
@@ -1277,7 +1273,7 @@ fun CapsulePlayerContent(
                                             modifier = Modifier.fillMaxWidth(),
                                         ) {
                                             Icon(
-                                                painterResource(R.drawable.shuffle),
+                                                painterResource(R.drawable.capsule_transport_shuffle),
                                                 stringResource(R.string.shuffle),
                                                 tint =
                                                     textColor.copy(
@@ -1344,7 +1340,7 @@ fun CapsulePlayerContent(
                                             modifier = Modifier.fillMaxWidth(),
                                         ) {
                                             Icon(
-                                                painterResource(R.drawable.bedtime),
+                                                painterResource(R.drawable.capsule_transport_sleep),
                                                 stringResource(R.string.sleep_timer),
                                                 tint =
                                                     textColor.copy(
@@ -1442,7 +1438,12 @@ fun CapsulePlayerContent(
                         modifier =
                             Modifier
                                 .weight(1f)
-                                .clipToBounds(),
+                                .padding(end = 12.dp)
+                                .clipToBounds()
+                                .graphicsLayer {
+                                    alpha = trackInkArrival.value
+                                    translationY = (1f - trackInkArrival.value) * 4.dp.toPx()
+                                },
                     ) {
                         CapsuleTrackTitle(
                             mediaId = mediaMetadata.id,
@@ -1472,37 +1473,12 @@ fun CapsulePlayerContent(
                                 )
                             }
 
-                            Text(
-                                text =
-                                    artistCredits.joinToString {
-                                            it.name
-                                        },
-                                color =
-                                    secondaryText,
-                                fontSize = CapsulePlayerArtistFontSize,
-                                lineHeight = CapsulePlayerArtistLineHeight,
-                                fontWeight = FontWeight.Normal,
-                                maxLines = 1,
-                                overflow =
-                                    TextOverflow.Ellipsis,
-                                modifier =
-                                    Modifier
-                                        .weight(
-                                            1f,
-                                            fill = false,
-                                        )
-                                        .clip(
-                                            RoundedCornerShape(8.dp),
-                                        )
-                                        .clickable(
-                                            enabled =
-                                                navigableArtists.isNotEmpty(),
-                                        ) {
-                                            handleArtistClick()
-                                        }
-                                        .padding(
-                                            vertical = 2.dp,
-                                        ),
+                            CapsuleArtistCredits(
+                                artists = artistCredits,
+                                color = secondaryText,
+                                enabled = navigableArtists.isNotEmpty(),
+                                onClick = ::handleArtistClick,
+                                modifier = Modifier.weight(1f, fill = false).padding(vertical = 2.dp),
                             )
                         }
                     }
@@ -1606,7 +1582,7 @@ fun CapsulePlayerContent(
                             enabled = !isListenTogetherGuest,
                             modifier = Modifier.size(48.dp),
                         ) {
-                            Icon(painterResource(R.drawable.shuffle), stringResource(R.string.shuffle),
+                            Icon(painterResource(R.drawable.capsule_transport_shuffle), stringResource(R.string.shuffle),
                                 tint = textColor.copy(alpha = if (shuffleEnabled) 1f else 0.5f),
                                 modifier = Modifier.size(21.dp))
                         }
@@ -1636,7 +1612,7 @@ fun CapsulePlayerContent(
                             enabled = !isListenTogetherGuest,
                             modifier = Modifier.size(48.dp),
                         ) {
-                            Icon(painterResource(R.drawable.bedtime), stringResource(R.string.sleep_timer),
+                            Icon(painterResource(R.drawable.capsule_transport_sleep), stringResource(R.string.sleep_timer),
                                 tint = textColor.copy(alpha = if (sleepTimerEnabled) 1f else 0.5f),
                                 modifier = Modifier.size(21.dp))
                         }

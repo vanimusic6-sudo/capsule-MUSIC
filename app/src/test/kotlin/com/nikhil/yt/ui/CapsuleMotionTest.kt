@@ -14,6 +14,55 @@ import org.junit.Test
 class CapsuleMotionTest {
     private val samples = (0..400).map { it / 400f }
 
+    @Test fun `Mini releases softly into real full artwork without an early punch`() {
+        assertEquals(1f, CapsuleMotion.miniScaleX(0f), 0f)
+        assertEquals(1f, CapsuleMotion.miniScaleY(0f), 0f)
+        assertEquals(1f, CapsuleMotion.miniScaleX(0.47f), 0f)
+        assertEquals(1f, CapsuleMotion.miniScaleY(0.47f), 0f)
+        assertEquals(0.965f, CapsuleMotion.miniScaleX(0.235f), 1e-6f)
+        assertEquals(0.981f, CapsuleMotion.miniScaleY(0.235f), 1e-6f)
+        for (i in 0..100) {
+            val p = 0.47f * i / 100
+            val x = CapsuleMotion.miniScaleX(p)
+            val y = CapsuleMotion.miniScaleY(p)
+            assertTrue(x in 0.9649f..1f && y in 0.9809f..1f)
+            assertEquals(x, CapsuleMotion.miniScaleX(0.47f - p), 1e-5f)
+            assertEquals(y, CapsuleMotion.miniScaleY(0.47f - p), 1e-5f)
+        }
+    }
+
+    @Test fun `Nav tuck starts after the sheet begins moving`() {
+        fun hidden(open: Boolean, pressed: Boolean, p: Float, dismissed: Boolean = false) =
+            CapsuleMotion.navigationTucked(open, pressed, p, dismissed)
+        assertTrue(!hidden(false, true, 0f))
+        assertTrue(!hidden(true, false, 0f))
+        assertTrue(!hidden(true, false, 0.024f))
+        assertTrue(hidden(true, false, 0.025f))
+        assertTrue(hidden(false, false, 0.16f))
+        assertTrue(!hidden(false, false, 0.159f))
+        assertTrue(!hidden(false, false, 0f))
+        assertTrue(!hidden(true, false, 1f, dismissed = true))
+        assertEquals(1f, CapsuleMotion.navTuckScaleX(0f), 0f)
+        assertEquals(1f, CapsuleMotion.navTuckScaleY(0f), 0f)
+        assertEquals(0.93f, CapsuleMotion.navTuckScaleX(1f), 1e-6f)
+        assertEquals(0.81f, CapsuleMotion.navTuckScaleY(1f), 1e-6f)
+    }
+
+    @Test fun `return navigation stretches only once without a resting animation`() {
+        assertEquals(1f, CapsuleMotion.navReturnStretch(0f), 0f)
+        assertEquals(1f, CapsuleMotion.navReturnStretch(0.46f), 0f)
+        assertEquals(1f, CapsuleMotion.navReturnStretch(1f), 0f)
+        assertEquals(1.028f, CapsuleMotion.navReturnStretch(0.23f), 0.000001f)
+        for (i in 0..100) {
+            val value = CapsuleMotion.navReturnStretch(i / 100f)
+            assertTrue("No tall navigation bounce", value in 1f..1.02801f)
+        }
+        assertEquals(0f, CapsuleMotion.miniAdhesionDp(0f), 0f)
+        assertEquals(1.25f, CapsuleMotion.miniAdhesionDp(0.235f), 0.00001f)
+        assertEquals(0f, CapsuleMotion.miniAdhesionDp(0.47f), 0f)
+        assertEquals(0f, CapsuleMotion.miniAdhesionDp(1f), 0f)
+    }
+
     @Test fun `approach is fully applied when docked and absent once open`() {
         assertEquals(0f, CapsuleMotion.approach(0f, 0.34f), 1e-6f)
         assertEquals(1f, CapsuleMotion.approach(0.34f, 0.34f), 1e-6f)

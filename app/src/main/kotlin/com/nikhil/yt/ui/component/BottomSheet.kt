@@ -24,6 +24,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,6 +33,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
@@ -41,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -155,7 +158,7 @@ internal fun isAtSheetAnchor(
 ): Boolean =
     (value - anchor).value.absoluteValue <= ANCHOR_EPSILON_DP
 
-/** Generic opacity policy. The main player uses PlayerWindow's material/content handoff. */
+/** The stable main-branch player uses the physical BottomSheet travel and this handoff. */
 internal const val PlayerContentHandoffPoint = 0.25f
 internal const val PlayerWindowMountThreshold = SHEET_PROGRESS_EPSILON
 internal const val PlayerBackdropFadeEnd = 0.55f
@@ -204,6 +207,37 @@ internal fun playerContainerAlpha(progress: Float): Float =
 internal fun playerHandoffSurfaceAlpha(progress: Float): Float =
     transitionWindow(progress, 0f, PlayerContentHandoffPoint)
 
+/**
+ * HONOR 12915.mp4: the old transition revealed a solid grey background in progress 0.14..0.25
+ * while BOTH actual visual surfaces were almost transparent. Closing exposed the same slate
+ * in reverse. The photography must lead the material, not wait for an artificial grey shell.
+ *
+ * All of these sample ONE anchored sheet progress and are exactly reversible. This is not a
+ * second player animation or an extra picture: the existing Photo/Immersion component paints
+ * early, the original Mini yields late, and the optional solid backing catches up quietly.
+ */
+internal fun playerClassicSurfaceAlpha(progress: Float): Float =
+    transitionWindow(progress, 0.12f, 0.64f)
+
+/** The same real Mini stays visible until the player has acquired visible artwork. */
+internal fun playerClassicMiniAlpha(progress: Float): Float =
+    1f - transitionWindow(progress, 0.07f, 0.64f)
+
+/** Full artwork is already in view while Mini still has its original silhouette. */
+internal fun playerClassicContentAlpha(progress: Float): Float =
+    transitionWindow(progress, 0.045f, 0.63f)
+
+/** Colored Light background precedes text/control reveal; Immersion owns its own photograph. */
+internal fun playerClassicBackdropAlpha(progress: Float): Float =
+    transitionWindow(progress, 0.035f, 0.51f)
+
+/** Mount the player invisibly before any opacity becomes nonzero; preserve its existing state. */
+internal const val PlayerClassicContentMountThreshold = 0.015f
+
+/** In the accepted main motion, the Mini belongs to the real rising BottomSheet.
+ * No counter-travel: it rises and returns with its parent, without a phantom fixed card. */
+internal fun playerClassicMiniCounterTravel(travelPx: Float): Float = 0f
+
 internal fun shouldRenderExpandedSurface(
     rawProgress: Float,
     isDismissed: Boolean,
@@ -250,10 +284,15 @@ internal val PlayerFrameCornerRadius = 26.dp
 internal fun playerFrameCornerRadius(
     progress: Float,
     collapsedRadius: Dp = PlayerFrameCornerRadius,
+    holdVisibleCorner: Boolean = false,
 ): Dp {
     val p = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 1f
-    val eased = CapsuleMotion.smooth(p).coerceIn(0f, 1f)
-    return (collapsedRadius * (1f - eased)).coerceAtLeast(0.dp)
+    // ArchiveTune-like stable upper corners, with a smooth final 12% resolution
+    // instead of dropping the radius in one frame. Generic sheets unchanged.
+    val finish = if (holdVisibleCorner)
+        CapsuleMotion.smooth(((p - 0.88f) / 0.12f).coerceIn(0f, 1f))
+    else CapsuleMotion.smooth(p)
+    return (collapsedRadius * (1f - finish)).coerceAtLeast(0.dp)
 }
 
 /**
@@ -296,7 +335,7 @@ fun BottomSheet(
     backgroundContent: @Composable BoxScope.() -> Unit = {},
     content: @Composable BoxScope.() -> Unit,
 ) {
-    if (state.playerMotion) {
+    if (state.playerMotion && !state.classicPlayerPresentation) {
         PlayerWindow(
             state, modifier, backgroundColor, onDismiss, compactSwipeDismissEnabled,
             backHandlerEnabled && gesturesEnabled, collapsedContentHeight ?: state.collapsedBound,
@@ -323,20 +362,32 @@ fun BottomSheet(
         remember(state) {
             derivedStateOf {
                 miniPlayerClockShouldRun(state.isExpanded, state.isDismissed) &&
-                    state.compactSurfaceVisible
+                    state.compactSurfaceVisible && !state.isAnimationRunning
             }
         }
     val miniGestureArbiter = remember(state) { MiniPlayerGestureArbiter() }
+    val miniOpeningInteraction = remember(state) { MutableInteractionSource() }
+    val miniPressed by miniOpeningInteraction.collectIsPressedAsState()
+    LaunchedEffect(state, miniPressed) {
+        state.setCompactOpenPress(miniPressed && state.compactForegroundAcceptsInput)
+    }
     val renderExpandedSurface by
         remember(state) {
             derivedStateOf {
-                shouldRenderExpandedSurface(state.visualProgress, state.isDismissed)
+                shouldRenderExpandedSurface(state.visualProgress, state.isDismissed) ||
+                    (state.playerMotion && state.classicPlayerPresentation &&
+                        state.isExpandedOrExpanding)
             }
         }
     val renderExpandedContent by
         remember(state) {
             derivedStateOf {
-                shouldRenderExpandedContent(state.visualProgress, state.isDismissed, state.contentHandoffPoint)
+                shouldRenderExpandedContent(
+                    state.visualProgress, state.isDismissed,
+                    if (state.classicPlayerPresentation) PlayerClassicContentMountThreshold
+                    else state.contentHandoffPoint,
+                ) || (state.playerMotion && state.classicPlayerPresentation &&
+                    state.isExpandedOrExpanding)
             }
         }
 
@@ -344,10 +395,10 @@ fun BottomSheet(
         modifier =
             modifier
                 .fillMaxSize()
-                .offset {
-                    val distance = state.expandedBound - state.value
-                    val y = distance.roundToPx().coerceAtLeast(0)
-                    IntOffset(x = 0, y = y)
+                // The existing physical sheet travels at subpixel GPU precision
+                // without re-placing the whole fullscreen view tree every frame.
+                .graphicsLayer {
+                    translationY = (state.expandedBound - state.value).toPx().coerceAtLeast(0f)
                 }
                 /*
                  * The sheet itself never clips. The rounded top belongs to the full player and is
@@ -383,9 +434,27 @@ fun BottomSheet(
                 modifier =
                     Modifier
                         .graphicsLayer {
-                            alpha = miniPlayerContentAlpha(state.visualProgress, state.contentHandoffPoint)
+                            val p = state.visualProgress
+                            alpha = if (state.classicPlayerPresentation) playerClassicMiniAlpha(p)
+                                else miniPlayerContentAlpha(p, state.contentHandoffPoint)
+                            if (state.classicPlayerPresentation) {
+                                translationY = playerClassicMiniCounterTravel(
+                                    (state.value - state.collapsedBound).toPx(),
+                                ) + CapsuleMotion.miniAdhesionDp(p) * density
+                                // Source Mini lags the anchored lift by at most 1.25dp,
+                                // then reunites with the exact dock. No independent spring.
+                                // One existing spring; the Mini compresses and recovers
+                                // entirely before the artwork cross-handoff.
+                                scaleX = CapsuleMotion.miniScaleX(p)
+                                scaleY = CapsuleMotion.miniScaleY(p)
+                                transformOrigin = TransformOrigin(0.5f, 1f)
+                            }
                         }
-                        .zIndex(if (state.compactSurfaceVisible) 2f else 0f)
+                        // A z-order flip WHILE Mini is translucent produced a thin stray card
+                        // at the side of the recording. Change order only after it is invisible.
+                        .zIndex(if (state.classicPlayerPresentation && state.visualProgress < 0.64f)
+                            2f else if (!state.classicPlayerPresentation && state.compactSurfaceVisible)
+                            2f else 0f)
                         .then(
                             if (compactSwipeDismissEnabled && onDismiss != null) {
                                 Modifier.bottomSheetDraggable(
@@ -401,7 +470,7 @@ fun BottomSheet(
                         )
                         .clickable(
                             enabled = canReopen,
-                            interactionSource = remember { MutableInteractionSource() },
+                            interactionSource = miniOpeningInteraction,
                             indication = null,
                             onClick = state::expandSoft,
                         )
@@ -426,7 +495,10 @@ fun BottomSheet(
                             val raw = state.visualProgress
                             scaleX = playerFrameHorizontalScale(raw, size.width, collapsedHorizontalInset.toPx())
                             transformOrigin = TransformOrigin(0.5f, 0f)
-                            val radius = playerFrameCornerRadius(raw, collapsedTopCornerRadius)
+                            val radius = playerFrameCornerRadius(
+                                raw, collapsedTopCornerRadius,
+                                holdVisibleCorner = state.classicPlayerPresentation,
+                            )
                             shape = RoundedCornerShape(topStart = radius, topEnd = radius)
                             clip = radius > 0.dp
                         },
@@ -467,7 +539,9 @@ fun BottomSheet(
                             Modifier
                                 .fillMaxSize()
                                 .graphicsLayer {
-                                    alpha = fullPlayerContentAlpha(state.visualProgress)
+                                    alpha = if (state.classicPlayerPresentation)
+                                        playerClassicContentAlpha(state.visualProgress)
+                                    else fullPlayerContentAlpha(state.visualProgress)
                                 },
                     ) {
                         content()
@@ -498,6 +572,16 @@ private val BottomSheetSoftAnimationSpecPx: AnimationSpec<Float> =
         dampingRatio = Spring.DampingRatioNoBouncy,
         stiffness = Spring.StiffnessLow,
     )
+
+// Keep the main branch's anchored travel. Change ONLY the settling response:
+// a critically damped spring carries velocity through interruptions and reaches the last pixel
+// without a lingering tail. These specs apply to the player, never to menus or the queue.
+// Lower initial acceleration, soft near-critical settling, no visible bounce. Both travel the
+// exact same physical anchors; Back starts from the current offset and velocity.
+internal val PlayerClassicOpenAnimation: AnimationSpec<Float> =
+    spring(dampingRatio = 1f, stiffness = 132f, visibilityThreshold = 0.75f)
+internal val PlayerClassicCloseAnimation: AnimationSpec<Float> =
+    spring(dampingRatio = 1f, stiffness = 148f, visibilityThreshold = 0.75f)
 
 private fun SheetAnchor.legacyId(): Int =
     when (this) {
@@ -583,6 +667,7 @@ class BottomSheetState internal constructor(
     collapsedBound: Dp,
     expandedBound: Dp,
     internal val playerMotion: Boolean = false,
+    internal val classicPlayerPresentation: Boolean = false,
 ) {
     private val dismissedBoundState = mutableStateOf(dismissedBound)
     private val collapsedBoundState = mutableStateOf(collapsedBound)
@@ -613,6 +698,17 @@ class BottomSheetState internal constructor(
      * This prevents a closing spring from leaving Player as owner after close is requested.
      */
     private var playerAnimationJob: Job? = null
+    // Only the first expansion (or a changed compact geometry) waits for one composition
+    // frame. This gives the real destination page a chance to mount before its GPU clip moves.
+    private var playerPageNeedsFirstFrame = true
+    internal var compactOpenPress by mutableStateOf(false)
+        private set
+
+    internal fun setCompactOpenPress(pressed: Boolean) {
+        if (classicPlayerPresentation && compactOpenPress != pressed)
+            compactOpenPress = pressed
+    }
+
     private var requestedAnchor by mutableStateOf(anchoredState.targetValue)
     private var userGestureInProgress by mutableStateOf(false)
 
@@ -682,7 +778,7 @@ class BottomSheetState internal constructor(
         get() = requestedAnchor == SheetAnchor.Dismissed
 
     internal val contentHandoffPoint: Float
-        get() = if (playerMotion) PlayerWindowMountThreshold else PlayerContentHandoffPoint
+        get() = if (playerMotion && !classicPlayerPresentation) PlayerWindowMountThreshold else PlayerContentHandoffPoint
 
     internal val frameVelocityFraction: Float
         get() {
@@ -706,7 +802,8 @@ class BottomSheetState internal constructor(
 
     val compactForegroundAcceptsInput by
         derivedStateOf {
-            if (playerMotion) !isDismissed && visualProgress <= 0.10f
+            if (playerMotion && !classicPlayerPresentation) !isDismissed && visualProgress <= 0.10f
+            else if (classicPlayerPresentation) !isDismissed && visualProgress <= 0.12f
             else miniPlayerForegroundCanAcceptInput(visualProgress, isDismissed, contentHandoffPoint)
         }
 
@@ -737,6 +834,9 @@ class BottomSheetState internal constructor(
             return
         }
 
+        if (playerMotion && requestedAnchor != SheetAnchor.Expanded) {
+            playerPageNeedsFirstFrame = true
+        }
         dismissedBoundState.value = newDismissedBound
         collapsedBoundState.value = newCollapsedBound
         expandedBoundState.value = newExpandedBound
@@ -799,16 +899,30 @@ class BottomSheetState internal constructor(
     ) {
         val resolved = resolveRequestedAnchor(target)
         if (playerMotion && requestedAnchor == resolved && playerAnimationJob?.isActive == true) return
+        // Carry velocity only through an actual interruption. A finished spring
+        // may retain lastVelocity; reusing it causes the first-frame kick.
+        val carryVelocity =
+            if (!playerMotion || anchoredState.isAnimationRunning || userGestureInProgress)
+                anchoredState.lastVelocity else 0f
         if (playerMotion) playerAnimationJob?.cancel()
         val requested = requestAnchor(resolved)
         val job = coroutineScope.launch(
             start = if (playerMotion) CoroutineStart.UNDISPATCHED else CoroutineStart.DEFAULT,
         ) {
             if (requestedAnchor != requested) return@launch
+            // First open or a geometry/layout switch: compose the destination while the real
+            // mini remains still. Do not spend the first moving frame constructing a player.
+            // A single frame (not a timer) also works on 60/90/120 Hz screens.
+            if (playerMotion && requested == SheetAnchor.Expanded && playerPageNeedsFirstFrame) {
+                withFrameNanos { }
+                if (requestedAnchor != requested) return@launch
+                playerPageNeedsFirstFrame = false
+            }
             try {
                 animateToAnchor(
                     target = requested,
                     animationSpec = animationSpec,
+                    initialVelocity = carryVelocity,
                     priority = priority,
                 )
             } catch (_: CancellationException) {
@@ -835,11 +949,25 @@ class BottomSheetState internal constructor(
     }
 
     fun collapseSoft() {
-        launchAnimation(SheetAnchor.Collapsed, if (playerMotion) PlayerCloseAnimation else BottomSheetSoftAnimationSpecPx)
+        launchAnimation(
+            SheetAnchor.Collapsed,
+            when {
+                classicPlayerPresentation -> PlayerClassicCloseAnimation
+                playerMotion -> PlayerCloseAnimation
+                else -> BottomSheetSoftAnimationSpecPx
+            },
+        )
     }
 
     fun expandSoft() {
-        launchAnimation(SheetAnchor.Expanded, if (playerMotion) PlayerOpenAnimation else BottomSheetSoftAnimationSpecPx)
+        launchAnimation(
+            SheetAnchor.Expanded,
+            when {
+                classicPlayerPresentation -> PlayerClassicOpenAnimation
+                playerMotion -> PlayerOpenAnimation
+                else -> BottomSheetSoftAnimationSpecPx
+            },
+        )
     }
 
     fun dismiss() {
@@ -1107,6 +1235,7 @@ fun rememberBottomSheetState(
     collapsedBound: Dp = dismissedBound,
     initialAnchor: Int = DISMISSED_ANCHOR,
     playerMotion: Boolean = false,
+    classicPlayerPresentation: Boolean = false,
 ): BottomSheetState {
     val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
@@ -1137,7 +1266,7 @@ fun rememberBottomSheetState(
         }
 
     val state =
-        remember(anchoredState, coroutineScope, density, playerMotion) {
+        remember(anchoredState, coroutineScope, density, playerMotion, classicPlayerPresentation) {
             BottomSheetState(
                 coroutineScope = coroutineScope,
                 anchoredState = anchoredState,
@@ -1147,6 +1276,7 @@ fun rememberBottomSheetState(
                 collapsedBound = collapsedBound,
                 expandedBound = expandedBound,
                 playerMotion = playerMotion,
+                classicPlayerPresentation = classicPlayerPresentation,
             )
         }
 

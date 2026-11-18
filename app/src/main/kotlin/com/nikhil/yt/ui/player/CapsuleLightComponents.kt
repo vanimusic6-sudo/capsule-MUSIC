@@ -343,7 +343,7 @@ internal fun CapsuleLightFavorite(
     var userActionToken by remember { mutableIntStateOf(0) }
     Box(
         modifier = Modifier
-            .size(48.dp)
+            .width(36.dp).height(48.dp)
             .clickable(
                 enabled = enabled,
                 interactionSource = favoriteInteraction,
@@ -354,7 +354,9 @@ internal fun CapsuleLightFavorite(
                     onToggleLike()
                 },
             ),
-        contentAlignment = Alignment.CenterEnd,
+        // The original trailing alignment put the smaller heart outside the optical centre
+        // of its 48dp touch region. Centre the 26dp glyph while keeping the full hit target.
+        contentAlignment = Alignment.Center,
     ) {
         CapsuleFavoriteIcon(
             liked = liked,
@@ -418,7 +420,7 @@ internal fun CapsuleLightControls(
         when (item) {
             CapsuleLightTransportItem.REPEAT -> {
                 CapsuleLightTransportIcon(
-                    iconRes = if (repeatMode == Player.REPEAT_MODE_ONE) R.drawable.repeat_one else R.drawable.repeat,
+                    iconRes = if (repeatMode == Player.REPEAT_MODE_ONE) R.drawable.capsule_transport_repeat_one else R.drawable.capsule_transport_repeat,
                     contentDescription =
                         stringResource(
                             when (repeatMode) {
@@ -432,20 +434,20 @@ internal fun CapsuleLightControls(
                     textColor = textColor,
                     onClick = onRepeat,
                     modifier = Modifier.fillMaxWidth().semantics { selected = repeatMode != Player.REPEAT_MODE_OFF },
-                    iconSize = 25,
+                    iconSize = 24,
                 )
             }
 
             CapsuleLightTransportItem.PREVIOUS -> {
                 CapsuleLightTransportIcon(
-                    iconRes = R.drawable.skip_previous,
+                    iconRes = R.drawable.capsule_transport_previous,
                     contentDescription = stringResource(androidx.media3.ui.R.string.exo_controls_previous_description),
                     enabled = enabled && interactionEnabled && canSkipPrevious,
                     active = true,
                     textColor = textColor,
                     onClick = onPrevious,
                     modifier = Modifier.fillMaxWidth(),
-                    iconSize = 32,
+                    iconSize = 29,
                 )
             }
 
@@ -460,27 +462,27 @@ internal fun CapsuleLightControls(
 
             CapsuleLightTransportItem.NEXT -> {
                 CapsuleLightTransportIcon(
-                    iconRes = R.drawable.skip_next,
+                    iconRes = R.drawable.capsule_transport_next,
                     contentDescription = stringResource(androidx.media3.ui.R.string.exo_controls_next_description),
                     enabled = enabled && interactionEnabled && canSkipNext,
                     active = true,
                     textColor = textColor,
                     onClick = onNext,
                     modifier = Modifier.fillMaxWidth(),
-                    iconSize = 32,
+                    iconSize = 29,
                 )
             }
 
             CapsuleLightTransportItem.MENU -> {
                 CapsuleLightTransportIcon(
-                    iconRes = R.drawable.more_vert,
+                    iconRes = R.drawable.capsule_transport_more,
                     contentDescription = stringResource(R.string.more),
                     enabled = interactionEnabled,
                     active = true,
                     textColor = textColor,
                     onClick = menuAction,
                     modifier = Modifier.fillMaxWidth(),
-                    iconSize = 27,
+                    iconSize = 25,
                 )
             }
         }

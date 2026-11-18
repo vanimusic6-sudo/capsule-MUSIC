@@ -1,26 +1,95 @@
-/** Capsule MUSIC — manual, single-line player title for both player designs. GPL-3.0. */
+/** Capsule MUSIC — whole-glyph manual title, both full player designs. GPL-3.0. */
 package com.nikhil.yt.ui.player
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.collect
-import androidx.compose.runtime.snapshotFlow
+import java.text.BreakIterator
+import java.util.Locale
 
 internal val CapsulePlayerArtistFontSize = 17.sp
 internal val CapsulePlayerArtistLineHeight = 21.sp
+
+/** Unicode character boundaries, not UTF-16 indices: never split a surrogate or accent. */
+internal fun capsuleGraphemeBoundaries(text: String): List<Int> {
+    val iterator = BreakIterator.getCharacterInstance(Locale.getDefault())
+    iterator.setText(text)
+    val boundaries = ArrayList<Int>(text.length + 1)
+    var at = iterator.first()
+    while (at != BreakIterator.DONE) {
+        boundaries.add(at)
+        at = iterator.next()
+    }
+    return if (boundaries.isEmpty()) listOf(0) else boundaries
+}
+
+/** Show the soft right-edge ink fade only when the title is parked at its origin. */
+internal fun capsuleTitleShouldMask(isScrolling: Boolean, offsetPx: Int): Boolean =
+    !isScrolling && offsetPx == 0
+
+/**
+ * Find the largest *complete* displayed substring that actually fits. The text is measured with
+ * the same font/weight as the rendered Text and leaves a 2px safety margin for antialiasing.
+ * Never use Clip on an over-wide title: Clip visibly bisected its last Cyrillic letter.
+ */
+internal fun capsuleTitleWindowEnd(
+    text: String,
+    boundaries: List<Int>,
+    startCluster: Int,
+    widthPx: Int,
+    measurePx: (String) -> Int,
+): Int {
+    val start = startCluster.coerceIn(0, (boundaries.size - 1).coerceAtLeast(0))
+    val end = boundaries.lastIndex
+    if (start >= end) return end
+    val safeWidth = (widthPx - 2).coerceAtLeast(0)
+    var lo = start
+    var hi = end
+    while (lo < hi) {
+        val mid = (lo + hi + 1) / 2
+        val candidate = text.substring(boundaries[start], boundaries[mid])
+        if (measurePx(candidate) <= safeWidth) lo = mid else hi = mid - 1
+    }
+    return lo
+}
+
 
 @Composable
 internal fun CapsuleTrackTitle(
@@ -30,10 +99,19 @@ internal fun CapsuleTrackTitle(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    // Never auto-marquee. A finger can drag the title to reveal hidden letters;
-    // a new song resets the position, and inactivity gently restores the start.
+    // A long parked title softly dissolves at the right viewport edge. Never apply the
+    // fade while a finger, inertia or the automatic return is moving the whole name.
     val scroll = androidx.compose.runtime.key(mediaId, title) { rememberScrollState() }
     val onScreen = appIsOnScreen()
+    var layout by remember(mediaId, title) { mutableStateOf<TextLayoutResult?>(null) }
+    var viewportWidth by remember { mutableIntStateOf(0) }
+    val isOverflowing = viewportWidth > 0 && (layout?.size?.width ?: 0) > viewportWidth + 2
+    val fadeTarget = isOverflowing && capsuleTitleShouldMask(scroll.isScrollInProgress, scroll.value)
+    val smokeStrength by animateFloatAsState(
+        targetValue = if (fadeTarget) 1f else 0f,
+        animationSpec = tween(durationMillis = if (fadeTarget) 240 else 110),
+        label = "capsule-title-edge-smoke",
+    )
     LaunchedEffect(mediaId, title, scroll, enabled, onScreen) {
         if (!onScreen) return@LaunchedEffect
         if (!enabled) {
@@ -41,22 +119,20 @@ internal fun CapsuleTrackTitle(
             return@LaunchedEffect
         }
         var restoreJob: kotlinx.coroutines.Job? = null
-        var returningToStart = false
-        // Do not collectLatest the animation itself: animated scrolling also flips
-        // isScrollInProgress and previously cancelled its own return after one frame.
+        var returning = false
         snapshotFlow { scroll.isScrollInProgress }.collect { moving ->
             if (moving) {
-                if (!returningToStart) restoreJob?.cancel()
-            } else if (!returningToStart && scroll.value > 0) {
+                if (!returning) restoreJob?.cancel()
+            } else if (!returning && scroll.value > 0) {
                 restoreJob?.cancel()
                 restoreJob = launch {
                     delay(3_800L)
                     if (!scroll.isScrollInProgress && scroll.value > 0) {
-                        returningToStart = true
+                        returning = true
                         try {
                             scroll.animateScrollTo(0, animationSpec = tween(durationMillis = 620))
                         } finally {
-                            returningToStart = false
+                            returning = false
                         }
                     }
                 }
@@ -72,7 +148,39 @@ internal fun CapsuleTrackTitle(
         maxLines = 1,
         softWrap = false,
         overflow = TextOverflow.Clip,
-        modifier = modifier.clipToBounds()
-            .horizontalScroll(scroll, enabled = enabled),
+        onTextLayout = { layout = it },
+        modifier = modifier
+            .clipToBounds()
+            .onSizeChanged { viewportWidth = it.width }
+            // Use an offscreen layer only while the ink mask is actually fading.
+            // DstIn fades *glyph alpha*, never paints a dark rectangle over the background.
+            .graphicsLayer {
+                compositingStrategy = if (smokeStrength > 0.001f)
+                    CompositingStrategy.Offscreen else CompositingStrategy.Auto
+            }
+            .drawWithCache {
+                val fadeWidth = 30.dp.toPx().coerceAtMost(size.width * 0.29f)
+                val fadeStart = (size.width - fadeWidth).coerceAtLeast(0f)
+                val inkFade = Brush.horizontalGradient(
+                    0f to Color.White,
+                    0.30f to Color.White.copy(alpha = 1f - 0.10f * smokeStrength),
+                    1f to Color.White.copy(alpha = 1f - smokeStrength),
+                    startX = fadeStart,
+                    endX = size.width,
+                )
+                onDrawWithContent {
+                    drawContent()
+                    if (fadeWidth > 0f && isOverflowing && smokeStrength > 0.001f) {
+                        drawRect(
+                            brush = inkFade,
+                            topLeft = Offset(fadeStart, 0f),
+                            size = Size(fadeWidth, size.height),
+                            blendMode = BlendMode.DstIn,
+                        )
+                    }
+                }
+            }
+            .horizontalScroll(scroll, enabled = enabled)
+            .padding(end = 10.dp),
     )
 }

@@ -627,6 +627,9 @@ fun Lyrics(
     isVisible: Boolean = true,
     modifier: Modifier = Modifier,
     onLineSeek: (Long) -> Unit = {},
+    // Compact lyrics below the player show synced lines but never accept
+    // their own drag, seek or selection. Parent Now Playing keeps scrolling.
+    allowUserInteraction: Boolean = true,
 ) {
     val playerConnection = LocalPlayerConnection.current ?: return
     val menuState = LocalMenuState.current
@@ -1448,7 +1451,7 @@ fun Lyrics(
             flingBehavior = rememberCapsuleFlingBehavior(),
             overscrollEffect = null,
             state = lazyListState,
-            userScrollEnabled = hasDisplayableLyrics && !isReturningToSync,
+            userScrollEnabled = allowUserInteraction && hasDisplayableLyrics && !isReturningToSync,
             contentPadding = WindowInsets.systemBarsIgnoringVisibility
                 .only(WindowInsetsSides.Top)
                 .add(WindowInsets(top = maxHeight / 2, bottom = maxHeight / 2))
@@ -1488,6 +1491,7 @@ fun Lyrics(
                 .smoothFadingEdge(top = 128.dp, bottom = 104.dp)
                 .nestedScroll(
                     remember(
+                        allowUserInteraction,
                         manualScrollThresholdPx,
                         scrollLyrics,
                         isSynced,
@@ -1526,6 +1530,7 @@ fun Lyrics(
                                 available: Offset,
                                 source: NestedScrollSource,
                             ): Offset {
+                                if (!allowUserInteraction) return Offset.Zero
                                 if (
                                     source == NestedScrollSource.UserInput &&
                                     !isSelectionModeActive &&
@@ -1560,6 +1565,7 @@ fun Lyrics(
                                 available: Offset,
                                 source: NestedScrollSource,
                             ): Offset {
+                                if (!allowUserInteraction) return Offset.Zero
                                 if (source == NestedScrollSource.UserInput) {
                                     registerUserDrag(
                                         abs(consumed.y) + abs(available.y),
@@ -1589,6 +1595,7 @@ fun Lyrics(
                                 consumed: Velocity,
                                 available: Velocity,
                             ): Velocity {
+                                if (!allowUserInteraction) return Velocity.Zero
                                 if (
                                     enteredManualMode &&
                                     !isSelectionModeActive &&
@@ -1810,7 +1817,7 @@ fun Lyrics(
                         .fillMaxWidth()
                         // Removed .clip() to prevent glow clipping
                         .combinedClickable(
-                            enabled = !isReturningToSync && notePhase != InstrumentalNotePhase.UPCOMING,
+                            enabled = allowUserInteraction && !isReturningToSync && notePhase != InstrumentalNotePhase.UPCOMING,
                             onClick = {
                                 if (isSelectionModeActive && item.isInstrumental) {
                                     // A timing marker is not text that can be shared.

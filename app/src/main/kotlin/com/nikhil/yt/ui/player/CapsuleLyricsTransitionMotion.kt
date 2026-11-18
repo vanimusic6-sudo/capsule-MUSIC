@@ -4,6 +4,7 @@
  */
 package com.nikhil.yt.ui.player
 
+import androidx.compose.ui.geometry.Rect
 import kotlin.math.PI
 import kotlin.math.sin
 
@@ -76,4 +77,30 @@ internal fun capsuleLyricsZoneFloatDp(
 ): Float {
     val a = capsuleLyricsZoneOpacity(sheetPosition, zone)
     return 6f * (1f - a) * (1f - a)
+}
+
+/** Physically expand the measured compact card into the same fullscreen layer. */
+internal fun capsuleInlineLyricsMorphBounds(
+    start: Rect, widthPx: Float, heightPx: Float, progress: Float,
+): Rect {
+    val t = progress.coerceIn(0f, 1f)
+    val rest = 1f - t
+    return Rect(
+        left = start.left * rest,
+        top = start.top * rest,
+        right = start.right * rest + widthPx * t,
+        bottom = start.bottom * rest + heightPx * t,
+    )
+}
+
+/** Hide the source text seamlessly as its own gradient starts to expand. */
+internal fun capsuleInlineMorphSurfaceOpacity(progress: Float): Float {
+    val t = (progress / 0.15f).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
+}
+
+/** Reveal full-sized text with the same spring, after its canvas has grown. */
+internal fun capsuleInlineMorphContentOpacity(progress: Float): Float {
+    val t = ((progress - 0.25f) / 0.55f).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
 }

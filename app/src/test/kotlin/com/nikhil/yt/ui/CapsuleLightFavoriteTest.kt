@@ -43,11 +43,16 @@ class CapsuleLightFavoriteTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
     @Test fun theLightHeartStillSqueezesWhenItIsPressed() {
-        var liked by mutableStateOf(false)
+        // Measure ONE identical optical state both before and after the press.
+        // The old test toggled an unliked WHITE outline into a liked RED fill, then
+        // compared red-channel pixel widths at >120; antialiasing/tint made a
+        // physically identical heart look 2px narrower. The other two tests own
+        // unlike -> liked/database-delayed fill transitions.
+        val liked = true
         compose.setContent {
             MaterialTheme {
                 Box(Modifier.background(Color.Black).testTag("light-heart")) {
-                    CapsuleLightFavorite(liked, Color.White, onToggleLike = { liked = !liked })
+                    CapsuleLightFavorite(liked, Color.White, onToggleLike = {})
                 }
             }
         }

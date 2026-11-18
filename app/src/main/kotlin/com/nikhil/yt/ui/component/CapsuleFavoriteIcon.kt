@@ -46,7 +46,7 @@ internal fun CapsuleFavoriteIcon(
     val pressed = interactionSource?.collectIsPressedAsState()?.value == true
     val press by animateFloatAsState(
         if (pressed) 1f else 0f,
-        spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 540f),
         label = "favoritePress",
     )
 
@@ -95,39 +95,45 @@ internal fun CapsuleFavoriteIcon(
     val path = remember { Path() }
 
     Canvas(modifier.size(24.dp).semantics { contentDescription = label }) {
-        val progress = fill.value.coerceIn(0f, 1f)
-        // Also deform while the fill travels, preserving the tactile squeeze from the Capsule skin.
-        val morph =
-            (
-                press +
-                    0.65f * 4f * progress * (1f - progress) * (1f - press)
-            ).coerceIn(-0.16f, 1f)
+        // Snap microscopically subpixel residues to their exact logical endpoints.
+        // Otherwise bitmap rasterisation can remain 1–2px narrower after a tap.
+        val progress = fill.value.coerceIn(0f, 1f).let {
+            when { it <= 0.003f -> 0f; it >= 0.997f -> 1f; else -> it }
+        }
+        val pressIntensity = press.coerceIn(0f, 1f).let { if (it < 0.008f) 0f else it }
+        // Crisp, optically stable rounded-heart contour at both rest endpoints.
+        val morph = (
+            pressIntensity +
+                0.65f * 4f * progress * (1f - progress) * (1f - pressIntensity)
+        ).coerceIn(0f, 1f)
         val opening = 1f - progress
 
         path.reset()
         path.fillType = PathFillType.EvenOdd
-        path.moveTo(12f, 21.35f - morph * 1.1f)
-        path.lineTo(10.55f, 20.03f)
-        path.cubicTo(5.4f, 15.36f, 2f, 12.28f, 2f, 8.5f)
-        path.cubicTo(2f, 5.42f, 4.42f, 3f, 7.5f, 3f)
-        path.cubicTo(9.24f, 3f, 10.91f, 3.81f, 12f, 5.09f)
-        path.cubicTo(13.09f, 3.81f, 14.76f, 3f, 16.5f, 3f)
-        path.cubicTo(19.58f, 3f, 22f, 5.42f, 22f, 8.5f)
-        path.cubicTo(22f, 12.28f, 18.6f, 15.36f, 13.45f, 20.04f)
+        // Soft, plump contour with rounded shoulders and a gentle tip.
+        // Keep full glyph size and the existing user-only fill animation.
+        path.moveTo(12f, 20.8f - morph * 0.75f)
+        path.cubicTo(11.48f, 20.8f, 10.81f, 20.2f, 10.07f, 19.54f)
+        path.cubicTo(6.39f, 16.27f, 2.5f, 12.86f, 2.5f, 8.94f)
+        path.cubicTo(2.5f, 5.77f, 4.88f, 3.55f, 7.8f, 3.55f)
+        path.cubicTo(9.49f, 3.55f, 10.94f, 4.33f, 12f, 5.52f)
+        path.cubicTo(13.06f, 4.33f, 14.51f, 3.55f, 16.2f, 3.55f)
+        path.cubicTo(19.12f, 3.55f, 21.5f, 5.77f, 21.5f, 8.94f)
+        path.cubicTo(21.5f, 12.86f, 17.61f, 16.27f, 13.93f, 19.54f)
+        path.cubicTo(13.19f, 20.2f, 12.52f, 20.8f - morph * 0.75f, 12f, 20.8f - morph * 0.75f)
         path.close()
 
         if (opening > 0f) {
             fun x(value: Float) = 12f + (value - 12f) * opening
             fun y(value: Float) = 11.8f + (value - 11.8f) * opening
 
-            path.moveTo(x(12f), y(18.65f))
-            path.cubicTo(x(7.14f), y(14.24f), x(4f), y(11.39f), x(4f), y(8.5f))
-            path.cubicTo(x(4f), y(6.5f), x(5.5f), y(5f), x(7.5f), y(5f))
-            path.cubicTo(x(9.04f), y(5f), x(10.54f), y(5.99f), x(11.07f), y(7.36f))
-            path.lineTo(x(12.94f), y(7.36f))
-            path.cubicTo(x(13.46f), y(5.99f), x(14.96f), y(5f), x(16.5f), y(5f))
-            path.cubicTo(x(18.5f), y(5f), x(20f), y(6.5f), x(20f), y(8.5f))
-            path.cubicTo(x(20f), y(11.39f), x(16.86f), y(14.24f), x(12f), y(18.65f))
+            path.moveTo(x(12f), y(18.12f))
+            path.cubicTo(x(10.05f), y(16.35f), x(4.51f), y(12.16f), x(4.51f), y(8.92f))
+            path.cubicTo(x(4.51f), y(6.94f), x(5.94f), y(5.57f), x(7.82f), y(5.57f))
+            path.cubicTo(x(9.35f), y(5.57f), x(10.56f), y(6.54f), x(12f), y(8.13f))
+            path.cubicTo(x(13.44f), y(6.54f), x(14.65f), y(5.57f), x(16.18f), y(5.57f))
+            path.cubicTo(x(18.06f), y(5.57f), x(19.49f), y(6.94f), x(19.49f), y(8.92f))
+            path.cubicTo(x(19.49f), y(12.16f), x(13.95f), y(16.35f), x(12f), y(18.12f))
             path.close()
         }
 

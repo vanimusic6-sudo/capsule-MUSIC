@@ -26,12 +26,13 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import com.nikhil.yt.ui.motion.CapsuleMotion
+import kotlin.math.pow
 
 // One critically damped anchor drives frame, artwork and source Mini. A new target interrupts the
 // SAME spring with its existing velocity; no independent mini/page clocks or decorative rebound.
-// The anchor travels hundreds of pixels now, so stop within 3 px rather than jumping the last 8.
-internal val PlayerOpenAnimation = spring<Float>(dampingRatio = 1f, stiffness = 270f, visibilityThreshold = 3f)
-internal val PlayerCloseAnimation = spring<Float>(dampingRatio = 1f, stiffness = 290f, visibilityThreshold = 3f)
+// The anchor travels hundreds of pixels: settle inside 1.25 px, with no perceptible late snap.
+internal val PlayerOpenAnimation = spring<Float>(dampingRatio = 1f, stiffness = 255f, visibilityThreshold = 1.25f)
+internal val PlayerCloseAnimation = spring<Float>(dampingRatio = 1f, stiffness = 340f, visibilityThreshold = 1.25f)
 
 /** Action ownership is separate from Scaffold's subcomposition order. No clock or retained UI. */
 class PlayerBackAction {
@@ -77,20 +78,22 @@ internal fun playerSceneNeedsDrawing(progress: Float): Boolean = boundedProgress
 internal fun playerPageVisible(progress: Float): Boolean = boundedProgress(progress) > 0f
 internal fun playerPageAcceptsInput(progress: Float): Boolean = boundedProgress(progress) >= 0.92f
 
-// Leave the real mini in view while the expanded frame is still near its source. The mini
-// contributes the actual artwork and material at the first/last frames; it never teleports.
-internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0.13f, 0.60f)
+// The real mini starts returning before the closing window reaches its final dock.
+// Both surfaces use the same anchor, so no late source swap or flash is introduced.
+internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0.14f, 0.80f)
 internal fun playerMiniLift(progress: Float, density: Float): Float =
     -8f * density * window(progress, 0f, 0.40f)
 internal fun playerMiniApproach(progress: Float): Float =
     1f + 0.012f * window(progress, 0f, 0.45f)
 
+// Let the real page content become readable slightly earlier as the Mini recedes.
+// The contour still supplies the large size change; the small scale settle eases at both ends.
 // Keep the content close to its natural size; the CONTOUR supplies the large size change.
 // A 24% page scale made the artwork collapse into a detached, left-anchored vertical strip
 // on device. The real mini card owns the first/last frames, not a tiny copy of the full UI.
-internal fun playerPresentationOpacity(progress: Float): Float = window(progress, 0.04f, 0.33f)
-internal fun playerContentOpacity(progress: Float): Float = window(progress, 0.24f, 0.72f)
-internal fun playerPresentationScale(progress: Float): Float = 0.95f + 0.05f * boundedProgress(progress)
+internal fun playerPresentationOpacity(progress: Float): Float = window(progress, 0.035f, 0.70f)
+internal fun playerContentOpacity(progress: Float): Float = window(progress, 0.13f, 0.72f)
+internal fun playerPresentationScale(progress: Float): Float = 0.95f + 0.05f * CapsuleMotion.smooth(boundedProgress(progress))
 
 // The near-full-size page follows the ascending top edge of the morphing frame. The small
 // underlap keeps artwork IN the revealed card, not cropped to a one-sided strip. At rest both
@@ -104,6 +107,13 @@ internal fun playerPresentationContentY(
  * The source is the REAL compact bar (including its bottom-navigation gap), and the target is
  * EXACTLY (0, 0, width, height). Progress is reused on closing, including mid-flight reversal.
  */
+/**
+ * An asymmetric contour: on close the whole window contracts toward Mini sooner, rather
+ * than descending as an opaque fullscreen rectangle. It is reversible and monotonic,
+ * and the same transform applies to a finger-driven transition or an interrupted spring.
+ */
+internal fun playerFrameGeometryProgress(progress: Float): Float = boundedProgress(progress).pow(1.28f)
+
 internal fun playerPresentationBounds(
     progress: Float,
     width: Float,
@@ -112,7 +122,7 @@ internal fun playerPresentationBounds(
     miniHeight: Float,
     miniInset: Float,
 ): Rect {
-    val p = boundedProgress(progress)
+    val p = playerFrameGeometryProgress(progress)
     val inset = miniInset.coerceIn(0f, width * 0.5f)
     val sourceTop = miniTop.coerceIn(0f, height)
     val sourceBottom = (sourceTop + miniHeight).coerceIn(sourceTop, height)

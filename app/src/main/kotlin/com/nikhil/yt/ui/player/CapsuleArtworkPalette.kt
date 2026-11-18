@@ -12,6 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -31,9 +32,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
-// The old 1.4s RGB morph kept repainting after the NEW cover was visible.
-// A short shared colour handoff feels tied to the artwork, not a late wave.
-private const val ARTWORK_PALETTE_TRANSITION_MS = 420
+// Keep the colour adjustment almost imperceptible; a long RGB interpolation
+// causes a second visible "gradient blink" after the new song is already playing.
+private const val ARTWORK_PALETTE_TRANSITION_MS = 460
 
 internal data class CapsuleArtworkScene(
     val colors: List<Color>,
@@ -130,9 +131,10 @@ internal fun rememberArtworkGradientColors(
 internal fun rememberCapsuleArtworkScene(
     mediaMetadata: MediaMetadata?, enabled: Boolean = true,
     refreshOnOpen: Boolean = false, animatePalette: Boolean = true,
+    retainWhenDisabled: Boolean = false,
 ): CapsuleArtworkScene = rememberArtworkScene(
     mediaMetadata?.let { capsuleArtworkPaletteKey(it.id) }, mediaMetadata?.thumbnailUrl,
-    enabled, CapsuleArtworkPaletteCache, refreshOnOpen, animatePalette,
+    enabled, CapsuleArtworkPaletteCache, refreshOnOpen, animatePalette, retainWhenDisabled,
 )
 
 @Composable
@@ -140,6 +142,7 @@ internal fun rememberArtworkScene(
     cacheKey: String?, thumbnailUrl: String?, enabled: Boolean,
     paletteCache: ArtworkPaletteCache, refreshOnOpen: Boolean,
     animatePalette: Boolean = true,
+    retainWhenDisabled: Boolean = false,
 ): CapsuleArtworkScene {
     val context = LocalContext.current
     val primary = MaterialTheme.colorScheme.primary
@@ -151,14 +154,25 @@ internal fun rememberArtworkScene(
             listOf(primary, secondary, tertiary)
         }
     /*
-     * Keep the last visible palette while the next cover is being decoded.
-     * Keying this state by cacheKey used to recreate it for every track and
-     * briefly expose the theme fallback before the new artwork was ready.
+     * Treat a media-ID change as an atomic palette boundary. Previous code
+     * kept the last track's colours while the new bitmap decoded and then
+     * interpolated *three* channels independently into the new track.
+     * This was a visible stale-gradient ghost / double flash during skips.
+     *
+     * A cached scene is presented immediately. For an uncached track, a
+     * neutral dark scene is used until its OWN extracted colour field is ready.
+     * Never blend colours from another track's frame into this one.
      */
-    val initialPalette = remember { cacheKey?.let(paletteCache::getScene) }
-    var targetScene by remember { mutableStateOf(initialPalette ?: CapsuleArtworkScene(fallback)) }
-    var hasArtworkPalette by remember { mutableStateOf(initialPalette != null) }
-    var resolvedKey by remember { mutableStateOf(cacheKey.takeIf { initialPalette != null }) }
+    val initialPalette = remember(cacheKey) { cacheKey?.let(paletteCache::getScene) }
+    val pendingPalette = remember(cacheKey, fallback) {
+        if (cacheKey == null) CapsuleArtworkScene(fallback)
+        else CapsuleArtworkScene(List(3) { Color(0xFF1A1B21) })
+    }
+    var targetScene by remember(cacheKey) { mutableStateOf(initialPalette ?: pendingPalette) }
+    var hasArtworkPalette by remember(cacheKey) { mutableStateOf(initialPalette != null) }
+    var resolvedKey by remember(cacheKey) {
+        mutableStateOf(cacheKey.takeIf { initialPalette != null })
+    }
 
     LaunchedEffect(
         cacheKey,
@@ -176,7 +190,7 @@ internal fun rememberArtworkScene(
 
         if (cacheKey == null) {
             if (!hasArtworkPalette) {
-                targetScene = CapsuleArtworkScene(fallback)
+                targetScene = pendingPalette
             }
             return@LaunchedEffect
         }
@@ -194,8 +208,7 @@ internal fun rememberArtworkScene(
         }
 
         if (thumbnailUrl.isNullOrBlank()) {
-            // Metadata can arrive before its thumbnail. Retain the previous
-            // palette instead of starting an old -> theme -> artwork flash.
+            // Keep the neutral current-track surface, never the old song's field.
             return@LaunchedEffect
         }
 
@@ -233,41 +246,46 @@ internal fun rememberArtworkScene(
 
     // Remove hidden palette animations from the frame clock altogether. Keep the decoded
     // target above so the same colors are immediately available when the surface returns.
-    if (!enabled) return CapsuleArtworkScene(emptyList())
+    if (!enabled) return if (retainWhenDisabled) targetScene else CapsuleArtworkScene(emptyList())
     if (!animatePalette) return targetScene
 
-    val first by
-        animateColorAsState(
-            targetValue = targetScene.colors.getOrElse(0) { fallback[0] },
-            animationSpec =
-                tween(
-                    durationMillis = ARTWORK_PALETTE_TRANSITION_MS,
-                    easing = CapsuleStandardEasing,
-                ),
-            label = "capsuleArtworkPrimary",
-        )
-    val second by
-        animateColorAsState(
-            targetValue = targetScene.colors.getOrElse(1) { fallback[1] },
-            animationSpec =
-                tween(
-                    durationMillis = ARTWORK_PALETTE_TRANSITION_MS,
-                    easing = CapsuleStandardEasing,
-                ),
-            label = "capsuleArtworkSecondary",
-        )
-    val third by
-        animateColorAsState(
-            targetValue = targetScene.colors.getOrElse(2) { fallback[2] },
-            animationSpec =
-                tween(
-                    durationMillis = ARTWORK_PALETTE_TRANSITION_MS,
-                    easing = CapsuleStandardEasing,
-                ),
-            label = "capsuleArtworkTertiary",
-        )
-
-    return remember(first, second, third, targetScene.field) {
-        CapsuleArtworkScene(listOf(first, second, third), targetScene.field)
+    // Reset the animator at each media boundary. Within one song, an
+    // uncached palette may settle once after decode, but rapid A -> B -> C
+    // never queues A/B colours or draws a mismatched palette/field pair.
+    return key(cacheKey) {
+        val first by
+            animateColorAsState(
+                targetValue = targetScene.colors.getOrElse(0) { fallback[0] },
+                animationSpec =
+                    tween(
+                        durationMillis = ARTWORK_PALETTE_TRANSITION_MS,
+                        easing = CapsuleStandardEasing,
+                    ),
+                label = "capsuleArtworkPrimary",
+            )
+        val second by
+            animateColorAsState(
+                targetValue = targetScene.colors.getOrElse(1) { fallback[1] },
+                animationSpec =
+                    tween(
+                        durationMillis = ARTWORK_PALETTE_TRANSITION_MS,
+                        easing = CapsuleStandardEasing,
+                    ),
+                label = "capsuleArtworkSecondary",
+            )
+        val third by
+            animateColorAsState(
+                targetValue = targetScene.colors.getOrElse(2) { fallback[2] },
+                animationSpec =
+                    tween(
+                        durationMillis = ARTWORK_PALETTE_TRANSITION_MS,
+                        easing = CapsuleStandardEasing,
+                    ),
+                label = "capsuleArtworkTertiary",
+            )
+    
+        remember(first, second, third, targetScene.field) {
+            CapsuleArtworkScene(listOf(first, second, third), targetScene.field)
+        }
     }
 }

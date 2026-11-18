@@ -43,7 +43,6 @@ import com.nikhil.yt.ui.component.InstrumentalNoteGlyph
 import com.nikhil.yt.lyrics.LyricsUtils
 import com.nikhil.yt.utils.reportException
 import com.nikhil.yt.ui.motion.CapsuleEnterEasing
-import com.nikhil.yt.ui.motion.CapsuleExitEasing
 
 /**
  * The height the row always holds: two lines' worth, whether it has two or none.
@@ -64,8 +63,6 @@ private const val MAX_LINES = 2
 private const val LINE_ALPHA = 0.66f
 private val LINE_SIZE = 15.sp
 private val LINE_HEIGHT = 19.sp
-private const val FADE_OUT_MILLIS = 150
-private const val FADE_IN_MILLIS = 240
 
 /** A few pixels of rise as the line arrives. Small enough not to need a dp, cheap as a matrix. */
 private const val RISE_PX = 10f
@@ -132,39 +129,43 @@ internal fun CapsuleLightLyricLine(
     instrumental: LyricsEntry? = null,
     playbackPosition: State<Long> = rememberUpdatedState(0L),
     animate: Boolean = true,
+    trackKey: String = "",
 ) {
-    val settled = remember { Animatable(1f) }
-    var shown by remember { mutableStateOf(line.orEmpty()) }
+    // Track-keyed state prevents the previous song's lyrics flashing under a new cover.
+    // New text and outgoing text share ONE short clock, not sequential fade-out/fade-in
+    // with a blank interval. Alpha is painted into glyph colours, not a GPU buffer.
+    val transition = remember(trackKey) { Animatable(1f) }
+    var shown by remember(trackKey) { mutableStateOf("") }
+    var outgoing by remember(trackKey) { mutableStateOf("") }
 
-    LaunchedEffect(line, animate) {
+    LaunchedEffect(trackKey, line, animate) {
         val next = line.orEmpty()
         if (!animate) {
             shown = next
-            settled.snapTo(1f)
+            outgoing = ""
+            transition.snapTo(1f)
             return@LaunchedEffect
         }
         if (next == shown) return@LaunchedEffect
-        if (shown.isNotEmpty()) settled.animateTo(0f, tween(FADE_OUT_MILLIS, easing = CapsuleExitEasing))
+
+        outgoing = shown
         shown = next
-        // The compact note occupies the same fixed row during a pause.
-        if (next.isEmpty()) return@LaunchedEffect
-        settled.snapTo(0f)
-        settled.animateTo(1f, tween(FADE_IN_MILLIS, easing = CapsuleEnterEasing))
+        transition.snapTo(0f)
+        transition.animateTo(1f, tween(280, easing = CapsuleEnterEasing))
+        outgoing = ""
     }
 
-    val arrived = settled.value.coerceIn(0f, 1f)
+    val arrived = transition.value.coerceIn(0f, 1f)
     val reservedHeight = maxOf(
         CapsuleLightLyricLineHeight,
         with(LocalDensity.current) { LINE_HEIGHT.toDp() * MAX_LINES + 6.dp },
     )
-
     Box(
         modifier = modifier.fillMaxWidth().heightIn(min = reservedHeight),
         contentAlignment = Alignment.CenterStart,
     ) {
         if (instrumental != null) {
-            // Reuse the existing progress readout. Only draw-time interpolation runs between its
-            // samples: no new position polling, decoder or permanent animation clock.
+            // Follow the existing playback clock and preserve the quiet note animation.
             val fill = animateFloatAsState(
                 targetValue = instrumentalFillFraction(
                     playbackPosition.value, instrumental.time, instrumental.durationMs,
@@ -173,24 +174,41 @@ internal fun CapsuleLightLyricLine(
                 label = "lightInstrumentalFill",
             )
             InstrumentalNoteGlyph(
-                fill = { fill.value }, textColor = textColor.copy(alpha = LINE_ALPHA),
+                fill = { fill.value },
+                textColor = textColor.copy(alpha = LINE_ALPHA * (0.7f + 0.3f * arrived)),
                 modifier = Modifier.size(30.dp),
             )
         } else {
-            Text(
-            text = shown,
-            color = textColor.copy(alpha = LINE_ALPHA * arrived),
-            fontSize = LINE_SIZE,
-            lineHeight = LINE_HEIGHT,
-            fontWeight = FontWeight.Medium,
-            textAlign = TextAlign.Start,
-            maxLines = MAX_LINES,
-            overflow = TextOverflow.Ellipsis,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .graphicsLayer { translationY = (1f - arrived) * RISE_PX },
-            )
+            if (outgoing.isNotEmpty() && arrived < 1f) {
+                Text(
+                    text = outgoing,
+                    color = textColor.copy(alpha = LINE_ALPHA * (1f - arrived)),
+                    fontSize = LINE_SIZE,
+                    lineHeight = LINE_HEIGHT,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Start,
+                    maxLines = MAX_LINES,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth().graphicsLayer {
+                        translationY = -RISE_PX * 0.55f * arrived
+                    },
+                )
+            }
+            if (shown.isNotEmpty()) {
+                Text(
+                    text = shown,
+                    color = textColor.copy(alpha = LINE_ALPHA * arrived),
+                    fontSize = LINE_SIZE,
+                    lineHeight = LINE_HEIGHT,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Start,
+                    maxLines = MAX_LINES,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth().graphicsLayer {
+                        translationY = RISE_PX * 0.65f * (1f - arrived)
+                    },
+                )
+            }
         }
     }
 }

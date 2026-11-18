@@ -407,16 +407,18 @@ class CapsuleImmersiveContentTest {
         assertEquals(IMMERSIVE_NEUTRAL_COLOR, immersivePageBaseColor(false, false, bright))
     }
 
-    @Test fun previousTrackColoursFadeWhileNewArtworkIsStillLoading() {
-        val current = "song-B|cover"
-        val previous = "song-A|cover"
-        assertEquals(0.42f,
-            immersiveSceneOpacity(previous, current, 0.95f, 0.42f), 0.0001f)
-        assertEquals(0f,
-            immersiveSceneOpacity(previous, current, 0.95f, 0f), 0.0001f)
-        assertEquals(0.95f,
-            immersiveSceneOpacity(current, current, 0.95f, 0f), 0.0001f)
-        assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS in 380..460)
+    @Test fun previousTrackNeverRetainsAVisibleGradientWhenTheNewCoverLoads() {
+        // The presentation must no longer observe a previous song's full-screen
+        // opacity: that was the source of grey flashes during rapid A -> B -> C.
+        val relative = "src/main/kotlin/com/nikhil/yt/ui/player/CapsuleImmersiveContent.kt"
+        val source = listOf(java.io.File(relative), java.io.File("app/$relative"))
+            .first { it.isFile }.readText()
+        assertTrue(source.contains("remember(mediaMetadata.id) { mutableStateOf(restoredFrame) }"))
+        assertTrue(source.contains("val currentSceneReady = frame?.key == visualKey && matchedPaint != null"))
+        assertTrue(source.contains("if (!currentSceneReady || sceneRevealAlpha.value < 0.999f)"))
+        assertTrue(source.contains("sceneAlpha = { sceneRevealAlpha.value }"))
+        assertFalse(source.contains("val outgoingFrame"))
+        assertFalse(source.contains("gradientAlpha.animateTo("))
     }
     @Test fun metadataTurnsDirtyGreyOnlyOverNearWhiteBackground() {
         val white = immersiveMetadataInk(Color.White)
@@ -430,10 +432,11 @@ class CapsuleImmersiveContentTest {
         }
     }
 
-    @Test fun trackRevealIsLongEnoughToReadWithoutHoldingOldArtworkForSeconds() {
-        assertTrue(IMMERSIVE_TRACK_FADE_MS in 340..420)
-        assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS >= IMMERSIVE_TRACK_FADE_MS)
-        assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS <= 460)
+    @Test fun songTransitionDoesNotScheduleAProlongedFullScreenDissolve() {
+        // Future fade experiments may reuse these durations, but must remain
+        // a one-frame-like softening, never a slow cross-song backdrop animation.
+        assertTrue(IMMERSIVE_TRACK_FADE_MS in 0..120)
+        assertTrue(IMMERSIVE_STALE_SCENE_FADE_MS in 0..120)
     }
 
     @Test fun whiteMetadataKeepsContrastForTitleAndTranslucentArtist() {
