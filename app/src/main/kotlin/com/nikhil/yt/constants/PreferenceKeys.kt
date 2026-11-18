@@ -35,6 +35,8 @@ val ContentCountryKey = stringPreferencesKey("contentCountry")
 val DebugLoggingEnabledKey = booleanPreferencesKey("debugLoggingEnabled")
 val EnableLrcLibKey = booleanPreferencesKey("enableLrclib")
 val EnableBetterLyricsKey = booleanPreferencesKey("enableBetterLyrics")
+val EnableBetterLyricsPortatoKey = booleanPreferencesKey("enableBetterLyricsPortato")
+val EnableSimpMusicKey = booleanPreferencesKey("enableSimpMusic")
 val EnableLyricsPlusKey = booleanPreferencesKey("enableLyricsPlus")
 
 /**
