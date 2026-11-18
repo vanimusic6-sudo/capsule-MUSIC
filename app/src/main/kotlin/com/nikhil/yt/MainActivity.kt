@@ -226,7 +226,7 @@ import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.StarDialog
 import com.nikhil.yt.ui.component.TopSearch
 import com.nikhil.yt.ui.component.PlayerSceneBackdrop
-import com.nikhil.yt.ui.component.PlayerSceneTouchThreshold
+import com.nikhil.yt.ui.component.playerSceneShouldInterceptTouch
 import com.nikhil.yt.ui.component.PlayerBackAction
 import com.nikhil.yt.ui.component.playerRailFocus
 import com.nikhil.yt.ui.component.shouldRenderExpandedSurface
@@ -944,9 +944,11 @@ class MainActivity : ComponentActivity() {
                     // even after the full-size player has disappeared into the Mini.
                     val playerSceneBlocksTouch by remember(playerBottomSheetState) {
                         derivedStateOf {
-                            !playerBottomSheetState.isDismissed &&
-                                (playerBottomSheetState.isExpandedOrExpanding ||
-                                    playerBottomSheetState.visualProgress > PlayerSceneTouchThreshold)
+                            playerSceneShouldInterceptTouch(
+                                progress = playerBottomSheetState.visualProgress,
+                                expanding = playerBottomSheetState.isExpandedOrExpanding,
+                                dismissed = playerBottomSheetState.isDismissed,
+                            )
                         }
                     }
 
