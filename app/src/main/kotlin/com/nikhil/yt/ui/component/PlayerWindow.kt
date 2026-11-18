@@ -43,8 +43,7 @@ internal fun PlayerWindow(
     val arbiter = remember(state) { MiniPlayerGestureArbiter() }
     val renderPage by remember(state) { derivedStateOf {
         !state.isDismissed && (state.isExpandedOrExpanding ||
-            (state.isCollapsedOrCollapsing && state.isAnimationRunning) ||
-            shouldRenderExpandedSurface(state.visualProgress, state.isDismissed))
+            state.visualProgress > PlayerSceneTouchThreshold)
     } }
     val sourceClock by remember(state) { derivedStateOf {
         !state.isDismissed && playerMiniDrawAlpha(state.visualProgress) > 0f
@@ -54,7 +53,7 @@ internal fun PlayerWindow(
     val compactInteractive by remember(state) { derivedStateOf { state.compactForegroundAcceptsInput } }
     // Never switch source/destination z-order mid-flight. The Mini itself fades to zero.
     val windowInteractive by remember(state) { derivedStateOf {
-        state.isExpandedOrExpanding || state.visualProgress > 0f
+        state.isExpandedOrExpanding || state.visualProgress > PlayerSceneTouchThreshold
     } }
     val dismissingMini by remember(state) { derivedStateOf { state.rawProgress < 0f } }
 
