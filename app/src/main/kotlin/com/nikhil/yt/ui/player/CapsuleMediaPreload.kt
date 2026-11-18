@@ -46,7 +46,10 @@ internal fun PreloadCapsuleTrackAssets(
 ) {
     val context = LocalContext.current
     val artworkUrl = remember(mediaMetadata?.id, mediaMetadata?.thumbnailUrl) {
-        com.nikhil.yt.ui.component.capsuleArtworkUrl(mediaMetadata?.thumbnailUrl, 960)
+        // Match the full player's FIRST high-quality candidate exactly. Warming
+        // hqdefault here and maxresdefault in the player caused two network fetches
+        // and a visible low-to-high replacement when opening the sheet.
+        capsuleFullPlayerArtworkCandidates(mediaMetadata?.thumbnailUrl).firstOrNull()
     }
     val onScreen = appIsOnScreen()
     var stableEnoughToWarm by
