@@ -16,6 +16,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
@@ -65,6 +67,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -308,6 +311,13 @@ fun CapsuleLyricsContent(
 
     // Same treatment as the full player: the control card is a translucent layer, not an
     // opaque black block, so the selected lyrics background colours the panel underneath it.
+    val menuInteraction = remember { MutableInteractionSource() }
+    val menuPressed by menuInteraction.collectIsPressedAsState()
+    val menuScale by animateFloatAsState(
+        targetValue = if (menuPressed) 0.92f else 1f,
+        animationSpec = tween(durationMillis = 145),
+        label = "capsuleLyricsMenuPress",
+    )
     val lyricsPanelColor = CapsuleLyricsText.copy(alpha = 0.025f)
     val lyricsOutlineColor = CapsuleLyricsText.copy(alpha = 0.16f)
 
@@ -323,10 +333,7 @@ fun CapsuleLyricsContent(
             .playerVolume
             .collectAsStateWithLifecycle()
 
-    val isLoading =
-        playbackState ==
-            Player.STATE_BUFFERING ||
-            sliderPosition != null
+    val isLoading = playbackState == Player.STATE_BUFFERING
 
     /*
      * LyricsScreen is created only when the transition begins. Its own
@@ -487,9 +494,14 @@ fun CapsuleLyricsContent(
                         )
                         .size(48.dp)
                         .clip(CircleShape)
+                        .graphicsLayer {
+                            scaleX = menuScale
+                            scaleY = menuScale
+                        }
                         .clickable(
-                            onClick =
-                                onMenuClick,
+                            interactionSource = menuInteraction,
+                            indication = null,
+                            onClick = onMenuClick,
                         ),
                 contentAlignment =
                     Alignment.Center,
@@ -497,9 +509,9 @@ fun CapsuleLyricsContent(
                 Icon(
                     painter =
                         painterResource(
-                            R.drawable.more_horiz,
+                            R.drawable.capsule_transport_more,
                         ),
-                    contentDescription = null,
+                    contentDescription = stringResource(R.string.more),
                     tint =
                         CapsuleLyricsText,
                     modifier =
@@ -552,8 +564,9 @@ fun CapsuleLyricsContent(
             },
             onValueChangeFinished =
                 onSeekFinished,
+            smoothPlayback = visualsActive && isPlaying && sliderPosition == null,
             trackHeight =
-                5.5.dp,
+                4.dp,
             thumbRadius =
                 4.dp,
             modifier =
@@ -634,7 +647,8 @@ fun CapsuleLyricsContent(
             ) {
                 CapsuleLyricsSideButton(
                     iconRes =
-                        R.drawable.skip_previous,
+                        R.drawable.capsule_transport_previous,
+                    label = stringResource(androidx.media3.ui.R.string.exo_controls_previous_description),
                     enabled =
                         canSkipPrevious,
                     onClick =
@@ -649,13 +663,11 @@ fun CapsuleLyricsContent(
                     contentAlignment =
                         Alignment.Center,
                 ) {
-                    CapsuleLyricsOrbitButton(
-                        isPlaying =
-                            isPlaying,
-                        isLoading =
-                            isLoading,
-                        visible =
-                            visualsActive,
+                    CapsuleOrbitButton(
+                        isPlaying = isPlaying,
+                        isLoading = isLoading,
+                        visible = visualsActive,
+                        color = CapsuleLyricsText,
                         onClick = {
                             if (
                                 playbackState ==
@@ -683,7 +695,8 @@ fun CapsuleLyricsContent(
 
                 CapsuleLyricsSideButton(
                     iconRes =
-                        R.drawable.skip_next,
+                        R.drawable.capsule_transport_next,
+                    label = stringResource(androidx.media3.ui.R.string.exo_controls_next_description),
                     enabled =
                         canSkipNext,
                     onClick =
@@ -703,99 +716,33 @@ fun CapsuleLyricsContent(
                         ),
             )
 
-            /*
-             * Simple volume row: no nested card, no extra border.
-             * Just two quiet icons and a thin Capsule line.
-             */
+            // One matte volume capsule: seven equally rounded cuts, no independent thumb.
             Row(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(54.dp)
-                        .padding(
-                            horizontal = 14.dp,
-                        ),
-                verticalAlignment =
-                    Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+                    .height(64.dp)
+                    .padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
-                    painter =
-                        painterResource(
-                            R.drawable.volume_off,
-                        ),
-                    contentDescription = null,
-                    tint =
-                        CapsuleLyricsSecondary,
-                    modifier =
-                        Modifier
-                            .size(18.dp)
-                            .clickable {
-                                playerConnection
-                                    .service
-                                    .playerVolume
-                                    .value =
-                                    0f
-                            },
-                )
-
-                CapsuleThinSlider(
-                    value =
-                        volumeState.value
-                            .coerceIn(
-                                0f,
-                                1f,
-                            ),
-                    valueRange =
-                        0f..1f,
-                    enabled =
-                        true,
-                    activeColor =
-                        CapsuleLyricsText.copy(
-                            alpha = 0.70f,
-                        ),
-                    inactiveColor =
-                        CapsuleLyricsText.copy(
-                            alpha = 0.11f,
-                        ),
-                    onValueChange = {
-                        playerConnection
-                            .service
-                            .playerVolume
-                            .value =
-                            it
+                    painter = painterResource(R.drawable.volume_off),
+                    contentDescription = "Mute",
+                    tint = CapsuleLyricsSecondary,
+                    modifier = Modifier.size(20.dp).clickable {
+                        playerConnection.service.playerVolume.value = 0f
                     },
-                    onValueChangeFinished = {},
-                    trackHeight =
-                        2.5.dp,
-                    thumbRadius =
-                        3.dp,
-                    modifier =
-                        Modifier
-                            .weight(1f)
-                            .height(20.dp)
-                            .padding(
-                                horizontal = 12.dp,
-                            ),
                 )
-
+                CapsuleLyricsVolumeSlider(
+                    value = volumeState.value,
+                    onValueChange = { playerConnection.service.playerVolume.value = it },
+                    modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+                )
                 Icon(
-                    painter =
-                        painterResource(
-                            R.drawable.volume_up,
-                        ),
-                    contentDescription = null,
-                    tint =
-                        CapsuleLyricsSecondary,
-                    modifier =
-                        Modifier
-                            .size(18.dp)
-                            .clickable {
-                                playerConnection
-                                    .service
-                                    .playerVolume
-                                    .value =
-                                    1f
-                            },
+                    painter = painterResource(R.drawable.volume_up),
+                    contentDescription = "Maximum volume",
+                    tint = CapsuleLyricsSecondary,
+                    modifier = Modifier.size(20.dp).clickable {
+                        playerConnection.service.playerVolume.value = 1f
+                    },
                 )
             }
         }
@@ -817,218 +764,38 @@ fun CapsuleLyricsContent(
 @Composable
 private fun CapsuleLyricsSideButton(
     iconRes: Int,
+    label: String,
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed && enabled) 0.92f else 1f,
+        animationSpec = tween(durationMillis = 145),
+        label = "capsuleLyricsSkipPress",
+    )
     Box(
-        modifier =
-            modifier
-                .height(86.dp)
-                .clickable(
-                    enabled = enabled,
-                    onClick = onClick,
-                ),
-        contentAlignment =
-            Alignment.Center,
+        modifier = modifier
+            .height(86.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clickable(
+                enabled = enabled,
+                interactionSource = interaction,
+                indication = null,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
     ) {
         Icon(
-            painter =
-                painterResource(iconRes),
-            contentDescription = null,
-            tint =
-                CapsuleLyricsText.copy(
-                    alpha =
-                        if (enabled) {
-                            0.92f
-                        } else {
-                            0.25f
-                        },
-                ),
-            modifier =
-                Modifier.size(32.dp),
+            painter = painterResource(iconRes),
+            contentDescription = label,
+            tint = CapsuleLyricsText.copy(alpha = if (enabled) 0.92f else 0.25f),
+            modifier = Modifier.size(29.dp),
         )
-    }
-}
-
-@Composable
-private fun CapsuleLyricsOrbitButton(
-    isPlaying: Boolean,
-    isLoading: Boolean,
-    visible: Boolean,
-    onClick: () -> Unit,
-) {
-    val rotation =
-        rememberCapsuleCometRotation(
-            isPlaying = isPlaying,
-            isLoading = isLoading,
-            visible = visible,
-        )
-
-    val alpha by
-        animateFloatAsState(
-            targetValue =
-                if (isPlaying) {
-                    1f
-                } else {
-                    0.46f
-                },
-            animationSpec =
-                tween(
-                    durationMillis =
-                        300,
-                ),
-            label =
-                "CapsuleLyricsOrbitAlpha",
-        )
-
-    Box(
-        modifier =
-            Modifier
-                .size(76.dp)
-                .clip(CircleShape)
-                .clickable(
-                    onClick = onClick,
-                ),
-        contentAlignment =
-            Alignment.Center,
-    ) {
-        if (isLoading) {
-            CircularProgressIndicator(
-                color =
-                    CapsuleLyricsText,
-                strokeWidth =
-                    2.dp,
-                modifier =
-                    Modifier.size(30.dp),
-            )
-        } else {
-            Canvas(
-                modifier =
-                    Modifier.size(62.dp),
-            ) {
-                val cx =
-                    size.width / 2f
-
-                val cy =
-                    size.height / 2f
-
-                val rx =
-                    size.width *
-                        0.47f
-
-                val ry =
-                    size.height *
-                        0.19f
-
-                val orbitColor =
-                    CapsuleLyricsText.copy(
-                        alpha = alpha,
-                    )
-
-                rotate(-25f) {
-                    drawOval(
-                        color =
-                            orbitColor,
-                        topLeft =
-                            Offset(
-                                cx - rx,
-                                cy - ry,
-                            ),
-                        size =
-                            Size(
-                                rx * 2f,
-                                ry * 2f,
-                            ),
-                        style =
-                            Stroke(
-                                width =
-                                    size.width *
-                                        0.045f,
-                            ),
-                    )
-
-                    val angle =
-                        Math.toRadians(
-                            rotation.value.toDouble(),
-                        )
-
-                    val previousAngle =
-                        Math.toRadians(
-                            (
-                                rotation.value -
-                                    15f
-                            ).toDouble(),
-                        )
-
-                    val point =
-                        Offset(
-                            x =
-                                cx +
-                                    rx *
-                                    cos(angle)
-                                        .toFloat(),
-                            y =
-                                cy +
-                                    ry *
-                                    sin(angle)
-                                        .toFloat(),
-                        )
-
-                    val tail =
-                        Offset(
-                            x =
-                                cx +
-                                    rx *
-                                    cos(
-                                        previousAngle,
-                                    ).toFloat(),
-                            y =
-                                cy +
-                                    ry *
-                                    sin(
-                                        previousAngle,
-                                    ).toFloat(),
-                        )
-
-                    drawLine(
-                        color =
-                            orbitColor.copy(
-                                alpha =
-                                    alpha *
-                                        0.35f,
-                            ),
-                        start = tail,
-                        end = point,
-                        strokeWidth =
-                            size.width *
-                                0.035f,
-                    )
-
-                    drawCircle(
-                        color =
-                            orbitColor,
-                        radius =
-                            size.width *
-                                0.052f,
-                        center =
-                            point,
-                    )
-                }
-
-                drawCircle(
-                    color =
-                        orbitColor,
-                    radius =
-                        size.width *
-                            0.115f,
-                    center =
-                        Offset(
-                            cx,
-                            cy,
-                        ),
-                )
-            }
-        }
     }
 }
