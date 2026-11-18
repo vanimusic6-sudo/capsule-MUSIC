@@ -150,7 +150,7 @@ object SimpMusicLyricsProvider : LyricsProvider {
     }
 
     internal fun isRenderableSync(value: String): Boolean =
-        Regex("""\\[[0-9]{1,3}:[0-9]{2}[.:][0-9]{2,3}]""").containsMatchIn(value) ||
+        Regex("""\[[0-9]{1,3}:[0-9]{2}[.:][0-9]{2,3}]""").containsMatchIn(value) ||
             value.contains("<tt", ignoreCase = true)
 
     private fun simplify(text: String): String =
