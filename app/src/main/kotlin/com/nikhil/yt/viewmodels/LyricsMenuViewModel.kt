@@ -37,6 +37,7 @@ constructor(
     private val networkConnectivity: NetworkConnectivityObserver,
 ) : ViewModel() {
     private var job: Job? = null
+    private var searchGeneration: Long = 0L
     val results = MutableStateFlow(emptyList<LyricsResult>())
     val isLoading = MutableStateFlow(false)
 
@@ -64,23 +65,34 @@ constructor(
         artist: String,
         duration: Int,
     ) {
-        isLoading.value = true
-        results.value = emptyList()
         job?.cancel()
-        job =
-            viewModelScope.launch(Dispatchers.IO) {
+        val generation = ++searchGeneration
+        results.value = emptyList()
+        isLoading.value = true
+        job = viewModelScope.launch(Dispatchers.IO) {
+            try {
                 lyricsHelper.getAllLyrics(mediaId, title, artist, null, duration) { result ->
-                    results.update {
-                        it + result
+                    // Discard an old, late source result if a new track/search is active.
+                    if (generation == searchGeneration) {
+                        results.update { current ->
+                            if (current.any {
+                                    it.providerName == result.providerName &&
+                                        it.lyrics == result.lyrics
+                                }) current else current + result
+                        }
                     }
                 }
-                isLoading.value = false
+            } finally {
+                if (generation == searchGeneration) isLoading.value = false
             }
+        }
     }
 
     fun cancelSearch() {
+        ++searchGeneration
         job?.cancel()
         job = null
+        isLoading.value = false
     }
 
     fun refetchLyrics(
@@ -89,7 +101,7 @@ constructor(
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val lyrics = lyricsHelper.getLyrics(mediaMetadata)
+                val lyrics = lyricsHelper.getLyrics(mediaMetadata, forceRefresh = true)
                 database.query {
                     lyricsEntity?.let(::delete)
                     upsert(LyricsEntity(mediaMetadata.id, lyrics))
