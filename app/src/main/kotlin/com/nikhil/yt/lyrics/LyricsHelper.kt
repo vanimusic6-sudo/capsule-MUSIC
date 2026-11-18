@@ -42,6 +42,8 @@ constructor(
         mapOf(
             LyricsProviderOrder.LYRICS_PLUS to LyricsPlusLyricsProvider,
             LyricsProviderOrder.BETTER_LYRICS to BetterLyricsProvider,
+            LyricsProviderOrder.BETTER_LYRICS_PORTATO to BetterLyricsPortatoProvider,
+            LyricsProviderOrder.SIMPMUSIC to SimpMusicLyricsProvider,
             LyricsProviderOrder.PAXSENIX_APPLE_MUSIC to PaxsenixLyricsProvider,
             LyricsProviderOrder.NETEASE to NetEaseLyricsProvider,
             LyricsProviderOrder.YOUTUBE to YouTubeLyricsProvider,
