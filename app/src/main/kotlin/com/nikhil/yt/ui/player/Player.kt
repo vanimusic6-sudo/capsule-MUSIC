@@ -303,19 +303,6 @@ fun BottomSheetPlayer(
     val immersiveSceneMemory = remember { ImmersiveSceneMemory() }
 
 
-    /*
-     * Start cover + portrait work while the player is collapsed, but never while the whole app is
-     * backgrounded. Returning to the app remounts this immediately, long before the user can finish
-     * an expand gesture.
-     */
-    if (onScreen) {
-        PreloadCapsuleTrackAssets(
-            mediaMetadata = enrichedMetadata,
-            skipArtworkPrefetch = state.shouldLayerAboveCollapsedChrome ||
-                (enrichedMetadata?.id?.let(decodedArtworkCache::containsKey) == true),
-        )
-    }
-
     var position by remember(mediaMetadata?.id) {
         mutableLongStateOf(playerConnection.service.capsuleTimelinePlayer.currentPosition.coerceAtLeast(0L))
     }
@@ -441,6 +428,23 @@ fun BottomSheetPlayer(
             // Preserve the last painted palette across STOP/START; pause extraction, not pixels.
             retainWhenDisabled = true,
         )
+
+    /*
+     * Exactly one expensive 960px preparation owner per visible track:
+     * Immersion's crop sampler OR the Light/mini color-field sampler OR
+     * this fallback preloader. Previously all three could request the
+     * same song concurrently, wasting network and heating the device.
+     * Artist portraits remain eligible for their normal delayed preload.
+     */
+    if (onScreen) {
+        PreloadCapsuleTrackAssets(
+            mediaMetadata = enrichedMetadata,
+            skipArtworkPrefetch = state.shouldLayerAboveCollapsedChrome ||
+                needsArtworkPalette ||
+                effectivePlayerDesign == CapsulePlayerDesign.IMMERSIVE ||
+                (enrichedMetadata?.id?.let(decodedArtworkCache::containsKey) == true),
+        )
+    }
 
     val gradientColors = artworkScene.colors
 
