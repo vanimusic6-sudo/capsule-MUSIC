@@ -1,16 +1,21 @@
-/* Capsule MUSIC — quiet, tactile lyrics volume controls. GPL-3.0. */
+/* Capsule MUSIC — soft, tactile volume controls in the player family. GPL-3.0. */
 package com.nikhil.yt.ui.player
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -23,6 +28,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.input.pointer.pointerInput
@@ -35,9 +41,9 @@ import kotlin.math.floor
 import kotlin.math.min
 
 /**
- * Compact rectangular capsule, not a bulbous pill. Fine ink ticks are evenly spaced
- * across the real filled region. Empty and filled parts share one geometry.
- * Nothing runs on a timer: drawing only responds to actual volume updates.
+ * Capsule's volume is not another spotlight. A muted graphite groove sits inside the
+ * control card; the lighter part has the same low-contrast, velvet finish as the glyphs.
+ * Every tiny tick is identical, and only complete ticks inside the current fill are shown.
  */
 @Composable
 internal fun CapsuleLyricsVolumeSlider(
@@ -47,6 +53,7 @@ internal fun CapsuleLyricsVolumeSlider(
 ) {
     val volume = value.coerceIn(0f, 1f)
     val latestOnValueChange by rememberUpdatedState(onValueChange)
+
     Canvas(
         modifier = modifier
             .height(44.dp)
@@ -58,136 +65,163 @@ internal fun CapsuleLyricsVolumeSlider(
                 }
             }
             .pointerInput(Unit) {
-                fun sendFromX(x: Float) {
+                fun emit(x: Float) {
                     latestOnValueChange((x / size.width.toFloat().coerceAtLeast(1f)).coerceIn(0f, 1f))
                 }
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
-                    sendFromX(down.position.x)
+                    emit(down.position.x)
                     down.consume()
                     while (true) {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        sendFromX(change.position.x)
-                        if (!change.pressed) break
-                        change.consume()
+                        val changes = awaitPointerEvent().changes
+                        val active = changes.firstOrNull { it.id == down.id } ?: break
+                        if (!active.pressed) break
+                        emit(active.position.x)
+                        active.consume()
                     }
                 }
             },
     ) {
-        val height = 26.dp.toPx().coerceAtMost(size.height)
-        val top = (size.height - height) * 0.5f
-        val radius = min(6.dp.toPx(), height * 0.5f)
-        val fullCorner = CornerRadius(radius)
-        val activeWidth = (size.width * volume).coerceIn(0f, size.width)
-        val bounds = Rect(0f, top, size.width, top + height)
-        val silhouette = Path().apply { addRoundRect(RoundRect(bounds, fullCorner)) }
-
+        val trackHeight = min(25.dp.toPx(), size.height)
+        val top = (size.height - trackHeight) / 2f
+        val radius = min(trackHeight / 2f, 10.dp.toPx())
+        val corner = CornerRadius(radius)
+        val fill = (size.width * volume).coerceIn(0f, size.width)
+        val contour = Path().apply {
+            addRoundRect(RoundRect(Rect(0f, top, size.width, top + trackHeight), corner))
+        }
+        // The card underneath is always visible through this matte graphite, with no
+        // bright white border, gradient, glass, or pulse animation.
         drawRoundRect(
-            color = Color.White.copy(alpha = 0.14f),
+            color = Color(0xFF46474D).copy(alpha = 0.76f),
             topLeft = Offset(0f, top),
-            size = Size(size.width, height),
-            cornerRadius = fullCorner,
+            size = Size(size.width, trackHeight),
+            cornerRadius = corner,
         )
-        clipPath(silhouette) {
-            if (activeWidth > 0f) {
+        clipPath(contour) {
+            if (fill > 0f) {
                 drawRoundRect(
-                    color = Color(0xFFEAEAEA),
+                    color = Color(0xFFA9A8B0).copy(alpha = 0.76f),
                     topLeft = Offset(0f, top),
-                    size = Size(activeWidth, height),
-                    cornerRadius = CornerRadius(min(radius, activeWidth * 0.5f)),
+                    size = Size(fill, trackHeight),
+                    cornerRadius = CornerRadius(min(radius, fill / 2f)),
                 )
-                val tickWidth = 2.6.dp.toPx()
-                val tickHeight = min(16.dp.toPx(), height - 8.dp.toPx())
-                val tickInset = 9.dp.toPx()
-                val stride = 10.dp.toPx()
+                val tickX = 10.dp.toPx()
+                val tickWidth = 2.7.dp.toPx()
+                val tickStride = 11.dp.toPx()
+                val tickHeight = min(14.dp.toPx(), trackHeight - 8.dp.toPx())
                 val count = capsuleLyricsVolumeDashCount(
-                    activeWidthPx = activeWidth,
-                    firstX = tickInset,
+                    activeWidthPx = fill,
+                    firstX = tickX,
                     dashWidth = tickWidth,
-                    stride = stride,
-                    endInset = 6.dp.toPx(),
+                    stride = tickStride,
+                    endInset = 7.dp.toPx(),
                 )
                 repeat(count) { index ->
                     drawRoundRect(
-                        color = Color(0xFF171717),
-                        topLeft = Offset(tickInset + index * stride, top + (height - tickHeight) / 2f),
+                        color = Color(0xFF686970).copy(alpha = 0.74f),
+                        topLeft = Offset(
+                            tickX + index * tickStride,
+                            top + (trackHeight - tickHeight) / 2f,
+                        ),
                         size = Size(tickWidth, tickHeight),
                         cornerRadius = CornerRadius(tickWidth / 2f),
                     )
                 }
             }
         }
-        // Restrained hairline rather than the bright double-outline on the old control.
         drawRoundRect(
-            color = Color.White.copy(alpha = 0.28f),
+            color = Color.White.copy(alpha = 0.11f),
             topLeft = Offset(0f, top),
-            size = Size(size.width, height),
-            cornerRadius = fullCorner,
-            style = Stroke(width = 1.dp.toPx()),
+            size = Size(size.width, trackHeight),
+            cornerRadius = corner,
+            style = Stroke(width = 0.85.dp.toPx()),
         )
     }
 }
 
-/** Matched monochrome speaker glyphs. Muted and max share identical bounds and optical weight. */
+/** Two hand-drawn sibling icons, same rounded speaker silhouette and touch geometry. */
 @Composable
 internal fun CapsuleLyricsVolumeIcon(
     muted: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.90f else 1f,
+        animationSpec = tween(145),
+        label = "capsuleVolumeIconPress",
+    )
     Box(
-        modifier = modifier.size(40.dp).clip(CircleShape)
-            .clickable(onClickLabel = if (muted) "Mute" else "Maximum volume", onClick = onClick),
+        modifier = modifier
+            .size(40.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(CircleShape)
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                onClickLabel = if (muted) "Mute volume" else "Maximum volume",
+                onClick = onClick,
+            ),
         contentAlignment = Alignment.Center,
     ) {
-        Canvas(Modifier.size(24.dp)) {
-            val u = size.minDimension / 24f
-            val ink = Color(0xFFB9B9B9)
-            val body = Path().apply {
-                moveTo(3.2f * u, 9.4f * u)
-                lineTo(7.2f * u, 9.4f * u)
-                lineTo(12.2f * u, 5.1f * u)
-                lineTo(12.2f * u, 18.9f * u)
-                lineTo(7.2f * u, 14.6f * u)
-                lineTo(3.2f * u, 14.6f * u)
+        Canvas(Modifier.size(25.dp)) {
+            val unit = size.minDimension / 24f
+            val ink = Color(0xFFB0AFB8)
+            // A small, gently padded speaker — not the sharp platform glyph.
+            val speaker = Path().apply {
+                moveTo(3.8f * unit, 9.4f * unit)
+                quadraticBezierTo(3.8f * unit, 8.5f * unit, 4.7f * unit, 8.5f * unit)
+                lineTo(7.8f * unit, 8.5f * unit)
+                lineTo(12.1f * unit, 5.2f * unit)
+                quadraticBezierTo(13.6f * unit, 4.1f * unit, 13.6f * unit, 6.3f * unit)
+                lineTo(13.6f * unit, 17.7f * unit)
+                quadraticBezierTo(13.6f * unit, 19.9f * unit, 12.1f * unit, 18.8f * unit)
+                lineTo(7.8f * unit, 15.5f * unit)
+                lineTo(4.7f * unit, 15.5f * unit)
+                quadraticBezierTo(3.8f * unit, 15.5f * unit, 3.8f * unit, 14.6f * unit)
                 close()
             }
-            drawPath(body, ink)
+            drawPath(speaker, ink)
             if (muted) {
+                // A quiet rounded ×, kept beside the speaker rather than slashing it.
                 drawLine(
                     color = ink,
-                    start = Offset(3.1f * u, 4.4f * u),
-                    end = Offset(20.2f * u, 20f * u),
-                    strokeWidth = 2.4f * u,
+                    start = Offset(17.3f * unit, 9.8f * unit),
+                    end = Offset(21.4f * unit, 14.2f * unit),
+                    strokeWidth = 2.0f * unit,
                     cap = StrokeCap.Round,
                 )
                 drawLine(
-                    color = Color(0xFF171717),
-                    start = Offset(4.2f * u, 4.4f * u),
-                    end = Offset(21.3f * u, 20f * u),
-                    strokeWidth = 0.6f * u,
+                    color = ink,
+                    start = Offset(21.4f * unit, 9.8f * unit),
+                    end = Offset(17.3f * unit, 14.2f * unit),
+                    strokeWidth = 2.0f * unit,
                     cap = StrokeCap.Round,
                 )
             } else {
-                drawArc(
-                    color = ink, startAngle = -62f, sweepAngle = 124f, useCenter = false,
-                    topLeft = Offset(10.2f * u, 6.7f * u),
-                    size = Size(7.5f * u, 10.6f * u),
-                    style = Stroke(width = 1.8f * u, cap = StrokeCap.Round),
-                )
-                drawArc(
-                    color = ink, startAngle = -63f, sweepAngle = 126f, useCenter = false,
-                    topLeft = Offset(9.8f * u, 2.9f * u),
-                    size = Size(12f * u, 18.1f * u),
-                    style = Stroke(width = 1.7f * u, cap = StrokeCap.Round),
-                )
+                // Soft nested crescents, both from the same stroke family.
+                val near = Path().apply {
+                    moveTo(16.1f * unit, 9f * unit)
+                    quadraticBezierTo(18.8f * unit, 12f * unit, 16.1f * unit, 15f * unit)
+                }
+                val far = Path().apply {
+                    moveTo(19.0f * unit, 6.9f * unit)
+                    quadraticBezierTo(23.4f * unit, 12f * unit, 19.0f * unit, 17.1f * unit)
+                }
+                drawPath(near, ink, style = Stroke(width = 2.0f * unit, cap = StrokeCap.Round))
+                drawPath(far, ink, style = Stroke(width = 1.85f * unit, cap = StrokeCap.Round))
             }
         }
     }
 }
 
-/** Fully visible ticks only; leave a constant small margin at the moving filled edge. */
+/** Return only complete grooves inside the moving fill, up to the last available position. */
 internal fun capsuleLyricsVolumeDashCount(
     activeWidthPx: Float,
     firstX: Float,
