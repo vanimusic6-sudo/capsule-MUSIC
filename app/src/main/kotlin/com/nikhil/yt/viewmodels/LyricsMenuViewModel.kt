@@ -37,6 +37,7 @@ constructor(
     private val networkConnectivity: NetworkConnectivityObserver,
 ) : ViewModel() {
     private var job: Job? = null
+    @Volatile
     private var searchGeneration: Long = 0L
     val results = MutableStateFlow(emptyList<LyricsResult>())
     val isLoading = MutableStateFlow(false)
