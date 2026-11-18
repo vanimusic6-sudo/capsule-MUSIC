@@ -21,7 +21,7 @@ class LyricsUiRegressionTest {
         assertFalse(card.contains("Color(0xFF35506C)"))
         // Full text always has final pixel coordinates; only the rounded
         // aperture is allowed to move. Once open, the mask is not drawn.
-        assertTrue(player.contains("clipPath(aperture) { drawContent() }"))
+        assertTrue(player.contains("clipPath(aperture) { this@drawWithContent.drawContent() }"))
         assertTrue(player.contains("scrollToLyrics && sheetOffset.value > 0.0001f"))
         assertFalse(player.contains("scaleX = (bounds.width / widthPx)"))
         assertFalse(player.contains("scaleY = (bounds.height / heightPx)"))
