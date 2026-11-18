@@ -39,7 +39,7 @@ internal object QrcToEnhancedLrc {
                     return@forEach
             }
             if (tokens.isEmpty()) {
-                result.add("[\${clock(startMs)}]$displayText")
+                result.add("[${clock(startMs)}]$displayText")
                 return@forEach
             }
             val out = StringBuilder().append("[").append(clock(startMs)).append("]")
