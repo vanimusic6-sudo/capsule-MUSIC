@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -27,6 +28,7 @@ import com.nikhil.yt.ui.theme.PlayerColorExtractor
 import com.nikhil.yt.utils.reportException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -39,6 +41,8 @@ private const val ARTWORK_PALETTE_TRANSITION_MS = 460
 internal data class CapsuleArtworkScene(
     val colors: List<Color>,
     val field: CapsuleColorField? = null,
+    /** A synthetic pending palette must not masquerade as a decoded cover. */
+    val ready: Boolean = true,
 )
 
 internal class ArtworkPaletteCache(private val maxEntries: Int = 32) {
@@ -166,18 +170,23 @@ internal fun rememberArtworkScene(
     val initialPalette = remember(cacheKey) { cacheKey?.let(paletteCache::getScene) }
     val pendingPalette = remember(cacheKey, fallback) {
         if (cacheKey == null) CapsuleArtworkScene(fallback)
-        else CapsuleArtworkScene(List(3) { Color(0xFF1A1B21) })
+        else CapsuleArtworkScene(List(3) { Color(0xFF1A1B21) }, ready = false)
     }
     var targetScene by remember(cacheKey) { mutableStateOf(initialPalette ?: pendingPalette) }
     var hasArtworkPalette by remember(cacheKey) { mutableStateOf(initialPalette != null) }
     var resolvedKey by remember(cacheKey) {
         mutableStateOf(cacheKey.takeIf { initialPalette != null })
     }
+    // Transient image failures (and rapid skip cancellation) must recover *while still
+    // on this song*. The old effect only retried after a sheet reopen, producing
+    // a permanent neutral gradient until navigation destroyed the composition.
+    var retryCount by remember(cacheKey, thumbnailUrl) { mutableIntStateOf(0) }
 
     LaunchedEffect(
         cacheKey,
         thumbnailUrl,
         enabled,
+        retryCount,
         refreshOnOpen,
         primary,
         secondary,
@@ -237,7 +246,15 @@ internal fun rememberArtworkScene(
                     null
                 }
             }
-                ?: return@LaunchedEffect
+        if (extracted == null) {
+            // Only the newest mediaId's effect survives: no out-of-order result,
+            // no forever-running polling and no cache entry for an error placeholder.
+            if (retryCount < 2) {
+                delay(if (retryCount == 0) 650L else 1_250L)
+                retryCount++
+            }
+            return@LaunchedEffect
+        }
 
         targetScene = extracted
         hasArtworkPalette = true
@@ -285,7 +302,7 @@ internal fun rememberArtworkScene(
             )
     
         remember(first, second, third, targetScene.field) {
-            CapsuleArtworkScene(listOf(first, second, third), targetScene.field)
+            CapsuleArtworkScene(listOf(first, second, third), targetScene.field, targetScene.ready)
         }
     }
 }
