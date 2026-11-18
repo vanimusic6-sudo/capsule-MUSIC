@@ -78,6 +78,13 @@ internal fun playerSceneNeedsDrawing(progress: Float): Boolean = boundedProgress
 internal fun playerPageVisible(progress: Float): Boolean = boundedProgress(progress) > 0f
 internal fun playerPageAcceptsInput(progress: Float): Boolean = boundedProgress(progress) >= 0.92f
 
+/**
+ * Below this threshold the destination is optically gone and the user is looking at Home
+ * again. Release BOTH full-screen pointer owners at the same moment, rather than waiting
+ * for the last sub-pixel of the closing spring (which made the first Home scroll stall).
+ */
+internal const val PlayerSceneTouchThreshold = 0.075f
+
 // The real mini starts returning before the closing window reaches its final dock.
 // Both surfaces use the same anchor, so no late source swap or flash is introduced.
 internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0.14f, 0.80f)
@@ -151,8 +158,9 @@ internal fun PlayerSceneBackdrop(
         modifier.fillMaxSize()
             // Keep the modifier/node topology stable while semantics queries force remeasure.
             .semantics { if (blocked) hideFromAccessibility() }
-            .pointerInput(blocked) {
-                if (!blocked) return@pointerInput
+            // A passive pointerInput node still participates in hit-testing. Remove the
+            // node entirely on close, so the underlying LazyColumn receives DOWN immediately.
+            .then(if (blocked) Modifier.pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                     down.consume()
@@ -161,7 +169,7 @@ internal fun PlayerSceneBackdrop(
                         event.changes.forEach { it.consume() }
                     } while (event.changes.any { it.pressed })
                 }
-            }
+            } else Modifier)
             // Read transition state in drawing/layer properties, not composition or measurement.
             // Once the opaque player covers the scene, even its draw recording can sleep.
             .drawWithContent { if (playerSceneNeedsDrawing(progress())) drawContent() },
