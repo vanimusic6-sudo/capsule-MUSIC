@@ -18,6 +18,11 @@ class LyricsProviderOrderTest {
         assertEquals(LyricsProviderOrder.supportedProviders, LyricsProviderOrder.resolve(""))
     }
 
+    @Test fun previousUnchangedDefaultsReceiveNewFastSources() {
+        val oldDefault = "PAXSENIX_APPLE_MUSIC,BETTER_LYRICS,NETEASE,LYRICS_PLUS,YOUTUBE"
+        assertEquals(LyricsProviderOrder.supportedProviders, LyricsProviderOrder.resolve(oldDefault))
+    }
+
     @Test fun aStoredOrderIsKept() {
         val stored = "YOUTUBE,BETTER_LYRICS,PAXSENIX_APPLE_MUSIC"
         val resolved = LyricsProviderOrder.resolve(stored)
