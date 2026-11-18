@@ -226,6 +226,7 @@ import com.nikhil.yt.ui.component.LocalMenuState
 import com.nikhil.yt.ui.component.StarDialog
 import com.nikhil.yt.ui.component.TopSearch
 import com.nikhil.yt.ui.component.PlayerSceneBackdrop
+import com.nikhil.yt.ui.component.PlayerSceneTouchThreshold
 import com.nikhil.yt.ui.component.PlayerBackAction
 import com.nikhil.yt.ui.component.playerRailFocus
 import com.nikhil.yt.ui.component.shouldRenderExpandedSurface
@@ -938,6 +939,16 @@ class MainActivity : ComponentActivity() {
                                 shouldRenderExpandedSurface(playerBottomSheetState.visualProgress, playerBottomSheetState.isDismissed)
                         }
                     }
+                    // Back stays protected for the whole settling spring; touch interception
+                    // has a separate visual lifetime. Otherwise Home's first drag is swallowed
+                    // even after the full-size player has disappeared into the Mini.
+                    val playerSceneBlocksTouch by remember(playerBottomSheetState) {
+                        derivedStateOf {
+                            !playerBottomSheetState.isDismissed &&
+                                (playerBottomSheetState.isExpandedOrExpanding ||
+                                    playerBottomSheetState.visualProgress > PlayerSceneTouchThreshold)
+                        }
+                    }
 
                     /*
                      * Focus/IME ownership changes immediately when mini → player
@@ -1443,7 +1454,7 @@ class MainActivity : ComponentActivity() {
                             }
 
                             Box(Modifier.fillMaxSize().background(Color.Black)) {
-                                PlayerSceneBackdrop(progress = { playerBottomSheetState.visualProgress }, blocked = playerOwnsBack) {
+                                PlayerSceneBackdrop(progress = { playerBottomSheetState.visualProgress }, blocked = playerSceneBlocksTouch) {
                                     Scaffold(
                                         topBar = {
                                             // The pinned main-route greeting now belongs
