@@ -24,7 +24,6 @@ import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.toBitmap
 import com.nikhil.yt.models.MediaMetadata
-import com.nikhil.yt.ui.theme.PlayerColorExtractor
 import com.nikhil.yt.utils.reportException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -223,19 +222,37 @@ internal fun rememberArtworkScene(
 
         val extracted =
             paletteCache.getOrExtractScene(cacheKey) {
-                val request =
-                    ImageRequest.Builder(context)
-                        .data(thumbnailUrl)
-                        .size(
-                            PlayerColorExtractor.Config.IMAGE_SIZE,
-                            PlayerColorExtractor.Config.IMAGE_SIZE,
-                        )
-                        .allowHardware(false)
-                        .build()
+                // Palette analysis must use the SAME high-quality source/crop
+                // as the visible cover. The former 200px request for the raw
+                // thumbnail URL raced with a 960px full-player request and
+                // could even sample a different YouTube frame.
+                val choices = capsuleFullPlayerArtworkCandidates(thumbnailUrl)
                 try {
                     val artworkBitmap = withContext(Dispatchers.IO) {
-                        context.imageLoader.execute(request)
-                    }.image?.toBitmap() ?: return@getOrExtractScene null
+                        var selected: android.graphics.Bitmap? = null
+                        for (url in choices) {
+                            val bitmap = try {
+                                context.imageLoader.execute(
+                                    ImageRequest.Builder(context)
+                                        .data(url)
+                                        .size(960, 960)
+                                        .allowHardware(false)
+                                        .build()
+                                ).image?.toBitmap()
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                null
+                            }
+                            if (bitmap != null && capsulePlayerPosterLargeEnough(
+                                    url, bitmap.width, bitmap.height
+                                )) {
+                                selected = bitmap
+                                break
+                            }
+                        }
+                        selected
+                    } ?: return@getOrExtractScene null
                     withContext(Dispatchers.Default) {
                         capsuleArtworkScene(artworkBitmap)
                     }
