@@ -19,7 +19,7 @@ class CapsuleLyricsVolumeSliderTest {
         assertEquals(1, count(23f))
         assertEquals(7, count(95f))
         assertEquals(14, count(180f))
-        assertEquals(31, count(395f))
+        assertEquals(32, count(395f))
     }
 
     @Test fun invalidGeometryNeverDrawsMarks() {
