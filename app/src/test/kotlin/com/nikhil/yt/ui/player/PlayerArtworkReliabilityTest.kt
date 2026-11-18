@@ -28,7 +28,9 @@ class PlayerArtworkReliabilityTest {
             player.contains("frozenCardPalette = transitioningPalette.toList()"))
         assertTrue("Freeze must end when the opening animation ends, not when Lyrics closes",
             player.contains("Freeze only the geometrical expansion"))
-        assertTrue(player.contains("playerArtworkReady = artworkScene.ready"))
+        assertTrue(player.contains("playerArtworkField = artworkScene.field"))
+        assertTrue("Text screen must use the same color source, without a second pending-scene delay",
+            player.contains("capsuleLyricsSharedColors("))
         assertTrue(player.contains("colors = transitioningPalette"))
     }
 
