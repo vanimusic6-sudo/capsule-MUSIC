@@ -45,6 +45,7 @@ constructor(
             LyricsProviderOrder.SIMPMUSIC to SimpMusicLyricsProvider,
             LyricsProviderOrder.PAXSENIX_APPLE_MUSIC to PaxsenixLyricsProvider,
             LyricsProviderOrder.LRCLIB to LrcLibLyricsProvider,
+            LyricsProviderOrder.KUGOU to BetterLyricsKuGouProvider,
             LyricsProviderOrder.YOUTUBE to YouTubeLyricsProvider,
         )
 
