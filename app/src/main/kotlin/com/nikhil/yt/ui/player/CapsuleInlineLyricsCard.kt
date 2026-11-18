@@ -41,7 +41,7 @@ import com.nikhil.yt.ui.component.Lyrics
  */
 internal fun capsuleInlineLyricsStops(colors: List<Color>): List<Color> {
     val ink = Color(0xFF1B2028)
-    val upper = colors.getOrNull(0) ?: Color(0xFF35506C)
+    val upper = colors.getOrNull(0) ?: Color(0xFF1A1B21)
     val lower = colors.getOrNull(1) ?: upper
     val tail = colors.getOrNull(2) ?: lower
     val anchor = lerp(ink, upper, 0.32f)
