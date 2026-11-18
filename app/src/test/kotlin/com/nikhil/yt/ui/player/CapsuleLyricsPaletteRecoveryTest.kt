@@ -6,29 +6,33 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/**
+ * Texts and normal Player paint the same upstream RGB frame. A short aperture
+ * freeze is allowed; an independent 1400ms lag is not.
+ */
 class CapsuleLyricsPaletteRecoveryTest {
     private val previous = listOf(Color.Red, Color.Green, Color.Blue)
     private val next = listOf(Color.Cyan, Color.Magenta, Color.Yellow)
     private val pending = List(3) { Color(0xFF1A1B21) }
 
-    @Test fun pendingArtworkCannotEraseLastPreparedGradient() {
-        assertEquals(previous, capsuleStableLyricsPalette(null, pending, false, previous))
+    @Test fun pendingArtworkUsesTheExactPlayerPendingColors() {
+        assertEquals(pending, capsuleLyricsSharedColors(null, pending))
     }
 
-    @Test fun newestDecodedTrackReplacesRetainedColors() {
-        assertEquals(next, capsuleStableLyricsPalette(null, next, true, previous))
+    @Test fun newestDecodedTrackAppearsInTheSameFrameAsThePlayer() {
+        assertEquals(next, capsuleLyricsSharedColors(null, next))
     }
 
-    @Test fun snapshotAppliesOnlyWhilePlayerPageOpens() {
-        assertEquals(previous, capsuleStableLyricsPalette(previous, next, true, next))
-        assertEquals(next, capsuleStableLyricsPalette(null, next, true, previous))
+    @Test fun openingFreezeIsReleasedAfterMorph() {
+        assertEquals(previous, capsuleLyricsSharedColors(previous, next))
+        assertEquals(next, capsuleLyricsSharedColors(null, next))
     }
 
-    @Test fun missingArtworkWithoutPreviousSampleStartsQuietlyNeutral() {
-        assertEquals(pending, capsuleStableLyricsPalette(null, pending, false, emptyList()))
+    @Test fun missingParentColorsHaveStableNeutralFallback() {
+        assertEquals(pending, capsuleLyricsSharedColors(null, emptyList()))
     }
 
-    @Test fun cachedScenesRemainMarkedAsReadyAndSyntheticFallbacksDoNot() {
+    @Test fun pendingScenesAreNotMistakenForDecodedArtwork() {
         val ready = CapsuleArtworkScene(next)
         val placeholder = CapsuleArtworkScene(pending, ready = false)
         assertTrue(ready.ready)
