@@ -723,26 +723,18 @@ fun CapsuleLyricsContent(
                     .padding(horizontal = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    painter = painterResource(R.drawable.volume_off),
-                    contentDescription = "Mute",
-                    tint = CapsuleLyricsSecondary,
-                    modifier = Modifier.size(20.dp).clickable {
-                        playerConnection.service.playerVolume.value = 0f
-                    },
+                CapsuleLyricsVolumeIcon(
+                    muted = true,
+                    onClick = { playerConnection.service.playerVolume.value = 0f },
                 )
                 CapsuleLyricsVolumeSlider(
                     value = volumeState.value,
                     onValueChange = { playerConnection.service.playerVolume.value = it },
-                    modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+                    modifier = Modifier.weight(1f).padding(horizontal = 6.dp),
                 )
-                Icon(
-                    painter = painterResource(R.drawable.volume_up),
-                    contentDescription = "Maximum volume",
-                    tint = CapsuleLyricsSecondary,
-                    modifier = Modifier.size(20.dp).clickable {
-                        playerConnection.service.playerVolume.value = 1f
-                    },
+                CapsuleLyricsVolumeIcon(
+                    muted = false,
+                    onClick = { playerConnection.service.playerVolume.value = 1f },
                 )
             }
         }
