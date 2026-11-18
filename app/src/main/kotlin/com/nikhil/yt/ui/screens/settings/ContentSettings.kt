@@ -81,11 +81,16 @@ fun ContentSettings(
     val (proxyType, onProxyTypeChange) = rememberEnumPreference(key = ProxyTypeKey, defaultValue = Proxy.Type.HTTP)
     val (proxyUrl, onProxyUrlChange) = rememberPreference(key = ProxyUrlKey, defaultValue = "host:port")
     val (streamBypassProxy, onStreamBypassProxyChange) = rememberPreference(key = StreamBypassProxyKey, defaultValue = false)
-    val (enableBetterLyrics, onEnableBetterLyricsChange) = rememberPreference(key = EnableBetterLyricsKey, defaultValue = true)
-    val (enableLyricsPlus, onEnableLyricsPlusChange) = rememberPreference(key = EnableLyricsPlusKey, defaultValue = true)
+    val (enableSimpMusic, onEnableSimpMusicChange) =
+        rememberPreference(key = EnableSimpMusicKey, defaultValue = true)
+    val (enablePortato, onEnablePortatoChange) =
+        rememberPreference(key = EnableBetterLyricsPortatoKey, defaultValue = true)
+    val (enableLrcLib, onEnableLrcLibChange) =
+        rememberPreference(key = EnableLrcLibKey, defaultValue = true)
+    val (enableLyricsPlus, onEnableLyricsPlusChange) =
+        rememberPreference(key = EnableLyricsPlusKey, defaultValue = true)
     val (enablePaxsenixApple, onEnablePaxsenixAppleChange) =
         rememberPreference(key = EnablePaxsenixAppleMusicKey, defaultValue = true)
-    val (enableNetEase, onEnableNetEaseChange) = rememberPreference(key = EnableNetEaseKey, defaultValue = true)
     val (rawLyricsProviderOrder, onLyricsProviderOrderChange) =
         rememberPreference(key = LyricsProviderOrderKey, defaultValue = "")
     val (legacyPreferredProvider, _) =
@@ -262,10 +267,25 @@ fun ContentSettings(
         }
         if (advancedSettings) {
         SwitchPreference(
-            title = { Text(stringResource(R.string.enable_betterlyrics)) },
+            title = { Text("SimpMusic") },
+            description = stringResource(R.string.lyrics_provider_simp_music_description),
             icon = { Icon(painterResource(R.drawable.lyrics), null) },
-            checked = enableBetterLyrics,
-            onCheckedChange = onEnableBetterLyricsChange,
+            checked = enableSimpMusic,
+            onCheckedChange = onEnableSimpMusicChange,
+        )
+        SwitchPreference(
+            title = { Text("Better Lyrics · Portato (QQ)") },
+            description = stringResource(R.string.lyrics_provider_portato_description),
+            icon = { Icon(painterResource(R.drawable.lyrics), null) },
+            checked = enablePortato,
+            onCheckedChange = onEnablePortatoChange,
+        )
+        SwitchPreference(
+            title = { Text("LRCLIB") },
+            description = stringResource(R.string.lyrics_provider_lrclib_description),
+            icon = { Icon(painterResource(R.drawable.lyrics), null) },
+            checked = enableLrcLib,
+            onCheckedChange = onEnableLrcLibChange,
         )
         }
         if (advancedSettings) {
@@ -292,15 +312,6 @@ fun ContentSettings(
             description = stringResource(R.string.paxsenix_status_description),
             icon = { Icon(painterResource(R.drawable.lyrics), null) },
             onClick = { showPaxsenixStatsDialog = true },
-        )
-        }
-        if (advancedSettings) {
-        SwitchPreference(
-            title = { Text(stringResource(R.string.enable_netease)) },
-            description = stringResource(R.string.enable_netease_description),
-            icon = { Icon(painterResource(R.drawable.lyrics), null) },
-            checked = enableNetEase,
-            onCheckedChange = onEnableNetEaseChange,
         )
         }
         if (advancedSettings) {
