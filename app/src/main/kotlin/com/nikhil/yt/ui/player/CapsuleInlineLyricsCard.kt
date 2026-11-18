@@ -37,19 +37,18 @@ import com.nikhil.yt.R
 import com.nikhil.yt.ui.component.Lyrics
 
 /**
- * One small palette authority for both the compact preview and the expanded page.
- * A decoded artwork palette is distinct from a synthetic pending (neutral) one.
- * Freeze is a short-lived geometric transition snapshot, not a session-long lock.
+ * The transition aperture may temporarily freeze its own painted colors for
+ * geometric continuity. Once it settles, compact and fullscreen Lyrics consume
+ * the exact same already-animated palette as the ordinary player.
+ *
+ * No second extraction, stale-track holder, delayed grey timer or 1400ms tween.
  */
-internal fun capsuleStableLyricsPalette(
+internal fun capsuleLyricsSharedColors(
     frozenDuringOpening: List<Color>?,
-    currentTrackColors: List<Color>,
-    currentTrackReady: Boolean,
-    lastDecodedColors: List<Color>,
+    playerColors: List<Color>,
 ): List<Color> =
     frozenDuringOpening?.takeIf { it.size >= 3 }
-        ?: currentTrackColors.takeIf { currentTrackReady && it.size >= 3 }
-        ?: lastDecodedColors.takeIf { it.size >= 3 }
+        ?: playerColors.takeIf { it.size >= 3 }
         ?: List(3) { Color(0xFF1A1B21) }
 
 /**
