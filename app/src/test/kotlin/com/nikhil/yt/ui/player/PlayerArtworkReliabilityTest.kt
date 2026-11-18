@@ -157,4 +157,31 @@ class PlayerArtworkReliabilityTest {
         // The animation and gradient extraction algorithms must not be replaced.
         assertTrue(full.contains("CapsuleVideoArtworkTransition("))
     }
+    @Test fun noLowResolutionCoverIsEverShownBeforeFinalArtwork() {
+        val handoff = source("CapsuleTrackArtworkHandoff.kt")
+        val immersion = source("CapsuleImmersiveContent.kt")
+        val sampler = source("CapsuleImmersiveFloor.kt")
+        val preload = source("CapsuleMediaPreload.kt")
+        assertFalse(handoff.contains("AsyncImage"))
+        assertFalse(handoff.contains("360, 360"))
+        assertFalse(immersion.contains("CapsuleImmersiveCurrentTrackPreview("))
+        assertFalse(immersion.contains(".size(640, 640)"))
+        assertTrue(sampler.contains("ARTWORK_SAMPLE_SIZE = 960"))
+        assertTrue(immersion.contains("coverAndGradientReady && frame?.painter != null"))
+        assertTrue(preload.contains("capsuleFullPlayerArtworkCandidates(mediaMetadata?.thumbnailUrl).firstOrNull()"))
+    }
+
+    @Test fun lyricsAndFullPlayerUseOnePaletteAndOneBackgroundClock() {
+        val player = source("Player.kt")
+        val lyrics = source("CapsuleLyricsContent.kt")
+        val compact = source("CapsuleInlineLyricsCard.kt")
+        assertTrue(player.contains("playerArtworkField = artworkScene.field"))
+        assertTrue(lyrics.contains("if (parentSuppliesScene) playerArtworkColors else localArtworkScene.colors"))
+        assertTrue(lyrics.contains("artworkField = artworkField"))
+        assertTrue(lyrics.contains("sharedAnimationTime = backdropAnimationTime"))
+        assertFalse(lyrics.contains("tween(1150"))
+        assertFalse(compact.contains("tween(1400"))
+        assertFalse(compact.contains("animateColorAsState"))
+    }
+
 }
