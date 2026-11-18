@@ -40,6 +40,22 @@ import com.nikhil.yt.R
 import com.nikhil.yt.ui.component.Lyrics
 
 /**
+ * One small palette authority for both the compact preview and the expanded page.
+ * A decoded artwork palette is distinct from a synthetic pending (neutral) one.
+ * Freeze is a short-lived geometric transition snapshot, not a session-long lock.
+ */
+internal fun capsuleStableLyricsPalette(
+    frozenDuringOpening: List<Color>?,
+    currentTrackColors: List<Color>,
+    currentTrackReady: Boolean,
+    lastDecodedColors: List<Color>,
+): List<Color> =
+    frozenDuringOpening?.takeIf { it.size >= 3 }
+        ?: currentTrackColors.takeIf { currentTrackReady && it.size >= 3 }
+        ?: lastDecodedColors.takeIf { it.size >= 3 }
+        ?: List(3) { Color(0xFF1A1B21) }
+
+/**
  * Keep a stable cover-based luminance from top to bottom.
  * The card and its expanded counterpart paint these exact same stops.
  */
