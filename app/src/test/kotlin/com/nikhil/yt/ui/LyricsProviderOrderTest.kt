@@ -40,16 +40,17 @@ class LyricsProviderOrderTest {
         val defaults = LyricsProviderOrder.supportedProviders
         assertTrue("LyricsPlus must be in the order", "LYRICS_PLUS" in defaults)
         assertTrue("Paxsenix Apple Music must be in the order", "PAXSENIX_APPLE_MUSIC" in defaults)
+        assertTrue("SimpMusic must be in the order", "SIMPMUSIC" in defaults)
+        assertTrue("Portato QQ must be in the order", "BETTER_LYRICS_PORTATO" in defaults)
     }
 
     /** Removed providers must not survive in anybody's stored order after an upgrade. */
     @Test fun providersThatNoLongerExistAreDropped() {
         val resolved =
             LyricsProviderOrder.resolve(
-                "SIMPMUSIC,KUGOU,LRCLIB,YOUTUBE_SUBTITLE,MUSIXMATCH,PAXSENIX_SPOTIFY,DEEZER,BETTER_LYRICS",
+                "KUGOU,LRCLIB,YOUTUBE_SUBTITLE,MUSIXMATCH,PAXSENIX_SPOTIFY,DEEZER,BETTER_LYRICS",
             )
         assertTrue("a removed provider came back: $resolved", "KUGOU" !in resolved)
-        assertTrue("a removed provider came back: $resolved", "SIMPMUSIC" !in resolved)
         assertTrue("a removed provider came back: $resolved", "LRCLIB" !in resolved)
         assertTrue("a removed provider came back: $resolved", "YOUTUBE_SUBTITLE" !in resolved)
         assertTrue("a removed provider came back: $resolved", "MUSIXMATCH" !in resolved)
