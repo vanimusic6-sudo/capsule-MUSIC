@@ -42,8 +42,14 @@ internal fun PlayerWindow(
 ) {
     val arbiter = remember(state) { MiniPlayerGestureArbiter() }
     val renderPage by remember(state) { derivedStateOf {
-        playerSceneShouldInterceptTouch(
-            state.visualProgress, state.isExpandedOrExpanding, state.isDismissed,
+        // Rendering lifetime and touch lifetime are NOT the same thing. Keep
+        // the destination composed throughout a closing spring, even once
+        // Mini owns tapping (<=10%): a quick tap reverses the same page instead
+        // of disposing and rebuilding it between two frames.
+        !state.isDismissed && (
+            state.isExpandedOrExpanding ||
+            (state.isCollapsedOrCollapsing && state.isAnimationRunning) ||
+            shouldRenderExpandedSurface(state.visualProgress, state.isDismissed)
         )
     } }
     val sourceClock by remember(state) { derivedStateOf {
