@@ -10,7 +10,8 @@ object LyricsProviderOrder {
     const val PAXSENIX_APPLE_MUSIC = "PAXSENIX_APPLE_MUSIC" // Apple
     const val BETTER_LYRICS_PORTATO = "BETTER_LYRICS_PORTATO" // QQ / Portato
     const val LYRICS_PLUS = "LYRICS_PLUS"          // YouLy+ community
-    const val LRCLIB = "LRCLIB"                    // Community LRC
+    const val LRCLIB = "LRCLIB"
+    const val KUGOU = "KUGOU"                     // KuGou line-synced catalog                    // Community LRC
     const val YOUTUBE = "YOUTUBE"                  // Description fallback
 
     val supportedProviders = listOf(
@@ -19,6 +20,7 @@ object LyricsProviderOrder {
         BETTER_LYRICS_PORTATO,
         LYRICS_PLUS,
         LRCLIB,
+        KUGOU,
         YOUTUBE,
     )
 
