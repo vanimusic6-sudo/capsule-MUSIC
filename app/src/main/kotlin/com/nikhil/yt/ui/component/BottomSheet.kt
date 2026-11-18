@@ -221,7 +221,7 @@ internal fun playerClassicSurfaceAlpha(progress: Float): Float =
 
 /** The same real Mini stays visible until the player has acquired visible artwork. */
 internal fun playerClassicMiniAlpha(progress: Float): Float =
-    1f - transitionWindow(progress, 0.07f, 0.60f)
+    1f - transitionWindow(progress, 0.07f, 0.64f)
 
 /** Full artwork is already in view while Mini still has its original silhouette. */
 internal fun playerClassicContentAlpha(progress: Float): Float =
@@ -449,7 +449,7 @@ fun BottomSheet(
                         }
                         // A z-order flip WHILE Mini is translucent produced a thin stray card
                         // at the side of the recording. Change order only after it is invisible.
-                        .zIndex(if (state.classicPlayerPresentation && state.visualProgress < 0.60f)
+                        .zIndex(if (state.classicPlayerPresentation && state.visualProgress < 0.64f)
                             2f else if (!state.classicPlayerPresentation && state.compactSurfaceVisible)
                             2f else 0f)
                         .then(
