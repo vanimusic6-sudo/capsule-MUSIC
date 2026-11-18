@@ -614,7 +614,7 @@ fun CapsulePlayerContent(
                         CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active && visible)
                     },
                 ) {
-                    if (hideArtwork) {
+                    if (hideArtwork && !isCapsuleVideoPlaying && !needsVideoSurface) {
                         Icon(
                             painter = painterResource(R.drawable.album),
                             contentDescription = mediaMetadata.title,
@@ -713,7 +713,6 @@ fun CapsulePlayerContent(
                             CapsuleTrackArtworkHandoff(
                                 mediaId = mediaMetadata.id,
                                 decodedPainter = retainedArtworkPainter,
-                                thumbnailUrl = mediaMetadata.thumbnailUrl,
                                 contentScale = artworkContentScale,
                                 modifier = Modifier.fillMaxSize(),
                             )
@@ -803,7 +802,8 @@ fun CapsulePlayerContent(
                             )
                             }
                             } // The successful painter, not an unfinished request, is displayed.
-                            if (artworkFailed && retainedArtworkPainter == null) {
+                            if (artworkFailed && retainedArtworkPainter == null &&
+                                !isCapsuleVideoPlaying && !needsVideoSurface) {
                                 Icon(
                                     painter = painterResource(R.drawable.album),
                                     contentDescription = mediaMetadata.title,
