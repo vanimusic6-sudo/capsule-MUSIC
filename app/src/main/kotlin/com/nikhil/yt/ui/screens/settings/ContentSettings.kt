@@ -87,6 +87,8 @@ fun ContentSettings(
         rememberPreference(key = EnableBetterLyricsPortatoKey, defaultValue = true)
     val (enableLrcLib, onEnableLrcLibChange) =
         rememberPreference(key = EnableLrcLibKey, defaultValue = true)
+    val (enableKuGou, onEnableKuGouChange) =
+        rememberPreference(key = EnableKuGouLyricsKey, defaultValue = true)
     val (enableLyricsPlus, onEnableLyricsPlusChange) =
         rememberPreference(key = EnableLyricsPlusKey, defaultValue = true)
     val (enablePaxsenixApple, onEnablePaxsenixAppleChange) =
@@ -286,6 +288,13 @@ fun ContentSettings(
             icon = { Icon(painterResource(R.drawable.lyrics), null) },
             checked = enableLrcLib,
             onCheckedChange = onEnableLrcLibChange,
+        )
+        SwitchPreference(
+            title = { Text("KuGou") },
+            description = stringResource(R.string.lyrics_provider_kugou_description),
+            icon = { Icon(painterResource(R.drawable.lyrics), null) },
+            checked = enableKuGou,
+            onCheckedChange = onEnableKuGouChange,
         )
         }
         if (advancedSettings) {
