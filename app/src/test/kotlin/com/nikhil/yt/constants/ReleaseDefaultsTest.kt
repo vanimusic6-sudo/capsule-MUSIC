@@ -54,19 +54,25 @@ class ReleaseDefaultsTest {
         assertEquals(CapsuleVideoQuality.AUTO, CapsuleVideoQuality.valueOf("AUTO"))
     }
 
-    @Test fun lyricsFreshInstallStartsWithPaxsenixAndKeepsAllAvailableProviders() {
+    @Test fun lyricsFreshInstallUsesIndependentSourcesAndKeepsEveryFallback() {
         assertEquals(
             listOf(
+                LyricsProviderOrder.SIMPMUSIC,
                 LyricsProviderOrder.PAXSENIX_APPLE_MUSIC,
-                LyricsProviderOrder.BETTER_LYRICS,
-                LyricsProviderOrder.NETEASE,
+                LyricsProviderOrder.BETTER_LYRICS_PORTATO,
                 LyricsProviderOrder.LYRICS_PLUS,
+                LyricsProviderOrder.LRCLIB,
+                LyricsProviderOrder.KUGOU,
                 LyricsProviderOrder.YOUTUBE,
             ),
             LyricsProviderOrder.resolve(null),
         )
         val fresh = emptyPreferences()
         assertTrue(fresh[EnablePaxsenixAppleMusicKey] ?: true)
+        assertTrue(fresh[EnableLrcLibKey] ?: true)
+        assertTrue(fresh[EnableKuGouLyricsKey] ?: true)
+        assertTrue(fresh[EnableBetterLyricsPortatoKey] ?: true)
+        assertTrue(fresh[EnableSimpMusicKey] ?: true)
     }
 
     @Test fun previouslyStoredValuesIncludingFalseWinOverNewDefaults() {
@@ -101,8 +107,11 @@ class ReleaseDefaultsTest {
                 legacyPolicy = AudioStreamPolicy.WEB_EMBEDDED,
                 legacyPreferenceExplicit = true,
             ).first())
-        assertEquals(LyricsProviderOrder.BETTER_LYRICS,
-            LyricsProviderOrder.resolve(raw = null, legacyPreferred = "BETTER_LYRICS").first())
+        assertEquals(LyricsProviderOrder.PAXSENIX_APPLE_MUSIC,
+            LyricsProviderOrder.resolve(raw = null, legacyPreferred = "PAXSENIX").first())
+        // Removed duplicates no longer mask a newer independent catalog.
+        assertEquals(LyricsProviderOrder.supportedProviders,
+            LyricsProviderOrder.resolve(raw = null, legacyPreferred = "BETTER_LYRICS"))
     }
 
     @Test fun manualClientAndProviderReordersRoundTripWithoutReset() {
