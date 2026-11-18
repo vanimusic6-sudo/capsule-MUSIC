@@ -85,6 +85,13 @@ internal fun playerPageAcceptsInput(progress: Float): Boolean = boundedProgress(
  */
 internal const val PlayerSceneTouchThreshold = 0.075f
 
+/** The same release boundary is used by the Home blocker and destination player window. */
+internal fun playerSceneShouldInterceptTouch(
+    progress: Float,
+    expanding: Boolean,
+    dismissed: Boolean,
+): Boolean = !dismissed && (expanding || boundedProgress(progress) > PlayerSceneTouchThreshold)
+
 // The real mini starts returning before the closing window reaches its final dock.
 // Both surfaces use the same anchor, so no late source swap or flash is introduced.
 internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0.14f, 0.80f)
