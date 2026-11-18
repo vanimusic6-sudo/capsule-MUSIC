@@ -39,6 +39,7 @@ private fun lyricsProviderTitle(providerId: String): String =
         LyricsProviderOrder.SIMPMUSIC -> "SimpMusic"
         LyricsProviderOrder.PAXSENIX_APPLE_MUSIC -> "Paxsenix: Apple Music"
         LyricsProviderOrder.LRCLIB -> "LRCLIB"
+        LyricsProviderOrder.KUGOU -> "KuGou"
         LyricsProviderOrder.YOUTUBE -> stringResource(R.string.lyrics_provider_youtube)
         else -> providerId
     }
@@ -51,6 +52,7 @@ private fun lyricsProviderDescription(providerId: String): String =
         LyricsProviderOrder.SIMPMUSIC -> stringResource(R.string.lyrics_provider_simp_music_description)
         LyricsProviderOrder.PAXSENIX_APPLE_MUSIC -> stringResource(R.string.lyrics_provider_paxsenix_apple_description)
         LyricsProviderOrder.LRCLIB -> stringResource(R.string.lyrics_provider_lrclib_description)
+        LyricsProviderOrder.KUGOU -> stringResource(R.string.lyrics_provider_kugou_description)
         LyricsProviderOrder.YOUTUBE -> stringResource(R.string.lyrics_provider_youtube_description)
         else -> providerId
     }
