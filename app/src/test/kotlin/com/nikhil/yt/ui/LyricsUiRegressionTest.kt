@@ -10,6 +10,23 @@ import org.junit.Test
 
 class LyricsUiRegressionTest {
     @Test
+    fun `lyrics renderer keeps current-track colors and does not zoom fullscreen glyphs`() {
+        val backdrop = source("com/nikhil/yt/ui/player/CapsuleLyricsContent.kt")
+        val card = source("com/nikhil/yt/ui/player/CapsuleInlineLyricsCard.kt")
+        val player = source("com/nikhil/yt/ui/player/Player.kt")
+        // A -> B with B still decoding: neither a retained spatial field nor
+        // a prior lyric palette is allowed to repaint B's neutral preview.
+        assertTrue(backdrop.contains("val retainedField = remember(mediaMetadata.id)"))
+        assertTrue(backdrop.contains("val retainedArtworkColors = remember(mediaMetadata.id)"))
+        assertFalse(card.contains("Color(0xFF35506C)"))
+        // Full text always has final pixel coordinates; only the rounded
+        // aperture is allowed to move. Once open, the mask is not drawn.
+        assertTrue(player.contains("clipPath(aperture) { drawContent() }"))
+        assertTrue(player.contains("scrollToLyrics && sheetOffset.value > 0.0001f"))
+        assertFalse(player.contains("scaleX = (bounds.width / widthPx)"))
+        assertFalse(player.contains("scaleY = (bounds.height / heightPx)"))
+    }
+    @Test
     fun `compact lyrics gradient never dims into a fixed black floor`() {
         // Even a bright image with dark secondary bands must not dive into
         // black at the bottom when the card is revealed by a scroll.
