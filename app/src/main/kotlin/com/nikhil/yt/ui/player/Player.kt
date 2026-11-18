@@ -435,6 +435,8 @@ fun BottomSheetPlayer(
             animatePalette = effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
                 playerBackground != PlayerBackgroundStyle.SCENE_LIGHT &&
                 playerBackground != PlayerBackgroundStyle.CAPSULE_STAR,
+            // Preserve the last painted palette across STOP/START; pause extraction, not pixels.
+            retainWhenDisabled = true,
         )
 
     val gradientColors = artworkScene.colors
@@ -597,7 +599,7 @@ fun BottomSheetPlayer(
                                 else playerBackdropContentAlpha(state.visualProgress, state.contentHandoffPoint)
                         }
                         .background(playerSurfaceColor(useBlackBackground))
-                        .drawWithContent { if (onScreen && playerSceneExposed) drawContent() },
+                        .drawWithContent { if (playerSceneExposed) drawContent() },
                 ) {
                     // Keep the original artwork backdrop alive under the
                     // temporary video ambience. Both entry and exit crossfade
@@ -605,7 +607,7 @@ fun BottomSheetPlayer(
                     // Keep the prepared artwork scene for reversal, but do not
                     // shade another full-page layer beneath opaque video light.
                     Box(Modifier.fillMaxSize().drawWithContent {
-                        if (onScreen && playerSceneExposed &&
+                        if (playerSceneExposed &&
                             (!videoAmbientOverlayMounted || retainedVideoAmbientBands == null ||
                                 videoAmbientOverlayAlpha.value < 0.999f)) drawContent()
                     }) {

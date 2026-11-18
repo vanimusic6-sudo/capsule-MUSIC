@@ -131,9 +131,10 @@ internal fun rememberArtworkGradientColors(
 internal fun rememberCapsuleArtworkScene(
     mediaMetadata: MediaMetadata?, enabled: Boolean = true,
     refreshOnOpen: Boolean = false, animatePalette: Boolean = true,
+    retainWhenDisabled: Boolean = false,
 ): CapsuleArtworkScene = rememberArtworkScene(
     mediaMetadata?.let { capsuleArtworkPaletteKey(it.id) }, mediaMetadata?.thumbnailUrl,
-    enabled, CapsuleArtworkPaletteCache, refreshOnOpen, animatePalette,
+    enabled, CapsuleArtworkPaletteCache, refreshOnOpen, animatePalette, retainWhenDisabled,
 )
 
 @Composable
@@ -141,6 +142,7 @@ internal fun rememberArtworkScene(
     cacheKey: String?, thumbnailUrl: String?, enabled: Boolean,
     paletteCache: ArtworkPaletteCache, refreshOnOpen: Boolean,
     animatePalette: Boolean = true,
+    retainWhenDisabled: Boolean = false,
 ): CapsuleArtworkScene {
     val context = LocalContext.current
     val primary = MaterialTheme.colorScheme.primary
@@ -244,7 +246,7 @@ internal fun rememberArtworkScene(
 
     // Remove hidden palette animations from the frame clock altogether. Keep the decoded
     // target above so the same colors are immediately available when the surface returns.
-    if (!enabled) return CapsuleArtworkScene(emptyList())
+    if (!enabled) return if (retainWhenDisabled) targetScene else CapsuleArtworkScene(emptyList())
     if (!animatePalette) return targetScene
 
     // Reset the animator at each media boundary. Within one song, an
