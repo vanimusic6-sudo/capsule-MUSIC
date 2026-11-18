@@ -826,6 +826,7 @@
     <string name="lyrics_provider_betterlyrics_description">Агрегатор, нередко по словам.</string>
     <string name="lyrics_provider_simp_music_description">Тексты по YouTube ID и проверенным данным трека.</string>
     <string name="lyrics_provider_portato_description">Пословные тексты QQ Music, формат QRC.</string>
+    <string name="lyrics_provider_kugou_description">Отдельный каталог KuGou, синхронизация текста по строкам.</string>
     <string name="lyrics_provider_youtube_subtitle_description">Субтитры видео. С таймингом, но не всегда это текст песни.</string>
     <string name="lyrics_provider_youtube_description">То, что лежит в описании трека. Без тайминга.</string>
     <string name="lyrics_sync_offset">Сдвиг синхронизации</string>
