@@ -173,7 +173,7 @@ internal fun CapsuleLyricsBackdropLayer(
             animatePalette = playerArtworkColors.isEmpty(),
         )
     val localArtworkColors = localArtworkScene.colors
-    val retainedField = remember { arrayOf<CapsuleColorField?>(null) }
+    val retainedField = remember(mediaMetadata.id) { arrayOf<CapsuleColorField?>(null) }
     SideEffect { localArtworkScene.field?.let { retainedField[0] = it } }
     val resolvedArtworkColors =
         if (playerArtworkColors.isNotEmpty()) {
@@ -183,7 +183,7 @@ internal fun CapsuleLyricsBackdropLayer(
         }
 
     // Preserve the outgoing palette during a style crossfade after its sampler is disabled.
-    val retainedArtworkColors = remember { arrayOf(emptyList<Color>()) }
+    val retainedArtworkColors = remember(mediaMetadata.id) { arrayOf(emptyList<Color>()) }
     SideEffect {
         if (resolvedArtworkColors.isNotEmpty()) retainedArtworkColors[0] = resolvedArtworkColors
     }
