@@ -213,18 +213,6 @@ internal fun CapsuleLyricsBackdropLayer(
     val retainedField = remember { arrayOf<CapsuleColorField?>(null) }
     SideEffect { if (localArtworkScene.ready) localArtworkScene.field?.let { retainedField[0] = it } }
 
-    var lastImmersiveEdge by remember { mutableStateOf(IMMERSIVE_NEUTRAL_COLOR) }
-    val activeTone = immersiveArtworkTone
-    LaunchedEffect(mediaMetadata.id, mediaMetadata.thumbnailUrl, activeTone?.ready, activeTone?.edge) {
-        if (activeTone?.ready == true) {
-            lastImmersiveEdge = activeTone.edge
-        } else {
-            // Preserve the previous visible hue during a new song's image lookup,
-            // then ease towards neutral if all bounded retries have failed.
-            kotlinx.coroutines.delay(2600L)
-            lastImmersiveEdge = IMMERSIVE_NEUTRAL_COLOR
-        }
-    }
 
     BoxWithConstraints(modifier = modifier.fillMaxSize().background(CapsuleLyricsBackground)) {
         val artworkAspectRatio = maxWidth.value /
@@ -252,7 +240,18 @@ internal fun CapsuleLyricsBackdropLayer(
                                 lyricsBackdrop == CapsuleLyricsBackdrop.ImmersiveColoring,
                             visibleArtworkAspectRatio = artworkAspectRatio,
                         )
-                        ImmersiveLyricsColoring(if (tone.ready) tone.edge else lastImmersiveEdge)
+                        var retainedToneEdge by remember { mutableStateOf(IMMERSIVE_NEUTRAL_COLOR) }
+                        LaunchedEffect(mediaMetadata.id, mediaMetadata.thumbnailUrl, tone.ready, tone.edge) {
+                            if (tone.ready) {
+                                retainedToneEdge = tone.edge
+                            } else {
+                                // The previous hue remains painted while the next track is sampled;
+                                // grey enters only after a bounded failed/missing-cover interval.
+                                kotlinx.coroutines.delay(2600L)
+                                retainedToneEdge = IMMERSIVE_NEUTRAL_COLOR
+                            }
+                        }
+                        ImmersiveLyricsColoring(if (tone.ready) tone.edge else retainedToneEdge)
                     }
                     is CapsuleLyricsBackdrop.PlayerTheme -> PlayerBackground(
                         playerBackground = backdrop.style,
