@@ -888,6 +888,8 @@ Capsule will only extract your token, and everything else is stored locally.</st
     <string name="lyrics_provider_youtube">YouTube</string>
     <string name="lyrics_provider_lrclib_description">Community timed lyrics. Synced most of the time.</string>
     <string name="lyrics_provider_betterlyrics_description">Aggregator, often word by word.</string>
+    <string name="lyrics_provider_simp_music_description">YouTube video ID and metadata-verified community lyrics.</string>
+    <string name="lyrics_provider_portato_description">QQ Music word-timed lyrics, converted from QRC.</string>
     <string name="lyrics_provider_youtube_subtitle_description">Closed captions from the video. Timed, but not always the lyrics.</string>
     <string name="lyrics_provider_youtube_description">Whatever the track description carries. Plain text.</string>
     <string name="lyrics_sync_offset">Sync offset</string>
