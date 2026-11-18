@@ -21,6 +21,8 @@ package com.nikhil.yt.constants
 object LyricsProviderOrder {
     const val LYRICS_PLUS = "LYRICS_PLUS"
     const val BETTER_LYRICS = "BETTER_LYRICS"
+    const val BETTER_LYRICS_PORTATO = "BETTER_LYRICS_PORTATO"
+    const val SIMPMUSIC = "SIMPMUSIC"
     const val PAXSENIX_APPLE_MUSIC = "PAXSENIX_APPLE_MUSIC"
     const val NETEASE = "NETEASE"
     const val YOUTUBE = "YOUTUBE"
@@ -28,17 +30,19 @@ object LyricsProviderOrder {
     /**
      * Default order, best first.
      *
-     * Apple/Paxsenix leads, with Better and NetEase fallback. LyricsPlus is the
-     * maintained provider available in this branch; there is no separately
-     * identified YourLyrics implementation. YouTube plain metadata stays last because it nearly always has
+     * YouTube-ID community lyrics are checked first, then Apple/Paxsenix, QQ Portato,
+     * Better Lyrics TTML, YouLy+ (LyricsPlus) and NetEase. Plain YouTube metadata stays
+     * last because it nearly always has
      * *something*: putting it higher would stop every provider below it from being reached.
      */
     val supportedProviders: List<String> =
         listOf(
+            SIMPMUSIC,
             PAXSENIX_APPLE_MUSIC,
+            BETTER_LYRICS_PORTATO,
             BETTER_LYRICS,
-            NETEASE,
             LYRICS_PLUS,
+            NETEASE,
             YOUTUBE,
         )
 
