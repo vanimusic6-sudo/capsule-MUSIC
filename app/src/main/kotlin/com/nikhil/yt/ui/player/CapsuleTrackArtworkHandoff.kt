@@ -15,7 +15,7 @@ import androidx.compose.ui.layout.ContentScale
 
 /**
  * Only the fully decoded cover is ever shown. In particular there is NO second
- * AsyncImage for a 360px preview and NO low -> high-resolution swap on screen.
+ * 360px thumbnail request and NO low -> high-resolution swap on screen.
  * Media ID scopes the painter: the previous song cannot leak across skips.
  */
 internal const val CAPSULE_COVER_HANDOFF_MS = 205
