@@ -47,6 +47,11 @@ object LyricsProviderOrder {
         )
 
     private val supportedSet = supportedProviders.toSet()
+    // Only migrate the exact unmodified default from previous releases. A custom ranking,
+    // including deliberately putting YouTube first, must never be silently reordered.
+    private val previousDefault = listOf(
+        PAXSENIX_APPLE_MUSIC, BETTER_LYRICS, NETEASE, LYRICS_PLUS, YOUTUBE,
+    )
 
     /**
      * The stored order, repaired.
@@ -66,6 +71,8 @@ object LyricsProviderOrder {
                 .flatMap { expandLegacy(normalize(it)) }
                 .filter { it in supportedSet }
                 .distinct()
+
+        if (parsed == previousDefault) return supportedProviders
 
         val seed =
             parsed.ifEmpty {
