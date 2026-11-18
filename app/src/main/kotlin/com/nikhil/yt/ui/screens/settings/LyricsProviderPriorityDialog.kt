@@ -35,11 +35,10 @@ internal fun LyricsProviderPriorityDialog(
 private fun lyricsProviderTitle(providerId: String): String =
     when (providerId) {
         LyricsProviderOrder.LYRICS_PLUS -> "YouLy+ · LyricsPlus"
-        LyricsProviderOrder.BETTER_LYRICS -> "BetterLyrics (TTML)"
         LyricsProviderOrder.BETTER_LYRICS_PORTATO -> "Better Lyrics · Portato (QQ)"
         LyricsProviderOrder.SIMPMUSIC -> "SimpMusic"
         LyricsProviderOrder.PAXSENIX_APPLE_MUSIC -> "Paxsenix: Apple Music"
-        LyricsProviderOrder.NETEASE -> "NetEase"
+        LyricsProviderOrder.LRCLIB -> "LRCLIB"
         LyricsProviderOrder.YOUTUBE -> stringResource(R.string.lyrics_provider_youtube)
         else -> providerId
     }
@@ -48,11 +47,10 @@ private fun lyricsProviderTitle(providerId: String): String =
 private fun lyricsProviderDescription(providerId: String): String =
     when (providerId) {
         LyricsProviderOrder.LYRICS_PLUS -> stringResource(R.string.lyrics_provider_lyricsplus_description)
-        LyricsProviderOrder.BETTER_LYRICS -> stringResource(R.string.lyrics_provider_betterlyrics_description)
         LyricsProviderOrder.BETTER_LYRICS_PORTATO -> stringResource(R.string.lyrics_provider_portato_description)
         LyricsProviderOrder.SIMPMUSIC -> stringResource(R.string.lyrics_provider_simp_music_description)
         LyricsProviderOrder.PAXSENIX_APPLE_MUSIC -> stringResource(R.string.lyrics_provider_paxsenix_apple_description)
-        LyricsProviderOrder.NETEASE -> stringResource(R.string.lyrics_provider_netease_description)
+        LyricsProviderOrder.LRCLIB -> stringResource(R.string.lyrics_provider_lrclib_description)
         LyricsProviderOrder.YOUTUBE -> stringResource(R.string.lyrics_provider_youtube_description)
         else -> providerId
     }
