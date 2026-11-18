@@ -74,7 +74,7 @@ object SimpMusicLyricsProvider : LyricsProvider {
                         } else 0
                         delta + if (item.hasSyncedLyrics) 0 else 30
                     }
-                selected?.lyrics?.let(Result.Companion::success)
+                selected?.lyrics?.let { Result.success(it) }
                     ?: Result.failure(NoLyricsFromProvider("No matching SimpMusic lyric"))
             }
         }
