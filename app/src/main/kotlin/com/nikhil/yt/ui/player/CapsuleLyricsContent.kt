@@ -180,23 +180,23 @@ internal fun CapsuleLyricsBackdropLayer(
     // neutral pending palette is not decoded artwork and must not replace a warm
     // scene in one frame (the reported bright -> grey "light switch").
     var lastUsablePalette by remember { mutableStateOf<List<Color>>(emptyList()) }
-    val currentPalette =
-        when {
-            localArtworkScene.ready && localArtworkScene.colors.size >= 3 ->
-                localArtworkScene.colors
-            playerArtworkColors.size >= 3 &&
-                playerArtworkColors.any { it != Color(0xFF1A1B21) } ->
-                playerArtworkColors
-            else -> emptyList()
-        }
-    LaunchedEffect(mediaMetadata.id, currentPalette) {
+    var lastUsableField by remember { mutableStateOf<CapsuleColorField?>(null) }
+    // The parent palette is frequently the synthetic neutral scene while a thumbnail
+    // is being loaded. Let the shared cache/local decoder certify the CURRENT mediaId;
+    // taking an apparently nonempty parent RGB list previously suppressed extraction.
+    val currentPalette = localArtworkScene.colors
+        .takeIf { localArtworkScene.ready && it.size >= 3 }
+        .orEmpty()
+    LaunchedEffect(mediaMetadata.id, currentPalette, localArtworkScene.field) {
         if (currentPalette.isNotEmpty()) {
             lastUsablePalette = currentPalette
+            lastUsableField = localArtworkScene.field
         } else {
-            // If the new cover genuinely cannot be decoded, fade back to neutral
-            // gracefully. A successful response cancels this pending timeout.
+            // Bounded retry may still be processing. Keep the outgoing palette and
+            // spatial field alive, then let both settle to neutral if no art exists.
             kotlinx.coroutines.delay(2600L)
             lastUsablePalette = List(3) { Color(0xFF1A1B21) }
+            lastUsableField = null
         }
     }
     val paletteTarget = currentPalette.ifEmpty { lastUsablePalette }
@@ -210,8 +210,7 @@ internal fun CapsuleLyricsBackdropLayer(
     }
     // Keep the spatial field paired with a decoded current image. An unsuccessful
     // source must not erase the previous field in the middle of a transition.
-    val retainedField = remember { arrayOf<CapsuleColorField?>(null) }
-    SideEffect { if (localArtworkScene.ready) localArtworkScene.field?.let { retainedField[0] = it } }
+
 
 
     BoxWithConstraints(modifier = modifier.fillMaxSize().background(CapsuleLyricsBackground)) {
@@ -256,7 +255,7 @@ internal fun CapsuleLyricsBackdropLayer(
                     is CapsuleLyricsBackdrop.PlayerTheme -> PlayerBackground(
                         playerBackground = backdrop.style,
                         gradientColors = artworkColors,
-                        artworkField = if (localArtworkScene.ready) localArtworkScene.field else retainedField[0],
+                        artworkField = if (localArtworkScene.ready) localArtworkScene.field else lastUsableField,
                         animated = isVisible && onScreen && isPlaying &&
                             playbackState == Player.STATE_READY && backdrop == lyricsBackdrop,
                         sharedAnimationTime = backdropAnimationTime,
