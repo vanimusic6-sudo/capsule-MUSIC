@@ -65,7 +65,10 @@ object SimpMusicLyricsProvider : LyricsProvider {
             } else {
                 // The ID may be a playlist/album entry, or this particular video may not have
                 // a submission. Search is limited to a small page; quality beats false matches.
-                val candidates = search(title, artist)
+                val candidates = search(
+                    LyricsQueryCleanup.title(title),
+                    LyricsQueryCleanup.artist(artist),
+                )
                 val selected = candidates
                     .filter { it.lyrics != null && matches(it, title, artist, duration) }
                     .minByOrNull { item ->
@@ -112,14 +115,17 @@ object SimpMusicLyricsProvider : LyricsProvider {
         val rows = root["data"] as? JsonArray ?: return emptyList()
         return rows.mapNotNull { item ->
             val row = item as? JsonObject ?: return@mapNotNull null
+            // Rich-sync data is not always ready-to-render text. Only accept
+            // actual LRC/ELRC/TTML timestamps; an arbitrary JSON array beginning
+            // with '[' used to be mistaken for a lyric and win over other sources.
             val synced = sequenceOf(row.string("richSyncLyrics"), row.string("syncedLyrics"))
-                .firstOrNull { it.isNotBlank() && (it.trimStart().startsWith("[") || it.contains("<tt")) }
+                .firstOrNull { it.isNotBlank() && isRenderableSync(it) }
             val plain = row.string("plainLyric").takeIf { it.isNotBlank() }
             Entry(
                 videoId = row.string("videoId"),
                 title = row.string("songTitle"),
                 artist = row.string("artistName"),
-                durationSeconds = row.string("durationSeconds").toIntOrNull() ?: 0,
+                durationSeconds = row.string("durationSeconds").toDoubleOrNull()?.toInt() ?: 0,
                 lyrics = synced ?: plain,
                 hasSyncedLyrics = synced != null,
             )
@@ -130,10 +136,10 @@ object SimpMusicLyricsProvider : LyricsProvider {
         (get(key) as? JsonPrimitive)?.contentOrNull.orEmpty()
 
     private fun matches(item: Entry, title: String, artist: String, duration: Int): Boolean {
-        val desiredTitle = simplify(title)
-        val foundTitle = simplify(item.title)
-        val desiredArtist = simplify(artist)
-        val foundArtist = simplify(item.artist)
+        val desiredTitle = simplify(LyricsQueryCleanup.title(title))
+        val foundTitle = simplify(LyricsQueryCleanup.title(item.title))
+        val desiredArtist = simplify(LyricsQueryCleanup.artist(artist))
+        val foundArtist = simplify(LyricsQueryCleanup.artist(item.artist))
         if (desiredTitle.isBlank() || foundTitle.isBlank()) return false
         if (desiredTitle != foundTitle &&
             !desiredTitle.startsWith(foundTitle) && !foundTitle.startsWith(desiredTitle)) return false
@@ -142,6 +148,10 @@ object SimpMusicLyricsProvider : LyricsProvider {
         return duration <= 0 || item.durationSeconds <= 0 ||
             abs(duration - item.durationSeconds) <= 22
     }
+
+    internal fun isRenderableSync(value: String): Boolean =
+        Regex("""\\[[0-9]{1,3}:[0-9]{2}[.:][0-9]{2,3}]""").containsMatchIn(value) ||
+            value.contains("<tt", ignoreCase = true)
 
     private fun simplify(text: String): String =
         text.lowercase().replace(punctuation, "")
