@@ -415,7 +415,11 @@ class CapsuleImmersiveContentTest {
             .first { it.isFile }.readText()
         assertTrue(source.contains("remember(mediaMetadata.id) { mutableStateOf(restoredFrame) }"))
         assertTrue(source.contains("val currentSceneReady = frame?.key == visualKey && matchedPaint != null"))
-        assertTrue(source.contains("if (!currentSceneReady || sceneRevealAlpha.value < 0.999f)"))
+        assertFalse("Never render a 640px thumbnail while waiting for a full scene",
+            source.contains("CapsuleImmersiveCurrentTrackPreview("))
+        assertTrue("The neutral plate remains until all scene assets are ready",
+            source.contains("immersivePageBaseColor(isVideo, false, artworkTone.edge)"))
+        assertTrue(source.contains("coverAndGradientReady && frame?.painter != null"))
         assertTrue(source.contains("sceneAlpha = { sceneRevealAlpha.value }"))
         assertFalse(source.contains("val outgoingFrame"))
         assertFalse(source.contains("gradientAlpha.animateTo("))
