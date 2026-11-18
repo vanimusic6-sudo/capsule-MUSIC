@@ -1096,7 +1096,7 @@ private fun CapsulePlayerLyricsHost(
                 clip = sheetOffset.value > 0.0001f || sheetEdge.value > 0.0001f
                 }
             }.drawWithContent {
-                if (scrollToLyrics) {
+                if (scrollToLyrics && sheetOffset.value > 0.0001f) {
                     // One cheap GPU scissor/stencil instead of a full-screen
                     // rescale. Gradient and text remain upright and pixel-sharp
                     // while the real card contour expands to the viewport.
