@@ -932,13 +932,12 @@ internal fun CapsuleImmersiveContent(
             }
         }
 
-        // Preview exists ONLY for the current media ID. It is kept under the
-        // final composed photo+gradient for at most 85 ms, preventing a sudden
-        // blank/grey base while async palette work completes.
-        val currentSceneReady = frame?.key == visualKey && matchedPaint != null
-        // Only the CURRENT song is ever shown. Its thumbnail remains beneath
-        // the ready full photo + derived gradient until their shared 210 ms
-        // reveal completes. No previous-track hold or two-stage background fade.
+        // The entire 960px photo, its extracted palette and its background
+        // texture are prepared before any part of the scene can be shown.
+        // No 640px preview, no false-colored placeholder and no cover zoom
+        // after leaving neutral. One whole-scene reveal is all that remains.
+        val currentSceneReady = frame?.key == visualKey && matchedPaint != null &&
+            coverAndGradientReady && frame?.painter != null
         val sceneRevealAlpha = remember(mediaMetadata.id) {
             Animatable(if (entryScene?.paintKey == paintKey) 1f else 0f)
         }
@@ -949,18 +948,12 @@ internal fun CapsuleImmersiveContent(
             )
         }
         Box(Modifier.fillMaxSize().background(
-            immersivePageBaseColor(isVideo, artworkTone.ready, artworkTone.edge),
+            // Never leak the next palette BEFORE its full image and texture
+            // become available: the previous code switched neutral -> sampled
+            // edge here, then revealed the cover a few frames later.
+            immersivePageBaseColor(isVideo, false, artworkTone.edge),
         )) {
             if (audioSceneVisible) {
-                if (!currentSceneReady || sceneRevealAlpha.value < 0.999f) {
-                    CapsuleImmersiveCurrentTrackPreview(
-                        mediaId = mediaMetadata.id,
-                        imageUrl = mediaMetadata.thumbnailUrl,
-                        edge = edge,
-                        floor = floor,
-                        artworkHeight = artworkHeight,
-                    )
-                }
                 if (currentSceneReady) {
                     val preparedFrame = requireNotNull(frame)
                     val preparedPaint = requireNotNull(matchedPaint)
@@ -1533,74 +1526,6 @@ internal fun CapsuleImmersiveContent(
                         .clip(CircleShape)
                         .background(immersiveInk.copy(alpha = 0.32f)),
             )
-        }
-    }
-}
-
-/**
- * Minimal placeholder with ONLY this song's thumbnail and palette. Both surfaces
- * have the same bottom floor; no unrelated cover or stale gradient can leak in.
- * Offscreen feather is only mounted during a pending high-res decode, not always.
- */
-@Composable
-private fun CapsuleImmersiveCurrentTrackPreview(
-    mediaId: String,
-    imageUrl: String?,
-    edge: Color,
-    floor: Color,
-    artworkHeight: Dp,
-) {
-    val context = LocalContext.current
-    var thumbnailReady by remember(mediaId, imageUrl) { mutableStateOf(false) }
-    val thumbnailAlpha by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (thumbnailReady) 1f else 0f,
-        animationSpec = tween(durationMillis = 175),
-        label = "capsuleImmersiveCurrentPreview",
-    )
-    val request = remember(context, mediaId, imageUrl) {
-        ImageRequest.Builder(context)
-            .data(imageUrl?.takeIf(String::isNotBlank))
-            .size(640, 640)
-            .crossfade(false)
-            .build()
-    }
-    Box(
-        Modifier.fillMaxSize().background(
-            Brush.verticalGradient(
-                0f to edge,
-                0.66f to floor,
-                1f to floor,
-            ),
-        ),
-    ) {
-        if (!imageUrl.isNullOrBlank()) {
-            Box(
-                Modifier.fillMaxWidth().height(artworkHeight + 1.dp)
-                    .clipToBounds()
-                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                    .drawWithCache {
-                        val feather = Brush.verticalGradient(
-                            0f to Color.White,
-                            0.68f to Color.White,
-                            1f to Color.Transparent,
-                        )
-                        onDrawWithContent {
-                            drawContent()
-                            drawRect(brush = feather, blendMode = BlendMode.DstIn)
-                        }
-                    },
-            ) {
-                key(mediaId) {
-                    AsyncImage(
-                        model = request,
-                        contentDescription = null,
-                        onSuccess = { thumbnailReady = true },
-                        onError = { thumbnailReady = false },
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize().graphicsLayer { alpha = thumbnailAlpha },
-                    )
-                }
-            }
         }
     }
 }
