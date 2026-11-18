@@ -552,10 +552,10 @@ fun CapsuleLyricsContent(
             enabled =
                 safeDuration > 0L,
             activeColor =
-                CapsuleLyricsText,
+                CapsuleLyricsText.copy(alpha = 0.96f),
             inactiveColor =
                 CapsuleLyricsText.copy(
-                    alpha = 0.22f,
+                    alpha = 0.24f,
                 ),
             onValueChange = {
                 onSeekPreview(
@@ -566,9 +566,9 @@ fun CapsuleLyricsContent(
                 onSeekFinished,
             smoothPlayback = visualsActive && isPlaying && sliderPosition == null,
             trackHeight =
-                4.dp,
+                8.dp,
             thumbRadius =
-                4.dp,
+                0.dp,
             modifier =
                 Modifier
                     .fillMaxWidth()
