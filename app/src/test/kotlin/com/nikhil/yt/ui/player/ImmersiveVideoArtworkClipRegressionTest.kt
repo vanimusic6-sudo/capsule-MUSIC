@@ -23,7 +23,12 @@ class ImmersiveVideoArtworkClipRegressionTest {
         assertTrue("Exactly one current-track audio scene is allowed",
             content.split("ImmersiveAudioScene(").size - 1 == 2)
         assertTrue(content.contains("sceneAlpha = { sceneRevealAlpha.value }"))
-        assertTrue(content.contains("if (!currentSceneReady || sceneRevealAlpha.value < 0.999f)"))
+        assertTrue("Scene reveal waits for the high-quality cover and prepared background",
+            content.contains("coverAndGradientReady && frame?.painter != null"))
+        assertFalse("No low-quality preview composited beneath final photo",
+            content.contains("CapsuleImmersiveCurrentTrackPreview("))
+        assertTrue("Neutral plate must not reveal an artwork-derived hue before the scene",
+            content.contains("immersivePageBaseColor(isVideo, false, artworkTone.edge)"))
         assertTrue("There must not be a retained outgoing image/gradient layer",
             !content.contains("val outgoingFrame"))
         assertTrue("The overlap must reveal the cached backdrop continuously",
