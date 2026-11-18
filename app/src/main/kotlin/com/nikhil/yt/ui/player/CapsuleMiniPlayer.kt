@@ -630,8 +630,13 @@ fun CapsuleMiniPlayer(
                 )
 
                 CapsuleMiniSongInfo(
-                    mediaMetadata =
-                        mediaMetadata,
+                    mediaMetadata = remember(mediaMetadata, currentSong) {
+                        mediaMetadata?.let { metadata ->
+                            val matchingSong = currentSong?.takeIf { it.id == metadata.id }
+                            if (metadata.explicit || matchingSong?.song?.explicit != true) metadata
+                            else metadata.copy(explicit = true)
+                        }
+                    },
                     visible = visualsActive,
                     modifier =
                         Modifier.weight(1f),

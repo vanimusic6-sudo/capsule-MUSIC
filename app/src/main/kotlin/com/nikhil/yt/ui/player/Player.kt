@@ -271,6 +271,9 @@ fun BottomSheetPlayer(
                     metadata.thumbnailUrl, currentSongForTrack?.song?.thumbnailUrl,
                 ),
                 album = album,
+                // Media3 can temporarily omit the explicit flag; never borrow
+                // the previous track's E, only the matching local song's flag.
+                explicit = metadata.explicit || currentSongForTrack?.song?.explicit == true,
             )
         }
 
@@ -465,6 +468,7 @@ fun BottomSheetPlayer(
     } }
     val backdropTimelineRunning =
         backdropNeedsClock &&
+            !state.isAnimationRunning &&
             effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
             state.shouldLayerAboveCollapsedChrome &&
             pageIsDrawn &&
@@ -527,11 +531,8 @@ fun BottomSheetPlayer(
                 (
                     state.visualProgress >
                         (if (state.classicPlayerPresentation) 0.015f else state.contentHandoffPoint) ||
-                    // Compose the actual backdrop during the single stationary first-open frame.
-                    // Otherwise its first (sometimes expensive) tree/layout is mounted only after
-                    // the player shell has already started moving, which looks like a hitch.
-                    (state.playerMotion && !state.classicPlayerPresentation &&
-                        state.isExpandedOrExpanding)
+                    // Prepare the same real backdrop while the mini remains still.
+                    (state.playerMotion && state.isExpandedOrExpanding)
                 )
         }
     }
@@ -616,7 +617,8 @@ fun BottomSheetPlayer(
                             gradientColors = gradientColors,
                             artworkField = artworkScene.field,
                             animated = if (playerBackground == PlayerBackgroundStyle.SCENE_LIGHT)
-                                onScreen && pageIsDrawn && playerSceneExposed && state.shouldLayerAboveCollapsedChrome else backdropTimelineRunning,
+                                onScreen && pageIsDrawn && playerSceneExposed &&
+                                    !state.isAnimationRunning && state.shouldLayerAboveCollapsedChrome else backdropTimelineRunning,
                             sharedAnimationTime = sharedBackdropAnimationTime,
                         )
                     }
@@ -948,7 +950,8 @@ private fun CapsulePlayerLyricsHost(
                         }
                     },
                     bottomPadding = 0.dp,
-                    open = !playerState.isCollapsed && !playerState.isDismissed,
+                    open = playerState.isExpandedOrExpanding ||
+                        (!playerState.isCollapsed && !playerState.isDismissed),
                     controlsActive = playerMotionActive,
                     transitionForegroundAlpha = transitionForegroundAlpha,
                 )
@@ -986,8 +989,8 @@ private fun CapsulePlayerLyricsHost(
                 bottomPadding = 0.dp,
                 motionActive = playerMotionActive,
                 open =
-                    !playerState.isCollapsed &&
-                        !playerState.isDismissed,
+                    playerState.isExpandedOrExpanding ||
+                        (!playerState.isCollapsed && !playerState.isDismissed),
             )
         }
         }

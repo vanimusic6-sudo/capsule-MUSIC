@@ -33,9 +33,11 @@ class PlayerFinalPolishTest {
         assertFalse(player.contains("onScreen && playerSceneExposed"))
     }
 
-    @Test fun explicitLabelUsesTheArtistRowsOwnVerticalAlignment() {
+    @Test fun explicitLabelRetainsGlyphAndAlignsTheOutline() {
         val badge = File("src/main/kotlin/com/nikhil/yt/ui/player/ExplicitBadge.kt").readText()
-        assertFalse(badge.contains("offset(y ="))
+        assertTrue(badge.contains("offset(y = (-1).dp)"))
+        assertFalse(badge.contains(".clip(corner)"))
+        assertTrue(badge.contains("includeFontPadding = false"))
         assertTrue(badge.contains("contentAlignment = Alignment.Center"))
     }
 }

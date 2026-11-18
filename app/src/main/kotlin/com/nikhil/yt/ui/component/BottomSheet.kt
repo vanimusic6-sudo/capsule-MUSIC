@@ -217,7 +217,7 @@ internal fun playerHandoffSurfaceAlpha(progress: Float): Float =
  * early, the original Mini yields late, and the optional solid backing catches up quietly.
  */
 internal fun playerClassicSurfaceAlpha(progress: Float): Float =
-    transitionWindow(progress, 0.12f, 0.57f)
+    transitionWindow(progress, 0.12f, 0.64f)
 
 /** The same real Mini stays visible until the player has acquired visible artwork. */
 internal fun playerClassicMiniAlpha(progress: Float): Float =
@@ -362,7 +362,7 @@ fun BottomSheet(
         remember(state) {
             derivedStateOf {
                 miniPlayerClockShouldRun(state.isExpanded, state.isDismissed) &&
-                    state.compactSurfaceVisible
+                    state.compactSurfaceVisible && !state.isAnimationRunning
             }
         }
     val miniGestureArbiter = remember(state) { MiniPlayerGestureArbiter() }
@@ -374,7 +374,9 @@ fun BottomSheet(
     val renderExpandedSurface by
         remember(state) {
             derivedStateOf {
-                shouldRenderExpandedSurface(state.visualProgress, state.isDismissed)
+                shouldRenderExpandedSurface(state.visualProgress, state.isDismissed) ||
+                    (state.playerMotion && state.classicPlayerPresentation &&
+                        state.isExpandedOrExpanding)
             }
         }
     val renderExpandedContent by
@@ -384,7 +386,8 @@ fun BottomSheet(
                     state.visualProgress, state.isDismissed,
                     if (state.classicPlayerPresentation) PlayerClassicContentMountThreshold
                     else state.contentHandoffPoint,
-                )
+                ) || (state.playerMotion && state.classicPlayerPresentation &&
+                    state.isExpandedOrExpanding)
             }
         }
 
@@ -392,10 +395,10 @@ fun BottomSheet(
         modifier =
             modifier
                 .fillMaxSize()
-                .offset {
-                    val distance = state.expandedBound - state.value
-                    val y = distance.roundToPx().coerceAtLeast(0)
-                    IntOffset(x = 0, y = y)
+                // The existing physical sheet travels at subpixel GPU precision
+                // without re-placing the whole fullscreen view tree every frame.
+                .graphicsLayer {
+                    translationY = (state.expandedBound - state.value).toPx().coerceAtLeast(0f)
                 }
                 /*
                  * The sheet itself never clips. The rounded top belongs to the full player and is
@@ -896,6 +899,11 @@ class BottomSheetState internal constructor(
     ) {
         val resolved = resolveRequestedAnchor(target)
         if (playerMotion && requestedAnchor == resolved && playerAnimationJob?.isActive == true) return
+        // Carry velocity only through an actual interruption. A finished spring
+        // may retain lastVelocity; reusing it causes the first-frame kick.
+        val carryVelocity =
+            if (!playerMotion || anchoredState.isAnimationRunning || userGestureInProgress)
+                anchoredState.lastVelocity else 0f
         if (playerMotion) playerAnimationJob?.cancel()
         val requested = requestAnchor(resolved)
         val job = coroutineScope.launch(
@@ -914,6 +922,7 @@ class BottomSheetState internal constructor(
                 animateToAnchor(
                     target = requested,
                     animationSpec = animationSpec,
+                    initialVelocity = carryVelocity,
                     priority = priority,
                 )
             } catch (_: CancellationException) {

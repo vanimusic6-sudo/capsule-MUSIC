@@ -2,13 +2,15 @@ package com.nikhil.yt.ui.player
 
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -32,16 +34,22 @@ fun ExplicitBadge(
     fontSize: TextUnit = 9.sp,
 ) {
     val corner = RoundedCornerShape(2.dp)
+    // Align both glyph and frame to the artist baseline, without cropping
+    // font metrics inside this compact 14-15dp label on Android devices.
+    val badgeColor = color.copy(alpha = color.alpha.coerceAtLeast(0.70f))
     Box(
-        modifier = modifier.size(size).clip(corner).border(1.dp, color, corner),
+        modifier = modifier.offset(y = (-1).dp).size(size).border(1.dp, badgeColor, corner),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = "E",
-            color = color,
+            color = badgeColor,
             fontSize = fontSize,
             lineHeight = fontSize,
             fontWeight = FontWeight.Bold,
+            softWrap = false,
+            maxLines = 1,
+            style = TextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false)),
         )
     }
 }

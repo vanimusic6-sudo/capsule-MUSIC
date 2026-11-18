@@ -79,9 +79,13 @@ object CapsuleMotion {
         compactPressed: Boolean,
         progress: Float,
         dismissed: Boolean,
-    ): Boolean = !dismissed &&
-        (opening || compactPressed ||
-            (progress.isFinite() && progress.coerceIn(0f, 1f) >= 0.16f))
+    ): Boolean {
+        if (dismissed) return false
+        val p = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 0f
+        // Never move the nav during the stationary player preparation frame.
+        val threshold = if (opening || compactPressed) 0.025f else 0.16f
+        return p >= threshold
+    }
 
     fun navTuckScaleX(progress: Float): Float = 1f - 0.07f * smooth(progress)
     fun navTuckScaleY(progress: Float): Float = 1f - 0.19f * smooth(progress)

@@ -31,11 +31,13 @@ class CapsuleMotionTest {
         }
     }
 
-    @Test fun `Nav tuck starts on press and comes back only near the dock`() {
+    @Test fun `Nav tuck starts after the sheet begins moving`() {
         fun hidden(open: Boolean, pressed: Boolean, p: Float, dismissed: Boolean = false) =
             CapsuleMotion.navigationTucked(open, pressed, p, dismissed)
-        assertTrue(hidden(false, true, 0f))
-        assertTrue(hidden(true, false, 0f))
+        assertTrue(!hidden(false, true, 0f))
+        assertTrue(!hidden(true, false, 0f))
+        assertTrue(!hidden(true, false, 0.024f))
+        assertTrue(hidden(true, false, 0.025f))
         assertTrue(hidden(false, false, 0.16f))
         assertTrue(!hidden(false, false, 0.159f))
         assertTrue(!hidden(false, false, 0f))
