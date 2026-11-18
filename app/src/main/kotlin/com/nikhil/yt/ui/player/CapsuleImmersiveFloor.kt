@@ -33,7 +33,7 @@ import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
 internal val IMMERSIVE_NEUTRAL_COLOR = Color(0xFF262626)
-private const val ARTWORK_SAMPLE_SIZE = 256
+private const val ARTWORK_SAMPLE_SIZE = 960
 private val videoIdPattern = Regex("^[a-zA-Z0-9_-]{11}$")
 
 internal data class ImmersiveArtworkTone(
@@ -51,8 +51,8 @@ internal data class ImmersiveArtworkTone(
     val visibleTail: CapsuleColorField? = null,
     // Wider photographic overlap; does not participate in palette/floor extraction.
     val diffusionTail: CapsuleColorField? = null,
-    // Decoded 256 px preview for the very first frame of an immediate open.
-    // This avoids a second network request before any image can be displayed.
+    // Compatibility field; full-resolution artwork lives in Coil's shared cache.
+    // Never retain a second 960px bitmap or draw a low-resolution placeholder.
     val preview: ImageBitmap? = null,
     // Only genuinely near-white, nearly neutral covers need the new soft
     // seam treatment. Every other album gets the ORIGINAL palette and fade.
@@ -184,10 +184,9 @@ internal fun rememberImmersiveEdgeColor(
                     colorField = visibleField,
                     visibleTail = null,
                     diffusionTail = null,
-                    // Own the preview pixels independently of Coil's bitmap
-                    // pool. A retained player frame must never point at a
-                    // bitmap that another request can recycle/reuse.
-                    preview = image.copy(Bitmap.Config.ARGB_8888, false).asImageBitmap(),
+                    // No image copy and no lower-resolution stage. The visible
+                    // painter will reuse this same 960px Coil request/cache entry.
+                    preview = null,
                     nearWhiteBackground = nearWhite,
                     landscape = landscape,
                     displayUrl = url,
