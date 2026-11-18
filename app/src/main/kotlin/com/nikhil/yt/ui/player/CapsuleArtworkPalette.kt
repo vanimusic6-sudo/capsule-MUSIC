@@ -254,7 +254,22 @@ internal fun rememberArtworkScene(
                         selected
                     } ?: return@getOrExtractScene null
                     withContext(Dispatchers.Default) {
-                        capsuleArtworkScene(artworkBitmap)
+                        // Full-res download is shared with the player, but
+                        // palette math needs only a compact in-memory sample.
+                        // Never make a second low-resolution HTTP request.
+                        val longest = maxOf(artworkBitmap.width, artworkBitmap.height)
+                        if (longest <= 384) {
+                            capsuleArtworkScene(artworkBitmap)
+                        } else {
+                            val sample = android.graphics.Bitmap.createScaledBitmap(
+                                artworkBitmap,
+                                (artworkBitmap.width * 384f / longest).toInt().coerceAtLeast(1),
+                                (artworkBitmap.height * 384f / longest).toInt().coerceAtLeast(1),
+                                true,
+                            )
+                            try { capsuleArtworkScene(sample) }
+                            finally { sample.recycle() }
+                        }
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
