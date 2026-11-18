@@ -8,12 +8,13 @@ import org.junit.Test
 class CapsulePlayerArtworkQualityTest {
     private val id = "abcdefghijk"
 
-    @Test fun hqdefaultIsNotAFullScreenPosterOrFallback() {
+    @Test fun videoPosterPrefersHdThenUsesTheOriginalOnlyAsLastResort() {
         val tiny = "https://i.ytimg.com/vi/$id/hqdefault.jpg"
         assertEquals(
             listOf(
                 "https://i.ytimg.com/vi/$id/maxresdefault.jpg",
                 "https://i.ytimg.com/vi/$id/hq720.jpg",
+                tiny,
             ),
             capsuleFullPlayerArtworkCandidates(tiny),
         )
@@ -41,6 +42,11 @@ class CapsulePlayerArtworkQualityTest {
         assertFalse(capsulePlayerPosterLargeEnough(maxres, 120, 90))
         assertFalse(capsulePlayerPosterLargeEnough(maxres, 640, 360))
         assertTrue(capsulePlayerPosterLargeEnough(maxres, 1280, 720))
+        // A real cropped music-video frame must not become an empty-album icon
+        // just because this particular clip has no maxres/hq720 thumbnail.
+        val original = "https://i.ytimg.com/vi/$id/hqdefault.jpg"
+        assertTrue(capsulePlayerPosterLargeEnough(original, 480, 360))
+        assertFalse(capsulePlayerPosterLargeEnough(original, 120, 90))
         assertTrue(capsulePlayerPosterLargeEnough(
             "https://lh3.googleusercontent.com/id=w960-h960", 960, 960))
     }
