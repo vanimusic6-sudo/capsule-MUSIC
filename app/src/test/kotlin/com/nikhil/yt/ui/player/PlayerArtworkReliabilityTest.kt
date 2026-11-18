@@ -24,8 +24,11 @@ class PlayerArtworkReliabilityTest {
             player.contains("playerBackground != PlayerBackgroundStyle.SCENE_LIGHT"))
         assertTrue("The star's black-cover threshold must not flip midway through a colour tween",
             player.contains("playerBackground != PlayerBackgroundStyle.CAPSULE_STAR"))
-        assertTrue("The current lyric morph snapshots both sides of its gradient",
-            player.contains("frozenCardPalette = playerArtworkColors.toList()"))
+        assertTrue("The lyric morph freezes the actually displayed gradient",
+            player.contains("frozenCardPalette = transitioningPalette.toList()"))
+        assertTrue("Freeze must end when the opening animation ends, not when Lyrics closes",
+            player.contains("Freeze only the geometrical expansion"))
+        assertTrue(player.contains("playerArtworkReady = artworkScene.ready"))
         assertTrue(player.contains("colors = transitioningPalette"))
     }
 
