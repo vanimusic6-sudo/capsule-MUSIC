@@ -9,6 +9,10 @@ on:
     paths:
       - 'app/src/main/kotlin/com/nikhil/yt/ui/player/**'
       - 'app/src/test/kotlin/com/nikhil/yt/ui/**'
+      - 'app/src/test/kotlin/com/nikhil/yt/lyrics/**'
+      - 'app/src/main/kotlin/com/nikhil/yt/lyrics/**'
+      - 'app/src/main/kotlin/com/nikhil/yt/viewmodels/LyricsMenuViewModel.kt'
+      - 'app/src/main/kotlin/com/nikhil/yt/constants/LyricsProviderOrder.kt'
       - '.github/workflows/player-ui-quality.yml'
   pull_request:
     paths:
@@ -21,6 +25,10 @@ on:
       - 'app/src/main/kotlin/com/nikhil/yt/utils/CoilBitmapLoader.kt'
       - 'app/src/main/kotlin/com/nikhil/yt/utils/SyncUtils.kt'
       - 'app/src/test/kotlin/com/nikhil/yt/ui/**'
+      - 'app/src/test/kotlin/com/nikhil/yt/lyrics/**'
+      - 'app/src/main/kotlin/com/nikhil/yt/lyrics/**'
+      - 'app/src/main/kotlin/com/nikhil/yt/viewmodels/LyricsMenuViewModel.kt'
+      - 'app/src/main/kotlin/com/nikhil/yt/constants/LyricsProviderOrder.kt'
       - 'app/src/test/kotlin/com/nikhil/yt/playback/**'
       - 'app/src/test/kotlin/com/nikhil/yt/utils/SyncLikedSongsOrderingTest.kt'
       - '.github/workflows/player-ui-quality.yml'
@@ -67,6 +75,9 @@ jobs:
           --tests 'com.nikhil.yt.ui.ArtworkPaletteStateTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleLyricsThemeTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleLyricsPaletteRecoveryTest'
+          --tests 'com.nikhil.yt.ui.LyricsProviderOrderTest'
+          --tests 'com.nikhil.yt.lyrics.SimpMusicSourceRegressionTest'
+          --tests 'com.nikhil.yt.lyrics.QrcToEnhancedLrcTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleLyricsVolumeSliderTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveFieldTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveImageBackdropTest'
