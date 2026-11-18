@@ -1,85 +1,49 @@
 /**
- * Capsule MUSIC
- * The order lyrics providers are tried in.
- * GPL-3.0
+ * Capsule MUSIC — ordered, distinct lyrics sources.
+ * Licensed under GPL-3.0.
  */
-
 package com.nikhil.yt.constants
 
-/**
- * A ranking, not a favourite.
- *
- * It used to be one "preferred" provider moved to the front of a fixed list, which answers only the
- * first question anyone has. Which source is tried second matters just as much: they disagree about
- * timing, about which songs they have at all, and about whether what they return is synced. This is
- * the same shape as the audio client order, and for the same reason.
- *
- * Stored as a comma-separated list of ids. Unknown ids are dropped and missing ones are appended in
- * their default order, so a provider added or removed in a later version cannot leave somebody with
- * a broken or truncated list.
- */
+/** One source per independent catalog; legacy overlapping sources are dropped on upgrade. */
 object LyricsProviderOrder {
-    const val LYRICS_PLUS = "LYRICS_PLUS"
-    const val BETTER_LYRICS = "BETTER_LYRICS"
-    const val BETTER_LYRICS_PORTATO = "BETTER_LYRICS_PORTATO"
-    const val SIMPMUSIC = "SIMPMUSIC"
-    const val PAXSENIX_APPLE_MUSIC = "PAXSENIX_APPLE_MUSIC"
-    const val NETEASE = "NETEASE"
-    const val YOUTUBE = "YOUTUBE"
+    const val SIMPMUSIC = "SIMPMUSIC"              // YouTube ID / community
+    const val PAXSENIX_APPLE_MUSIC = "PAXSENIX_APPLE_MUSIC" // Apple
+    const val BETTER_LYRICS_PORTATO = "BETTER_LYRICS_PORTATO" // QQ / Portato
+    const val LYRICS_PLUS = "LYRICS_PLUS"          // YouLy+ community
+    const val LRCLIB = "LRCLIB"                    // Community LRC
+    const val YOUTUBE = "YOUTUBE"                  // Description fallback
 
-    /**
-     * Default order, best first.
-     *
-     * YouTube-ID community lyrics are checked first, then Apple/Paxsenix, QQ Portato,
-     * Better Lyrics TTML, YouLy+ (LyricsPlus) and NetEase. Plain YouTube metadata stays
-     * last because it nearly always has
-     * *something*: putting it higher would stop every provider below it from being reached.
-     */
-    val supportedProviders: List<String> =
-        listOf(
-            SIMPMUSIC,
-            PAXSENIX_APPLE_MUSIC,
-            BETTER_LYRICS_PORTATO,
-            BETTER_LYRICS,
-            LYRICS_PLUS,
-            NETEASE,
-            YOUTUBE,
-        )
+    val supportedProviders = listOf(
+        SIMPMUSIC,
+        PAXSENIX_APPLE_MUSIC,
+        BETTER_LYRICS_PORTATO,
+        LYRICS_PLUS,
+        LRCLIB,
+        YOUTUBE,
+    )
 
     private val supportedSet = supportedProviders.toSet()
-    // Only migrate the exact unmodified default from previous releases. A custom ranking,
-    // including deliberately putting YouTube first, must never be silently reordered.
-    private val previousDefault = listOf(
-        PAXSENIX_APPLE_MUSIC, BETTER_LYRICS, NETEASE, LYRICS_PLUS, YOUTUBE,
+    private val oldDefaults = listOf(
+        listOf("PAXSENIX_APPLE_MUSIC", "BETTER_LYRICS", "NETEASE", "LYRICS_PLUS", "YOUTUBE"),
+        listOf("SIMPMUSIC", "PAXSENIX_APPLE_MUSIC", "BETTER_LYRICS_PORTATO",
+            "BETTER_LYRICS", "LYRICS_PLUS", "NETEASE", "YOUTUBE"),
     )
 
     /**
-     * The stored order, repaired.
-     *
-     * [legacyPreferred] is the old single-choice setting: when nothing has been ordered yet it
-     * decides which provider leads, so upgrading keeps the choice somebody already made instead of
-     * silently resetting it.
+     * Never silently reorder a custom order. Migrating an untouched older default is safe.
+     * Removed provider IDs (including NetEase and overlapping Better TTML) never reappear.
      */
-    fun resolve(
-        raw: String?,
-        legacyPreferred: String? = null,
-    ): List<String> {
-        val parsed =
-            raw
-                .orEmpty()
-                .split(',')
-                .flatMap { expandLegacy(normalize(it)) }
-                .filter { it in supportedSet }
-                .distinct()
-
-        if (parsed == previousDefault) return supportedProviders
-
-        val seed =
-            parsed.ifEmpty {
-                val preferred = normalize(legacyPreferred.orEmpty()).takeIf { it in supportedSet }
-                listOfNotNull(preferred)
-            }
-
+    fun resolve(raw: String?, legacyPreferred: String? = null): List<String> {
+        val stored = raw.orEmpty().split(',')
+            .flatMap { expandLegacy(it.trim().uppercase()) }
+            .filter { it.isNotEmpty() }
+            .distinct()
+        if (stored in oldDefaults) return supportedProviders
+        val parsed = stored.filter { it in supportedSet }
+        val seed = parsed.ifEmpty {
+            val legacy = expandLegacy(legacyPreferred.orEmpty().trim().uppercase()).firstOrNull()
+            listOfNotNull(legacy?.takeIf { it in supportedSet })
+        }
         return (seed + supportedProviders).distinct()
     }
 
@@ -90,6 +54,4 @@ object LyricsProviderOrder {
             "PAXSENIX" -> listOf(PAXSENIX_APPLE_MUSIC)
             else -> listOf(value)
         }
-
-    private fun normalize(value: String): String = value.trim().uppercase()
 }
