@@ -56,6 +56,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -65,6 +68,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -1051,26 +1055,17 @@ private fun CapsulePlayerLyricsHost(
             // No compose/layout state reads per frame. Only RenderNode work.
             val lyricsFrame = Modifier.graphicsLayer {
                 if (scrollToLyrics) {
-                    // One matched-bounds surface grows from the card's REAL
-                    // on-screen position to the fullscreen lyrics viewport.
+                    // The FULLSCREEN renderer stays at its final screen coordinates.
+                    // Only a single measured rounded aperture grows from the card;
+                    // scaling the whole Lyrics tree distorted text and made it pop.
                     val open = (1f - sheetOffset.value).coerceIn(0f, 1f)
-                    val widthPx = size.width.coerceAtLeast(1f)
-                    val heightPx = size.height.coerceAtLeast(1f)
-                    val fallback = Rect(
-                        widthPx * 0.04f, heightPx * 0.13f,
-                        widthPx * 0.96f, heightPx * 0.92f,
-                    )
-                    val bounds = capsuleInlineLyricsMorphBounds(
-                        frozenCardBounds ?: fallback, widthPx, heightPx, open,
-                    )
-                    transformOrigin = TransformOrigin(0f, 0f)
-                    translationX = bounds.left
-                    translationY = bounds.top
-                    scaleX = (bounds.width / widthPx).coerceIn(0.05f, 1f)
-                    scaleY = (bounds.height / heightPx).coerceIn(0.05f, 1f)
+                    transformOrigin = TransformOrigin.Center
+                    translationX = 0f
+                    translationY = 0f
+                    scaleX = 1f
+                    scaleY = 1f
                     alpha = capsuleInlineMorphSurfaceOpacity(open)
-                    shape = RoundedCornerShape((28f * (1f - open)).dp)
-                    clip = open < 0.999f
+                    clip = false
                 } else {
                 // The same host survives a live settings change. Never carry
                 // the inline morph's opacity, X offset or top-left pivot into
@@ -1099,6 +1094,29 @@ private fun CapsulePlayerLyricsHost(
                 // offscreen mask; suspend clipping after both springs rest.
                 // During every actual move, keep the stencil on.
                 clip = sheetOffset.value > 0.0001f || sheetEdge.value > 0.0001f
+                }
+            }.drawWithContent {
+                if (scrollToLyrics) {
+                    // One cheap GPU scissor/stencil instead of a full-screen
+                    // rescale. Gradient and text remain upright and pixel-sharp
+                    // while the real card contour expands to the viewport.
+                    val open = (1f - sheetOffset.value).coerceIn(0f, 1f)
+                    val widthPx = size.width.coerceAtLeast(1f)
+                    val heightPx = size.height.coerceAtLeast(1f)
+                    val fallback = Rect(
+                        widthPx * 0.04f, heightPx * 0.13f,
+                        widthPx * 0.96f, heightPx * 0.92f,
+                    )
+                    val bounds = capsuleInlineLyricsMorphBounds(
+                        frozenCardBounds ?: fallback, widthPx, heightPx, open,
+                    )
+                    val radius = 28.dp.toPx() * (1f - open)
+                    val aperture = Path().apply {
+                        addRoundRect(RoundRect(bounds, CornerRadius(radius)))
+                    }
+                    clipPath(aperture) { drawContent() }
+                } else {
+                    drawContent()
                 }
             }
 
