@@ -74,6 +74,20 @@ private data class AppleTrack(
 )
 
 @Serializable
+private data class ITunesTrack(
+    val trackId: Long? = null,
+    val trackName: String = "",
+    val artistName: String = "",
+    val trackTimeMillis: Long? = null,
+)
+
+@Serializable
+private data class ITunesSearchResponse(
+    val results: List<ITunesTrack> = emptyList(),
+)
+
+
+@Serializable
 internal data class PaxsenixProviderStats(
     val hits: Int = 0,
     val errors: Int = 0,
@@ -191,14 +205,50 @@ object PaxsenixLyricsProvider : LyricsProvider {
                     ?.let { "$cleanTitle $cleanArtist $it" },
             ).distinct()
 
+        // Public iTunes Search does not require an Apple Music web-player
+        // bearer token. The older bundle-scraping path breaks whenever Apple's
+        // JS name/token changes, leaving this provider silent for every track.
         for (query in queries) {
-            val results = runSearch(query)
-            if (results.isNotEmpty()) {
-                return rank(results, cleanTitle, cleanArtist, duration)
-            }
+            val publicMatches = rank(
+                runITunesSearch(query), cleanTitle, cleanArtist, duration,
+            )
+            if (publicMatches.isNotEmpty()) return publicMatches
+        }
+
+        // Keep the catalog endpoint as a fallback for regional/unusual songs.
+        for (query in queries) {
+            val privateMatches = rank(
+                runSearch(query), cleanTitle, cleanArtist, duration,
+            )
+            if (privateMatches.isNotEmpty()) return privateMatches
         }
         return emptyList()
     }
+
+    /** Resolve IDs without scraping a changing Apple Music JS bundle. */
+    private suspend fun runITunesSearch(query: String): List<AppleTrack> =
+        runCatchingCancellable {
+            val response = client.get("https://itunes.apple.com/search") {
+                parameter("term", query)
+                parameter("media", "music")
+                parameter("entity", "song")
+                parameter("country", "US")
+                parameter("limit", 25)
+            }
+            if (!response.status.isSuccess()) return@runCatchingCancellable emptyList()
+            json.decodeFromString<ITunesSearchResponse>(response.bodyAsText())
+                .results.mapNotNull { item ->
+                    item.trackId?.let { trackId ->
+                        AppleTrack(
+                            id = trackId.toString(),
+                            title = item.trackName,
+                            artist = item.artistName,
+                            durationMs = item.trackTimeMillis,
+                        )
+                    }
+                }
+        }.onFailure { Timber.tag(name).d(it, "iTunes search unavailable") }
+            .getOrDefault(emptyList())
 
     private suspend fun runSearch(query: String): List<AppleTrack> {
         val token = appleToken() ?: return emptyList()
