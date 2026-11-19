@@ -79,20 +79,18 @@ internal fun shouldRetryDownloadResolve(failure: Throwable): Boolean {
     }
 }
 
+private val explicit429 = Regex("""(?<!\d)429(?!\d)""")
+
 internal fun isLikelyDownloadThrottleSignal(exception: Throwable): Boolean {
-    val message = buildString {
-        append(exception.message.orEmpty())
-        exception.cause?.message?.let {
-            if (isNotBlank()) append(' ')
-            append(it)
-        }
-    }.lowercase()
-    // 403 is commonly an account/entitlement refusal for private tracks,
-    // NOT evidence of rate limiting. Cooling down the entire download queue
-    // after two such tracks made a valid login appear broken. Only explicit
-    // throttling signals should delay unrelated jobs.
-    return listOf("429", "quota", "rate limit", "too many requests")
-        .any(message::contains)
+    val chain = generateSequence(exception as Throwable?) { it.cause }.take(8).toList()
+    // Prefer the real HTTP response over misleading text. A signed URL or
+    // range such as "4291024" is NOT a 429 response and must never pause the
+    // rest of the download queue; a 403 may instead require account access.
+    val responses = chain.filterIsInstance<InvalidResponseCodeException>()
+    if (responses.isNotEmpty()) return responses.any { it.responseCode == 429 }
+    val text = chain.mapNotNull { it.message }.joinToString(" ").lowercase()
+    return explicit429.containsMatchIn(text) ||
+        "rate limit" in text || "too many requests" in text || "quota" in text
 }
 
 /** One fresh signed URL after a network or account session switch, then fail
