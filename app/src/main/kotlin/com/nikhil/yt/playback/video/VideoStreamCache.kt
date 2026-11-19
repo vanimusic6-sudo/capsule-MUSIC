@@ -26,7 +26,18 @@ internal class VideoStreamCache<T>(
     }
 
     @Synchronized
-    fun latest(videoId: String): T? = latestKeys[videoId]?.let { get(it) }
+    fun latest(videoId: String): T? {
+        latestKeys[videoId]?.let { key ->
+            get(key)?.let { return it }
+        }
+        // The most recently selected quality can expire while another signed
+        // representation of this clip remains playable. Prefer that healthy
+        // entry over another remote /player + extractor round trip.
+        val surviving = entries.entries.toList().asReversed()
+            .firstOrNull { it.value.videoId == videoId && isFresh(it.value.value) }
+            ?.key
+        return surviving?.let { get(it) }
+    }
 
     @Synchronized
     fun put(videoId: String, key: String, value: T) {

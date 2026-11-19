@@ -27,6 +27,21 @@ class VideoStreamCacheTest {
         assertEquals(720, cache.latest("v"))
     }
 
+    @Test fun expiredLatestQualityFallsBackToAnotherStillFreshStream() {
+        var deadline = 0
+        val cache = VideoStreamCache<Int>(3) { it > deadline }
+        cache.put("clip", "clip:720", 100)
+        cache.put("clip", "clip:360", 50)
+        assertEquals(50, cache.latest("clip"))
+
+        deadline = 60
+        assertEquals(100, cache.latest("clip"))
+        assertNull(cache["clip:360"])
+        assertEquals(100, cache.latest("clip"))
+        deadline = 120
+        assertNull(cache.latest("clip"))
+    }
+
     @Test fun invalidationRemovesEveryQualityForOneVideo() {
         val cache = VideoStreamCache<Int>(4) { true }
         cache.put("a", "a:hd", 1)
