@@ -47,7 +47,17 @@ internal class ResolvingAudioDownloader(
                     var artwork: Job? = null
                     try {
                         val startArtwork = {
-                            if (artwork == null) artwork = launch(Dispatchers.IO) { saveArtwork() }
+                            if (artwork == null) artwork = launch(Dispatchers.IO) {
+                                // An optional cover request cannot turn a completed
+                                // music download into a failed Media3 transfer.
+                                try {
+                                    saveArtwork()
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (_: Exception) {
+                                    // Existing artwork-repair flow can fetch this later.
+                                }
+                            }
                             Unit
                         }
                         val copied = downloadFromPlaybackCache(progressListener, startArtwork)
@@ -77,7 +87,12 @@ internal class ResolvingAudioDownloader(
         progressListener: Downloader.ProgressListener?, startArtwork: () -> Unit,
     ): Boolean {
         checkActive()
-        if (AudioCacheIdentity.isComplete(cache, mediaId)) return false
+        if (AudioCacheIdentity.isComplete(cache, mediaId)) {
+            // No network slot, cooldown wait or second resolve for an already
+            // complete offline file. Artwork may still need repair.
+            startArtwork()
+            return true
+        }
         try {
             val cached = createCachedDownloader() ?: return false
             delegate = cached
@@ -99,7 +114,7 @@ internal class ResolvingAudioDownloader(
         }
     }
 
-    private fun downloadWithSlot(progressListener: Downloader.ProgressListener?, startArtwork: () -> Unit) {
+    private suspend fun downloadWithSlot(progressListener: Downloader.ProgressListener?, startArtwork: () -> Unit) {
         try {
             checkActive()
             if (AudioCacheIdentity.isComplete(cache, mediaId)) {
@@ -110,7 +125,7 @@ internal class ResolvingAudioDownloader(
             while (true) {
                 checkActive()
                 val playback = resolved?.takeIf { System.nanoTime() < expiresAtNs }
-                    ?: runBlocking(Dispatchers.IO + cancellation) { resolve() }.also {
+                    ?: resolve().also {
                         resolved = it
                         expiresAtNs = System.nanoTime() +
                             (it.streamExpiresInSeconds.toLong() - 15L).coerceAtLeast(0L) * 1_000_000_000L
