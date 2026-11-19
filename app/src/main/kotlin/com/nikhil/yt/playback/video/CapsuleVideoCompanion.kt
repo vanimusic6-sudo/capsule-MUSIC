@@ -42,11 +42,12 @@ internal const val CAPSULE_SOUND_RAMP_STEPS = 5
  * ahead to survive a brief VPN hand-off without repeatedly starving its
  * soundtrack. The old 6–20s window and 3s rebuffer target were tuned for
  * ideal networks; keep first-frame startup at 1s while banking up to 45s once
- * playback begins. This does not change source quality or AUDIO's buffer.
+ * playback begins. A modest initial 1.8s runway avoids rapid first-second
+ * underruns during CDN window handover. This does not affect AUDIO's buffer.
  */
 internal const val CAPSULE_VIDEO_MIN_BUFFER_MS = 15_000
 internal const val CAPSULE_VIDEO_MAX_BUFFER_MS = 45_000
-internal const val CAPSULE_VIDEO_START_BUFFER_MS = 1_000
+internal const val CAPSULE_VIDEO_START_BUFFER_MS = 1_800
 internal const val CAPSULE_VIDEO_REBUFFER_MS = 5_000
 internal const val CAPSULE_VIDEO_TARGET_BUFFER_BYTES = 24 * 1024 * 1024
 

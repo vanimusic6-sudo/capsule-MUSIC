@@ -24,7 +24,7 @@ class CapsuleVideoChunkedDataSourceTest {
         try {
             assertEquals(bytes.size.toLong(), source.open(DataSpec(uri)))
             assertArrayEquals(bytes, readAll(source))
-            assertEquals(512L * 1024, cdn.requests.first().length)
+            assertEquals(1024L * 1024, cdn.requests.first().length)
             assertTrue(cdn.requests.all { it.length in 1..CAPSULE_VIDEO_CHUNK_BYTES })
             assertTrue(cdn.requests.size >= 3)
         } finally { source.close() }

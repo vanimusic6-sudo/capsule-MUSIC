@@ -105,9 +105,9 @@ internal class CapsuleVideoChunkedDataSource(
 
         val firstLength =
             if (dataSpec.length == C.LENGTH_UNSET.toLong()) {
-                minOf(chunkBytes, 512L * 1024)
+                minOf(chunkBytes, 1024L * 1024)
             } else {
-                minOf(chunkBytes, dataSpec.length, 512L * 1024)
+                minOf(chunkBytes, dataSpec.length, 1024L * 1024)
             }
 
         val firstSpec =

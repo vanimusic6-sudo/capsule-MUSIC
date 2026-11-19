@@ -31,7 +31,8 @@ class PlayerArtworkReliabilityTest {
         assertTrue(player.contains("playerArtworkField = artworkScene.field"))
         assertTrue("Text screen must use the same color source, without a second pending-scene delay",
             player.contains("capsuleLyricsSharedColors("))
-        assertTrue(player.contains("colors = transitioningPalette"))
+        assertTrue("Non-immersive lyrics follow the same animated palette",
+            player.contains("else transitioningPalette"))
     }
 
     @Test fun staleRoomTrackCannotOverrideMedia3Artwork() {
