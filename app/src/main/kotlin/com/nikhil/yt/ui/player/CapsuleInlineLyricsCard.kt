@@ -27,6 +27,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -115,13 +116,33 @@ internal fun capsuleInlineLyricsStops(colors: List<Color>): List<Color> {
     }
 }
 
+/**
+ * The bottom scanline of the photo-to-floor bitmap is the pixel row actually
+ * visible at the end of Immersion's page. This is the only seam-safe source:
+ * album palette samples from a different latitude cannot match a blurred
+ * and already-darkened background. No new bitmap is allocated or decoded.
+ */
+internal fun capsuleInlineLyricsPreparedSeamColors(
+    prepared: ImmersivePreparedScene?,
+    mediaId: String,
+): List<Color>? {
+    val scene = prepared?.takeIf { it.frame.mediaId == mediaId } ?: return null
+    val source = scene.bitmap.asAndroidBitmap()
+    if (source.width <= 0 || source.height <= 0) return null
+    val y = source.height - 1
+    return listOf(
+        Color(source.getPixel(0, y)),
+        Color(source.getPixel(source.width / 2, y)),
+        Color(source.getPixel(source.width - 1, y)),
+    )
+}
+
 /** Share Immersion's horizontal page continuation across the gap and card. */
 internal fun capsuleInlineLyricsImmersiveStops(colors: List<Color>): List<Color> {
-    val ink = Color(0xFF111116)
-    val source = colors.takeIf { it.size >= 3 } ?: List(3) { Color(0xFF202027) }
-    val pale = source.any { maxOf(it.red, it.green, it.blue) > 0.86f }
-    val amount = if (pale) 0.43f else 0.59f
-    return source.take(3).map { lerp(ink, it, amount) }
+    // Paint exactly the same seam colours. The scrollable parent gradually
+    // darkens BELOW the seam; dimming these upfront recreated the hard line.
+    return colors.takeIf { it.size >= 3 }?.take(3)
+        ?: List(3) { Color(0xFF202027) }
 }
 
 /**
@@ -168,11 +189,14 @@ internal fun CapsuleInlineLyricsCard(
             .clip(RoundedCornerShape(28.dp))
             .onGloballyPositioned { onBoundsChanged(it.boundsInRoot()) },
     ) {
-        CapsuleInlineLyricsBackdrop(
-            colors = colors,
-            immersive = immersive,
-            modifier = Modifier.matchParentSize(),
-        )
+        if (!immersive) {
+            // Immersion uses the continuous scroll-page backdrop behind both
+            // the gap and the card. Its own opaque paint would form a slab.
+            CapsuleInlineLyricsBackdrop(
+                colors = colors,
+                modifier = Modifier.matchParentSize(),
+            )
+        }
         CompositionLocalProvider(LocalContentColor provides Color.White) {
             Column(
                 Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 16.dp),
