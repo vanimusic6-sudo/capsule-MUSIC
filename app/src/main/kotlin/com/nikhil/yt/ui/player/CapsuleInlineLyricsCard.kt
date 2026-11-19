@@ -51,6 +51,10 @@ internal fun capsuleLyricsSharedColors(
         ?: playerColors.takeIf { it.size >= 3 }
         ?: List(3) { Color(0xFF1A1B21) }
 
+/** One cheap threshold, evaluated only when scrolling crosses the gate. */
+internal fun capsuleShouldPrefetchInlineLyrics(scrollPx: Int, viewportPx: Float): Boolean =
+    viewportPx.isFinite() && viewportPx > 0f && scrollPx > viewportPx * 0.025f
+
 /**
  * The Immersion cover is a photographic crop with its own sampled 2D field.
  * The regular player's album-palette source can be neutral while this image
