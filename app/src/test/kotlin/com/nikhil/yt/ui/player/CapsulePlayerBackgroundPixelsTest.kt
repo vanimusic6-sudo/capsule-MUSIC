@@ -100,12 +100,18 @@ class CapsulePlayerBackgroundPixelsTest {
         }
         val scene = capsuleArtworkScene(source)
         val video = requireNotNull(capsuleVideoAmbientFrameFromBitmap(source, "same-scene"))
-        assertEquals("Still artwork and video must use the same spatial processing", video.field, scene.field)
+        // The restored November 13 VIDEO design deliberately dims the
+        // extracted colours. Artwork and VIDEO share spatial positions but
+        // MUST NOT have identical brightness: that caused broad bright bands.
+        assertEquals(scene.field?.width, video.field.width)
+        assertEquals(scene.field?.height, video.field.height)
+        assertNotEquals("Restored VIDEO colors are intentionally softer than still artwork",
+            scene.field, video.field)
         val field = requireNotNull(scene.field)
         assertTrue(field.cell(1, 1).red > field.cell(1, 1).blue)
         assertTrue(field.cell(18, 1).blue > field.cell(18, 1).red)
         assertTrue(field.cell(1, 14).green > field.cell(1, 14).red)
-        val projected = capsuleVideoSpatialBitmap(field, Color(0xFF101016), alreadyDiffused = true).asAndroidBitmap()
+        val projected = capsuleVideoSpatialBitmap(field, Color(0xFF101016)).asAndroidBitmap()
         save(projected, "scene-light-four-source-regions")
     }
 
