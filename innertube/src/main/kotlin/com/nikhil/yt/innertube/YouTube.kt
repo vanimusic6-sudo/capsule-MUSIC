@@ -1240,7 +1240,10 @@ object YouTube {
      */
     suspend fun synchronizedLyrics(videoId: String): Result<String?> = runCatchingCancellable {
         require(videoId.matches(Regex("[A-Za-z0-9_-]{11}"))) { "Invalid video id" }
-        val nextResponse = innerTube.next(WEB_REMIX, videoId).bodyAsText()
+        val nextResponse = innerTube.next(
+            WEB_REMIX, videoId, playlistId = null, playlistSetVideoId = null,
+            index = null, params = null, continuation = null,
+        ).bodyAsText()
         val browseId = YouTubeMusicTimedLyrics.findLyricsBrowseId(
             Json.parseToJsonElement(nextResponse),
         ) ?: return@runCatchingCancellable null
