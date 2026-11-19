@@ -38,6 +38,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.decodeFromJsonElement
 import timber.log.Timber
 import kotlin.math.abs
 import java.util.Locale
@@ -482,7 +483,7 @@ object PaxsenixLyricsProvider : LyricsProvider {
         if (body.isBlank()) return null
         val root = runCatching { json.parseToJsonElement(body) }.getOrNull()
             ?: return body.takeIf { it.startsWith("<tt", true) ||
-                it.contains(Regex("""\\[[0-9]{1,3}:[0-9]{2}""")) }
+                it.contains(Regex("""\[[0-9]{1,3}:[0-9]{2}""")) }
         return extractRelayLyrics(root, 0)
     }
 
@@ -498,7 +499,7 @@ object PaxsenixLyricsProvider : LyricsProvider {
                 else text.takeIf { it.isNotBlank() }
             }
             is JsonArray -> element.mapNotNull { extractRelayLyrics(it, depth + 1) }
-                .joinToString("\\n").takeIf(String::isNotBlank)
+                .joinToString("\n").takeIf(String::isNotBlank)
             is JsonObject -> {
                 val isError = (element["success"] as? JsonPrimitive)?.booleanOrNull == false ||
                     (element["ok"] as? JsonPrimitive)?.booleanOrNull == false ||
