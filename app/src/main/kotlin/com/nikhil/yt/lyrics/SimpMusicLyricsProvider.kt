@@ -10,6 +10,8 @@ import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
+import io.ktor.client.request.header
+import io.ktor.http.HttpHeaders
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
@@ -37,9 +39,13 @@ object SimpMusicLyricsProvider : LyricsProvider {
     private val client by lazy {
         HttpClient(OkHttp) {
             install(HttpTimeout) {
-                requestTimeoutMillis = 3_000
-                connectTimeoutMillis = 2_000
-                socketTimeoutMillis = 3_000
+                // ArchiveTune's reference client allows 15s: 3s was too low
+                // for volunteer servers, especially under mobile latency.
+                // Keep Capsule's requests bounded without treating every slow
+                // response as "source has no lyrics".
+                requestTimeoutMillis = 9_000
+                connectTimeoutMillis = 4_000
+                socketTimeoutMillis = 9_000
             }
             expectSuccess = false
         }
@@ -55,14 +61,23 @@ object SimpMusicLyricsProvider : LyricsProvider {
         album: String?,
         duration: Int,
     ): Result<String> = try {
-        if (title.isBlank() || artist.isBlank()) {
-            Result.failure(NoLyricsFromProvider("SimpMusic needs title and artist"))
+        if (title.isBlank() && !videoIdPattern.matches(id)) {
+            Result.failure(NoLyricsFromProvider("SimpMusic needs video ID or song title"))
         } else {
+            // The reference client accepts records keyed by the queried video ID,
+            // even if a particular submission has no echoed videoId property.
+            // Prefer a synced record matching the requested duration.
             val exact = if (videoIdPattern.matches(id)) fetchByVideoId(id) else emptyList()
-            val direct = exact.firstOrNull { it.videoId == id && it.lyrics != null }?.lyrics
+            val direct = exact.filter { it.lyrics != null &&
+                (it.videoId.isBlank() || it.videoId == id) }
+                .minByOrNull { item ->
+                    (if (duration > 0 && item.durationSeconds > 0) {
+                        abs(duration - item.durationSeconds)
+                    } else 0) + if (item.hasSyncedLyrics) 0 else 30
+                }?.lyrics
             if (direct != null) {
                 Result.success(direct)
-            } else {
+            } else if (title.isNotBlank()) {
                 // The ID may be a playlist/album entry, or this particular video may not have
                 // a submission. Search is limited to a small page; quality beats false matches.
                 val cleanTitle = LyricsQueryCleanup.title(title)
@@ -86,7 +101,7 @@ object SimpMusicLyricsProvider : LyricsProvider {
                 }
                 selected?.lyrics?.let { Result.success(it) }
                     ?: Result.failure(NoLyricsFromProvider("No matching SimpMusic lyric"))
-            }
+            } else Result.failure(NoLyricsFromProvider("No matching SimpMusic video-ID lyric"))
         }
     } catch (cancelled: CancellationException) {
         throw cancelled
@@ -95,14 +110,19 @@ object SimpMusicLyricsProvider : LyricsProvider {
     }
 
     private suspend fun fetchByVideoId(id: String): List<Entry> {
-        val response = client.get("$ENDPOINT/$id")
+        val response = client.get("$ENDPOINT/$id") {
+            header(HttpHeaders.Accept, "application/json")
+            header(HttpHeaders.UserAgent, "CapsuleMusic/1.0")
+        }
         return if (response.status.isSuccess()) parseEntries(response.bodyAsText()) else emptyList()
     }
 
     private suspend fun search(title: String, artist: String): List<Entry> {
         val response = client.get("$ENDPOINT/search") {
             parameter("q", "$title $artist")
-            parameter("limit", 8)
+            parameter("limit", 15)
+            header(HttpHeaders.Accept, "application/json")
+            header(HttpHeaders.UserAgent, "CapsuleMusic/1.0")
         }
         return if (response.status.isSuccess()) parseEntries(response.bodyAsText()) else emptyList()
     }
@@ -118,7 +138,9 @@ object SimpMusicLyricsProvider : LyricsProvider {
 
     private fun parseEntries(payload: String): List<Entry> {
         val root = json.parseToJsonElement(payload) as? JsonObject ?: return emptyList()
-        if ((root["success"] as? JsonPrimitive)?.booleanOrNull == false) return emptyList()
+        if ((root["success"] as? JsonPrimitive)?.booleanOrNull == false ||
+            (root["type"] as? JsonPrimitive)?.contentOrNull == "error"
+        ) return emptyList()
         val rows = root["data"] as? JsonArray ?: return emptyList()
         return rows.mapNotNull { item ->
             val row = item as? JsonObject ?: return@mapNotNull null
@@ -127,7 +149,8 @@ object SimpMusicLyricsProvider : LyricsProvider {
             // with '[' used to be mistaken for a lyric and win over other sources.
             val synced = sequenceOf(row.string("richSyncLyrics"), row.string("syncedLyrics"))
                 .firstOrNull { it.isNotBlank() && isRenderableSync(it) }
-            val plain = row.string("plainLyric").takeIf { it.isNotBlank() }
+            val plain = sequenceOf(row.string("plainLyric"), row.string("plainLyrics"))
+                .firstOrNull(String::isNotBlank)
             Entry(
                 videoId = row.string("videoId"),
                 title = row.string("songTitle"),
