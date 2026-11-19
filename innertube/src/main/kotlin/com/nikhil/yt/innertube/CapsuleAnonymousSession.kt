@@ -71,7 +71,7 @@ object CapsuleAnonymousSession {
         params: String?,
         client: YouTubeClient = YouTubeClient.WEB_REMIX,
     ): SearchResponse {
-        prepare()
+        prepare(loadVisitorData = false)
 
         return innerTube
             .search(
@@ -87,7 +87,7 @@ object CapsuleAnonymousSession {
      */
     suspend fun videoCounterpartPage(videoId: String): NextResponse {
         require(videoId.matches(Regex("[A-Za-z0-9_-]{11}")))
-        prepare()
+        prepare(loadVisitorData = false)
         return innerTube.next(
             client = YouTubeClient.WEB_REMIX,
             videoId = videoId,
@@ -99,7 +99,7 @@ object CapsuleAnonymousSession {
         ).body<NextResponse>()
     }
 
-    private suspend fun prepare() {
+    private suspend fun prepare(loadVisitorData: Boolean = true) {
         mutex.withLock {
             innerTube.locale = YouTube.locale
             innerTube.useLoginForBrowse = false
@@ -129,7 +129,12 @@ object CapsuleAnonymousSession {
                 )
 
             val now = System.currentTimeMillis()
+            // Public /search and /next must never block behind the
+            // sw.js_data bootstrap that is needed for player attestations.
+            // They can send the already-known visitor ID or omit it; playback
+            // still performs the normal bootstrap when required.
             val needsVisitorData =
+                (loadVisitorData || tokensEnabled) &&
                 configuredVisitorData == null &&
                     (innerTube.visitorData.isNullOrBlank() ||
                         now - visitorDataFetchedAtMs > VISITOR_DATA_TTL_MS)
