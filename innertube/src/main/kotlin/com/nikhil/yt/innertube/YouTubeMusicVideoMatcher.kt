@@ -48,7 +48,16 @@ internal object YouTubeMusicVideoMatcher {
         if (!omvVerified) {
             val titleAligned = candidateTitleNorm == sourceTitleNorm ||
                 candidateTitleNorm.endsWith(" $sourceTitleNorm")
-            if (!titleAligned || (!explicitlyOfficial && (durationDelta == null || durationDelta > 35))) {
+            val preciseArtistPrefix = sourceArtistNorms.any { artist ->
+                candidateTitleNorm == "$artist $sourceTitleNorm"
+            }
+            // Music Videos cards often give only Artist - Song with no
+            // Official tag, runtime or OMV metadata. That's still a strong
+            // source identity *when the artist matches below*. Don't mark
+            // all these ordinary clips N/A.
+            val preciseIdentity = candidateTitleNorm == sourceTitleNorm || preciseArtistPrefix
+            if (!titleAligned || (!preciseIdentity && !explicitlyOfficial &&
+                    (durationDelta == null || durationDelta > 35))) {
                 return null
             }
         }

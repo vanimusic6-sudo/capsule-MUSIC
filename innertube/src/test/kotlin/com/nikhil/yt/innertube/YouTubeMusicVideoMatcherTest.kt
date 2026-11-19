@@ -57,11 +57,18 @@ class YouTubeMusicVideoMatcherTest {
     }
 
     @Test
-    fun untypedVideosWithoutEvidenceCannotBecomeOfficialMatches() {
-        assertNull(YouTubeMusicVideoMatcher.scoreCandidate(
+    fun videoSearchCanTrustExactArtistTitleWhenOmvAndRuntimeAreMissing() {
+        assertTrue(YouTubeMusicVideoMatcher.scoreCandidate(
             sourceTitle = "Blinding Lights", sourceTitleNorm = "blinding lights",
             sourceArtistNorms = listOf("the weeknd"),
             candidateTitle = "The Weeknd - Blinding Lights",
+            secondaryText = "The Weeknd", sourceDurationSeconds = 261,
+            omvVerified = false,
+        ) != null)
+        assertNull(YouTubeMusicVideoMatcher.scoreCandidate(
+            sourceTitle = "Blinding Lights", sourceTitleNorm = "blinding lights",
+            sourceArtistNorms = listOf("the weeknd"),
+            candidateTitle = "Summer Cover - The Weeknd - Blinding Lights",
             secondaryText = "The Weeknd", sourceDurationSeconds = 261,
             omvVerified = false,
         ))
