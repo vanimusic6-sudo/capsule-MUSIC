@@ -34,7 +34,7 @@ data class YouTubeMusicVideoLink(
 object YouTubeMusicVideoLinkResolver {
     private const val VIDEO_FILTER = "EgWKAQIQAWoKEAkQChAFEAMQBA%3D%3D"
     private const val POSITIVE_CACHE_MS = 24 * 60 * 60 * 1000L
-    private const val NEGATIVE_CACHE_MS = 5 * 60 * 1000L
+    private const val NEGATIVE_CACHE_MS = 30 * 1000L
     private const val MAX_CACHE_ENTRIES = 600
 
     private data class CacheEntry(
@@ -109,8 +109,15 @@ object YouTubeMusicVideoLinkResolver {
                     YouTubeMusicVideoMatcher.normalizeTitle(sourceTitle)
                 val sourceArtistNorms =
                     cleanArtists
+                        .flatMap { artist ->
+                            // YouTube playlist rows may merge featured artists into
+                            // a single credit, while Videos lists only the lead.
+                            listOf(artist) + artist.split(
+                                Regex("""(?i)\s+(?:feat\.?|ft\.?|featuring|with|x)\s+|\s*[,;&]\s*"""),
+                            )
+                        }
                         .map(YouTubeMusicVideoMatcher::normalizeText)
-                        .filter(String::isNotBlank)
+                        .filter { it.length >= 2 }
                         .distinct()
 
                 val queries =
@@ -126,6 +133,7 @@ object YouTubeMusicVideoLinkResolver {
                     }.distinct()
 
                 val candidatesById = linkedMapOf<String, Candidate>()
+                var rowsSeen = 0
 
                 for ((index, query) in queries.withIndex()) {
                     /*
@@ -137,6 +145,7 @@ object YouTubeMusicVideoLinkResolver {
                         }) break
 
                     val renderers = searchVideoRenderers(query, beforeMetadataRequest)
+                    rowsSeen += renderers.size
 
                     for (renderer in renderers) {
                         val candidate =
@@ -168,6 +177,11 @@ object YouTubeMusicVideoLinkResolver {
 
                 val best = candidatesById.values.maxByOrNull { it.score }
                 if (best == null) {
+                    if (rowsSeen == 0) {
+                        // Empty/unrecognised response layouts are not proof that
+                        // the song has no video. Do not cache an N/A verdict.
+                        throw IllegalStateException("YouTube Music Videos returned no searchable rows")
+                    }
                     store(
                         sourceId = sourceId,
                         entry =
@@ -279,6 +293,7 @@ object YouTubeMusicVideoLinkResolver {
         sourceArtistNorms: List<String>,
         sourceDurationSeconds: Int?,
     ): Candidate? {
+        if (renderer.unavailable) return null
         val endpoint =
             renderer.navigationEndpoint?.anyWatchEndpoint
                 ?: renderer.overlay
@@ -287,18 +302,18 @@ object YouTubeMusicVideoLinkResolver {
                     ?.musicPlayButtonRenderer
                     ?.playNavigationEndpoint
                     ?.anyWatchEndpoint
-                ?: return null
 
         val videoType =
-            endpoint.watchEndpointMusicSupportedConfigs
+            endpoint?.watchEndpointMusicSupportedConfigs
                 ?.watchEndpointMusicConfig
                 ?.musicVideoType
-                ?: return null
 
-        if (videoType != MUSIC_VIDEO_TYPE_OMV) return null
+        // An explicit ATV/UGC type is not an OMV. But absent metadata is
+        // common on Videos search cards: verify the title/artist separately.
+        if (videoType != null && videoType != MUSIC_VIDEO_TYPE_OMV) return null
 
         val videoId =
-            endpoint.videoId
+            endpoint?.videoId
                 ?.trim()
                 ?.takeIf { it.isNotBlank() }
                 ?: renderer.playlistItemData
@@ -338,7 +353,8 @@ object YouTubeMusicVideoLinkResolver {
                 candidateTitle = candidateTitle,
                 secondaryText = secondaryText,
                 sourceDurationSeconds = sourceDurationSeconds,
-                sameOfficialVideo = videoId == sourceMediaId,
+                sameOfficialVideo = videoId == sourceMediaId && videoType == MUSIC_VIDEO_TYPE_OMV,
+                omvVerified = videoType == MUSIC_VIDEO_TYPE_OMV,
             ) ?: return null
 
         return Candidate(

@@ -20,6 +20,7 @@ internal object YouTubeMusicVideoMatcher {
         secondaryText: String,
         sourceDurationSeconds: Int?,
         sameOfficialVideo: Boolean = false,
+        omvVerified: Boolean = true,
     ): Int? {
         // Playlist rows may omit the video type or carry incomplete artist/title
         // metadata. A search result explicitly marked OMV for the exact source ID
@@ -36,6 +37,21 @@ internal object YouTubeMusicVideoMatcher {
 
         val secondaryNorm = normalizeText(secondaryText)
         val overlap = titleTokenOverlap(sourceTitleNorm, candidateTitleNorm)
+        val explicitlyOfficial = Regex("""\bofficial\s+(?:music\s+)?video\b""")
+            .containsMatchIn(normalizeText(candidateTitle))
+        // YouTube Music's Videos search frequently omits watchEndpoint's
+        // musicVideoType, even for genuine OMVs. Missing is NOT an ATV verdict.
+        // With no verified OMV marker, require a close title and the known artist
+        // plus either an explicit official-video label or matching runtime.
+        val durationDelta = sourceDurationSeconds?.takeIf { it > 0 }
+            ?.let { seconds -> extractDurationSeconds(secondaryText)?.let { abs(seconds - it) } }
+        if (!omvVerified) {
+            val titleAligned = candidateTitleNorm == sourceTitleNorm ||
+                candidateTitleNorm.endsWith(" $sourceTitleNorm")
+            if (!titleAligned || (!explicitlyOfficial && (durationDelta == null || durationDelta > 35))) {
+                return null
+            }
+        }
 
         var score =
             when {
@@ -66,7 +82,7 @@ internal object YouTubeMusicVideoMatcher {
         }
 
         // MUSIC_VIDEO_TYPE_OMV is checked by the resolver before this helper.
-        score += 55
+        if (omvVerified) score += 55
 
         val rawTitleNorm = normalizeText(candidateTitle)
         if (

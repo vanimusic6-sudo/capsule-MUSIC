@@ -33,6 +33,41 @@ class YouTubeMusicVideoMatcherTest {
     }
 
     @Test
+    fun missingOmvTypeOnVideoSearchStillAcceptsCredibleOfficialClip() {
+        val match = YouTubeMusicVideoMatcher.scoreCandidate(
+            sourceTitle = "Blinding Lights",
+            sourceTitleNorm = "blinding lights",
+            sourceArtistNorms = listOf("the weeknd"),
+            candidateTitle = "The Weeknd - Blinding Lights (Official Video)",
+            secondaryText = "The Weeknd • 4:21",
+            sourceDurationSeconds = 261,
+            omvVerified = false,
+        )
+        assertTrue("Missing renderer metadata is not proof of a missing clip", match != null)
+    }
+
+    @Test
+    fun untypedSameTitleWrongArtistNeverPasses() {
+        assertNull(YouTubeMusicVideoMatcher.scoreCandidate(
+            sourceTitle = "Home", sourceTitleNorm = "home",
+            sourceArtistNorms = listOf("artist one"),
+            candidateTitle = "Home (Official Video)", secondaryText = "Artist Two • 3:30",
+            sourceDurationSeconds = 210, omvVerified = false,
+        ))
+    }
+
+    @Test
+    fun untypedVideosWithoutEvidenceCannotBecomeOfficialMatches() {
+        assertNull(YouTubeMusicVideoMatcher.scoreCandidate(
+            sourceTitle = "Blinding Lights", sourceTitleNorm = "blinding lights",
+            sourceArtistNorms = listOf("the weeknd"),
+            candidateTitle = "The Weeknd - Blinding Lights",
+            secondaryText = "The Weeknd", sourceDurationSeconds = 261,
+            omvVerified = false,
+        ))
+    }
+
+    @Test
     fun sameTitleWithWrongArtistIsRejectedEvenWhenOmvLabelIsPresent() {
         assertNull(YouTubeMusicVideoMatcher.scoreCandidate(
             sourceTitle = "Home", sourceTitleNorm = "home",
