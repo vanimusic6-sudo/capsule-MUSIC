@@ -4,6 +4,7 @@ import com.nikhil.yt.constants.AudioClientOrder
 import com.nikhil.yt.innertube.YouTubeFailureKind
 import java.util.Locale
 import java.net.UnknownHostException
+import java.net.NoRouteToHostException
 
 /**
  * Small, bounded client plan layered on top of InnerTubeX.
@@ -197,7 +198,13 @@ internal object CapsuleAudioFallbackPolicy {
  * endpoint. Rotating identities only duplicates requests and wrongly quarantines
  * previously healthy profiles for five minutes.
  */
-internal fun Throwable.isSharedAudioDnsFailure(): Boolean =
+internal fun Throwable.isSharedAudioConnectivityFailure(): Boolean =
     generateSequence(this as Throwable?) { it.cause }
         .take(12)
-        .any { it is UnknownHostException }
+        // NoRouteToHost is an OS routing failure, just like a failed DNS
+        // resolution. Neither can be fixed by rotating YouTube identities.
+        // Do not include read timeouts or resets: those may be CDN-local.
+        .any { it is UnknownHostException || it is NoRouteToHostException }
+
+/** Retained for older regression tests and historical diagnostics. */
+internal fun Throwable.isSharedAudioDnsFailure(): Boolean = isSharedAudioConnectivityFailure()

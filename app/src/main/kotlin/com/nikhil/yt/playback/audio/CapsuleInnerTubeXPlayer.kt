@@ -485,12 +485,12 @@ object CapsuleInnerTubeXPlayer {
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
-                if (failure.isSharedAudioDnsFailure()) {
-                    // A VPN/Wi-Fi route with failing DNS will fail the same host for
+                if (failure.isSharedAudioConnectivityFailure()) {
+                    // DNS/routing failures after VPN or Wi-Fi hand-off will fail for
                     // every /player profile. Preserve healthy client identities;
                     // the outer network recovery will retry after connectivity returns.
                     Timber.tag(TAG).w(
-                        "AUDIO shared DNS failure id=%s profile=%s; preserving client order",
+                        "AUDIO shared network routing failure id=%s profile=%s; preserving client order",
                         videoId,
                         profileId,
                     )

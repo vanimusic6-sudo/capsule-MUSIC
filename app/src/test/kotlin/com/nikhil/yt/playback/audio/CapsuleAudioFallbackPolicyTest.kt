@@ -14,6 +14,9 @@ class CapsuleAudioFallbackPolicyTest {
         assertTrue(root.isSharedAudioDnsFailure())
         assertTrue(java.io.IOException("wrapped", root).isSharedAudioDnsFailure())
         assertFalse(java.net.SocketTimeoutException("read timed out").isSharedAudioDnsFailure())
+        assertTrue(java.net.NoRouteToHostException("No route to host").isSharedAudioConnectivityFailure())
+        assertTrue(java.io.IOException("wrapped", java.net.NoRouteToHostException("VPN route")).isSharedAudioConnectivityFailure())
+        assertFalse(java.net.ConnectException("Connection refused").isSharedAudioConnectivityFailure())
         assertFalse(java.net.SocketException("Connection reset").isSharedAudioDnsFailure())
         assertFalse(IllegalArgumentException("bad cipher").isSharedAudioDnsFailure())
     }
