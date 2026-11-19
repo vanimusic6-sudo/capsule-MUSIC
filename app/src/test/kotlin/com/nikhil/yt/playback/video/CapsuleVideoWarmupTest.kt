@@ -46,6 +46,32 @@ class CapsuleVideoWarmupTest {
         assertEquals(256L * 1024L, requested)
     }
 
+    @Test fun successfullyCachedPrefixSurvivesSocketCloseError() = runBlocking {
+        var closed = false
+        val source = object : DataSource {
+            private var remaining = 8_192
+            override fun addTransferListener(listener: TransferListener) = Unit
+            override fun open(spec: DataSpec): Long = spec.length
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                if (remaining <= 0) return C.RESULT_END_OF_INPUT
+                val n = minOf(remaining, length)
+                remaining -= n
+                return n
+            }
+            override fun close() {
+                closed = true
+                throw IOException("Socket shutdown after valid read")
+            }
+            override fun getUri(): Uri = Uri.parse("https://cdn.example.test/clip")
+            override fun getResponseHeaders(): Map<String, List<String>> = emptyMap()
+        }
+        assertEquals(8_192L, warmupVideoPrefix(
+            DataSource.Factory { source },
+            "https://cdn.example.test/clip", "video", 16_384L,
+        ))
+        assertTrue("Optional prefix DataSource must still be closed", closed)
+    }
+
     @Test fun brokenZeroReadSourceHasBoundedWarmupWork() = runBlocking {
         var reads = 0
         var closed = false
