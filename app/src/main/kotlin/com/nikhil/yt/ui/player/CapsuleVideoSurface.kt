@@ -157,6 +157,7 @@ private fun CapsuleVideoTextureOutput(
         onRelease = { retention.retainPausedFrame(); player.clearVideoTextureView(it) },
     )
     val view = texture
+    val ambientMemory = remember(view, audioMediaId) { CapsuleVideoAmbientCaptureMemory() }
     if (view != null) {
         DisposableEffect(view, player, retention) {
             retention.registerCapture(view) {
@@ -190,8 +191,7 @@ private fun CapsuleVideoTextureOutput(
             val sink = ambientSink ?: return@LaunchedEffect
             val trackId = audioMediaId?.takeIf(String::isNotBlank) ?: return@LaunchedEffect
             if (!ambientEnabled) return@LaunchedEffect
-            var previous: CapsuleColorField? = null
-            val lightFilter = CapsuleVideoLightFilter()
+            val lightFilter = ambientMemory.lightFilter
             val buffer = Bitmap.createBitmap(VIDEO_AMBIENT_SAMPLE_WIDTH,
                 VIDEO_AMBIENT_SAMPLE_HEIGHT, Bitmap.Config.ARGB_8888)
             val frames = Channel<Long>(Channel.CONFLATED)
@@ -215,10 +215,7 @@ private fun CapsuleVideoTextureOutput(
                 val sample = withContext(Dispatchers.Default) {
                     capsuleVideoAmbientFrameFromBitmap(buffer, trackId, lightFilter)
                 } ?: return false
-                if (capsuleFieldChanged(previous, sample.field, threshold = 0.0045f)) {
-                    previous = sample.field
-                    sink(sample)
-                }
+                if (ambientMemory.shouldPublish(sample)) sink(sample)
                 return true
             }
             try {
@@ -226,16 +223,16 @@ private fun CapsuleVideoTextureOutput(
                     val retained = retention.frame.value?.takeIf {
                         it.mediaId == player.currentMediaItem?.mediaId
                     }?.bitmap
-                    if (retained != null) {
+                    if (retained != null && ambientMemory.previous == null) {
                         val reduced = Bitmap.createScaledBitmap(retained,
                             VIDEO_AMBIENT_SAMPLE_WIDTH, VIDEO_AMBIENT_SAMPLE_HEIGHT, true)
                         try {
                             withContext(Dispatchers.Default) {
                                 capsuleVideoAmbientFrameFromBitmap(reduced, trackId, lightFilter)
-                            }?.let { sink(it); previous = it.field }
+                            }?.let { if (ambientMemory.shouldPublish(it)) sink(it) }
                         } finally { if (reduced !== retained) reduced.recycle() }
                     }
-                    if (previous == null && firstFrameReady) {
+                    if (ambientMemory.previous == null && firstFrameReady) {
                         for (attempt in 0 until 4) {
                             withFrameNanos { }
                             if (runCatching { capture() }.getOrDefault(false)) break
