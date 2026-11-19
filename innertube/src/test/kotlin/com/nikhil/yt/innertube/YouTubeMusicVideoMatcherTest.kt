@@ -5,10 +5,60 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.json.Json
+import com.nikhil.yt.innertube.models.PlaylistPanelVideoWrapperRenderer
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.fail
 
 class YouTubeMusicVideoMatcherTest {
+    @Test fun firstPartyVideoToggleSelectsOnlyTheRequestedSourceAndOfficialVideoType() {
+        val song = "abcdefghijk"
+        val clip = "lmnopqrstuv"
+        val official = "MUSIC_VIDEO_TYPE_OMV"
+        assertEquals(clip, firstPartyOfficialVideoCounterpart(song, song, clip, official))
+        // /next contains a radio queue: never grab a neighboring song's clip.
+        assertNull(firstPartyOfficialVideoCounterpart(song, "otherSong12", clip, official))
+        assertNull(firstPartyOfficialVideoCounterpart(song, song, song, official))
+        assertNull(firstPartyOfficialVideoCounterpart(song, song, "https://evil/", official))
+        assertNull(firstPartyOfficialVideoCounterpart(song, song, clip, "MUSIC_VIDEO_TYPE_ATV"))
+        assertNull(firstPartyOfficialVideoCounterpart(song, song, clip, "MUSIC_VIDEO_TYPE_UGC"))
+        // Some official counterpart rows omit musicVideoType; the first-party
+        // toggle itself is authoritative, unlike untyped search cards.
+        assertEquals(clip, firstPartyOfficialVideoCounterpart(song, song, clip, null))
+    }
+
+    @Test fun nextWrapperParserDoesNotRequireFullQueueMetadata() {
+        val raw = """
+            {
+              "primaryRenderer":{"playlistPanelVideoRenderer":{"videoId":"abcdefghijk"}},
+              "counterpart":[{"counterpartRenderer":{
+                "playlistPanelVideoRenderer":{"videoId":"lmnopqrstuv"}
+              }}]
+            }
+        """.trimIndent()
+        val parsed = Json { ignoreUnknownKeys = true }.decodeFromString<PlaylistPanelVideoWrapperRenderer>(raw)
+        assertEquals("abcdefghijk", parsed.primaryRenderer?.playlistPanelVideoRenderer?.videoId)
+        assertEquals("lmnopqrstuv",
+            parsed.counterpart?.firstOrNull()?.counterpartRenderer?.playlistPanelVideoRenderer?.videoId)
+    }
+
+    @Test fun sameSongWordsInsideAnotherTitleAreNeverEnoughToPickAnOfficialClip() {
+        assertNull(YouTubeMusicVideoMatcher.scoreCandidate(
+            sourceTitle = "Home", sourceTitleNorm = "home",
+            sourceArtistNorms = listOf("artist one"),
+            candidateTitle = "Artist One - Different Song / Home (Official Video)",
+            secondaryText = "Artist One • 3:30", sourceDurationSeconds = 210,
+            omvVerified = true,
+        ))
+        assertNull(YouTubeMusicVideoMatcher.scoreCandidate(
+            sourceTitle = "Stay", sourceTitleNorm = "stay",
+            sourceArtistNorms = listOf("artist one"),
+            candidateTitle = "Some Other Song - Stay (Official Video)",
+            secondaryText = "Artist One • 3:30", sourceDurationSeconds = 210,
+            omvVerified = false,
+        ))
+    }
+
     @Test fun exactOfficialClipIsAcceptedWithIncompletePlaylistMetadata() {
         val result = YouTubeMusicVideoMatcher.scoreCandidate("Playlist title", "playlist title", listOf("playlist author"),
             "Real artist - Real song", "Real artist • 3:30", 210, sameOfficialVideo = true)
