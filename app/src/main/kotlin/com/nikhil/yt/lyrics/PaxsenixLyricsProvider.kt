@@ -142,9 +142,9 @@ object PaxsenixLyricsProvider : LyricsProvider {
                 json(json)
             }
             install(HttpTimeout) {
-                requestTimeoutMillis = 15_000
-                connectTimeoutMillis = 10_000
-                socketTimeoutMillis = 15_000
+                requestTimeoutMillis = 5_000
+                connectTimeoutMillis = 3_000
+                socketTimeoutMillis = 5_000
             }
             expectSuccess = false
         }
@@ -182,8 +182,28 @@ object PaxsenixLyricsProvider : LyricsProvider {
         duration: Int,
     ): String? {
         val candidates = search(title, artist, album, duration)
+        val attempted = mutableSetOf<String>()
         for (track in candidates.take(MAX_TRACKS_TRIED)) {
+            attempted += track.id
             fetchRelayLyrics(track.id)?.let { return it }
+        }
+        // Public iTunes IDs do not always line up with the relay's catalog
+        // edition (explicit/clean, different regions). Previously any iTunes
+        // matches prevented querying the Apple catalog even if relay lyrics
+        // were missing for every one. Only pay for fallback on an actual miss.
+        val cleanTitle = LyricsQueryCleanup.title(title)
+        val cleanArtist = LyricsQueryCleanup.artist(artist)
+        val queries = listOf("$cleanTitle $cleanArtist".trim(), cleanTitle)
+            .filter(String::isNotBlank).distinct()
+        for (query in queries) {
+            val candidatesFromApple = rank(
+                runSearch(query), cleanTitle, cleanArtist, duration,
+            )
+            for (track in candidatesFromApple.take(MAX_TRACKS_TRIED)) {
+                if (attempted.add(track.id)) {
+                    fetchRelayLyrics(track.id)?.let { return it }
+                }
+            }
         }
         return null
     }
@@ -407,7 +427,7 @@ object PaxsenixLyricsProvider : LyricsProvider {
         }
     }
 
-    private const val MAX_TRACKS_TRIED = 5
+    private const val MAX_TRACKS_TRIED = 2
     private val INDEX_JS_REGEX = Regex("""/assets/index~[^/"']+\.js""")
     private val JWT_REGEX =
         Regex("""eyJ[A-Za-z0-9\-_=]+\.[A-Za-z0-9\-_=]+\.[A-Za-z0-9\-_=]+""")
