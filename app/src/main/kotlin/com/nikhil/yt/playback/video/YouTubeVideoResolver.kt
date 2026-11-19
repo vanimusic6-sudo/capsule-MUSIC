@@ -302,8 +302,18 @@ object YouTubeVideoResolver {
             cache[key]?.let { return@withLock it }
             beforeMetadataRequest()
             val remote = if (!muxedOnly && failedBackend != CapsuleWebVideoResolver.BACKEND) {
-                CapsuleWebVideoResolver.resolve(videoId, quality)
-                    ?: callRemoteExtractor(videoId, quality, muxedOnly, failedBackend, refresh)
+                val preferredStart = SystemClock.elapsedRealtime()
+                capsuleFastPrimaryOrFallback(
+                    primaryBudgetMs = CapsuleVideoFastStartPolicy.primaryBudgetMs(quality.maxHeight),
+                    primary = { CapsuleWebVideoResolver.resolve(videoId, quality) },
+                    fallback = {
+                        Timber.tag(TAG).i(
+                            "VIDEO primary deadline hit; fallback clip=%s elapsedMs=%d",
+                            videoId, SystemClock.elapsedRealtime() - preferredStart,
+                        )
+                        callRemoteExtractor(videoId, quality, muxedOnly, failedBackend, refresh)
+                    },
+                )
             } else callRemoteExtractor(videoId, quality, muxedOnly, failedBackend, refresh)
             val resolved = remote.toResolved(sourceMediaId)
             cache.put(videoId, key, resolved)

@@ -51,11 +51,15 @@ internal object YouTubeMusicVideoMatcher {
                         (
                             containsWholePhrase(secondaryNorm, artist) ||
                                 containsWholePhrase(candidateTitleNorm, artist) ||
-                                secondaryNorm.contains(artist)
+                                containsWholePhrase(secondaryNorm, artist)
                         )
                 }
 
-            if (artistMatched) score += 65 else score -= 55
+            // An OMV category label does not prove this is the correct artist.
+            // Previously unrelated same-title OMVs could still exceed the
+            // acceptance threshold, causing a wrong-channel "official" clip.
+            if (!artistMatched) return null
+            score += 65
         }
 
         // MUSIC_VIDEO_TYPE_OMV is checked by the resolver before this helper.

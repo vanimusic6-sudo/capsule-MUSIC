@@ -131,7 +131,9 @@ object YouTubeMusicVideoLinkResolver {
                      * Only use the explicit fallback query if the natural query
                      * produced no usable official candidate at all.
                      */
-                    if (index > 0 && candidatesById.isNotEmpty()) break
+                    if (index > 0 && candidatesById.values.any {
+                            it.score >= YouTubeMusicVideoMatcher.STRONG_MATCH_SCORE
+                        }) break
 
                     val renderers = searchVideoRenderers(query, beforeMetadataRequest)
 

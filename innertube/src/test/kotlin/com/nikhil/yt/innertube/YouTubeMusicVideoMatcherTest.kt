@@ -30,6 +30,28 @@ class YouTubeMusicVideoMatcherTest {
     }
 
     @Test
+    fun sameTitleWithWrongArtistIsRejectedEvenWhenOmvLabelIsPresent() {
+        assertNull(YouTubeMusicVideoMatcher.scoreCandidate(
+            sourceTitle = "Home", sourceTitleNorm = "home",
+            sourceArtistNorms = listOf("artist one"),
+            candidateTitle = "Home (Official Music Video)",
+            secondaryText = "Artist Two • 3:30",
+            sourceDurationSeconds = 210,
+        ))
+    }
+
+    @Test
+    fun artistNameMustBeAWholePhraseNotAFragment() {
+        assertNull(YouTubeMusicVideoMatcher.scoreCandidate(
+            sourceTitle = "Falling", sourceTitleNorm = "falling",
+            sourceArtistNorms = listOf("ade"),
+            candidateTitle = "Falling (Official Music Video)",
+            secondaryText = "Arcade Fire • 3:42",
+            sourceDurationSeconds = 222,
+        ))
+    }
+
+    @Test
     fun liveVariantIsRejectedWhenSourceIsNotLive() {
         assertNull(
             YouTubeMusicVideoMatcher.scoreCandidate(
