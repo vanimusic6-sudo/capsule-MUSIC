@@ -17,6 +17,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import com.nikhil.yt.constants.PreloadQueueLyricsEnabledKey
+import com.nikhil.yt.constants.CapsuleScrollToLyricsKey
 import com.nikhil.yt.constants.QueueLyricsPreloadCountKey
 import com.nikhil.yt.db.MusicDatabase
 import com.nikhil.yt.db.entities.LyricsEntity
@@ -57,7 +58,13 @@ class LyricsPreloadManager @Inject constructor(
                         val enabled = preferences[PreloadQueueLyricsEnabledKey] ?: true
                         val connected = try { networkConnectivity.isCurrentlyConnected() }
                             catch (_: Exception) { true }
-                        if (enabled && connected) preferences[QueueLyricsPreloadCountKey] ?: DEFAULT_PRELOAD_COUNT else 0
+                        // Scroll-to-lyrics is intentionally demand-driven. The
+                        // preloader used to fetch an extra upcoming song every
+                        // track even while the user never opened/approached lyrics.
+                        val demandOnly = preferences[CapsuleScrollToLyricsKey] ?: false
+                        if (enabled && connected && !demandOnly)
+                            preferences[QueueLyricsPreloadCountKey] ?: DEFAULT_PRELOAD_COUNT
+                        else 0
                     },
                     // ExoPlayer's queue may only be read on its application thread.
                     nextSongs = { count -> withContext(Dispatchers.Main.immediate) { nextSongs(count) } },
