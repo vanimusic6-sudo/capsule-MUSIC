@@ -31,7 +31,7 @@ class YouTubeMusicTimedLyricsTest {
         assertNull(YouTubeMusicTimedLyrics.toSynchronizedLrc(
             Json.parseToJsonElement("""{"musicDescriptionShelfRenderer":{"description":{"runs":[{"text":"Hello"}]}}}""")))
         assertNull(YouTubeMusicTimedLyrics.toSynchronizedLrc(
-            Json.parseToJsonElement("""{"timedLyricsData":[{"lyricLine":"Hi","cueRange":{"startTimeMilliseconds":"100","endTimeMilliseconds":"0"}}]}""")))
+            Json.parseToJsonElement("""{"timedLyricsData":[{"lyricLine":"Hi","cueRange":{"startTimeMilliseconds":"not-a-timestamp","endTimeMilliseconds":"0"}}]}""")))
     }
 
     @Test fun duplicateTimestampsAndEmbeddedLineBreaksCannotMakeFakeLrcRows() {
