@@ -387,18 +387,20 @@ fun BottomSheetPlayer(
             videoAmbientFrame = CapsuleVideoAmbientResume.get(context, enrichedMetadata?.id)
         }
     }
+    // Buffering and a recovered decoder may temporarily clear firstFrameReady.
+    // The last valid VIDEO field must not blink back to the album gradient.
+    val videoBackdropActive = capsuleVideoAmbientShouldStayVisible(
+        videoPlaybackState, enrichedMetadata?.id, videoAmbientEnabled,
+    )
     val activeVideoAmbientBands = videoAmbientFrame?.takeIf { sample ->
-        videoAmbientEnabled && videoPlaybackState.presentingVideo &&
-            videoPlaybackState.mediaId == enrichedMetadata?.id &&
-            sample.mediaId == enrichedMetadata?.id
+        videoBackdropActive && sample.mediaId == enrichedMetadata?.id
     }?.bands
     val retainedVideoAmbient = videoAmbientFrame?.takeIf { frame ->
         videoAmbientEnabled && frame.mediaId == enrichedMetadata?.id
     }
     val retainedVideoAmbientBands = retainedVideoAmbient?.bands
     val activeVideoAmbientField = retainedVideoAmbient?.takeIf {
-        videoPlaybackState.presentingVideo &&
-            videoPlaybackState.mediaId == enrichedMetadata?.id
+        videoBackdropActive
     }?.field
     val videoAmbientOverlayAlpha = remember { Animatable(if (activeVideoAmbientBands != null) 1f else 0f) }
     var videoAmbientOverlayMounted by remember { mutableStateOf(activeVideoAmbientBands != null) }
@@ -651,7 +653,7 @@ fun BottomSheetPlayer(
                         CapsuleVideoAmbientBackdrop(
                             bands = retainedVideoAmbientBands,
                             field = retainedVideoAmbient?.field,
-                            animated = onScreen && pageIsDrawn && playerSceneExposed && videoPlaybackState.presentingVideo,
+                            animated = onScreen && pageIsDrawn && playerSceneExposed && videoBackdropActive,
                             modifier = Modifier.fillMaxSize().graphicsLayer {
                                 alpha = videoAmbientOverlayAlpha.value
                             },

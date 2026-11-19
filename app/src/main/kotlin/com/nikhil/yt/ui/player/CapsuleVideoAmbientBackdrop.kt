@@ -25,7 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
-internal const val VIDEO_AMBIENT_BLEND_DURATION_MS = 180
+internal const val VIDEO_AMBIENT_BLEND_DURATION_MS = 130
 
 internal fun capsuleAmbientPaletteAt(previous: List<Color>, currentTarget: List<Color>, progress: Float): List<Color> {
     if (previous.size != currentTarget.size) return currentTarget
@@ -83,6 +83,7 @@ internal fun CapsuleVideoAmbientBackdrop(
     onFirstTextureReady: (() -> Unit)? = null, animated: Boolean = true,
 ) {
     val currentReadyCallback by rememberUpdatedState(onFirstTextureReady)
+    val shouldAnimate by rememberUpdatedState(animated)
     val target = remember(field, bands, fallbackFloor) {
         field ?: CapsuleColorField(CAPSULE_FIELD_COLUMNS, CAPSULE_FIELD_ROWS,
             List(CAPSULE_FIELD_COLUMNS * CAPSULE_FIELD_ROWS) { i ->
@@ -103,7 +104,9 @@ internal fun CapsuleVideoAmbientBackdrop(
         mutableStateOf(initial)
     }
     val blend = remember { Animatable(1f) }
-    LaunchedEffect(target, fallbackFloor, animated) {
+    // Only new frame colors may restart the GPU blend. Ordinary pause and
+    // buffering events otherwise re-uploaded unchanged textures and flashed.
+    LaunchedEffect(target, fallbackFloor) {
         if (prepared != null && target == targetField && blend.value == 1f) {
             currentReadyCallback?.invoke()
             return@LaunchedEffect
@@ -118,9 +121,9 @@ internal fun CapsuleVideoAmbientBackdrop(
         previousField = visible
         targetField = target
         prepared = ready
-        blend.snapTo(if (first || !animated) 1f else 0f)
+        blend.snapTo(if (first || !shouldAnimate) 1f else 0f)
         currentReadyCallback?.invoke()
-        if (!first && animated) blend.animateTo(1f, tween(VIDEO_AMBIENT_BLEND_DURATION_MS, easing = LinearEasing))
+        if (!first && shouldAnimate) blend.animateTo(1f, tween(VIDEO_AMBIENT_BLEND_DURATION_MS, easing = LinearEasing))
     }
     val engine = if (Build.VERSION.SDK_INT >= 33) remember { CapsuleVideoMotionShader() } else null
     // Rebind only for new immutable textures, never for progress ticks,

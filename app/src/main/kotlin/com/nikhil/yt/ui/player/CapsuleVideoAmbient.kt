@@ -6,6 +6,9 @@
 package com.nikhil.yt.ui.player
 
 import android.graphics.Bitmap
+import com.nikhil.yt.playback.video.CapsulePlaybackMode
+import com.nikhil.yt.playback.video.CapsuleVideoPlaybackState
+import com.nikhil.yt.playback.video.CapsuleVideoPhase
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
@@ -14,6 +17,17 @@ import kotlin.math.abs
 // ~6.7 bounded low-res readbacks per second instead of 10. The decoded video
 // itself remains unrestricted; backdrop interpolation retains its existing physics.
 internal const val VIDEO_AMBIENT_CAPTURE_INTERVAL_MS = 150L
+
+/** Preserve the last VIDEO palette during buffer/surface interruptions. */
+internal fun capsuleVideoAmbientShouldStayVisible(
+    state: CapsuleVideoPlaybackState, mediaId: String?, enabled: Boolean,
+): Boolean = enabled && mediaId != null && state.mediaId == mediaId &&
+    state.preferredMode == CapsulePlaybackMode.VIDEO &&
+    state.mode == CapsulePlaybackMode.VIDEO &&
+    state.phase in setOf(
+        CapsuleVideoPhase.PREPARING, CapsuleVideoPhase.PLAYING,
+        CapsuleVideoPhase.BUFFERING, CapsuleVideoPhase.RECOVERING,
+    )
 internal const val VIDEO_AMBIENT_SAMPLE_WIDTH = 48
 internal const val VIDEO_AMBIENT_SAMPLE_HEIGHT = 28
 

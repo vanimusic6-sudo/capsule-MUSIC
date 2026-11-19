@@ -3,6 +3,9 @@ package com.nikhil.yt.ui.player
 import android.app.Application
 import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
+import com.nikhil.yt.playback.video.CapsulePlaybackMode
+import com.nikhil.yt.playback.video.CapsuleVideoPlaybackState
+import com.nikhil.yt.playback.video.CapsuleVideoPhase
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -15,6 +18,24 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class)
 class CapsuleVideoAmbientTest {
+    @Test fun bufferingAndRecoveryKeepTheLastVideoPaletteVisible() {
+        val initial = CapsuleVideoPlaybackState(
+            preferredMode = CapsulePlaybackMode.VIDEO,
+            mode = CapsulePlaybackMode.VIDEO,
+            mediaId = "song", phase = CapsuleVideoPhase.PLAYING,
+            firstFrameReady = true,
+        )
+        assertTrue(capsuleVideoAmbientShouldStayVisible(initial, "song", true))
+        assertTrue(capsuleVideoAmbientShouldStayVisible(
+            initial.copy(phase = CapsuleVideoPhase.BUFFERING, firstFrameReady = false), "song", true))
+        assertTrue(capsuleVideoAmbientShouldStayVisible(
+            initial.copy(phase = CapsuleVideoPhase.RECOVERING, firstFrameReady = false), "song", true))
+        assertFalse(capsuleVideoAmbientShouldStayVisible(
+            initial.copy(preferredMode = CapsulePlaybackMode.AUDIO), "song", true))
+        assertFalse(capsuleVideoAmbientShouldStayVisible(initial, "next", true))
+        assertFalse(capsuleVideoAmbientShouldStayVisible(initial, "song", false))
+    }
+
     @Test fun liveFrameKeepsBlueAndRedSidesSeparate() {
         val bitmap = Bitmap.createBitmap(48, 28, Bitmap.Config.ARGB_8888)
         for (y in 0 until 28) for (x in 0 until 48) {
