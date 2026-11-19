@@ -1,164 +1,160 @@
+/*
+ * Capsule MUSIC — smooth GPU crossfades between actual 2D image-derived
+ * colour fields. All CPU rasterization runs on Dispatchers.Default, so even
+ * frequent video samples never block a play/pause frame or a user gesture.
+ */
 package com.nikhil.yt.ui.player
 
-import android.graphics.Bitmap
-import android.graphics.BitmapShader
-import android.graphics.Paint
-import android.graphics.RuntimeShader
-import android.graphics.Shader
-import android.os.Build
-import androidx.annotation.RequiresApi
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.requiredSize
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.graphics.*
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.math.cos
 
-internal const val VIDEO_AMBIENT_BLEND_DURATION_MS = 180
+internal const val VIDEO_AMBIENT_BLEND_DURATION_MS = 850
 
-internal fun capsuleAmbientPaletteAt(previous: List<Color>, currentTarget: List<Color>, progress: Float): List<Color> {
+/** Retained for callers that also interpolate a legacy seven-colour palette. */
+internal fun capsuleAmbientPaletteAt(
+    previous: List<Color>,
+    currentTarget: List<Color>,
+    progress: Float,
+): List<Color> {
     if (previous.size != currentTarget.size) return currentTarget
-    return previous.indices.map { lerp(previous[it], currentTarget[it], progress.coerceIn(0f, 1f)) }
+    val t = progress.coerceIn(0f, 1f)
+    return previous.indices.map { lerp(previous[it], currentTarget[it], t) }
 }
-
-internal const val CAPSULE_VIDEO_MOTION_SHADER = """
-uniform shader previous;
-uniform shader current;
-uniform float2 resolution;
-uniform float2 grid;
-uniform float progress;
-layout(color) uniform half4 floorColor;
-half4 main(float2 point) {
-    float2 uv = clamp(point / resolution, 0.0, 1.0);
-    float2 source = float2(uv.x, 0.16 + 0.64 * uv.y);
-    half3 light = mix(previous.eval(source * grid).rgb, current.eval(source * grid).rgb, progress);
-    float settle = uv.y * uv.y * (3.0 - 2.0 * uv.y);
-    float amount = 0.48 * (1.0 - settle) + 0.12;
-    half3 base = half3(0.042, 0.045, 0.050) + floorColor.rgb * 0.12;
-    return half4(mix(base, light, amount), 1.0);
-}
-"""
-
-@RequiresApi(33)
-internal class CapsuleVideoMotionShader {
-    val shader = RuntimeShader(CAPSULE_VIDEO_MOTION_SHADER)
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply { this.shader = this@CapsuleVideoMotionShader.shader; isDither = true }
-    fun bind(previous: Bitmap, current: Bitmap, floor: Color) {
-        fun input(bitmap: Bitmap) = BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply {
-            setFilterMode(BitmapShader.FILTER_MODE_LINEAR)
-        }
-        shader.setInputShader("previous", input(previous))
-        shader.setInputShader("current", input(current))
-        shader.setFloatUniform("grid", current.width.toFloat(), current.height.toFloat())
-        shader.setColorUniform("floorColor", floor.toArgb())
-    }
-    fun dimensions(width: Float, height: Float, progress: Float) {
-        shader.setFloatUniform("resolution", width, height)
-        shader.setFloatUniform("progress", progress.coerceIn(0f, 1f))
-    }
-}
-
-private data class VideoAmbientPaint(
-    val previous: Bitmap, val current: Bitmap,
-    val fallbackFrom: ImageBitmap?, val fallbackTo: ImageBitmap?,
-)
 
 @Composable
 internal fun CapsuleVideoAmbientBackdrop(
-    bands: List<Color>, modifier: Modifier = Modifier,
-    fallbackFloor: Color = Color(0xFF101016), coverFraction: Float = 0.52f,
-    tailFraction: Float = 0.06f, texture: Float = 0f, landscape: Boolean = false,
-    nearWhite: Boolean = false, field: CapsuleColorField? = null,
-    onFirstTextureReady: (() -> Unit)? = null, animated: Boolean = true,
+    bands: List<Color>,
+    modifier: Modifier = Modifier,
+    fallbackFloor: Color = Color(0xFF101016),
+    coverFraction: Float = 0.52f,
+    tailFraction: Float = 0.06f,
+    texture: Float = 0f,
+    landscape: Boolean = false,
+    nearWhite: Boolean = false,
+    field: CapsuleColorField? = null,
+    onFirstTextureReady: (() -> Unit)? = null,
+    animated: Boolean = true,
 ) {
+    // A draw-only frame clock: the faint reflected light drifts independently
+    // of the 700ms video readback. No image decode or raster work on vsync.
+    val ambientTime = rememberCapsuleAnimationTime(compact = false, running = animated)
+    // A callback change must not cancel a pending texture render.
     val currentReadyCallback by rememberUpdatedState(onFirstTextureReady)
-    val target = remember(field, bands, fallbackFloor) {
-        field ?: CapsuleColorField(CAPSULE_FIELD_COLUMNS, CAPSULE_FIELD_ROWS,
-            List(CAPSULE_FIELD_COLUMNS * CAPSULE_FIELD_ROWS) { i ->
-                immersiveSpatialBandColor(bands.ifEmpty { listOf(fallbackFloor) },
-                    (i % CAPSULE_FIELD_COLUMNS + 0.5f) / CAPSULE_FIELD_COLUMNS)
-            })
-    }
-    var previousField by remember { mutableStateOf(target) }
-    var targetField by remember { mutableStateOf(target) }
-    val modern = Build.VERSION.SDK_INT >= 33
-    var prepared by remember {
-        // Only 320 cells; prepare an already-retained field synchronously so
-        // resume never exposes the neutral backplate for one display frame.
-        val initial = if (modern) {
-            val texture = capsuleVideoFieldTexture(target)
-            VideoAmbientPaint(texture, texture, null, null)
-        } else null
-        mutableStateOf(initial)
-    }
+    var previousBands by remember { mutableStateOf(bands) }
+    var targetBands by remember { mutableStateOf(bands) }
+    var previousField by remember { mutableStateOf(field) }
+    var targetField by remember { mutableStateOf(field) }
+    var fromTexture by remember { mutableStateOf<ImageBitmap?>(null) }
+    var toTexture by remember { mutableStateOf<ImageBitmap?>(null) }
     val blend = remember { Animatable(1f) }
-    LaunchedEffect(target, fallbackFloor, animated) {
-        if (prepared != null && target == targetField && blend.value == 1f) {
+
+    LaunchedEffect(bands, field, fallbackFloor, coverFraction, tailFraction,
+        texture, landscape, nearWhite) {
+        // Geometry and palette are both LaunchedEffect keys: refresh the
+        // cached texture even if colours are unchanged but viewport changed.
+        val fresh = withContext(Dispatchers.Default) {
+            if (field != null) capsuleVideoSpatialBitmap(field, fallbackFloor)
+            else immersiveSpatialFieldBitmap(
+                bands, fallbackFloor, coverFraction, tailFraction, texture,
+                landscape, nearWhite, photoOverlay = false, field = null,
+            )
+        }
+        if (toTexture == null) {
+            previousBands = bands
+            targetBands = bands
+            previousField = field
+            targetField = field
+            toTexture = fresh
+            blend.snapTo(1f)
+            // At this point the page bitmap and the overlay readiness gate
+            // can be committed together in the next Compose frame.
             currentReadyCallback?.invoke()
             return@LaunchedEffect
         }
-        val visible = requireNotNull(capsuleFieldAt(previousField, targetField, blend.value))
-        val ready = withContext(Dispatchers.Default) {
-            VideoAmbientPaint(capsuleVideoFieldTexture(visible), capsuleVideoFieldTexture(target),
-                if (modern) null else capsuleVideoSpatialBitmap(visible, fallbackFloor),
-                if (modern) null else capsuleVideoSpatialBitmap(target, fallbackFloor))
+        val currentProgress = blend.value
+        // Never jump back to the old target when video changes again before
+        // the 1.85 s blend finished.
+        val visibleBands = capsuleAmbientPaletteAt(
+            previousBands, targetBands, currentProgress,
+        )
+        val visibleField = capsuleFieldAt(
+            previousField, targetField, currentProgress,
+        )
+        val visibleImage = withContext(Dispatchers.Default) {
+            if (visibleField != null) capsuleVideoSpatialBitmap(visibleField, fallbackFloor)
+            else immersiveSpatialFieldBitmap(
+                visibleBands, fallbackFloor, coverFraction, tailFraction,
+                texture, landscape, nearWhite,
+                photoOverlay = false, field = null,
+            )
         }
-        val first = prepared == null
-        previousField = visible
-        targetField = target
-        // Move the blend to the old visible frame BEFORE swapping textures:
-        // otherwise one compositor frame can draw the new target at progress=1.
-        blend.snapTo(if (first || !animated) 1f else 0f)
-        prepared = ready
+        blend.snapTo(0f)
+        previousBands = visibleBands
+        previousField = visibleField
+        targetBands = bands
+        targetField = field
+        fromTexture = visibleImage
+        toTexture = fresh
         currentReadyCallback?.invoke()
-        if (!first && animated) blend.animateTo(1f, tween(VIDEO_AMBIENT_BLEND_DURATION_MS, easing = LinearEasing))
+        blend.animateTo(
+            1f,
+            tween(durationMillis = VIDEO_AMBIENT_BLEND_DURATION_MS,
+                easing = FastOutSlowInEasing),
+        )
+        // No second texture survives past the completed transition.
+        fromTexture = null
     }
-    val engine = if (Build.VERSION.SDK_INT >= 33) remember { CapsuleVideoMotionShader() } else null
-    // Rebind only for new immutable textures, never for progress ticks,
-    // seekbar updates or unrelated recompositions of Player.
-    // Shader input binding must be atomic with a cached draw; a separate
-    // DisposableEffect could expose the previous pair for one frame.
-    // The light field is low-frequency. A small GPU layer carries smooth
-    // display-clock interpolation without shading every physical screen pixel.
-    BoxWithConstraints(modifier.clipToBounds()) {
-        val widthPx = constraints.maxWidth.coerceAtLeast(1)
-        val heightPx = constraints.maxHeight.coerceAtLeast(1)
-        val renderWidth = minOf(widthPx, 360)
-        val renderHeight = (heightPx.toFloat() * renderWidth / widthPx).roundToInt().coerceAtLeast(1)
-        val density = LocalDensity.current
-        Box(Modifier.requiredSize(with(density) { renderWidth.toDp() }, with(density) { renderHeight.toDp() })
-            .graphicsLayer {
-                scaleX = widthPx.toFloat() / renderWidth; scaleY = heightPx.toFloat() / renderHeight
-                transformOrigin = TransformOrigin(0f, 0f)
-                compositingStrategy = CompositingStrategy.Offscreen
-            }.drawWithCache {
-                val ready = prepared
-                if (Build.VERSION.SDK_INT >= 33) ready?.let {
-                    engine?.bind(it.previous, it.current, fallbackFloor)
+
+    Box(
+        modifier = modifier.drawWithCache {
+            val dst = IntSize(size.width.roundToInt().coerceAtLeast(1),
+                size.height.roundToInt().coerceAtLeast(1))
+            val reflectedLight = CachedSoftLight(
+                lerp(bands.firstOrNull() ?: fallbackFloor, Color.White, 0.22f),
+                maxOf(size.width, size.height) * 0.78f, 0.055f, 0.88f,
+            )
+            onDrawBehind {
+                val incoming = toTexture
+                val outgoing = fromTexture
+                val t = blend.value.coerceIn(0f, 1f)
+                if (outgoing != null && incoming != null && t < 1f) {
+                    drawImage(image = outgoing, dstSize = dst,
+                        filterQuality = FilterQuality.Medium)
+                    drawImage(image = incoming, dstSize = dst,
+                        alpha = t, filterQuality = FilterQuality.Medium)
+                } else if (incoming != null) {
+                    drawImage(image = incoming, dstSize = dst,
+                        filterQuality = FilterQuality.Medium)
                 }
-                val dst = IntSize(size.width.roundToInt(), size.height.roundToInt())
-                onDrawBehind {
-                    if (Build.VERSION.SDK_INT >= 33 && engine != null && ready != null) {
-                        engine.dimensions(size.width, size.height, blend.value)
-                        drawIntoCanvas { it.nativeCanvas.drawPaint(engine.paint) }
-                    } else if (ready != null) {
-                        if (blend.value < 1f) ready.fallbackFrom?.let {
-                            drawImage(it, dstSize = dst, filterQuality = FilterQuality.Medium)
-                        }
-                        ready.fallbackTo?.let { drawImage(it, dstSize = dst, alpha = blend.value, filterQuality = FilterQuality.Medium) }
-                    }
-                }
-            })
-    }
+                // YouTube-like breathing, without oscillating the entire palette
+                // or restarting the video texture transition.
+                val phase = ambientTime.value / 14_000.0
+                reflectedLight.draw(this, androidx.compose.ui.geometry.Offset(
+                    size.width * (0.43f + 0.13f * sin(phase).toFloat()),
+                    size.height * (0.27f + 0.10f * cos(phase * 0.77).toFloat()),
+                ))
+            }
+        },
+    )
 }

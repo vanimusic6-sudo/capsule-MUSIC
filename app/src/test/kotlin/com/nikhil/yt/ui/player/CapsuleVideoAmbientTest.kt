@@ -76,8 +76,8 @@ class CapsuleVideoAmbientTest {
         assertTrue(kotlin.math.abs(partlyMixed[0].red - interrupted[0].red) < 0.0001f)
         assertTrue(partlyMixed[0].red > cool[0].red)
         assertTrue(VIDEO_AMBIENT_CAPTURE_INTERVAL_MS in 650L..750L)
-        assertTrue("Motion interpolation must track frames within a small fraction of a second",
-            VIDEO_AMBIENT_BLEND_DURATION_MS in 150..210)
+        assertTrue("Restored design uses a gentle long crossfade over the 700 ms video sampling cadence",
+            VIDEO_AMBIENT_BLEND_DURATION_MS == 850)
     }
 
     @Test fun blackOrInvalidVideoFramesDoNotReplaceExistingPalette() {
