@@ -77,7 +77,7 @@ class CapsuleVideoAmbientTest {
         assertTrue(partlyMixed[0].red > cool[0].red)
         assertTrue(VIDEO_AMBIENT_CAPTURE_INTERVAL_MS in 650L..750L)
         assertTrue("Motion interpolation must track frames within a small fraction of a second",
-            VIDEO_AMBIENT_BLEND_DURATION_MS in 750..900)
+            VIDEO_AMBIENT_BLEND_DURATION_MS in 150..210)
     }
 
     @Test fun blackOrInvalidVideoFramesDoNotReplaceExistingPalette() {
