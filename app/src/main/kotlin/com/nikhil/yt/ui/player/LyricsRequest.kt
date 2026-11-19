@@ -48,6 +48,7 @@ private val inFlight: MutableSet<String> = Collections.synchronizedSet(mutableSe
 internal fun RequestLyricsIfMissing(
     mediaMetadata: MediaMetadata,
     currentLyrics: LyricsEntity?,
+    requestDelayMs: Long = REQUEST_DELAY_MS,
 ) {
     val context = LocalContext.current
     val database = LocalDatabase.current
@@ -62,11 +63,11 @@ internal fun RequestLyricsIfMissing(
      */
     val onScreen = appIsOnScreen()
 
-    LaunchedEffect(mediaMetadata.id, currentLyrics, onScreen) {
+    LaunchedEffect(mediaMetadata.id, currentLyrics, onScreen, requestDelayMs) {
         if (currentLyrics != null) return@LaunchedEffect
         if (!onScreen) return@LaunchedEffect
 
-        delay(REQUEST_DELAY_MS)
+        delay(requestDelayMs.coerceAtLeast(0L))
 
         val id = mediaMetadata.id
         if (!inFlight.add(id)) return@LaunchedEffect
