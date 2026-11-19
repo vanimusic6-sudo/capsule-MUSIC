@@ -44,6 +44,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.State
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -1018,8 +1019,25 @@ private fun CapsulePlayerLyricsHost(
             // Only the card below the viewport is mounted when the user approaches it.
             val viewportHeight = maxHeight
             val viewportHeightPx = constraints.maxHeight.toFloat()
+            // Predict only a *real* downward gesture. Sitting in the normal
+            // player (scroll=0) does not start a lyrics network request. Once
+            // the page moves ~2.5% towards its card, prepare the CURRENT song;
+            // card rendering itself still waits until ~12% travel.
+            val lyricsFetchIntent by remember(scrollState, viewportHeightPx) {
+                derivedStateOf { scrollState.value > viewportHeightPx * 0.025f }
+            }
             val lyricsCardReady by remember(scrollState, viewportHeightPx) {
                 derivedStateOf { scrollState.value > viewportHeightPx * 0.12f }
+            }
+            if (onScreen && playerState.isExpandedOrExpanding &&
+                lyricsFetchIntent && !queueState.isExpanded && !showLyrics
+            ) {
+                val existing by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
+                RequestLyricsIfMissing(
+                    mediaMetadata = mediaMetadata,
+                    currentLyrics = existing?.takeIf { it.id == mediaMetadata.id },
+                    requestDelayMs = 260L,
+                )
             }
             // Keep the actual compact lyrics in place while the fullscreen
             // layer grows over them. Unmount their lyric renderer only once
