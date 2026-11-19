@@ -11,6 +11,12 @@ import kotlin.math.abs
 internal object YouTubeMusicVideoMatcher {
     const val MIN_MATCH_SCORE = 115
     const val STRONG_MATCH_SCORE = 225
+    // An artist-verified clip from the natural Videos query should not
+    // launch another metadata search solely to chase a higher score.
+    const val FIRST_QUERY_ACCEPT_SCORE = 170
+
+    fun needsSecondQuery(bestScore: Int?): Boolean =
+        bestScore == null || bestScore < FIRST_QUERY_ACCEPT_SCORE
 
     fun scoreCandidate(
         sourceTitle: String,
