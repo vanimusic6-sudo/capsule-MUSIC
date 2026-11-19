@@ -8,6 +8,7 @@
 
 package com.nikhil.yt
 
+import com.nikhil.yt.ui.player.CapsuleMotionPlaybackSession
 import com.nikhil.yt.ui.component.StandardHeaderTitle
 import com.nikhil.yt.ui.utils.liveSavedStateHandle
 import com.nikhil.yt.ui.screens.ScreenTransitions
@@ -399,6 +400,9 @@ class MainActivity : ComponentActivity() {
         // Only clear/stop presence when the activity is actually finishing (not on rotation)
         // and do not clear it for transient configuration changes.
         if (isFinishing && !isChangingConfigurations) {
+            // Canvas is process-retained across sheet closure and background.
+            // Actually finishing the Activity is its one explicit stop point.
+            CapsuleMotionPlaybackSession.release()
             try {
                 DiscordPresenceManager.stop()
             } catch (error: Exception) {

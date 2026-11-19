@@ -34,6 +34,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.runtime.derivedStateOf
@@ -184,6 +185,7 @@ internal fun ImmersiveAudioScene(
     background: ImageBitmap,
     artworkHeight: Dp,
     sceneAlpha: () -> Float,
+    mediaId: String,
     artwork: @Composable () -> Unit,
 ) {
     Box(Modifier.fillMaxSize().graphicsLayer {
@@ -194,6 +196,27 @@ internal fun ImmersiveAudioScene(
             bitmap = background, contentDescription = null,
             contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize(),
         )
+        // The SAME frame-sampled spatial colour field as the regular Capsule
+        // video wallpaper. This moves with Canvas itself rather than staying
+        // attached to a static image while the cover visibly changes colours.
+        val liveCanvasFrame = CapsuleMotionPlaybackSession.ambientFrame
+            ?.takeIf { it.mediaId == mediaId }
+        val canvasBackdropAlpha by animateFloatAsState(
+            targetValue = if (liveCanvasFrame != null) 1f else 0f,
+            animationSpec = tween(500),
+            label = "capsuleCanvasBackdropHandoff",
+        )
+        if (liveCanvasFrame != null) {
+            Box(Modifier.fillMaxSize().graphicsLayer { alpha = canvasBackdropAlpha }) {
+                CapsuleVideoAmbientBackdrop(
+                    bands = liveCanvasFrame.bands,
+                    field = liveCanvasFrame.field,
+                    animated = true,
+                    modifier = Modifier.fillMaxSize(),
+                    fallbackFloor = Color(0xFF111116),
+                )
+            }
+        }
         Box(
             Modifier.fillMaxWidth().height(artworkHeight + 1.dp)
                 .clipToBounds()
@@ -976,6 +999,7 @@ internal fun CapsuleImmersiveContent(
                         background = preparedPaint,
                         artworkHeight = artworkHeight,
                         sceneAlpha = { sceneRevealAlpha.value },
+                        mediaId = mediaMetadata.id,
                     ) {
                         Box(Modifier.fillMaxSize()) {
                             Image(
@@ -990,9 +1014,14 @@ internal fun CapsuleImmersiveContent(
                             // Native video is composited INSIDE the existing
                             // blurred-photo feather; the screen's background,
                             // text and audio service remain unchanged.
+                            // Keep a previously started Canvas mounted
+                            // during audio->VIDEO and its reverse. Discovery is
+                            // gated separately: the outgoing native texture
+                            // fades WITH the photo, not via a static placeholder.
                             CapsuleImmersiveAnimatedArtwork(
                                 metadata = mediaMetadata,
-                                active = motionArtworkActive,
+                                discover = motionArtworkActive,
+                                enabled = motionArtworkEnabled,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }

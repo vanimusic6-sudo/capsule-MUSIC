@@ -11,7 +11,7 @@ class CapsuleMotionArtworkGateTest {
         ))
     }
 
-    @Test fun noSecondDecoderWhenVideoOrPlayerIsHidden() {
+    @Test fun newLookupNeverStartsWhileVideoOrPlayerIsHidden() {
         assertFalse(capsuleShouldPlayMotionArtwork(true, true, true, true, true, false))
         assertFalse(capsuleShouldPlayMotionArtwork(true, true, true, true, false, true))
         assertFalse(capsuleShouldPlayMotionArtwork(true, true, false, true, false, false))

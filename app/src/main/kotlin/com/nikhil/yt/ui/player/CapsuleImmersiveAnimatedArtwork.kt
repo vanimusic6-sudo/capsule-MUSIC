@@ -1,16 +1,19 @@
 /*
- * Capsule MUSIC — a silent Immersion-only animated-artwork layer.
- * Independent from MusicService video playback; the static cover remains
- * underneath until Media3 has actually rendered its first frame.
- * GPL-3.0
+ * Capsule MUSIC — persistent, silent Canvas surface for Immersion.
+ * Native renderer is mounted only while the player is visible; its ExoPlayer
+ * belongs to CapsuleMotionPlaybackSession and survives sheet closure.
+ * GPL-3.0.
  */
 @file:Suppress("UnsafeOptInUsageError")
 
 package com.nikhil.yt.ui.player
 
+import android.graphics.Bitmap
 import android.view.LayoutInflater
-import androidx.compose.animation.core.tween
+import android.view.TextureView
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -23,23 +26,26 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.C
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MimeTypes
-import androidx.media3.common.PlaybackException
+import androidx.compose.runtime.withFrameNanos
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.video.VideoFrameMetadataListener
 import androidx.media3.ui.PlayerView
 import com.nikhil.yt.R
 import com.nikhil.yt.canvas.CapsuleMotionArtwork
-import com.nikhil.yt.canvas.CapsuleMotionClip
-import com.nikhil.yt.canvas.CapsuleMotionSource
 import com.nikhil.yt.models.MediaMetadata
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 
+/**
+ * The old guard still defines discovery, but NOT surface lifetime:
+ * suppress new requests while paused/hidden/video, without dropping the
+ * retained Canvas timeline or replacing the video with the album image.
+ */
 internal fun capsuleShouldPlayMotionArtwork(
     enabled: Boolean,
     visible: Boolean,
@@ -50,113 +56,152 @@ internal fun capsuleShouldPlayMotionArtwork(
 ): Boolean = enabled && visible && controlsActive && isPlaying &&
     !presentingVideo && !videoNeedsSurface
 
-/**
- * Only composed inside ImmersiveAudioScene's EXISTING feathered artwork crop.
- * The same photo and blurred page remain mounted as the fallback. The video is
- * decoded once by the Android hardware decoder; no WebView, frame polling,
- * synthetic per-frame bitmaps or extra AudioTrack.
- */
 @Composable
 internal fun CapsuleImmersiveAnimatedArtwork(
     metadata: MediaMetadata,
-    active: Boolean,
+    discover: Boolean,
+    enabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    var canvasOnly by remember(metadata.id) { mutableStateOf(false) }
-    var unusable by remember(metadata.id) { mutableStateOf(false) }
-    var clip by remember(metadata.id, canvasOnly) { mutableStateOf<CapsuleMotionClip?>(null) }
+    val session = CapsuleMotionPlaybackSession
+    val context = LocalContext.current
 
-    if (!active || unusable) return
-
-    val artist = metadata.artists.firstOrNull()?.name.orEmpty()
-    LaunchedEffect(metadata.id, metadata.title, artist, metadata.album?.title,
-        metadata.duration, canvasOnly) {
-        clip = null
+    LaunchedEffect(enabled, discover, metadata.id, metadata.title,
+        metadata.artists.firstOrNull()?.name, session.appleFailed) {
+        if (!enabled) {
+            session.release()
+            return@LaunchedEffect
+        }
+        // No lookup unless the user has ACTUALLY opened Immersion.
+        if (!discover) return@LaunchedEffect
+        session.begin(metadata.id)
+        if (session.hasPrepared(metadata.id) || session.permanentFailure) return@LaunchedEffect
+        val artist = metadata.artists.firstOrNull()?.name.orEmpty()
         if (metadata.title.isBlank() || artist.isBlank()) return@LaunchedEffect
-        clip = withContext(Dispatchers.IO) {
+        val clip = withContext(Dispatchers.IO) {
             CapsuleMotionArtwork.resolve(
                 song = metadata.title,
                 artist = artist,
                 album = metadata.album?.title,
                 durationSeconds = metadata.duration,
-                canvasOnly = canvasOnly,
+                canvasOnly = session.appleFailed,
             )
+        }
+        if (clip != null && session.isCurrent(metadata.id)) {
+            session.play(context.applicationContext, metadata.id, clip)
         }
     }
 
-    val current = clip ?: return
-    key(metadata.id, current.uri) {
-        val context = LocalContext.current
-        var firstFrame by remember { mutableStateOf(false) }
-        val opacity by animateFloatAsState(
-            targetValue = if (firstFrame) 1f else 0f,
-            animationSpec = tween(durationMillis = 650),
-            label = "capsuleArtworkFirstFrame",
+    val current = session.clip?.takeIf { session.isCurrent(metadata.id) } ?: return
+    val videoPlayer = session.player ?: return
+
+    key(metadata.id, current.uri, videoPlayer) {
+        var attachedView by remember { mutableStateOf<PlayerView?>(null) }
+        var surfaceReady by remember { mutableStateOf(false) }
+        val frameOpacity by animateFloatAsState(
+            targetValue = if (surfaceReady) 1f else 0f,
+            animationSpec = tween(durationMillis = 400),
+            label = "capsuleCanvasFirstFrame",
         )
-        // This is a *different* player from MusicService. Its audio renderer is
-        // disabled as well as muted, so it cannot steal music focus or output.
-        val videoPlayer = remember(current.uri) {
-            ExoPlayer.Builder(context.applicationContext).build().apply {
-                repeatMode = Player.REPEAT_MODE_ONE
-                volume = 0f
-                trackSelectionParameters = trackSelectionParameters.buildUpon()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, true)
-                    .setMaxVideoSize(720, 1280)
-                    .setMaxVideoBitrate(2_500_000)
-                    .build()
-                setMediaItem(
-                    MediaItem.Builder()
-                        .setUri(current.uri)
-                        .setMimeType(
-                            if (current.isHls) MimeTypes.APPLICATION_M3U8
-                            else MimeTypes.VIDEO_MP4,
-                        ).build()
+
+        // On re-entry the last CANVAS frame (not the album cover) remains in
+        // front while TextureView waits for its first newly rendered frame.
+        // The native clip keeps advancing in the retained Media3 player.
+        Box(modifier.fillMaxSize()) {
+            if (!surfaceReady) {
+                session.retainedFrame?.let { picture ->
+                    Image(
+                        bitmap = picture, contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+            Box(Modifier.fillMaxSize().graphicsLayer { alpha = frameOpacity }) {
+                AndroidView(
+                    factory = { ctx ->
+                        (LayoutInflater.from(ctx).inflate(
+                            R.layout.capsule_motion_artwork_view, null, false,
+                        ) as PlayerView).apply {
+                            useController = false
+                            setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+                            keepScreenOn = false
+                            player = videoPlayer
+                            attachedView = this
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                    onRelease = { view ->
+                        val texture = view.videoSurfaceView as? TextureView
+                        if (texture != null && texture.isAvailable && surfaceReady) {
+                            // One bounded snapshot per sheet unmount. Never
+                            // capture every full video frame for the transition.
+                            runCatching { texture.getBitmap(256, 256) }.getOrNull()
+                                ?.let { session.retain(it) }
+                        }
+                        view.player = null // detach surface, NOT ExoPlayer timeline
+                        if (attachedView === view) attachedView = null
+                    },
                 )
             }
         }
-        DisposableEffect(videoPlayer) {
+
+        DisposableEffect(videoPlayer, attachedView) {
             val listener = object : Player.Listener {
                 override fun onRenderedFirstFrame() {
-                    firstFrame = true
-                }
-
-                override fun onPlayerError(error: PlaybackException) {
-                    // Apple's media stream may expire or use a codec the device
-                    // doesn't support. Try the track-specific Spotify Canvas
-                    // ONCE, then leave the static photo untouched.
-                    if (current.source == CapsuleMotionSource.APPLE_ARTWORK && !canvasOnly) {
-                        canvasOnly = true
-                    } else {
-                        unusable = true
-                    }
+                    surfaceReady = true
                 }
             }
             videoPlayer.addListener(listener)
-            videoPlayer.prepare()
-            videoPlayer.playWhenReady = true
-            onDispose {
-                videoPlayer.playWhenReady = false
-                videoPlayer.removeListener(listener)
-                videoPlayer.stop()
-                videoPlayer.release()
-            }
+            onDispose { videoPlayer.removeListener(listener) }
         }
-        // PlayerView is XML-configured for TextureView (not SurfaceView), so
-        // Android's native surface participates in Capsule's fade / clip mask.
-        Box(modifier.fillMaxSize().graphicsLayer { alpha = opacity }) {
-            AndroidView(
-                factory = { ctx ->
-                    (LayoutInflater.from(ctx).inflate(
-                        R.layout.capsule_motion_artwork_view, null, false,
-                    ) as PlayerView).apply {
-                        useController = false
-                        setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
-                        keepScreenOn = false
-                        player = videoPlayer
-                    }
-                },
-                modifier = Modifier.fillMaxSize(),
+
+        // Reuse Capsule's existing 48x28 video-spatial sampler and smooth
+        // backdrop shader. Only capture while a canvas TextureView is shown.
+        // Decoder-frame metadata drives the loop; NO polling interval or
+        // second decoder. At most ~6.7 small GPU readbacks per second.
+        LaunchedEffect(videoPlayer, attachedView, surfaceReady, metadata.id) {
+            val view = attachedView?.videoSurfaceView as? TextureView
+                ?: return@LaunchedEffect
+            if (!surfaceReady) return@LaunchedEffect
+            val buffer = Bitmap.createBitmap(
+                VIDEO_AMBIENT_SAMPLE_WIDTH, VIDEO_AMBIENT_SAMPLE_HEIGHT,
+                Bitmap.Config.ARGB_8888,
             )
+            val lightFilter = CapsuleVideoLightFilter()
+            val frames = Channel<Long>(Channel.CONFLATED)
+            val listener = VideoFrameMetadataListener { _, releaseNs, _, _ ->
+                frames.trySend(releaseNs)
+            }
+            videoPlayer.setVideoFrameMetadataListener(listener)
+            try {
+                frames.trySend(System.nanoTime())
+                var lastSampleNs = 0L
+                var errors = 0
+                for (signal in frames) {
+                    if (!isActive || !view.isAvailable || !view.isShown) break
+                    val now = System.nanoTime()
+                    if (now - lastSampleNs < VIDEO_AMBIENT_CAPTURE_INTERVAL_MS * 1_000_000L) continue
+                    withFrameNanos { }
+                    try {
+                        view.getBitmap(buffer)
+                        val frame = withContext(Dispatchers.Default) {
+                            capsuleVideoAmbientFrameFromBitmap(
+                                buffer, metadata.id, lightFilter,
+                            )
+                        } ?: continue
+                        session.onFrame(frame)
+                        lastSampleNs = now
+                        errors = 0
+                    } catch (_: RuntimeException) {
+                        if (++errors >= 3) break
+                    }
+                }
+            } finally {
+                videoPlayer.clearVideoFrameMetadataListener(listener)
+                frames.close()
+                buffer.recycle()
+            }
         }
     }
 }

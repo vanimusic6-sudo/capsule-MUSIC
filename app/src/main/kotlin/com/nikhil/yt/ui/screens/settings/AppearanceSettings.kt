@@ -718,7 +718,10 @@ fun AppearanceSettings(
                 description = stringResource(R.string.capsule_motion_artwork_description),
                 icon = { Icon(painterResource(R.drawable.album), contentDescription = null) },
                 checked = motionArtworkEnabled,
-                onCheckedChange = onMotionArtworkEnabledChange,
+                onCheckedChange = { enabled ->
+                if (!enabled) com.nikhil.yt.ui.player.CapsuleMotionPlaybackSession.release()
+                onMotionArtworkEnabledChange(enabled)
+            },
             )
         }
 
