@@ -86,6 +86,29 @@ class CachedAudioDownloaderTest {
         assertTrue(saved)
     }
 
+    @Test(timeout = 15_000) fun offlineCompletionWaitsForArtworkEvenIfAdmissionFilledCache() = withCaches { _, target ->
+        var artworkSaved = false
+        var prematurelyCompleted = false
+        // Simulate another download filling the target cache while the network
+        // admission is pending. The resolver must not be called in this case.
+        val downloader = ResolvingAudioDownloader(
+            "track", target, { error("Cache was filled during admission") },
+            { error("No upstream is necessary") },
+            saveArtwork = {
+                kotlinx.coroutines.delay(90)
+                artworkSaved = true
+            },
+            awaitAdmission = { write(target, "track", ByteArray(1_000) { 4 }) },
+            createCachedDownloader = { null },
+        )
+        downloader.download { _, _, percent ->
+            if (percent == 100f && !artworkSaved) prematurelyCompleted = true
+        }
+        assertTrue(AudioCacheIdentity.isComplete(target, "track"))
+        assertTrue(artworkSaved)
+        assertFalse("100% must not be published before the cover task is joined", prematurelyCompleted)
+    }
+
     @Test(timeout = 15_000) fun coverFailureDoesNotInvalidateTheSavedAudio() = withCaches { source, target ->
         write(source, "capsule:audio:track:251:1000", ByteArray(1_000) { 2 })
         var completed = false

@@ -119,7 +119,6 @@ internal class ResolvingAudioDownloader(
             checkActive()
             if (AudioCacheIdentity.isComplete(cache, mediaId)) {
                 startArtwork()
-                completed(progressListener)
                 return
             }
             while (true) {
@@ -145,7 +144,6 @@ internal class ResolvingAudioDownloader(
                     }
                     checkActive()
                     AudioCacheIdentity.requireCompleteDownload(cache, mediaId, playback.format.contentLength)
-                    completed(progressListener)
                     return
                 } catch (failure: IOException) {
                     checkActive()
