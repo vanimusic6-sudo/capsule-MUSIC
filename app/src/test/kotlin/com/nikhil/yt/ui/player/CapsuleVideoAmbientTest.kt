@@ -36,17 +36,17 @@ class CapsuleVideoAmbientTest {
         assertFalse(capsuleVideoAmbientShouldStayVisible(initial, "song", false))
     }
 
-    @Test fun rebufferRetainsLightFilterHistoryInsteadOfResettingBrightness() {
+    @Test fun rebufferKeepsLastSampleWithoutResettingTheScene() {
         val memory = CapsuleVideoAmbientCaptureMemory()
-        val dark = CapsuleColorField(20, 16, List(320) { androidx.compose.ui.graphics.Color.Black })
-        val bright = CapsuleColorField(20, 16, List(320) { androidx.compose.ui.graphics.Color.White })
-        val first = memory.lightFilter.apply(dark, 1_000_000_000L)
-        assertTrue(memory.shouldPublish(CapsuleVideoAmbientFrame("song", capsuleBandsFromField(first), first)))
-        // Buffering restarts capture, not the remembered filter.
-        val after = memory.lightFilter.apply(bright, 1_150_000_000L)
-        assertTrue(after.cells.first().red < 0.3f)
-        assertTrue(memory.shouldPublish(CapsuleVideoAmbientFrame("song", capsuleBandsFromField(after), after)))
-        assertFalse(memory.shouldPublish(CapsuleVideoAmbientFrame("song", capsuleBandsFromField(after), after)))
+        val firstField = CapsuleColorField(20, 16, List(320) { androidx.compose.ui.graphics.Color.Blue })
+        val nextField = CapsuleColorField(20, 16, List(320) { androidx.compose.ui.graphics.Color.Red })
+        val first = CapsuleVideoAmbientFrame("song", capsuleBandsFromField(firstField), firstField)
+        val second = CapsuleVideoAmbientFrame("song", capsuleBandsFromField(nextField), nextField)
+        assertTrue(memory.shouldPublish(first))
+        assertFalse(memory.shouldPublish(first))
+        // Buffering only restarts the capture coroutine; it retains memory.
+        assertTrue(memory.shouldPublish(second))
+        assertFalse(memory.shouldPublish(second))
     }
 
     @Test fun liveFrameKeepsBlueAndRedSidesSeparate() {
@@ -75,9 +75,9 @@ class CapsuleVideoAmbientTest {
         val interrupted = capsuleAmbientPaletteAt(partlyMixed, cool, 0f)
         assertTrue(kotlin.math.abs(partlyMixed[0].red - interrupted[0].red) < 0.0001f)
         assertTrue(partlyMixed[0].red > cool[0].red)
-        assertTrue(VIDEO_AMBIENT_CAPTURE_INTERVAL_MS in 130L..170L)
+        assertTrue(VIDEO_AMBIENT_CAPTURE_INTERVAL_MS in 650L..750L)
         assertTrue("Motion interpolation must track frames within a small fraction of a second",
-            VIDEO_AMBIENT_BLEND_DURATION_MS in 80..180)
+            VIDEO_AMBIENT_BLEND_DURATION_MS in 750..900)
     }
 
     @Test fun blackOrInvalidVideoFramesDoNotReplaceExistingPalette() {
