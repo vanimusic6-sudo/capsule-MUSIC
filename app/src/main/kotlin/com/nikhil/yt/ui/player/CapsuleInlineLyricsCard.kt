@@ -87,13 +87,25 @@ internal fun capsuleInlineLyricsStops(colors: List<Color>): List<Color> {
     val upper = colors.getOrNull(0) ?: Color(0xFF1A1B21)
     val lower = colors.getOrNull(1) ?: upper
     val tail = colors.getOrNull(2) ?: lower
-    // The old palette was ~70% flat grey even when the real video had a
-    // violet/blue floor. Restore the hue while keeping white lyrics legible.
-    return listOf(
-        lerp(ink, upper, 0.65f),
-        lerp(ink, lower, 0.47f),
-        lerp(ink, tail, 0.34f),
-    )
+    // Keep the real Immersion hue, but protect legibility on near-white,
+    // pale-yellow and other very bright covers. Avoid dimming the *bottom*
+    // much more than the top: that produces a visible artificial dark band.
+    val brightCover = listOf(upper, lower, tail).any { color ->
+        maxOf(color.red, color.green, color.blue) > 0.86f
+    }
+    return if (brightCover) {
+        listOf(
+            lerp(ink, upper, 0.52f),
+            lerp(ink, lower, 0.50f),
+            lerp(ink, tail, 0.49f),
+        )
+    } else {
+        listOf(
+            lerp(ink, upper, 0.65f),
+            lerp(ink, lower, 0.47f),
+            lerp(ink, tail, 0.34f),
+        )
+    }
 }
 
 /**
