@@ -70,8 +70,9 @@ object CapsuleAnonymousSession {
         query: String,
         params: String?,
         client: YouTubeClient = YouTubeClient.WEB_REMIX,
+        loadVisitorData: Boolean = true,
     ): SearchResponse {
-        prepare(loadVisitorData = false)
+        prepare(loadVisitorData = loadVisitorData)
 
         return innerTube
             .search(
