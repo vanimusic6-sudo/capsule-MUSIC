@@ -95,6 +95,7 @@ object CapsuleAnonymousSession {
             playlistSetVideoId = null,
             index = null,
             params = null,
+            audioVideoCounterpart = true,
         ).body<NextResponse>()
     }
 
