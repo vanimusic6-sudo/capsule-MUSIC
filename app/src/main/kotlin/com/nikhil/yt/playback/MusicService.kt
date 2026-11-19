@@ -6205,6 +6205,11 @@ class MusicService :
         } catch (error: Exception) {
             reportRecoverableException("MusicService", "release media session", error)
         }
+        // The callback owns a separate Job, not scopeJob. Its external
+        // controller browse/search requests must not outlive this service.
+        if (::mediaLibrarySessionCallback.isInitialized) {
+            mediaLibrarySessionCallback.dispose()
+        }
         try {
             crossfadeAudio?.release()
             crossfadeAudio = null
