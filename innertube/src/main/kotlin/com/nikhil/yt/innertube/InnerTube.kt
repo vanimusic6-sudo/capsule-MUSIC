@@ -9,6 +9,7 @@
 package com.nikhil.yt.innertube
 
 import com.nikhil.yt.innertube.models.MediaInfo
+import com.nikhil.yt.innertube.models.WatchEndpoint
 import com.nikhil.yt.innertube.models.ReturnYouTubeDislikeResponse
 import com.nikhil.yt.innertube.models.YouTubeClient
 import com.nikhil.yt.innertube.models.YouTubeLocale
@@ -422,6 +423,7 @@ class InnerTube(injectedClient: HttpClient? = null) {
         index: Int?,
         params: String?,
         continuation: String? = null,
+        audioVideoCounterpart: Boolean = false,
     ) = withRetry {
         httpClient.post("next") {
             ytClient(client, setLogin = true)
@@ -433,7 +435,16 @@ class InnerTube(injectedClient: HttpClient? = null) {
                     playlistSetVideoId = playlistSetVideoId,
                     index = index,
                     params = params,
-                    continuation = continuation
+                    continuation = continuation,
+                    enablePersistentPlaylistPanel = true.takeIf { audioVideoCounterpart },
+                    isAudioOnly = true.takeIf { audioVideoCounterpart },
+                    tunerSettingValue = "AUTOMIX_SETTING_NORMAL".takeIf { audioVideoCounterpart },
+                    watchEndpointMusicSupportedConfigs = if (audioVideoCounterpart)
+                        WatchEndpoint.WatchEndpointMusicSupportedConfigs(
+                            WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig(
+                                WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.MUSIC_VIDEO_TYPE_ATV
+                            )
+                        ) else null,
                 )
             )
         }
