@@ -119,12 +119,6 @@ internal fun CapsuleLyricsVolumeSlider(
                     size = Size(fill, trackHeight),
                     cornerRadius = CornerRadius(min(radius, fill / 2f)),
                 )
-                val tickX = 10.dp.toPx()
-                val tickWidth = 2.7.dp.toPx()
-                val tickStride = 11.dp.toPx()
-                val tickHeight = min(14.dp.toPx(), trackHeight - 8.dp.toPx())
-                // Keep the bright fill simple. Markers live on BOTH sides
-                // of the position so the remaining levels do not disappear.
             }
         }
         val tickX = 10.dp.toPx()
@@ -148,9 +142,6 @@ internal fun CapsuleLyricsVolumeSlider(
                 size = Size(tickWidth, tickHeight),
                 cornerRadius = CornerRadius(tickWidth / 2f),
             )
-        }
-        //
-            }
         }
         drawRoundRect(
             color = Color.White.copy(alpha = 0.11f),
