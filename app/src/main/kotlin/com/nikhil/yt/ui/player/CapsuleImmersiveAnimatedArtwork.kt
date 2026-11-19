@@ -10,7 +10,7 @@ package com.nikhil.yt.ui.player
 
 import android.view.LayoutInflater
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.animateFloatAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
