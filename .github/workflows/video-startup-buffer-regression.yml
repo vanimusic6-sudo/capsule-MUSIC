@@ -43,10 +43,14 @@ jobs:
             "$SDKMANAGER" 'platforms;android-37.1'
           fi
           echo 'unqualifiedResLocale=en-US' > app/src/main/res/resources.properties
+      - name: Verify strict Android security boundaries
+        run: python3 scripts/capsule_integrity_gate.py
       - name: Verify VIDEO buffers, byte-resume, and artwork
         run: >-
           gradle :app:testUniversalDebugUnitTest
           --tests 'com.nikhil.yt.playback.audio.*'
+          --tests 'com.nikhil.yt.playback.DownloadQueueTest'
+          --tests 'com.nikhil.yt.playback.MediaLibraryPaginationTest'
           --tests 'com.nikhil.yt.playback.CapsuleLoadControlTest'
           --tests 'com.nikhil.yt.playback.AudioNetworkSelectionPolicyTest'
           --tests 'com.nikhil.yt.playback.PlaybackSourceRetryTest'
