@@ -109,7 +109,7 @@ constructor(
     @PlayerCache val playerCache: Cache,
 ) {
     private val scope = CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
-    private val artworkRepairs = kotlinx.coroutines.channels.Channel<String>(kotlinx.coroutines.channels.Channel.UNLIMITED)
+    private val artworkRepairs = kotlinx.coroutines.channels.Channel<String>(MAX_PENDING_ARTWORK_REPAIRS)
     private val artworkRepairIds = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val connectivityManager = context.getSystemService<ConnectivityManager>()!!
     private suspend fun playbackContext() = AudioPlaybackContext(
@@ -449,7 +449,18 @@ constructor(
                             ?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true) {
                         saveArtwork(mediaId)
                     }
-                } finally { artworkRepairIds.remove(mediaId) }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    // An inaccessible volume/failed Room read must not kill
+                    // the only artwork-repair consumer for all other tracks.
+                    timber.log.Timber.tag("DownloadArtwork").w(
+                        "Repair skipped id=%s errorType=%s",
+                        mediaId, error.javaClass.simpleName,
+                    )
+                } finally {
+                    artworkRepairIds.remove(mediaId)
+                }
             }
         }
         scope.launch {
@@ -543,6 +554,9 @@ constructor(
 
     companion object {
         internal const val MAX_PARALLEL_DOWNLOADS = AudioDownloadSlots.LIMIT
+        // Backpressure for user-triggered and migration repair bursts.
+        // The queue is best-effort; a full queue keeps the audio and download intact.
+        private const val MAX_PENDING_ARTWORK_REPAIRS = 64
         private const val SHORT_COOLDOWN_MS = 2_500L
         private const val LONG_COOLDOWN_MS = 8_000L
         private const val MAX_DOWNLOAD_RESOLVE_ATTEMPTS = 2
