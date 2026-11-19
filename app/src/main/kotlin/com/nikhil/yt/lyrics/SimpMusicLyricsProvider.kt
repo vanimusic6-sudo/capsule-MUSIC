@@ -127,7 +127,7 @@ object SimpMusicLyricsProvider : LyricsProvider {
         return if (response.status.isSuccess()) parseEntries(response.bodyAsText()) else emptyList()
     }
 
-    private data class Entry(
+    internal data class Entry(
         val videoId: String,
         val title: String,
         val artist: String,
@@ -136,7 +136,7 @@ object SimpMusicLyricsProvider : LyricsProvider {
         val hasSyncedLyrics: Boolean,
     )
 
-    private fun parseEntries(payload: String): List<Entry> {
+    internal fun parseEntries(payload: String): List<Entry> {
         val root = json.parseToJsonElement(payload) as? JsonObject ?: return emptyList()
         if ((root["success"] as? JsonPrimitive)?.booleanOrNull == false ||
             (root["type"] as? JsonPrimitive)?.contentOrNull == "error"
@@ -165,7 +165,7 @@ object SimpMusicLyricsProvider : LyricsProvider {
     private fun JsonObject.string(key: String): String =
         (get(key) as? JsonPrimitive)?.contentOrNull.orEmpty()
 
-    private fun matches(item: Entry, title: String, artist: String, duration: Int): Boolean {
+    internal fun matches(item: Entry, title: String, artist: String, duration: Int): Boolean {
         val desiredTitle = simplify(LyricsQueryCleanup.title(title))
         val foundTitle = simplify(LyricsQueryCleanup.title(item.title))
         val desiredArtist = simplify(LyricsQueryCleanup.artist(artist))
