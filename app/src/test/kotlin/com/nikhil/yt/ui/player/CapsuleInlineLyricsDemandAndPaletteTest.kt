@@ -54,6 +54,29 @@ class CapsuleInlineLyricsDemandAndPaletteTest {
         assertTrue(stops[0].blue > stops[2].blue)
     }
 
+    @Test fun immersionLyricsKeepTheSameLeftToRightPhotoColoursAcrossTheScrollGap() {
+        val left = Color(0xFFA74C23)
+        val center = Color(0xFF22222B)
+        val right = Color(0xFF673DA8)
+        val field = CapsuleColorField(
+            width = 3, height = 2,
+            cells = listOf(left, center, right, left, center, right),
+        )
+        val tone = ImmersiveArtworkTone(
+            colorField = field,
+            ready = true,
+        )
+        val sampled = capsuleInlineLyricsSceneColors(
+            listOf(Color.Black, Color.Black, Color.Black), tone,
+        )
+        assertEquals(listOf(left, center, right), sampled)
+        val stops = capsuleInlineLyricsImmersiveStops(sampled)
+        assertTrue(stops[0].red > stops[1].red)
+        assertTrue(stops[2].blue > stops[1].blue)
+        assertTrue("The same three shared stops preserve two-dimensional Immersion",
+            stops.toSet().size == 3)
+    }
+
     @Test fun markersStayPermanentAndMagneticallyCaptureNearbyDrags() {
         val width = 220f
         val first = 10f
