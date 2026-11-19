@@ -5,6 +5,15 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class VideoStreamCacheTest {
+    @Test fun reusedKeyNeverLeaksAnotherVideosStream() {
+        val cache = VideoStreamCache<Int>(3) { true }
+        cache.put("track-one", "shared", 101)
+        cache.put("track-two", "shared", 202)
+        assertNull("Old video must not resolve another video's stream", cache.latest("track-one"))
+        assertEquals(202, cache.latest("track-two"))
+        assertEquals(202, cache["shared"])
+    }
+
     @Test fun evictsTheLeastRecentlyUsedEntryAndItsIndex() {
         val cache = VideoStreamCache<Int>(2) { true }
         cache.put("a", "a:hd", 1)

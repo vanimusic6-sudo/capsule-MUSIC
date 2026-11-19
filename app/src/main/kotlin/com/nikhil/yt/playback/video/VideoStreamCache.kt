@@ -28,7 +28,12 @@ internal class VideoStreamCache<T>(
     @Synchronized
     fun latest(videoId: String): T? {
         latestKeys[videoId]?.let { key ->
-            get(key)?.let { return it }
+            // An overwritten key must never return another track's stream.
+            if (entries[key]?.videoId == videoId) {
+                get(key)?.let { return it }
+            } else {
+                latestKeys.remove(videoId)
+            }
         }
         // The most recently selected quality can expire while another signed
         // representation of this clip remains playable. Prefer that healthy
@@ -42,6 +47,9 @@ internal class VideoStreamCache<T>(
     @Synchronized
     fun put(videoId: String, key: String, value: T) {
         entries.filterValues { !isFresh(it.value) }.keys.toList().forEach(::remove)
+        // Updating an existing key may replace a different video ID. Clear
+        // its latest-quality pointer before installing the new entry.
+        remove(key)
         entries[key] = Entry(videoId, value)
         latestKeys[videoId] = key
         while (entries.size > maxEntries) remove(entries.keys.first())
