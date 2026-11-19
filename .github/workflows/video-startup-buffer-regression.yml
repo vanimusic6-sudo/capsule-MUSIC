@@ -8,6 +8,7 @@ on:
     paths:
       - 'app/src/main/kotlin/com/nikhil/yt/playback/**'
       - 'app/src/test/kotlin/com/nikhil/yt/playback/**'
+      - 'app/src/test/kotlin/com/nikhil/yt/ui/player/CapsuleVideo*Test.kt'
       - 'innertube/src/main/kotlin/com/nikhil/yt/innertube/**'
       - 'innertube/src/test/kotlin/com/nikhil/yt/innertube/**'
       - 'gradle/libs.versions.toml'
