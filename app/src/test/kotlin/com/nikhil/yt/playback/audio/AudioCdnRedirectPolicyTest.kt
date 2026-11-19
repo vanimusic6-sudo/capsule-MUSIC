@@ -201,6 +201,42 @@ class AudioCdnRedirectPolicyTest {
     }
 
     @Test
+    fun `untrusted CDN redirects cannot receive signed URLs or request headers`() {
+        for (target in listOf(
+            "http://rr1---sn-ajixh5-55.googlevideo.com/videoplayback",
+            "https://attacker.example.test/private",
+            "https://rr1---sn-ajixh5-55.googlevideo.com.attacker.test/video",
+            "https://localhost:443/private",
+            "https://127.0.0.1/private",
+            "https://192.168.1.1/private",
+            "https://user:pass@rr4---sn-ajixh5-55.googlevideo.com/private",
+            "https://rr4---sn-ajixh5-55.googlevideo.com:8443/private",
+        )) {
+            val original = requestFor(ORIGIN).newBuilder()
+                .header("Authorization", "Bearer should-never-leave-youtube")
+                .header("Range", "bytes=0-1023")
+                .build()
+            val chain = ScriptedChain(original, listOf(redirectTo(target)))
+            val failure = org.junit.Assert.assertThrows(IOException::class.java) {
+                AudioCdnRedirectInterceptor().intercept(chain)
+            }
+            assertTrue("Bad Location must be rejected without another request", failure.message?.contains("redirect") == true)
+            assertEquals("Only the approved origin is allowed to receive the signed request",
+                listOf(ORIGIN), chain.asked)
+        }
+    }
+
+    @Test
+    fun `poisoned shortcut is forgotten before any network access`() {
+        val target = requestFor("https://attacker.example.test/private").url
+        val targets = AudioCdnRedirectTargets().apply { remember(requestFor(ORIGIN).url, target) }
+        val chain = ScriptedChain(requestFor(ORIGIN), listOf(served()))
+        AudioCdnRedirectInterceptor(targets).intercept(chain).close()
+        assertEquals(listOf(ORIGIN), chain.asked)
+        assertNull(targets.shortcutFor(requestFor(ORIGIN).url))
+    }
+
+    @Test
     fun `a redirect inside the group is followed`() {
         val chain = ScriptedChain(requestFor(ORIGIN), listOf(redirectTo(SAME_GROUP), served()))
 
