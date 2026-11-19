@@ -42,7 +42,15 @@ internal object YouTubeMusicVideoMatcher {
         if (candidateTitleNorm.isBlank() || sourceTitleNorm.isBlank()) return null
 
         val secondaryNorm = normalizeText(secondaryText)
-        val overlap = titleTokenOverlap(sourceTitleNorm, candidateTitleNorm)
+        // Same words in a longer title are not the same recording. E.g.
+        // "Another Artist - Different Song / Home" previously won for
+        // "Home" because it ended with the requested word and mentioned an
+        // artist elsewhere. Match the *whole* normalized recording title.
+        val sameRecordingTitle = candidateTitleNorm == sourceTitleNorm ||
+            sourceArtistNorms.any { artist ->
+                candidateTitleNorm == "$artist $sourceTitleNorm"
+            }
+        if (!sameRecordingTitle) return null
         val explicitlyOfficial = Regex("""\bofficial\s+(?:music\s+)?video\b""")
             .containsMatchIn(normalizeText(candidateTitle))
         // YouTube Music's Videos search frequently omits watchEndpoint's
@@ -52,20 +60,10 @@ internal object YouTubeMusicVideoMatcher {
         val durationDelta = sourceDurationSeconds?.takeIf { it > 0 }
             ?.let { seconds -> extractDurationSeconds(secondaryText)?.let { abs(seconds - it) } }
         if (!omvVerified) {
-            val titleAligned = candidateTitleNorm == sourceTitleNorm ||
-                candidateTitleNorm.endsWith(" $sourceTitleNorm")
-            val preciseArtistPrefix = sourceArtistNorms.any { artist ->
-                candidateTitleNorm == "$artist $sourceTitleNorm"
-            }
-            // Music Videos cards often give only Artist - Song with no
-            // Official tag, runtime or OMV metadata. That's still a strong
-            // source identity *when the artist matches below*. Don't mark
-            // all these ordinary clips N/A.
-            val preciseIdentity = candidateTitleNorm == sourceTitleNorm || preciseArtistPrefix
-            if (!titleAligned || (!preciseIdentity && !explicitlyOfficial &&
-                    (durationDelta == null || durationDelta > 35))) {
-                return null
-            }
+            // Missing OMV type is common. Accept a truly exact artist/title
+            // from the Videos shelf, but never infer identity from a substring,
+            // an "official" keyword or overlapping tokens alone.
+            if (!sameRecordingTitle) return null
         }
 
         var score =
@@ -73,9 +71,6 @@ internal object YouTubeMusicVideoMatcher {
                 candidateTitleNorm == sourceTitleNorm -> 150
                 candidateTitleNorm.contains(sourceTitleNorm) ||
                     sourceTitleNorm.contains(candidateTitleNorm) -> 105
-                overlap >= 0.78 -> 88
-                overlap >= 0.62 -> 67
-                overlap >= 0.50 -> 48
                 else -> return null
             }
 
