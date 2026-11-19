@@ -440,6 +440,7 @@ constructor(
 
                             else -> emptyList()
                         }
+                }
             LibraryResult.ofItemList(mediaBrowserPage(children, page, pageSize), params)
         }
 
