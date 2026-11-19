@@ -19,7 +19,7 @@ class PlayerArtworkReliabilityTest {
     @Test fun artworkPaletteEntersWithoutSuddenColourSwapOnNormalPlayer() {
         val player = source("Player.kt")
         assertTrue("Only colour-backed styles should tween on a late bitmap",
-            player.contains("animatePalette = effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE"))
+            player.contains("animatePalette = effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&"))
         assertTrue("Spatial field and palette must stay atomic",
             player.contains("playerBackground != PlayerBackgroundStyle.SCENE_LIGHT"))
         assertTrue("The star's black-cover threshold must not flip midway through a colour tween",

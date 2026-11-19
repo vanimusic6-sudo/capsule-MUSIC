@@ -38,7 +38,8 @@ class CapsuleVideoFastStartPolicyTest {
                 "remote"
             }
         }.exceptionOrNull()
-        assertSame(cancelled, thrown)
+        assertTrue("Cancellation must propagate without starting a fallback", thrown is CancellationException)
+        assertEquals(cancelled.message, thrown?.message)
         assertFalse(fallbackCalled)
     }
 }

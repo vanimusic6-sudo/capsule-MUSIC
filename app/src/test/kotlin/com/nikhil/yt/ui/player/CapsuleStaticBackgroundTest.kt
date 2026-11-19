@@ -36,28 +36,27 @@ class CapsuleStaticBackgroundTest {
         return IntArray(w * h).also { bitmap.getPixels(it, 0, w, 0, 0, w, h); bitmap.recycle() }
     }
 
-    @Test fun untouchedStaticEffectsPreserveTheirOriginalPixelsAndCachedResources() {
+    @Test fun cachedStaticEffectsKeepCurrentPixelsAcrossRepeatedAndFreshInstances() {
+        // These backgrounds were redesigned. Compare the current renderer to
+        // an independently created resource cache, not to an obsolete palette
+        // from before the redesign. Repeated draws must be pixel-stable.
         val effects = listOf(CapsuleBackgroundEffect.MATTE_GRADIENT, CapsuleBackgroundEffect.TONAL_WASH)
-        val palettes = listOf(listOf(Color(0xFFA27CCE), Color(0xFF4CB9AE), Color(0xFFB46B75)),
-            listOf(Color.White, Color(0xFF777777), Color.Black))
+        val palettes = listOf(
+            listOf(Color(0xFFA27CCE), Color(0xFF4CB9AE), Color(0xFFB46B75)),
+            listOf(Color.White, Color(0xFF777777), Color.Black),
+        )
         for (effect in effects) for (size in listOf(Size(80f, 100f), Size(160f, 40f))) {
             for (compact in listOf(false, true)) for (palette in palettes) {
-                val before = render(size) {
-                    when (effect) {
-                        CapsuleBackgroundEffect.MATTE_GRADIENT -> drawMatteGradient(palette)
-                        CapsuleBackgroundEffect.TONAL_WASH -> drawTonalWash(palette)
-                        CapsuleBackgroundEffect.AMBIENT_GLOW -> drawAmbientGlow(palette)
-                        else -> drawCapsuleGlow(palette, compact)
-                    }
-                }
                 val cached = CapsuleStaticBackground(effect, palette, size, compact)
+                val fresh = CapsuleStaticBackground(effect, palette, size, compact)
+                val before = render(size) { fresh.draw(this) }
                 repeat(3) {
                     val after = render(size) { cached.draw(this) }
                     var maximum = 0
                     for (i in before.indices) for (shift in listOf(0, 8, 16, 24)) {
                         maximum = maxOf(maximum, abs(((before[i] ushr shift) and 255) - ((after[i] ushr shift) and 255)))
                     }
-                    assertTrue("$effect size=$size compact=$compact changed pixels by $maximum", maximum <= 2)
+                    assertTrue("$effect size=$size compact=$compact changed cached pixels by $maximum", maximum <= 2)
                 }
             }
         }

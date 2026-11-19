@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -106,7 +107,7 @@ internal fun capsuleInlineLyricsStops(colors: List<Color>): List<Color> {
     val brightCover = listOf(upper, lower, tail).any { color ->
         maxOf(color.red, color.green, color.blue) > 0.86f
     }
-    return if (brightCover) {
+    val rawStops = if (brightCover) {
         listOf(
             lerp(ink, upper, 0.54f),
             lerp(ink, lower, 0.51f),
@@ -120,6 +121,24 @@ internal fun capsuleInlineLyricsStops(colors: List<Color>): List<Color> {
             lerp(ink, lower, 0.67f),
             lerp(ink, tail, 0.58f),
         )
+    }
+
+    // A bright album paired with dark accent samples used to produce an
+    // unrelated near-black band as the compact card scrolled into view.
+    // Limit only an excessive luminance drop, keeping the original shades
+    // untouched for dark covers and naturally balanced artwork palettes.
+    val minimumLuminance = rawStops.first().luminance() * 0.65f
+    return rawStops.mapIndexed { index, stop ->
+        if (index == 0 || stop.luminance() >= minimumLuminance) stop
+        else {
+            var lo = 0f
+            var hi = 1f
+            repeat(8) {
+                val t = (lo + hi) / 2f
+                if (lerp(stop, rawStops.first(), t).luminance() < minimumLuminance) lo = t else hi = t
+            }
+            lerp(stop, rawStops.first(), hi)
+        }
     }
 }
 

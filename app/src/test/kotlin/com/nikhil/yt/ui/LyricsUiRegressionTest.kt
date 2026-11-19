@@ -16,8 +16,10 @@ class LyricsUiRegressionTest {
         val player = source("com/nikhil/yt/ui/player/Player.kt")
         // A -> B with B still decoding: neither a retained spatial field nor
         // a prior lyric palette is allowed to repaint B's neutral preview.
-        assertTrue(backdrop.contains("val retainedField = remember(mediaMetadata.id)"))
-        assertTrue(backdrop.contains("val retainedArtworkColors = remember(mediaMetadata.id)"))
+        assertTrue("Lyrics must share the player\u0027s prepared image field",
+            backdrop.contains("val artworkField = if (parentSuppliesScene) playerArtworkField else localArtworkScene.field"))
+        assertTrue("Lyrics must share the player\u0027s already-animated RGB colors",
+            backdrop.contains("val artworkColors = if (parentSuppliesScene) playerArtworkColors else localArtworkScene.colors"))
         assertFalse(card.contains("Color(0xFF35506C)"))
         // Full text always has final pixel coordinates; only the rounded
         // aperture is allowed to move. Once open, the mask is not drawn.
@@ -99,7 +101,8 @@ class LyricsUiRegressionTest {
         assertTrue(player.contains("scaleY = -1f"))
         assertTrue(player.contains("srcOffset = IntOffset(0, immersiveReflection.height - slice)"))
         assertTrue(card.contains("capsuleInlineLyricsImmersivePanelStops(colors)"))
-        assertTrue(card.contains(".border(1.dp, Color.White.copy"))
+        assertTrue(card.contains("Color.White.copy(alpha = 0.13f)"))
+        assertTrue(card.contains("Modifier.border("))
         assertTrue(player.contains("immersiveBitmap = immersiveReflection"))
     }
 
