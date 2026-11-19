@@ -251,13 +251,21 @@ internal fun capsuleLyricsMagneticVolume(
 ): Float {
     if (!raw.isFinite() || !widthPx.isFinite() || widthPx <= 0f ||
         !stride.isFinite() || stride <= 0f
-    ) return raw.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 0f
+    ) return raw.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 0f
     val x = raw.coerceIn(0f, 1f) * widthPx
     val count = capsuleLyricsVolumeDashCount(widthPx, firstX, dashWidth, stride, endInset)
     val index = if (count > 0) ((x - firstX - dashWidth / 2f) / stride)
         .roundToInt().coerceIn(0, count - 1) else 0
     val markX = if (count > 0) firstX + dashWidth / 2f + index * stride else 0f
-    val closest = listOf(0f, markX, widthPx).minByOrNull { abs(it - x) } ?: x
+    // Zero allocations per pointer event: use direct distance comparisons.
+    val markDistance = abs(markX - x)
+    val startDistance = x
+    val endDistance = widthPx - x
+    val closest = when {
+        startDistance <= markDistance && startDistance <= endDistance -> 0f
+        endDistance <= markDistance -> widthPx
+        else -> markX
+    }
     val delta = abs(closest - x)
     if (released) return (closest / widthPx).coerceIn(0f, 1f)
     val radius = stride * 0.42f
