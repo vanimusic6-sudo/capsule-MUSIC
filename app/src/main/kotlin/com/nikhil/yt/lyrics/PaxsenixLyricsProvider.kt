@@ -31,6 +31,13 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
 import timber.log.Timber
 import kotlin.math.abs
 import java.util.Locale
@@ -198,9 +205,9 @@ object PaxsenixLyricsProvider : LyricsProvider {
                 json(json)
             }
             install(HttpTimeout) {
-                requestTimeoutMillis = 8_000
-                connectTimeoutMillis = 4_000
-                socketTimeoutMillis = 8_000
+                requestTimeoutMillis = 15_000
+                connectTimeoutMillis = 8_000
+                socketTimeoutMillis = 15_000
             }
             expectSuccess = false
         }
@@ -456,14 +463,61 @@ object PaxsenixLyricsProvider : LyricsProvider {
                 }
             }.getOrNull() ?: return null
 
-        if (!response.status.isSuccess()) return null
+        if (!response.status.isSuccess()) {
+            // An HTTP 401/403 is not a malformed lyric; the relay may now
+            // require authentication. Keep the other sources available.
+            Timber.tag(name).d("Paxsenix relay HTTP %d", response.status.value)
+            return null
+        }
+        val raw = runCatchingCancellable { response.bodyAsText() }.getOrNull() ?: return null
+        return parseRelayLyrics(raw).also { parsed ->
+            if (parsed == null) Timber.tag(name).d("Paxsenix returned no usable lyric payload")
+        }
+    }
 
-        val body =
-            runCatchingCancellable { response.body<PaxsenixLyrics>() }
-                .getOrNull()
-                ?: return null
+    /** Public relays have returned Apple line JSON, TTML strings and wrapped results.
+     *  Reject explicit API errors rather than treating their message as song text. */
+    internal fun parseRelayLyrics(raw: String): String? {
+        val body = raw.trim()
+        if (body.isBlank()) return null
+        val root = runCatching { json.parseToJsonElement(body) }.getOrNull()
+            ?: return body.takeIf { it.startsWith("<tt", true) ||
+                it.contains(Regex("""\\[[0-9]{1,3}:[0-9]{2}""")) }
+        return extractRelayLyrics(root, 0)
+    }
 
-        return paxsenixLyricsText(body)
+    private fun extractRelayLyrics(element: JsonElement, depth: Int): String? {
+        if (depth > 5 || element == JsonNull) return null
+        return when (element) {
+            is JsonPrimitive -> {
+                if (!element.isString) return null
+                val text = element.content.trim()
+                if (text.isBlank()) return null
+                val decoded = runCatching { json.parseToJsonElement(text) }.getOrNull()
+                if (decoded != null && decoded !is JsonPrimitive) extractRelayLyrics(decoded, depth + 1)
+                else text.takeIf { it.isNotBlank() }
+            }
+            is JsonArray -> element.mapNotNull { extractRelayLyrics(it, depth + 1) }
+                .joinToString("\\n").takeIf(String::isNotBlank)
+            is JsonObject -> {
+                val isError = (element["success"] as? JsonPrimitive)?.booleanOrNull == false ||
+                    (element["ok"] as? JsonPrimitive)?.booleanOrNull == false ||
+                    (element["error"] != null && element["error"] != JsonNull &&
+                        element["error"] != JsonPrimitive(false)) ||
+                    (element["type"] as? JsonPrimitive)?.contentOrNull == "error"
+                if (isError) return null
+
+                runCatching { json.decodeFromJsonElement<PaxsenixLyrics>(element) }.getOrNull()
+                    ?.let(::paxsenixLyricsText)
+                    ?.takeIf(String::isNotBlank)
+                    ?: sequenceOf("ttmlContent", "elrcMultiPerson", "elrc",
+                        "syncedLyrics", "lrc", "plain", "plainLyrics",
+                        "lyrics", "content", "data", "result", "text")
+                        .mapNotNull { key -> element[key]?.let { extractRelayLyrics(it, depth + 1) } }
+                        .firstOrNull(String::isNotBlank)
+            }
+            else -> null
+        }
     }
 
     internal suspend fun getStats(): Result<PaxsenixStats> =
