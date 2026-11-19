@@ -17,6 +17,13 @@ class YouTubeMusicVideoMatcherTest {
             "Real artist - Real song", "Real artist • 3:30", 210))
     }
 
+    @Test fun aCredibleFirstVideoResultSkipsTheRedundantSecondSearch() {
+        assertTrue(YouTubeMusicVideoMatcher.needsSecondQuery(null))
+        assertTrue(YouTubeMusicVideoMatcher.needsSecondQuery(169))
+        assertTrue(!YouTubeMusicVideoMatcher.needsSecondQuery(170))
+        assertTrue(!YouTubeMusicVideoMatcher.needsSecondQuery(225))
+    }
+
     @Test
     fun strongOfficialVideoPasses() {
         val score =
