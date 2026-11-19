@@ -987,6 +987,10 @@ private fun CapsulePlayerLyricsHost(
         val onScreen = appIsOnScreen()
         val immersiveArtworkTone =
             if (design == CapsulePlayerDesign.IMMERSIVE) warmedImmersiveTone else null
+        // Shared by both the scrollable lyrics bridge AND its fullscreen
+        // aperture, which is declared outside the scroll-only branch.
+        val immersiveReflection = preparedLyricsScene
+            ?.takeIf { it.frame.mediaId == mediaMetadata.id }?.bitmap
         val renderPlayer: @Composable () -> Unit = {
         Box(
             modifier =
@@ -1115,8 +1119,6 @@ private fun CapsulePlayerLyricsHost(
             val immersiveBridgeStops = remember(transitioningPalette, design) {
                 capsuleInlineLyricsImmersiveStops(transitioningPalette)
             }
-            val immersiveReflection = preparedLyricsScene
-                ?.takeIf { it.frame.mediaId == mediaMetadata.id }?.bitmap
             val scrollBackdrop = if (design == CapsulePlayerDesign.IMMERSIVE) {
                 Modifier.drawWithCache {
                     val fallback = Brush.horizontalGradient(immersiveBridgeStops)
