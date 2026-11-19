@@ -134,7 +134,10 @@ internal data class ImmersivePreparedScene(
 
 /** Owned above the foreground-only composition, not rebuilt when Android resumes it. */
 internal class ImmersiveSceneMemory {
-    var prepared: ImmersivePreparedScene? = null
+    // The inline lyrics page must observe the SAME prepared photo-to-floor
+    // texture instead of manufacturing a second approximation of its colours.
+    // This state changes only when a complete image is prepared, never per frame.
+    var prepared by mutableStateOf<ImmersivePreparedScene?>(null)
 }
 
 private fun immersiveGradientFrame(
