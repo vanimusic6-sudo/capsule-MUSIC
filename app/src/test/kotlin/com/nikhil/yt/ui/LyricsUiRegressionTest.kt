@@ -92,6 +92,18 @@ class LyricsUiRegressionTest {
     }
 
     @Test
+    fun `immersion shares the reflected player texture while keeping the lyric card distinct`() {
+        val card = source("com/nikhil/yt/ui/player/CapsuleInlineLyricsCard.kt")
+        val player = source("com/nikhil/yt/ui/player/Player.kt")
+        assertTrue(player.contains("val immersiveReflection = preparedLyricsScene"))
+        assertTrue(player.contains("scaleY = -1f"))
+        assertTrue(player.contains("srcOffset = IntOffset(0, immersiveReflection.height - slice)"))
+        assertTrue(card.contains("capsuleInlineLyricsImmersivePanelStops(colors)"))
+        assertTrue(card.contains(".border(1.dp, Color.White.copy"))
+        assertTrue(player.contains("immersiveBitmap = immersiveReflection"))
+    }
+
+    @Test
     fun `compact lyrics has an artwork gradient even with plain mini player styling`() {
         val compact = source("com/nikhil/yt/ui/player/CapsuleInlineLyricsCard.kt")
         val player = source("com/nikhil/yt/ui/player/Player.kt")

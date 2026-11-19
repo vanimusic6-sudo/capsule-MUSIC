@@ -60,6 +60,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import kotlin.math.roundToInt
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Path
@@ -1100,20 +1105,52 @@ private fun CapsulePlayerLyricsHost(
             val immersiveBridgeStops = remember(transitioningPalette, design) {
                 capsuleInlineLyricsImmersiveStops(transitioningPalette)
             }
+            val immersiveReflection = preparedLyricsScene
+                ?.takeIf { it.frame.mediaId == mediaMetadata.id }?.bitmap
             val scrollBackdrop = if (design == CapsulePlayerDesign.IMMERSIVE) {
                 Modifier.drawWithCache {
-                    val brush = Brush.horizontalGradient(immersiveBridgeStops)
-                    val dim = Brush.verticalGradient(
+                    val fallback = Brush.horizontalGradient(immersiveBridgeStops)
+                    val seam = viewportHeightPx.coerceIn(0f, size.height)
+                    val extension = (size.height - seam).coerceAtLeast(0f)
+                    val bottomShadow = Brush.verticalGradient(
                         0f to Color.Transparent,
                         1f to Color.Black.copy(alpha = 0.34f),
-                        startY = viewportHeightPx,
-                        endY = size.height.coerceAtLeast(viewportHeightPx + 1f),
+                        startY = seam,
+                        endY = size.height.coerceAtLeast(seam + 1f),
                     )
-                    // One uninterrupted paint underneath player, gap and card.
-                    // Only the area BELOW the artwork gradually darkens.
                     onDrawBehind {
-                        drawRect(brush)
-                        drawRect(dim)
+                        // The first viewport is covered by the actual player.
+                        // Mirror the *bottom half of its prepared texture* into
+                        // the second viewport. Its first reflected scanline is
+                        // exactly the player's last visible pixel: no color-field
+                        // approximation, second photo sample or seam to blend.
+                        if (immersiveReflection != null && extension >= 1f) {
+                            val slice = (immersiveReflection.height * 0.52f).roundToInt()
+                                .coerceIn(1, immersiveReflection.height)
+                            withTransform({
+                                scale(
+                                    scaleX = 1f,
+                                    scaleY = -1f,
+                                    pivot = Offset(size.width / 2f, seam + extension / 2f),
+                                )
+                            }) {
+                                drawImage(
+                                    image = immersiveReflection,
+                                    srcOffset = IntOffset(0, immersiveReflection.height - slice),
+                                    srcSize = IntSize(immersiveReflection.width, slice),
+                                    dstOffset = IntOffset(0, seam.roundToInt()),
+                                    dstSize = IntSize(
+                                        size.width.roundToInt().coerceAtLeast(1),
+                                        extension.roundToInt().coerceAtLeast(1),
+                                    ),
+                                )
+                            }
+                        } else {
+                            // The existing cheap palette fallback is used only
+                            // until the decoded artwork texture becomes ready.
+                            drawRect(fallback)
+                        }
+                        drawRect(bottomShadow)
                     }
                 }
             } else Modifier
@@ -1255,6 +1292,7 @@ private fun CapsulePlayerLyricsHost(
                             CapsuleInlineLyricsBackdrop(
                                 colors = transitioningPalette,
                                 immersive = design == CapsulePlayerDesign.IMMERSIVE,
+                                immersiveBitmap = immersiveReflection,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         } else {

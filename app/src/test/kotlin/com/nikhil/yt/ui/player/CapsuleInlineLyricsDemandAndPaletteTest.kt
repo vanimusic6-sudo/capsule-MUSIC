@@ -77,6 +77,16 @@ class CapsuleInlineLyricsDemandAndPaletteTest {
             stops.toSet().size == 3)
     }
 
+    @Test fun immersionPanelIsDistinctButDerivedFromTheSharedSeam() {
+        val photo = listOf(Color(0xFF68391E), Color(0xFF583A26), Color(0xFF2D211E))
+        val card = capsuleInlineLyricsImmersivePanelStops(photo)
+        assertEquals(2, card.size)
+        assertTrue("The card must tint the mirrored photo rather than replace it",
+            card.all { it.alpha in 0.7f..0.99f })
+        assertTrue("Panel must brighten the middle of a dim photo",
+            card.first().red > photo[1].red)
+    }
+
     @Test fun markersStayPermanentAndMagneticallyCaptureNearbyDrags() {
         val width = 220f
         val first = 10f

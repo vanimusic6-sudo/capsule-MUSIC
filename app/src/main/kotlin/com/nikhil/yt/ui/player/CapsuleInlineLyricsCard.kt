@@ -2,6 +2,7 @@
 package com.nikhil.yt.ui.player
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,12 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import kotlin.math.roundToInt
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -145,6 +152,18 @@ internal fun capsuleInlineLyricsImmersiveStops(colors: List<Color>): List<Color>
         ?: List(3) { Color(0xFF202027) }
 }
 
+/** A separate, softly illuminated card on top of the *same* immersive photo.
+ *  These are translucent tints, not an independently invented wallpaper. */
+internal fun capsuleInlineLyricsImmersivePanelStops(colors: List<Color>): List<Color> {
+    val source = colors.getOrNull(1) ?: Color(0xFF262225)
+    val ink = Color(0xFF17171B)
+    val base = lerp(ink, source, 0.78f)
+    val lift = if (maxOf(source.red, source.green, source.blue) > 0.75f) 0.07f else 0.24f
+    val top = lerp(base, Color.White, lift)
+    val bottom = lerp(base, Color.White, lift * 0.68f)
+    return listOf(top.copy(alpha = 0.91f), bottom.copy(alpha = 0.91f))
+}
+
 /**
  * Exactly one opaque, inexpensive gradient for compact AND full lyrics.
  * Do not render MiniPlayerSurface behind it: its glass/nebula layers were
@@ -156,6 +175,7 @@ internal fun CapsuleInlineLyricsBackdrop(
     colors: List<Color>,
     modifier: Modifier = Modifier,
     immersive: Boolean = false,
+    immersiveBitmap: ImageBitmap? = null,
 ) {
     // The regular player already animates its shared artworkScene.colors.
     // Re-animating the same RGB values here for 1400ms made Lyrics lag behind
@@ -166,10 +186,39 @@ internal fun CapsuleInlineLyricsBackdrop(
         if (immersive) capsuleInlineLyricsImmersiveStops(colors)
         else capsuleInlineLyricsStops(colors)
     }
+    val panelStops = remember(colors, immersive) {
+        if (immersive) capsuleInlineLyricsImmersivePanelStops(colors) else emptyList()
+    }
     Box(modifier.drawWithCache {
-        val brush = if (immersive) Brush.horizontalGradient(stops)
-                    else Brush.verticalGradient(stops)
-        onDrawBehind { drawRect(brush) }
+        val fallback = if (immersive) Brush.horizontalGradient(stops)
+            else Brush.verticalGradient(capsuleInlineLyricsStops(colors))
+        val panel = if (immersive) Brush.verticalGradient(panelStops) else null
+        onDrawBehind {
+            if (immersive && immersiveBitmap != null) {
+                // Expanded lyrics reveal the same lower photo crop as the
+                // compact panel. Its prepared blur is reused: no extra decode.
+                val slice = (immersiveBitmap.height * 0.52f).roundToInt()
+                    .coerceIn(1, immersiveBitmap.height)
+                withTransform({
+                    scale(scaleX = 1f, scaleY = -1f,
+                        pivot = Offset(size.width / 2f, size.height / 2f))
+                }) {
+                    drawImage(
+                        image = immersiveBitmap,
+                        srcOffset = IntOffset(0, immersiveBitmap.height - slice),
+                        srcSize = IntSize(immersiveBitmap.width, slice),
+                        dstOffset = IntOffset.Zero,
+                        dstSize = IntSize(
+                            size.width.roundToInt().coerceAtLeast(1),
+                            size.height.roundToInt().coerceAtLeast(1),
+                        ),
+                    )
+                }
+                panel?.let { drawRect(it) }
+            } else {
+                drawRect(fallback)
+            }
+        }
     })
 }
 
@@ -187,11 +236,19 @@ internal fun CapsuleInlineLyricsCard(
         modifier = modifier
             .padding(horizontal = 16.dp, vertical = 16.dp)
             .clip(RoundedCornerShape(28.dp))
+            .border(1.dp, Color.White.copy(alpha = if (immersive) 0.13f else 0f),
+                RoundedCornerShape(28.dp))
             .onGloballyPositioned { onBoundsChanged(it.boundsInRoot()) },
     ) {
-        if (!immersive) {
-            // Immersion uses the continuous scroll-page backdrop behind both
-            // the gap and the card. Its own opaque paint would form a slab.
+        if (immersive) {
+            // Restore the distinct rounded lyrics card. The reflected photo
+            // stays behind it; the panel adds only a translucent tonal lift.
+            val panelColors = remember(colors) { capsuleInlineLyricsImmersivePanelStops(colors) }
+            Box(Modifier.matchParentSize().drawWithCache {
+                val brush = Brush.verticalGradient(panelColors)
+                onDrawBehind { drawRect(brush) }
+            })
+        } else {
             CapsuleInlineLyricsBackdrop(
                 colors = colors,
                 modifier = Modifier.matchParentSize(),
