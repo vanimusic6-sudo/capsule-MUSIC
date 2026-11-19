@@ -159,10 +159,10 @@ internal fun CapsuleImmersiveAnimatedArtwork(
             onDispose { videoPlayer.removeListener(listener) }
         }
 
-        // Reuse Capsule's existing 48x28 video-spatial sampler and smooth
-        // backdrop shader. Only capture while a canvas TextureView is shown.
+        // Reuse the restored player-design 48x28 video sampler and soft
+        // image-derived background. Capture only while a TextureView is shown.
         // Decoder-frame metadata drives the loop; NO polling interval or
-        // second decoder. At most ~6.7 small GPU readbacks per second.
+        // second decoder. The original 700ms sampling cadence is shared.
         LaunchedEffect(videoPlayer, attachedView, surfaceReady, metadata.id) {
             val view = attachedView?.videoSurfaceView as? TextureView
                 ?: return@LaunchedEffect
@@ -171,7 +171,6 @@ internal fun CapsuleImmersiveAnimatedArtwork(
                 VIDEO_AMBIENT_SAMPLE_WIDTH, VIDEO_AMBIENT_SAMPLE_HEIGHT,
                 Bitmap.Config.ARGB_8888,
             )
-            val lightFilter = CapsuleVideoLightFilter()
             val frames = Channel<Long>(Channel.CONFLATED)
             val listener = VideoFrameMetadataListener { _, releaseNs, _, _ ->
                 frames.trySend(releaseNs)
@@ -189,9 +188,7 @@ internal fun CapsuleImmersiveAnimatedArtwork(
                     try {
                         view.getBitmap(buffer)
                         val frame = withContext(Dispatchers.Default) {
-                            capsuleVideoAmbientFrameFromBitmap(
-                                buffer, metadata.id, lightFilter,
-                            )
+                            capsuleVideoAmbientFrameFromBitmap(buffer, metadata.id)
                         } ?: continue
                         session.onFrame(frame)
                         lastSampleNs = now
