@@ -39,6 +39,18 @@ class SimpMusicApiContractTest {
         ).isEmpty())
     }
 
+    @Test fun processingStateTriggersOneBoundedRetryInsteadOfAFalseMiss() {
+        assertTrue(SimpMusicLyricsProvider.isProcessingResponse(
+            """{"type":"processing","success":false,"processing":{"code":102}}"""
+        ))
+        assertFalse(SimpMusicLyricsProvider.isProcessingResponse(
+            """{"type":"error","success":false,"error":{"code":404}}"""
+        ))
+        assertFalse(SimpMusicLyricsProvider.isProcessingResponse(
+            """{"type":"success","success":true,"data":[]}"""
+        ))
+    }
+
     @Test fun titleFallbackUsesDocumentedTitleParameter() {
         val path = "src/main/kotlin/com/nikhil/yt/lyrics/SimpMusicLyricsProvider.kt"
         val file = listOf(java.io.File(path), java.io.File("app/$path"))
