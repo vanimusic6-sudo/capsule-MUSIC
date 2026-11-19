@@ -350,6 +350,7 @@ object YouTubeMusicVideoLinkResolver {
                         query = query,
                         params = VIDEO_FILTER,
                         client = WEB_REMIX,
+                        loadVisitorData = false,
                     )
                 } else {
                     syncSession()
