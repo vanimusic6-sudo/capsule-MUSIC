@@ -4,6 +4,9 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runBlocking
+import org.junit.Assert.fail
 
 class YouTubeMusicVideoMatcherTest {
     @Test fun exactOfficialClipIsAcceptedWithIncompletePlaylistMetadata() {
@@ -154,6 +157,50 @@ class YouTubeMusicVideoMatcherTest {
                 sourceDurationSeconds = 220,
             ),
         )
+    }
+
+    @Test
+    fun cancelledOfficialVideoSearchPropagatesCancellation() = runBlocking {
+        YouTubeMusicVideoLinkResolver.clearCache()
+        try {
+            YouTubeMusicVideoLinkResolver.resolve(
+                sourceMediaId = "abcdefghijk",
+                title = "Track",
+                artists = listOf("Artist"),
+                durationSeconds = 180,
+                beforeMetadataRequest = { throw CancellationException("song changed") },
+            )
+            fail("Cancelled search must throw rather than return Result.failure")
+        } catch (_: CancellationException) {
+            // The owner can now start the next song without stale completion.
+        } finally {
+            YouTubeMusicVideoLinkResolver.clearCache()
+        }
+    }
+
+    @Test
+    fun weakLegacyOmvCacheCannotRestoreIncorrectVideo() {
+        YouTubeMusicVideoLinkResolver.clearCache()
+        try {
+            val now = System.currentTimeMillis()
+            YouTubeMusicVideoLinkResolver.importCache(listOf(
+                YouTubeMusicVideoLinkResolver.CacheRow(
+                    sourceMediaId = "abcdefghijk", videoId = "lmnopqrstuv",
+                    title = "Home (Official Video)", score = 220,
+                    expiresAtMs = now + 86_400_000L,
+                ),
+                YouTubeMusicVideoLinkResolver.CacheRow(
+                    sourceMediaId = "mnopqrstu01", videoId = "abcdefghijk",
+                    title = "Valid strong official clip", score = 260,
+                    expiresAtMs = now + 86_400_000L,
+                ),
+            ))
+            assertEquals(1, YouTubeMusicVideoLinkResolver.exportCache().size)
+            assertEquals("mnopqrstu01",
+                YouTubeMusicVideoLinkResolver.exportCache().single().sourceMediaId)
+        } finally {
+            YouTubeMusicVideoLinkResolver.clearCache()
+        }
     }
 
     @Test

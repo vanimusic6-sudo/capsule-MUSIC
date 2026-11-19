@@ -19,6 +19,7 @@ import com.nikhil.yt.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedC
 import com.nikhil.yt.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import com.nikhil.yt.innertube.models.response.SearchResponse
 import io.ktor.client.call.body
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
@@ -202,6 +203,11 @@ object YouTubeMusicVideoLinkResolver {
 
                 link
             }
+        }.onFailure { failure ->
+            // runCatching also catches Coroutine CancellationException. A
+            // user skip must cancel immediately rather than continue as an
+            // ordinary failed search from a stale song generation.
+            if (failure is CancellationException) throw failure
         }
 
     private suspend fun searchVideoRenderers(
@@ -381,7 +387,14 @@ object YouTubeMusicVideoLinkResolver {
             if (row.expiresAtMs <= now) continue
             // Older builds persisted 12-hour misses without their source metadata.
             // Keep verified positive matches; recheck those obsolete negative rows.
-            if (row.videoId.isNullOrBlank()) continue
+            if (row.videoId.isNullOrBlank() ||
+                !row.sourceMediaId.matches(Regex("[A-Za-z0-9_-]{11}")) ||
+                !row.videoId.matches(Regex("[A-Za-z0-9_-]{11}")) ||
+                // Older builds persisted OMV matches even for the wrong artist.
+                // Only retain confident matches, or an exact source-ID OMV.
+                (row.sourceMediaId != row.videoId &&
+                    row.score < YouTubeMusicVideoMatcher.STRONG_MATCH_SCORE)
+            ) continue
 
             val link =
                 row.videoId
