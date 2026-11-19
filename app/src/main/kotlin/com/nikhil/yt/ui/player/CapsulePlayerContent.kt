@@ -469,7 +469,9 @@ fun CapsulePlayerContent(
      * track whose lyrics screen was never opened had nothing in the database and the row stayed
      * empty forever, waiting on a request nobody was going to make.
      */
-    if (lyricLineActive) {
+    val (scrollToLyricsEnabled, _) =
+        rememberPreference(com.nikhil.yt.constants.CapsuleScrollToLyricsKey, false)
+    if (lyricLineActive && !scrollToLyricsEnabled) {
         RequestLyricsIfMissing(mediaMetadata, lyricsEntity)
     }
 
