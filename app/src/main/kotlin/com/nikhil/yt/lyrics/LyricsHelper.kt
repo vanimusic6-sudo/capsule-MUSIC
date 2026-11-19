@@ -312,7 +312,10 @@ constructor(
 
     companion object {
         private const val MAX_CACHE_SIZE = 3
-        private const val MANUAL_PROVIDER_TIMEOUT_MS = 12_000L
+        // Manual searches stream each source independently; allow the slower Apple
+        // relay and volunteer SimpMusic server to finish a single 15s attempt.
+        // This does not block faster sources in the picker.
+        private const val MANUAL_PROVIDER_TIMEOUT_MS = 22_000L
         private val TIMESTAMP_REGEX = Regex("""\[[0-9]{1,2}:[0-9]{2}(?:\.[0-9]{1,3})?]""")
         private val LINE_TIMESTAMP_REGEX = Regex("""\[[0-9]{1,2}:[0-9]{2}[.:][0-9]{2,3}]""")
         private val INVISIBLE_CHARS_REGEX = Regex("""[\u200B\u200C\u200D\u2060\u00AD]""")
