@@ -276,6 +276,7 @@ object YouTubeMusicVideoLinkResolver {
         sourceId: String,
         beforeMetadataRequest: suspend () -> Unit,
     ): String? {
+        val guardEpoch = CapsuleVideoRequestGuard.resetEpoch()
         val response = try {
             withTimeoutOrNull(FIRST_PARTY_TIMEOUT_MS) {
                 beforeMetadataRequest()
@@ -299,9 +300,19 @@ object YouTubeMusicVideoLinkResolver {
             throw blocked
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
-            // The /next layout is optional; a failed metadata lookup is not
-            // proof there is no clip. Fall back to the bounded Videos search.
+        } catch (failure: Exception) {
+            val kind = CapsuleVideoRequestGuard.noteApiFailure(failure, guardEpoch)
+            if (kind == CapsuleVideoRequestGuard.FailureKind.RATE_LIMITED ||
+                kind == CapsuleVideoRequestGuard.FailureKind.BOT_CHECK ||
+                kind == CapsuleVideoRequestGuard.FailureKind.FORBIDDEN
+            ) {
+                // A denied /next must NOT immediately issue another /search.
+                throw CapsuleVideoRequestGuard.RequestBlockedException(
+                    "YouTube VIDEO counterpart lookup stopped after ${kind.name.lowercase()}",
+                    failure,
+                )
+            }
+            // Layout changes and transient network failures still use bounded search.
             return null
         }
         val entries = response.contents
