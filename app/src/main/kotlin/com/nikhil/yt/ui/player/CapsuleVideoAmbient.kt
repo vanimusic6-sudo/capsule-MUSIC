@@ -31,6 +31,23 @@ internal fun capsuleVideoAmbientShouldStayVisible(
 internal const val VIDEO_AMBIENT_SAMPLE_WIDTH = 48
 internal const val VIDEO_AMBIENT_SAMPLE_HEIGHT = 28
 
+/**
+ * Keep one filtered scene per (video TextureView, audio media ID). The capture
+ * coroutine itself restarts whenever video buffers, pauses or receives a new
+ * first frame; rebuilding the light filter at each restart exposed an instant
+ * raw-brightness frame to the entire player background.
+ */
+internal class CapsuleVideoAmbientCaptureMemory {
+    val lightFilter = CapsuleVideoLightFilter()
+    var previous: CapsuleColorField? = null
+
+    fun shouldPublish(frame: CapsuleVideoAmbientFrame): Boolean {
+        if (!capsuleFieldChanged(previous, frame.field, threshold = 0.0045f)) return false
+        previous = frame.field
+        return true
+    }
+}
+
 internal data class CapsuleVideoAmbientFrame(
     // Original audio track ID (not a possibly different chosen official clip ID).
     val mediaId: String,
