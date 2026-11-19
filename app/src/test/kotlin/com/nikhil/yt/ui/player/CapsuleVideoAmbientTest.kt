@@ -36,6 +36,19 @@ class CapsuleVideoAmbientTest {
         assertFalse(capsuleVideoAmbientShouldStayVisible(initial, "song", false))
     }
 
+    @Test fun rebufferRetainsLightFilterHistoryInsteadOfResettingBrightness() {
+        val memory = CapsuleVideoAmbientCaptureMemory()
+        val dark = CapsuleColorField(20, 16, List(320) { androidx.compose.ui.graphics.Color.Black })
+        val bright = CapsuleColorField(20, 16, List(320) { androidx.compose.ui.graphics.Color.White })
+        val first = memory.lightFilter.apply(dark, 1_000_000_000L)
+        assertTrue(memory.shouldPublish(CapsuleVideoAmbientFrame("song", capsuleBandsFromField(first), first)))
+        // Buffering restarts capture, not the remembered filter.
+        val after = memory.lightFilter.apply(bright, 1_150_000_000L)
+        assertTrue(after.cells.first().red < 0.3f)
+        assertTrue(memory.shouldPublish(CapsuleVideoAmbientFrame("song", capsuleBandsFromField(after), after)))
+        assertFalse(memory.shouldPublish(CapsuleVideoAmbientFrame("song", capsuleBandsFromField(after), after)))
+    }
+
     @Test fun liveFrameKeepsBlueAndRedSidesSeparate() {
         val bitmap = Bitmap.createBitmap(48, 28, Bitmap.Config.ARGB_8888)
         for (y in 0 until 28) for (x in 0 until 48) {
