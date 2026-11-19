@@ -149,7 +149,16 @@ object SimpMusicLyricsProvider : LyricsProvider {
             }
             if (response.status.isSuccess()) {
                 return try {
-                    parseEntries(response.bodyAsText())
+                    val payload = response.bodyAsText()
+                    // This API explicitly reports "processing" (HTTP 200/202)
+                    // while its volunteer backend is retrieving a video.
+                    // One bounded retry avoids reporting a false no-lyrics hit,
+                    // without creating a background poll or hammering the server.
+                    if (attempt == 0 && isProcessingResponse(payload)) {
+                        delay(650L)
+                        continue
+                    }
+                    parseEntries(payload)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
@@ -202,6 +211,13 @@ object SimpMusicLyricsProvider : LyricsProvider {
                 hasSyncedLyrics = synced != null,
             )
         }
+    }
+
+    internal fun isProcessingResponse(payload: String): Boolean {
+        val root = runCatching { json.parseToJsonElement(payload) as? JsonObject }
+            .getOrNull() ?: return false
+        return root["processing"] != null ||
+            (root["type"] as? JsonPrimitive)?.contentOrNull == "processing"
     }
 
     private fun JsonObject.string(key: String): String =
