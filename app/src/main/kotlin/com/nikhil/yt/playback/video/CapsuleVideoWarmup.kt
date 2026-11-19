@@ -61,6 +61,14 @@ internal suspend fun warmupVideoPrefix(
         check(delivered > 0L) { "VIDEO CDN returned zero playable bytes" }
         delivered
     } finally {
-        dataSource.close()
+        // A short speculative warmup already delivered its cached prefix.
+        // A CDN/socket close exception must not turn those valid bytes into
+        // a VIDEO startup failure and trigger another expensive extraction.
+        // The optional DataSource is never reused by the active decoder.
+        try {
+            dataSource.close()
+        } catch (_: IOException) {
+            // Closing was attempted; regular playback owns stream failures.
+        }
     }
 }
