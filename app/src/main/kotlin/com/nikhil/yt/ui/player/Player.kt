@@ -820,12 +820,20 @@ private fun CapsulePlayerLyricsHost(
     // Immersion is painted from its visible crop, not the generic album
     // palette. The latter is sometimes neutral even as the player has a
     // saturated photographic floor (the missing-colour bug below the player).
-    val inlineSceneColors = remember(design, warmedImmersiveTone, playerArtworkColors) {
-        capsuleInlineLyricsSceneColors(
-            playerColors = playerArtworkColors,
-            immersiveTone = if (design == CapsulePlayerDesign.IMMERSIVE)
-                warmedImmersiveTone else null,
-        )
+    // Parent and ImmersiveAudioScene now observe ONE prepared bitmap. Sampling
+    // three pixels along its final visible scanline makes the page below the
+    // player start at the actual photo-to-floor background, without a new decode.
+    val preparedLyricsScene = if (design == CapsulePlayerDesign.IMMERSIVE)
+        sceneMemory.prepared else null
+    val inlineSceneColors = remember(
+        design, warmedImmersiveTone, playerArtworkColors, preparedLyricsScene, mediaMetadata.id,
+    ) {
+        capsuleInlineLyricsPreparedSeamColors(preparedLyricsScene, mediaMetadata.id)
+            ?: capsuleInlineLyricsSceneColors(
+                playerColors = playerArtworkColors,
+                immersiveTone = if (design == CapsulePlayerDesign.IMMERSIVE)
+                    warmedImmersiveTone else null,
+            )
     }
     // A hidden card has no independent animation work. For styles whose
     // full-player palette already interpolates, paint those same RGB frames
@@ -839,7 +847,8 @@ private fun CapsulePlayerLyricsHost(
         playerColors = inlineSceneColors,
     )
     val transitioningPalette = if (
-        scrollToLyrics && inlineSurfaceActive && !playerPaletteAlreadyAnimated
+        scrollToLyrics && inlineSurfaceActive && !playerPaletteAlreadyAnimated &&
+            preparedLyricsScene?.frame?.mediaId != mediaMetadata.id
     ) {
         inlineTarget.mapIndexed { index, target ->
             animateColorAsState(
@@ -1094,7 +1103,18 @@ private fun CapsulePlayerLyricsHost(
             val scrollBackdrop = if (design == CapsulePlayerDesign.IMMERSIVE) {
                 Modifier.drawWithCache {
                     val brush = Brush.horizontalGradient(immersiveBridgeStops)
-                    onDrawBehind { drawRect(brush) }
+                    val dim = Brush.verticalGradient(
+                        0f to Color.Transparent,
+                        1f to Color.Black.copy(alpha = 0.34f),
+                        startY = viewportHeightPx,
+                        endY = size.height.coerceAtLeast(viewportHeightPx + 1f),
+                    )
+                    // One uninterrupted paint underneath player, gap and card.
+                    // Only the area BELOW the artwork gradually darkens.
+                    onDrawBehind {
+                        drawRect(brush)
+                        drawRect(dim)
+                    }
                 }
             } else Modifier
             Column(
