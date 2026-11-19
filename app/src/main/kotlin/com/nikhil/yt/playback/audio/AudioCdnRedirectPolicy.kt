@@ -29,6 +29,18 @@ internal const val AUDIO_CDN_MAX_REISSUES = 1
 
 internal const val AUDIO_CDN_INITIAL_HEADERS_TIMEOUT_SECONDS = 6
 
+/** Reject attacker-controlled Location URLs before copying a signed request's
+ * Range, token, visitor headers or authorization to another network endpoint.
+ * This matches the existing offline-stream HTTPS + YouTube-host policy.
+ */
+internal fun isSafeAudioCdnRedirect(url: HttpUrl): Boolean =
+    try {
+        AudioDownloadUrlPolicy.requireYouTubeMedia(url.toString())
+        true
+    } catch (_: IOException) {
+        false
+    }
+
 internal fun isInitialAudioCdnRequest(request: Request): Boolean =
     request.header("Range")?.startsWith("bytes=0-") == true ||
         request.url.queryParameter("range")?.startsWith("0-") == true
@@ -85,7 +97,9 @@ internal class AudioCdnRedirectInterceptor(
          * socket, and a socket's first request is where every refusal in every capture has
          * landed.
          */
-        val shortcut = targets.shortcutFor(origin.url)
+        val previouslyLearned = targets.shortcutFor(origin.url)
+        val shortcut = previouslyLearned?.takeIf(::isSafeAudioCdnRedirect)
+        if (previouslyLearned != null && shortcut == null) targets.forget(origin.url)
         // Anchor diagnostics on the original signed link for every internal request,
         // including a cross-group reissue and a fallback after a refused shortcut.
         // Reusing raw `origin` used to drop this tag on exactly those paths, yielding
@@ -209,7 +223,14 @@ internal class AudioCdnRedirectInterceptor(
                 continue
             }
 
-            val target = redirectTargetOf(request, response)
+            val target = try {
+                redirectTargetOf(request, response)
+            } catch (unsafe: IOException) {
+                // Always close the 3xx body before aborting the original
+                // request. No signed URL/header can reach an unsafe hop.
+                response.close()
+                throw unsafe
+            }
             if (target == null) {
                 // Where this landed is worth remembering only once it has actually served.
                 if (!isCdnRefusalStatus(response.code)) targets.remember(origin.url, request.url)
@@ -304,6 +325,11 @@ internal class AudioCdnRedirectInterceptor(
     ): HttpUrl? {
         if (response.code !in REDIRECT_CODES) return null
         val location = response.header("Location") ?: return null
-        return request.url.resolve(location)
+        val candidate = request.url.resolve(location)
+            ?: throw IOException("Audio CDN redirect address invalid")
+        if (!isSafeAudioCdnRedirect(candidate)) {
+            throw IOException("Audio CDN redirect refused: not an approved HTTPS media host")
+        }
+        return candidate
     }
 }
