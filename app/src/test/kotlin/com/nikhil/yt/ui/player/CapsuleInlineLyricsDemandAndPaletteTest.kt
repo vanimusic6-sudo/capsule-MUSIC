@@ -35,6 +35,10 @@ class CapsuleInlineLyricsDemandAndPaletteTest {
         assertTrue("Immersive violet must survive into the below-player card",
             derived[0].blue > derived[0].green * 1.30f)
         assertTrue("Card must not reuse default neutral album palette", derived != parent)
+        // The bug used a pre-darkened accent (35% of the visible artwork)
+        // which then got dimmed AGAIN, leaving a gray empty rectangle.
+        assertTrue("Bottom of card must preserve visible artwork's violet",
+            derived[2].blue > tone.accent.blue * 1.7f)
         assertEquals("Unprepared tone must be ignored", parent,
             capsuleInlineLyricsSceneColors(parent, tone.copy(ready = false)))
     }
