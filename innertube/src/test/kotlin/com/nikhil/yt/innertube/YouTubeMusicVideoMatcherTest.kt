@@ -7,6 +7,7 @@ import org.junit.Test
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import com.nikhil.yt.innertube.models.PlaylistPanelVideoWrapperRenderer
+import com.nikhil.yt.innertube.models.response.NextResponse
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.fail
 
@@ -40,6 +41,14 @@ class YouTubeMusicVideoMatcherTest {
         assertEquals("abcdefghijk", parsed.primaryRenderer?.playlistPanelVideoRenderer?.videoId)
         assertEquals("lmnopqrstuv",
             parsed.counterpart?.firstOrNull()?.counterpartRenderer?.playlistPanelVideoRenderer?.videoId)
+    }
+
+    @Test fun entireWatchNextResponseSelectsOnlyTargetSongNotTheFirstRadioNeighbor() {
+        val response = Json { ignoreUnknownKeys = true; explicitNulls = false }
+            .decodeFromString<NextResponse>("""{"contents":{"singleColumnMusicWatchNextResultsRenderer":{"tabbedRenderer":{"watchNextTabbedResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"musicQueueRenderer":{"content":{"playlistPanelRenderer":{"contents":[{"playlistPanelVideoWrapperRenderer":{"primaryRenderer":{"playlistPanelVideoRenderer":{"videoId":"otherclip01"}},"counterpart":[{"counterpartRenderer":{"playlistPanelVideoRenderer":{"videoId":"badclip0001"}}}]}},{"playlistPanelVideoWrapperRenderer":{"primaryRenderer":{"playlistPanelVideoRenderer":{"videoId":"abcdefghijk"}},"counterpart":[{"counterpartRenderer":{"playlistPanelVideoRenderer":{"videoId":"lmnopqrstuv"}}}]}}]}}}}}}]}}}}}""")
+        assertEquals("lmnopqrstuv", nextOfficialVideoForSong(response, "abcdefghijk"))
+        assertEquals("badclip0001", nextOfficialVideoForSong(response, "otherclip01"))
+        assertNull(nextOfficialVideoForSong(response, "missing12345"))
     }
 
     @Test fun sameSongWordsInsideAnotherTitleAreNeverEnoughToPickAnOfficialClip() {
