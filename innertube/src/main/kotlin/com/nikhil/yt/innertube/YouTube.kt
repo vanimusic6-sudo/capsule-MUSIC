@@ -1232,6 +1232,28 @@ object YouTube {
         )
     }
 
+    /**
+     * YouTube Music's Android browse response includes line-aligned timing
+     * data absent from the WEB_REMIX plain-text description. Metrolist 14
+     * reads this exact timedLyricsData contract. Keep this request separate
+     * from playback clients; no tokens or player clients are cycled here.
+     */
+    suspend fun synchronizedLyrics(videoId: String): Result<String?> = runCatchingCancellable {
+        require(videoId.matches(Regex("[A-Za-z0-9_-]{11}"))) { "Invalid video id" }
+        val nextResponse = innerTube.next(WEB_REMIX, videoId).bodyAsText()
+        val browseId = YouTubeMusicTimedLyrics.findLyricsBrowseId(
+            Json.parseToJsonElement(nextResponse),
+        ) ?: return@runCatchingCancellable null
+        val client = YouTubeClient.ANDROID_MUSIC.copy(
+            clientVersion = "8.25.52",
+            userAgent = "com.google.android.apps.youtube.music/8.25.52 (Linux; U; Android 14) gzip",
+            androidSdkVersion = "34",
+            osVersion = "14",
+        )
+        val timedResponse = innerTube.browse(client, browseId = browseId).bodyAsText()
+        YouTubeMusicTimedLyrics.toSynchronizedLrc(Json.parseToJsonElement(timedResponse))
+    }
+
     suspend fun lyrics(endpoint: BrowseEndpoint): Result<String?> = runCatchingCancellable {
         val response = innerTube.browse(WEB_REMIX, endpoint.browseId, endpoint.params).body<BrowseResponse>()
         response.contents?.sectionListRenderer?.contents?.firstOrNull()?.musicDescriptionShelfRenderer?.description?.runs?.firstOrNull()?.text

@@ -25,6 +25,12 @@ object YouTubeLyricsProvider : LyricsProvider {
         album: String?,
         duration: Int,
     ): Result<String> {
+        // Metrolist's Android Music browse route provides real line timestamps.
+        // Prefer it over unsynced text; a missing/blocked timed response must
+        // not suppress the existing plain-panel and transcript fallbacks.
+        val timed = YouTube.synchronizedLyrics(id)
+        timed.getOrNull()?.takeIf { it.isNotBlank() }?.let { return Result.success(it) }
+
         // The official YouTube Music lyrics panel is missing for many videos,
         // even though the video itself has human captions. This is the FINAL
         // (lowest-priority) source; avoid trying a redundant transcript until
