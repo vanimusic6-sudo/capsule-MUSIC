@@ -44,12 +44,10 @@ constructor(
     /** Every provider there is, by its id in [LyricsProviderOrder]. */
     private val providersById: Map<String, LyricsProvider> =
         mapOf(
-            LyricsProviderOrder.LYRICS_PLUS to LyricsPlusLyricsProvider,
             LyricsProviderOrder.BETTER_LYRICS_PORTATO to BetterLyricsPortatoProvider,
             LyricsProviderOrder.SIMPMUSIC to SimpMusicLyricsProvider,
-            LyricsProviderOrder.PAXSENIX_APPLE_MUSIC to PaxsenixLyricsProvider,
+            LyricsProviderOrder.LYRICS_PLUS to LyricsPlusLyricsProvider,
             LyricsProviderOrder.LRCLIB to LrcLibLyricsProvider,
-            LyricsProviderOrder.KUGOU to BetterLyricsKuGouProvider,
             LyricsProviderOrder.YOUTUBE to YouTubeLyricsProvider,
         )
 
@@ -92,7 +90,7 @@ constructor(
          * Provider order is the contract: the first enabled source that returns actual readable
          * lyrics wins immediately. Do not wait for slower providers merely to compare sync grades.
          *
-         * isMeaningfulLyrics() stays load-bearing here, especially for Paxsenix: an empty TTML or
+         * isMeaningfulLyrics() stays load-bearing here, for every source: an empty TTML or
          * timings-only response is a miss and must fall through to the next provider rather than
          * becoming a blank lyrics screen.
          */
@@ -262,7 +260,7 @@ constructor(
      *
      * The old check stripped line timestamps with a regex and asked whether anything remained,
      * which was true of far too much. A TTML document with no words in it is angle brackets and
-     * attributes all the way down, so it passed — and Paxsenix returns TTML, which is exactly how
+     * attributes all the way down, so it passed — and some providers return TTML, which is how
      * an empty answer from it could win the search and leave a song with a blank screen while
      * providers that had the lyrics were never asked. Enhanced LRC broke it the same way once word
      * stamps existed: `<00:00.55> <00:00.90>` is not whitespace either.
@@ -312,8 +310,8 @@ constructor(
 
     companion object {
         private const val MAX_CACHE_SIZE = 3
-        // Manual searches stream each source independently; allow the slower Apple
-        // relay and volunteer SimpMusic server to finish a single 15s attempt.
+        // Manual searches stream independently; allow slow public mirrors
+        // to finish a bounded request without blocking other results.
         // This does not block faster sources in the picker.
         private const val MANUAL_PROVIDER_TIMEOUT_MS = 22_000L
         private val TIMESTAMP_REGEX = Regex("""\[[0-9]{1,2}:[0-9]{2}(?:\.[0-9]{1,3})?]""")

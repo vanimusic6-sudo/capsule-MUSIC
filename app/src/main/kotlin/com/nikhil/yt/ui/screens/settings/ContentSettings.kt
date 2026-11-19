@@ -87,12 +87,8 @@ fun ContentSettings(
         rememberPreference(key = EnableBetterLyricsPortatoKey, defaultValue = true)
     val (enableLrcLib, onEnableLrcLibChange) =
         rememberPreference(key = EnableLrcLibKey, defaultValue = true)
-    val (enableKuGou, onEnableKuGouChange) =
-        rememberPreference(key = EnableKuGouLyricsKey, defaultValue = true)
     val (enableLyricsPlus, onEnableLyricsPlusChange) =
         rememberPreference(key = EnableLyricsPlusKey, defaultValue = true)
-    val (enablePaxsenixApple, onEnablePaxsenixAppleChange) =
-        rememberPreference(key = EnablePaxsenixAppleMusicKey, defaultValue = true)
     val (rawLyricsProviderOrder, onLyricsProviderOrderChange) =
         rememberPreference(key = LyricsProviderOrderKey, defaultValue = "")
     val (legacyPreferredProvider, _) =
@@ -103,7 +99,6 @@ fun ContentSettings(
             legacyPreferred = legacyPreferredProvider,
         )
     var showLyricsProviderPriorityDialog by remember { mutableStateOf(false) }
-    var showPaxsenixStatsDialog by remember { mutableStateOf(false) }
 
     val (lyricsRomanizeJapanese, onLyricsRomanizeJapaneseChange) = rememberPreference(LyricsRomanizeJapaneseKey, defaultValue = true)
     val (lyricsRomanizeKorean, onLyricsRomanizeKoreanChange) = rememberPreference(LyricsRomanizeKoreanKey, defaultValue = true)
@@ -266,74 +261,43 @@ fun ContentSettings(
 
         if (advancedSettings) {
             PreferenceGroupTitle(title = stringResource(R.string.lyrics))
-        }
-        if (advancedSettings) {
-        SwitchPreference(
-            title = { Text("SimpMusic") },
-            description = stringResource(R.string.lyrics_provider_simp_music_description),
-            icon = { Icon(painterResource(R.drawable.lyrics), null) },
-            checked = enableSimpMusic,
-            onCheckedChange = onEnableSimpMusicChange,
-        )
-        SwitchPreference(
-            title = { Text("Better Lyrics · Portato (QQ)") },
-            description = stringResource(R.string.lyrics_provider_portato_description),
-            icon = { Icon(painterResource(R.drawable.lyrics), null) },
-            checked = enablePortato,
-            onCheckedChange = onEnablePortatoChange,
-        )
-        SwitchPreference(
-            title = { Text("LRCLIB") },
-            description = stringResource(R.string.lyrics_provider_lrclib_description),
-            icon = { Icon(painterResource(R.drawable.lyrics), null) },
-            checked = enableLrcLib,
-            onCheckedChange = onEnableLrcLibChange,
-        )
-        SwitchPreference(
-            title = { Text("KuGou") },
-            description = stringResource(R.string.lyrics_provider_kugou_description),
-            icon = { Icon(painterResource(R.drawable.lyrics), null) },
-            checked = enableKuGou,
-            onCheckedChange = onEnableKuGouChange,
-        )
-        }
-        if (advancedSettings) {
-        SwitchPreference(
-            title = { Text(stringResource(R.string.enable_lyricsplus)) },
-            description = stringResource(R.string.enable_lyricsplus_description),
-            icon = { Icon(painterResource(R.drawable.lyrics), null) },
-            checked = enableLyricsPlus,
-            onCheckedChange = onEnableLyricsPlusChange,
-        )
-        }
-        if (advancedSettings) {
-        SwitchPreference(
-            title = { Text(stringResource(R.string.enable_paxsenix_apple)) },
-            description = stringResource(R.string.lyrics_provider_paxsenix_apple_description),
-            icon = { Icon(painterResource(R.drawable.lyrics), null) },
-            checked = enablePaxsenixApple,
-            onCheckedChange = onEnablePaxsenixAppleChange,
-        )
-        }
-        if (advancedSettings) {
-        PreferenceEntry(
-            title = { Text(stringResource(R.string.paxsenix_status_title)) },
-            description = stringResource(R.string.paxsenix_status_description),
-            icon = { Icon(painterResource(R.drawable.lyrics), null) },
-            onClick = { showPaxsenixStatsDialog = true },
-        )
-        }
-        if (advancedSettings) {
-        PreferenceEntry(
-            title = { Text(stringResource(R.string.lyrics_provider_priority_title)) },
-            description =
-                stringResource(
+            SwitchPreference(
+                title = { Text("Better Lyrics · Portato (QQ)") },
+                description = stringResource(R.string.lyrics_provider_portato_description),
+                icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                checked = enablePortato,
+                onCheckedChange = onEnablePortatoChange,
+            )
+            SwitchPreference(
+                title = { Text("SimpMusic") },
+                description = stringResource(R.string.lyrics_provider_simp_music_description),
+                icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                checked = enableSimpMusic,
+                onCheckedChange = onEnableSimpMusicChange,
+            )
+            SwitchPreference(
+                title = { Text(stringResource(R.string.enable_lyricsplus)) },
+                description = stringResource(R.string.enable_lyricsplus_description),
+                icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                checked = enableLyricsPlus,
+                onCheckedChange = onEnableLyricsPlusChange,
+            )
+            SwitchPreference(
+                title = { Text("LRCLIB") },
+                description = stringResource(R.string.lyrics_provider_lrclib_description),
+                icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                checked = enableLrcLib,
+                onCheckedChange = onEnableLrcLibChange,
+            )
+            PreferenceEntry(
+                title = { Text(stringResource(R.string.lyrics_provider_priority_title)) },
+                description = stringResource(
                     R.string.lyrics_provider_priority_summary,
                     lyricsProviderOrder.size,
                 ),
-            icon = { Icon(painterResource(R.drawable.lyrics), null) },
-            onClick = { showLyricsProviderPriorityDialog = true },
-        )
+                icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                onClick = { showLyricsProviderPriorityDialog = true },
+            )
         }
         if (advancedSettings) {
         SwitchPreference(
@@ -409,12 +373,6 @@ fun ContentSettings(
             onOrderChange = { newOrder ->
                 onLyricsProviderOrderChange(LyricsProviderOrder.encode(newOrder))
             },
-        )
-    }
-
-    if (advancedSettings && showPaxsenixStatsDialog) {
-        PaxsenixStatsDialog(
-            onDismiss = { showPaxsenixStatsDialog = false },
         )
     }
 
