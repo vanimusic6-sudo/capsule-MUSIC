@@ -81,6 +81,7 @@ jobs:
           --tests 'com.nikhil.yt.lyrics.SimpMusicApiContractTest'
           --tests 'com.nikhil.yt.lyrics.PaxsenixResponseContractTest'
           --tests 'com.nikhil.yt.lyrics.LyricsPlusResponseContractTest'
+          --tests 'com.nikhil.yt.ui.LyricsPlusOutageTest'
           --tests 'com.nikhil.yt.lyrics.QrcToEnhancedLrcTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleLyricsVolumeSliderTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleInlineLyricsDemandAndPaletteTest'
