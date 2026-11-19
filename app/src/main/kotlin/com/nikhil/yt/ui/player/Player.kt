@@ -1057,7 +1057,7 @@ private fun CapsulePlayerLyricsHost(
             // the page moves ~2.5% towards its card, prepare the CURRENT song;
             // card rendering itself still waits until ~12% travel.
             val lyricsFetchIntent by remember(scrollState, viewportHeightPx) {
-                derivedStateOf { scrollState.value > viewportHeightPx * 0.025f }
+                derivedStateOf { capsuleShouldPrefetchInlineLyrics(scrollState.value, viewportHeightPx) }
             }
             val lyricsCardReady by remember(scrollState, viewportHeightPx) {
                 derivedStateOf { scrollState.value > viewportHeightPx * 0.12f }
