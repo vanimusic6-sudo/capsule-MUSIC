@@ -13,6 +13,7 @@ on:
       - 'app/src/main/kotlin/com/nikhil/yt/lyrics/**'
       - 'app/src/main/kotlin/com/nikhil/yt/viewmodels/LyricsMenuViewModel.kt'
       - 'app/src/main/kotlin/com/nikhil/yt/constants/LyricsProviderOrder.kt'
+      - 'app/src/main/kotlin/com/nikhil/yt/lyrics/LyricsPreloadManager.kt'
       - '.github/workflows/player-ui-quality.yml'
   pull_request:
     paths:
@@ -79,6 +80,7 @@ jobs:
           --tests 'com.nikhil.yt.lyrics.SimpMusicSourceRegressionTest'
           --tests 'com.nikhil.yt.lyrics.QrcToEnhancedLrcTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleLyricsVolumeSliderTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleInlineLyricsDemandAndPaletteTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveFieldTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveImageBackdropTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveTailTest'
