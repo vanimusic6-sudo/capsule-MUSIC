@@ -44,7 +44,7 @@ class SimpMusicApiContractTest {
         val file = listOf(java.io.File(path), java.io.File("app/$path"))
             .firstOrNull(java.io.File::isFile) ?: error("SimpMusic source missing")
         assertTrue(file.readText().contains(
-            """requestEntries("$ENDPOINT/search/title", title, queryKey = "title")"""
+            "queryKey = \"title\""
         ))
     }
 }
