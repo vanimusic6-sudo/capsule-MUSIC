@@ -44,6 +44,9 @@ internal fun Bitmap.capsuleColorField(
         .toInt().coerceIn(1, height)
     val left = (width - croppedWidth) / 2
     val top = (height - croppedHeight) / 2
+    // Track genuinely sampled cells separately from the fallback tint.
+    // Only VIDEO uses this metadata to repair horizontal letterbox bars.
+    val sampled = BooleanArray(CAPSULE_FIELD_ROWS * CAPSULE_FIELD_COLUMNS)
     val cells = List(CAPSULE_FIELD_ROWS * CAPSULE_FIELD_COLUMNS) { index ->
         val cx = index % CAPSULE_FIELD_COLUMNS
         val cy = index / CAPSULE_FIELD_COLUMNS
@@ -70,6 +73,7 @@ internal fun Bitmap.capsuleColorField(
             if (video && rr + gg + bb < 0.08f) continue
             r += rr; g += gg; b += bb; n++
         }
+        sampled[index] = n > 0
         val color = if (n > 0) Color(r / n, g / n, b / n)
             else Color(0xFF18171C)
         // The photo's actual lower edge must match the page at the seam.
@@ -79,7 +83,34 @@ internal fun Bitmap.capsuleColorField(
         // Darkening happens ONLY below the seam inside the bleed renderer.
         if (video) lerp(color, Color(0xFF0C0D13), 0.43f) else color
     }
-    return CapsuleColorField(CAPSULE_FIELD_COLUMNS, CAPSULE_FIELD_ROWS, cells)
+    if (!video) return CapsuleColorField(CAPSULE_FIELD_COLUMNS, CAPSULE_FIELD_ROWS, cells)
+
+    // Letterbox bars are large, nearly black *edge rows*. The old fallback
+    // colour filled those rows with flat dark stripes across the wallpaper.
+    // Continue the nearest real row per column instead, preserving Scene Light's
+    // genuinely 2D distribution and leaving real dark areas inside the frame.
+    val repaired = cells.toMutableList()
+    for (y in 0 until CAPSULE_FIELD_ROWS) {
+        if (y >= CAPSULE_FIELD_ROWS / 3 && y < CAPSULE_FIELD_ROWS * 2 / 3) continue
+        val rowStart = y * CAPSULE_FIELD_COLUMNS
+        var empty = 0
+        for (x in 0 until CAPSULE_FIELD_COLUMNS) if (!sampled[rowStart + x]) empty++
+        if (empty * 4 < CAPSULE_FIELD_COLUMNS * 3) continue
+        val direction = if (y < CAPSULE_FIELD_ROWS / 2) 1 else -1
+        for (x in 0 until CAPSULE_FIELD_COLUMNS) {
+            if (sampled[rowStart + x]) continue
+            var scanY = y + direction
+            while (scanY in 0 until CAPSULE_FIELD_ROWS) {
+                val otherIndex = scanY * CAPSULE_FIELD_COLUMNS + x
+                if (sampled[otherIndex]) {
+                    repaired[rowStart + x] = cells[otherIndex]
+                    break
+                }
+                scanY += direction
+            }
+        }
+    }
+    return CapsuleColorField(CAPSULE_FIELD_COLUMNS, CAPSULE_FIELD_ROWS, repaired)
 }
 
 internal fun capsuleFieldAt(

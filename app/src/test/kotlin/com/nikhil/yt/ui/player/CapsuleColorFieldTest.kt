@@ -45,6 +45,31 @@ class CapsuleColorFieldTest {
         bitmap.recycle()
     }
 
+    @Test fun videoLetterboxBarsDoNotPaintHorizontalStripes() {
+        val width = 48
+        val height = 28
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val pixels = IntArray(width * height) { i ->
+            val y = i / width
+            if (y < 5 || y >= 23) AndroidColor.BLACK
+            else AndroidColor.rgb(35, 110, 220)
+        }
+        bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+        try {
+            val video = bitmap.capsuleColorField(width.toFloat() / height,
+                video = true, pixelBuffer = pixels)
+            val above = video.cell(10, 0)
+            val middle = video.cell(10, 8)
+            val below = video.cell(10, 15)
+            assertTrue("Black top letterbox rows cannot shade the entire wallpaper",
+                kotlin.math.abs(above.blue - middle.blue) < 0.09f)
+            assertTrue("Black bottom letterbox rows cannot shade the entire wallpaper",
+                kotlin.math.abs(below.blue - middle.blue) < 0.09f)
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
     @Test fun actualSeamMatchesAndNarrowDarkStripeDoesNotExtendToControls() {
         val pale = Color(0xFFF6F5F2)
         val narrowBlack = Color(0xFF070707)

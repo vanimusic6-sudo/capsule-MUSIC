@@ -105,7 +105,7 @@ internal fun capsuleVideoAmbientFrameFromBitmap(bitmap: Bitmap, mediaId: String)
     if (nonBlack < 4) return null
     // The image's Y structure matters just as much as left/right colours.
     // This small 12x10 grid is our REAL input, not seven painted stripes.
-    val field = bitmap.capsuleColorField(width.toFloat() / height, video = true)
+    val field = bitmap.capsuleColorField(width.toFloat() / height, video = true, pixelBuffer = pixels)
     return CapsuleVideoAmbientFrame(mediaId, bands, field)
 }
 
