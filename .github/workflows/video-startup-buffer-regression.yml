@@ -2,6 +2,16 @@ name: Capsule VIDEO Startup and Buffer Regression
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - 'engine/**'
+    paths:
+      - 'app/src/main/kotlin/com/nikhil/yt/playback/**'
+      - 'app/src/test/kotlin/com/nikhil/yt/playback/**'
+      - 'innertube/src/main/kotlin/com/nikhil/yt/innertube/**'
+      - 'innertube/src/test/kotlin/com/nikhil/yt/innertube/**'
+      - 'gradle/libs.versions.toml'
+      - '.github/workflows/video-startup-buffer-regression.yml'
 
 permissions:
   contents: read

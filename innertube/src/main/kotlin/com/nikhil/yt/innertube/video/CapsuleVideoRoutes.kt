@@ -43,7 +43,7 @@ internal class CapsuleVideoRouteHealth(private val clock: () -> Long = System::n
             { it.wireName == failedBackend }
             .thenBy { (retryAfter[it] ?: 0L) > now }
             .thenBy { it != lastSuccessful }
-            // Prefer the maintained NewPipe 0.26.5 HTTP workaround over
+            // Prefer the maintained NewPipe 0.27.1 HTTP workaround over
             // an older pinned PipePipe extractor (Aug 2026). Full SABR is
             // not yet wired into our Media3 DataSource, so a SABR-only
             // response from PipePipe cannot currently be played by Capsule.
