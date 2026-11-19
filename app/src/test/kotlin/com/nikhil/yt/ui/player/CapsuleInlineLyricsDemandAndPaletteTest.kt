@@ -85,6 +85,8 @@ class CapsuleInlineLyricsDemandAndPaletteTest {
             card.all { it.alpha in 0.7f..0.99f })
         assertTrue("Panel must brighten the middle of a dim photo",
             card.first().red > photo[1].red)
+        assertTrue("A warm image must remain warm inside its own card",
+            card.first().red > card.first().blue * 1.12f)
     }
 
     @Test fun markersStayPermanentAndMagneticallyCaptureNearbyDrags() {

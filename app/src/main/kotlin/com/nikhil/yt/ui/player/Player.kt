@@ -851,6 +851,16 @@ private fun CapsulePlayerLyricsHost(
         frozenDuringOpening = frozenCardPalette,
         playerColors = inlineSceneColors,
     )
+    // Separate the PAPER (visible photo continuation) from the CARD (a
+    // softly brighter layer sampled from the same cover). Using the final
+    // dark bottom scanline for both made lyrics look like an empty black page.
+    val inlineCardColors = remember(
+        design, warmedImmersiveTone, inlineSceneColors,
+    ) {
+        if (design == CapsulePlayerDesign.IMMERSIVE)
+            capsuleInlineLyricsSceneColors(inlineSceneColors, warmedImmersiveTone)
+        else inlineSceneColors
+    }
     val transitioningPalette = if (
         scrollToLyrics && inlineSurfaceActive && !playerPaletteAlreadyAnimated &&
             preparedLyricsScene?.frame?.mediaId != mediaMetadata.id
@@ -1162,7 +1172,8 @@ private fun CapsulePlayerLyricsHost(
             ) {
                 Box(Modifier.fillMaxWidth().height(viewportHeight)) { renderPlayer() }
                 CapsuleInlineLyricsCard(
-                    colors = transitioningPalette,
+                    colors = if (design == CapsulePlayerDesign.IMMERSIVE)
+                        inlineCardColors else transitioningPalette,
                     immersive = design == CapsulePlayerDesign.IMMERSIVE,
                     visible = onScreen && playerState.isExpandedOrExpanding &&
                         lyricsCardReady && compactPreviewActive,
@@ -1290,7 +1301,8 @@ private fun CapsulePlayerLyricsHost(
                             // use the SAME cover gradient, with no extra sampler,
                             // animated wallpaper or independently fading theme.
                             CapsuleInlineLyricsBackdrop(
-                                colors = transitioningPalette,
+                                colors = if (design == CapsulePlayerDesign.IMMERSIVE)
+                                    inlineCardColors else transitioningPalette,
                                 immersive = design == CapsulePlayerDesign.IMMERSIVE,
                                 immersiveBitmap = immersiveReflection,
                                 modifier = Modifier.fillMaxSize(),

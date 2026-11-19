@@ -158,10 +158,10 @@ internal fun capsuleInlineLyricsImmersivePanelStops(colors: List<Color>): List<C
     val source = colors.getOrNull(1) ?: Color(0xFF262225)
     val ink = Color(0xFF17171B)
     val base = lerp(ink, source, 0.78f)
-    val lift = if (maxOf(source.red, source.green, source.blue) > 0.75f) 0.07f else 0.24f
+    val lift = if (maxOf(source.red, source.green, source.blue) > 0.75f) 0.06f else 0.17f
     val top = lerp(base, Color.White, lift)
     val bottom = lerp(base, Color.White, lift * 0.68f)
-    return listOf(top.copy(alpha = 0.91f), bottom.copy(alpha = 0.91f))
+    return listOf(top.copy(alpha = 0.88f), bottom.copy(alpha = 0.90f))
 }
 
 /**
@@ -236,8 +236,9 @@ internal fun CapsuleInlineLyricsCard(
         modifier = modifier
             .padding(horizontal = 16.dp, vertical = 16.dp)
             .clip(RoundedCornerShape(28.dp))
-            .border(1.dp, Color.White.copy(alpha = if (immersive) 0.13f else 0f),
-                RoundedCornerShape(28.dp))
+            .then(if (immersive) Modifier.border(
+                1.dp, Color.White.copy(alpha = 0.13f), RoundedCornerShape(28.dp),
+            ) else Modifier)
             .onGloballyPositioned { onBoundsChanged(it.boundsInRoot()) },
     ) {
         if (immersive) {
