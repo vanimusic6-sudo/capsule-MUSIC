@@ -57,22 +57,19 @@ class ReleaseDefaultsTest {
     @Test fun lyricsFreshInstallUsesIndependentSourcesAndKeepsEveryFallback() {
         assertEquals(
             listOf(
-                LyricsProviderOrder.SIMPMUSIC,
-                LyricsProviderOrder.PAXSENIX_APPLE_MUSIC,
                 LyricsProviderOrder.BETTER_LYRICS_PORTATO,
+                LyricsProviderOrder.SIMPMUSIC,
                 LyricsProviderOrder.LYRICS_PLUS,
                 LyricsProviderOrder.LRCLIB,
-                LyricsProviderOrder.KUGOU,
                 LyricsProviderOrder.YOUTUBE,
             ),
             LyricsProviderOrder.resolve(null),
         )
         val fresh = emptyPreferences()
-        assertTrue(fresh[EnablePaxsenixAppleMusicKey] ?: true)
-        assertTrue(fresh[EnableLrcLibKey] ?: true)
-        assertTrue(fresh[EnableKuGouLyricsKey] ?: true)
         assertTrue(fresh[EnableBetterLyricsPortatoKey] ?: true)
         assertTrue(fresh[EnableSimpMusicKey] ?: true)
+        assertTrue(fresh[EnableLyricsPlusKey] ?: true)
+        assertTrue(fresh[EnableLrcLibKey] ?: true)
     }
 
     @Test fun previouslyStoredValuesIncludingFalseWinOverNewDefaults() {
@@ -81,7 +78,7 @@ class ReleaseDefaultsTest {
         stored[DarkModeKey] = DarkMode.OFF.name
         stored[AudioQualityKey] = AudioQuality.LOW.name
         stored[AudioOffload] = false
-        stored[EnablePaxsenixAppleMusicKey] = false
+        stored[EnableLyricsPlusKey] = false
         stored[AudioClientOrderKey] = "WEB_CREATOR,WEB_REMIX"
         stored[LyricsProviderOrderKey] = "YOUTUBE,NETEASE"
 
@@ -89,7 +86,7 @@ class ReleaseDefaultsTest {
         assertEquals(DarkMode.OFF.name, stored[DarkModeKey] ?: DarkMode.ON.name)
         assertEquals(AudioQuality.LOW.name, stored[AudioQualityKey] ?: ReleasePlaybackDefaults.audioQuality.name)
         assertFalse(stored[AudioOffload] ?: ReleasePlaybackDefaults.audioOffloadUntilVerified)
-        assertFalse(stored[EnablePaxsenixAppleMusicKey] ?: true)
+        assertFalse(stored[EnableLyricsPlusKey] ?: true)
         assertEquals(AudioClientOrder.WEB_CREATOR,
             AudioClientOrder.resolve(stored[AudioClientOrderKey], AudioStreamPolicy.VISIONOS).first())
         assertEquals(LyricsProviderOrder.YOUTUBE,
@@ -107,8 +104,9 @@ class ReleaseDefaultsTest {
                 legacyPolicy = AudioStreamPolicy.WEB_EMBEDDED,
                 legacyPreferenceExplicit = true,
             ).first())
-        assertEquals(LyricsProviderOrder.PAXSENIX_APPLE_MUSIC,
-            LyricsProviderOrder.resolve(raw = null, legacyPreferred = "PAXSENIX").first())
+        // A retired source must not re-enter the runtime from an old preference.
+        assertEquals(LyricsProviderOrder.supportedProviders,
+            LyricsProviderOrder.resolve(raw = null, legacyPreferred = "PAXSENIX"))
         // Removed duplicates no longer mask a newer independent catalog.
         assertEquals(LyricsProviderOrder.supportedProviders,
             LyricsProviderOrder.resolve(raw = null, legacyPreferred = "BETTER_LYRICS"))
