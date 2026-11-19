@@ -99,6 +99,16 @@ internal fun canRetryDownloadAfterContextChange(attempt: Int, maxAttempts: Int):
     attempt >= 0 && maxAttempts > 0 && attempt + 1 < maxAttempts
 
 @Singleton
+/**
+ * Ignore stale completion callbacks after the same media ID was removed,
+ * restarted or replaced while its Room write was queued on Dispatchers.IO.
+ */
+internal fun downloadMetadataCompletionIsCurrent(current: Download?, completed: Download): Boolean =
+    completed.state == Download.STATE_COMPLETED &&
+        current?.state == Download.STATE_COMPLETED &&
+        current.updateTimeMs == completed.updateTimeMs &&
+        current.request.id == completed.request.id
+
 class DownloadUtil
 @Inject
 constructor(
@@ -376,10 +386,15 @@ constructor(
                         CapsuleAudioEngine.clearDownloadClientFailures(download.request.id)
                         if (!initialIndexLoaded) removedWhileLoading.add(download.request.id)
                         downloads.update { it - download.request.id }
-                        database.query {
-                            getSongByIdBlocking(download.request.id)?.song?.let { song ->
-                                if (downloads.value[download.request.id]?.state != Download.STATE_COMPLETED) {
-                                    update(song.copy(dateDownload = null))
+                        // DownloadManager.Listener runs on its app looper. A Room
+                        // disk transaction here blocks playback/UI callbacks.
+                        scope.launch {
+                            if (downloads.value[download.request.id]?.state == Download.STATE_COMPLETED) return@launch
+                            database.query {
+                                getSongByIdBlocking(download.request.id)?.song?.let { song ->
+                                    if (downloads.value[download.request.id]?.state != Download.STATE_COMPLETED) {
+                                        update(song.copy(dateDownload = null))
+                                    }
                                 }
                             }
                         }
@@ -420,16 +435,28 @@ constructor(
                         } else if (download.state == Download.STATE_COMPLETED) {
                             resumeUrls.remove(download.request.id)
                             clearThrottleSignal()
-                            database.query {
-                                getSongByIdBlocking(download.request.id)?.song?.let { song ->
-                                    update(song.copy(dateDownload = LocalDateTime.now()))
-                                }
-                            }
                         }
 
+                        // Publish Media3's state before any asynchronous database
+                        // work, so the write observes the same request revision.
                         downloads.update { map ->
                             map.toMutableMap().apply {
                                 set(download.request.id, download)
+                            }
+                        }
+                        if (download.state == Download.STATE_COMPLETED) {
+                            scope.launch {
+                                if (!downloadMetadataCompletionIsCurrent(
+                                        downloads.value[download.request.id], download
+                                    )) return@launch
+                                database.query {
+                                    if (!downloadMetadataCompletionIsCurrent(
+                                            downloads.value[download.request.id], download
+                                        )) return@query
+                                    getSongByIdBlocking(download.request.id)?.song?.let { song ->
+                                        update(song.copy(dateDownload = LocalDateTime.now()))
+                                    }
+                                }
                             }
                         }
                     }
