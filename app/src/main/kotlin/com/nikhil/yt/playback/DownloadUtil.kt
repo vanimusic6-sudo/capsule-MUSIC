@@ -95,6 +95,11 @@ internal fun isLikelyDownloadThrottleSignal(exception: Throwable): Boolean {
         .any(message::contains)
 }
 
+/** One fresh signed URL after a network or account session switch, then fail
+ * safely rather than retrying indefinitely on a flapping connection. */
+internal fun canRetryDownloadAfterContextChange(attempt: Int, maxAttempts: Int): Boolean =
+    attempt >= 0 && maxAttempts > 0 && attempt + 1 < maxAttempts
+
 @Singleton
 class DownloadUtil
 @Inject
@@ -183,7 +188,18 @@ constructor(
                 resumeContext.second != connectivityManager.activeNetwork ||
                 resumeContext.third != CapsuleInnerTubeXPlayer.sessionIdentity()
             ) {
-                throw java.io.IOException("Playback context changed during download resolve")
+                // A VPN/Wi-Fi/account handoff is neither a bad track nor a
+                // broken YouTube client. Discard the stale signed URL and try
+                // once with the new account/network snapshot. Never reuse the
+                // old response, and never mark its client as faulty.
+                resumeUrls.remove(mediaId)
+                if (canRetryDownloadAfterContextChange(attempt, MAX_DOWNLOAD_RESOLVE_ATTEMPTS)) {
+                    timber.log.Timber.tag("AudioDownload").i(
+                        "download-context-changed id=%s; retrying with current session", mediaId,
+                    )
+                    return@repeat
+                }
+                throw java.io.IOException("Playback context changed repeatedly during download resolve")
             }
 
             result.getOrNull()?.let { playbackData ->
