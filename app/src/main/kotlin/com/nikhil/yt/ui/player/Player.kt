@@ -418,7 +418,7 @@ fun BottomSheetPlayer(
         }
     }
     val videoAmbientCaptureActive =
-        videoAmbientEnabled && videoPlaybackState.presentingVideo && onScreen &&
+        videoBackdropActive && onScreen &&
             state.isExpandedOrExpanding && !showInlineLyrics
 
     // A hidden inline-lyrics card must not force an EXTRA artwork request
