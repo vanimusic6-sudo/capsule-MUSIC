@@ -109,6 +109,17 @@ internal fun capsuleVideoAmbientFrameFromBitmap(bitmap: Bitmap, mediaId: String)
     return CapsuleVideoAmbientFrame(mediaId, bands, field)
 }
 
+/** Smooth the captured video field like Scene Light's cover-derived field.
+ * Execute on the capture worker; only immutable results reach Compose. */
+internal fun capsuleSceneLightVideoFrame(
+    frame: CapsuleVideoAmbientFrame,
+    filter: CapsuleVideoLightFilter,
+    nowNs: Long,
+): CapsuleVideoAmbientFrame {
+    val diffuse = filter.apply(frame.field, nowNs)
+    return frame.copy(field = diffuse, bands = capsuleBandsFromField(diffuse))
+}
+
 /** Ignore tiny colour noise: refreshing the wallpaper costs more than it adds. */
 internal fun capsuleVideoAmbientChanged(previous: List<Color>?, next: List<Color>): Boolean {
     if (previous == null || previous.size != next.size) return true

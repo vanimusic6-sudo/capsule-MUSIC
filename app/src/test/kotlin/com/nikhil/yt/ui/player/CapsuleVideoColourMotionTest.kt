@@ -21,15 +21,23 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35], application = Application::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class CapsuleVideoColourMotionTest {
-    @Test fun restoredPlayerDesignUsesGpuSpatialBlendAndOriginalCadence() {
-        assertEquals("The slow raster crossfade is the source of large visible bands",
-            180, VIDEO_AMBIENT_BLEND_DURATION_MS)
-        val shader = CAPSULE_VIDEO_MOTION_SHADER
-        assertTrue(shader.contains("source * grid"))
-        assertTrue(shader.contains("uv.x"))
-        assertTrue(shader.contains("uv.y"))
-        assertTrue(shader.contains("mix(previous.eval"))
-        assertTrue(shader.contains("floorColor"))
+    @Test fun sceneLightVideoRendererKeepsTheRestoredSoftTransition() {
+        // No RuntimeShader grid: VIDEO and Scene Light share the soft bitmap renderer.
+        assertEquals(850, VIDEO_AMBIENT_BLEND_DURATION_MS)
+    }
+
+    @Test fun rawVideoStripesAreDiffusedBeforeBeingUsedAsSceneLight() {
+        val stripes = CapsuleColorField(20, 16, List(320) { index ->
+            if (index / 20 % 2 == 0) Color.Red else Color.Blue
+        })
+        val raw = CapsuleVideoAmbientFrame("song", capsuleBandsFromField(stripes), stripes)
+        val filtered = capsuleSceneLightVideoFrame(raw, CapsuleVideoLightFilter(), 1_000_000_000L)
+        assertEquals("song", filtered.mediaId)
+        assertEquals(7, filtered.bands.size)
+        val unfilteredDelta = abs(stripes.cell(10, 5).red - stripes.cell(10, 6).red)
+        val softenedDelta = abs(filtered.field.cell(10, 5).red - filtered.field.cell(10, 6).red)
+        assertTrue("Diffusion must remove frame-origin horizontal bands",
+            softenedDelta < unfilteredDelta * 0.3f)
     }
 
     @Test fun originalDesignRendersASoft176x256ImageRatherThanStretchedGridPixels() {

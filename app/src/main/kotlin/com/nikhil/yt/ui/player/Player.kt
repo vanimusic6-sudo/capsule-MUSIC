@@ -636,7 +636,7 @@ fun BottomSheetPlayer(
                     // shade another full-page layer beneath opaque video light.
                     Box(Modifier.fillMaxSize().drawWithContent {
                         if (playerSceneExposed &&
-                            (!videoAmbientOverlayMounted || retainedVideoAmbientBands == null ||
+                            (!videoAmbientOverlayMounted || effectivePlayerDesign == CapsulePlayerDesign.IMMERSIVE || retainedVideoAmbientBands == null ||
                                 videoAmbientOverlayAlpha.value < 0.999f)) drawContent()
                     }) {
                         PlayerBackground(
@@ -649,7 +649,8 @@ fun BottomSheetPlayer(
                             sharedAnimationTime = sharedBackdropAnimationTime,
                         )
                     }
-                    if (videoAmbientOverlayMounted && retainedVideoAmbientBands != null) {
+                    if (videoAmbientOverlayMounted && retainedVideoAmbientBands != null &&
+                        effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE) {
                         CapsuleVideoAmbientBackdrop(
                             bands = retainedVideoAmbientBands,
                             field = retainedVideoAmbient?.field,

@@ -158,6 +158,9 @@ private fun CapsuleVideoTextureOutput(
     )
     val view = texture
     val ambientMemory = remember(view, audioMediaId) { CapsuleVideoAmbientCaptureMemory() }
+    // Keep spatial and temporal diffusion across 700 ms captures and rebuffering.
+    // Only one capture coroutine owns this filter at a time.
+    val ambientSceneFilter = remember(view, audioMediaId) { CapsuleVideoLightFilter() }
     if (view != null) {
         DisposableEffect(view, player, retention) {
             retention.registerCapture(view) {
@@ -212,7 +215,9 @@ private fun CapsuleVideoTextureOutput(
                 // GPU readback stays on the view thread. Extraction is tiny and off-main.
                 view.getBitmap(buffer)
                 val sample = withContext(Dispatchers.Default) {
-                    capsuleVideoAmbientFrameFromBitmap(buffer, trackId)
+                    capsuleVideoAmbientFrameFromBitmap(buffer, trackId)?.let {
+                        capsuleSceneLightVideoFrame(it, ambientSceneFilter, System.nanoTime())
+                    }
                 } ?: return false
                 if (ambientMemory.shouldPublish(sample)) sink(sample)
                 return true
@@ -227,7 +232,9 @@ private fun CapsuleVideoTextureOutput(
                             VIDEO_AMBIENT_SAMPLE_WIDTH, VIDEO_AMBIENT_SAMPLE_HEIGHT, true)
                         try {
                             withContext(Dispatchers.Default) {
-                                capsuleVideoAmbientFrameFromBitmap(reduced, trackId)
+                                capsuleVideoAmbientFrameFromBitmap(reduced, trackId)?.let {
+                                    capsuleSceneLightVideoFrame(it, ambientSceneFilter, System.nanoTime())
+                                }
                             }?.let { if (ambientMemory.shouldPublish(it)) sink(it) }
                         } finally { if (reduced !== retained) reduced.recycle() }
                     }

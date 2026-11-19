@@ -26,8 +26,6 @@ import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
-import kotlin.math.sin
-import kotlin.math.cos
 
 internal const val VIDEO_AMBIENT_BLEND_DURATION_MS = 850
 
@@ -56,9 +54,8 @@ internal fun CapsuleVideoAmbientBackdrop(
     onFirstTextureReady: (() -> Unit)? = null,
     animated: Boolean = true,
 ) {
-    // A draw-only frame clock: the faint reflected light drifts independently
-    // of the 700ms video readback. No image decode or raster work on vsync.
-    val ambientTime = rememberCapsuleAnimationTime(compact = false, running = animated)
+    // Scene Light is static between source-frame transitions: do not wake the
+    // GPU 30 times/sec just to move a decorative highlight during playback.
     // A callback change must not cancel a pending texture render.
     val currentReadyCallback by rememberUpdatedState(onFirstTextureReady)
     var previousBands by remember { mutableStateOf(bands) }
@@ -147,12 +144,9 @@ internal fun CapsuleVideoAmbientBackdrop(
                     drawImage(image = incoming, dstSize = dst,
                         filterQuality = FilterQuality.Medium)
                 }
-                // YouTube-like breathing, without oscillating the entire palette
-                // or restarting the video texture transition.
-                val phase = ambientTime.value / 14_000.0
+                // Preserve Scene Light's soft reflection, but keep it fixed.
                 reflectedLight.draw(this, androidx.compose.ui.geometry.Offset(
-                    size.width * (0.43f + 0.13f * sin(phase).toFloat()),
-                    size.height * (0.27f + 0.10f * cos(phase * 0.77).toFloat()),
+                    size.width * 0.43f, size.height * 0.27f,
                 ))
             }
         },
