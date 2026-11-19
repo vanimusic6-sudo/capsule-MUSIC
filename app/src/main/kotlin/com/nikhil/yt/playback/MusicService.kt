@@ -194,6 +194,7 @@ import com.nikhil.yt.playback.video.CapsuleVideoDirectMediaSourceFactory
 import com.nikhil.yt.playback.video.YouTubeVideoResolver
 import com.nikhil.yt.playback.video.CapsuleVideoResolveCoordinator
 import com.nikhil.yt.playback.video.CapsuleVideoResolveRequest
+import com.nikhil.yt.playback.video.capsuleVideoSourceArtists
 import androidx.media3.session.CacheBitmapLoader
 import com.nikhil.yt.utils.CoilBitmapLoader
 import com.nikhil.yt.utils.NetworkConnectivityObserver
@@ -5324,12 +5325,14 @@ class MusicService :
                     ?.toString()
                     ?.trim()
                     .orEmpty()
-        val sourceArtists =
-            sourceMetadata
-                ?.artists
-                ?.map { it.name.trim() }
-                ?.filter { it.isNotBlank() }
-                .orEmpty()
+        // A playlist may carry the title without the artist credits.
+        // Try the live player metadata before declaring every clip unavailable.
+        val sourceArtists = capsuleVideoSourceArtists(
+            primary = sourceMetadata?.artists?.map { it.name }.orEmpty(),
+            secondary = player.currentMetadata?.artists?.map { it.name }.orEmpty(),
+            media3Artist = currentItem.mediaMetadata.artist?.toString()
+                ?: player.mediaMetadata.artist?.toString(),
+        )
         val sourceDurationSeconds =
             sourceMetadata
                 ?.duration

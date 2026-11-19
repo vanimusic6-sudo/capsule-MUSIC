@@ -18,6 +18,16 @@ internal data class CapsuleVideoResolveRequest(
     val originalVideo: Boolean = false,
 )
 
+/** Use all existing metadata before rejecting clips for missing source artist. */
+internal fun capsuleVideoSourceArtists(
+    primary: List<String>, secondary: List<String>, media3Artist: String?,
+): List<String> {
+    fun cleaned(names: List<String>) = names.map(String::trim).filter(String::isNotEmpty).distinct()
+    return cleaned(primary).ifEmpty { cleaned(secondary) }.ifEmpty {
+        cleaned(listOfNotNull(media3Artist))
+    }
+}
+
 /** AUDIO's verified /player response can identify an official source clip even
  * when an older playlist/library row lost its watch-endpoint type. */
 internal fun shouldUseCanonicalVideo(metadataOriginal: Boolean, verifiedMusicVideoType: String?): Boolean =

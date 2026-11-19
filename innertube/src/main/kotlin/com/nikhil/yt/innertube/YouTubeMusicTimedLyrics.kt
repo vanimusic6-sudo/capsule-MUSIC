@@ -62,8 +62,10 @@ internal object YouTubeMusicTimedLyrics {
             val start = (range["startTimeMilliseconds"] as? JsonPrimitive)
                 ?.contentOrNull?.toLongOrNull() ?: continue
             val end = (range["endTimeMilliseconds"] as? JsonPrimitive)
-                ?.contentOrNull?.toLongOrNull() ?: continue
-            if (start !in 0..MAX_DURATION_MS || end <= start || end > MAX_DURATION_MS) continue
+                ?.contentOrNull?.toLongOrNull() ?: 0L
+            // A missing end is valid for a line synced by its start stamp.
+            if (start !in 0L..MAX_DURATION_MS || end > MAX_DURATION_MS ||
+                (start == 0L && end <= 0L)) continue
             if (!seen.add(start to text)) continue
             val millis = start % 1_000L
             val sec = (start / 1_000L) % 60L

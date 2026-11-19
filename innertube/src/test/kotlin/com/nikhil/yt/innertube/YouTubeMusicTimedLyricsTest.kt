@@ -20,6 +20,13 @@ class YouTubeMusicTimedLyricsTest {
             YouTubeMusicTimedLyrics.toSynchronizedLrc(response))
     }
 
+    @Test fun timedLinesWithStartButNoEndAreStillSynchronized() {
+        val json = Json.parseToJsonElement(
+            """{"timedLyricsData":[{"lyricLine":"Start only","cueRange":{"startTimeMilliseconds":"11200"}}]}"""
+        )
+        assertEquals("[00:11.200]Start only", YouTubeMusicTimedLyrics.toSynchronizedLrc(json))
+    }
+
     @Test fun neverInventsTimesForPlainLyricsOrMalformedCueRanges() {
         assertNull(YouTubeMusicTimedLyrics.toSynchronizedLrc(
             Json.parseToJsonElement("""{"musicDescriptionShelfRenderer":{"description":{"runs":[{"text":"Hello"}]}}}""")))

@@ -4,6 +4,16 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CapsuleVideoModeRequestTest {
+    @Test fun missingPlaylistArtistFallsBackToCurrentPlayerMetadata() {
+        assertEquals(listOf("The Weeknd"), capsuleVideoSourceArtists(
+            emptyList(), listOf("The Weeknd"), "Unknown"))
+        assertEquals(listOf("The Weeknd"), capsuleVideoSourceArtists(
+            listOf("  "), emptyList(), "The Weeknd"))
+        assertEquals(listOf("Artist A"), capsuleVideoSourceArtists(
+            listOf("Artist A"), listOf("Artist B"), "Artist C"))
+        assertEquals(emptyList<String>(), capsuleVideoSourceArtists(emptyList(), emptyList(), null))
+    }
+
     @Test fun playlistWithVerifiedOfficialSourceSkipsRedundantMusicSearch() {
         assertTrue(shouldUseCanonicalVideo(false, "MUSIC_VIDEO_TYPE_OMV"))
         assertTrue(shouldUseCanonicalVideo(true, null))
