@@ -1,6 +1,7 @@
 package com.nikhil.yt.lyrics
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 import kotlinx.serialization.json.Json
 
@@ -29,5 +30,28 @@ class PaxsenixResponseContractTest {
             paxsenixLyricsText(PaxsenixLyrics(ttmlContent = "<tt>lyrics</tt>", plain = "text")))
         assertEquals("[00:04.50]lyric",
             paxsenixLyricsText(PaxsenixLyrics(elrc = "[00:04.50]lyric")))
+    }
+
+    @Test fun wrappedStructuredLyricsAreUnwrapped() {
+        val wrapped = """{"success":true,"data":{"type":"Line","content":[{"timestamp":1200,"text":[{"text":"Hello"}]}]}}"""
+        assertEquals("[00:01.20]Hello", PaxsenixLyricsProvider.parseRelayLyrics(wrapped))
+    }
+
+    @Test fun wrappedLrcAndTtmlRemainReadable() {
+        assertEquals("[00:09.10]words", PaxsenixLyricsProvider.parseRelayLyrics(
+            """{"result":{"syncedLyrics":"[00:09.10]words"}}"""
+        ))
+        assertEquals("<tt>words</tt>", PaxsenixLyricsProvider.parseRelayLyrics(
+            """{"lyrics":"<tt>words</tt>"}"""
+        ))
+    }
+
+    @Test fun relayAuthenticationAndProviderErrorsAreNeverShownAsLyrics() {
+        assertNull(PaxsenixLyricsProvider.parseRelayLyrics(
+            """{"success":false,"error":{"code":401,"reason":"API key required"}}"""
+        ))
+        assertNull(PaxsenixLyricsProvider.parseRelayLyrics(
+            """{"type":"error","message":"not found"}"""
+        ))
     }
 }
