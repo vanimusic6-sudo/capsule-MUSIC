@@ -15,6 +15,7 @@ package com.nikhil.yt.innertube
 import com.nikhil.yt.innertube.models.YouTubeClient
 import com.nikhil.yt.innertube.models.response.PlayerResponse
 import com.nikhil.yt.innertube.models.response.SearchResponse
+import com.nikhil.yt.innertube.models.response.NextResponse
 import io.ktor.client.call.body
 import io.ktor.client.statement.bodyAsText
 import kotlinx.coroutines.sync.Mutex
@@ -79,6 +80,22 @@ object CapsuleAnonymousSession {
                 params = params,
             )
             .body<SearchResponse>()
+    }
+
+    /** An actual first-party song/video toggle, not a fuzzy search result.
+     * Remains cookie-free even if Capsule has a logged-in account.
+     */
+    suspend fun videoCounterpartPage(videoId: String): NextResponse {
+        require(videoId.matches(Regex("[A-Za-z0-9_-]{11}")))
+        prepare()
+        return innerTube.next(
+            client = YouTubeClient.WEB_REMIX,
+            videoId = videoId,
+            playlistId = "RDAMVM$videoId",
+            playlistSetVideoId = null,
+            index = null,
+            params = null,
+        ).body<NextResponse>()
     }
 
     private suspend fun prepare() {
