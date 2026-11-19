@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.toArgb
 internal object CapsuleVideoAmbientResume {
     private const val PREFS = "capsule_last_video_ambient"
     private const val FIELD_KEY = "rgb"
+    private const val SOFT_DESIGN_KEY = "design_soft_bitmap_v1"
     private const val MEDIA_KEY = "media_id"
     private const val SAVE_INTERVAL_MS = 16_000L
     private val recent = object : LinkedHashMap<String, CapsuleVideoAmbientFrame>(
@@ -31,6 +32,10 @@ internal object CapsuleVideoAmbientResume {
         recent[mediaId]?.let { return it }
         val preferences = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (preferences.getString(MEDIA_KEY, null) != mediaId) return null
+        // Do not resurrect the saturated GPU-grid samples saved by the
+        // newer VIDEO renderer: they no longer belong to the restored
+        // soft/dark player design. First new real frame repopulates the cache.
+        if (!preferences.getBoolean(SOFT_DESIGN_KEY, false)) return null
         val encoded = preferences.getString(FIELD_KEY, null) ?: return null
         val size = CAPSULE_FIELD_COLUMNS * CAPSULE_FIELD_ROWS
         if (encoded.length != size * 6) return null
@@ -68,7 +73,8 @@ internal object CapsuleVideoAmbientResume {
         }
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(MEDIA_KEY, frame.mediaId)
-            .putString(FIELD_KEY, encoded).putBoolean("filtered_v2", true).apply()
+            .putString(FIELD_KEY, encoded).putBoolean("filtered_v2", true)
+            .putBoolean(SOFT_DESIGN_KEY, true).apply()
     }
 
     /** Only used by tests; does not change persistent SharedPreferences. */
