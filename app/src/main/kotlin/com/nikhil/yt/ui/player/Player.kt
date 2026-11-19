@@ -14,6 +14,8 @@ import android.net.Uri
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.animateColorAsState
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -663,6 +665,10 @@ fun BottomSheetPlayer(
                     decodedArtworkCache = decodedArtworkCache,
                     playerArtworkColors = gradientColors,
                     playerArtworkField = artworkScene.field,
+                    playerPaletteAlreadyAnimated =
+                        effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
+                            playerBackground != PlayerBackgroundStyle.SCENE_LIGHT &&
+                            playerBackground != PlayerBackgroundStyle.CAPSULE_STAR,
                     videoAmbientBands = activeVideoAmbientBands.orEmpty(),
                     videoAmbientField = activeVideoAmbientField,
                     backdropAnimationTime = sharedBackdropAnimationTime,
@@ -771,6 +777,7 @@ private fun CapsulePlayerLyricsHost(
     decodedArtworkCache: MutableMap<String, Pair<String, Painter>>,
     playerArtworkColors: List<Color>,
     playerArtworkField: CapsuleColorField?,
+    playerPaletteAlreadyAnimated: Boolean,
     videoAmbientBands: List<Color>,
     videoAmbientField: CapsuleColorField?,
     backdropAnimationTime: State<Long>,
@@ -803,14 +810,40 @@ private fun CapsulePlayerLyricsHost(
     val cardBoundsInRoot = remember { arrayOf<Rect?>(null) }
     var frozenCardBounds by remember(mediaMetadata.id) { mutableStateOf<Rect?>(null) }
     var frozenCardPalette by remember(mediaMetadata.id) { mutableStateOf<List<Color>?>(null) }
-    // The player's gradient is already animated and cached. Any independent
-    // retained/neutral policy here introduces a second (late) transition.
-    // Freeze only during the physical aperture opening, then paint the exact
-    // same RGB values as the regular player, including its pending frame.
-    val transitioningPalette = capsuleLyricsSharedColors(
+    // Immersion is painted from its visible crop, not the generic album
+    // palette. The latter is sometimes neutral even as the player has a
+    // saturated photographic floor (the missing-colour bug below the player).
+    val inlineSceneColors = remember(design, warmedImmersiveTone, playerArtworkColors) {
+        capsuleInlineLyricsSceneColors(
+            playerColors = playerArtworkColors,
+            immersiveTone = if (design == CapsulePlayerDesign.IMMERSIVE)
+                warmedImmersiveTone else null,
+        )
+    }
+    // A hidden card has no independent animation work. For styles whose
+    // full-player palette already interpolates, paint those same RGB frames
+    // directly; for atomic Immersion/Star/Scene swaps, make one smooth
+    // transition HERE and share its result between compact and expanded text.
+    val inlineSurfaceActive by remember(showLyrics, scrollToLyrics, scrollState) {
+        derivedStateOf { showLyrics || (scrollToLyrics && scrollState.value > 0) }
+    }
+    val inlineTarget = capsuleLyricsSharedColors(
         frozenDuringOpening = frozenCardPalette,
-        playerColors = playerArtworkColors,
+        playerColors = inlineSceneColors,
     )
+    val transitioningPalette = if (
+        scrollToLyrics && inlineSurfaceActive && !playerPaletteAlreadyAnimated
+    ) {
+        inlineTarget.mapIndexed { index, target ->
+            animateColorAsState(
+                targetValue = target,
+                animationSpec = tween(880, easing = CapsuleStandardEasing),
+                label = "inlineSharedSceneColor$index",
+            ).value
+        }
+    } else {
+        inlineTarget
+    }
     // Opacity derives directly from sheet position: no third coroutine, no
     // arbitrary millisecond delay and no de-synchronised close/reopen fade.
     // The outgoing player stays fully present while Lyrics travels across it. Once the page has
