@@ -68,13 +68,20 @@ internal fun capsuleInlineLyricsSceneColors(
     immersiveTone: ImmersiveArtworkTone?,
 ): List<Color> {
     val tone = immersiveTone?.takeIf { it.ready } ?: return playerColors
-    val sample = tone.colorField?.let { field ->
-        field.cell(field.width / 2, (field.height - 2).coerceAtLeast(0))
-    } ?: tone.edge
+    val field = tone.colorField ?: return listOf(tone.edge, tone.edge, tone.edge)
+    // Immersion's "edge" is the mean of the visible crop and its "accent"
+    // is deliberately darkened to 35%. Using those twice in a fully opaque
+    // card yielded a flat neutral rectangle despite vibrant artwork above.
+    // Instead take three points from the SAME decoded 2D photo field that
+    // paints the immersive page, with no separate network request or sampler.
+    val centerX = field.width / 2
+    val top = field.cell(centerX, (field.height * 0.20f).toInt().coerceAtMost(field.height - 1))
+    val middle = field.cell(centerX, (field.height * 0.52f).toInt().coerceAtMost(field.height - 1))
+    val lower = field.cell(centerX, (field.height * 0.82f).toInt().coerceAtMost(field.height - 1))
     return listOf(
-        lerp(tone.edge, sample, 0.30f),
-        lerp(sample, tone.accent, 0.40f),
-        tone.accent,
+        lerp(top, tone.edge, 0.20f),
+        lerp(middle, tone.edge, 0.25f),
+        lerp(lower, tone.edge, 0.35f),
     )
 }
 
@@ -95,15 +102,17 @@ internal fun capsuleInlineLyricsStops(colors: List<Color>): List<Color> {
     }
     return if (brightCover) {
         listOf(
-            lerp(ink, upper, 0.52f),
-            lerp(ink, lower, 0.50f),
+            lerp(ink, upper, 0.54f),
+            lerp(ink, lower, 0.51f),
             lerp(ink, tail, 0.49f),
         )
     } else {
+        // Keep the same hue through the whole card; the former tail factor
+        // of 0.34 made even a colourful Immersion cover turn nearly black.
         listOf(
-            lerp(ink, upper, 0.65f),
-            lerp(ink, lower, 0.47f),
-            lerp(ink, tail, 0.34f),
+            lerp(ink, upper, 0.76f),
+            lerp(ink, lower, 0.67f),
+            lerp(ink, tail, 0.58f),
         )
     }
 }
