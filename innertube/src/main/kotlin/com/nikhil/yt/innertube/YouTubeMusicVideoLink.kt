@@ -51,6 +51,43 @@ internal fun firstPartyOfficialVideoCounterpart(
     return candidate
 }
 
+/**
+ * Never assume a watch-next tab's first queue row belongs to our source.
+ * The radio may contain multiple songs and multiple audio/video wrappers.
+ */
+internal fun nextOfficialVideoForSong(response: NextResponse, sourceId: String): String? {
+    val entries = response.contents
+        .singleColumnMusicWatchNextResultsRenderer
+        ?.tabbedRenderer
+        ?.watchNextTabbedResultsRenderer
+        ?.tabs
+        .orEmpty()
+        .flatMap { tab ->
+            tab.tabRenderer.content
+                ?.musicQueueRenderer
+                ?.content
+                ?.playlistPanelRenderer
+                ?.contents
+                .orEmpty()
+        }
+    for (entry in entries) {
+        val wrapper = entry.playlistPanelVideoWrapperRenderer ?: continue
+        val primary = wrapper.primaryRenderer?.playlistPanelVideoRenderer
+        for (counterpart in wrapper.counterpart.orEmpty()) {
+            val video = counterpart.counterpartRenderer?.playlistPanelVideoRenderer ?: continue
+            val selected = firstPartyOfficialVideoCounterpart(
+                sourceMediaId = sourceId,
+                primaryId = primary?.videoId,
+                counterpartId = video.videoId,
+                counterpartType = video.navigationEndpoint?.anyWatchEndpoint
+                    ?.watchEndpointMusicSupportedConfigs?.watchEndpointMusicConfig?.musicVideoType,
+            )
+            if (selected != null) return selected
+        }
+    }
+    return null
+}
+
 object YouTubeMusicVideoLinkResolver {
     private const val VIDEO_FILTER = "EgWKAQIQAWoKEAkQChAFEAMQBA%3D%3D"
     private const val POSITIVE_CACHE_MS = 2 * 60 * 60 * 1000L
@@ -318,36 +355,7 @@ object YouTubeMusicVideoLinkResolver {
             // Layout changes and transient network failures still use bounded search.
             return null
         }
-        val entries = response.contents
-            .singleColumnMusicWatchNextResultsRenderer
-            ?.tabbedRenderer
-            ?.watchNextTabbedResultsRenderer
-            ?.tabs
-            .orEmpty()
-            .flatMap { tab ->
-                tab.tabRenderer.content
-                    ?.musicQueueRenderer
-                    ?.content
-                    ?.playlistPanelRenderer
-                    ?.contents
-                    .orEmpty()
-            }
-        for (entry in entries) {
-            val wrapper = entry.playlistPanelVideoWrapperRenderer ?: continue
-            val primary = wrapper.primaryRenderer?.playlistPanelVideoRenderer
-            for (counterpart in wrapper.counterpart.orEmpty()) {
-                val video = counterpart.counterpartRenderer?.playlistPanelVideoRenderer ?: continue
-                val selected = firstPartyOfficialVideoCounterpart(
-                    sourceMediaId = sourceId,
-                    primaryId = primary?.videoId,
-                    counterpartId = video.videoId,
-                    counterpartType = video.navigationEndpoint?.anyWatchEndpoint
-                        ?.watchEndpointMusicSupportedConfigs?.watchEndpointMusicConfig?.musicVideoType,
-                )
-                if (selected != null) return selected
-            }
-        }
-        return null
+        return nextOfficialVideoForSong(response, sourceId)
     }
 
     private suspend fun searchVideoRenderers(
