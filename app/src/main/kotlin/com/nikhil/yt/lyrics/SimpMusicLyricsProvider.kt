@@ -65,18 +65,25 @@ object SimpMusicLyricsProvider : LyricsProvider {
             } else {
                 // The ID may be a playlist/album entry, or this particular video may not have
                 // a submission. Search is limited to a small page; quality beats false matches.
-                val candidates = search(
-                    LyricsQueryCleanup.title(title),
-                    LyricsQueryCleanup.artist(artist),
-                )
-                val selected = candidates
+                val cleanTitle = LyricsQueryCleanup.title(title)
+                val cleanArtist = LyricsQueryCleanup.artist(artist)
+                // Full text matches first; if the server indexes only the
+                // song title, retry by title alone and still verify the real
+                // artist/duration locally. Sparse crowdsourced data must not
+                // masquerade as a dead provider.
+                val primary = search(cleanTitle, cleanArtist)
+                var candidates = primary
                     .filter { it.lyrics != null && matches(it, title, artist, duration) }
-                    .minByOrNull { item ->
-                        val delta = if (duration > 0 && item.durationSeconds > 0) {
-                            abs(duration - item.durationSeconds)
-                        } else 0
-                        delta + if (item.hasSyncedLyrics) 0 else 30
-                    }
+                if (candidates.isEmpty() && cleanTitle.isNotBlank()) {
+                    candidates = search(cleanTitle, "")
+                        .filter { it.lyrics != null && matches(it, title, artist, duration) }
+                }
+                val selected = candidates.minByOrNull { item ->
+                    val delta = if (duration > 0 && item.durationSeconds > 0) {
+                        abs(duration - item.durationSeconds)
+                    } else 0
+                    delta + if (item.hasSyncedLyrics) 0 else 30
+                }
                 selected?.lyrics?.let { Result.success(it) }
                     ?: Result.failure(NoLyricsFromProvider("No matching SimpMusic lyric"))
             }
