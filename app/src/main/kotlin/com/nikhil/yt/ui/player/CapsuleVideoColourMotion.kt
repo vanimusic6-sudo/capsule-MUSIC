@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import kotlin.math.exp
+import kotlin.math.abs
+import kotlin.math.min
 
 /**
  * Frame-driven light, not optical-flow guesses. Spatial kernels are built
@@ -33,6 +35,7 @@ internal class CapsuleVideoLightFilter(
     private val settled = FloatArray(horizontal.size)
     private var previousNs = 0L
     private var initialised = false
+    private var lastInputLuminance: Float? = null
 
     fun apply(field: CapsuleColorField, nowNs: Long): CapsuleColorField {
         require(field.width == width && field.height == height)
@@ -49,7 +52,16 @@ internal class CapsuleVideoLightFilter(
         // A sustained new scene follows promptly, but a one-frame flash cannot
         // throw the whole page to its peak brightness. No independent timer.
         val elapsed = (nowNs - previousNs).coerceIn(1_000_000L, 500_000_000L)
-        val follow = if (!initialised) 1f else 1f - exp(-elapsed / 220_000_000f)
+        val inputLuminance = field.cells.fold(0f) { total, color ->
+            total + color.red * 0.2126f + color.green * 0.7152f + color.blue * 0.0722f
+        } / field.cells.size.coerceAtLeast(1)
+        val hardCut = lastInputLuminance?.let { abs(it - inputLuminance) > 0.28f } == true
+        lastInputLuminance = inputLuminance
+        val regularFollow = if (!initialised) 1f else 1f - exp(-elapsed / 220_000_000f)
+        // A single decoder flash/cut must not change the page brightness
+        // instantly. A sustained new scene follows normally from the next
+        // capture onward, without delaying actual video decoding.
+        val follow = if (hardCut) min(0.16f, regularFollow) else regularFollow
         for (y in 0 until height) for (x in 0 until width) {
             val index = (y * width + x) * 3
             var r = 0f; var g = 0f; var b = 0f
