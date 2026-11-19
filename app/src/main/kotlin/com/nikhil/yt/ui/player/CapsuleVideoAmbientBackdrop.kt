@@ -126,14 +126,9 @@ internal fun CapsuleVideoAmbientBackdrop(
         if (!first && shouldAnimate) blend.animateTo(1f, tween(VIDEO_AMBIENT_BLEND_DURATION_MS, easing = LinearEasing))
     }
     val engine = if (Build.VERSION.SDK_INT >= 33) remember { CapsuleVideoMotionShader() } else null
-    // Rebind only for new immutable textures, never for progress ticks,
-    // seekbar updates or unrelated recompositions of Player.
-    DisposableEffect(engine, prepared, fallbackFloor) {
-        if (Build.VERSION.SDK_INT >= 33) prepared?.let {
-            engine?.bind(it.previous, it.current, fallbackFloor)
-        }
-        onDispose { }
-    }
+    // Rebind in the SAME draw-cache update as the textures. A deferred
+    // DisposableEffect can briefly render a new progress value with a stale
+    // previous/current shader pair, causing a one-frame brightness flash.
     // The light field is low-frequency. A small GPU layer carries smooth
     // display-clock interpolation without shading every physical screen pixel.
     BoxWithConstraints(modifier.clipToBounds()) {
@@ -149,8 +144,11 @@ internal fun CapsuleVideoAmbientBackdrop(
                 compositingStrategy = CompositingStrategy.Offscreen
             }.drawWithCache {
                 val dst = IntSize(size.width.roundToInt(), size.height.roundToInt())
+                val ready = prepared
+                if (Build.VERSION.SDK_INT >= 33 && engine != null && ready != null) {
+                    engine.bind(ready.previous, ready.current, fallbackFloor)
+                }
                 onDrawBehind {
-                    val ready = prepared
                     if (Build.VERSION.SDK_INT >= 33 && engine != null && ready != null) {
                         engine.dimensions(size.width, size.height, blend.value)
                         drawIntoCanvas { it.nativeCanvas.drawPaint(engine.paint) }
