@@ -1,84 +1,54 @@
 /**
- * Capsule MUSIC
- * The order lyrics providers are tried in.
- * GPL-3.0
+ * Capsule MUSIC — five stable, non-overlapping lyrics catalogs.
+ * Licensed under GPL-3.0.
  */
-
 package com.nikhil.yt.constants
 
-/**
- * A ranking, not a favourite.
- *
- * It used to be one "preferred" provider moved to the front of a fixed list, which answers only the
- * first question anyone has. Which source is tried second matters just as much: they disagree about
- * timing, about which songs they have at all, and about whether what they return is synced. This is
- * the same shape as the audio client order, and for the same reason.
- *
- * Stored as a comma-separated list of ids. Unknown ids are dropped and missing ones are appended in
- * their default order, so a provider added or removed in a later version cannot leave somebody with
- * a broken or truncated list.
- */
 object LyricsProviderOrder {
+    const val BETTER_LYRICS_PORTATO = "BETTER_LYRICS_PORTATO"
+    const val SIMPMUSIC = "SIMPMUSIC"
     const val LYRICS_PLUS = "LYRICS_PLUS"
-    const val BETTER_LYRICS = "BETTER_LYRICS"
-    const val PAXSENIX_APPLE_MUSIC = "PAXSENIX_APPLE_MUSIC"
-    const val NETEASE = "NETEASE"
+    const val LRCLIB = "LRCLIB"
     const val YOUTUBE = "YOUTUBE"
 
-    /**
-     * Default order, best first.
-     *
-     * Apple/Paxsenix leads, with Better and NetEase fallback. LyricsPlus is the
-     * maintained provider available in this branch; there is no separately
-     * identified YourLyrics implementation. YouTube plain metadata stays last because it nearly always has
-     * *something*: putting it higher would stop every provider below it from being reached.
-     */
-    val supportedProviders: List<String> =
-        listOf(
-            PAXSENIX_APPLE_MUSIC,
-            BETTER_LYRICS,
-            NETEASE,
-            LYRICS_PLUS,
-            YOUTUBE,
-        )
-
+    /** Official fallback is last, unless the user explicitly reorders it. */
+    val supportedProviders: List<String> = listOf(
+        BETTER_LYRICS_PORTATO,
+        SIMPMUSIC,
+        LYRICS_PLUS,
+        LRCLIB,
+        YOUTUBE,
+    )
     private val supportedSet = supportedProviders.toSet()
 
-    /**
-     * The stored order, repaired.
-     *
-     * [legacyPreferred] is the old single-choice setting: when nothing has been ordered yet it
-     * decides which provider leads, so upgrading keeps the choice somebody already made instead of
-     * silently resetting it.
+    /** Previously shipped automatic defaults, including retired catalogs. */
+    private val oldDefaults = listOf(
+        listOf("PAXSENIX_APPLE_MUSIC", "BETTER_LYRICS", "NETEASE", "LYRICS_PLUS", "YOUTUBE"),
+        listOf("SIMPMUSIC", "PAXSENIX_APPLE_MUSIC", "BETTER_LYRICS_PORTATO",
+            "BETTER_LYRICS", "LYRICS_PLUS", "NETEASE", "YOUTUBE"),
+        listOf("SIMPMUSIC", "PAXSENIX_APPLE_MUSIC", "BETTER_LYRICS_PORTATO",
+            "LYRICS_PLUS", "LRCLIB", "KUGOU", "YOUTUBE"),
+    )
+
+    /** Retire removed IDs without reinstating their network clients.
+     *  Preserve deliberate custom ordering for the remaining five providers.
      */
-    fun resolve(
-        raw: String?,
-        legacyPreferred: String? = null,
-    ): List<String> {
-        val parsed =
-            raw
-                .orEmpty()
-                .split(',')
-                .flatMap { expandLegacy(normalize(it)) }
-                .filter { it in supportedSet }
-                .distinct()
-
-        val seed =
-            parsed.ifEmpty {
-                val preferred = normalize(legacyPreferred.orEmpty()).takeIf { it in supportedSet }
-                listOfNotNull(preferred)
-            }
-
+    fun resolve(raw: String?, legacyPreferred: String? = null): List<String> {
+        val stored = raw.orEmpty().split(',')
+            .map { it.trim().uppercase() }
+            .filter(String::isNotBlank)
+            .distinct()
+        if (stored in oldDefaults) return supportedProviders
+        val parsed = stored.filter { it in supportedSet }
+        val seed = parsed.ifEmpty {
+            // Velune used LRCLIB as the implicit legacy preference. An
+            // untouched setting must not override the new stable ordering.
+            listOfNotNull(legacyPreferred?.trim()?.uppercase()
+                ?.takeIf { it in supportedSet && it != LRCLIB })
+        }
         return (seed + supportedProviders).distinct()
     }
 
-    fun encode(order: List<String>): String = resolve(order.joinToString(",")).joinToString(",")
-
-    private fun expandLegacy(value: String): List<String> =
-        when (value) {
-            "PAXSENIX" -> listOf(PAXSENIX_APPLE_MUSIC)
-            else -> listOf(value)
-        }
-
-    private fun normalize(value: String): String = value.trim().uppercase()
+    fun encode(order: List<String>): String =
+        resolve(order.joinToString(",")).joinToString(",")
 }

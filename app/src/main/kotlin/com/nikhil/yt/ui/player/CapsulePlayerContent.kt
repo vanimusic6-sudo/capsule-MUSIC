@@ -469,7 +469,9 @@ fun CapsulePlayerContent(
      * track whose lyrics screen was never opened had nothing in the database and the row stayed
      * empty forever, waiting on a request nobody was going to make.
      */
-    if (lyricLineActive) {
+    val (scrollToLyricsEnabled, _) =
+        rememberPreference(com.nikhil.yt.constants.CapsuleScrollToLyricsKey, false)
+    if (lyricLineActive && !scrollToLyricsEnabled) {
         RequestLyricsIfMissing(mediaMetadata, lyricsEntity)
     }
 
@@ -614,7 +616,7 @@ fun CapsulePlayerContent(
                         CapsuleVideoSurface(playerConnection.service, Modifier.fillMaxSize(), active = active && visible)
                     },
                 ) {
-                    if (hideArtwork) {
+                    if (hideArtwork && !isCapsuleVideoPlaying && !needsVideoSurface) {
                         Icon(
                             painter = painterResource(R.drawable.album),
                             contentDescription = mediaMetadata.title,
@@ -713,7 +715,6 @@ fun CapsulePlayerContent(
                             CapsuleTrackArtworkHandoff(
                                 mediaId = mediaMetadata.id,
                                 decodedPainter = retainedArtworkPainter,
-                                thumbnailUrl = mediaMetadata.thumbnailUrl,
                                 contentScale = artworkContentScale,
                                 modifier = Modifier.fillMaxSize(),
                             )
@@ -803,7 +804,8 @@ fun CapsulePlayerContent(
                             )
                             }
                             } // The successful painter, not an unfinished request, is displayed.
-                            if (artworkFailed && retainedArtworkPainter == null) {
+                            if (artworkFailed && retainedArtworkPainter == null &&
+                                !isCapsuleVideoPlaying && !needsVideoSurface) {
                                 Icon(
                                     painter = painterResource(R.drawable.album),
                                     contentDescription = mediaMetadata.title,
@@ -882,6 +884,7 @@ fun CapsulePlayerContent(
                      */
                     CapsuleLightLyricLine(
                         line = lyricEntry?.text?.trim()?.replace('\n', ' '),
+                        trackKey = mediaMetadata.id,
                         instrumental = lyricEntry?.takeIf { it.isInstrumental },
                         playbackPosition = lyricPlaybackPosition,
                         animate = lyricLineActive,

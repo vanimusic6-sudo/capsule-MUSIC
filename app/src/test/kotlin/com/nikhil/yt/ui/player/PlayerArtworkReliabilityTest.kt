@@ -24,8 +24,13 @@ class PlayerArtworkReliabilityTest {
             player.contains("playerBackground != PlayerBackgroundStyle.SCENE_LIGHT"))
         assertTrue("The star's black-cover threshold must not flip midway through a colour tween",
             player.contains("playerBackground != PlayerBackgroundStyle.CAPSULE_STAR"))
-        assertTrue("The current lyric morph snapshots both sides of its gradient",
-            player.contains("frozenCardPalette = playerArtworkColors.toList()"))
+        assertTrue("The lyric morph freezes the actually displayed gradient",
+            player.contains("frozenCardPalette = transitioningPalette.toList()"))
+        assertTrue("Freeze must end when the opening animation ends, not when Lyrics closes",
+            player.contains("Freeze only the geometrical expansion"))
+        assertTrue(player.contains("playerArtworkField = artworkScene.field"))
+        assertTrue("Text screen must use the same color source, without a second pending-scene delay",
+            player.contains("capsuleLyricsSharedColors("))
         assertTrue(player.contains("colors = transitioningPalette"))
     }
 
@@ -131,7 +136,8 @@ class PlayerArtworkReliabilityTest {
         assertTrue(full.contains("artworkRebind"))
         assertTrue(full.contains("retainedArtworkPainter = success.painter"))
         assertTrue(full.contains("CapsuleTrackArtworkHandoff("))
-        assertTrue(full.contains("thumbnailUrl = mediaMetadata.thumbnailUrl"))
+        assertFalse("Do not request a 360px preview in the full player",
+            full.contains("thumbnailUrl = mediaMetadata.thumbnailUrl"))
         assertTrue(full.contains("delay(8_000L)"))
         assertTrue(full.contains("val fullArtworkCandidates ="))
         assertTrue(full.contains("capsuleFullPlayerArtworkCandidates(originalArtworkUrl)"))
@@ -140,16 +146,46 @@ class PlayerArtworkReliabilityTest {
             full.contains("previewRequest") || full.contains(".size(256, 256)") ||
             full.contains("useOriginalArtwork"))
         val handoff = source("CapsuleTrackArtworkHandoff.kt")
-        assertTrue("Selected track must own its current thumbnail and decoded cover",
-            handoff.contains("key(mediaId)") && handoff.contains("if (decodedPainter == null"))
-        assertTrue("The previous song must not be retained while the next one loads",
-            !handoff.contains("outgoing"))
-        assertTrue(handoff.contains("CAPSULE_COVER_HANDOFF_MS = 205") &&
-            handoff.contains("CAPSULE_PREVIEW_ARRIVAL_MS = 180"))
+        assertTrue("Only the current song's fully decoded cover is rendered",
+            handoff.contains("key(mediaId)") && handoff.contains("if (decodedPainter != null)"))
+        assertFalse("No separate low-resolution image request",
+            handoff.contains("AsyncImage") || handoff.contains("previewRequest") ||
+                handoff.contains("CAPSULE_PREVIEW_ARRIVAL_MS"))
+        assertTrue("Keep one brief high-resolution arrival, never two stages",
+            handoff.contains("CAPSULE_COVER_HANDOFF_MS = 205"))
         assertTrue(full.contains("onError = {"))
         assertTrue(full.contains("artworkFailed = true"))
-        assertTrue(full.contains("if (artworkFailed && retainedArtworkPainter == null)"))
+        assertTrue(full.contains("if (artworkFailed && retainedArtworkPainter == null &&"))
+        assertTrue("Video frame must never be covered by a fake empty-album glyph",
+            full.contains("!isCapsuleVideoPlaying && !needsVideoSurface"))
         // The animation and gradient extraction algorithms must not be replaced.
         assertTrue(full.contains("CapsuleVideoArtworkTransition("))
     }
+    @Test fun noLowResolutionCoverIsEverShownBeforeFinalArtwork() {
+        val handoff = source("CapsuleTrackArtworkHandoff.kt")
+        val immersion = source("CapsuleImmersiveContent.kt")
+        val sampler = source("CapsuleImmersiveFloor.kt")
+        val preload = source("CapsuleMediaPreload.kt")
+        assertFalse(handoff.contains("AsyncImage"))
+        assertFalse(handoff.contains("360, 360"))
+        assertFalse(immersion.contains("CapsuleImmersiveCurrentTrackPreview("))
+        assertFalse(immersion.contains(".size(640, 640)"))
+        assertTrue(sampler.contains("ARTWORK_SAMPLE_SIZE = 960"))
+        assertTrue(immersion.contains("coverAndGradientReady && frame?.painter != null"))
+        assertTrue(preload.contains("capsuleFullPlayerArtworkCandidates(mediaMetadata?.thumbnailUrl).firstOrNull()"))
+    }
+
+    @Test fun lyricsAndFullPlayerUseOnePaletteAndOneBackgroundClock() {
+        val player = source("Player.kt")
+        val lyrics = source("CapsuleLyricsContent.kt")
+        val compact = source("CapsuleInlineLyricsCard.kt")
+        assertTrue(player.contains("playerArtworkField = artworkScene.field"))
+        assertTrue(lyrics.contains("if (parentSuppliesScene) playerArtworkColors else localArtworkScene.colors"))
+        assertTrue(lyrics.contains("artworkField = artworkField"))
+        assertTrue(lyrics.contains("sharedAnimationTime = backdropAnimationTime"))
+        assertFalse(lyrics.contains("tween(1150"))
+        assertFalse(compact.contains("tween(1400"))
+        assertFalse(compact.contains("animateColorAsState"))
+    }
+
 }

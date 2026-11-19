@@ -336,8 +336,10 @@ class CapsuleImmersiveContentTest {
         val choices = immersiveArtworkCandidates(id, original)
         assertTrue(choices.first().endsWith("/maxresdefault.jpg"))
         assertTrue(choices.any { it.endsWith("/hq720.jpg") })
-        assertFalse("Immersion must not show a 480px YouTube fallback",
-            choices.any { it.endsWith("/hqdefault.jpg") })
+        assertTrue("Original video frame is allowed only AFTER all full-quality choices",
+            choices.last().endsWith("/hqdefault.jpg"))
+        assertFalse("Original video frame must never load before the HD candidates",
+            choices.first().endsWith("/hqdefault.jpg"))
         assertEquals(choices.size, choices.distinct().size)
     }
 
@@ -415,7 +417,11 @@ class CapsuleImmersiveContentTest {
             .first { it.isFile }.readText()
         assertTrue(source.contains("remember(mediaMetadata.id) { mutableStateOf(restoredFrame) }"))
         assertTrue(source.contains("val currentSceneReady = frame?.key == visualKey && matchedPaint != null"))
-        assertTrue(source.contains("if (!currentSceneReady || sceneRevealAlpha.value < 0.999f)"))
+        assertFalse("Never render a 640px thumbnail while waiting for a full scene",
+            source.contains("CapsuleImmersiveCurrentTrackPreview("))
+        assertTrue("The neutral plate remains until all scene assets are ready",
+            source.contains("immersivePageBaseColor(isVideo, false, artworkTone.edge)"))
+        assertTrue(source.contains("coverAndGradientReady && frame?.painter != null"))
         assertTrue(source.contains("sceneAlpha = { sceneRevealAlpha.value }"))
         assertFalse(source.contains("val outgoingFrame"))
         assertFalse(source.contains("gradientAlpha.animateTo("))

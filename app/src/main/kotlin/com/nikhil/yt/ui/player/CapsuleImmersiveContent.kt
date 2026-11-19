@@ -34,6 +34,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.runtime.derivedStateOf
@@ -67,6 +68,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import coil3.request.allowHardware
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -81,6 +83,7 @@ import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import com.nikhil.yt.LocalImmersiveStatusBarRequest
 import com.nikhil.yt.R
+import com.nikhil.yt.constants.CapsuleImmersiveAnimatedArtworkKey
 import com.nikhil.yt.constants.CapsuleImmersiveAvOrderKey
 import com.nikhil.yt.constants.CapsuleImmersiveCanvasPositionsKey
 import com.nikhil.yt.constants.CapsuleImmersiveEditEnabledKey
@@ -133,7 +136,10 @@ internal data class ImmersivePreparedScene(
 
 /** Owned above the foreground-only composition, not rebuilt when Android resumes it. */
 internal class ImmersiveSceneMemory {
-    var prepared: ImmersivePreparedScene? = null
+    // The inline lyrics page must observe the SAME prepared photo-to-floor
+    // texture instead of manufacturing a second approximation of its colours.
+    // This state changes only when a complete image is prepared, never per frame.
+    var prepared by mutableStateOf<ImmersivePreparedScene?>(null)
 }
 
 private fun immersiveGradientFrame(
@@ -179,6 +185,7 @@ internal fun ImmersiveAudioScene(
     background: ImageBitmap,
     artworkHeight: Dp,
     sceneAlpha: () -> Float,
+    mediaId: String,
     artwork: @Composable () -> Unit,
 ) {
     Box(Modifier.fillMaxSize().graphicsLayer {
@@ -189,6 +196,27 @@ internal fun ImmersiveAudioScene(
             bitmap = background, contentDescription = null,
             contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize(),
         )
+        // The SAME frame-sampled spatial colour field as the regular Capsule
+        // video wallpaper. This moves with Canvas itself rather than staying
+        // attached to a static image while the cover visibly changes colours.
+        val liveCanvasFrame = CapsuleMotionPlaybackSession.ambientFrame
+            ?.takeIf { it.mediaId == mediaId }
+        val canvasBackdropAlpha by animateFloatAsState(
+            targetValue = if (liveCanvasFrame != null) 1f else 0f,
+            animationSpec = tween(500),
+            label = "capsuleCanvasBackdropHandoff",
+        )
+        if (liveCanvasFrame != null) {
+            Box(Modifier.fillMaxSize().graphicsLayer { alpha = canvasBackdropAlpha }) {
+                CapsuleVideoAmbientBackdrop(
+                    bands = liveCanvasFrame.bands,
+                    field = liveCanvasFrame.field,
+                    animated = true,
+                    modifier = Modifier.fillMaxSize(),
+                    fallbackFloor = Color(0xFF111116),
+                )
+            }
+        }
         Box(
             Modifier.fillMaxWidth().height(artworkHeight + 1.dp)
                 .clipToBounds()
@@ -580,6 +608,16 @@ internal fun CapsuleImmersiveContent(
 
     val isVideo = videoPlaybackState.presentingVideo
     val needsVideoSurface = videoPlaybackState.needsSurface
+    val (motionArtworkEnabled, _) =
+        rememberPreference(CapsuleImmersiveAnimatedArtworkKey, defaultValue = true)
+    val motionArtworkActive = capsuleShouldPlayMotionArtwork(
+        enabled = motionArtworkEnabled,
+        visible = visible,
+        controlsActive = controlsActive,
+        isPlaying = isPlaying,
+        presentingVideo = isVideo,
+        videoNeedsSurface = needsVideoSurface,
+    )
 
     /*
      * Request fullscreen from the Activity instead of manipulating the Window here.
@@ -932,13 +970,12 @@ internal fun CapsuleImmersiveContent(
             }
         }
 
-        // Preview exists ONLY for the current media ID. It is kept under the
-        // final composed photo+gradient for at most 85 ms, preventing a sudden
-        // blank/grey base while async palette work completes.
-        val currentSceneReady = frame?.key == visualKey && matchedPaint != null
-        // Only the CURRENT song is ever shown. Its thumbnail remains beneath
-        // the ready full photo + derived gradient until their shared 210 ms
-        // reveal completes. No previous-track hold or two-stage background fade.
+        // The entire 960px photo, its extracted palette and its background
+        // texture are prepared before any part of the scene can be shown.
+        // No 640px preview, no false-colored placeholder and no cover zoom
+        // after leaving neutral. One whole-scene reveal is all that remains.
+        val currentSceneReady = frame?.key == visualKey && matchedPaint != null &&
+            coverAndGradientReady && frame?.painter != null
         val sceneRevealAlpha = remember(mediaMetadata.id) {
             Animatable(if (entryScene?.paintKey == paintKey) 1f else 0f)
         }
@@ -949,18 +986,12 @@ internal fun CapsuleImmersiveContent(
             )
         }
         Box(Modifier.fillMaxSize().background(
-            immersivePageBaseColor(isVideo, artworkTone.ready, artworkTone.edge),
+            // Never leak the next palette BEFORE its full image and texture
+            // become available: the previous code switched neutral -> sampled
+            // edge here, then revealed the cover a few frames later.
+            immersivePageBaseColor(isVideo, false, artworkTone.edge),
         )) {
             if (audioSceneVisible) {
-                if (!currentSceneReady || sceneRevealAlpha.value < 0.999f) {
-                    CapsuleImmersiveCurrentTrackPreview(
-                        mediaId = mediaMetadata.id,
-                        imageUrl = mediaMetadata.thumbnailUrl,
-                        edge = edge,
-                        floor = floor,
-                        artworkHeight = artworkHeight,
-                    )
-                }
                 if (currentSceneReady) {
                     val preparedFrame = requireNotNull(frame)
                     val preparedPaint = requireNotNull(matchedPaint)
@@ -968,16 +999,32 @@ internal fun CapsuleImmersiveContent(
                         background = preparedPaint,
                         artworkHeight = artworkHeight,
                         sceneAlpha = { sceneRevealAlpha.value },
+                        mediaId = mediaMetadata.id,
                     ) {
-                        Image(
-                            painter = preparedFrame.painter,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize().graphicsLayer(
-                                scaleX = if (preparedFrame.landscape) 1.06f else 1f,
-                                scaleY = if (preparedFrame.landscape) 1.06f else 1f,
-                            ),
-                        )
+                        Box(Modifier.fillMaxSize()) {
+                            Image(
+                                painter = preparedFrame.painter,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize().graphicsLayer(
+                                    scaleX = if (preparedFrame.landscape) 1.06f else 1f,
+                                    scaleY = if (preparedFrame.landscape) 1.06f else 1f,
+                                ),
+                            )
+                            // Native video is composited INSIDE the existing
+                            // blurred-photo feather; the screen's background,
+                            // text and audio service remain unchanged.
+                            // Keep a previously started Canvas mounted
+                            // during audio->VIDEO and its reverse. Discovery is
+                            // gated separately: the outgoing native texture
+                            // fades WITH the photo, not via a static placeholder.
+                            CapsuleImmersiveAnimatedArtwork(
+                                metadata = mediaMetadata,
+                                discover = motionArtworkActive,
+                                enabled = motionArtworkEnabled,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     }
                 }
             }
@@ -1537,74 +1584,6 @@ internal fun CapsuleImmersiveContent(
     }
 }
 
-/**
- * Minimal placeholder with ONLY this song's thumbnail and palette. Both surfaces
- * have the same bottom floor; no unrelated cover or stale gradient can leak in.
- * Offscreen feather is only mounted during a pending high-res decode, not always.
- */
-@Composable
-private fun CapsuleImmersiveCurrentTrackPreview(
-    mediaId: String,
-    imageUrl: String?,
-    edge: Color,
-    floor: Color,
-    artworkHeight: Dp,
-) {
-    val context = LocalContext.current
-    var thumbnailReady by remember(mediaId, imageUrl) { mutableStateOf(false) }
-    val thumbnailAlpha by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (thumbnailReady) 1f else 0f,
-        animationSpec = tween(durationMillis = 175),
-        label = "capsuleImmersiveCurrentPreview",
-    )
-    val request = remember(context, mediaId, imageUrl) {
-        ImageRequest.Builder(context)
-            .data(imageUrl?.takeIf(String::isNotBlank))
-            .size(640, 640)
-            .crossfade(false)
-            .build()
-    }
-    Box(
-        Modifier.fillMaxSize().background(
-            Brush.verticalGradient(
-                0f to edge,
-                0.66f to floor,
-                1f to floor,
-            ),
-        ),
-    ) {
-        if (!imageUrl.isNullOrBlank()) {
-            Box(
-                Modifier.fillMaxWidth().height(artworkHeight + 1.dp)
-                    .clipToBounds()
-                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                    .drawWithCache {
-                        val feather = Brush.verticalGradient(
-                            0f to Color.White,
-                            0.68f to Color.White,
-                            1f to Color.Transparent,
-                        )
-                        onDrawWithContent {
-                            drawContent()
-                            drawRect(brush = feather, blendMode = BlendMode.DstIn)
-                        }
-                    },
-            ) {
-                key(mediaId) {
-                    AsyncImage(
-                        model = request,
-                        contentDescription = null,
-                        onSuccess = { thumbnailReady = true },
-                        onError = { thumbnailReady = false },
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize().graphicsLayer { alpha = thumbnailAlpha },
-                    )
-                }
-            }
-        }
-    }
-}
-
 /** Stable Coil models prevent progress updates from rebuilding identical image requests. */
 @Composable
 private fun rememberImmersiveArtworkRequest(url: String?): ImageRequest {
@@ -1615,6 +1594,10 @@ private fun rememberImmersiveArtworkRequest(url: String?): ImageRequest {
             // Same decode/cache target for the invisible preload and the
             // visible frame; avoids a second full-size GPU allocation.
             .size(960, 960)
+            // The tone sampler uses the same URL, requested dimensions and
+            // software decoder. Reuse the decoded Coil cache entry instead of
+            // allocating a separate hardware bitmap for the visible painter.
+            .allowHardware(false)
             .crossfade(false)
             .build()
     }

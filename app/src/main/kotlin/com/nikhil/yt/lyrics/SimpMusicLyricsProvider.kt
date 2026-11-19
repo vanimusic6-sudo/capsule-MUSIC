@@ -1,0 +1,246 @@
+/* Capsule MUSIC — public SimpMusic community lyrics lookup. GPL-3.0. */
+package com.nikhil.yt.lyrics
+
+import android.content.Context
+import com.nikhil.yt.constants.EnableSimpMusicKey
+import com.nikhil.yt.utils.dataStore
+import com.nikhil.yt.utils.get
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.request.get
+import io.ktor.client.request.parameter
+import io.ktor.client.request.header
+import io.ktor.http.HttpHeaders
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.isSuccess
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import timber.log.Timber
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
+import kotlin.math.abs
+
+/**
+ * Video-ID lookup is the fastest/least ambiguous path for Capsule's YouTube music catalog.
+ * Bounded metadata search is used only on a miss; inaccurate remixes and live recordings
+ * are rejected rather than silently substituting the wrong synced lyrics.
+ */
+object SimpMusicLyricsProvider : LyricsProvider {
+    override val name = "SimpMusic"
+
+    private const val ENDPOINT = "https://api-lyrics.simpmusic.org/v1"
+    private val videoIdPattern = Regex("[A-Za-z0-9_-]{11}")
+    private val punctuation = Regex("[^\\p{L}\\p{N}]")
+    private val json = Json { ignoreUnknownKeys = true }
+
+    private val client by lazy {
+        HttpClient(OkHttp) {
+            install(HttpTimeout) {
+                // ArchiveTune's reference client allows 15s: 3s was too low
+                // for volunteer servers, especially under mobile latency.
+                // Keep Capsule's requests bounded without treating every slow
+                // response as "source has no lyrics".
+                requestTimeoutMillis = 15_000
+                connectTimeoutMillis = 8_000
+                socketTimeoutMillis = 15_000
+            }
+            expectSuccess = false
+        }
+    }
+
+    override fun isEnabled(context: Context): Boolean =
+        context.dataStore[EnableSimpMusicKey] ?: true
+
+    override suspend fun getLyrics(
+        id: String,
+        title: String,
+        artist: String,
+        album: String?,
+        duration: Int,
+    ): Result<String> = try {
+        if (title.isBlank() && !videoIdPattern.matches(id)) {
+            Result.failure(NoLyricsFromProvider("SimpMusic needs video ID or song title"))
+        } else {
+            // The reference client accepts records keyed by the queried video ID,
+            // even if a particular submission has no echoed videoId property.
+            // Prefer a synced record matching the requested duration.
+            val exact = if (videoIdPattern.matches(id)) fetchByVideoId(id) else emptyList()
+            val direct = exact.filter { it.lyrics != null &&
+                (it.videoId.isBlank() || it.videoId == id) }
+                .minByOrNull { item ->
+                    (if (duration > 0 && item.durationSeconds > 0) {
+                        abs(duration - item.durationSeconds)
+                    } else 0) + if (item.hasSyncedLyrics) 0 else 30
+                }?.lyrics
+            if (direct != null) {
+                Result.success(direct)
+            } else if (title.isNotBlank()) {
+                // The ID may be a playlist/album entry, or this particular video may not have
+                // a submission. Search is limited to a small page; quality beats false matches.
+                val cleanTitle = LyricsQueryCleanup.title(title)
+                val cleanArtist = LyricsQueryCleanup.artist(artist)
+                // Full text matches first; if the server indexes only the
+                // song title, retry by title alone and still verify the real
+                // artist/duration locally. Sparse crowdsourced data must not
+                // masquerade as a dead provider.
+                val primary = search(cleanTitle, cleanArtist)
+                var candidates = primary
+                    .filter { it.lyrics != null && matches(it, title, artist, duration) }
+                if (candidates.isEmpty() && cleanTitle.isNotBlank()) {
+                    candidates = search(cleanTitle, "")
+                        .filter { it.lyrics != null && matches(it, title, artist, duration) }
+                }
+                val selected = candidates.minByOrNull { item ->
+                    val delta = if (duration > 0 && item.durationSeconds > 0) {
+                        abs(duration - item.durationSeconds)
+                    } else 0
+                    delta + if (item.hasSyncedLyrics) 0 else 30
+                }
+                selected?.lyrics?.let { Result.success(it) }
+                    ?: Result.failure(NoLyricsFromProvider("No matching SimpMusic lyric"))
+            } else Result.failure(NoLyricsFromProvider("No matching SimpMusic video-ID lyric"))
+        }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        Result.failure(failure)
+    }
+
+    private suspend fun fetchByVideoId(id: String): List<Entry> =
+        requestEntries("$ENDPOINT/$id")
+
+    private suspend fun search(title: String, artist: String): List<Entry> {
+        val query = "$title $artist".trim()
+        val found = requestEntries("$ENDPOINT/search", query)
+        // The volunteer server exposes a title-specific search as well as
+        // full-text search; don't call it unless the generic index actually missed.
+        if (artist.isNotBlank() || title.isBlank()) return found
+        // The API's title endpoint uses ?title= rather than ?q=.
+        // Merge exact-title results even when full-text produced only unrelated hits.
+        val byTitle = requestEntries("$ENDPOINT/search/title", title, queryKey = "title")
+        return (found + byTitle).distinctBy { listOf(it.videoId, it.title, it.artist, it.lyrics) }
+    }
+
+    private suspend fun requestEntries(
+        path: String,
+        query: String? = null,
+        queryKey: String = "q",
+    ): List<Entry> {
+        for (attempt in 0..1) {
+            val response = try {
+                client.get(path) {
+                    if (query != null) {
+                        parameter(queryKey, query)
+                        parameter("limit", 15)
+                    }
+                    header(HttpHeaders.Accept, "application/json")
+                    header(HttpHeaders.UserAgent, "SimpMusicLyrics/1.0")
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Timber.tag(name).d(error, "SimpMusic request failed: %s", path)
+                return emptyList()
+            }
+            if (response.status.isSuccess()) {
+                return try {
+                    val payload = response.bodyAsText()
+                    // This API explicitly reports "processing" (HTTP 200/202)
+                    // while its volunteer backend is retrieving a video.
+                    // One bounded retry avoids reporting a false no-lyrics hit,
+                    // without creating a background poll or hammering the server.
+                    if (attempt == 0 && isProcessingResponse(payload)) {
+                        delay(650L)
+                        continue
+                    }
+                    parseEntries(payload)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Timber.tag(name).d(error, "Invalid SimpMusic response")
+                    emptyList()
+                }
+            }
+            val code = response.status.value
+            Timber.tag(name).d("SimpMusic HTTP %d from %s", code, path)
+            if (code !in setOf(429, 500, 502, 503, 504) || attempt == 1) break
+            delay(250L)
+        }
+        return emptyList()
+    }
+
+    internal data class Entry(
+        val videoId: String,
+        val title: String,
+        val artist: String,
+        val durationSeconds: Int,
+        val lyrics: String?,
+        val hasSyncedLyrics: Boolean,
+    )
+
+    internal fun parseEntries(payload: String): List<Entry> {
+        val root = json.parseToJsonElement(payload) as? JsonObject ?: return emptyList()
+        if ((root["success"] as? JsonPrimitive)?.booleanOrNull == false ||
+            (root["type"] as? JsonPrimitive)?.contentOrNull == "error"
+        ) return emptyList()
+        val rows = when (val data = root["data"]) {
+            is JsonArray -> data
+            is JsonObject -> JsonArray(listOf(data))
+            else -> return emptyList()
+        }
+        return rows.mapNotNull { item ->
+            val row = item as? JsonObject ?: return@mapNotNull null
+            // Rich-sync data is not always ready-to-render text. Only accept
+            // actual LRC/ELRC/TTML timestamps; an arbitrary JSON array beginning
+            // with '[' used to be mistaken for a lyric and win over other sources.
+            val synced = sequenceOf(row.string("richSyncLyrics"), row.string("syncedLyrics"))
+                .firstOrNull { it.isNotBlank() && isRenderableSync(it) }
+            val plain = sequenceOf(row.string("plainLyric"), row.string("plainLyrics"))
+                .firstOrNull(String::isNotBlank)
+            Entry(
+                videoId = row.string("videoId"),
+                title = row.string("songTitle"),
+                artist = row.string("artistName"),
+                durationSeconds = row.string("durationSeconds").toDoubleOrNull()?.toInt() ?: 0,
+                lyrics = synced ?: plain,
+                hasSyncedLyrics = synced != null,
+            )
+        }
+    }
+
+    internal fun isProcessingResponse(payload: String): Boolean {
+        val root = runCatching { json.parseToJsonElement(payload) as? JsonObject }
+            .getOrNull() ?: return false
+        return root["processing"] != null ||
+            (root["type"] as? JsonPrimitive)?.contentOrNull == "processing"
+    }
+
+    private fun JsonObject.string(key: String): String =
+        (get(key) as? JsonPrimitive)?.contentOrNull.orEmpty()
+
+    internal fun matches(item: Entry, title: String, artist: String, duration: Int): Boolean {
+        val desiredTitle = simplify(LyricsQueryCleanup.title(title))
+        val foundTitle = simplify(LyricsQueryCleanup.title(item.title))
+        val desiredArtist = simplify(LyricsQueryCleanup.artist(artist))
+        val foundArtist = simplify(LyricsQueryCleanup.artist(item.artist))
+        if (desiredTitle.isBlank() || foundTitle.isBlank()) return false
+        if (desiredTitle != foundTitle &&
+            !desiredTitle.startsWith(foundTitle) && !foundTitle.startsWith(desiredTitle)) return false
+        if (desiredArtist.isNotBlank() && foundArtist.isNotBlank() &&
+            !foundArtist.contains(desiredArtist) && !desiredArtist.contains(foundArtist)) return false
+        return duration <= 0 || item.durationSeconds <= 0 ||
+            abs(duration - item.durationSeconds) <= 22
+    }
+
+    internal fun isRenderableSync(value: String): Boolean =
+        Regex("""\[[0-9]{1,3}:[0-9]{2}[.:][0-9]{2,3}]""").containsMatchIn(value) ||
+            value.contains("<tt", ignoreCase = true)
+
+    private fun simplify(text: String): String =
+        text.lowercase().replace(punctuation, "")
+}

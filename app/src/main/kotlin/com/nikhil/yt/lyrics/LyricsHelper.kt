@@ -23,6 +23,10 @@ import com.nikhil.yt.utils.NetworkConnectivityObserver
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -40,22 +44,30 @@ constructor(
     /** Every provider there is, by its id in [LyricsProviderOrder]. */
     private val providersById: Map<String, LyricsProvider> =
         mapOf(
+            LyricsProviderOrder.BETTER_LYRICS_PORTATO to BetterLyricsPortatoProvider,
+            LyricsProviderOrder.SIMPMUSIC to SimpMusicLyricsProvider,
             LyricsProviderOrder.LYRICS_PLUS to LyricsPlusLyricsProvider,
-            LyricsProviderOrder.BETTER_LYRICS to BetterLyricsProvider,
-            LyricsProviderOrder.PAXSENIX_APPLE_MUSIC to PaxsenixLyricsProvider,
-            LyricsProviderOrder.NETEASE to NetEaseLyricsProvider,
+            LyricsProviderOrder.LRCLIB to LrcLibLyricsProvider,
             LyricsProviderOrder.YOUTUBE to YouTubeLyricsProvider,
         )
 
     private val cache = LruCache<String, List<LyricsResult>>(MAX_CACHE_SIZE)
+    @Volatile
     private var currentLyricsJob: Job? = null
 
-    suspend fun getLyrics(mediaMetadata: MediaMetadata, preferredProviderOnly: Boolean = false): String {
-        currentLyricsJob?.cancel()
-
+    suspend fun getLyrics(
+        mediaMetadata: MediaMetadata,
+        preferredProviderOnly: Boolean = false,
+        forceRefresh: Boolean = false,
+    ): String {
+        // A playback lookup must never cancel the manual "choose lyrics source"
+        // screen. That screen owns its own cancellable job.
+        if (forceRefresh) cache.remove(mediaMetadata.id)
+        val ordered = orderedProviders()
         val cached = cache.get(mediaMetadata.id)?.firstOrNull()
-        if (cached != null) {
-            GlobalLog.append(Log.DEBUG, "LyricsHelper", "Found lyrics in cache for ${mediaMetadata.title}")
+        val topEnabled = ordered.firstOrNull { it.isEnabled(context) }?.name
+        if (!forceRefresh && cached != null && cached.providerName == topEnabled) {
+            GlobalLog.append(Log.DEBUG, "LyricsHelper", "Found priority-matching lyrics in cache for ${mediaMetadata.title}")
             return cached.lyrics
         }
         
@@ -72,14 +84,13 @@ constructor(
             return LYRICS_NOT_FOUND
         }
 
-        val ordered = orderedProviders()
-        val providers = if (preferredProviderOnly) listOf(ordered.first()) else ordered
+        val providers = if (preferredProviderOnly) ordered.take(1) else ordered
 
         /*
          * Provider order is the contract: the first enabled source that returns actual readable
          * lyrics wins immediately. Do not wait for slower providers merely to compare sync grades.
          *
-         * isMeaningfulLyrics() stays load-bearing here, especially for Paxsenix: an empty TTML or
+         * isMeaningfulLyrics() stays load-bearing here, for every source: an empty TTML or
          * timings-only response is a miss and must fall through to the next provider rather than
          * becoming a blank lyrics screen.
          */
@@ -120,6 +131,14 @@ constructor(
         return LYRICS_NOT_FOUND
     }
 
+    /**
+     * Manual source discovery streams results as EACH independent provider finishes.
+     *
+     * The old serial loop was head-of-line blocked by long Apple/LyricsPlus timeouts.
+     * Worse, a playback lookup cancelled the shared currentLyricsJob, leaving only
+     * one visible provider in the picker. Work on different providers is isolated;
+     * one failure/timeout must not suppress the others.
+     */
     suspend fun getAllLyrics(
         mediaId: String,
         songTitle: String,
@@ -129,56 +148,62 @@ constructor(
         callback: (LyricsResult) -> Unit,
     ) {
         currentLyricsJob?.cancel()
+        val owner = currentCoroutineContext()[Job]
+        currentLyricsJob = owner
 
-        val cacheKey = "$songArtists-$songTitle".replace(" ", "")
-        cache.get(cacheKey)?.let { results ->
-            results.forEach {
-                callback(it)
+        try {
+            if (!runCatching { networkConnectivity.isCurrentlyConnected() }.getOrDefault(true)) {
+                GlobalLog.append(Log.DEBUG, "LyricsHelper", "Manual lyrics search skipped: offline")
+                return
             }
-            return
-        }
 
-        val isNetworkAvailable = try {
-            networkConnectivity.isCurrentlyConnected()
-        } catch (e: Exception) {
-            true
-        }
-        
-        if (!isNetworkAvailable) {
-            return
-        }
-
-        val allResult = mutableListOf<LyricsResult>()
-        val providers = orderedProviders()
-        withContext(Dispatchers.IO) {
-            val job = launch {
-                providers.forEach { provider ->
-                    currentCoroutineContext().ensureActive()
-                    if (provider.isEnabled(context)) {
+            val providers = orderedProviders()
+            val results = mutableListOf<LyricsResult>()
+            supervisorScope {
+                providers.map { provider ->
+                    async(Dispatchers.IO) {
+                        currentCoroutineContext().ensureActive()
+                        if (!provider.isEnabled(context)) {
+                            GlobalLog.append(Log.DEBUG, "LyricsHelper", "Source disabled: ${provider.name}")
+                            return@async
+                        }
+                        val startedAt = android.os.SystemClock.elapsedRealtime()
+                        var accepted = 0
                         try {
-                            provider.getAllLyrics(mediaId, songTitle, songArtists, songAlbum, duration) lyricsCallback@{ lyrics ->
-                                if (!isMeaningfulLyrics(lyrics)) return@lyricsCallback
-                                val result = LyricsResult(provider.name, lyrics)
-                                allResult += result
-                                callback(result)
+                            val completed = withTimeoutOrNull(MANUAL_PROVIDER_TIMEOUT_MS) {
+                                provider.getAllLyrics(
+                                    mediaId, songTitle, songArtists, songAlbum, duration,
+                                ) lyricsCallback@{ lyrics ->
+                                    if (!isMeaningfulLyrics(lyrics)) return@lyricsCallback
+                                    val item = LyricsResult(provider.name, lyrics)
+                                    synchronized(results) {
+                                        if (results.none {
+                                                it.providerName == item.providerName &&
+                                                    it.lyrics == item.lyrics
+                                            }) {
+                                            results.add(item)
+                                            callback(item)
+                                            accepted++
+                                        }
+                                    }
+                                }
+                                true
                             }
-                            currentCoroutineContext().ensureActive()
+                            val elapsed = android.os.SystemClock.elapsedRealtime() - startedAt
+                            GlobalLog.append(Log.DEBUG, "LyricsHelper",
+                                "Source ${provider.name}: ${if (completed == null) "timeout" else "$accepted result(s)"} in ${elapsed}ms")
                         } catch (cancelled: CancellationException) {
                             throw cancelled
-                        } catch (e: Exception) {
-                            reportProviderFailure(provider, e)
+                        } catch (failure: Exception) {
+                            reportProviderFailure(provider, failure)
                         }
                     }
-                }
-                // Empty/transient results use provider TTLs, not an indefinite helper cache.
-                if (allResult.isNotEmpty()) cache.put(cacheKey, allResult)
+                }.awaitAll()
             }
-            currentLyricsJob = job
-            try {
-                job.join()
-            } finally {
-                if (currentLyricsJob === job) currentLyricsJob = null
-            }
+            // Do not cache partial manual searches across source toggles or orders.
+            // A new press on "Search" must actually interrogate the current sources.
+        } finally {
+            if (currentLyricsJob === owner) currentLyricsJob = null
         }
     }
 
@@ -235,7 +260,7 @@ constructor(
      *
      * The old check stripped line timestamps with a regex and asked whether anything remained,
      * which was true of far too much. A TTML document with no words in it is angle brackets and
-     * attributes all the way down, so it passed — and Paxsenix returns TTML, which is exactly how
+     * attributes all the way down, so it passed — and some providers return TTML, which is how
      * an empty answer from it could win the search and leave a song with a blank screen while
      * providers that had the lyrics were never asked. Enhanced LRC broke it the same way once word
      * stamps existed: `<00:00.55> <00:00.90>` is not whitespace either.
@@ -285,6 +310,10 @@ constructor(
 
     companion object {
         private const val MAX_CACHE_SIZE = 3
+        // Manual searches stream independently; allow slow public mirrors
+        // to finish a bounded request without blocking other results.
+        // This does not block faster sources in the picker.
+        private const val MANUAL_PROVIDER_TIMEOUT_MS = 22_000L
         private val TIMESTAMP_REGEX = Regex("""\[[0-9]{1,2}:[0-9]{2}(?:\.[0-9]{1,3})?]""")
         private val LINE_TIMESTAMP_REGEX = Regex("""\[[0-9]{1,2}:[0-9]{2}[.:][0-9]{2,3}]""")
         private val INVISIBLE_CHARS_REGEX = Regex("""[\u200B\u200C\u200D\u2060\u00AD]""")

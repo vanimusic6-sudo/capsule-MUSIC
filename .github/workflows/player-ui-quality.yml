@@ -1,7 +1,20 @@
 name: Capsule Player UI Quality
 
 # Reusable quality gate for player skin, motion and gesture changes.
+# Verify this release-polish branch on every code/test revision as well as PRs.
 on:
+  push:
+    branches:
+      - feature/lyrics-release-polish-20261118
+    paths:
+      - 'app/src/main/kotlin/com/nikhil/yt/ui/player/**'
+      - 'app/src/test/kotlin/com/nikhil/yt/ui/**'
+      - 'app/src/test/kotlin/com/nikhil/yt/lyrics/**'
+      - 'app/src/main/kotlin/com/nikhil/yt/lyrics/**'
+      - 'app/src/main/kotlin/com/nikhil/yt/viewmodels/LyricsMenuViewModel.kt'
+      - 'app/src/main/kotlin/com/nikhil/yt/constants/LyricsProviderOrder.kt'
+      - 'app/src/main/kotlin/com/nikhil/yt/lyrics/LyricsPreloadManager.kt'
+      - '.github/workflows/player-ui-quality.yml'
   pull_request:
     paths:
       - 'app/src/main/kotlin/com/nikhil/yt/ui/player/**'
@@ -13,6 +26,10 @@ on:
       - 'app/src/main/kotlin/com/nikhil/yt/utils/CoilBitmapLoader.kt'
       - 'app/src/main/kotlin/com/nikhil/yt/utils/SyncUtils.kt'
       - 'app/src/test/kotlin/com/nikhil/yt/ui/**'
+      - 'app/src/test/kotlin/com/nikhil/yt/lyrics/**'
+      - 'app/src/main/kotlin/com/nikhil/yt/lyrics/**'
+      - 'app/src/main/kotlin/com/nikhil/yt/viewmodels/LyricsMenuViewModel.kt'
+      - 'app/src/main/kotlin/com/nikhil/yt/constants/LyricsProviderOrder.kt'
       - 'app/src/test/kotlin/com/nikhil/yt/playback/**'
       - 'app/src/test/kotlin/com/nikhil/yt/utils/SyncLikedSongsOrderingTest.kt'
       - '.github/workflows/player-ui-quality.yml'
@@ -46,6 +63,8 @@ jobs:
             "$SDKMANAGER" 'platforms;android-37.1'
           fi
           echo 'unqualifiedResLocale=en-US' > app/src/main/res/resources.properties
+      - name: Verify animated artwork API contract
+        run: gradle :canvas:test --no-daemon --max-workers=2
       - name: Player gesture, motion, background and video regressions
         run: >-
           gradle :app:testUniversalDebugUnitTest
@@ -58,9 +77,19 @@ jobs:
           --tests 'com.nikhil.yt.ui.ArtworkPaletteCacheTest'
           --tests 'com.nikhil.yt.ui.ArtworkPaletteStateTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleLyricsThemeTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleLyricsPaletteRecoveryTest'
+          --tests 'com.nikhil.yt.ui.LyricsProviderOrderTest'
+          --tests 'com.nikhil.yt.lyrics.SimpMusicSourceRegressionTest'
+          --tests 'com.nikhil.yt.lyrics.SimpMusicApiContractTest'
+          --tests 'com.nikhil.yt.lyrics.LyricsPlusResponseContractTest'
+          --tests 'com.nikhil.yt.ui.LyricsPlusOutageTest'
+          --tests 'com.nikhil.yt.lyrics.QrcToEnhancedLrcTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleLyricsVolumeSliderTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleInlineLyricsDemandAndPaletteTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveFieldTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveImageBackdropTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveTailTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleMotionArtworkGateTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleVideoAmbientTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleVideoAmbientResumeTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleVideoColourMotionTest'
@@ -76,6 +105,7 @@ jobs:
           --tests 'com.nikhil.yt.ui.SearchPresentationRegressionTest'
           --tests 'com.nikhil.yt.ui.SearchBarInsetTest'
           --tests 'com.nikhil.yt.ui.player.PlayerArtworkReliabilityTest'
+          --tests 'com.nikhil.yt.ui.player.CapsulePlayerArtworkQualityTest'
           --tests 'com.nikhil.yt.ui.MiniPlayerSwipeMotionTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleVideoArtworkTransitionTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleVideoMorphPixelsTest'

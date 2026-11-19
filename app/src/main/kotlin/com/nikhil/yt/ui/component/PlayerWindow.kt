@@ -42,9 +42,15 @@ internal fun PlayerWindow(
 ) {
     val arbiter = remember(state) { MiniPlayerGestureArbiter() }
     val renderPage by remember(state) { derivedStateOf {
-        !state.isDismissed && (state.isExpandedOrExpanding ||
+        // Rendering lifetime and touch lifetime are NOT the same thing. Keep
+        // the destination composed throughout a closing spring, even once
+        // Mini owns tapping (<=10%): a quick tap reverses the same page instead
+        // of disposing and rebuilding it between two frames.
+        !state.isDismissed && (
+            state.isExpandedOrExpanding ||
             (state.isCollapsedOrCollapsing && state.isAnimationRunning) ||
-            shouldRenderExpandedSurface(state.visualProgress, state.isDismissed))
+            shouldRenderExpandedSurface(state.visualProgress, state.isDismissed)
+        )
     } }
     val sourceClock by remember(state) { derivedStateOf {
         !state.isDismissed && playerMiniDrawAlpha(state.visualProgress) > 0f
@@ -54,7 +60,15 @@ internal fun PlayerWindow(
     val compactInteractive by remember(state) { derivedStateOf { state.compactForegroundAcceptsInput } }
     // Never switch source/destination z-order mid-flight. The Mini itself fades to zero.
     val windowInteractive by remember(state) { derivedStateOf {
-        state.isExpandedOrExpanding || state.visualProgress > 0f
+        // The Mini is already clickable during the last ~10% of close.
+        // Stop the full-viewport Initial-pass blocker at that *same* handoff,
+        // otherwise a tap in the narrow 7.5–10% window is stolen and the
+        // compact card cannot reopen without tapping again.
+        state.isExpandedOrExpanding ||
+            (!state.compactForegroundAcceptsInput &&
+                playerSceneShouldInterceptTouch(
+                    state.visualProgress, state.isExpandedOrExpanding, state.isDismissed,
+                ))
     } }
     val dismissingMini by remember(state) { derivedStateOf { state.rawProgress < 0f } }
 

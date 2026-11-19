@@ -112,7 +112,10 @@ class MotionEnergyStructuralRegressionTest {
         assertTrue(source.contains("if (!isReordering && pendingOrderChange)"))
         assertTrue(source.contains("delay(310)"))
         assertTrue(source.contains("enabled = !isReordering && !dialogClosing"))
-        assertTrue(source.contains("if (dialogClosing) Modifier else Modifier.draggableHandle("))
+        assertTrue(source.contains("dialogClosing -> Modifier"))
+        assertTrue(source.contains("isDragging || fullyVisible -> Modifier.draggableHandle("))
+        assertTrue("clipped cards must be revealed before dragging",
+            source.contains("lazyListState.animateScrollBy(pixels.toFloat())"))
         assertTrue(source.contains("targetState = position"))
         assertTrue(source.contains("label = \"priorityRankChange\""))
         assertFalse("no immediate DataStore write on finger-up", source.contains("onDragStopped = {\n                                        saveSettledOrder()"))

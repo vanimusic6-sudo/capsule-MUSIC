@@ -75,7 +75,12 @@ class PlayerTransitionArchitectureTest {
         assertFalse(floor.contains("val edgeBands = image.immersiveBottomEdgeBands("))
         assertTrue(floor.contains("val edgeBands: List<Color> = emptyList()"))
         assertTrue(floor.contains("val preview: ImageBitmap? = null"))
-        assertTrue(floor.contains("preview = image.copy(Bitmap.Config.ARGB_8888, false).asImageBitmap()"))
+        assertTrue("Only the full-size source may be shown; never allocate a second preview bitmap",
+            floor.contains("preview = null"))
+        assertTrue("Shared immersive sample is high quality",
+            floor.contains("ARTWORK_SAMPLE_SIZE = 960"))
+        assertFalse("No separate low-res frame must be rendered during scene preparation",
+            immersive.contains("CapsuleImmersiveCurrentTrackPreview("))
         assertTrue(floor.contains("fun Bitmap.immersiveBottomBackground(artworkAspect: Float)"))
         assertFalse(floor.contains("immersiveArtworkBackground("))
         assertTrue(floor.contains("nearWhiteBackground = nearWhite"))

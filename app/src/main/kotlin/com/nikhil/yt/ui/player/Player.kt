@@ -14,6 +14,8 @@ import android.net.Uri
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.animateColorAsState
+import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -44,6 +46,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.State
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -55,7 +58,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import kotlin.math.roundToInt
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Path
@@ -72,6 +81,7 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.C
 import androidx.media3.common.Player
@@ -113,6 +123,11 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.sin
 import kotlin.math.PI
+
+/** Compact lyrics document: keep several readable lines but avoid a second full-height panel.
+ *  This only affects scroll-to-lyrics mode; the fullscreen lyrics layout is unchanged. */
+internal fun capsuleInlineLyricsCardHeight(viewportHeight: Dp): Dp =
+    (viewportHeight * 0.74f).coerceIn(300.dp, 540.dp)
 
 /** An empty Media3 artwork string must not shadow an already cached thumbnail. */
 internal fun capsulePlayerArtworkUrl(playbackUrl: String?, cachedUrl: String?): String? =
@@ -303,19 +318,6 @@ fun BottomSheetPlayer(
     val immersiveSceneMemory = remember { ImmersiveSceneMemory() }
 
 
-    /*
-     * Start cover + portrait work while the player is collapsed, but never while the whole app is
-     * backgrounded. Returning to the app remounts this immediately, long before the user can finish
-     * an expand gesture.
-     */
-    if (onScreen) {
-        PreloadCapsuleTrackAssets(
-            mediaMetadata = enrichedMetadata,
-            skipArtworkPrefetch = state.shouldLayerAboveCollapsedChrome ||
-                (enrichedMetadata?.id?.let(decodedArtworkCache::containsKey) == true),
-        )
-    }
-
     var position by remember(mediaMetadata?.id) {
         mutableLongStateOf(playerConnection.service.capsuleTimelinePlayer.currentPosition.coerceAtLeast(0L))
     }
@@ -417,13 +419,19 @@ fun BottomSheetPlayer(
         videoAmbientEnabled && videoPlaybackState.presentingVideo && onScreen &&
             state.isExpandedOrExpanding && !showInlineLyrics
 
+    // A hidden inline-lyrics card must not force an EXTRA artwork request
+    // while the user is simply listening. Derived state changes only when
+    // the scroll leaves/returns to zero, not on every gesture pixel.
+    val inlineArtworkIntent by remember(inlineLyricsScroll) {
+        derivedStateOf { inlineLyricsScroll.value > 0 }
+    }
     val needsArtworkPalette =
         onScreen &&
             enrichedMetadata != null &&
             (miniPlayerBackground != MiniPlayerBackgroundStyle.THEME ||
                 // Even a THEME mini-player needs an artwork palette for the
                 // compact lyrics gradient; it must not fall back to flat ink.
-                (scrollToLyricsPreference && !isLandscape) ||
+                (scrollToLyricsPreference && !isLandscape && inlineArtworkIntent) ||
                 (effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
                     playerBackground != PlayerBackgroundStyle.DEFAULT))
     val artworkScene =
@@ -441,6 +449,23 @@ fun BottomSheetPlayer(
             // Preserve the last painted palette across STOP/START; pause extraction, not pixels.
             retainWhenDisabled = true,
         )
+
+    /*
+     * Exactly one expensive 960px preparation owner per visible track:
+     * Immersion's crop sampler OR the Light/mini color-field sampler OR
+     * this fallback preloader. Previously all three could request the
+     * same song concurrently, wasting network and heating the device.
+     * Artist portraits remain eligible for their normal delayed preload.
+     */
+    if (onScreen) {
+        PreloadCapsuleTrackAssets(
+            mediaMetadata = enrichedMetadata,
+            skipArtworkPrefetch = state.shouldLayerAboveCollapsedChrome ||
+                needsArtworkPalette ||
+                effectivePlayerDesign == CapsulePlayerDesign.IMMERSIVE ||
+                (enrichedMetadata?.id?.let(decodedArtworkCache::containsKey) == true),
+        )
+    }
 
     val gradientColors = artworkScene.colors
 
@@ -657,6 +682,11 @@ fun BottomSheetPlayer(
                     mediaMetadata = metadata,
                     decodedArtworkCache = decodedArtworkCache,
                     playerArtworkColors = gradientColors,
+                    playerArtworkField = artworkScene.field,
+                    playerPaletteAlreadyAnimated =
+                        effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
+                            playerBackground != PlayerBackgroundStyle.SCENE_LIGHT &&
+                            playerBackground != PlayerBackgroundStyle.CAPSULE_STAR,
                     videoAmbientBands = activeVideoAmbientBands.orEmpty(),
                     videoAmbientField = activeVideoAmbientField,
                     backdropAnimationTime = sharedBackdropAnimationTime,
@@ -764,6 +794,8 @@ private fun CapsulePlayerLyricsHost(
     mediaMetadata: MediaMetadata,
     decodedArtworkCache: MutableMap<String, Pair<String, Painter>>,
     playerArtworkColors: List<Color>,
+    playerArtworkField: CapsuleColorField?,
+    playerPaletteAlreadyAnimated: Boolean,
     videoAmbientBands: List<Color>,
     videoAmbientField: CapsuleColorField?,
     backdropAnimationTime: State<Long>,
@@ -796,7 +828,59 @@ private fun CapsulePlayerLyricsHost(
     val cardBoundsInRoot = remember { arrayOf<Rect?>(null) }
     var frozenCardBounds by remember(mediaMetadata.id) { mutableStateOf<Rect?>(null) }
     var frozenCardPalette by remember(mediaMetadata.id) { mutableStateOf<List<Color>?>(null) }
-    val transitioningPalette = frozenCardPalette ?: playerArtworkColors
+    // Immersion is painted from its visible crop, not the generic album
+    // palette. The latter is sometimes neutral even as the player has a
+    // saturated photographic floor (the missing-colour bug below the player).
+    // Parent and ImmersiveAudioScene now observe ONE prepared bitmap. Sampling
+    // three pixels along its final visible scanline makes the page below the
+    // player start at the actual photo-to-floor background, without a new decode.
+    val preparedLyricsScene = if (design == CapsulePlayerDesign.IMMERSIVE)
+        sceneMemory.prepared else null
+    val inlineSceneColors = remember(
+        design, warmedImmersiveTone, playerArtworkColors, preparedLyricsScene, mediaMetadata.id,
+    ) {
+        capsuleInlineLyricsPreparedSeamColors(preparedLyricsScene, mediaMetadata.id)
+            ?: capsuleInlineLyricsSceneColors(
+                playerColors = playerArtworkColors,
+                immersiveTone = if (design == CapsulePlayerDesign.IMMERSIVE)
+                    warmedImmersiveTone else null,
+            )
+    }
+    // A hidden card has no independent animation work. For styles whose
+    // full-player palette already interpolates, paint those same RGB frames
+    // directly; for atomic Immersion/Star/Scene swaps, make one smooth
+    // transition HERE and share its result between compact and expanded text.
+    val inlineSurfaceActive by remember(showLyrics, scrollToLyrics, scrollState) {
+        derivedStateOf { showLyrics || (scrollToLyrics && scrollState.value > 0) }
+    }
+    val inlineTarget = capsuleLyricsSharedColors(
+        frozenDuringOpening = frozenCardPalette,
+        playerColors = inlineSceneColors,
+    )
+    // Separate the PAPER (visible photo continuation) from the CARD (a
+    // softly brighter layer sampled from the same cover). Using the final
+    // dark bottom scanline for both made lyrics look like an empty black page.
+    val inlineCardColors = remember(
+        design, warmedImmersiveTone, inlineSceneColors,
+    ) {
+        if (design == CapsulePlayerDesign.IMMERSIVE)
+            capsuleInlineLyricsSceneColors(inlineSceneColors, warmedImmersiveTone)
+        else inlineSceneColors
+    }
+    val transitioningPalette = if (
+        scrollToLyrics && inlineSurfaceActive && !playerPaletteAlreadyAnimated &&
+            preparedLyricsScene?.frame?.mediaId != mediaMetadata.id
+    ) {
+        inlineTarget.mapIndexed { index, target ->
+            animateColorAsState(
+                targetValue = target,
+                animationSpec = tween(880, easing = CapsuleStandardEasing),
+                label = "inlineSharedSceneColor$index",
+            ).value
+        }
+    } else {
+        inlineTarget
+    }
     // Opacity derives directly from sheet position: no third coroutine, no
     // arbitrary millisecond delay and no de-synchronised close/reopen fade.
     // The outgoing player stays fully present while Lyrics travels across it. Once the page has
@@ -858,6 +942,10 @@ private fun CapsulePlayerLyricsHost(
                     }
                 }
             }
+            // Freeze only the geometrical expansion, not the whole lyrics session.
+            // Leaving this snapshot pinned until Back caused late artwork responses
+            // to have no effect until Lyrics was closed and reopened.
+            frozenCardPalette = null
         } else if (lyricsLayerMounted) {
             // Keep the text rendering stable until its position-coupled fade
             // finishes. Disabling lyrics on the first closing frame used to
@@ -905,6 +993,10 @@ private fun CapsulePlayerLyricsHost(
         val onScreen = appIsOnScreen()
         val immersiveArtworkTone =
             if (design == CapsulePlayerDesign.IMMERSIVE) warmedImmersiveTone else null
+        // Shared by both the scrollable lyrics bridge AND its fullscreen
+        // aperture, which is declared outside the scroll-only branch.
+        val immersiveReflection = preparedLyricsScene
+            ?.takeIf { it.frame.mediaId == mediaMetadata.id }?.bitmap
         val renderPlayer: @Composable () -> Unit = {
         Box(
             modifier =
@@ -1001,8 +1093,25 @@ private fun CapsulePlayerLyricsHost(
             // Only the card below the viewport is mounted when the user approaches it.
             val viewportHeight = maxHeight
             val viewportHeightPx = constraints.maxHeight.toFloat()
+            // Predict only a *real* downward gesture. Sitting in the normal
+            // player (scroll=0) does not start a lyrics network request. Once
+            // the page moves ~2.5% towards its card, prepare the CURRENT song;
+            // card rendering itself still waits until ~12% travel.
+            val lyricsFetchIntent by remember(scrollState, viewportHeightPx) {
+                derivedStateOf { capsuleShouldPrefetchInlineLyrics(scrollState.value, viewportHeightPx) }
+            }
             val lyricsCardReady by remember(scrollState, viewportHeightPx) {
                 derivedStateOf { scrollState.value > viewportHeightPx * 0.12f }
+            }
+            if (onScreen && playerState.isExpandedOrExpanding &&
+                lyricsFetchIntent && !queueState.isExpanded && !showLyrics
+            ) {
+                val existing by playerConnection.currentLyrics.collectAsStateWithLifecycle(initialValue = null)
+                RequestLyricsIfMissing(
+                    mediaMetadata = mediaMetadata,
+                    currentLyrics = existing?.takeIf { it.id == mediaMetadata.id },
+                    requestDelayMs = 260L,
+                )
             }
             // Keep the actual compact lyrics in place while the fullscreen
             // layer grows over them. Unmount their lyric renderer only once
@@ -1010,15 +1119,70 @@ private fun CapsulePlayerLyricsHost(
             val compactPreviewActive by remember(showLyrics) {
                 derivedStateOf { !showLyrics || sheetOffset.value > 0.10f }
             }
+            // Carry one shared photo-derived gradient through the entire
+            // scrollable page. The former black parent background was visible
+            // as a sharp strip below the Immersion viewport and above the card.
+            val immersiveBridgeStops = remember(transitioningPalette, design) {
+                capsuleInlineLyricsImmersiveStops(transitioningPalette)
+            }
+            val scrollBackdrop = if (design == CapsulePlayerDesign.IMMERSIVE) {
+                Modifier.drawWithCache {
+                    val fallback = Brush.horizontalGradient(immersiveBridgeStops)
+                    val seam = viewportHeightPx.coerceIn(0f, size.height)
+                    val extension = (size.height - seam).coerceAtLeast(0f)
+                    val bottomShadow = Brush.verticalGradient(
+                        0f to Color.Transparent,
+                        1f to Color.Black.copy(alpha = 0.34f),
+                        startY = seam,
+                        endY = size.height.coerceAtLeast(seam + 1f),
+                    )
+                    onDrawBehind {
+                        // The first viewport is covered by the actual player.
+                        // Mirror the *bottom half of its prepared texture* into
+                        // the second viewport. Its first reflected scanline is
+                        // exactly the player's last visible pixel: no color-field
+                        // approximation, second photo sample or seam to blend.
+                        if (immersiveReflection != null && extension >= 1f) {
+                            val slice = (immersiveReflection.height * 0.52f).roundToInt()
+                                .coerceIn(1, immersiveReflection.height)
+                            withTransform({
+                                scale(
+                                    scaleX = 1f,
+                                    scaleY = -1f,
+                                    pivot = Offset(size.width / 2f, seam + extension / 2f),
+                                )
+                            }) {
+                                drawImage(
+                                    image = immersiveReflection,
+                                    srcOffset = IntOffset(0, immersiveReflection.height - slice),
+                                    srcSize = IntSize(immersiveReflection.width, slice),
+                                    dstOffset = IntOffset(0, seam.roundToInt()),
+                                    dstSize = IntSize(
+                                        size.width.roundToInt().coerceAtLeast(1),
+                                        extension.roundToInt().coerceAtLeast(1),
+                                    ),
+                                )
+                            }
+                        } else {
+                            // The existing cheap palette fallback is used only
+                            // until the decoded artwork texture becomes ready.
+                            drawRect(fallback)
+                        }
+                        drawRect(bottomShadow)
+                    }
+                }
+            } else Modifier
             Column(
                 modifier = Modifier.fillMaxSize().verticalScroll(
                     scrollState,
                     enabled = playerState.isExpanded && !showLyrics && !queueState.isExpanded,
-                ),
+                ).then(scrollBackdrop),
             ) {
                 Box(Modifier.fillMaxWidth().height(viewportHeight)) { renderPlayer() }
                 CapsuleInlineLyricsCard(
-                    colors = transitioningPalette,
+                    colors = if (design == CapsulePlayerDesign.IMMERSIVE)
+                        inlineCardColors else transitioningPalette,
+                    immersive = design == CapsulePlayerDesign.IMMERSIVE,
                     visible = onScreen && playerState.isExpandedOrExpanding &&
                         lyricsCardReady && compactPreviewActive,
                     sliderPosition = sliderPosition,
@@ -1034,10 +1198,10 @@ private fun CapsulePlayerLyricsHost(
                         } else null
                         // Prevent late artwork extraction from changing either
                         // side of an active expansion independently.
-                        frozenCardPalette = playerArtworkColors.toList()
+                        frozenCardPalette = transitioningPalette.toList()
                         onShowLyrics()
                     },
-                    modifier = Modifier.fillMaxWidth().height((viewportHeight - 60.dp).coerceAtLeast(360.dp)),
+                    modifier = Modifier.fillMaxWidth().height(capsuleInlineLyricsCardHeight(viewportHeight)),
                 )
                 Spacer(Modifier.height(16.dp))
             }
@@ -1145,7 +1309,10 @@ private fun CapsulePlayerLyricsHost(
                             // use the SAME cover gradient, with no extra sampler,
                             // animated wallpaper or independently fading theme.
                             CapsuleInlineLyricsBackdrop(
-                                colors = transitioningPalette,
+                                colors = if (design == CapsulePlayerDesign.IMMERSIVE)
+                                    inlineCardColors else transitioningPalette,
+                                immersive = design == CapsulePlayerDesign.IMMERSIVE,
+                                immersiveBitmap = immersiveReflection,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         } else {
@@ -1153,6 +1320,7 @@ private fun CapsulePlayerLyricsHost(
                                 mediaMetadata = mediaMetadata,
                                 immersiveArtworkTone = immersiveArtworkTone,
                                 playerArtworkColors = playerArtworkColors,
+                                playerArtworkField = playerArtworkField,
                                 backdropAnimationTime = backdropAnimationTime,
                                 isVisible = showLyrics && !queueState.isExpanded,
                                 instantBackdrop = true,

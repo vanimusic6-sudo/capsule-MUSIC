@@ -26,7 +26,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 object BetterLyrics {
-    private const val API_BASE_URL = "https://lyrics-api.boidu.dev/"
+    private const val API_BASE_URL = "https://api.betterlyrics.org/"
     private const val GET_LYRICS_PATH = "/getLyrics"
     private val session = BetterLyricsSession()
     private val jsonFormat by lazy {
@@ -44,13 +44,13 @@ object BetterLyrics {
             }
 
             install(HttpTimeout) {
-                requestTimeoutMillis = 20000
-                connectTimeoutMillis = 15000
-                socketTimeoutMillis = 20000
+                requestTimeoutMillis = 7_000
+                connectTimeoutMillis = 4_000
+                socketTimeoutMillis = 7_000
             }
 
             defaultRequest {
-                url("https://lyrics-api.boidu.dev/")
+                url("https://api.betterlyrics.org/")
             }
             
             // Don't throw on non-2xx responses, handle them gracefully

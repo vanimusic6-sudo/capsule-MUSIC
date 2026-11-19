@@ -5,11 +5,9 @@ import java.net.URI
 import java.util.Locale
 
 /**
- * Full-player artwork requests only. No 120/256px preview and no fallback to
- * YouTube's 480x360 hqdefault after a failed higher-quality thumbnail.
- *
- * YouTube video posters are not album covers; some hqdefault images only
- * exist in a tiny version. Try original-composition high-res variants first.
+ * Full-player artwork requests only. NEVER request a low-resolution preview
+ * before the full-sized result. If YouTube has no 720p+ image for a video,
+ * the original poster is a *last resort*, not an intermediate flash.
  * Keep arbitrary CDNs and signed URLs untouched.
  */
 internal fun capsuleFullPlayerArtworkCandidates(original: String?): List<String> {
@@ -26,10 +24,13 @@ internal fun capsuleFullPlayerArtworkCandidates(original: String?): List<String>
         if (match != null) {
             val directory = url.substringBeforeLast("/")
             val extension = match.groupValues[3].lowercase(Locale.US)
-            return listOf(
+            // A number of real music video posters exist only as hqdefault.
+            // Retain that original as the final candidate rather than painting
+            // an "empty album" glyph over a perfectly valid 480px poster.
+            return (listOf(
                 "$directory/maxresdefault.$extension",
                 "$directory/hq720.$extension",
-            ).distinct()
+            ) + url).distinct()
         }
     }
     // Google Music art supports larger server-side renditions while keeping
@@ -52,5 +53,14 @@ internal fun capsulePlayerPosterLargeEnough(
         val host = URI(url).host.orEmpty().lowercase(Locale.US)
         host == "i.ytimg.com" || host == "img.youtube.com"
     }.getOrDefault(false)
-    return !isYoutube || decodedWidth >= 720
+    if (!isYoutube) return true
+    // An original 480x360 hqdefault/mqdefault is valid *after* trying 720p+
+    // variants. Fake YouTube "maxres unavailable" JPEGs are only ~120px.
+    val path = runCatching { URI(url).path.orEmpty().lowercase(Locale.US) }.getOrDefault("")
+    val originalVideoPoster = path.endsWith("/hqdefault.jpg") ||
+        path.endsWith("/hqdefault.webp") || path.endsWith("/sddefault.jpg") ||
+        path.endsWith("/sddefault.webp") || path.endsWith("/mqdefault.jpg") ||
+        path.endsWith("/mqdefault.webp")
+    return if (originalVideoPoster) decodedWidth >= 320 && decodedHeight >= 180
+    else decodedWidth >= 720
 }

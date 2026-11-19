@@ -13,6 +13,8 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -35,6 +37,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,6 +50,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.IntOffset
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -114,6 +119,7 @@ internal fun PriorityOrderDialog(
         }
     }
     val lazyListState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
     val reorderableState =
         rememberReorderableLazyListState(lazyListState) { from, to ->
             val fromIndex = orderedIds.indexOfFirst { it == from.key }
@@ -179,6 +185,19 @@ internal fun PriorityOrderDialog(
                         items = orderedIds,
                         key = { _, id -> id },
                     ) { index, id ->
+                        // A row whose drag handle is clipped by the dialog viewport must
+                        // not start a reorder: its offscreen centre corrupts the library's
+                        // hit testing and auto-scroll. A tap reveals it first, then it
+                        // becomes draggable in its real measured position.
+                        val fullyVisible by remember(lazyListState, id) {
+                            derivedStateOf {
+                                val layout = lazyListState.layoutInfo
+                                val row = layout.visibleItemsInfo.firstOrNull { it.key == id }
+                                row != null &&
+                                    row.offset >= layout.viewportStartOffset + 2 &&
+                                    row.offset + row.size <= layout.viewportEndOffset - 2
+                            }
+                        }
                         ReorderableItem(
                             state = reorderableState,
                             key = id,
@@ -195,8 +214,9 @@ internal fun PriorityOrderDialog(
                                 sublabel = sublabel(id),
                                 showRawId = showRawId,
                                 isDragging = isDragging,
-                                dragHandleModifier =
-                                    if (dialogClosing) Modifier else Modifier.draggableHandle(
+                                dragHandleModifier = when {
+                                    dialogClosing -> Modifier
+                                    isDragging || fullyVisible -> Modifier.draggableHandle(
                                         onDragStarted = {
                                             isReordering = true
                                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -204,7 +224,27 @@ internal fun PriorityOrderDialog(
                                         onDragStopped = {
                                             isReordering = false
                                         },
-                                    ),
+                                    )
+                                    else -> Modifier.clickable {
+                                        // Reveal only the clipped portion; never teleport
+                                        // the whole list or start a drag with stale bounds.
+                                        val info = lazyListState.layoutInfo
+                                        val row = info.visibleItemsInfo.firstOrNull { it.key == id }
+                                        if (row != null) {
+                                            val start = info.viewportStartOffset + 4
+                                            val end = info.viewportEndOffset - 4
+                                            val pixels = when {
+                                                row.offset < start -> row.offset - start
+                                                row.offset + row.size > end ->
+                                                    row.offset + row.size - end
+                                                else -> 0
+                                            }
+                                            if (pixels != 0) scope.launch {
+                                                lazyListState.animateScrollBy(pixels.toFloat())
+                                            }
+                                        }
+                                    }
+                                },
                             )
                         }
                     }
