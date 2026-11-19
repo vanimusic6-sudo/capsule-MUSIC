@@ -184,7 +184,11 @@ object YouTubeMusicVideoLinkResolver {
                 val candidatesById = linkedMapOf<String, Candidate>()
                 var rowsSeen = 0
 
-                for ((index, query) in queries.withIndex()) {
+                // One shared deadline for both search variants. The previous
+                // per-query budget could double the wait after /next failed.
+                // Keep any first-query candidates if the fallback times out.
+                withTimeoutOrNull(SEARCH_TIMEOUT_MS) {
+                    for ((index, query) in queries.withIndex()) {
                     /*
                      * Only use the explicit fallback query if the natural query
                      * produced no usable official candidate at all.
@@ -193,9 +197,7 @@ object YouTubeMusicVideoLinkResolver {
                             candidatesById.values.maxOfOrNull { it.score }
                         )) break
 
-                    val renderers = withTimeoutOrNull(SEARCH_TIMEOUT_MS) {
-                        searchVideoRenderers(query, beforeMetadataRequest)
-                    } ?: emptyList()
+                    val renderers = searchVideoRenderers(query, beforeMetadataRequest)
                     rowsSeen += renderers.size
 
                     for (renderer in renderers) {
@@ -219,6 +221,7 @@ object YouTubeMusicVideoLinkResolver {
                             candidatesById.values.maxOfOrNull { it.score }
                         )) {
                         break
+                    }
                     }
                 }
 
