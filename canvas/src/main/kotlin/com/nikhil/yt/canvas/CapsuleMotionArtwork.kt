@@ -13,6 +13,10 @@ import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -106,9 +110,10 @@ internal fun capsuleParseSpotifyMotion(body: String): CapsuleMotionClip? {
 }
 
 /**
- * Only called when Immersion is onscreen. This resolver never touches the audio
- * player, never polls, and caches empty answers to protect the public endpoint.
- * Apple album animation comes first; Spotify Canvas is the track-specific fallback.
+ * Only called after the user first opens Immersion. Lookup never blocks audio,
+ * is not polled in the background, and caches misses. Spotify and Apple race;
+ * the first identity-validated, safe HTTPS clip starts without waiting for a
+ * slower provider. An explicit Spotify-only retry handles unsupported Apple media.
  */
 object CapsuleMotionArtwork {
     private val client by lazy {
@@ -136,12 +141,39 @@ object CapsuleMotionArtwork {
         ).joinToString("|")
         val now = System.currentTimeMillis()
         cache[key]?.takeIf { it.expiresAt > now }?.let { return it.clip }
-        val apple = if (!canvasOnly) query(API, song, artist, album, durationSeconds,
-            CapsuleMotionSource.APPLE_ARTWORK) else Pair(null, false)
-        val canvas = if (apple.first == null) query(CANVAS, song, artist, album,
-            durationSeconds, CapsuleMotionSource.SPOTIFY_CANVAS) else Pair(null, false)
-        val clip = apple.first ?: canvas.first
-        val short = apple.second || canvas.second
+        // Previously we WAITED up to 8 seconds for Apple before even asking
+        // Spotify. Start Spotify immediately and start Apple shortly after.
+        // Take the first VALID clip and cancel the losing request. When Spotify
+        // has no Canvas, Apple is already in flight and its result is reused.
+        val (clip, short) = if (canvasOnly) {
+            query(CANVAS, song, artist, album, durationSeconds,
+                CapsuleMotionSource.SPOTIFY_CANVAS)
+        } else coroutineScope {
+            val results = Channel<Pair<CapsuleMotionClip?, Boolean>>(2)
+            val spotify = launch {
+                results.send(query(CANVAS, song, artist, album, durationSeconds,
+                    CapsuleMotionSource.SPOTIFY_CANVAS))
+            }
+            val apple = launch {
+                delay(180L)
+                results.send(query(API, song, artist, album, durationSeconds,
+                    CapsuleMotionSource.APPLE_ARTWORK))
+            }
+            var retriable = false
+            var winner: CapsuleMotionClip? = null
+            for (attempt in 0 until 2) {
+                val (candidate, retry) = results.receive()
+                retriable = retriable || retry
+                if (candidate != null) {
+                    winner = candidate
+                    break
+                }
+            }
+            spotify.cancel()
+            apple.cancel()
+            results.close()
+            Pair(winner, retriable)
+        }
         if (cache.size > 96) cache.clear()
         cache[key] = CacheEntry(clip, now + when {
             clip != null -> SUCCESS_TTL_MS
