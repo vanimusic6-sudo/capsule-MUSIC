@@ -249,6 +249,20 @@ class CapsuleVideoRoutesTest {
         assertEquals(CapsuleVideoRoute.VISIONOS, health.candidates(null).first())
     }
 
+    @Test fun twoNoRouteFailuresAfterVpnHandoffStopWithoutPoisoningBackends() {
+        val health = CapsuleVideoRouteHealth()
+        val attempted = mutableListOf<CapsuleVideoRoute>()
+        val thrown = runCatching {
+            resolveVideoRoutes(health = health) { route ->
+                attempted += route
+                throw java.net.NoRouteToHostException("Network route unavailable after VPN switch")
+            }
+        }.exceptionOrNull()!!
+        assertEquals(CapsuleNewPipeFailure.NETWORK, CapsuleNewPipeExtractor.classify(thrown))
+        assertEquals(2, attempted.size)
+        assertEquals(CapsuleVideoRoute.VISIONOS, health.candidates(null).first())
+    }
+
     @Test fun oneBackendDnsFailureMustNotPreventAnotherBackendFromSucceeding() {
         val health = CapsuleVideoRouteHealth()
         val attempts = mutableListOf<CapsuleVideoRoute>()

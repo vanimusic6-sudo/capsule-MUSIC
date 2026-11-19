@@ -3,6 +3,7 @@ package com.nikhil.yt.innertube.video
 
 import java.io.IOException
 import java.net.UnknownHostException
+import java.net.NoRouteToHostException
 import java.util.concurrent.TimeUnit
 
 internal enum class CapsuleVideoRoute(val wireName: String, val budgetMs: Long) {
@@ -97,6 +98,9 @@ internal class CapsuleVideoRoutesException(
 ) : IOException("VIDEO routes exhausted ($failure)", cause)
 
 /**
+ * DNS and no-route failures are network-wide, not evidence about a single
+ * extractor identity. A VPN handoff can throw NoRouteToHostException instead
+ * of UnknownHostException; both must stop the cascade without banning clients.
  * DNS is network-wide, not evidence that a single YouTube player identity
  * was rejected. Do not poison a healthy route or spend 20s rotating extractor
  * clients after two independent backends cannot resolve their hostnames.
@@ -104,7 +108,7 @@ internal class CapsuleVideoRoutesException(
 internal fun isVideoDnsFailure(error: Throwable): Boolean =
     generateSequence(error as Throwable?) { it.cause }
         .take(8)
-        .any { it is UnknownHostException }
+        .any { it is UnknownHostException || it is NoRouteToHostException }
 
 /** One attempt per backend; move the failed playback backend to the end. */
 internal fun resolveVideoRoutes(
