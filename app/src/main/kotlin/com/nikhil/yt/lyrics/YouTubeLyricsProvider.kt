@@ -24,15 +24,33 @@ object YouTubeLyricsProvider : LyricsProvider {
         artist: String,
         album: String?,
         duration: Int,
-    ): Result<String> =
-        runCatchingCancellable {
+    ): Result<String> {
+        // The official YouTube Music lyrics panel is missing for many videos,
+        // even though the video itself has human captions. This is the FINAL
+        // (lowest-priority) source; avoid trying a redundant transcript until
+        // the primary music panel has genuinely failed.
+        val officialPanel = runCatchingCancellable {
             val nextResult = YouTube.next(WatchEndpoint(videoId = id)).getOrThrow()
-            YouTube
-                .lyrics(
-                    endpoint = nextResult.lyricsEndpoint
-                        ?: throw NoLyricsFromProvider("YouTube has no lyrics panel for the track"),
-                ).getOrThrow() ?: throw NoLyricsFromProvider("YouTube returned an empty lyrics panel")
+            YouTube.lyrics(
+                endpoint = nextResult.lyricsEndpoint
+                    ?: throw NoLyricsFromProvider("YouTube Music has no lyrics panel"),
+            ).getOrThrow() ?: throw NoLyricsFromProvider("YouTube Music panel was empty")
         }
+        val text = officialPanel.getOrNull()
+        if (!text.isNullOrBlank()) return Result.success(text)
+
+        // Existing Innertube transcript client; no new API, cookie, or service.
+        // A transcript may still be unavailable for music videos. Reject
+        // non-vocal boilerplate rather than showing it as a lyric.
+        return YouTube.transcript(id).mapCatching { captions ->
+            val clean = captions.trim()
+            if (clean.isBlank() ||
+                clean.equals("[Music]", ignoreCase = true) ||
+                clean.equals("♪", ignoreCase = true)
+            ) throw NoLyricsFromProvider("YouTube has no readable lyrics or captions")
+            clean
+        }
+    }
 
     override suspend fun getAllLyrics(
         id: String,
