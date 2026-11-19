@@ -290,6 +290,7 @@ object YouTubeMusicVideoLinkResolver {
                         playlistSetVideoId = null,
                         index = null,
                         params = null,
+                        audioVideoCounterpart = true,
                     ).body<NextResponse>()
                 }
                 page
