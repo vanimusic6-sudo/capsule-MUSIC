@@ -884,6 +884,7 @@ fun CapsulePlayerContent(
                      */
                     CapsuleLightLyricLine(
                         line = lyricEntry?.text?.trim()?.replace('\n', ' '),
+                        trackKey = mediaMetadata.id,
                         instrumental = lyricEntry?.takeIf { it.isInstrumental },
                         playbackPosition = lyricPlaybackPosition,
                         animate = lyricLineActive,
