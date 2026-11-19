@@ -119,16 +119,23 @@ object SimpMusicLyricsProvider : LyricsProvider {
         val found = requestEntries("$ENDPOINT/search", query)
         // The volunteer server exposes a title-specific search as well as
         // full-text search; don't call it unless the generic index actually missed.
-        return if (found.isNotEmpty() || artist.isNotBlank() || title.isBlank()) found
-        else requestEntries("$ENDPOINT/search/title", title)
+        if (artist.isNotBlank() || title.isBlank()) return found
+        // The API's title endpoint uses ?title= rather than ?q=.
+        // Merge exact-title results even when full-text produced only unrelated hits.
+        val byTitle = requestEntries("$ENDPOINT/search/title", title, queryKey = "title")
+        return (found + byTitle).distinctBy { listOf(it.videoId, it.title, it.artist, it.lyrics) }
     }
 
-    private suspend fun requestEntries(path: String, query: String? = null): List<Entry> {
+    private suspend fun requestEntries(
+        path: String,
+        query: String? = null,
+        queryKey: String = "q",
+    ): List<Entry> {
         for (attempt in 0..1) {
             val response = try {
                 client.get(path) {
                     if (query != null) {
-                        parameter("q", query)
+                        parameter(queryKey, query)
                         parameter("limit", 15)
                     }
                     header(HttpHeaders.Accept, "application/json")
