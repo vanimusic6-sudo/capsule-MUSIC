@@ -407,13 +407,19 @@ fun BottomSheetPlayer(
         videoAmbientEnabled && videoPlaybackState.presentingVideo && onScreen &&
             state.isExpandedOrExpanding && !showInlineLyrics
 
+    // A hidden inline-lyrics card must not force an EXTRA artwork request
+    // while the user is simply listening. Derived state changes only when
+    // the scroll leaves/returns to zero, not on every gesture pixel.
+    val inlineArtworkIntent by remember(inlineLyricsScroll) {
+        derivedStateOf { inlineLyricsScroll.value > 0 }
+    }
     val needsArtworkPalette =
         onScreen &&
             enrichedMetadata != null &&
             (miniPlayerBackground != MiniPlayerBackgroundStyle.THEME ||
                 // Even a THEME mini-player needs an artwork palette for the
                 // compact lyrics gradient; it must not fall back to flat ink.
-                (scrollToLyricsPreference && !isLandscape) ||
+                (scrollToLyricsPreference && !isLandscape && inlineArtworkIntent) ||
                 (effectivePlayerDesign != CapsulePlayerDesign.IMMERSIVE &&
                     playerBackground != PlayerBackgroundStyle.DEFAULT))
     val artworkScene =
