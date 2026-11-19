@@ -52,19 +52,43 @@ internal fun capsuleLyricsSharedColors(
         ?: List(3) { Color(0xFF1A1B21) }
 
 /**
+ * The Immersion cover is a photographic crop with its own sampled 2D field.
+ * The regular player's album-palette source can be neutral while this image
+ * already paints a richly coloured floor. Derive the compact card from the
+ * very same prepared lower edge rather than an unrelated album guess.
+ *
+ * This is O(1) and allocates no bitmaps or independent image requests.
+ */
+internal fun capsuleInlineLyricsSceneColors(
+    playerColors: List<Color>,
+    immersiveTone: ImmersiveArtworkTone?,
+): List<Color> {
+    val tone = immersiveTone?.takeIf { it.ready } ?: return playerColors
+    val sample = tone.colorField?.let { field ->
+        field.cell(field.width / 2, (field.height - 2).coerceAtLeast(0))
+    } ?: tone.edge
+    return listOf(
+        lerp(tone.edge, sample, 0.30f),
+        lerp(sample, tone.accent, 0.40f),
+        tone.accent,
+    )
+}
+
+/**
  * Keep a stable cover-based luminance from top to bottom.
  * The card and its expanded counterpart paint these exact same stops.
  */
 internal fun capsuleInlineLyricsStops(colors: List<Color>): List<Color> {
-    val ink = Color(0xFF1B2028)
+    val ink = Color(0xFF15161B)
     val upper = colors.getOrNull(0) ?: Color(0xFF1A1B21)
     val lower = colors.getOrNull(1) ?: upper
     val tail = colors.getOrNull(2) ?: lower
-    val anchor = lerp(ink, upper, 0.32f)
+    // The old palette was ~70% flat grey even when the real video had a
+    // violet/blue floor. Restore the hue while keeping white lyrics legible.
     return listOf(
-        anchor,
-        lerp(anchor, lower, 0.12f),
-        lerp(anchor, tail, 0.14f),
+        lerp(ink, upper, 0.65f),
+        lerp(ink, lower, 0.47f),
+        lerp(ink, tail, 0.34f),
     )
 }
 
