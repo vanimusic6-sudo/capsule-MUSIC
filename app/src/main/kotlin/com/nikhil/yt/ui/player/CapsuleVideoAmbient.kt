@@ -14,8 +14,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import kotlin.math.abs
 
-// ~6.7 bounded low-res readbacks per second instead of 10. The decoded video
-// itself remains unrestricted; backdrop interpolation retains its existing physics.
+// Original player-design cadence: about 1.4 low-resolution frame samples per
+// second. The video itself remains at full frame rate.
 internal const val VIDEO_AMBIENT_CAPTURE_INTERVAL_MS = 700L
 
 /** Preserve the last VIDEO palette during buffer/surface interruptions. */
@@ -32,16 +32,14 @@ internal const val VIDEO_AMBIENT_SAMPLE_WIDTH = 48
 internal const val VIDEO_AMBIENT_SAMPLE_HEIGHT = 28
 
 /**
- * Keep one filtered scene per (video TextureView, audio media ID). The capture
- * coroutine itself restarts whenever video buffers, pauses or receives a new
- * first frame; rebuilding the light filter at each restart exposed an instant
- * raw-brightness frame to the entire player background.
+ * Keep the last video colour field across transient decoder events, without
+ * changing the original 700ms sampling cadence or 0.018 visual-noise gate.
  */
 internal class CapsuleVideoAmbientCaptureMemory {
     var previous: CapsuleColorField? = null
 
     fun shouldPublish(frame: CapsuleVideoAmbientFrame): Boolean {
-        if (!capsuleFieldChanged(previous, frame.field, threshold = 0.0045f)) return false
+        if (!capsuleFieldChanged(previous, frame.field)) return false
         previous = frame.field
         return true
     }
