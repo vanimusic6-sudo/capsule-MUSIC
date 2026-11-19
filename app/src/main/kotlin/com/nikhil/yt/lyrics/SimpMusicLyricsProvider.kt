@@ -15,6 +15,8 @@ import io.ktor.http.HttpHeaders
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import timber.log.Timber
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -43,9 +45,9 @@ object SimpMusicLyricsProvider : LyricsProvider {
                 // for volunteer servers, especially under mobile latency.
                 // Keep Capsule's requests bounded without treating every slow
                 // response as "source has no lyrics".
-                requestTimeoutMillis = 9_000
-                connectTimeoutMillis = 4_000
-                socketTimeoutMillis = 9_000
+                requestTimeoutMillis = 15_000
+                connectTimeoutMillis = 8_000
+                socketTimeoutMillis = 15_000
             }
             expectSuccess = false
         }
@@ -109,22 +111,51 @@ object SimpMusicLyricsProvider : LyricsProvider {
         Result.failure(failure)
     }
 
-    private suspend fun fetchByVideoId(id: String): List<Entry> {
-        val response = client.get("$ENDPOINT/$id") {
-            header(HttpHeaders.Accept, "application/json")
-            header(HttpHeaders.UserAgent, "CapsuleMusic/1.0")
-        }
-        return if (response.status.isSuccess()) parseEntries(response.bodyAsText()) else emptyList()
-    }
+    private suspend fun fetchByVideoId(id: String): List<Entry> =
+        requestEntries("$ENDPOINT/$id")
 
     private suspend fun search(title: String, artist: String): List<Entry> {
-        val response = client.get("$ENDPOINT/search") {
-            parameter("q", "$title $artist")
-            parameter("limit", 15)
-            header(HttpHeaders.Accept, "application/json")
-            header(HttpHeaders.UserAgent, "CapsuleMusic/1.0")
+        val query = "$title $artist".trim()
+        val found = requestEntries("$ENDPOINT/search", query)
+        // The volunteer server exposes a title-specific search as well as
+        // full-text search; don't call it unless the generic index actually missed.
+        return if (found.isNotEmpty() || artist.isNotBlank() || title.isBlank()) found
+        else requestEntries("$ENDPOINT/search/title", title)
+    }
+
+    private suspend fun requestEntries(path: String, query: String? = null): List<Entry> {
+        for (attempt in 0..1) {
+            val response = try {
+                client.get(path) {
+                    if (query != null) {
+                        parameter("q", query)
+                        parameter("limit", 15)
+                    }
+                    header(HttpHeaders.Accept, "application/json")
+                    header(HttpHeaders.UserAgent, "SimpMusicLyrics/1.0 CapsuleMusic")
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Timber.tag(name).d(error, "SimpMusic request failed: %s", path)
+                return emptyList()
+            }
+            if (response.status.isSuccess()) {
+                return try {
+                    parseEntries(response.bodyAsText())
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    Timber.tag(name).d(error, "Invalid SimpMusic response")
+                    emptyList()
+                }
+            }
+            val code = response.status.value
+            Timber.tag(name).d("SimpMusic HTTP %d from %s", code, path)
+            if (code !in setOf(429, 500, 502, 503, 504) || attempt == 1) break
+            delay(250L)
         }
-        return if (response.status.isSuccess()) parseEntries(response.bodyAsText()) else emptyList()
+        return emptyList()
     }
 
     internal data class Entry(
@@ -141,7 +172,11 @@ object SimpMusicLyricsProvider : LyricsProvider {
         if ((root["success"] as? JsonPrimitive)?.booleanOrNull == false ||
             (root["type"] as? JsonPrimitive)?.contentOrNull == "error"
         ) return emptyList()
-        val rows = root["data"] as? JsonArray ?: return emptyList()
+        val rows = when (val data = root["data"]) {
+            is JsonArray -> data
+            is JsonObject -> JsonArray(listOf(data))
+            else -> return emptyList()
+        }
         return rows.mapNotNull { item ->
             val row = item as? JsonObject ?: return@mapNotNull null
             // Rich-sync data is not always ready-to-render text. Only accept
