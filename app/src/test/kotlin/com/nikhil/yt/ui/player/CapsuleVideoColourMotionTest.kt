@@ -14,12 +14,24 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Lock the exact soft-image VIDEO backdrop from the 2026-11-13 player design.
- * This is NOT the 20x16 full-page RuntimeShader that created broad bands.
+ * The Android 13+ player-design path uses a low-frequency 2D shader and a
+ * small GPU layer, not a full-screen upscaled raster gradient of wide bands.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class CapsuleVideoColourMotionTest {
+    @Test fun restoredPlayerDesignUsesGpuSpatialBlendAndOriginalCadence() {
+        assertEquals("The slow raster crossfade is the source of large visible bands",
+            180, VIDEO_AMBIENT_BLEND_DURATION_MS)
+        val shader = CAPSULE_VIDEO_MOTION_SHADER
+        assertTrue(shader.contains("source * grid"))
+        assertTrue(shader.contains("uv.x"))
+        assertTrue(shader.contains("uv.y"))
+        assertTrue(shader.contains("mix(previous.eval"))
+        assertTrue(shader.contains("floorColor"))
+    }
+
     @Test fun originalDesignRendersASoft176x256ImageRatherThanStretchedGridPixels() {
         val field = CapsuleColorField(20, 16, List(320) { Color(0xFF8AB1D6) })
         val bitmap = capsuleVideoSpatialBitmap(field, Color(0xFF111116)).asAndroidBitmap()
