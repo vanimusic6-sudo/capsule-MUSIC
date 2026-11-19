@@ -112,6 +112,18 @@ class CapsuleVideoColourMotionTest {
         assertTrue(sustained.cells.minOf { it.red } > 0.95f)
     }
 
+    @Test fun aSceneCutCannotTurnIntoSingleFrameAmbientFlash() {
+        val filter = CapsuleVideoLightFilter()
+        val dark = CapsuleColorField(20, 16, List(320) { Color.Black })
+        val white = CapsuleColorField(20, 16, List(320) { Color.White })
+        filter.apply(dark, 1_000_000_000L)
+        val flash = filter.apply(white, 1_150_000_000L)
+        assertTrue("One white frame must not flash the page", flash.cells.first().red < 0.3f)
+        var held = flash
+        for (i in 2..11) held = filter.apply(white, 1_000_000_000L + i * 150_000_000L)
+        assertTrue("Sustained bright frames still follow", held.cells.first().red > 0.95f)
+    }
+
     @Test fun nativeMotionShaderCompilesAndRendersDirectionalColours() {
         val old = CapsuleColorField(20, 16, List(320) { if (it % 20 < 10) Color.Red else Color.Blue })
         val smooth = CapsuleVideoLightFilter().apply(old, 1_000_000_000L)
