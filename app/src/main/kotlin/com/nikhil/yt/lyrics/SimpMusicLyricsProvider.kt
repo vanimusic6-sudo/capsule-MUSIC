@@ -139,7 +139,7 @@ object SimpMusicLyricsProvider : LyricsProvider {
                         parameter("limit", 15)
                     }
                     header(HttpHeaders.Accept, "application/json")
-                    header(HttpHeaders.UserAgent, "SimpMusicLyrics/1.0 CapsuleMusic")
+                    header(HttpHeaders.UserAgent, "SimpMusicLyrics/1.0")
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
