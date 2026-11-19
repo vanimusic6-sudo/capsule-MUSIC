@@ -140,9 +140,9 @@ object YouTubeMusicVideoLinkResolver {
                      * Only use the explicit fallback query if the natural query
                      * produced no usable official candidate at all.
                      */
-                    if (index > 0 && candidatesById.values.any {
-                            it.score >= YouTubeMusicVideoMatcher.STRONG_MATCH_SCORE
-                        }) break
+                    if (index > 0 && !YouTubeMusicVideoMatcher.needsSecondQuery(
+                            candidatesById.values.maxOfOrNull { it.score }
+                        )) break
 
                     val renderers = searchVideoRenderers(query, beforeMetadataRequest)
                     rowsSeen += renderers.size
@@ -164,13 +164,9 @@ object YouTubeMusicVideoLinkResolver {
                         }
                     }
 
-                    if (
-                        candidatesById.values
-                            .maxOfOrNull { it.score }
-                            ?.let {
-                                it >= YouTubeMusicVideoMatcher.STRONG_MATCH_SCORE
-                            } == true
-                    ) {
+                    if (!YouTubeMusicVideoMatcher.needsSecondQuery(
+                            candidatesById.values.maxOfOrNull { it.score }
+                        )) {
                         break
                     }
                 }
