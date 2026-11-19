@@ -52,6 +52,27 @@ class YouTubeMusicVideoMatcherTest {
     }
 
     @Test
+    fun unknownArtistNeverChoosesAnotherSongWithSameTitle() {
+        assertNull(YouTubeMusicVideoMatcher.scoreCandidate(
+            sourceTitle = "Home",
+            sourceTitleNorm = "home",
+            sourceArtistNorms = emptyList(),
+            candidateTitle = "Home (Official Music Video)",
+            secondaryText = "Unknown Official • 3:30",
+            sourceDurationSeconds = 210,
+        ))
+        assertTrue(requireNotNull(YouTubeMusicVideoMatcher.scoreCandidate(
+            sourceTitle = "Home",
+            sourceTitleNorm = "home",
+            sourceArtistNorms = emptyList(),
+            candidateTitle = "Anything",
+            secondaryText = "",
+            sourceDurationSeconds = 210,
+            sameOfficialVideo = true,
+        )) >= YouTubeMusicVideoMatcher.STRONG_MATCH_SCORE)
+    }
+
+    @Test
     fun liveVariantIsRejectedWhenSourceIsNotLive() {
         assertNull(
             YouTubeMusicVideoMatcher.scoreCandidate(

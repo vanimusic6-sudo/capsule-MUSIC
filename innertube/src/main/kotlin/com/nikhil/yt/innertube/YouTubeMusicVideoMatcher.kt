@@ -26,6 +26,10 @@ internal object YouTubeMusicVideoMatcher {
         // is already the canonical clip, not a competing title/artist match.
         if (sameOfficialVideo) return STRONG_MATCH_SCORE + 1
         if (isRejectedVariant(sourceTitle, candidateTitle)) return null
+        // A generic title plus OMV classification still does not establish
+        // song identity without any artist. The only safe missing-artist case
+        // is an explicitly verified same-ID OMV, handled above.
+        if (sourceArtistNorms.none { it.isNotBlank() }) return null
 
         val candidateTitleNorm = normalizeTitle(candidateTitle)
         if (candidateTitleNorm.isBlank() || sourceTitleNorm.isBlank()) return null
@@ -50,8 +54,7 @@ internal object YouTubeMusicVideoMatcher {
                     artist.length >= 2 &&
                         (
                             containsWholePhrase(secondaryNorm, artist) ||
-                                containsWholePhrase(candidateTitleNorm, artist) ||
-                                containsWholePhrase(secondaryNorm, artist)
+                                containsWholePhrase(candidateTitleNorm, artist)
                         )
                 }
 
