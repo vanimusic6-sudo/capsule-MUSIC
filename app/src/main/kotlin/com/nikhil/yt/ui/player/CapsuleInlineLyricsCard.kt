@@ -71,19 +71,15 @@ internal fun capsuleInlineLyricsSceneColors(
     val field = tone.colorField ?: return listOf(tone.edge, tone.edge, tone.edge)
     if (field.width <= 0 || field.height <= 0)
         return listOf(tone.edge, tone.edge, tone.edge)
-    // Immersion's "edge" is the mean of the visible crop and its "accent"
-    // is deliberately darkened to 35%. Using those twice in a fully opaque
-    // card yielded a flat neutral rectangle despite vibrant artwork above.
-    // Instead take three points from the SAME decoded 2D photo field that
-    // paints the immersive page, with no separate network request or sampler.
-    val centerX = field.width / 2
-    val top = field.cell(centerX, (field.height * 0.20f).toInt().coerceAtMost(field.height - 1))
-    val middle = field.cell(centerX, (field.height * 0.52f).toInt().coerceAtMost(field.height - 1))
-    val lower = field.cell(centerX, (field.height * 0.82f).toInt().coerceAtMost(field.height - 1))
+    // The Immersion page blurs a 2D field and darkens its lower edge.
+    // Three VERTICAL points at the centre gave lyrics an unrelated opaque
+    // rectangle. Sample one lower-page latitude ACROSS the same artwork.
+    // Only three cached cell reads, no bitmap or second image request.
+    val row = (field.height * 0.64f).toInt().coerceIn(0, field.height - 1)
     return listOf(
-        lerp(top, tone.edge, 0.20f),
-        lerp(middle, tone.edge, 0.25f),
-        lerp(lower, tone.edge, 0.35f),
+        field.cell((field.width * 0.12f).toInt(), row),
+        field.cell(field.width / 2, row),
+        field.cell((field.width * 0.88f).toInt(), row),
     )
 }
 
@@ -119,6 +115,15 @@ internal fun capsuleInlineLyricsStops(colors: List<Color>): List<Color> {
     }
 }
 
+/** Share Immersion's horizontal page continuation across the gap and card. */
+internal fun capsuleInlineLyricsImmersiveStops(colors: List<Color>): List<Color> {
+    val ink = Color(0xFF111116)
+    val source = colors.takeIf { it.size >= 3 } ?: List(3) { Color(0xFF202027) }
+    val pale = source.any { maxOf(it.red, it.green, it.blue) > 0.86f }
+    val amount = if (pale) 0.43f else 0.59f
+    return source.take(3).map { lerp(ink, it, amount) }
+}
+
 /**
  * Exactly one opaque, inexpensive gradient for compact AND full lyrics.
  * Do not render MiniPlayerSurface behind it: its glass/nebula layers were
@@ -129,15 +134,20 @@ internal fun capsuleInlineLyricsStops(colors: List<Color>): List<Color> {
 internal fun CapsuleInlineLyricsBackdrop(
     colors: List<Color>,
     modifier: Modifier = Modifier,
+    immersive: Boolean = false,
 ) {
     // The regular player already animates its shared artworkScene.colors.
     // Re-animating the same RGB values here for 1400ms made Lyrics lag behind
     // the player and left a gray/old gradient after a series of rapid skips.
     // Use those SAME prepared/animated colors, at the SAME frame, with one
     // inexpensive draw-cache brush and no independent timing coroutine.
-    val stops = remember(colors) { capsuleInlineLyricsStops(colors) }
+    val stops = remember(colors, immersive) {
+        if (immersive) capsuleInlineLyricsImmersiveStops(colors)
+        else capsuleInlineLyricsStops(colors)
+    }
     Box(modifier.drawWithCache {
-        val brush = Brush.verticalGradient(stops)
+        val brush = if (immersive) Brush.horizontalGradient(stops)
+                    else Brush.verticalGradient(stops)
         onDrawBehind { drawRect(brush) }
     })
 }
@@ -146,6 +156,7 @@ internal fun CapsuleInlineLyricsBackdrop(
 internal fun CapsuleInlineLyricsCard(
     colors: List<Color>,
     visible: Boolean,
+    immersive: Boolean = false,
     sliderPosition: Long?,
     onFullScreen: () -> Unit,
     onBoundsChanged: (Rect) -> Unit = {},
@@ -159,6 +170,7 @@ internal fun CapsuleInlineLyricsCard(
     ) {
         CapsuleInlineLyricsBackdrop(
             colors = colors,
+            immersive = immersive,
             modifier = Modifier.matchParentSize(),
         )
         CompositionLocalProvider(LocalContentColor provides Color.White) {
