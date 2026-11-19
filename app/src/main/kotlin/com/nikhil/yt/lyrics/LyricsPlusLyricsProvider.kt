@@ -18,22 +18,29 @@ import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
+import io.ktor.client.request.header
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import timber.log.Timber
 import java.util.Locale
 
 @Serializable
-private data class LyricsPlusWord(
+internal data class LyricsPlusWord(
     val time: Long = 0,
     val duration: Long = 0,
     val text: String = "",
 )
 
 @Serializable
-private data class LyricsPlusLine(
+internal data class LyricsPlusLine(
     val time: Long = 0,
     val duration: Long = 0,
     val text: String = "",
@@ -41,9 +48,12 @@ private data class LyricsPlusLine(
 )
 
 @Serializable
-private data class LyricsPlusResponse(
+internal data class LyricsPlusResponse(
     val type: String? = null,
     val lyrics: List<LyricsPlusLine>? = null,
+    // Mirrors sometimes return the direct LRC or plain fields instead of KPOE.
+    val syncedLyrics: String? = null,
+    val plainLyrics: String? = null,
 )
 
 object LyricsPlusLyricsProvider : LyricsProvider {
@@ -61,6 +71,9 @@ object LyricsPlusLyricsProvider : LyricsProvider {
         listOf(
             // Current public mirrors listed by upstream clients (2026).
             "https://lyricsplus.prjktla.workers.dev",
+            "https://lyricsplus.prjktla.my.id",
+            "https://lyricsplus.atomix.one",
+            "https://lyrics-plus-backend.vercel.app",
             "https://lyricsplus.binimum.org",
             "https://lyricsplus-seven.vercel.app",
         )
@@ -135,53 +148,70 @@ object LyricsPlusLyricsProvider : LyricsProvider {
         }
     }
 
+    /**
+     * Staggered first-answer search. The old serial fallback exhausted the
+     * manual picker's overall timeout before even reaching mirror #3.
+     * Successful fast mirrors cancel all scheduled backups; slow/down mirrors
+     * start only the minimum additional requests needed.
+     */
     private suspend fun fetch(
         title: String,
         artist: String,
         album: String?,
         duration: Int,
-    ): LyricsPlusResponse? {
-        var anyServerResponded = false
-        for (baseUrl in prioritizedServers()) {
-            val result =
-                runCatchingCancellable {
-                    val response =
-                        client.get("$baseUrl/v2/lyrics/get") {
-                            parameter("title", LyricsQueryCleanup.title(title))
-                            parameter("artist", LyricsQueryCleanup.artist(artist))
-                            if (duration > 0) parameter("duration", duration)
-                            if (!album.isNullOrBlank()) parameter("album", album)
-                        }
-                    // 404 is a valid answer ("not in this catalog"), NOT an outage.
-                    // An upstream server sometimes returns 200 with no matching song.
-                    if (response.status == HttpStatusCode.OK ||
-                        response.status == HttpStatusCode.NotFound) {
-                        anyServerResponded = true
+    ): LyricsPlusResponse? = supervisorScope {
+        val servers = prioritizedServers()
+        data class Outcome(
+            val server: String,
+            val answered: Boolean,
+            val lyrics: LyricsPlusResponse?,
+        )
+        val completed = Channel<Outcome>(Channel.UNLIMITED)
+        val workers = servers.mapIndexed { index, server ->
+            launch(Dispatchers.IO) {
+                delay(index * 550L)
+                val outcome = runCatchingCancellable {
+                    val response = client.get("$server/v2/lyrics/get") {
+                        parameter("title", LyricsQueryCleanup.title(title))
+                        parameter("artist", LyricsQueryCleanup.artist(artist))
+                        if (duration > 0) parameter("duration", duration)
+                        if (!album.isNullOrBlank()) parameter("album", album)
+                        header(HttpHeaders.Accept, "application/json")
+                        header("X-Client-Package",
+                            "CapsuleMusic <https://github.com/vanimusic6-sudo/capsule-MUSIC>")
                     }
-                    if (response.status == HttpStatusCode.OK) {
-                        response.body<LyricsPlusResponse>()
-                    } else null
-                }.onFailure { Timber.tag(name).d(it, "Mirror failed: %s", baseUrl) }
-                    .getOrNull()
-
-            if (result?.lyrics?.isNotEmpty() == true) {
-                lastWorkingServer = baseUrl
-                allMirrorsFailedAtMs = 0L
-                return result
+                    val reached = response.status == HttpStatusCode.OK ||
+                        response.status == HttpStatusCode.NotFound
+                    val body = if (response.status == HttpStatusCode.OK)
+                        response.body<LyricsPlusResponse>() else null
+                    Outcome(server, reached, body)
+                }.onFailure { Timber.tag(name).d(it, "Mirror failed: %s", server) }
+                    .getOrNull() ?: Outcome(server, false, null)
+                completed.send(outcome)
             }
         }
-        // Missing lyrics is not a server outage. Previous code disabled the
-        // entire provider for 10 minutes after ONE unmatched song.
-        if (anyServerResponded) {
-            allMirrorsFailedAtMs = 0L
-        } else {
-            allMirrorsFailedAtMs = System.currentTimeMillis()
+        var answered = false
+        try {
+            repeat(servers.size) {
+                val next = completed.receive()
+                answered = answered || next.answered
+                val data = next.lyrics
+                if (data != null && toLrc(data) != null) {
+                    lastWorkingServer = next.server
+                    allMirrorsFailedAtMs = 0L
+                    return@supervisorScope data
+                }
+            }
+            allMirrorsFailedAtMs = if (answered) 0L else System.currentTimeMillis()
+            null
+        } finally {
+            workers.forEach { it.cancel() }
+            completed.close()
         }
-        return null
     }
 
     /** Long enough that an outage costs one round of requests rather than one per song. */
-    internal const val OUTAGE_COOLDOWN_MS = 10 * 60 * 1000L
+    internal const val OUTAGE_COOLDOWN_MS = 90 * 1000L
 
     /**
      * Enhanced LRC, so the per-word timings survive.
@@ -196,13 +226,15 @@ object LyricsPlusLyricsProvider : LyricsProvider {
      * The trailing stamp is where the last word ends, which the response knows and plain LRC has
      * no way to say.
      */
-    private fun toLrc(response: LyricsPlusResponse): String? {
-        val lines = response.lyrics?.takeIf { it.isNotEmpty() } ?: return null
+    internal fun toLrc(response: LyricsPlusResponse): String? {
+        response.syncedLyrics?.trim()?.takeIf(String::isNotBlank)?.let { return it }
+        val lines = response.lyrics?.takeIf { it.isNotEmpty() }
+            ?: return response.plainLyrics?.trim()?.takeIf(String::isNotBlank)
         val lrc =
             lines
                 .mapNotNull { line -> lineToLrc(line) }
                 .joinToString("\n")
-        return lrc.ifBlank { null }
+        return lrc.ifBlank { response.plainLyrics?.trim()?.takeIf(String::isNotBlank) }
     }
 
     private fun lineToLrc(line: LyricsPlusLine): String? {
