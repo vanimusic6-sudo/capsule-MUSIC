@@ -25,5 +25,9 @@ data class PlaylistPanelRenderer(
     data class Content(
         val playlistPanelVideoRenderer: PlaylistPanelVideoRenderer?,
         val automixPreviewVideoRenderer: AutomixPreviewVideoRenderer?,
+        // YouTube Music's own audio ↔ video toggle is represented as a
+        // wrapper, not a second ordinary queue entry. Preserve it to avoid
+        // guessing the clip through a title-only search.
+        val playlistPanelVideoWrapperRenderer: PlaylistPanelVideoWrapperRenderer? = null,
     )
 }
