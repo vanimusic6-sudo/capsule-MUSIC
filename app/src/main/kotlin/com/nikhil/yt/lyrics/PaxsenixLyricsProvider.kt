@@ -22,6 +22,11 @@ import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
@@ -234,10 +239,9 @@ object PaxsenixLyricsProvider : LyricsProvider {
     ): String? {
         val candidates = search(title, artist, album, duration)
         val attempted = mutableSetOf<String>()
-        for (track in candidates.take(MAX_TRACKS_TRIED)) {
-            attempted += track.id
-            fetchRelayLyrics(track.id)?.let { return it }
-        }
+        val primaryIds = candidates.take(MAX_TRACKS_TRIED).map(AppleTrack::id)
+        attempted.addAll(primaryIds)
+        fetchFirstRelayLyrics(primaryIds)?.let { return it }
         // Public iTunes IDs do not always line up with the relay's catalog
         // edition (explicit/clean, different regions). Previously any iTunes
         // matches prevented querying the Apple catalog even if relay lyrics
@@ -250,11 +254,9 @@ object PaxsenixLyricsProvider : LyricsProvider {
             val candidatesFromApple = rank(
                 runSearch(query), cleanTitle, cleanArtist, duration,
             )
-            for (track in candidatesFromApple.take(MAX_TRACKS_TRIED)) {
-                if (attempted.add(track.id)) {
-                    fetchRelayLyrics(track.id)?.let { return it }
-                }
-            }
+            val alternativeIds = candidatesFromApple.take(MAX_TRACKS_TRIED)
+                .map(AppleTrack::id).filter(attempted::add)
+            fetchFirstRelayLyrics(alternativeIds)?.let { return it }
         }
         return null
     }
@@ -420,6 +422,30 @@ object PaxsenixLyricsProvider : LyricsProvider {
             .filter { (_, score) -> score > 0.0 }
             .sortedByDescending { (_, score) -> score }
             .map { (track, _) -> track }
+    }
+
+    /** Hedge only the best 3 catalog matches and cancel unfinished requests on success. */
+    private suspend fun fetchFirstRelayLyrics(ids: List<String>): String? = supervisorScope {
+        val unique = ids.distinct()
+        if (unique.isEmpty()) return@supervisorScope null
+        val output = Channel<String?>(Channel.UNLIMITED)
+        val jobs = unique.mapIndexed { index, id ->
+            launch(Dispatchers.IO) {
+                // Fast first ID sends no secondary HTTP request; backups start
+                // only if the best match did not answer within a short window.
+                delay(index * 350L)
+                output.send(fetchRelayLyrics(id))
+            }
+        }
+        try {
+            repeat(jobs.size) {
+                output.receive()?.let { return@supervisorScope it }
+            }
+            null
+        } finally {
+            jobs.forEach { it.cancel() }
+            output.close()
+        }
     }
 
     private suspend fun fetchRelayLyrics(trackId: String): String? {
