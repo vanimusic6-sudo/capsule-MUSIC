@@ -40,6 +40,7 @@ import com.nikhil.yt.extensions.toggleRepeatMode
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
@@ -49,6 +50,25 @@ import kotlinx.coroutines.plus
 import javax.inject.Inject
 import kotlin.math.min
 
+/**
+ * Controller pages are untrusted input, including from controllers accepted by
+ * the platform. Bound their size and arithmetic before touching Room or IPC.
+ */
+internal const val MEDIA_BROWSER_MAX_PAGE_SIZE = 200
+internal const val MEDIA_BROWSER_MAX_SEARCH_ITEMS = 500
+
+internal fun mediaBrowserOffset(page: Int, pageSize: Int): Int? {
+    if (page < 0 || pageSize !in 1..MEDIA_BROWSER_MAX_PAGE_SIZE) return null
+    val offset = page.toLong() * pageSize.toLong()
+    return offset.takeIf { it <= Int.MAX_VALUE }?.toInt()
+}
+
+internal fun <T> mediaBrowserPage(items: List<T>, page: Int, pageSize: Int): List<T> {
+    val offset = mediaBrowserOffset(page, pageSize) ?: return emptyList()
+    if (offset >= items.size) return emptyList()
+    return items.subList(offset, minOf(items.size.toLong(), offset.toLong() + pageSize).toInt())
+}
+
 class MediaLibrarySessionCallback
 @Inject
 constructor(
@@ -57,6 +77,9 @@ constructor(
     val downloadUtil: DownloadUtil,
 ) : MediaLibrarySession.Callback {
     private val scope = CoroutineScope(Dispatchers.Main) + Job()
+
+    /** End all pending external-browser database reads when MusicService dies. */
+    fun dispose() { scope.cancel() }
     var toggleLike: (String) -> Unit = {}
     var toggleStartRadio: () -> Unit = {}
     var toggleLibrary: () -> Unit = {}
@@ -171,12 +194,16 @@ constructor(
                 return@future LibraryResult.ofError(SessionError.ERROR_PERMISSION_DENIED)
             }
             val q = query.trim()
-            if (q.isBlank() || pageSize <= 0 || page < 0) {
+            val from = mediaBrowserOffset(page, pageSize)
+                ?: return@future LibraryResult.ofItemList(emptyList(), params)
+            if (q.isBlank() || from >= MEDIA_BROWSER_MAX_SEARCH_ITEMS) {
                 return@future LibraryResult.ofItemList(emptyList(), params)
             }
 
-            val requested = (page + 1) * pageSize
-            val items = ArrayList<MediaItem>(min(requested, 200))
+            // Do not allow huge page numbers/sizes to overflow Int or turn
+            // an Android Auto search into an unbounded database allocation.
+            val requested = minOf(MEDIA_BROWSER_MAX_SEARCH_ITEMS, from + pageSize)
+            val items = ArrayList<MediaItem>(requested)
 
             val songs = database.searchSongs(q, previewSize = requested).first()
             items += songs.map { it.toMediaItem(MusicService.SONG) }
@@ -237,9 +264,8 @@ constructor(
                     }
             }
 
-            val from = page * pageSize
             if (from >= items.size) return@future LibraryResult.ofItemList(emptyList(), params)
-            val to = min(from + pageSize, items.size)
+            val to = min(requested, items.size)
 
             LibraryResult.ofItemList(items.subList(from, to), params)
         }
@@ -256,8 +282,10 @@ constructor(
             if (!browser.isTrusted) {
                 return@future LibraryResult.ofError(SessionError.ERROR_PERMISSION_DENIED)
             }
-            LibraryResult.ofItemList(
-                when (parentId) {
+            if (mediaBrowserOffset(page, pageSize) == null) {
+                return@future LibraryResult.ofItemList(emptyList(), params)
+            }
+            val children = when (parentId) {
                     MusicService.ROOT ->
                         listOf(
                             browsableMediaItem(
@@ -412,9 +440,7 @@ constructor(
 
                             else -> emptyList()
                         }
-                },
-                params,
-            )
+            LibraryResult.ofItemList(mediaBrowserPage(children, page, pageSize), params)
         }
 
     override fun onGetItem(
