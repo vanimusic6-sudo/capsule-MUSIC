@@ -97,7 +97,7 @@ internal fun CapsuleLyricsVolumeSlider(
     ) {
         val trackHeight = min(25.dp.toPx(), size.height)
         val top = (size.height - trackHeight) / 2f
-        val radius = min(trackHeight / 2f, 10.dp.toPx())
+        val radius = min(trackHeight / 2f, 7.dp.toPx())
         val corner = CornerRadius(radius)
         val fill = (size.width * volume).coerceIn(0f, size.width)
         val contour = Path().apply {
@@ -117,7 +117,7 @@ internal fun CapsuleLyricsVolumeSlider(
                     color = Color(0xFFA9A8B0).copy(alpha = 0.76f),
                     topLeft = Offset(0f, top),
                     size = Size(fill, trackHeight),
-                    cornerRadius = CornerRadius(min(radius, fill / 2f)),
+                    cornerRadius = corner,
                 )
             }
         }
@@ -140,7 +140,7 @@ internal fun CapsuleLyricsVolumeSlider(
                     else Color(0xFFA0A0A9).copy(alpha = 0.39f),
                 topLeft = Offset(x, top + (trackHeight - tickHeight) / 2f),
                 size = Size(tickWidth, tickHeight),
-                cornerRadius = CornerRadius(tickWidth / 2f),
+                cornerRadius = CornerRadius(min(0.65.dp.toPx(), tickWidth / 2f)),
             )
         }
         drawRoundRect(
