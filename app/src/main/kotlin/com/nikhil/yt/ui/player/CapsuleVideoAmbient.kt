@@ -16,7 +16,7 @@ import kotlin.math.abs
 
 // ~6.7 bounded low-res readbacks per second instead of 10. The decoded video
 // itself remains unrestricted; backdrop interpolation retains its existing physics.
-internal const val VIDEO_AMBIENT_CAPTURE_INTERVAL_MS = 150L
+internal const val VIDEO_AMBIENT_CAPTURE_INTERVAL_MS = 700L
 
 /** Preserve the last VIDEO palette during buffer/surface interruptions. */
 internal fun capsuleVideoAmbientShouldStayVisible(
@@ -38,7 +38,6 @@ internal const val VIDEO_AMBIENT_SAMPLE_HEIGHT = 28
  * raw-brightness frame to the entire player background.
  */
 internal class CapsuleVideoAmbientCaptureMemory {
-    val lightFilter = CapsuleVideoLightFilter()
     var previous: CapsuleColorField? = null
 
     fun shouldPublish(frame: CapsuleVideoAmbientFrame): Boolean {
@@ -65,20 +64,51 @@ internal val LocalCapsuleVideoAmbientSink =
  * bars and fully black padding, without running Palette/ML, allocating another
  * decoder, or reading the original video file.
  */
-internal fun capsuleVideoAmbientFrameFromBitmap(
-    bitmap: Bitmap, mediaId: String,
-    lightFilter: CapsuleVideoLightFilter = CapsuleVideoLightFilter(),
-    nowNs: Long = System.nanoTime(),
-): CapsuleVideoAmbientFrame? {
+internal fun capsuleVideoAmbientFrameFromBitmap(bitmap: Bitmap, mediaId: String): CapsuleVideoAmbientFrame? {
     if (bitmap.width < 7 || bitmap.height < 5 || mediaId.isBlank()) return null
-    val pixels = IntArray(bitmap.width * bitmap.height)
-    bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-    // Keep the existing scene through black decoder cuts/letterboxing.
-    if (pixels.count { ((it ushr 16 and 255) + (it ushr 8 and 255) + (it and 255)) >= 31 } < 4) return null
-    val raw = bitmap.capsuleColorField(bitmap.width.toFloat() / bitmap.height,
-        video = true, pixelBuffer = pixels)
-    val light = lightFilter.apply(raw, nowNs)
-    return CapsuleVideoAmbientFrame(mediaId, capsuleBandsFromField(light), light)
+    val width = bitmap.width
+    val height = bitmap.height
+    val pixels = IntArray(width * height)
+    bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+    val bandCount = 7
+    var nonBlack = 0
+    val bands = List(bandCount) { band ->
+        val xStart = band * width / bandCount
+        val xEnd = ((band + 1) * width / bandCount).coerceAtMost(width)
+        var r = 0
+        var g = 0
+        var b = 0
+        var n = 0
+        // Sample the visible heart of the frame, not codec black bars.
+        for (y in height / 6 until height * 5 / 6 step 2) {
+            for (x in xStart until xEnd) {
+                val argb = pixels[y * width + x]
+                val rr = argb ushr 16 and 255
+                val gg = argb ushr 8 and 255
+                val bb = argb and 255
+                if (rr + gg + bb < 31) continue
+                r += rr
+                g += gg
+                b += bb
+                n++
+            }
+        }
+        nonBlack += n
+        if (n == 0) Color(0xFF101014)
+        else {
+            // Limit brightness to keep white controls legible and avoid lighting
+            // the entire page like a second bright video.
+            val sampled = Color(r.toFloat() / n / 255f,
+                g.toFloat() / n / 255f, b.toFloat() / n / 255f)
+            lerp(sampled, Color(0xFF101014), 0.50f)
+        }
+    }
+    // Keep the last valid colours during black cuts / unstable first frames.
+    if (nonBlack < 4) return null
+    // The image's Y structure matters just as much as left/right colours.
+    // This small 12x10 grid is our REAL input, not seven painted stripes.
+    val field = bitmap.capsuleColorField(width.toFloat() / height, video = true)
+    return CapsuleVideoAmbientFrame(mediaId, bands, field)
 }
 
 /** Ignore tiny colour noise: refreshing the wallpaper costs more than it adds. */
