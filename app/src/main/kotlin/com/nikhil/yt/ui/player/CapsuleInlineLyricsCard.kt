@@ -69,6 +69,8 @@ internal fun capsuleInlineLyricsSceneColors(
 ): List<Color> {
     val tone = immersiveTone?.takeIf { it.ready } ?: return playerColors
     val field = tone.colorField ?: return listOf(tone.edge, tone.edge, tone.edge)
+    if (field.width <= 0 || field.height <= 0)
+        return listOf(tone.edge, tone.edge, tone.edge)
     // Immersion's "edge" is the mean of the visible crop and its "accent"
     // is deliberately darkened to 35%. Using those twice in a fully opaque
     // card yielded a flat neutral rectangle despite vibrant artwork above.
