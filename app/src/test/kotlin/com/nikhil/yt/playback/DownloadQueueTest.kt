@@ -226,6 +226,25 @@ class DownloadQueueTest {
         }
     }
 
+    @Test fun staleDownloadCompletionCannotRewriteDateAfterRemoveOrRestart() {
+        val original = Download(
+            request(22), Download.STATE_COMPLETED, 1L, 5L, 5_000L,
+            0, Download.FAILURE_REASON_NONE,
+        )
+        assertTrue(downloadMetadataCompletionIsCurrent(original, original))
+        val restarted = Download(
+            request(22), Download.STATE_QUEUED, 1L, 6L, 0L,
+            0, Download.FAILURE_REASON_NONE,
+        )
+        assertFalse(downloadMetadataCompletionIsCurrent(restarted, original))
+        val newer = Download(
+            request(22), Download.STATE_COMPLETED, 1L, 7L, 5_000L,
+            0, Download.FAILURE_REASON_NONE,
+        )
+        assertFalse(downloadMetadataCompletionIsCurrent(newer, original))
+        assertFalse(downloadMetadataCompletionIsCurrent(null, original))
+    }
+
     @Test fun completedLegacyEntryIsNeverWaitingAndStillHasADeleteAction() {
         // Older versions occasionally left the reserved waiting reason on a
         // completed file. This must not hide Delete or consume a queue slot.
