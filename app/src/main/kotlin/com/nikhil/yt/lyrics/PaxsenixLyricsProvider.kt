@@ -28,14 +28,65 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import timber.log.Timber
 import kotlin.math.abs
+import java.util.Locale
 
 @Serializable
-private data class PaxsenixLyrics(
+internal data class PaxsenixWord(
+    val text: String = "",
+    val timestamp: Long? = null,
+    val endtime: Long? = null,
+)
+
+@Serializable
+internal data class PaxsenixLine(
+    val timestamp: Long = 0L,
+    val text: List<PaxsenixWord> = emptyList(),
+    val background: Boolean = false,
+)
+
+/** The relay also sends structured Apple lines without any TTML/ELRC fields. */
+@Serializable
+internal data class PaxsenixLyrics(
+    val type: String? = null,
+    val content: List<PaxsenixLine> = emptyList(),
     val elrcMultiPerson: String? = null,
     val elrc: String? = null,
     val ttmlContent: String? = null,
     val plain: String? = null,
 )
+
+internal fun paxsenixLyricsText(payload: PaxsenixLyrics): String? {
+    payload.ttmlContent?.takeIf(String::isNotBlank)?.let { return it }
+    payload.elrcMultiPerson?.takeIf(String::isNotBlank)?.let { return it }
+    payload.elrc?.takeIf(String::isNotBlank)?.let { return it }
+    val lines = payload.content.mapNotNull { line ->
+        val words = line.text.filter { it.text.isNotBlank() }
+        if (words.isEmpty()) return@mapNotNull null
+        val joined = if (words.any { it.text.any(Char::isWhitespace) }) {
+            words.joinToString("") { it.text }
+        } else words.joinToString(" ") { it.text }
+        val time = paxsenixTimestamp(line.timestamp)
+        if (payload.type.equals("Syllable", ignoreCase = true) &&
+            words.all { it.timestamp != null }) {
+            buildString {
+                append("[").append(time).append("]")
+                words.forEach { word ->
+                    append("<").append(paxsenixTimestamp(word.timestamp!!)).append(">")
+                    append(word.text)
+                }
+                words.last().endtime?.let { append("<").append(paxsenixTimestamp(it)).append(">") }
+            }
+        } else "[$time]$joined"
+    }
+    if (lines.isNotEmpty()) return lines.joinToString("\n")
+    return payload.plain?.takeIf(String::isNotBlank)
+}
+
+private fun paxsenixTimestamp(millis: Long): String {
+    val ms = millis.coerceAtLeast(0L)
+    return String.format(Locale.US, "%02d:%02d.%02d",
+        ms / 60_000, (ms / 1_000) % 60, (ms % 1_000) / 10)
+}
 
 @Serializable
 private data class AppleAttributes(
@@ -142,9 +193,9 @@ object PaxsenixLyricsProvider : LyricsProvider {
                 json(json)
             }
             install(HttpTimeout) {
-                requestTimeoutMillis = 5_000
-                connectTimeoutMillis = 3_000
-                socketTimeoutMillis = 5_000
+                requestTimeoutMillis = 8_000
+                connectTimeoutMillis = 4_000
+                socketTimeoutMillis = 8_000
             }
             expectSuccess = false
         }
@@ -386,10 +437,7 @@ object PaxsenixLyricsProvider : LyricsProvider {
                 .getOrNull()
                 ?: return null
 
-        return body.ttmlContent?.takeIf(String::isNotBlank)
-            ?: body.elrcMultiPerson?.takeIf(String::isNotBlank)
-            ?: body.elrc?.takeIf(String::isNotBlank)
-            ?: body.plain?.takeIf(String::isNotBlank)
+        return paxsenixLyricsText(body)
     }
 
     internal suspend fun getStats(): Result<PaxsenixStats> =
@@ -427,7 +475,7 @@ object PaxsenixLyricsProvider : LyricsProvider {
         }
     }
 
-    private const val MAX_TRACKS_TRIED = 2
+    private const val MAX_TRACKS_TRIED = 3
     private val INDEX_JS_REGEX = Regex("""/assets/index~[^/"']+\.js""")
     private val JWT_REGEX =
         Regex("""eyJ[A-Za-z0-9\-_=]+\.[A-Za-z0-9\-_=]+\.[A-Za-z0-9\-_=]+""")
