@@ -327,7 +327,7 @@ object YouTubeMusicVideoLinkResolver {
                     sourceMediaId = sourceId,
                     primaryId = primary?.videoId,
                     counterpartId = video.videoId,
-                    counterpartType = video.navigationEndpoint.anyWatchEndpoint
+                    counterpartType = video.navigationEndpoint?.anyWatchEndpoint
                         ?.watchEndpointMusicSupportedConfigs?.watchEndpointMusicConfig?.musicVideoType,
                 )
                 if (selected != null) return selected
