@@ -82,6 +82,7 @@ import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import com.nikhil.yt.LocalImmersiveStatusBarRequest
 import com.nikhil.yt.R
+import com.nikhil.yt.constants.CapsuleImmersiveAnimatedArtworkKey
 import com.nikhil.yt.constants.CapsuleImmersiveAvOrderKey
 import com.nikhil.yt.constants.CapsuleImmersiveCanvasPositionsKey
 import com.nikhil.yt.constants.CapsuleImmersiveEditEnabledKey
@@ -584,6 +585,16 @@ internal fun CapsuleImmersiveContent(
 
     val isVideo = videoPlaybackState.presentingVideo
     val needsVideoSurface = videoPlaybackState.needsSurface
+    val (motionArtworkEnabled, _) =
+        rememberPreference(CapsuleImmersiveAnimatedArtworkKey, defaultValue = true)
+    val motionArtworkActive = capsuleShouldPlayMotionArtwork(
+        enabled = motionArtworkEnabled,
+        visible = visible,
+        controlsActive = controlsActive,
+        isPlaying = isPlaying,
+        presentingVideo = isVideo,
+        videoNeedsSurface = needsVideoSurface,
+    )
 
     /*
      * Request fullscreen from the Activity instead of manipulating the Window here.
@@ -966,15 +977,25 @@ internal fun CapsuleImmersiveContent(
                         artworkHeight = artworkHeight,
                         sceneAlpha = { sceneRevealAlpha.value },
                     ) {
-                        Image(
-                            painter = preparedFrame.painter,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize().graphicsLayer(
-                                scaleX = if (preparedFrame.landscape) 1.06f else 1f,
-                                scaleY = if (preparedFrame.landscape) 1.06f else 1f,
-                            ),
-                        )
+                        Box(Modifier.fillMaxSize()) {
+                            Image(
+                                painter = preparedFrame.painter,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize().graphicsLayer(
+                                    scaleX = if (preparedFrame.landscape) 1.06f else 1f,
+                                    scaleY = if (preparedFrame.landscape) 1.06f else 1f,
+                                ),
+                            )
+                            // Native video is composited INSIDE the existing
+                            // blurred-photo feather; the screen's background,
+                            // text and audio service remain unchanged.
+                            CapsuleImmersiveAnimatedArtwork(
+                                metadata = mediaMetadata,
+                                active = motionArtworkActive,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     }
                 }
             }

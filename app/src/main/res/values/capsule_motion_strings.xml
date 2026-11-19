@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capsule_motion_artwork_title">Live album artwork · Immersion</string>
+    <string name="capsule_motion_artwork_description">Apple Music animated covers, with Spotify Canvas fallback. Looks up song and artist using Better Lyrics; plays silently only while Immersion is visible and music is playing. Uses additional data.</string>
+</resources>
