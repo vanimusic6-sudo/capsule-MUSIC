@@ -59,8 +59,9 @@ object LyricsPlusLyricsProvider : LyricsProvider {
      */
     private val baseUrls =
         listOf(
+            // Current public mirrors listed by upstream clients (2026).
+            "https://lyricsplus.prjktla.workers.dev",
             "https://lyricsplus.binimum.org",
-            "https://lyricsplus.prjktla.my.id",
             "https://lyricsplus-seven.vercel.app",
         )
 
@@ -90,9 +91,9 @@ object LyricsPlusLyricsProvider : LyricsProvider {
                 json(Json { isLenient = true; ignoreUnknownKeys = true })
             }
             install(HttpTimeout) {
-                requestTimeoutMillis = 15_000
-                connectTimeoutMillis = 10_000
-                socketTimeoutMillis = 15_000
+                requestTimeoutMillis = 5_500
+                connectTimeoutMillis = 3_000
+                socketTimeoutMillis = 5_500
             }
             expectSuccess = false
         }
@@ -140,22 +141,26 @@ object LyricsPlusLyricsProvider : LyricsProvider {
         album: String?,
         duration: Int,
     ): LyricsPlusResponse? {
+        var anyServerResponded = false
         for (baseUrl in prioritizedServers()) {
             val result =
                 runCatchingCancellable {
                     val response =
                         client.get("$baseUrl/v2/lyrics/get") {
-                            parameter("title", title)
-                            parameter("artist", artist)
-                            // The API wants seconds; MediaMetadata already stores seconds here.
+                            parameter("title", LyricsQueryCleanup.title(title))
+                            parameter("artist", LyricsQueryCleanup.artist(artist))
                             if (duration > 0) parameter("duration", duration)
                             if (!album.isNullOrBlank()) parameter("album", album)
                         }
+                    // 404 is a valid answer ("not in this catalog"), NOT an outage.
+                    // An upstream server sometimes returns 200 with no matching song.
+                    if (response.status == HttpStatusCode.OK ||
+                        response.status == HttpStatusCode.NotFound) {
+                        anyServerResponded = true
+                    }
                     if (response.status == HttpStatusCode.OK) {
                         response.body<LyricsPlusResponse>()
-                    } else {
-                        null
-                    }
+                    } else null
                 }.onFailure { Timber.tag(name).d(it, "Mirror failed: %s", baseUrl) }
                     .getOrNull()
 
@@ -165,7 +170,13 @@ object LyricsPlusLyricsProvider : LyricsProvider {
                 return result
             }
         }
-        allMirrorsFailedAtMs = System.currentTimeMillis()
+        // Missing lyrics is not a server outage. Previous code disabled the
+        // entire provider for 10 minutes after ONE unmatched song.
+        if (anyServerResponded) {
+            allMirrorsFailedAtMs = 0L
+        } else {
+            allMirrorsFailedAtMs = System.currentTimeMillis()
+        }
         return null
     }
 
