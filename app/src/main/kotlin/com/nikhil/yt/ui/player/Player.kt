@@ -58,6 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.RoundRect
@@ -1084,15 +1085,28 @@ private fun CapsulePlayerLyricsHost(
             val compactPreviewActive by remember(showLyrics) {
                 derivedStateOf { !showLyrics || sheetOffset.value > 0.10f }
             }
+            // Carry one shared photo-derived gradient through the entire
+            // scrollable page. The former black parent background was visible
+            // as a sharp strip below the Immersion viewport and above the card.
+            val immersiveBridgeStops = remember(transitioningPalette, design) {
+                capsuleInlineLyricsImmersiveStops(transitioningPalette)
+            }
+            val scrollBackdrop = if (design == CapsulePlayerDesign.IMMERSIVE) {
+                Modifier.drawWithCache {
+                    val brush = Brush.horizontalGradient(immersiveBridgeStops)
+                    onDrawBehind { drawRect(brush) }
+                }
+            } else Modifier
             Column(
                 modifier = Modifier.fillMaxSize().verticalScroll(
                     scrollState,
                     enabled = playerState.isExpanded && !showLyrics && !queueState.isExpanded,
-                ),
+                ).then(scrollBackdrop),
             ) {
                 Box(Modifier.fillMaxWidth().height(viewportHeight)) { renderPlayer() }
                 CapsuleInlineLyricsCard(
                     colors = transitioningPalette,
+                    immersive = design == CapsulePlayerDesign.IMMERSIVE,
                     visible = onScreen && playerState.isExpandedOrExpanding &&
                         lyricsCardReady && compactPreviewActive,
                     sliderPosition = sliderPosition,
@@ -1220,6 +1234,7 @@ private fun CapsulePlayerLyricsHost(
                             // animated wallpaper or independently fading theme.
                             CapsuleInlineLyricsBackdrop(
                                 colors = transitioningPalette,
+                                immersive = design == CapsulePlayerDesign.IMMERSIVE,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         } else {
