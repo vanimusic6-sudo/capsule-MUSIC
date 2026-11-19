@@ -38,6 +38,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.unit.dp
 import kotlin.math.floor
+import kotlin.math.roundToInt
+import kotlin.math.abs
 import kotlin.math.min
 
 /**
@@ -65,19 +67,30 @@ internal fun CapsuleLyricsVolumeSlider(
                 }
             }
             .pointerInput(Unit) {
-                fun emit(x: Float) {
-                    latestOnValueChange((x / size.width.toFloat().coerceAtLeast(1f)).coerceIn(0f, 1f))
+                fun emit(x: Float, released: Boolean) {
+                    val width = size.width.toFloat().coerceAtLeast(1f)
+                    latestOnValueChange(
+                        capsuleLyricsMagneticVolume(
+                            raw = (x / width).coerceIn(0f, 1f),
+                            widthPx = width,
+                            firstX = 10.dp.toPx(),
+                            dashWidth = 2.7.dp.toPx(),
+                            stride = 11.dp.toPx(),
+                            endInset = 7.dp.toPx(),
+                            released = released,
+                        )
+                    )
                 }
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
-                    emit(down.position.x)
+                    emit(down.position.x, released = false)
                     down.consume()
                     while (true) {
-                        val changes = awaitPointerEvent().changes
-                        val active = changes.firstOrNull { it.id == down.id } ?: break
-                        if (!active.pressed) break
-                        emit(active.position.x)
+                        val active = awaitPointerEvent().changes
+                            .firstOrNull { it.id == down.id } ?: break
+                        emit(active.position.x, released = !active.pressed)
                         active.consume()
+                        if (!active.pressed) break
                     }
                 }
             },
@@ -110,24 +123,33 @@ internal fun CapsuleLyricsVolumeSlider(
                 val tickWidth = 2.7.dp.toPx()
                 val tickStride = 11.dp.toPx()
                 val tickHeight = min(14.dp.toPx(), trackHeight - 8.dp.toPx())
-                val count = capsuleLyricsVolumeDashCount(
-                    activeWidthPx = fill,
-                    firstX = tickX,
-                    dashWidth = tickWidth,
-                    stride = tickStride,
-                    endInset = 7.dp.toPx(),
-                )
-                repeat(count) { index ->
-                    drawRoundRect(
-                        color = Color(0xFF686970).copy(alpha = 0.74f),
-                        topLeft = Offset(
-                            tickX + index * tickStride,
-                            top + (trackHeight - tickHeight) / 2f,
-                        ),
-                        size = Size(tickWidth, tickHeight),
-                        cornerRadius = CornerRadius(tickWidth / 2f),
-                    )
-                }
+                // Keep the bright fill simple. Markers live on BOTH sides
+                // of the position so the remaining levels do not disappear.
+            }
+        }
+        val tickX = 10.dp.toPx()
+        val tickWidth = 2.7.dp.toPx()
+        val tickStride = 11.dp.toPx()
+        val tickHeight = min(14.dp.toPx(), trackHeight - 8.dp.toPx())
+        val count = capsuleLyricsVolumeDashCount(
+            activeWidthPx = size.width,
+            firstX = tickX,
+            dashWidth = tickWidth,
+            stride = tickStride,
+            endInset = 7.dp.toPx(),
+        )
+        repeat(count) { index ->
+            val x = tickX + index * tickStride
+            val passed = x + tickWidth / 2f <= fill
+            drawRoundRect(
+                color = if (passed) Color(0xFF505158).copy(alpha = 0.82f)
+                    else Color(0xFFA0A0A9).copy(alpha = 0.39f),
+                topLeft = Offset(x, top + (trackHeight - tickHeight) / 2f),
+                size = Size(tickWidth, tickHeight),
+                cornerRadius = CornerRadius(tickWidth / 2f),
+            )
+        }
+        //
             }
         }
         drawRoundRect(
@@ -219,6 +241,39 @@ internal fun CapsuleLyricsVolumeIcon(
             }
         }
     }
+}
+
+/**
+ * Magnetic marker policy. During a drag, a mark draws the value toward
+ * its centre over the last ~0.42 step; on release it settles precisely
+ * onto the nearest mark (including mute/full-volume endpoints).
+ * No coroutine, haptic polling, animation loop or per-tick state.
+ */
+internal fun capsuleLyricsMagneticVolume(
+    raw: Float,
+    widthPx: Float,
+    firstX: Float,
+    dashWidth: Float,
+    stride: Float,
+    endInset: Float,
+    released: Boolean,
+): Float {
+    if (!raw.isFinite() || !widthPx.isFinite() || widthPx <= 0f ||
+        !stride.isFinite() || stride <= 0f
+    ) return raw.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 0f
+    val x = raw.coerceIn(0f, 1f) * widthPx
+    val count = capsuleLyricsVolumeDashCount(widthPx, firstX, dashWidth, stride, endInset)
+    val index = if (count > 0) ((x - firstX - dashWidth / 2f) / stride)
+        .roundToInt().coerceIn(0, count - 1) else 0
+    val markX = if (count > 0) firstX + dashWidth / 2f + index * stride else 0f
+    val closest = listOf(0f, markX, widthPx).minByOrNull { abs(it - x) } ?: x
+    val delta = abs(closest - x)
+    if (released) return (closest / widthPx).coerceIn(0f, 1f)
+    val radius = stride * 0.42f
+    if (delta >= radius) return (x / widthPx).coerceIn(0f, 1f)
+    val influence = 1f - delta / radius
+    return ((x + (closest - x) * influence * influence * 0.85f) / widthPx)
+        .coerceIn(0f, 1f)
 }
 
 /** Return only complete grooves inside the moving fill, up to the last available position. */
