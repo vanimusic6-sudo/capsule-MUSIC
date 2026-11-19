@@ -1,6 +1,7 @@
 package com.nikhil.yt.ui.player
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -87,6 +88,25 @@ class CapsuleInlineLyricsDemandAndPaletteTest {
             card.first().red > photo[1].red)
         assertTrue("A warm image must remain warm inside its own card",
             card.first().red > card.first().blue * 1.12f)
+    }
+
+    @Test fun compactLyricsCardIsShorterButRemainsReadableOnSmallDisplays() {
+        assertEquals(300f, capsuleInlineLyricsCardHeight(340.dp).value, 0.01f)
+        assertEquals(444f, capsuleInlineLyricsCardHeight(600.dp).value, 0.01f)
+        assertEquals(540f, capsuleInlineLyricsCardHeight(850.dp).value, 0.01f)
+        assertTrue(capsuleInlineLyricsCardHeight(600.dp) < 600.dp - 60.dp)
+    }
+
+    @Test fun soundingLineUsesTheOriginalSingleTextFadeNotOverlappingGhosts() {
+        val relative = "src/main/kotlin/com/nikhil/yt/ui/player/CapsuleLightLyricLine.kt"
+        val source = listOf(java.io.File(relative), java.io.File("app/$relative"))
+            .firstOrNull(java.io.File::isFile)?.readText()
+            ?: error("CapsuleLightLyricLine source missing")
+        assertTrue(source.contains("tween(FADE_OUT_MILLIS, easing = CapsuleExitEasing)"))
+        assertTrue(source.contains("tween(FADE_IN_MILLIS, easing = CapsuleEnterEasing)"))
+        assertTrue(source.contains("if (shown.isNotEmpty())"))
+        assertFalse(source.contains("var outgoing by"))
+        assertFalse(source.contains("text = outgoing"))
     }
 
     @Test fun markersStayPermanentAndMagneticallyCaptureNearbyDrags() {

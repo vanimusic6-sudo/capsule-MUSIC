@@ -81,6 +81,7 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.C
 import androidx.media3.common.Player
@@ -122,6 +123,11 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.sin
 import kotlin.math.PI
+
+/** Compact lyrics document: keep several readable lines but avoid a second full-height panel.
+ *  This only affects scroll-to-lyrics mode; the fullscreen lyrics layout is unchanged. */
+internal fun capsuleInlineLyricsCardHeight(viewportHeight: Dp): Dp =
+    (viewportHeight * 0.74f).coerceIn(300.dp, 540.dp)
 
 /** An empty Media3 artwork string must not shadow an already cached thumbnail. */
 internal fun capsulePlayerArtworkUrl(playbackUrl: String?, cachedUrl: String?): String? =
@@ -1195,7 +1201,7 @@ private fun CapsulePlayerLyricsHost(
                         frozenCardPalette = transitioningPalette.toList()
                         onShowLyrics()
                     },
-                    modifier = Modifier.fillMaxWidth().height((viewportHeight - 60.dp).coerceAtLeast(360.dp)),
+                    modifier = Modifier.fillMaxWidth().height(capsuleInlineLyricsCardHeight(viewportHeight)),
                 )
                 Spacer(Modifier.height(16.dp))
             }
