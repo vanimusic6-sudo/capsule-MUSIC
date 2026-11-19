@@ -70,6 +70,37 @@ class CachedAudioDownloaderTest {
         assertArrayEquals(bytes, actual.toByteArray())
     }
 
+    @Test(timeout = 15_000) fun completeOfflineItemSkipsAllNetworkAdmission() = withCaches { _, target ->
+        write(target, "track", ByteArray(2_000) { 9 })
+        var saved = false
+        var completed = false
+        val downloader = ResolvingAudioDownloader(
+            "track", target, { error("Do not resolve an already downloaded song") },
+            { error("Do not create an upstream") },
+            saveArtwork = { saved = true },
+            awaitAdmission = { error("No cooldown wait for a complete file") },
+            createCachedDownloader = { error("No second cache copy") },
+        )
+        downloader.download { _, _, percent -> if (percent == 100f) completed = true }
+        assertTrue(completed)
+        assertTrue(saved)
+    }
+
+    @Test(timeout = 15_000) fun coverFailureDoesNotInvalidateTheSavedAudio() = withCaches { source, target ->
+        write(source, "capsule:audio:track:251:1000", ByteArray(1_000) { 2 })
+        var completed = false
+        val downloader = ResolvingAudioDownloader(
+            "track", target, { error("No network resolution") },
+            { error("No network connection") },
+            saveArtwork = { throw java.io.IOException("Artwork CDN offline") },
+            awaitAdmission = { error("Must use local cache") },
+            createCachedDownloader = { createCachedAudioDownloader("track", source, target) },
+        )
+        downloader.download { _, _, percent -> if (percent == 100f) completed = true }
+        assertTrue(completed)
+        assertTrue(AudioCacheIdentity.isComplete(target, "track"))
+    }
+
     @Test(timeout = 15_000) fun partialPlaybackCacheCannotMasqueradeAsOfflineDownload() = withCaches { source, target ->
         write(source, "capsule:audio:track:140:1000", ByteArray(100), length = 1_000)
         assertNull(createCachedAudioDownloader("track", source, target))
