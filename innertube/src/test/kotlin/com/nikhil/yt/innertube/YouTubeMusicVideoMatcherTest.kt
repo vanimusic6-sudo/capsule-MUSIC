@@ -6,11 +6,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.ExperimentalSerializationApi
 import com.nikhil.yt.innertube.models.PlaylistPanelVideoWrapperRenderer
 import com.nikhil.yt.innertube.models.response.NextResponse
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.fail
 
+@OptIn(ExperimentalSerializationApi::class)
 class YouTubeMusicVideoMatcherTest {
     @Test fun firstPartyVideoToggleSelectsOnlyTheRequestedSourceAndOfficialVideoType() {
         val song = "abcdefghijk"
