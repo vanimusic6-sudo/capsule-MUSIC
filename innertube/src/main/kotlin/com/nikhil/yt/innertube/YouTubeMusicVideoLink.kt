@@ -15,11 +15,13 @@
 package com.nikhil.yt.innertube
 
 import com.nikhil.yt.innertube.models.MusicResponsiveListItemRenderer
+import com.nikhil.yt.innertube.models.response.NextResponse
 import com.nikhil.yt.innertube.models.WatchEndpoint.WatchEndpointMusicSupportedConfigs.WatchEndpointMusicConfig.Companion.MUSIC_VIDEO_TYPE_OMV
 import com.nikhil.yt.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import com.nikhil.yt.innertube.models.response.SearchResponse
 import io.ktor.client.call.body
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
@@ -31,9 +33,29 @@ data class YouTubeMusicVideoLink(
     val score: Int,
 )
 
+/**
+ * YouTube Music marks the audio and VIDEO versions as counterparts in /next.
+ * This is stronger evidence than an artist/title search and must never accept
+ * a queue neighbor or an ATV/UGC result as the requested song's VIDEO.
+ */
+internal fun firstPartyOfficialVideoCounterpart(
+    sourceMediaId: String,
+    primaryId: String?,
+    counterpartId: String?,
+    counterpartType: String?,
+): String? {
+    if (primaryId != sourceMediaId) return null
+    val candidate = counterpartId?.trim() ?: return null
+    if (!candidate.matches(Regex("[A-Za-z0-9_-]{11}")) || candidate == sourceMediaId) return null
+    if (counterpartType != null && counterpartType != MUSIC_VIDEO_TYPE_OMV) return null
+    return candidate
+}
+
 object YouTubeMusicVideoLinkResolver {
     private const val VIDEO_FILTER = "EgWKAQIQAWoKEAkQChAFEAMQBA%3D%3D"
-    private const val POSITIVE_CACHE_MS = 24 * 60 * 60 * 1000L
+    private const val POSITIVE_CACHE_MS = 2 * 60 * 60 * 1000L
+    private const val FIRST_PARTY_TIMEOUT_MS = 4_000L
+    private const val SEARCH_TIMEOUT_MS = 7_000L
     private const val NEGATIVE_CACHE_MS = 30 * 1000L
     private const val MAX_CACHE_ENTRIES = 600
 
@@ -57,7 +79,12 @@ object YouTubeMusicVideoLinkResolver {
         val expiresAtMs: Long,
     )
 
-    private val mutex = Mutex()
+    // Anonymous requests can progress for different songs independently:
+    // the former single global lock made every queue skip wait for the slowest
+    // previous /search (up to its full retry timeout). Keep authenticated
+    // InnerTube's shared mutable session serialized.
+    private val authMutex = Mutex()
+    private val anonymousLocks = Array(32) { Mutex() }
     private val innerTube = InnerTube()
     private val matchCache = ConcurrentHashMap<String, CacheEntry>()
 
@@ -83,7 +110,7 @@ object YouTubeMusicVideoLinkResolver {
             require(sourceId.isNotBlank()) { "Missing YouTube Music track id" }
             require(sourceTitle.isNotBlank()) { "Missing song title" }
 
-            cachedOrNull(sourceId)?.let { return@runCatching it }
+            cachedOrNull(sourceId, metadataKey)?.let { return@runCatching it }
             if (isNegativeCached(sourceId, metadataKey)) {
                 throw IllegalStateException(
                     "Official music video is unavailable for this song",
@@ -97,8 +124,11 @@ object YouTubeMusicVideoLinkResolver {
                 )
             }
 
-            mutex.withLock {
-                cachedOrNull(sourceId)?.let { return@withLock it }
+            val requestLock = if (CapsuleAnonymousSession.enabled)
+                anonymousLocks[(sourceId.hashCode() and Int.MAX_VALUE) % anonymousLocks.size]
+            else authMutex
+            requestLock.withLock {
+                cachedOrNull(sourceId, metadataKey)?.let { return@withLock it }
                 if (isNegativeCached(sourceId, metadataKey)) {
                     throw IllegalStateException(
                         "Official music video is unavailable for this song",
@@ -132,6 +162,25 @@ object YouTubeMusicVideoLinkResolver {
                         }
                     }.distinct()
 
+                // Prefer the same audio/video toggle as the official Music
+                // player. Never infer identity from a similarly named upload
+                // when /next explicitly supplies a verified counterpart.
+                val canonical = lookupFirstPartyCounterpart(sourceId, beforeMetadataRequest)
+                if (canonical != null) {
+                    val link = YouTubeMusicVideoLink(
+                        videoId = canonical,
+                        musicVideoType = MUSIC_VIDEO_TYPE_OMV,
+                        title = sourceTitle,
+                        score = YouTubeMusicVideoMatcher.STRONG_MATCH_SCORE + 100,
+                    )
+                    store(sourceId, CacheEntry(
+                        link = link,
+                        metadataKey = metadataKey,
+                        expiresAtMs = System.currentTimeMillis() + POSITIVE_CACHE_MS,
+                    ))
+                    return@withLock link
+                }
+
                 val candidatesById = linkedMapOf<String, Candidate>()
                 var rowsSeen = 0
 
@@ -144,7 +193,9 @@ object YouTubeMusicVideoLinkResolver {
                             candidatesById.values.maxOfOrNull { it.score }
                         )) break
 
-                    val renderers = searchVideoRenderers(query, beforeMetadataRequest)
+                    val renderers = withTimeoutOrNull(SEARCH_TIMEOUT_MS) {
+                        searchVideoRenderers(query, beforeMetadataRequest)
+                    } ?: emptyList()
                     rowsSeen += renderers.size
 
                     for (renderer in renderers) {
@@ -206,6 +257,7 @@ object YouTubeMusicVideoLinkResolver {
                     entry =
                         CacheEntry(
                             link = link,
+                            metadataKey = metadataKey,
                             expiresAtMs =
                                 System.currentTimeMillis() + POSITIVE_CACHE_MS,
                         ),
@@ -219,6 +271,69 @@ object YouTubeMusicVideoLinkResolver {
             // ordinary failed search from a stale song generation.
             if (failure is CancellationException) throw failure
         }
+
+    private suspend fun lookupFirstPartyCounterpart(
+        sourceId: String,
+        beforeMetadataRequest: suspend () -> Unit,
+    ): String? {
+        val response = try {
+            withTimeoutOrNull(FIRST_PARTY_TIMEOUT_MS) {
+                beforeMetadataRequest()
+                val page = if (CapsuleAnonymousSession.enabled) {
+                    CapsuleAnonymousSession.videoCounterpartPage(sourceId)
+                } else {
+                    syncSession()
+                    innerTube.next(
+                        client = WEB_REMIX,
+                        videoId = sourceId,
+                        playlistId = "RDAMVM$sourceId",
+                        playlistSetVideoId = null,
+                        index = null,
+                        params = null,
+                    ).body<NextResponse>()
+                }
+                page
+            } ?: return null
+        } catch (blocked: CapsuleVideoRequestGuard.RequestBlockedException) {
+            throw blocked
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // The /next layout is optional; a failed metadata lookup is not
+            // proof there is no clip. Fall back to the bounded Videos search.
+            return null
+        }
+        val entries = response.contents
+            .singleColumnMusicWatchNextResultsRenderer
+            ?.tabbedRenderer
+            ?.watchNextTabbedResultsRenderer
+            ?.tabs
+            .orEmpty()
+            .flatMap { tab ->
+                tab.tabRenderer.content
+                    ?.musicQueueRenderer
+                    ?.content
+                    ?.playlistPanelRenderer
+                    ?.contents
+                    .orEmpty()
+            }
+        for (entry in entries) {
+            val wrapper = entry.playlistPanelVideoWrapperRenderer ?: continue
+            val primary = wrapper.primaryRenderer?.playlistPanelVideoRenderer
+            for (counterpart in wrapper.counterpart.orEmpty()) {
+                val video = counterpart.counterpartRenderer?.playlistPanelVideoRenderer ?: continue
+                val selected = firstPartyOfficialVideoCounterpart(
+                    sourceMediaId = sourceId,
+                    primaryId = primary?.videoId,
+                    counterpartId = video.videoId,
+                    counterpartType = video.navigationEndpoint.anyWatchEndpoint
+                        ?.watchEndpointMusicSupportedConfigs?.watchEndpointMusicConfig?.musicVideoType,
+                )
+                if (selected != null) return selected
+            }
+        }
+        return null
+    }
 
     private suspend fun searchVideoRenderers(
         query: String,
@@ -451,12 +566,17 @@ object YouTubeMusicVideoLinkResolver {
         matchCache.clear()
     }
 
-    private fun cachedOrNull(sourceId: String): YouTubeMusicVideoLink? {
+    private fun cachedOrNull(sourceId: String, metadataKey: String): YouTubeMusicVideoLink? {
         val entry = matchCache[sourceId] ?: return null
         if (entry.expiresAtMs <= System.currentTimeMillis()) {
             matchCache.remove(sourceId)
             return null
         }
+        // Existing 24-hour cache files contain old incorrect title-only
+        // matches with no source identity. Force verification when metadata
+        // does not match, instead of replaying the wrong clip.
+        if (entry.link != null && entry.metadataKey != metadataKey &&
+            entry.link.videoId != sourceId) return null
         return entry.link
     }
 
