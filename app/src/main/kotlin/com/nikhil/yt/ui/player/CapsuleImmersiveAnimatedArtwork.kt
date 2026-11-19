@@ -108,7 +108,10 @@ internal fun CapsuleImmersiveAnimatedArtwork(
         // front while TextureView waits for its first newly rendered frame.
         // The native clip keeps advancing in the retained Media3 player.
         Box(modifier.fillMaxSize()) {
-            if (!surfaceReady) {
+            if (frameOpacity < 0.999f) {
+                // Hold the last CANVAS pixel behind the 400ms native fade.
+                // Removing it on the first-frame event revealed album artwork
+                // for one frame while the native alpha was still zero.
                 session.retainedFrame?.let { picture ->
                     Image(
                         bitmap = picture, contentDescription = null,
@@ -139,7 +142,7 @@ internal fun CapsuleImmersiveAnimatedArtwork(
                             runCatching { texture.getBitmap(256, 256) }.getOrNull()
                                 ?.let { session.retain(it) }
                         }
-                        view.player = null // detach surface, NOT ExoPlayer timeline
+                        runCatching { view.player = null } // detach surface, NOT ExoPlayer timeline
                         if (attachedView === view) attachedView = null
                     },
                 )
@@ -198,7 +201,7 @@ internal fun CapsuleImmersiveAnimatedArtwork(
                     }
                 }
             } finally {
-                videoPlayer.clearVideoFrameMetadataListener(listener)
+                runCatching { videoPlayer.clearVideoFrameMetadataListener(listener) }
                 frames.close()
                 buffer.recycle()
             }
