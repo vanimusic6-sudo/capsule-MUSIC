@@ -348,10 +348,10 @@ class CapsuleVideoMorphPixelsTest {
             .apply { eraseColor(AndroidColor.BLUE) }.asImageBitmap()
         compose.setContent {
             Box(Modifier.size(320.dp, 440.dp).testTag("media-slot")) {
-                ImmersiveAudioScene(red, 280.dp, sceneAlpha = { 1f }) {
+                ImmersiveAudioScene(red, 280.dp, sceneAlpha = { 1f }, mediaId = "test-red") {
                     Box(Modifier.fillMaxSize().background(Color.Red))
                 }
-                ImmersiveAudioScene(blue, 280.dp, sceneAlpha = { fade.value }) {
+                ImmersiveAudioScene(blue, 280.dp, sceneAlpha = { fade.value }, mediaId = "test-blue") {
                     Box(Modifier.fillMaxSize().background(Color.Blue))
                 }
             }
