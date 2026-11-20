@@ -75,9 +75,12 @@ class CapsuleVideoAmbientTest {
         val interrupted = capsuleAmbientPaletteAt(partlyMixed, cool, 0f)
         assertTrue(kotlin.math.abs(partlyMixed[0].red - interrupted[0].red) < 0.0001f)
         assertTrue(partlyMixed[0].red > cool[0].red)
-        assertTrue(VIDEO_AMBIENT_CAPTURE_INTERVAL_MS in 650L..750L)
-        assertTrue("Restored design uses a gentle long crossfade over the 700 ms video sampling cadence",
-            VIDEO_AMBIENT_BLEND_DURATION_MS == 850)
+        assertTrue(VIDEO_AMBIENT_CAPTURE_INTERVAL_MS in 180L..260L)
+        assertTrue("Restored November 13 GPU light field must finish its blend before the next active sample",
+            VIDEO_AMBIENT_BLEND_DURATION_MS == 180)
+        assertTrue(capsuleVideoAmbientCaptureIntervalMs(0) < capsuleVideoAmbientCaptureIntervalMs(3))
+        assertTrue(capsuleVideoAmbientCaptureIntervalMs(3) < capsuleVideoAmbientCaptureIntervalMs(8))
+        assertTrue(capsuleVideoAmbientCaptureIntervalMs(8) <= 700L)
     }
 
     @Test fun blackOrInvalidVideoFramesDoNotReplaceExistingPalette() {
