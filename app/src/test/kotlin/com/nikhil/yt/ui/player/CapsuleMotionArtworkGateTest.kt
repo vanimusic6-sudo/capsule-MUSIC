@@ -5,6 +5,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CapsuleMotionArtworkGateTest {
+    @Test fun retainedCanvasNeverDecodesWithoutAVisibleActiveSurface() {
+        assertTrue(capsuleCanvasDecoderShouldRun(active = true, surfaceMounted = true))
+        assertFalse(capsuleCanvasDecoderShouldRun(active = true, surfaceMounted = false))
+        assertFalse(capsuleCanvasDecoderShouldRun(active = false, surfaceMounted = true))
+        assertFalse(capsuleCanvasDecoderShouldRun(active = false, surfaceMounted = false))
+    }
+
     @Test fun visibleAndPlayingAudioCanShowMotion() {
         assertTrue(capsuleShouldPlayMotionArtwork(
             true, true, true, true, false, false,
