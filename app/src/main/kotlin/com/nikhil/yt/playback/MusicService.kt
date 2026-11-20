@@ -770,7 +770,7 @@ class MusicService :
         mediaId: String,
         loaderDemand: Boolean = false,
     ) =
-        audioResolveCoordinator.resolve(mediaId) { policyGeneration ->
+        audioResolveCoordinator.resolve(mediaId, loaderDemand = loaderDemand) { policyGeneration ->
             audioResolveStability.awaitStable(
                 requiredDelayMs = {
                     withContext(Dispatchers.Main.immediate) {
@@ -922,7 +922,12 @@ class MusicService :
 
         // Optional discovery must yield to VIDEO. Do not cancel Media3's real
         // next-period demand: its failure can propagate into the current audio.
-        if (isCompanionVideoRequested()) return
+        if (isCompanionVideoRequested()) {
+            audioResolveCoordinator.cancelSpeculativeExcept(
+                setOfNotNull(player.currentMediaItem?.mediaId),
+            )
+            return
+        }
 
         val relevantIds =
             buildSet {
@@ -5487,6 +5492,12 @@ class MusicService :
                 preparedVideoReady = videoCompanion?.hasPreparedClip(canonicalMediaId) == true,
                 message = null,
             )
+
+        // Drop only speculative next-song work before the VIDEO metadata and
+        // extractor stages begin. Media3's actual next-period loads remain live.
+        audioResolveCoordinator.cancelSpeculativeExcept(setOf(canonicalMediaId)).forEach { id ->
+            Timber.tag("CapsuleVideo").i("VIDEO admission: cancelled speculative AUDIO resolve id=%s", id)
+        }
 
         videoResolveCoordinator.resolve(
             request =

@@ -20,6 +20,9 @@ internal class AudioResolveCoordinator<T>(
 ) {
     private val lock = Any()
     private val inFlight = ConcurrentHashMap<String, Deferred<Result<T>>>()
+    // A prefetch can become a real Media3 period demand without creating a new job.
+    // Only truly speculative work may be cancelled when the user switches to VIDEO.
+    private val loaderDemands = ConcurrentHashMap<String, Deferred<Result<T>>>()
 
     @Volatile
     private var policyGeneration: Long = 0L
@@ -29,6 +32,7 @@ internal class AudioResolveCoordinator<T>(
 
     fun resolve(
         mediaId: String,
+        loaderDemand: Boolean = false,
         block: suspend (policyGeneration: Long) -> Result<T>,
     ): Deferred<Result<T>> =
         synchronized(lock) {
@@ -36,7 +40,7 @@ internal class AudioResolveCoordinator<T>(
                 return@synchronized CompletableDeferred(Result.success(cached))
             }
 
-            inFlight[mediaId]
+            val shared = inFlight[mediaId]
                 ?.takeIf { !it.isCompleted }
                 ?: run {
                     val generation = policyGeneration
@@ -47,10 +51,15 @@ internal class AudioResolveCoordinator<T>(
                         .also { job ->
                             inFlight[mediaId] = job
                             job.invokeOnCompletion {
-                                inFlight.remove(mediaId, job)
+                                synchronized(lock) {
+                                    inFlight.remove(mediaId, job)
+                                    loaderDemands.remove(mediaId, job)
+                                }
                             }
                         }
                 }
+            if (loaderDemand) loaderDemands[mediaId] = shared
+            shared
         }
 
     fun hasInFlight(mediaId: String): Boolean =
@@ -72,12 +81,34 @@ internal class AudioResolveCoordinator<T>(
         return cancelled
     }
 
+    /** VIDEO must not compete with unused look-ahead /player requests.
+     * A real Media3 loader may have joined a prefetch; never cancel that job.
+     * The current song is always kept by the caller's relevantIds set.
+     */
+    fun cancelSpeculativeExcept(relevantIds: Set<String>): List<String> {
+        val cancelled = ArrayList<String>()
+        synchronized(lock) {
+            inFlight.forEach { (mediaId, job) ->
+                if (mediaId !in relevantIds && loaderDemands[mediaId] !== job &&
+                    inFlight.remove(mediaId, job)
+                ) {
+                    job.cancel()
+                    cancelled += mediaId
+                }
+            }
+        }
+        return cancelled
+    }
+
     fun cancelMedia(
         mediaId: String,
         onInvalidate: () -> Unit = {},
     ) {
         synchronized(lock) {
-            inFlight.remove(mediaId)?.cancel()
+            inFlight.remove(mediaId)?.let { job ->
+                loaderDemands.remove(mediaId, job)
+                job.cancel()
+            }
             onInvalidate()
         }
     }
@@ -136,6 +167,7 @@ internal class AudioResolveCoordinator<T>(
     private fun cancelAllLocked() {
         inFlight.forEach { (mediaId, job) ->
             if (inFlight.remove(mediaId, job)) {
+                loaderDemands.remove(mediaId, job)
                 job.cancel()
             }
         }

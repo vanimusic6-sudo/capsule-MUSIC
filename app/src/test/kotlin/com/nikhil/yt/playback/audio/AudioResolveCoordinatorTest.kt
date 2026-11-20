@@ -155,6 +155,37 @@ class AudioResolveCoordinatorTest {
     }
 
     @Test
+    fun videoResolveCancelsSpeculativeJobsButPreservesRealMedia3Demand() = runTest {
+        val coordinator = AudioResolveCoordinator<Int>(scopeProvider = { this }, cachedValue = { null })
+        val unused = coordinator.resolve("unused-next") { awaitCancellation() }
+        val nextPeriod = coordinator.resolve("media3-next") { awaitCancellation() }
+        val joined = coordinator.resolve("media3-next", loaderDemand = true) { Result.success(5) }
+        val current = coordinator.resolve("playing") { awaitCancellation() }
+        runCurrent()
+        assertSame(nextPeriod, joined)
+
+        assertEquals(listOf("unused-next"), coordinator.cancelSpeculativeExcept(setOf("playing")))
+        runCurrent()
+        assertTrue(unused.isCancelled)
+        assertFalse("The real Media3 next-period demand must survive VIDEO", nextPeriod.isCancelled)
+        assertFalse(current.isCancelled)
+        coordinator.cancelAll()
+    }
+
+    @Test
+    fun aNewSpeculativeJobAfterTheLoaderJobCompletesCanBeCancelled() = runTest {
+        val coordinator = AudioResolveCoordinator<Int>(scopeProvider = { this }, cachedValue = { null })
+        val finished = coordinator.resolve("next", loaderDemand = true) { Result.success(7) }
+        assertEquals(7, finished.await().getOrThrow())
+        runCurrent()
+        val prefetchOnly = coordinator.resolve("next") { awaitCancellation() }
+        runCurrent()
+        assertEquals(listOf("next"), coordinator.cancelSpeculativeExcept(emptySet()))
+        runCurrent()
+        assertTrue(prefetchOnly.isCancelled)
+    }
+
+    @Test
     fun prefetchGenerationCanBeInvalidatedIndependently() = runTest {
         val coordinator =
             AudioResolveCoordinator<Int>(
