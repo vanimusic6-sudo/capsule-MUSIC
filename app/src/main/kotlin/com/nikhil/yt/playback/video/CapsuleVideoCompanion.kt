@@ -52,6 +52,21 @@ internal const val CAPSULE_VIDEO_REBUFFER_MS = 5_000
 internal const val CAPSULE_VIDEO_TARGET_BUFFER_BYTES = 24 * 1024 * 1024
 
 /**
+ * DASH indexes may encode duration as PT241.5S, PT4M1.5S or PT1H3M.
+ * A seconds-only parser silently disabled start-near-MUSIC for long clips,
+ * forcing a cold decode at zero followed by another network seek.
+ * This is metadata only: never parse unbounded manifests or trust a duration
+ * outside the player's supported window.
+ */
+internal fun capsuleIndexedDashDurationMs(manifest: String): Long? {
+    if (manifest.length !in 1..64 * 1024) return null
+    val duration = Regex("""mediaPresentationDuration\s*=\s*["'](PT[^"']{1,38})["']""")
+        .find(manifest)?.groupValues?.get(1) ?: return null
+    return runCatching { java.time.Duration.parse(duration).toMillis() }
+        .getOrNull()?.takeIf { it in 10_000L..43_200_000L }
+}
+
+/**
  * Only an indexed DASH clip carries a reliable duration before Media3 prepare.
  * Start decoding around the advancing MUSIC clock instead of decoding at 0,
  * discarding that frame and performing two network seeks. Unknown lengths,
@@ -63,10 +78,8 @@ internal fun capsuleVideoInitialPosition(
     val resolved = item.localConfiguration?.tag as? YouTubeVideoResolver.ResolvedVideo ?: return null
     val duration = when (resolved.delivery) {
         CapsuleVideoDelivery.DASH -> {
-            val manifest = resolved.dashManifest?.takeIf { it.length in 1..(64 * 1024) } ?: return null
-            manifest.substringAfter("mediaPresentationDuration=", "")
-                .substringAfter("PT", "").substringBefore("S", "")
-                .toDoubleOrNull()?.times(1000.0)?.toLong() ?: return null
+            val manifest = resolved.dashManifest ?: return null
+            capsuleIndexedDashDurationMs(manifest) ?: return null
         }
         // SABR's signed /player response provides the clip duration before
         // the independent progressive Media3 periods become seekable. Use
