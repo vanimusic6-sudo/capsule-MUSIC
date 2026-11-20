@@ -105,7 +105,20 @@ internal object CapsuleMotionPlaybackSession {
         listener = registration
         exo.addListener(registration)
         exo.prepare()
-        exo.playWhenReady = true
+        // A ready player with no visible TextureView is a silent VIDEO decoder
+        // running in the background. Only a visibly mounted Canvas may play.
+        exo.playWhenReady = false
+    }
+
+    /**
+     * Keep the prepared timeline and last frame, but stop codec/network work
+     * when the player sheet closes, music pauses, or normal VIDEO takes over.
+     * The expected player protects a newly opened clip from stale onRelease.
+     * Main-thread only, like every other ExoPlayer operation in this session.
+     */
+    fun setRenderingActive(expected: ExoPlayer, active: Boolean) {
+        if (player !== expected || expected.playWhenReady == active) return
+        expected.playWhenReady = active
     }
 
     fun onFrame(frame: CapsuleVideoAmbientFrame) {
