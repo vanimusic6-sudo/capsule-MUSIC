@@ -456,7 +456,7 @@ object CapsuleInnerTubeXPlayer {
                 it != SABR_FALLBACK_PROFILE && it !in attempted &&
                     it in AudioClientOrder.supportedProfiles
             }
-            val sabrAttempts = if (SABR_FALLBACK_PROFILE in excludedBeforeAttempt)
+            val sabrAttempts = if (!forceSabr && SABR_FALLBACK_PROFILE in excludedBeforeAttempt)
                 attempted + SABR_FALLBACK_PROFILE else attempted
             val sabrRoute = CapsuleSabrRoutePolicy.select(
                 forceSabr = forceSabr,
