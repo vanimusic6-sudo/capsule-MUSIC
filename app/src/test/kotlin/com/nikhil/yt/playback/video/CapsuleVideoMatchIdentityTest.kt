@@ -24,7 +24,7 @@ class CapsuleVideoMatchIdentityTest {
 
     @Test fun normalizedIdentityBoundsUntrustedSearchMetadata() {
         val huge = capsuleVideoMatchIdentity("T".repeat(12_000), List(24) {
-            "A".repeat(500) + it
+            "Artist-$it " + "A".repeat(500)
         }, -5)
         assertEquals(256, huge.title.length)
         assertEquals(8, huge.artists.size)
