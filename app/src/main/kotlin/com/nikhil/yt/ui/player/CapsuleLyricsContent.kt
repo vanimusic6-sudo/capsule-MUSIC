@@ -13,6 +13,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -61,8 +62,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
@@ -94,6 +97,8 @@ import com.nikhil.yt.utils.makeTimeString
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -204,9 +209,30 @@ internal fun CapsuleLyricsBackdropLayer(
                                 lyricsBackdrop == CapsuleLyricsBackdrop.ImmersiveColoring,
                             visibleArtworkAspectRatio = artworkAspectRatio,
                         )
-                        // Immersion's artwork sample owns its ready/neutral switch.
-                        // A single short reveal matches the prepared scene.
+                        // Render the SAME spatially blurred photo-to-floor
+                        // colour field as Immersion, but with NO sharp cover.
+                        // Unlike the old one-color vertical brush, this keeps
+                        // the artwork's real left/right colours and soft joins.
+                        val field = tone.colorField?.takeIf { tone.ready }
+                        var preparedBackground by remember(mediaMetadata.id, field, artworkAspectRatio) {
+                            mutableStateOf<ImageBitmap?>(null)
+                        }
+                        LaunchedEffect(mediaMetadata.id, field, artworkAspectRatio) {
+                            preparedBackground = field?.let {
+                                withContext(Dispatchers.Default) {
+                                    capsuleImmersiveImageBackdropBitmap(it, 0.52f)
+                                }
+                            }
+                        }
                         ImmersiveLyricsColoring(if (tone.ready) tone.edge else IMMERSIVE_NEUTRAL_COLOR)
+                        preparedBackground?.let { prepared ->
+                            Image(
+                                bitmap = prepared,
+                                contentDescription = null,
+                                contentScale = ContentScale.FillBounds,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     }
                     is CapsuleLyricsBackdrop.PlayerTheme -> PlayerBackground(
                         playerBackground = backdrop.style,
