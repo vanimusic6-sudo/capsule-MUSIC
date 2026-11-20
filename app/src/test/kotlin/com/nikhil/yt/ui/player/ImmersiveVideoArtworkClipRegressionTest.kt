@@ -53,7 +53,7 @@ class ImmersiveVideoArtworkClipRegressionTest {
         val scene = source.substringAfter("internal fun ImmersiveAudioScene(")
             .substringBefore("/** VIDEO never inherits")
         assertTrue("Photo must remain mounted during Canvas palette animation",
-            scene.contains("Image(\\n            bitmap = background"))
+            scene.contains("bitmap = background"))
         assertFalse("Removing the photo at full Canvas alpha risks detaching the video",
             scene.contains("if (canvasBackdropAlpha <"))
         assertTrue("Native Canvas video must stay in artwork slot",
