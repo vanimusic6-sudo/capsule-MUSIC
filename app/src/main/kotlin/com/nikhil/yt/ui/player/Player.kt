@@ -98,6 +98,7 @@ import com.nikhil.yt.constants.MiniPlayerBackgroundStyleKey
 import com.nikhil.yt.constants.PlayerBackgroundStyle
 import com.nikhil.yt.constants.PlayerBackgroundStyleKey
 import com.nikhil.yt.constants.CapsuleVideoAmbientBackgroundKey
+import com.nikhil.yt.playback.video.CapsulePlaybackMode
 import com.nikhil.yt.discovery.ExperimentalArtistRoute
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.models.mergeArtistCredits
