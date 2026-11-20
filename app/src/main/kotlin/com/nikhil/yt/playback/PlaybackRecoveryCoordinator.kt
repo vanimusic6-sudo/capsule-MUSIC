@@ -67,6 +67,10 @@ internal class PlaybackRecoveryCoordinator(
     ): AudioCdnRecoveryAction =
         cdnRecoveryPlan.onFailure(mediaId, signedUrlRejected, unresponsiveOpen)
 
+    /** A failed SABR/UMP transport is distinct from a rejected signed CDN URL. */
+    fun onSabrTransportFailure(mediaId: String): AudioCdnRecoveryAction =
+        cdnRecoveryPlan.onSabrFailure(mediaId)
+
     fun hasTriedAlternativeCdnClient(mediaId: String): Boolean =
         cdnRecoveryPlan.nextClientAlreadyTried(mediaId)
 
