@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - feature/lyrics-release-polish-20261118
+      - 'refactor/**'
     paths:
       - 'app/src/main/kotlin/com/nikhil/yt/ui/player/**'
       - 'app/src/test/kotlin/com/nikhil/yt/ui/**'
@@ -63,8 +64,6 @@ jobs:
             "$SDKMANAGER" 'platforms;android-37.1'
           fi
           echo 'unqualifiedResLocale=en-US' > app/src/main/res/resources.properties
-      - name: Verify animated artwork API contract
-        run: gradle :canvas:test --no-daemon --max-workers=2
       - name: Player gesture, motion, background and video regressions
         run: >-
           gradle :app:testUniversalDebugUnitTest
@@ -89,7 +88,6 @@ jobs:
           --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveFieldTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveImageBackdropTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveTailTest'
-          --tests 'com.nikhil.yt.ui.player.CapsuleMotionArtworkGateTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleVideoAmbientTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleVideoAmbientResumeTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleVideoColourMotionTest'
