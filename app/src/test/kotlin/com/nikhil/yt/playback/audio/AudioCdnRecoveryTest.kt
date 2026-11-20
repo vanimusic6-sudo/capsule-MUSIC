@@ -67,6 +67,17 @@ class AudioCdnRecoveryTest {
         )
 
     @Test
+    fun failedSabrSessionSkipsMedia3RetriesAndHandsControlToHybridRecovery() {
+        val failure = CapsuleSabrTransportException(
+            "song", "read-timeout", IOException("UMP response stopped"),
+        )
+        assertEquals(C.TIME_UNSET, retryDelay(IOException("Media3 wrapper", failure)))
+        assertEquals("song", failure.sabrTransportFailureFor("song")?.mediaId)
+        assertNull(failure.sabrTransportFailureFor("other"))
+        assertNotEquals(C.TIME_UNSET, retryDelay(SocketTimeoutException("Direct CDN transient")))
+    }
+
+    @Test
     fun peerClosedTlsHandshakeRetriesTheSameStreamWithoutCondemningMultipleCdnGroups() {
         // Actual production trace: HttpDataSourceException -> IOException ->
         // ExecutionException -> SSLHandshakeException("connection closed").
