@@ -22,6 +22,16 @@ class CapsuleVideoMatchIdentityTest {
         assertNotEquals(song, capsuleVideoMatchIdentity("Home", listOf("Artist One"), 290))
     }
 
+    @Test fun updatingArtistBrowseIdentityForcesFreshOfficialVideoMatch() {
+        val first = capsuleVideoMatchIdentity("Song", listOf("Artist"), 219,
+            listOf("UC" + "A".repeat(22)))
+        val changed = capsuleVideoMatchIdentity("Song", listOf("Artist"), 219,
+            listOf("UC" + "B".repeat(22)))
+        assertNotEquals(first, changed)
+        assertEquals(first, capsuleVideoMatchIdentity("Song", listOf("Artist"), 219,
+            listOf("UC" + "A".repeat(22))))
+    }
+
     @Test fun normalizedIdentityBoundsUntrustedSearchMetadata() {
         val huge = capsuleVideoMatchIdentity("T".repeat(12_000), List(24) {
             "Artist-$it " + "A".repeat(500)
