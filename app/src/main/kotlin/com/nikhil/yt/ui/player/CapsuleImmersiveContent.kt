@@ -1022,6 +1022,7 @@ internal fun CapsuleImmersiveContent(
                                 metadata = mediaMetadata,
                                 discover = motionArtworkActive,
                                 enabled = motionArtworkEnabled,
+                                renderActive = motionArtworkActive,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
