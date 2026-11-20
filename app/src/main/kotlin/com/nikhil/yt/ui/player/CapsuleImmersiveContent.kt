@@ -186,7 +186,7 @@ internal fun ImmersiveAudioScene(
     artworkHeight: Dp,
     sceneAlpha: () -> Float,
     mediaId: String,
-    canvasAmbientFrame: CapsuleVideoAmbientFrame?,
+    canvasAmbientFrame: CapsuleVideoAmbientFrame? = null,
     artwork: @Composable () -> Unit,
 ) {
     Box(Modifier.fillMaxSize().graphicsLayer {
