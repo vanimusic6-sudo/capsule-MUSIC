@@ -28,6 +28,18 @@ class AudioBufferStallPolicyTest {
         assertFalse(needsRefresh(ahead = -1L))
     }
 
+    @Test fun onlyRepeatedConfirmedLongFormStallsPromoteDirectClients() {
+        val size = 46L * 1024 * 1024
+        val policy = AudioBufferStallPolicy
+        assertTrue(policy.shouldRotateLongFormClient(size, false, false, 0))
+        assertTrue(policy.shouldRotateLongFormClient(size, false, false, 1))
+        assertFalse(policy.shouldRotateLongFormClient(size, false, false, 2))
+        assertFalse(policy.shouldRotateLongFormClient(size, false, true, 0))
+        assertFalse(policy.shouldRotateLongFormClient(size, true, false, 0))
+        assertFalse(policy.shouldRotateLongFormClient(3L * 1024 * 1024, false, false, 0))
+        assertFalse(policy.shouldRotateLongFormClient(null, false, false, 0))
+    }
+
     @Test fun userPauseVideoOfflineAndOtherGuardsPreventRefresh() {
         assertFalse(needsRefresh(playWhenReady = false))
         assertFalse(needsRefresh(buffering = false))
