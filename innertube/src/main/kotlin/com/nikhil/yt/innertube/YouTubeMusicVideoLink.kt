@@ -267,12 +267,7 @@ object YouTubeMusicVideoLinkResolver {
 
                 val candidatesById = linkedMapOf<String, Candidate>()
                 var rowsSeen = 0
-                var artistCatalogChecked = false
-                var artistCatalogMatch: YouTubeMusicVideoLink? = null
-
                 suspend fun tryArtistCatalog(): YouTubeMusicVideoLink? {
-                    if (artistCatalogChecked) return null
-                    artistCatalogChecked = true
                     // If not browsing the performer there is no reliable author
                     // ID to query. Never search by a guessed name/UC channel.
                     val artistId = artistBrowseIds.firstOrNull { artistBrowseId.matches(it) }
@@ -298,6 +293,19 @@ object YouTubeMusicVideoLinkResolver {
                     return YouTubeMusicArtistVideoHints.match(
                         sourceTitle, cleanArtists, durationSeconds, sourceId, artistBrowseIds,
                     )
+                }
+
+                // Prefer a real clip from the source artist's own page BEFORE
+                // waiting for a possibly stuck global Videos search. That search
+                // is already speculatively running; one bounded artist browse
+                // adds no second global query and often wins in under 2 seconds.
+                tryArtistCatalog()?.let { fromArtist ->
+                    speculativeSearch?.cancel()
+                    store(sourceId, CacheEntry(
+                        link = fromArtist, metadataKey = metadataKey,
+                        expiresAtMs = System.currentTimeMillis() + POSITIVE_CACHE_MS,
+                    ))
+                    return@coroutineScope fromArtist
                 }
 
                 // One shared deadline for both search variants. The previous
@@ -341,29 +349,12 @@ object YouTubeMusicVideoLinkResolver {
                             candidatesById.values.maxOfOrNull { it.score }
                         )) break
 
-                    // The first global Videos query was inconclusive. Before a
-                    // SECOND global query, try the exact performer's official
-                    // catalog once, if a genuine YouTube Music browse ID exists.
-                    if (index == 0) {
-                        tryArtistCatalog()?.let {
-                            artistCatalogMatch = it
-                            break
-                        }
-                    }
                     }
                     true
                 } ?: false
                 // Cancel any still-running speculative query on timeout; do not
                 // let an orphan request outlive this VIDEO resolve generation.
                 speculativeSearch?.cancel()
-                artistCatalogMatch?.let { fromArtist ->
-                    store(sourceId, CacheEntry(
-                        link = fromArtist, metadataKey = metadataKey,
-                        expiresAtMs = System.currentTimeMillis() + POSITIVE_CACHE_MS,
-                    ))
-                    return@coroutineScope fromArtist
-                }
-
                 val best = candidatesById.values.maxByOrNull { it.score }
                 if (best == null) {
                     if (rowsSeen == 0 || !searchCompleted) {
