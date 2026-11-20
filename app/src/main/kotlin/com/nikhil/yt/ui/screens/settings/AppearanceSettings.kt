@@ -77,7 +77,6 @@ import com.nikhil.yt.constants.MiniPlayerBackgroundStyleKey
 import com.nikhil.yt.constants.PlayerBackgroundStyle
 import com.nikhil.yt.constants.PlayerBackgroundStyleKey
 import com.nikhil.yt.constants.CapsuleVideoAmbientBackgroundKey
-import com.nikhil.yt.constants.CapsuleImmersiveAnimatedArtworkKey
 import com.nikhil.yt.constants.PureBlackKey
 import com.nikhil.yt.constants.ShowCachedPlaylistKey
 import com.nikhil.yt.constants.ShowDownloadedPlaylistKey
@@ -205,8 +204,6 @@ fun AppearanceSettings(
     // One preference appears in both regular and Developer > Appearance modes.
     val (videoAmbientEnabled, onVideoAmbientEnabledChange) =
         rememberPreference(CapsuleVideoAmbientBackgroundKey, defaultValue = false)
-    val (motionArtworkEnabled, onMotionArtworkEnabledChange) =
-        rememberPreference(CapsuleImmersiveAnimatedArtworkKey, defaultValue = true)
 
     val (
         miniPlayerBackground,
@@ -709,21 +706,6 @@ fun AppearanceSettings(
             checked = scrollToLyrics,
             onCheckedChange = onScrollToLyricsChange,
         )
-
-        // Animated album art is intentionally exclusive to the Immersion
-        // AUDIO scene. Users can disable external visual lookups at any time.
-        AnimatedVisibility(visible = playerDesign == CapsulePlayerDesign.IMMERSIVE) {
-            SwitchPreference(
-                title = { Text(stringResource(R.string.capsule_motion_artwork_title)) },
-                description = stringResource(R.string.capsule_motion_artwork_description),
-                icon = { Icon(painterResource(R.drawable.album), contentDescription = null) },
-                checked = motionArtworkEnabled,
-                onCheckedChange = { enabled ->
-                if (!enabled) com.nikhil.yt.ui.player.CapsuleMotionPlaybackSession.release()
-                onMotionArtworkEnabledChange(enabled)
-            },
-            )
-        }
 
         // Lyrics are visual appearance. Structural editing lives in "Capsule под себя".
         AnimatedVisibility(visible = playerDesign == CapsulePlayerDesign.LIGHT) {

@@ -27,10 +27,6 @@ val UseNewLibraryDesignKey = booleanPreferencesKey("useNewLibraryDesign")
 val HidePlayerThumbnailKey = booleanPreferencesKey("hidePlayerThumbnail")
 val CropThumbnailToSquareKey = booleanPreferencesKey("cropThumbnailToSquare")
 val DisableBlurKey = booleanPreferencesKey("disableBlur")
-// Only used by the Immersive audio scene. Other player designs never query
-// the artwork API or allocate a video decoder.
-val CapsuleImmersiveAnimatedArtworkKey =
-    booleanPreferencesKey("capsuleImmersiveAnimatedArtworkV1")
 
 const val SYSTEM_DEFAULT = "SYSTEM_DEFAULT"
 val AppLanguageKey = stringPreferencesKey("appLanguage")

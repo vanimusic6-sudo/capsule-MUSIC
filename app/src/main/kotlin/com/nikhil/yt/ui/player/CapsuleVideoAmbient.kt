@@ -123,16 +123,6 @@ internal fun capsuleVideoAmbientFrameFromBitmap(bitmap: Bitmap, mediaId: String)
     return CapsuleVideoAmbientFrame(mediaId, bands, field)
 }
 
-/** Canvas and ordinary VIDEO must pass through this exact same pipeline.
- * Only the native decoder differs; there is no second palette algorithm. */
-internal fun capsuleCanvasAmbientFrameFromBitmap(
-    bitmap: Bitmap, mediaId: String,
-    lightFilter: CapsuleVideoLightFilter, nowNs: Long,
-): CapsuleVideoAmbientFrame? =
-    capsuleVideoAmbientFrameFromBitmap(bitmap, mediaId)?.let {
-        capsuleSceneLightVideoFrame(it, lightFilter, nowNs)
-    }
-
 /** Smooth the captured video field like Scene Light's cover-derived field.
  * Execute on the capture worker; only immutable results reach Compose. */
 internal fun capsuleSceneLightVideoFrame(

@@ -108,26 +108,19 @@ class CapsuleVideoAmbientTest {
         assertTrue(capsuleVideoAmbientCaptureIntervalMs(8) <= 900L)
     }
 
-    @Test fun canvasAndOrdinaryVideoDeriveIdenticalDiffusedLightFromOneFrame() {
+    @Test fun videoSceneLightDiffusesHardEdgesWithoutAnotherDecoder() {
         val bitmap = Bitmap.createBitmap(48, 28, Bitmap.Config.ARGB_8888)
         try {
             for (y in 0 until 28) for (x in 0 until 48) {
                 bitmap.setPixel(x, y, if (x < 24) AndroidColor.RED else AndroidColor.BLUE)
             }
             val raw = requireNotNull(capsuleVideoAmbientFrameFromBitmap(bitmap, "song"))
-            val expected = capsuleSceneLightVideoFrame(raw, CapsuleVideoLightFilter(), 1_000_000_000L)
-            val actual = requireNotNull(capsuleCanvasAmbientFrameFromBitmap(
-                bitmap, "song", CapsuleVideoLightFilter(), 1_000_000_000L,
-            ))
-            assertTrue("Canvas must retain precisely the same VIDEO light map",
-                actual.field == expected.field)
+            val filtered = capsuleSceneLightVideoFrame(
+                raw, CapsuleVideoLightFilter(), 1_000_000_000L)
             val rawEdge = kotlin.math.abs(raw.field.cell(9, 8).red - raw.field.cell(10, 8).red)
-            val softEdge = kotlin.math.abs(actual.field.cell(9, 8).red - actual.field.cell(10, 8).red)
-            assertTrue("Canvas should not project the raw hard red/blue edge",
+            val softEdge = kotlin.math.abs(filtered.field.cell(9, 8).red - filtered.field.cell(10, 8).red)
+            assertTrue("Video light should soften hard red/blue boundaries",
                 softEdge < rawEdge * 0.55f)
-            assertNull(capsuleCanvasAmbientFrameFromBitmap(
-                bitmap, "", CapsuleVideoLightFilter(), 1_000_000_000L,
-            ))
         } finally { bitmap.recycle() }
     }
 

@@ -83,7 +83,6 @@ import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import com.nikhil.yt.LocalImmersiveStatusBarRequest
 import com.nikhil.yt.R
-import com.nikhil.yt.constants.CapsuleImmersiveAnimatedArtworkKey
 import com.nikhil.yt.constants.CapsuleImmersiveAvOrderKey
 import com.nikhil.yt.constants.CapsuleImmersiveCanvasPositionsKey
 import com.nikhil.yt.constants.CapsuleImmersiveEditEnabledKey
@@ -185,52 +184,16 @@ internal fun ImmersiveAudioScene(
     background: ImageBitmap,
     artworkHeight: Dp,
     sceneAlpha: () -> Float,
-    mediaId: String,
-    canvasAmbientFrame: CapsuleVideoAmbientFrame? = null,
     artwork: @Composable () -> Unit,
 ) {
     Box(Modifier.fillMaxSize().graphicsLayer {
         compositingStrategy = CompositingStrategy.Auto
         alpha = sceneAlpha()
     }) {
-        // Canvas has one owner: the main Immersion player wallpaper.
-        // Do not sample it in Lyrics or behind a detached/paused decoder.
-        // Keep the outgoing field during fade-out so returning to the album
-        // photo cannot reveal a neutral flash for one composition frame.
-        var retainedCanvasBackdrop by remember(mediaId) {
-            mutableStateOf<CapsuleVideoAmbientFrame?>(null)
-        }
-        LaunchedEffect(canvasAmbientFrame) {
-            if (canvasAmbientFrame != null) retainedCanvasBackdrop = canvasAmbientFrame
-        }
-        val canvasBackdropAlpha by animateFloatAsState(
-            targetValue = if (canvasAmbientFrame != null) 1f else 0f,
-            animationSpec = tween(500),
-            label = "capsuleCanvasBackdropHandoff",
-        )
-        // Keep the photo node composed for the lifetime of the native Canvas
-        // TextureView. Conditionally removing this sibling when sampled light
-        // reaches full opacity can invalidate the artwork composition and
-        // interrupt the retained silent video decoder.
         Image(
             bitmap = background, contentDescription = null,
             contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize(),
         )
-        if (canvasBackdropAlpha > 0.001f) {
-            retainedCanvasBackdrop?.let { frame ->
-                // Same shader, sample field and soft temporal interpolation
-                // as ordinary VIDEO; do not run a second renderer.
-                CapsuleVideoAmbientBackdrop(
-                    bands = frame.bands,
-                    field = frame.field,
-                    animated = canvasAmbientFrame != null,
-                    modifier = Modifier.fillMaxSize().graphicsLayer {
-                        alpha = canvasBackdropAlpha
-                    },
-                    fallbackFloor = Color(0xFF111116),
-                )
-            }
-        }
         Box(
             Modifier.fillMaxWidth().height(artworkHeight + 1.dp)
                 .clipToBounds()
@@ -622,25 +585,6 @@ internal fun CapsuleImmersiveContent(
 
     val isVideo = videoPlaybackState.presentingVideo
     val needsVideoSurface = videoPlaybackState.needsSurface
-    val (motionArtworkEnabled, _) =
-        rememberPreference(CapsuleImmersiveAnimatedArtworkKey, defaultValue = true)
-    val motionArtworkActive = capsuleShouldPlayMotionArtwork(
-        enabled = motionArtworkEnabled,
-        visible = visible,
-        controlsActive = controlsActive,
-        isPlaying = isPlaying,
-        presentingVideo = isVideo,
-        videoNeedsSurface = needsVideoSurface,
-    )
-    // Only the active Canvas belonging to THIS track may recolour the
-    // full player; Lyrics keeps its independent, cover-derived palette.
-    val activeCanvasAmbientFrame = CapsuleMotionPlaybackSession.ambientFrame
-        ?.takeIf {
-            motionArtworkActive &&
-                CapsuleMotionPlaybackSession.hasPrepared(mediaMetadata.id) &&
-                it.mediaId == mediaMetadata.id
-        }
-
     /*
      * Request fullscreen from the Activity instead of manipulating the Window here.
      *
@@ -1021,8 +965,6 @@ internal fun CapsuleImmersiveContent(
                         background = preparedPaint,
                         artworkHeight = artworkHeight,
                         sceneAlpha = { sceneRevealAlpha.value },
-                        mediaId = mediaMetadata.id,
-                        canvasAmbientFrame = activeCanvasAmbientFrame,
                     ) {
                         Box(Modifier.fillMaxSize()) {
                             Image(
@@ -1033,20 +975,6 @@ internal fun CapsuleImmersiveContent(
                                     scaleX = if (preparedFrame.landscape) 1.06f else 1f,
                                     scaleY = if (preparedFrame.landscape) 1.06f else 1f,
                                 ),
-                            )
-                            // Native video is composited INSIDE the existing
-                            // blurred-photo feather; the screen's background,
-                            // text and audio service remain unchanged.
-                            // Keep a previously started Canvas mounted
-                            // during audio->VIDEO and its reverse. Discovery is
-                            // gated separately: the outgoing native texture
-                            // fades WITH the photo, not via a static placeholder.
-                            CapsuleImmersiveAnimatedArtwork(
-                                metadata = mediaMetadata,
-                                discover = motionArtworkActive,
-                                enabled = motionArtworkEnabled,
-                                renderActive = motionArtworkActive,
-                                modifier = Modifier.fillMaxSize(),
                             )
                         }
                     }

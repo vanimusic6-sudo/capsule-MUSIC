@@ -45,21 +45,22 @@ class ImmersiveVideoArtworkClipRegressionTest {
             content.contains("alpha = capsuleImmersiveVideoBackplateAlpha(sharedVideoProgress.value)"))
     }
 
-    @Test fun canvasLightCannotUnmountTheNativeArtworkPhoto() {
+    @Test fun immersiveUsesOneStaticArtworkAndNoCanvasDecoder() {
         val relative = "src/main/kotlin/com/nikhil/yt/ui/player/CapsuleImmersiveContent.kt"
         val file = listOf(File(relative), File("app/$relative")).firstOrNull { it.isFile }
             ?: error("Immersive source not found")
         val source = file.readText()
         val scene = source.substringAfter("internal fun ImmersiveAudioScene(")
             .substringBefore("/** VIDEO never inherits")
-        assertTrue("Photo must remain mounted during Canvas palette animation",
+        assertTrue("Album art must remain mounted during page transitions",
             scene.contains("bitmap = background"))
-        assertFalse("Removing the photo at full Canvas alpha risks detaching the video",
-            scene.contains("if (canvasBackdropAlpha <"))
-        assertTrue("Native Canvas video must stay in artwork slot",
+        assertFalse("Canvas decoder must not survive removal",
             source.contains("CapsuleImmersiveAnimatedArtwork("))
-        assertTrue("Canvas samples belong to the main player",
-            source.contains("canvasAmbientFrame = activeCanvasAmbientFrame"))
+        assertFalse("Canvas live palette must not influence Immersion",
+            source.contains("canvasAmbientFrame ="))
+        assertTrue("Dedicated animated artwork module must be absent",
+            listOf(File("canvas/build.gradle.kts"), File("../canvas/build.gradle.kts"))
+                .none { it.isFile })
     }
 
     @Test fun immersiveFixedArtworkCannotHideItsGradientBehindOpaqueMatte() {
