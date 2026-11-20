@@ -15,6 +15,8 @@ internal data class CapsuleVideoResolveRequest(
     val artists: List<String>,
     val durationSeconds: Int?,
     val quality: CapsuleVideoQuality,
+    /** Actual YouTube Music artist browse IDs, never guessed from names. */
+    val artistBrowseIds: List<String> = emptyList(),
     val originalVideo: Boolean = false,
 )
 
@@ -46,6 +48,7 @@ internal class CapsuleVideoResolveCoordinator(
                 title = request.title,
                 artists = request.artists,
                 durationSeconds = request.durationSeconds,
+                artistBrowseIds = request.artistBrowseIds,
                 quality = request.quality,
                 originalVideo = request.originalVideo,
             )
