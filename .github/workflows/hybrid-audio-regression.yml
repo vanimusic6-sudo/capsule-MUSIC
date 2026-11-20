@@ -49,6 +49,7 @@ jobs:
           --tests 'com.nikhil.yt.playback.audio.CapsuleSabrAudioDataSourceTest'
           --tests 'com.nikhil.yt.playback.audio.CapsuleSabrRoutePolicyTest'
           --tests 'com.nikhil.yt.playback.audio.AudioChunkedDataSourceTest'
+          --tests 'com.nikhil.yt.playback.audio.AudioCdnRecoveryTest'
           --tests 'com.nikhil.yt.playback.DownloadUtilSingletonTest'
           --stacktrace --no-daemon --max-workers=2
       - name: Save regression report
