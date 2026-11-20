@@ -54,6 +54,19 @@ class YouTubeMusicArtistVideoHintsTest {
         assertEquals("No /next, title search or artist re-browse", 0, calls)
     }
 
+    @Test fun freshArtistCatalogSkipsAnUnproductiveDuplicateBrowse() {
+        YouTubeMusicArtistVideoHints.remember(
+            page("Videos", listOf(song("clipVID00FA", "Different Song", "MUSIC_VIDEO_TYPE_OMV"))),
+            nowMs = 10_000L,
+        )
+        assertTrue(YouTubeMusicArtistVideoHints.hasFreshCatalog(artistId, nowMs = 10_100L))
+        assertFalse(YouTubeMusicArtistVideoHints.hasFreshCatalog(
+            "UC" + "Z".repeat(22), nowMs = 10_100L,
+        ))
+        assertFalse("After TTL, a genuine new artist browse can discover recent clips",
+            YouTubeMusicArtistVideoHints.hasFreshCatalog(artistId, nowMs = 31L * 60_000L))
+    }
+
     @Test fun cacheFastPathRejectsUntypedAndUnrelatedArtistCatalogRows() {
         YouTubeMusicArtistVideoHints.remember(page("Videos", listOf(
             song("clipVID00EB", "My Song (Official Video)"),

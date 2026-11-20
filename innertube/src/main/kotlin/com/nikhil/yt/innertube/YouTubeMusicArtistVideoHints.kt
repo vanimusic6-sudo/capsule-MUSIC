@@ -88,6 +88,20 @@ internal object YouTubeMusicArtistVideoHints {
      * bypass /next + global Videos search. Untyped "official video" titles
      * remain eligible only for the slower independent fallback.
      */
+    /**
+     * Artist pages are cached after a real browse, even if the requested song
+     * was not on that page. Reopening the same fresh catalog after a failed
+     * global Videos search wastes a full authenticated request and cannot
+     * improve a missing-song match in the unchanged initial shelf.
+     */
+    fun hasFreshCatalog(
+        browseId: String,
+        nowMs: Long = System.currentTimeMillis(),
+    ): Boolean = synchronized(pages) {
+        val cached = pages[browseId] ?: return@synchronized false
+        nowMs - cached.createdMs in 0L..TTL_MS
+    }
+
     fun matchVerifiedArtistOmv(
         sourceTitle: String,
         artists: List<String>,

@@ -311,6 +311,10 @@ object YouTubeMusicVideoLinkResolver {
                     )?.let { return it }
                     val artistId = artistBrowseIds.firstOrNull { artistBrowseId.matches(it) }
                         ?: return null
+                    // A fresh already-browsed artist VIDEO catalog was just
+                    // searched above. Do not spend another network request
+                    // loading identical rows when it has no matching OMV.
+                    if (YouTubeMusicArtistVideoHints.hasFreshCatalog(artistId)) return null
                     val epoch = CapsuleVideoRequestGuard.resetEpoch()
                     withTimeoutOrNull(ARTIST_CATALOG_BUDGET_MS) {
                         beforeMetadataRequest()
