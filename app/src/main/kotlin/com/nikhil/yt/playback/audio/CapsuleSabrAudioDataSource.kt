@@ -49,11 +49,14 @@ internal class CapsuleSabrTransportException(
     cause: Throwable,
 ) : IOException("SABR audio transport failed during $stage", cause)
 
-internal fun Throwable.sabrTransportFailureFor(mediaId: String?): CapsuleSabrTransportException? =
-    if (mediaId == null) null else generateSequence(this as Throwable?) { it.cause }
+internal fun Throwable.sabrTransportFailureOrNull(): CapsuleSabrTransportException? =
+    generateSequence(this as Throwable?) { it.cause }
         .take(12)
         .filterIsInstance<CapsuleSabrTransportException>()
-        .firstOrNull { it.mediaId == mediaId }
+        .firstOrNull()
+
+internal fun Throwable.sabrTransportFailureFor(mediaId: String?): CapsuleSabrTransportException? =
+    sabrTransportFailureOrNull()?.takeIf { it.mediaId == mediaId }
 
 /**
  * A Media3 byte-stream adapter around InnerTubeX SABR/UMP.
