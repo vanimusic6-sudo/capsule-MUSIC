@@ -85,6 +85,7 @@ import com.nikhil.yt.MainActivity
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.AudioClientOrder
 import com.nikhil.yt.constants.AudioClientOrderKey
+import com.nikhil.yt.constants.ForceSabrAudioKey
 import com.nikhil.yt.constants.ReleasePlaybackDefaults
 import com.nikhil.yt.constants.AudioCrossfadeDurationKey
 import com.nikhil.yt.constants.AudioNormalizationKey
@@ -563,6 +564,9 @@ class MusicService :
     @Volatile
     private var audioClientOrder: List<String> =
         AudioClientOrder.releaseDefaultOrder
+
+    @Volatile
+    private var forceSabrAudio = false
     private val capsuleVideoQuality by enumPreference(
         this,
         CapsuleVideoQualityKey,
@@ -573,6 +577,7 @@ class MusicService :
         policy = audioStreamPolicy,
         metered = connectivityManager.isActiveNetworkMetered,
         clientOrder = audioClientOrder,
+        forceSabr = forceSabrAudio,
     )
     private val playbackUrlCache = PlaybackDataCache(currentContext = ::playbackContext)
     private val audioResolveCoordinator =
@@ -813,6 +818,7 @@ class MusicService :
                     streamPolicy = selection.policy,
                     clientOrder = effectiveClientOrder,
                     priority = priority,
+                    forceSabr = selection.forceSabr,
                 )
                 .also { result ->
                     if (selection != playbackContext()) {
@@ -892,6 +898,14 @@ class MusicService :
         )
 
     private fun prefetchUpcomingAudio() {
+        // Strict SABR diagnosis should not concurrently prepare the next track:
+        // background UMP sessions distort traffic and thermal measurements.
+        if (forceSabrAudio) {
+            prefetchScheduleJob?.cancel()
+            prefetchScheduleJob = null
+            audioResolveCoordinator.invalidatePrefetches()
+            return
+        }
         // External discovery tracks use their own HTTPS MediaSource; never YouTube prefetch.
         if (player.currentMediaItem?.mediaId?.startsWith(EXPERIMENTAL_MEDIA_PREFIX) == true) {
             prefetchScheduleJob?.cancel()
@@ -1860,6 +1874,7 @@ class MusicService :
                 legacyPolicy = audioStreamPolicy,
                 legacyPreferenceExplicit = dataStore[AudioStreamPolicyKey] != null,
             )
+        forceSabrAudio = dataStore[ForceSabrAudioKey] ?: false
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -2045,18 +2060,21 @@ class MusicService :
                         legacyPolicy = policy,
                         legacyPreferenceExplicit = prefs[AudioStreamPolicyKey] != null,
                     )
-                Triple(policy, quality, clientOrder)
+                Triple(policy, quality, clientOrder) to (prefs[ForceSabrAudioKey] ?: false)
             }
             .distinctUntilChanged()
-            .collect(scope) { (policy, quality, clientOrder) ->
+            .collect(scope) { (audioSettings, forceSabr) ->
+                val (policy, quality, clientOrder) = audioSettings
                 if (
                     policy != audioStreamPolicy ||
                     quality != audioQuality ||
-                    clientOrder != audioClientOrder
+                    clientOrder != audioClientOrder ||
+                    forceSabr != forceSabrAudio
                 ) {
                     audioStreamPolicy = policy
                     audioQuality = quality
                     audioClientOrder = clientOrder
+                    forceSabrAudio = forceSabr
                     reloadAudioResolveConfig(
                         clientOrder.firstOrNull() ?: policy.playbackClientOverrideId,
                     )
@@ -4942,7 +4960,9 @@ class MusicService :
                 } else null
                 val downloadedKey = AudioCacheIdentity.completeKey(downloadCache, mediaId, legacyLength)
                 val completeKey = downloadedKey ?: AudioCacheIdentity.completeKey(playerCache, mediaId, legacyLength)
-                if (completeKey != null) {
+                // A fully downloaded offline item still wins. A complete Direct
+                // player-cache item cannot silently replace forced SABR.
+                if (completeKey != null && (!forceSabrAudio || downloadedKey != null)) {
                     contract.bind(completeKey)
                     songMetadataRecoveryCoordinator.schedule(mediaId)
                     return@ResolvingDataSource dataSpec.buildUpon().setKey(completeKey)
@@ -5078,7 +5098,10 @@ class MusicService :
         source: AudioCdnOpenSource,
     ): androidx.media3.datasource.DataSpec {
         val mediaId = requireNotNull(dataSpec.key)
-        val key = AudioCacheIdentity.key(mediaId, playback)
+        // Avoid cross-transport partial cache spans and accidental Direct
+        // cache hits in the forced SABR experiment.
+        val key = AudioCacheIdentity.key(mediaId, playback) +
+            if (playback.sabrBootstrap != null) ":sabr" else ""
         contract.bind(key)
         AudioCacheIdentity.setLength(playerCache, key, playback.format.contentLength)
         val sabr = playback.sabrBootstrap

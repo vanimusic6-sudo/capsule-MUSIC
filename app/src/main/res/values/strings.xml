@@ -1044,4 +1044,6 @@ Capsule will only extract your token, and everything else is stored locally.</st
     <string name="capsule_inline_lyrics_heading">Lyrics</string>
     <string name="capsule_inline_lyrics_expand">Full screen</string>
     <string name="capsule_inline_lyrics_hint">Scroll to see synced lyrics</string>
+    <string name="dev_force_sabr_audio">Force SABR audio (experimental)</string>
+    <string name="dev_force_sabr_audio_description">Use SABR only for new audio requests, with no silent Direct fallback. Restart the current track to apply. Downloads are unchanged. Long tracks may use more data and energy.</string>
 </resources>

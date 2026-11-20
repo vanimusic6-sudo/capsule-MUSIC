@@ -6,6 +6,10 @@ import java.util.Locale
 val AudioClientOrderKey =
     stringPreferencesKey("capsuleAudioClientOrderV1")
 
+/** Opt-in developer experiment. Never changes the download resolver. */
+val ForceSabrAudioKey =
+    androidx.datastore.preferences.core.booleanPreferencesKey("capsuleForceSabrAudioV1")
+
 /**
  * Persisted, user-controlled priority for the small maintained AUDIO client set.
  * Arbitrary InnerTube identities are intentionally not accepted here.

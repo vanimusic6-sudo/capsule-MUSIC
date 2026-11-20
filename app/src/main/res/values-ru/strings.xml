@@ -965,4 +965,6 @@
     <string name="capsule_inline_lyrics_heading">Текст песни</string>
     <string name="capsule_inline_lyrics_expand">На весь экран</string>
     <string name="capsule_inline_lyrics_hint">Листайте вниз к тексту песни</string>
+    <string name="dev_force_sabr_audio">Принудительно использовать SABR (экспериментально)</string>
+    <string name="dev_force_sabr_audio_description">Для новых запросов используется только SABR, без скрытого перехода на Direct. Чтобы применить к текущему треку, перезапусти воспроизведение. Загрузки не затрагиваются. На длинных записях возможен повышенный расход трафика и энергии.</string>
 </resources>

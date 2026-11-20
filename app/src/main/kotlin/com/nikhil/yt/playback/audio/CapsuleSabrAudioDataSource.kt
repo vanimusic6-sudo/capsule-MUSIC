@@ -26,6 +26,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -253,7 +254,9 @@ private fun defaultSabrChunks(bootstrap: SabrBootstrap): Flow<SabrChunk> = flow 
         }
     }
     try {
-        emitAll(SabrAudioStream(client, bootstrap, maxRequestsWithoutProgress = 2).chunks())
+        // Propagate backpressure upstream immediately; the default
+        // channelFlow buffer otherwise allows unnecessary SABR read-ahead.
+        emitAll(SabrAudioStream(client, bootstrap, maxRequestsWithoutProgress = 2).chunks().buffer(0))
     } finally {
         client.close()
     }

@@ -113,6 +113,7 @@ import com.nikhil.yt.LocalPlayerAwareWindowInsets
 import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.DebugLoggingEnabledKey
+import com.nikhil.yt.constants.ForceSabrAudioKey
 import com.nikhil.yt.ui.component.IconButton
 import com.nikhil.yt.ui.component.PreferenceGroupTitle
 import com.nikhil.yt.ui.component.SwitchPreference
@@ -132,6 +133,11 @@ fun DebugSettings(
 ) {
     val (debugLoggingEnabled, onDebugLoggingEnabledChange) = rememberPreference(
         key = DebugLoggingEnabledKey,
+        defaultValue = false
+    )
+
+    val (forceSabrAudio, onForceSabrAudioChange) = rememberPreference(
+        key = ForceSabrAudioKey,
         defaultValue = false
     )
 
@@ -240,6 +246,14 @@ fun DebugSettings(
                 icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
                 checked = showCodecOnPlayer,
                 onCheckedChange = onShowCodecOnPlayerChange
+            )
+
+            SwitchPreference(
+                title = { Text(stringResource(R.string.dev_force_sabr_audio)) },
+                description = stringResource(R.string.dev_force_sabr_audio_description),
+                icon = { Icon(painterResource(R.drawable.graphic_eq), null) },
+                checked = forceSabrAudio,
+                onCheckedChange = onForceSabrAudioChange
             )
 
             VideoTimeoutSettings()

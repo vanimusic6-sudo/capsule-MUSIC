@@ -104,8 +104,10 @@ object CapsuleAudioEngine {
         streamPolicy: AudioStreamPolicy = AudioStreamPolicy.VISIONOS,
         clientOrder: List<String> = emptyList(),
         priority: AudioResolvePriority = AudioResolvePriority.PLAYBACK,
+        forceSabr: Boolean = false,
     ): Result<PlaybackData> = resolveStream(
         videoId, playlistId, audioQuality, connectivityManager, streamPolicy, clientOrder, priority,
+        forceSabr,
     )
 
     private suspend fun resolveStream(
@@ -116,6 +118,7 @@ object CapsuleAudioEngine {
         streamPolicy: AudioStreamPolicy = AudioStreamPolicy.VISIONOS,
         clientOrder: List<String> = emptyList(),
         priority: AudioResolvePriority = AudioResolvePriority.PLAYBACK,
+        forceSabr: Boolean = false,
     ): Result<PlaybackData> {
         CapsulePlaybackSafety.blockedExceptionOrNull()?.let { return Result.failure(it) }
 
@@ -128,6 +131,7 @@ object CapsuleAudioEngine {
                 streamPolicy = streamPolicy.normalizedForPlayback(),
                 clientOrder = clientOrder,
                 priority = priority,
+                forceSabr = forceSabr && priority != AudioResolvePriority.DOWNLOAD,
             )
             .map { resolved ->
                 resolved.streamClient.takeIf { priority != AudioResolvePriority.DOWNLOAD && it.isNotBlank() }

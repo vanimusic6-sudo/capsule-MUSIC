@@ -290,6 +290,7 @@ object CapsuleInnerTubeXPlayer {
         streamPolicy: AudioStreamPolicy,
         clientOrder: List<String> = emptyList(),
         priority: AudioResolvePriority = AudioResolvePriority.PLAYBACK,
+        forceSabr: Boolean = false,
     ): Result<PlaybackData> =
         try {
             val download = priority == AudioResolvePriority.DOWNLOAD
@@ -338,6 +339,8 @@ object CapsuleInnerTubeXPlayer {
                                     AudioDownloadClientPolicy.orderForSession(
                                         extractionBundle.innerTube.hasSapCookieAuth(),
                                     )
+                                } else if (forceSabr) {
+                                    listOf(SABR_FALLBACK_PROFILE)
                                 } else {
                                     AudioWebStartupClientPolicy.prepareOrder(
                                         configuredOrder, isStartupWebReady(), ::requestStartupWarmup,
@@ -359,6 +362,7 @@ object CapsuleInnerTubeXPlayer {
                                 preferredProfiles = effectiveOrder,
                                 priorityProvider = effectivePriority,
                                 download = download,
+                                forceSabr = forceSabr && !download,
                             )
                         }
                     }
@@ -416,6 +420,7 @@ object CapsuleInnerTubeXPlayer {
         preferredProfiles: List<String>,
         priorityProvider: () -> AudioResolvePriority,
         download: Boolean = false,
+        forceSabr: Boolean = false,
     ): ExtractedStream {
         var lastFailure: Exception? = null
         var transientFallbacks = 0
@@ -443,18 +448,22 @@ object CapsuleInnerTubeXPlayer {
                     preferredProfiles = preferredProfiles,
                 )
 
-            val sabrEligible =
-                !download &&
-                    priorityBeforeAttempt == AudioResolvePriority.PLAYBACK &&
-                    !botSignalAlreadySeen &&
-                    attempted.size >= DIRECT_ATTEMPTS_BEFORE_SABR &&
-                    SABR_FALLBACK_PROFILE !in attempted
-            val profileId =
+            val sabrRoute = CapsuleSabrRoutePolicy.select(
+                forceSabr = forceSabr,
+                download = download,
+                priority = priorityBeforeAttempt,
+                botSignalAlreadySeen = botSignalAlreadySeen,
+                attempted = attempted,
+            )
+            val profileId = if (forceSabr) {
+                // Exact experimental mode: do not silently fall back to Direct.
+                sabrRoute ?: throw (lastFailure ?: IllegalStateException("Forced SABR route exhausted"))
+            } else {
                 onlyPostBotProfile
                     ?.takeIf { it !in attempted && it in plan }
                     ?: entitlementRecoveryProfile
                         ?.takeIf { it !in attempted && extractionBundle.innerTube.hasSapCookieAuth() }
-                    ?: SABR_FALLBACK_PROFILE.takeIf { sabrEligible }
+                    ?: sabrRoute
                     ?: plan.firstOrNull { it !in attempted }
                     ?: run {
                         lastFailure?.let { throw it }
@@ -467,6 +476,7 @@ object CapsuleInnerTubeXPlayer {
                             },
                         )
                     }
+            }
 
             attempted += profileId
             CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
@@ -517,6 +527,16 @@ object CapsuleInnerTubeXPlayer {
                         wireGenerationBeforeAttempt = wireGeneration,
                     )
                 val priorityAfterFailure = priorityProvider()
+
+                if (forceSabr) {
+                    // Strict test: surface the failure; never retry another
+                    // profile behind the developer's back.
+                    CapsulePlaybackSafety.observeFailure(failure)
+                    if (kind == YouTubeFailureKind.BOT_CHECK) {
+                        CapsulePlaybackSafety.markProfileBotCheck(profileId)
+                    }
+                    throw failure
+                }
 
                 if (kind == YouTubeFailureKind.RATE_LIMITED) {
                     CapsulePlaybackSafety.observeFailure(failure)
@@ -653,7 +673,13 @@ object CapsuleInnerTubeXPlayer {
                     },
                 ) { "InnerTubeX returned no playable AUDIO stream" }
 
-            if (extracted.sabrBootstrap == null || usingSabrRoute) {
+            if (usingSabrRoute) {
+                if (extracted.sabrBootstrap == null) {
+                    throw IllegalStateException("SABR profile returned no SABR session")
+                }
+                return extracted
+            }
+            if (extracted.sabrBootstrap == null) {
                 return extracted
             }
 
