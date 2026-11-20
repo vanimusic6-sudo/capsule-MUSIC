@@ -72,8 +72,8 @@ internal class CapsuleVideoPrimaryRouteHealth(
 internal suspend fun <T : Any> capsuleFastPrimaryOrFallback(
     primaryBudgetMs: Long,
     primary: suspend () -> T?,
-    fallback: suspend () -> T,
     onPrimaryDeadline: () -> Unit = {},
+    fallback: suspend () -> T,
 ): T {
     require(primaryBudgetMs in 1..30_000L)
     var primaryFinished = false
