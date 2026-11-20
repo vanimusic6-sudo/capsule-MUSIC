@@ -348,10 +348,10 @@ class CapsuleVideoMorphPixelsTest {
             .apply { eraseColor(AndroidColor.BLUE) }.asImageBitmap()
         compose.setContent {
             Box(Modifier.size(320.dp, 440.dp).testTag("media-slot")) {
-                ImmersiveAudioScene(red, 280.dp, sceneAlpha = { 1f }, mediaId = "test-red") {
+                ImmersiveAudioScene(red, 280.dp, sceneAlpha = { 1f }) {
                     Box(Modifier.fillMaxSize().background(Color.Red))
                 }
-                ImmersiveAudioScene(blue, 280.dp, sceneAlpha = { fade.value }, mediaId = "test-blue") {
+                ImmersiveAudioScene(blue, 280.dp, sceneAlpha = { fade.value }) {
                     Box(Modifier.fillMaxSize().background(Color.Blue))
                 }
             }
@@ -389,7 +389,7 @@ class CapsuleVideoMorphPixelsTest {
             .apply { eraseColor(AndroidColor.RED) }.asImageBitmap()
         compose.setContent {
             Box(Modifier.size(320.dp, 440.dp).testTag("media-slot")) {
-                ImmersiveAudioScene(red, 280.dp, sceneAlpha = { 1f }, mediaId = "test-video-backplate") {
+                ImmersiveAudioScene(red, 280.dp, sceneAlpha = { 1f }) {
                     Box(Modifier.fillMaxSize().background(Color.Red))
                 }
                 Box(Modifier.fillMaxSize().graphicsLayer {
@@ -422,7 +422,7 @@ class CapsuleVideoMorphPixelsTest {
             source.capsuleImmersiveVisibleField(320f / 280f, false), 280f / 440f)
         compose.setContent {
             Box(Modifier.size(320.dp, 440.dp).testTag("media-slot")) {
-                ImmersiveAudioScene(continuation, 280.dp, sceneAlpha = { 1f }, mediaId = "test-busy-artwork") {
+                ImmersiveAudioScene(continuation, 280.dp, sceneAlpha = { 1f }) {
                     Image(cover, contentDescription = null, contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize())
                 }
@@ -451,7 +451,7 @@ class CapsuleVideoMorphPixelsTest {
         val background = capsuleImmersiveImageBackdropBitmap(field, 280f / 440f)
         compose.setContent {
             Box(Modifier.size(320.dp, 440.dp).testTag("media-slot")) {
-                ImmersiveAudioScene(background, 280.dp, sceneAlpha = { 1f }, mediaId = "test-photographic-backdrop") {
+                ImmersiveAudioScene(background, 280.dp, sceneAlpha = { 1f }) {
                     Image(source.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize())
                 }
@@ -479,7 +479,7 @@ class CapsuleVideoMorphPixelsTest {
             source.capsuleImmersiveVisibleField(240f / 300f, false), 300f / 440f)
         compose.setContent {
             Box(Modifier.size(240.dp, 440.dp).testTag("media-slot")) {
-                ImmersiveAudioScene(background, 300.dp, sceneAlpha = { 1f }, mediaId = "test-large-cover") {
+                ImmersiveAudioScene(background, 300.dp, sceneAlpha = { 1f }) {
                     Image(source.asImageBitmap(), contentDescription = null,
                         contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                 }

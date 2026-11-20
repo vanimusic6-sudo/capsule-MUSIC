@@ -20,6 +20,7 @@ import com.nikhil.yt.innertube.CapsuleVideoRequestGuard
 import com.nikhil.yt.innertube.CapsuleVideoMetadataAdmission
 import com.nikhil.yt.innertube.YouTubeMusicVideoLinkResolver
 import com.nikhil.yt.innertube.video.CapsuleVideoDelivery
+import com.nikhil.yt.playback.audio.CapsuleInnerTubeXPlayer
 import android.os.SystemClock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
@@ -121,6 +122,7 @@ object YouTubeVideoResolver {
      * YouTube extraction requests. Cache hits never take this lock.
      */
     private val resolveMutex = Mutex()
+    private val primaryRouteHealth = CapsuleVideoPrimaryRouteHealth()
 
     /**
      * Initiate only the isolated VIDEO process while the foreground MUSIC
@@ -336,20 +338,41 @@ object YouTubeVideoResolver {
         return resolveMutex.withLock {
             cache[key]?.let { return@withLock it }
             beforeMetadataRequest()
-            val remote = if (!muxedOnly && failedBackend != CapsuleWebVideoResolver.BACKEND) {
+            // Persist only temporary route health, never signed URLs or tokens.
+            // A repeatedly timed-out WEB route must not add 5.2s to every next
+            // clip before we even begin the already available isolated routes.
+            val eligibleForWeb = !muxedOnly &&
+                failedBackend != CapsuleWebVideoResolver.BACKEND
+            val tryWeb = eligibleForWeb &&
+                primaryRouteHealth.shouldTryWeb(CapsuleInnerTubeXPlayer.sessionIdentity())
+            val remote = if (tryWeb) {
                 val preferredStart = SystemClock.elapsedRealtime()
+                var missedDeadline = false
                 capsuleFastPrimaryOrFallback(
                     primaryBudgetMs = CapsuleVideoFastStartPolicy.primaryBudgetMs(quality.maxHeight),
-                    primary = { CapsuleWebVideoResolver.resolve(videoId, quality) },
+                    primary = {
+                        CapsuleWebVideoResolver.resolve(videoId, quality)
+                            .also { primaryRouteHealth.onWebCompleted() }
+                    },
                     fallback = {
                         Timber.tag(TAG).i(
-                            "VIDEO primary deadline hit; fallback clip=%s elapsedMs=%d",
-                            videoId, SystemClock.elapsedRealtime() - preferredStart,
+                            "VIDEO fallback clip=%s reason=%s elapsedMs=%d",
+                            videoId, if (missedDeadline) "web-timeout" else "web-unavailable",
+                            SystemClock.elapsedRealtime() - preferredStart,
                         )
                         callRemoteExtractor(videoId, quality, muxedOnly, failedBackend, refresh)
                     },
+                    onPrimaryDeadline = {
+                        missedDeadline = true
+                        primaryRouteHealth.onWebDeadline(videoId)
+                    },
                 )
-            } else callRemoteExtractor(videoId, quality, muxedOnly, failedBackend, refresh)
+            } else {
+                if (eligibleForWeb) {
+                    Timber.tag(TAG).i("VIDEO fast fallback clip=%s reason=recent-web-timeouts", videoId)
+                }
+                callRemoteExtractor(videoId, quality, muxedOnly, failedBackend, refresh)
+            }
             val resolved = remote.toResolved(sourceMediaId)
             cache.put(videoId, key, resolved)
             resolved
