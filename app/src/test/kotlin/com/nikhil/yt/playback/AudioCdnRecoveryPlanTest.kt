@@ -35,6 +35,7 @@ class AudioCdnRecoveryPlanTest {
         val plan = AudioCdnRecoveryPlan()
         assertEquals(AudioCdnRecoveryAction.RETRY_SAME_URL, plan.onFailure("a", false))
         assertEquals(AudioCdnRecoveryAction.TRY_NEXT_CLIENT, plan.onFailure("a", true))
+        assertEquals(AudioCdnRecoveryAction.TRY_NEXT_CLIENT, plan.onFailure("a", false))
         assertEquals(AudioCdnRecoveryAction.SKIP_TRACK, plan.onFailure("a", false))
     }
 
