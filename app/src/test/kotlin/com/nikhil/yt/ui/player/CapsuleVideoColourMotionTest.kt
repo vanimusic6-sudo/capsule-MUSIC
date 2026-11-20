@@ -23,7 +23,7 @@ import org.robolectric.annotation.GraphicsMode
 class CapsuleVideoColourMotionTest {
     @Test fun november13GpuLightRendererRestoresFastSpatialBlend() {
         // Original RuntimeShader interpolates tiny 2D light fields on a GPU layer.
-        assertEquals(180, VIDEO_AMBIENT_BLEND_DURATION_MS)
+        assertEquals(440, VIDEO_AMBIENT_BLEND_DURATION_MS)
     }
 
     @Test fun rawVideoStripesAreDiffusedBeforeBeingUsedAsSceneLight() {
