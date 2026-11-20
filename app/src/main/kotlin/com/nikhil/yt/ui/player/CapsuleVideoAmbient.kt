@@ -14,15 +14,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import kotlin.math.abs
 
-// Live, decoder-frame-driven ambient sampling. The Nov 13 colour renderer
-// reacts in 180 ms; a fixed 700 ms capture interval made scenes appear stale.
-// ~4.5 samples/s when video colours change, slowing to ~1.5/s on static shots.
-// This limits synchronous TextureView GPU readbacks without changing video FPS.
-internal const val VIDEO_AMBIENT_CAPTURE_INTERVAL_MS = 220L
+// Frame-driven sampling, never a separate wallpaper timer. The old 220ms
+// TextureView readbacks could heat the GPU even during ordinary playback.
+// A 340ms active cadence and longer idle backoff feed the SAME smooth shader;
+// they do not cap or slow the actual Media3 video decoder.
+internal const val VIDEO_AMBIENT_CAPTURE_INTERVAL_MS = 340L
 internal fun capsuleVideoAmbientCaptureIntervalMs(unchangedSamples: Int): Long = when {
     unchangedSamples < 3 -> VIDEO_AMBIENT_CAPTURE_INTERVAL_MS
-    unchangedSamples < 8 -> 420L
-    else -> 660L
+    unchangedSamples < 8 -> 580L
+    else -> 860L
 }
 
 /** Preserve the last VIDEO palette during buffer/surface interruptions. */
@@ -122,6 +122,16 @@ internal fun capsuleVideoAmbientFrameFromBitmap(bitmap: Bitmap, mediaId: String)
     val field = bitmap.capsuleColorField(width.toFloat() / height, video = true, pixelBuffer = pixels)
     return CapsuleVideoAmbientFrame(mediaId, bands, field)
 }
+
+/** Canvas and ordinary VIDEO must pass through this exact same pipeline.
+ * Only the native decoder differs; there is no second palette algorithm. */
+internal fun capsuleCanvasAmbientFrameFromBitmap(
+    bitmap: Bitmap, mediaId: String,
+    lightFilter: CapsuleVideoLightFilter, nowNs: Long,
+): CapsuleVideoAmbientFrame? =
+    capsuleVideoAmbientFrameFromBitmap(bitmap, mediaId)?.let {
+        capsuleSceneLightVideoFrame(it, lightFilter, nowNs)
+    }
 
 /** Smooth the captured video field like Scene Light's cover-derived field.
  * Execute on the capture worker; only immutable results reach Compose. */
