@@ -1,0 +1,77 @@
+name: Capsule Media Core Regression
+
+on:
+  push:
+    branches:
+      - refactor/audio-video-download-20261120
+    paths:
+      - 'app/src/main/kotlin/com/nikhil/yt/playback/**'
+      - 'app/src/test/kotlin/com/nikhil/yt/playback/**'
+      - 'innertube/src/main/kotlin/com/nikhil/yt/innertube/**'
+      - 'innertube/src/test/kotlin/com/nikhil/yt/innertube/**'
+      - '.github/workflows/media-core-regression.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: capsule-media-core-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  media-core:
+    name: Verify InnerTube, VIDEO and offline audio contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.5.0'
+      - name: Android SDK and locale
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [[ -x "$SDKMANAGER" ]]; then
+            "$SDKMANAGER" 'platforms;android-37.1'
+          fi
+          echo 'unqualifiedResLocale=en-US' > app/src/main/res/resources.properties
+      - name: InnerTube matching and route regression suite
+        run: gradle :innertube:test --stacktrace --no-daemon --max-workers=2
+      - name: App VIDEO, AUDIO and download regression suite
+        run: >-
+          gradle :app:testUniversalDebugUnitTest
+          --tests 'com.nikhil.yt.playback.audio.DownloadAudioTransportTest'
+          --tests 'com.nikhil.yt.playback.audio.AudioChunkedDataSourceTest'
+          --tests 'com.nikhil.yt.playback.audio.CapsuleSabrAudioDataSourceTest'
+          --tests 'com.nikhil.yt.playback.audio.CapsuleSabrRoutePolicyTest'
+          --tests 'com.nikhil.yt.playback.audio.AudioCdnRecoveryTest'
+          --tests 'com.nikhil.yt.playback.AudioBufferStallPolicyTest'
+          --tests 'com.nikhil.yt.playback.AudioCdnRecoveryPlanTest'
+          --tests 'com.nikhil.yt.playback.DownloadUtilSingletonTest'
+          --tests 'com.nikhil.yt.playback.video.CapsuleVideoCompanionTest'
+          --tests 'com.nikhil.yt.playback.video.CapsuleVideoFastStartPolicyTest'
+          --tests 'com.nikhil.yt.playback.video.CapsuleVideoSessionTest'
+          --tests 'com.nikhil.yt.playback.video.CapsuleVideoTimelinePolicyTest'
+          --tests 'com.nikhil.yt.playback.video.CapsuleVideoWarmupTest'
+          --stacktrace --no-daemon --max-workers=2
+      - name: Static integrity and safe network boundaries
+        run: python3 scripts/capsule_integrity_gate.py
+      - name: Publish test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capsule-media-core-regression
+          if-no-files-found: warn
+          retention-days: 7
+          path: |
+            app/build/test-results/testUniversalDebugUnitTest/
+            app/build/reports/tests/testUniversalDebugUnitTest/
+            innertube/build/test-results/
+            innertube/build/reports/tests/
