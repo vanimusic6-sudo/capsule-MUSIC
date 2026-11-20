@@ -9,8 +9,10 @@ import java.util.concurrent.TimeUnit
 internal enum class CapsuleVideoRoute(val wireName: String, val budgetMs: Long) {
     ANDROID_VR("direct-android-vr", 4_000L),
     VISIONOS("direct-visionos", 4_000L),
-    PIPEPIPE("pipepipe", 10_000L),
-    NEWPIPE("newpipe", 10_000L),
+    // PipePipe gets the first VIDEO-only probe, but a cold parser cannot
+    // hold the whole video toggle for ten seconds before healthy fallbacks.
+    PIPEPIPE("pipepipe", 4_800L),
+    NEWPIPE("newpipe", 7_000L),
     ANDROID_REEL("direct-android-reel", 4_000L),
 }
 
@@ -44,16 +46,15 @@ internal class CapsuleVideoRouteHealth(private val clock: () -> Long = System::n
             { it.wireName == failedBackend }
             .thenBy { (retryAfter[it] ?: 0L) > now }
             .thenBy { it != lastSuccessful }
-            // Prefer the maintained NewPipe 0.27.1 HTTP workaround over
-            // an older pinned PipePipe extractor (Aug 2026). Full SABR is
-            // not yet wired into our Media3 DataSource, so a SABR-only
-            // response from PipePipe cannot currently be played by Capsule.
-            // A measured successful backend always wins above this default.
+            // The cold VIDEO path prefers the PipePipe parser, as requested.
+            // Only validated progressive/DASH/HLS results enter Media3.
+            // Health or a proven successful route always outrank this hint:
+            // an unsupported SABR-only response must promptly fall through.
             .thenBy { route -> when (route) {
-                CapsuleVideoRoute.VISIONOS -> 0
-                CapsuleVideoRoute.ANDROID_VR -> 1
-                CapsuleVideoRoute.NEWPIPE -> 2
-                CapsuleVideoRoute.PIPEPIPE -> 3
+                CapsuleVideoRoute.PIPEPIPE -> 0
+                CapsuleVideoRoute.VISIONOS -> 1
+                CapsuleVideoRoute.ANDROID_VR -> 2
+                CapsuleVideoRoute.NEWPIPE -> 3
                 CapsuleVideoRoute.ANDROID_REEL -> 4
             } })
     }
