@@ -1,7 +1,7 @@
 /*
  * Capsule MUSIC — persistent, silent Canvas surface for Immersion.
  * Native renderer is mounted only while the player is visible; its ExoPlayer
- * belongs to CapsuleMotionPlaybackSession and survives sheet closure.
+ * belongs to CapsuleMotionPlaybackSession and survives sheet closure PAUSED.
  * GPL-3.0.
  */
 @file:Suppress("UnsafeOptInUsageError")
@@ -113,7 +113,8 @@ internal fun CapsuleImmersiveAnimatedArtwork(
 
         // On re-entry the last CANVAS frame (not the album cover) remains in
         // front while TextureView waits for its first newly rendered frame.
-        // The native clip keeps advancing in the retained Media3 player.
+        // The retained Media3 timeline is paused while hidden and resumed
+        // from its saved position only on visible return.
         Box(modifier.fillMaxSize()) {
             if (frameOpacity < 0.999f) {
                 // Hold the last CANVAS pixel behind the 400ms native fade.
