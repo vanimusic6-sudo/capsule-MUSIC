@@ -11,13 +11,17 @@ internal object CapsuleSabrRoutePolicy {
         priority: AudioResolvePriority,
         botSignalAlreadySeen: Boolean,
         attempted: Set<String>,
+        previousDirectFailures: Int = 0,
     ): String? {
+        // Never replay a previously failed SABR route during its per-track cooldown.
+        // Direct CDN failures from prior Media3 reloads are as meaningful as
+        // direct /player failures inside this one resolve.
         if (download || PROFILE in attempted) return null
         if (forceSabr) return PROFILE
         return PROFILE.takeIf {
             priority == AudioResolvePriority.PLAYBACK &&
                 !botSignalAlreadySeen &&
-                attempted.size >= DIRECT_ATTEMPTS_BEFORE_SABR
+                attempted.count { it != PROFILE } + previousDirectFailures >= DIRECT_ATTEMPTS_BEFORE_SABR
         }
     }
 }
