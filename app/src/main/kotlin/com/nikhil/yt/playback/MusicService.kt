@@ -1481,9 +1481,19 @@ class MusicService :
                 val attempts = audioBufferStallRefreshes[id] ?: 0
                 if (attempts >= AudioBufferStallPolicy.MAX_AUTOMATIC_REFRESHES_PER_TRACK) {
                     Timber.tag("PlaybackRecovery").w(
-                        "audio-buffer-stall bounded id=%s attempts=%d aheadMs=%d growthMs=%d",
+                        "audio-buffer-stall exhausted id=%s attempts=%d aheadMs=%d growthMs=%d",
                         id, attempts, bufferedAheadMs, growthMs,
                     )
+                    // Do not leave Media3 silently BUFFERING forever after
+                    // two fresh-URL attempts made no progress. Honor the
+                    // user's Auto Skip on Error setting and the existing
+                    // consecutive-track failure circuit breaker.
+                    if (player.currentMediaItem?.mediaId == id &&
+                        player.playbackState == Player.STATE_BUFFERING &&
+                        player.playWhenReady && isNetworkConnected.value &&
+                        !playbackRecoveryCoordinator.waitingForNetworkConnection.value &&
+                        streamRetryJob?.isActive != true
+                    ) handleTerminalPlaybackError()
                     return@launch
                 }
                 val delayMs = playbackRecoveryCoordinator.nextRetryDelayMs(id) ?: return@launch
@@ -3836,6 +3846,11 @@ class MusicService :
 
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         super.onMediaItemTransition(mediaItem, reason)
+        // A same-ID source refresh also starts a new preparation. Its old
+        // watchdog must never charge a stale buffer sample to this selection.
+        audioBufferStallWatchJob?.cancel()
+        audioBufferStallWatchJob = null
+        audioBufferStallWatchMediaId = null
         // READY belongs to the exact previous selection, not this title/ID.
         // A replay, reselected queue row or rebuilt same-ID source must not
         // misclassify a completely silent new start as a mid-song rebuffer.
