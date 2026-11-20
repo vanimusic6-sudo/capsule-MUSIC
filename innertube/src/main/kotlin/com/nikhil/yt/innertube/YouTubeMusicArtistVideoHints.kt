@@ -95,7 +95,7 @@ internal object YouTubeMusicArtistVideoHints {
         val normalizedTitle = YouTubeMusicVideoMatcher.normalizeTitle(sourceTitle)
         if (normalizedTitle.isBlank()) return null
         val candidates = synchronized(pages) {
-            val expired = pages.filterValues { nowMs - it.createdMs !in 0..TTL_MS }.keys
+            val expired = pages.filterValues { nowMs - it.createdMs !in 0L..TTL_MS }.keys
             expired.forEach(pages::remove)
             pages.values.filter { snapshot ->
                 snapshot.artistNorm in requestedArtists &&
@@ -115,6 +115,7 @@ internal object YouTubeMusicArtistVideoHints {
                     sameOfficialVideo = false,
                     // Verified OMV or provenance from a dedicated artist VIDEO shelf.
                     omvVerified = row.omvVerified,
+                    fromOfficialArtistPage = true,
                 ) ?: return@mapNotNull null
                 if (row.videoId == sourceId) return@mapNotNull null
                 YouTubeMusicVideoLink(row.videoId, MUSIC_VIDEO_TYPE_OMV, row.title, score +
