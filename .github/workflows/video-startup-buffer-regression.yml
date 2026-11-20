@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - 'engine/**'
+      - 'perf/**'
     paths:
       - 'app/src/main/kotlin/com/nikhil/yt/playback/**'
       - 'app/src/test/kotlin/com/nikhil/yt/playback/**'
