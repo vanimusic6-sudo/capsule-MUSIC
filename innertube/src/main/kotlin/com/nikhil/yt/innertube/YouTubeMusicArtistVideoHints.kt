@@ -107,6 +107,16 @@ internal object YouTubeMusicArtistVideoHints {
         }
         return candidates.asSequence().flatMap { it.rows.asSequence() }
             .mapNotNull { row ->
+                // A generic row on a public artist VIDEO shelf can still
+                // be a lyric upload or a fan edit whose type was omitted.
+                // Treat it as a real clip only when the endpoint verifies OMV
+                // or the row itself explicitly says Official Video.
+                if (!row.omvVerified) {
+                    val lowerTitle = YouTubeMusicVideoMatcher.normalizeText(row.title)
+                    if (!lowerTitle.contains("official video") &&
+                        !lowerTitle.contains("official music video")
+                    ) return@mapNotNull null
+                }
                 val score = YouTubeMusicVideoMatcher.scoreCandidate(
                     sourceTitle = sourceTitle,
                     sourceTitleNorm = normalizedTitle,
