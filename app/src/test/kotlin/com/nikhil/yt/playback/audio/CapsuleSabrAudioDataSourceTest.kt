@@ -8,7 +8,10 @@ import androidx.media3.datasource.DataSpec
 import com.metrolist.innertubex.sabr.SabrBootstrap
 import com.metrolist.innertubex.sabr.SabrChunk
 import com.metrolist.innertubex.sabr.SabrFormatId
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.awaitCancellation
+import java.io.IOException
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -83,6 +86,48 @@ class CapsuleSabrAudioDataSourceTest {
                 broken.read(ByteArray(4), 0, 4)
             }
         } finally { broken.close() }
+    }
+
+    @Test fun failedUmpProducerReturnsTypedFailureForExactlyItsMediaId() {
+        val broken = CapsuleSabrAudioDataSource(chunkStream = {
+            flow { throw IOException("UMP response incomplete") }
+        })
+        try {
+            broken.open(dataSpec())
+            val failure = assertThrows(CapsuleSabrTransportException::class.java) {
+                broken.read(ByteArray(3), 0, 3)
+            }
+            assertEquals("test", failure.mediaId)
+            assertEquals("producer", failure.stage)
+            assertEquals(failure, IOException("Media3 wrapper", failure).sabrTransportFailureFor("test"))
+            assertEquals(null, failure.sabrTransportFailureFor("another"))
+            assertEquals(null, IOException("ordinary CDN").sabrTransportFailureFor("test"))
+        } finally { broken.close() }
+    }
+
+    @Test fun hungSabrSessionHasBoundedReadAndCancelsProducer() {
+        val hung = CapsuleSabrAudioDataSource(
+            chunkStream = { flow { awaitCancellation() } },
+            readProgressTimeoutMs = 120L,
+        )
+        try {
+            hung.open(dataSpec())
+            val failure = assertThrows(CapsuleSabrTransportException::class.java) {
+                hung.read(ByteArray(1), 0, 1)
+            }
+            assertEquals("read-timeout", failure.stage)
+        } finally { hung.close() }
+    }
+
+    @Test fun distantByteSeekFailsBeforeReplayingWholePodcast() {
+        val source = source()
+        try {
+            val farSeek = dataSpec(position = 9L * 1024 * 1024)
+            val failure = assertThrows(CapsuleSabrTransportException::class.java) {
+                source.open(farSeek)
+            }
+            assertEquals("byte-seek", failure.stage)
+        } finally { source.close() }
     }
 
     @Test fun refusesMismatchedOrMissingSessionBeforeNetwork() {
