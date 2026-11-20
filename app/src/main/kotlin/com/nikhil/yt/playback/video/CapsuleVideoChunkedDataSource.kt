@@ -230,8 +230,13 @@ internal class CapsuleVideoChunkedDataSource(
     }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        require(offset >= 0 && length >= 0 && offset <= buffer.size - length)
         if (length == 0) return 0
-        if (original == null) return upstream.read(buffer, offset, length)
+        if (original == null) {
+            val read = upstream.read(buffer, offset, length)
+            if (read == 0) throw IOException("VIDEO CDN returned zero bytes for a non-empty read")
+            return read
+        }
         if (bytesLeft == 0L) return C.RESULT_END_OF_INPUT
 
         if (chunkLeft == 0L) {
@@ -251,6 +256,9 @@ internal class CapsuleVideoChunkedDataSource(
                 "VIDEO CDN ended a bounded request early (remaining=$chunkLeft)",
             )
         }
+        // A zero-length non-empty read violates Media3's contract and
+        // can hot-loop its loader without making progress.
+        if (count == 0) throw IOException("VIDEO CDN returned zero bytes for a non-empty read")
 
         if (count > 0) {
             nextPosition += count

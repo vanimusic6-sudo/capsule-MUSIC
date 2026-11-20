@@ -30,6 +30,36 @@ class CapsuleVideoChunkedDataSourceTest {
         } finally { source.close() }
     }
 
+    @Test fun nonProgressingVideoTransportFailsInsteadOfSpinning() {
+        val cdn = MemoryCdn(ByteArray(5_000))
+        val nonProgressing = object : DataSource by cdn {
+            override fun getResponseHeaders() = cdn.responseHeaders
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int = 0
+        }
+        val source = CapsuleVideoChunkedDataSource(nonProgressing, chunkBytes = 1024)
+        try {
+            source.open(DataSpec(uri))
+            org.junit.Assert.assertThrows(java.io.IOException::class.java) {
+                source.read(ByteArray(32), 0, 32)
+            }
+            assertEquals(0, source.read(ByteArray(0), 0, 0))
+        } finally { source.close() }
+    }
+
+    @Test fun nonProgressingDirectVideoTransportAlsoFails() {
+        val cdn = MemoryCdn(ByteArray(900))
+        val nonProgressing = object : DataSource by cdn {
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int = 0
+        }
+        val source = CapsuleVideoChunkedDataSource(nonProgressing, chunkBytes = 1024)
+        try {
+            source.open(DataSpec.Builder().setUri(uri).setLength(900).build())
+            org.junit.Assert.assertThrows(java.io.IOException::class.java) {
+                source.read(ByteArray(32), 0, 32)
+            }
+        } finally { source.close() }
+    }
+
     @Test fun midrangeTimeoutResumesMissingBytesWithoutResolvingAnotherClient() {
         val bytes = ByteArray(4096) { (it % 251).toByte() }
         val cdn = MemoryCdn(bytes)

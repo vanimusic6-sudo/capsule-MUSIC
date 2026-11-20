@@ -375,8 +375,13 @@ internal class AudioChunkedDataSource(
     }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        require(offset >= 0 && length >= 0 && offset <= buffer.size - length)
         if (length == 0) return 0
-        if (request == null) return readDirect(buffer, offset, length)
+        if (request == null) {
+            val read = readDirect(buffer, offset, length)
+            if (read == 0) throw java.io.IOException("Audio CDN returned zero bytes for a non-empty read")
+            return read
+        }
         if (bytesLeft == 0L) return C.RESULT_END_OF_INPUT
 
         if (chunkLeft == 0L) {
@@ -427,6 +432,11 @@ internal class AudioChunkedDataSource(
                 readBytes = read,
                 elapsedMs = ((System.nanoTime() - startedNs).coerceAtLeast(0L) / 1_000_000L),
             )
+        }
+        if (read == 0) {
+            // Avoid a busy loader loop when an upstream violates Media3's
+            // non-empty read contract. Normal recovery handles this error.
+            throw java.io.IOException("Audio CDN returned zero bytes for a non-empty read")
         }
         if (read == C.RESULT_END_OF_INPUT) {
             // This is a bounded request with a known remaining length: EOF before chunkLeft

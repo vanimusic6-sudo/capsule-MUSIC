@@ -94,6 +94,30 @@ class AudioChunkedDataSourceTest {
     }
 
     @Test
+    fun nonProgressingAudioTransportFailsWithoutBusyLoop() {
+        val inner = FakeUpstream(content(512), maxBytesPerRead = 512)
+        val broken = object : DataSource by inner {
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int = 0
+        }
+        val direct = AudioChunkedDataSource(broken, chunkBytes = 128)
+        try {
+            direct.open(spec(64L))
+            org.junit.Assert.assertThrows(java.io.IOException::class.java) {
+                direct.read(ByteArray(16), 0, 16)
+            }
+            assertEquals(0, direct.read(ByteArray(0), 0, 0))
+        } finally { direct.close() }
+
+        val chunked = AudioChunkedDataSource(broken, chunkBytes = 128)
+        try {
+            chunked.open(spec(256L))
+            org.junit.Assert.assertThrows(java.io.IOException::class.java) {
+                chunked.read(ByteArray(16), 0, 16)
+            }
+        } finally { chunked.close() }
+    }
+
+    @Test
     fun shortDirectResponseCannotSilentlyEndABoundedAudioStream() {
         val upstream = object : DataSource {
             var offset = 0
