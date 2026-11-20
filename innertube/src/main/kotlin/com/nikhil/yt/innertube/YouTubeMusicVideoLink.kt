@@ -253,7 +253,7 @@ object YouTubeMusicVideoLinkResolver {
                 // One shared deadline for both search variants. The previous
                 // per-query budget could double the wait after /next failed.
                 // Keep any first-query candidates if the fallback times out.
-                withTimeoutOrNull(SEARCH_TIMEOUT_MS) {
+                val searchCompleted = withTimeoutOrNull(SEARCH_TIMEOUT_MS) {
                     for ((index, query) in queries.withIndex()) {
                     /*
                      * Only use the explicit fallback query if the natural query
@@ -293,14 +293,18 @@ object YouTubeMusicVideoLinkResolver {
                         break
                     }
                     }
-                }
+                    true
+                } ?: false
+                // Cancel any still-running speculative query on timeout; do not
+                // let an orphan request outlive this VIDEO resolve generation.
+                speculativeSearch?.cancel()
 
                 val best = candidatesById.values.maxByOrNull { it.score }
                 if (best == null) {
-                    if (rowsSeen == 0) {
+                    if (rowsSeen == 0 || !searchCompleted) {
                         // Empty/unrecognised response layouts are not proof that
                         // the song has no video. Do not cache an N/A verdict.
-                        throw IllegalStateException("YouTube Music Videos returned no searchable rows")
+                        throw IllegalStateException("YouTube Music Videos search incomplete or returned no searchable rows")
                     }
                     store(
                         sourceId = sourceId,
