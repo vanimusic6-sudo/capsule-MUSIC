@@ -8,6 +8,21 @@ import org.junit.Assert.assertEquals
 import androidx.media3.common.Player
 
 class CapsuleVideoCompanionTest {
+    @Test fun indexedDashDurationSupportsHoursMinutesFractionalSeconds() {
+        assertEquals(241_500L, capsuleIndexedDashDurationMs(
+            """<MPD mediaPresentationDuration="PT4M1.5S"/>""",
+        ))
+        assertEquals(3_780_000L, capsuleIndexedDashDurationMs(
+            """<MPD mediaPresentationDuration='PT1H3M'/>""",
+        ))
+        assertEquals(250_000L, capsuleIndexedDashDurationMs(
+            """<MPD mediaPresentationDuration="PT250S"/>""",
+        ))
+        assertEquals(null, capsuleIndexedDashDurationMs("""<MPD mediaPresentationDuration="P3D"/>"""))
+        assertEquals(null, capsuleIndexedDashDurationMs("""<MPD mediaPresentationDuration="garbage"/>"""))
+        assertEquals(null, capsuleIndexedDashDurationMs("x".repeat(64 * 1024 + 1)))
+    }
+
     @Test fun preparingSurfaceMustNotRevealTheVideoWindow() {
         val preparing = CapsuleVideoPlaybackState(mode = CapsulePlaybackMode.VIDEO, phase = CapsuleVideoPhase.PREPARING)
         assertTrue(preparing.needsSurface)
