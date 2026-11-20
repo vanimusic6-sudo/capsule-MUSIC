@@ -1498,10 +1498,11 @@ class MusicService :
                 )
                 // This is NOT a 403 or bot-check: never touch BotGuard,
                 // the global rate-limit breaker, or the player cipher.
-                // For a genuinely starved LONG stream, however, a CDN body can
-                // be permanently paced without ever returning HTTP failure.
-                // Promote one Direct client per confirmed stall, then let the
-                // existing InnerTubeX route policy negotiate SABR after two.
+                // A new short track which NEVER became ready must not retry
+                // the same unusable client twice. A short MID-TRACK rebuffer
+                // gets one same-client refresh; long-form streams rotate
+                // sooner if the CDN body is permanently paced. SABR selection
+                // remains separately bounded by the existing route policy.
                 val stalledPlayback = playbackUrlCache.get(id)
                 if (stalledPlayback?.streamClient != null &&
                     AudioBufferStallPolicy.shouldRotateClientAfterStall(
@@ -3835,6 +3836,10 @@ class MusicService :
 
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         super.onMediaItemTransition(mediaItem, reason)
+        // READY belongs to the exact previous selection, not this title/ID.
+        // A replay, reselected queue row or rebuilt same-ID source must not
+        // misclassify a completely silent new start as a mid-song rebuffer.
+        audioBufferLastReadyMediaId = null
         if (::offlinePlaybackQueue.isInitialized) offlinePlaybackQueue.checkCurrent()
 
         if (mediaItem?.mediaId?.startsWith(EXPERIMENTAL_MEDIA_PREFIX) == true) {
