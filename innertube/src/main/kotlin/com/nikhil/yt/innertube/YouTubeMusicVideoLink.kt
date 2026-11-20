@@ -337,18 +337,16 @@ object YouTubeMusicVideoLinkResolver {
                 // let an orphan request outlive this VIDEO resolve generation.
                 speculativeSearch?.cancel()
                 val best = candidatesById.values.maxByOrNull { it.score }
-                if (best == null) {
-                    // Artist browse is strictly a FALLBACK. This keeps the
-                    // successful 4-5 second native search path authoritative:
-                    // no artist-page clip can preempt its verified OMV.
-                    // Incomplete searches must not create a negative cache.
-                    tryArtistCatalog()?.let { fromArtist ->
-                        store(sourceId, CacheEntry(
-                            link = fromArtist, metadataKey = metadataKey,
-                            expiresAtMs = System.currentTimeMillis() + POSITIVE_CACHE_MS,
-                        ))
-                        return@coroutineScope fromArtist
-                    }
+                val link = capsuleNativeVideoBeforeArtistFallback(
+                    native = best?.let {
+                        YouTubeMusicVideoLink(
+                            videoId = it.videoId, musicVideoType = MUSIC_VIDEO_TYPE_OMV,
+                            title = it.title, score = it.score,
+                        )
+                    },
+                    artistFallback = ::tryArtistCatalog,
+                )
+                if (link == null) {
                     if (rowsSeen == 0 || !searchCompleted) {
                         // Empty/unrecognised response layouts are not proof that
                         // the song has no video. Do not cache an N/A verdict.
@@ -368,14 +366,6 @@ object YouTubeMusicVideoLinkResolver {
                         "YouTube Music did not find a trustworthy official clip",
                     )
                 }
-
-                val link =
-                    YouTubeMusicVideoLink(
-                        videoId = best.videoId,
-                        musicVideoType = MUSIC_VIDEO_TYPE_OMV,
-                        title = best.title,
-                        score = best.score,
-                    )
 
                 store(
                     sourceId = sourceId,
