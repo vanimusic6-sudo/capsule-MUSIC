@@ -18,7 +18,7 @@ internal object CapsuleVideoFastStartPolicy {
      * network probe and retains all original client/request guards.
      */
     @Synchronized
-    fun primaryBudgetMs(maxHeight: Int?, nowMs: Long = android.os.SystemClock.elapsedRealtime()): Long {
+    fun primaryBudgetMs(maxHeight: Int?, nowMs: Long = System.nanoTime() / 1_000_000L): Long {
         val ordinary = when {
             maxHeight == null || maxHeight <= 480 -> 4_200L
             maxHeight <= 720 -> 5_200L
@@ -33,7 +33,7 @@ internal object CapsuleVideoFastStartPolicy {
         success: Boolean,
         elapsedMs: Long,
         allowedMs: Long,
-        nowMs: Long = android.os.SystemClock.elapsedRealtime(),
+        nowMs: Long = System.nanoTime() / 1_000_000L,
     ) {
         if (success) {
             slowWebUntilMs = 0L
