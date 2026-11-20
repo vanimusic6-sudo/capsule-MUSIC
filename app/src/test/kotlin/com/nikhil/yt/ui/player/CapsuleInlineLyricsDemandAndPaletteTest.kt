@@ -84,10 +84,33 @@ class CapsuleInlineLyricsDemandAndPaletteTest {
         assertEquals(2, card.size)
         assertTrue("The card must tint the mirrored photo rather than replace it",
             card.all { it.alpha in 0.7f..0.99f })
-        assertTrue("Panel must brighten the middle of a dim photo",
-            card.first().red > photo[1].red)
+        assertTrue("Small lyric card must be dimmer than its live photo reference",
+            card.first().red < photo[1].red)
+        assertTrue("The dimmer card still retains recognizable artwork hue",
+            card.first().red > 0.12f)
         assertTrue("A warm image must remain warm inside its own card",
             card.first().red > card.first().blue * 1.12f)
+    }
+
+    @Test fun canvasLyricsContinueActualVideoFieldInsteadOfAlbumColours() {
+        val canvasField = CapsuleColorField(20, 16, List(320) { i ->
+            if (i % 20 < 10) Color(0xFFF33E42) else Color(0xFF2D51F8)
+        })
+        val seam = capsuleCanvasLyricsSeamColors(canvasField)
+        assertEquals(3, seam.size)
+        assertTrue(seam[0].red > seam[0].blue)
+        assertTrue(seam[2].blue > seam[2].red)
+        assertTrue("Native Canvas lower edge must be dark, not a neon lyric stripe",
+            seam.all { it.red < 0.30f && it.green < 0.30f && it.blue < 0.30f })
+    }
+
+    @Test fun extremelyBrightRedAndPinkCoversAreSubduedOnlyInCompactCard() {
+        val saturated = listOf(Color(0xFFEE355A), Color(0xFFF33E54), Color(0xFFE92A64))
+        val ordinary = capsuleInlineLyricsStops(saturated)
+        val immersive = capsuleInlineLyricsImmersivePanelStops(saturated)
+        assertTrue(ordinary.first().red < saturated.first().red * 0.72f)
+        assertTrue(immersive.first().red < saturated[1].red * 0.72f)
+        assertTrue("Card still keeps a warm/red tint", immersive.first().red > immersive.first().blue)
     }
 
     @Test fun compactLyricsCardIsShorterButRemainsReadableOnSmallDisplays() {
