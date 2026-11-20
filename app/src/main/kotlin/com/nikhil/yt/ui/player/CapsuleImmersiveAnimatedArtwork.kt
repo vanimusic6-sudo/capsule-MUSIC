@@ -216,9 +216,9 @@ internal fun CapsuleImmersiveAnimatedArtwork(
                     try {
                         view.getBitmap(buffer)
                         val frame = withContext(Dispatchers.Default) {
-                            capsuleVideoAmbientFrameFromBitmap(buffer, metadata.id)?.let {
-                                capsuleSceneLightVideoFrame(it, ambientLightFilter, now)
-                            }
+                            capsuleCanvasAmbientFrameFromBitmap(
+                                buffer, metadata.id, ambientLightFilter, now,
+                            )
                         }
                         // Black cuts and not-yet-ready surfaces must not spin
                         // at the decoder frame rate or overwrite retained light.
