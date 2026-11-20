@@ -213,6 +213,8 @@ internal class CapsuleVideoCompanion(
         session.start(id, item, volume, startupBudgetMs = if (delivery == CapsuleVideoDelivery.PROGRESSIVE) 8_000L else 15_000L)
     }
     fun setForeground(value: Boolean) = session.setForeground(value)
+    /** Actual screen-off only: stop hidden VIDEO decoding, keep its prepared stream. */
+    fun parkForScreenOff() = session.parkForScreenOff()
     // Read-only status for the toggle indicator; does not alter session playback.
     fun hasPreparedClip(mediaId: String): Boolean = session.hasPreparedClip(mediaId)
     fun canResume(item: MediaItem): Boolean = session.canResume(item)
@@ -780,6 +782,33 @@ internal class CapsuleVideoSession(
         evaluate()
     }
     fun setForeground(value: Boolean) { if (foreground != value) changeRendering { foreground = value } }
+
+    /**
+     * Screen-off is not a VIDEO mode switch: retain the prepared item/decoder
+     * but stop decoding and the separate VIDEO soundtrack while it is invisible.
+     * The canonical MUSIC player has kept its clock and cached stream running
+     * all along. On the next real surface attachment changeRendering() aligns
+     * this same prepared VIDEO to that clock before restoring VIDEO sound.
+     *
+     * Do NOT call this on ordinary mini/full-player surface detaches; those
+     * keep VIDEO sound ownership and must remain seamless.
+     */
+    fun parkForScreenOff() {
+        val current = id ?: return
+        if (foreground || !committed || audio.currentMediaItem?.mediaId != current) return
+        video.playWhenReady = false
+        returnSound()
+        committed = false
+        aligned = false
+        catchupPending = false
+        firstFrame = false
+        frameReported = false
+        preparedFrameAvailable = false
+        seekStartedAtMs = null
+        onFrameUnavailable(current)
+        ensureWatchdog()
+    }
+
     fun setSurfaceAttached(value: Boolean) {
         if (value && id != null) surfaceEverAttachedForSession = true
         if (surfaceAttached != value) changeRendering { surfaceAttached = value }

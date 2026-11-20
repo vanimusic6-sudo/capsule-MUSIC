@@ -5756,9 +5756,11 @@ class MusicService :
     }
 
     private fun suspendCapsuleVideoForScreenOff() {
-        // Screen-off is not a request to change AUDIO/VIDEO mode.
-        // Park only VIDEO decoding. AUDIO remains the audible fallback.
+        // Unlike an ordinary surface detach, a REAL screen-off must park
+        // VIDEO decoding and hand audio back to the canonical MUSIC stream.
+        // Keep the selected VIDEO item for a fast seek-aligned resume.
         setVideoAppForeground(false)
+        videoCompanion?.parkForScreenOff()
     }
 
     private fun resumeCapsuleVideoAfterUnlockIfAllowed() {

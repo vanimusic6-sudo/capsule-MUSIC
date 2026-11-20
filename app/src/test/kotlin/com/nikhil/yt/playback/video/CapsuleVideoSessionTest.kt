@@ -413,6 +413,42 @@ class CapsuleVideoSessionTest {
         f.session.stop()
     }
 
+    @Test fun screenOffParksCommittedVideoButKeepsItsPreparedStreamForResume() = runTest {
+        val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
+        advanceTimeBy(261L); runCurrent()
+        assertEquals(listOf(true), f.owned)
+        assertEquals(0f, f.music.volume)
+        val prepareCount = f.clip.prepares
+        val sourceReplacements = f.clip.replacements
+        f.session.setForeground(false)
+        f.session.parkForScreenOff()
+        assertFalse("Hidden VIDEO decoder must not keep rendering on screen off", f.clip.intent)
+        assertEquals("MUSIC becomes audible immediately on screen off", 1f, f.music.volume)
+        assertEquals(listOf(true, false), f.owned)
+        // Simulate 9 seconds of AUDIO-only playback with the screen off.
+        f.music.position = 10_000L
+        f.session.setForeground(true)
+        assertTrue("VIDEO may resume when the screen becomes visible", f.clip.intent)
+        assertEquals("No video /player re-extraction or Media3 source replacement",
+            sourceReplacements, f.clip.replacements)
+        assertEquals("The prepared stream is reused", prepareCount, f.clip.prepares)
+        assertTrue("The old video clock must catch up with MUSIC", f.clip.seeks.contains(10_000L))
+        f.clip.ready(); f.clip.frame()
+        advanceTimeBy(261L); runCurrent()
+        assertEquals(listOf(true, false, true), f.owned)
+        assertEquals(0f, f.music.volume)
+        f.session.stop()
+    }
+
+    @Test fun screenOffBeforeVideoCommitDoesNotInterruptOriginalAudio() = runTest {
+        val f = Fixture(this); f.start()
+        f.session.setForeground(false)
+        f.session.parkForScreenOff()
+        assertTrue("Uncommitted video does not own SOUND to begin with", f.owned.isEmpty())
+        assertEquals(1f, f.music.volume)
+        f.session.stop()
+    }
+
     @Test fun reopeningPlayerWhilePausedNeverSeeksOrStartsAnotherSoundSeam() = runTest {
         val f = Fixture(this); f.start(); f.clip.ready(); f.clip.frame()
         advanceTimeBy(261); runCurrent()
