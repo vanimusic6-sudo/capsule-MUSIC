@@ -262,7 +262,7 @@ class CapsuleVideoRoutesTest {
         }.exceptionOrNull()!!
         assertEquals(CapsuleNewPipeFailure.NETWORK, CapsuleNewPipeExtractor.classify(thrown))
         assertEquals(2, attempted.size)
-        assertEquals(CapsuleVideoRoute.VISIONOS, health.candidates(null).first())
+        assertEquals(CapsuleVideoRoute.PIPEPIPE, health.candidates(null).first())
     }
 
     @Test fun oneBackendDnsFailureMustNotPreventAnotherBackendFromSucceeding() {
