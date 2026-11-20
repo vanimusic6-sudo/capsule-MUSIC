@@ -27,7 +27,7 @@ class DownloadAudioTransportTest {
     }
 
     @Test fun offlineDownloadPreservesAllBytesAcrossRangeBoundaries() {
-        val bytes = ByteArray(500) { (it % 251).toByte() }
+        val bytes = ByteArray(130_000) { (it % 251).toByte() }
         val opens = mutableListOf<Pair<Long, Long>>()
         val network = object : DataSource {
             var cursor = 0
@@ -53,7 +53,7 @@ class DownloadAudioTransportTest {
         val dataSource = createDownloadAudioTransport(
             upstream = network,
             health = AudioCdnHostHealth(),
-            advertisedChunkBytes = 128L,
+            advertisedChunkBytes = 64L * 1024,
             currentNetworkIdentity = { 12L },
             shouldYieldToPlayback = { false },
         )
@@ -61,7 +61,7 @@ class DownloadAudioTransportTest {
             .setUri("https://rr1---sn-test.googlevideo.com/videoplayback")
             .setPosition(0L)
             .setLength(bytes.size.toLong())
-            .setKey("capsule:audio:testid00001:140:500")
+            .setKey("capsule:audio:testid00001:140:130000")
             .build()
         try {
             assertEquals(bytes.size.toLong(), dataSource.open(spec))
@@ -80,6 +80,7 @@ class DownloadAudioTransportTest {
         }
         assertTrue(opens.isNotEmpty())
         assertEquals(0L, opens.first().first)
-        assertEquals(500L, opens.sumOf { it.second })
+        assertTrue(opens.size >= 2)
+        assertEquals(130_000L, opens.sumOf { it.second })
     }
 }
