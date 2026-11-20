@@ -255,7 +255,9 @@ constructor(
                 createCachedDownloader = {
                     com.nikhil.yt.playback.audio.createCachedAudioDownloader(request.id, playerCache, downloadCache)
                 },
-                saveArtwork = { saveArtwork(request.id) },
+                // An offline audio transfer must finish independently of artwork
+                // networking. The completed-state listener queues cover repair.
+                saveArtwork = {},
                 resolve = { resolveDownloadPlayback(request.id) },
                 awaitAdmission = { awaitDownloadResolveWindow() },
                 recover = { playback, failure ->
@@ -466,6 +468,9 @@ constructor(
                             }
                         }
                         if (download.state == Download.STATE_COMPLETED) {
+                            // Never keep a successfully cached song at 99% because
+                            // its thumbnail server is slow or temporarily unavailable.
+                            repairArtwork(download.request.id)
                             scope.launch {
                                 if (!downloadMetadataCompletionIsCurrent(
                                         downloads.value[download.request.id], download
