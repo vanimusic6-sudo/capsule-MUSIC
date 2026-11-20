@@ -4663,8 +4663,12 @@ class MusicService :
                 return
             }
             val action = playbackRecoveryCoordinator.onSabrTransportFailure(currentMediaId)
+            // The explicit SABR rollback is separately capped to ONE attempt
+            // by AudioCdnRecoveryPlan. It must remain available even if Direct
+            // already spent all three shared retry slots getting to SABR.
             val retryDelay = if (action == AudioCdnRecoveryAction.TRY_NEXT_CLIENT)
-                playbackRecoveryCoordinator.nextRetryDelayMs(currentMediaId) else null
+                minOf(350L, playbackRecoveryCoordinator.nextRetryDelayMs(currentMediaId) ?: 350L)
+                else null
             if (retryDelay == null) {
                 Timber.tag("CapsuleHybrid").w(
                     "sabr-failed id=%s stage=%s action=bounded-stop",
