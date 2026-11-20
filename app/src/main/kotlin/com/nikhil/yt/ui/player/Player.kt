@@ -390,7 +390,9 @@ fun BottomSheetPlayer(
     }
     // Buffering and a recovered decoder may temporarily clear firstFrameReady.
     // The last valid VIDEO field must not blink back to the album gradient.
-    var videoFrameWasPresented by remember(enrichedMetadata?.id) { mutableStateOf(false) }
+    var videoFrameWasPresented by remember(enrichedMetadata?.id, videoPlaybackState.videoId) {
+        mutableStateOf(false)
+    }
     LaunchedEffect(videoPlaybackState.mode, videoPlaybackState.preferredMode,
         videoPlaybackState.presentingVideo, enrichedMetadata?.id) {
         if (videoPlaybackState.preferredMode != CapsulePlaybackMode.VIDEO ||
