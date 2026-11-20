@@ -28,7 +28,12 @@ internal fun capsuleVideoAmbientCaptureIntervalMs(unchangedSamples: Int): Long =
 /** Preserve the last VIDEO palette during buffer/surface interruptions. */
 internal fun capsuleVideoAmbientShouldStayVisible(
     state: CapsuleVideoPlaybackState, mediaId: String?, enabled: Boolean,
+    everPresentedFrame: Boolean = false,
 ): Boolean = enabled && mediaId != null && state.mediaId == mediaId &&
+    // A restored/retained palette is NOT a reason to turn the page into VIDEO
+    // before the first real frame is on screen. Once it appeared, keep its
+    // light across transient rebuffer and decoder surface interruptions.
+    (state.firstFrameReady || everPresentedFrame) &&
     state.preferredMode == CapsulePlaybackMode.VIDEO &&
     state.mode == CapsulePlaybackMode.VIDEO &&
     state.phase in setOf(
