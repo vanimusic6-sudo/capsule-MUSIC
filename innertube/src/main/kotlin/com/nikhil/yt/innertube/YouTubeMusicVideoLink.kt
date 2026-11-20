@@ -277,9 +277,22 @@ object YouTubeMusicVideoLinkResolver {
                     // ID to query. Never search by a guessed name/UC channel.
                     val artistId = artistBrowseIds.firstOrNull { artistBrowseId.matches(it) }
                         ?: return null
+                    val epoch = CapsuleVideoRequestGuard.resetEpoch()
                     withTimeoutOrNull(ARTIST_CATALOG_BUDGET_MS) {
                         beforeMetadataRequest()
-                        YouTube.artist(artistId).getOrNull()
+                        val response = YouTube.artist(artistId)
+                        response.exceptionOrNull()?.let { failure ->
+                            val kind = CapsuleVideoRequestGuard.noteApiFailure(failure, epoch)
+                            if (kind == CapsuleVideoRequestGuard.FailureKind.RATE_LIMITED ||
+                                kind == CapsuleVideoRequestGuard.FailureKind.BOT_CHECK ||
+                                kind == CapsuleVideoRequestGuard.FailureKind.FORBIDDEN
+                            ) {
+                                throw CapsuleVideoRequestGuard.RequestBlockedException(
+                                    "VIDEO artist catalog blocked: ${kind.name.lowercase()}", failure,
+                                )
+                            }
+                        }
+                        response.getOrNull()
                     } ?: return null
                     // YouTube.artist already remembers its VIDEO shelves.
                     return YouTubeMusicArtistVideoHints.match(
