@@ -91,8 +91,8 @@ class CapsuleVideoAmbientTest {
         assertTrue(kotlin.math.abs(partlyMixed[0].red - interrupted[0].red) < 0.0001f)
         assertTrue(partlyMixed[0].red > cool[0].red)
         assertTrue(VIDEO_AMBIENT_CAPTURE_INTERVAL_MS in 180L..260L)
-        assertTrue("Restored November 13 GPU light field must finish its blend before the next active sample",
-            VIDEO_AMBIENT_BLEND_DURATION_MS == 180)
+        assertTrue("Live light must overlap adjacent samples, smoothing moving video rather than stepping",
+            VIDEO_AMBIENT_BLEND_DURATION_MS in 380..520)
         assertTrue(capsuleVideoAmbientCaptureIntervalMs(0) < capsuleVideoAmbientCaptureIntervalMs(3))
         assertTrue(capsuleVideoAmbientCaptureIntervalMs(3) < capsuleVideoAmbientCaptureIntervalMs(8))
         assertTrue(capsuleVideoAmbientCaptureIntervalMs(8) <= 700L)
