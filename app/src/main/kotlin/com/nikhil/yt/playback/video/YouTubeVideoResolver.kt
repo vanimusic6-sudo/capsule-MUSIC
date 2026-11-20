@@ -38,15 +38,19 @@ internal data class CapsuleVideoMatchIdentity(
     val title: String,
     val artists: List<String>,
     val durationSeconds: Int?,
+    val artistBrowseIds: List<String> = emptyList(),
 )
 
 internal fun capsuleVideoMatchIdentity(
     title: String, artists: List<String>, durationSeconds: Int?,
+    artistBrowseIds: List<String> = emptyList(),
 ): CapsuleVideoMatchIdentity = CapsuleVideoMatchIdentity(
     title = title.trim().lowercase().take(256),
     artists = artists.map { it.trim().lowercase().take(128) }
         .filter(String::isNotBlank).distinct().sorted().take(8),
     durationSeconds = durationSeconds?.takeIf { it > 0 },
+    artistBrowseIds = artistBrowseIds.map(String::trim).filter(String::isNotBlank)
+        .distinct().sorted().take(3),
 )
 
 object YouTubeVideoResolver {
@@ -198,6 +202,7 @@ object YouTubeVideoResolver {
         durationSeconds: Int?,
         quality: CapsuleVideoQuality,
         originalVideo: Boolean = false,
+        artistBrowseIds: List<String> = emptyList(),
     ): Result<ResolvedVideo> {
         ensureInitialized()
         val canonicalId = sourceMediaId.trim()
@@ -205,7 +210,7 @@ object YouTubeVideoResolver {
             return Result.failure(IllegalArgumentException("Missing YouTube Music track id"))
         }
 
-        val identity = capsuleVideoMatchIdentity(title, artists, durationSeconds)
+        val identity = capsuleVideoMatchIdentity(title, artists, durationSeconds, artistBrowseIds)
         val knownClipId = if (originalVideo) canonicalId
             else synchronized(matchedClips) {
                 matchedClips[canonicalId]?.takeIf { it.identity == identity }?.videoId
@@ -246,6 +251,7 @@ object YouTubeVideoResolver {
                                         title = title,
                                         artists = artists,
                                         durationSeconds = durationSeconds,
+                                        artistBrowseIds = artistBrowseIds,
                                         beforeMetadataRequest = admission::beforeRequest,
                                     )
                                     .getOrThrow()
