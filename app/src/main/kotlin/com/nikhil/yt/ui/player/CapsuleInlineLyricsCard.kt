@@ -190,16 +190,18 @@ internal fun capsuleInlineLyricsImmersiveStops(colors: List<Color>): List<Color>
  *  These are translucent tints, not an independently invented wallpaper. */
 internal fun capsuleInlineLyricsImmersivePanelStops(colors: List<Color>): List<Color> {
     val source = colors.getOrNull(1) ?: Color(0xFF262225)
-    val ink = Color(0xFF17171B)
-    // Compact lyrics is a paper/card surface ABOVE the player floor.
-    // The old 78% source + 17% white boost saturated red/pink artwork
-    // into a solid neon panel. Reduce only this surface, not the artwork
-    // or its large immersive backdrop.
-    val base = lerp(ink, source, 0.52f)
-    val lift = if (maxOf(source.red, source.green, source.blue) > 0.75f) 0.025f else 0.065f
+    val ink = Color(0xFF14151A)
+    val brightest = maxOf(source.red, source.green, source.blue)
+    // The card sits OVER the live photo reflection. Semi-transparent reds
+    // add to the already red photo and produce an opaque saturated rectangle.
+    // Work in the DARK scene-light range instead, with nearly opaque paper.
+    // Preserve hue (especially warm red vs purple) but not raw cover brightness.
+    val strength = if (brightest > 0.65f) 0.20f else 0.30f
+    val base = lerp(ink, source, strength)
+    val lift = if (brightest > 0.65f) 0.016f else 0.028f
     val top = lerp(base, Color.White, lift)
-    val bottom = lerp(base, Color.White, lift * 0.68f)
-    return listOf(top.copy(alpha = 0.89f), bottom.copy(alpha = 0.93f))
+    val bottom = lerp(base, Color.White, lift * 0.55f)
+    return listOf(top.copy(alpha = 0.985f), bottom.copy(alpha = 0.99f))
 }
 
 /**
