@@ -416,6 +416,7 @@ object CapsuleInnerTubeXPlayer {
         var transientFallbacks = 0
         var botSignalAlreadySeen = false
         var onlyPostBotProfile: String? = null
+        var entitlementRecoveryProfile: String? = null
         val attempted = linkedSetOf<String>()
 
         while (true) {
@@ -440,6 +441,8 @@ object CapsuleInnerTubeXPlayer {
             val profileId =
                 onlyPostBotProfile
                     ?.takeIf { it !in attempted && it in plan }
+                    ?: entitlementRecoveryProfile
+                        ?.takeIf { it !in attempted && extractionBundle.innerTube.hasSapCookieAuth() }
                     ?: plan.firstOrNull { it !in attempted }
                     ?: run {
                         lastFailure?.let { throw it }
@@ -558,6 +561,15 @@ object CapsuleInnerTubeXPlayer {
                     lastFailure = failure
                     delay(CapsuleAudioFallbackPolicy.fallbackDelayMs(kind))
                     continue
+                }
+
+                if (kind == YouTubeFailureKind.LOGIN_REQUIRED ||
+                    kind == YouTubeFailureKind.AGE_RESTRICTED
+                ) {
+                    entitlementRecoveryProfile = CapsuleAudioFallbackPolicy.entitlementRecoveryProfile(
+                        authenticated = extractionBundle.innerTube.hasSapCookieAuth(),
+                        attemptedProfiles = attempted,
+                    )
                 }
 
                 // Avoid a three-client 24-second waterfall on a bad network:

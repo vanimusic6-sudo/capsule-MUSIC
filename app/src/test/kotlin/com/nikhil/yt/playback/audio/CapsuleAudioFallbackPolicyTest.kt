@@ -95,7 +95,7 @@ class CapsuleAudioFallbackPolicyTest {
     }
 
     @Test
-    fun authenticatedWebRemixUsesCreatorBeforeAnonymousFallbacks() {
+    fun authenticatedWebRemixKeepsConfiguredOrderUntilEntitlementFailure() {
         val plan =
             CapsuleAudioFallbackPolicy.profilePlan(
                 primaryProfileId = "WEB_REMIX",
@@ -114,13 +114,13 @@ class CapsuleAudioFallbackPolicyTest {
             )
 
         assertEquals(
-            listOf("WEB_REMIX", "WEB_CREATOR", "VISIONOS_0_1"),
+            listOf("WEB_REMIX", "VISIONOS_0_1", "WEB_EMBEDDED_PLAYER"),
             plan,
         )
     }
 
     @Test
-    fun authenticatedWebRemixInjectsCreatorWhenManualOrderOmittedIt() {
+    fun authenticatedWebRemixDoesNotInventAnotherPreference() {
         val plan =
             CapsuleAudioFallbackPolicy.profilePlan(
                 primaryProfileId = "WEB_REMIX",
@@ -138,9 +138,29 @@ class CapsuleAudioFallbackPolicyTest {
             )
 
         assertEquals(
-            listOf("WEB_REMIX", "WEB_CREATOR", "VISIONOS_0_1"),
+            listOf("WEB_REMIX", "VISIONOS_0_1", "WEB_EMBEDDED_PLAYER"),
             plan,
         )
+    }
+
+    @Test fun entitlementFallbackRequiresAccountAndUnusedCreator() {
+        assertEquals("WEB_CREATOR", CapsuleAudioFallbackPolicy.entitlementRecoveryProfile(
+            authenticated = true, attemptedProfiles = setOf("WEB_REMIX"),
+        ))
+        assertNull(CapsuleAudioFallbackPolicy.entitlementRecoveryProfile(
+            authenticated = false, attemptedProfiles = setOf("WEB_REMIX"),
+        ))
+        assertNull(CapsuleAudioFallbackPolicy.entitlementRecoveryProfile(
+            authenticated = true, attemptedProfiles = setOf("WEB_REMIX", "WEB_CREATOR"),
+        ))
+    }
+
+    @Test fun requestedFourClientOrderRemainsIntact() {
+        val desired = listOf("WEB_REMIX", "TVHTML5_SIMPLY", "VISIONOS_0_1", "WEB_CREATOR")
+        val plan = CapsuleAudioFallbackPolicy.profilePlan(
+            "WEB_REMIX", AudioResolvePriority.PLAYBACK, true, false, emptySet(), desired,
+        )
+        assertEquals(desired.take(3), plan)
     }
 
     @Test

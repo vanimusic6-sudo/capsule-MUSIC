@@ -19,11 +19,12 @@ object AudioClientOrder {
     const val TVHTML5_SIMPLY = "TVHTML5_SIMPLY"
 
     /**
-     * TASK 06.1 new-install ranking only; all six existing clients remain available.
+     * Four preferred profiles on new installs. Existing saved orders and
+     * advanced preferences remain compatible.
      * Do not change this list when an explicit order is already stored.
      */
     val releaseDefaultOrder: List<String> = listOf(
-        WEB_REMIX, VISIONOS, VISIONOS_0_1, TVHTML5_SIMPLY, WEB_EMBEDDED, WEB_CREATOR,
+        WEB_REMIX, TVHTML5_SIMPLY, VISIONOS_0_1, WEB_CREATOR,
     )
 
     val supportedProfiles: List<String> =

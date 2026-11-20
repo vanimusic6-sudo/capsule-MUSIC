@@ -71,10 +71,10 @@ internal object CapsuleAudioFallbackPolicy {
                 }
             }
 
-        val ordered = preferAuthenticatedWebFallback(baseOrder, authenticated)
-
+        // Keep exactly the user's configured order. The extractor may use
+        // WEB_CREATOR out of turn only after an authenticated entitlement error.
         val eligible =
-            ordered
+            baseOrder
                 .filter { it.isNotBlank() }
                 .distinct()
                 .filter { it in supportedProfiles }
@@ -83,48 +83,15 @@ internal object CapsuleAudioFallbackPolicy {
 
         if (eligible.size <= MAX_RESOLVE_ATTEMPTS) return eligible
 
-        val firstWindow = eligible.take(MAX_RESOLVE_ATTEMPTS)
-        if (!authenticated || WEB_CREATOR !in eligible || WEB_CREATOR in firstWindow) {
-            return firstWindow
-        }
-
-        // Keep the request budget at three identities, but do not accidentally remove the
-        // only maintained authenticated music profile. This preserves restricted/uploaded
-        // playback without restoring the old six-client waterfall.
-        return eligible.take(MAX_RESOLVE_ATTEMPTS - 1) + WEB_CREATOR
+        return eligible.take(MAX_RESOLVE_ATTEMPTS)
     }
 
-    /**
-     * WEB_REMIX and WEB_CREATOR share the authenticated web-music family, but CREATOR keeps
-     * an account-backed player path that can still satisfy login/age gates when REMIX is
-     * temporarily rejected at the GVS layer. Put it immediately after REMIX for signed-in
-     * playback so a 403 never burns the next request on an anonymous identity first.
-     *
-     * A manual client order is allowed to omit WEB_CREATOR from the visible preference list;
-     * that must not silently remove Capsule's only authenticated age-gate recovery path. When
-     * signed in and REMIX is present, CREATOR is therefore injected as a bounded recovery hop.
-     * If the user already put CREATOR ahead of REMIX, that explicit priority is preserved.
-     * Signed-out playback and orders without WEB_REMIX are left untouched.
-     */
-    private fun preferAuthenticatedWebFallback(
-        order: List<String>,
+    /** Only an authenticated entitlement failure may request CREATOR
+     * without spending the ordinary three-client plan on every track. */
+    fun entitlementRecoveryProfile(
         authenticated: Boolean,
-    ): List<String> {
-        if (!authenticated) return order
-        val remixIndex = order.indexOf(WEB_REMIX)
-        if (remixIndex < 0) return order
-
-        val creatorIndex = order.indexOf(WEB_CREATOR)
-        if (creatorIndex in 0 until remixIndex || creatorIndex == remixIndex + 1) return order
-
-        val withoutCreator = order.toMutableList()
-        if (creatorIndex >= 0) {
-            withoutCreator.removeAt(creatorIndex)
-        }
-        val newRemixIndex = withoutCreator.indexOf(WEB_REMIX)
-        withoutCreator.add(newRemixIndex + 1, WEB_CREATOR)
-        return withoutCreator
-    }
+        attemptedProfiles: Set<String>,
+    ): String? = WEB_CREATOR.takeIf { authenticated && it !in attemptedProfiles }
 
     fun fallbackDelayMs(kind: YouTubeFailureKind): Long =
         when (kind) {
