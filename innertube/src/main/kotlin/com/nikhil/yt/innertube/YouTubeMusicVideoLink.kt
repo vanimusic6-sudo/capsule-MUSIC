@@ -424,6 +424,10 @@ object YouTubeMusicVideoLinkResolver {
                 }
             } catch (blocked: CapsuleVideoRequestGuard.RequestBlockedException) {
                 throw blocked
+            } catch (cancelled: CancellationException) {
+                // A winning first-party counterpart cancels the speculative
+                // search. That is NOT a YouTube outage or a bot challenge.
+                throw cancelled
             } catch (throwable: Throwable) {
                 val kind = CapsuleVideoRequestGuard.noteApiFailure(throwable, guardEpoch)
 
