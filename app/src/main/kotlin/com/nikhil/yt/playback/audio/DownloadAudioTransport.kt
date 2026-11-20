@@ -5,6 +5,7 @@
 package com.nikhil.yt.playback.audio
 
 import androidx.media3.datasource.DataSource
+import java.io.IOException
 
 /**
  * Downloads reuse the *validated Direct* half of the playback transport:
@@ -35,3 +36,9 @@ internal fun createDownloadAudioTransport(
         ),
         shouldYield = shouldYieldToPlayback,
     )
+
+/** Recover typed host-health verdicts even when a slow-read cooldown had no
+ * nested socket exception. HTTP 403/410 are handled separately by the
+ * downloader; HTTP 429 and intentional cancellation must never fall here. */
+internal fun isRecoverableOfflineCdnFailure(failure: IOException): Boolean =
+    failure.audioCdnRefreshRequiredOrNull() != null || failure.isAudioCdnTransportFailure()
