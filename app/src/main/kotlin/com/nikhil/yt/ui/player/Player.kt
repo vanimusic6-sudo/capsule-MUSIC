@@ -851,22 +851,14 @@ private fun CapsulePlayerLyricsHost(
     // player start at the actual photo-to-floor background, without a new decode.
     val preparedLyricsScene = if (design == CapsulePlayerDesign.IMMERSIVE)
         sceneMemory.prepared else null
-    // Canvas is rendered by a separate, silent native VIDEO session. Its own
-    // sampled colour field must drive the document below the player too:
-    // album photo colours are unrelated to a moving Canvas frame.
-    val ordinaryVideoActive = playerConnection.service.videoPlaybackState.collectAsState().value.needsSurface
-    val canvasLyricsFrame = if (design == CapsulePlayerDesign.IMMERSIVE && !ordinaryVideoActive)
-        CapsuleMotionPlaybackSession.ambientFrame?.takeIf { it.mediaId == mediaMetadata.id }
-    else null
-    val canvasSeamColors = remember(canvasLyricsFrame?.field) {
-        canvasLyricsFrame?.field?.let(::capsuleCanvasLyricsSeamColors)
-    }
+    // Text/Lyrics deliberately uses the cover-derived palette. A Canvas is
+    // a moving VIDEO wallpaper for the main Immersion player, not a reason
+    // to recolour the text document, its card or the full Lyrics sheet.
     val inlineSceneColors = remember(
         design, warmedImmersiveTone, playerArtworkColors, preparedLyricsScene,
-        mediaMetadata.id, canvasSeamColors,
+        mediaMetadata.id,
     ) {
-        canvasSeamColors
-            ?: capsuleInlineLyricsPreparedSeamColors(preparedLyricsScene, mediaMetadata.id)
+        capsuleInlineLyricsPreparedSeamColors(preparedLyricsScene, mediaMetadata.id)
             ?: capsuleInlineLyricsSceneColors(
                 playerColors = playerArtworkColors,
                 immersiveTone = if (design == CapsulePlayerDesign.IMMERSIVE)
@@ -888,17 +880,9 @@ private fun CapsulePlayerLyricsHost(
     // softly brighter layer sampled from the same cover). Using the final
     // dark bottom scanline for both made lyrics look like an empty black page.
     val inlineCardColors = remember(
-        design, warmedImmersiveTone, inlineSceneColors, canvasLyricsFrame,
+        design, warmedImmersiveTone, inlineSceneColors,
     ) {
-        if (canvasLyricsFrame != null) {
-            // The card is a subdued tint of the current moving frame, not
-            // the saturated static album sampled behind the native Canvas.
-            val field = canvasLyricsFrame.field
-            val row = (field.height * 0.57f).toInt().coerceIn(0, field.height - 1)
-            listOf(0.12f, 0.5f, 0.88f).map { x ->
-                field.cell((field.width * x).toInt().coerceIn(0, field.width - 1), row)
-            }
-        } else if (design == CapsulePlayerDesign.IMMERSIVE)
+        if (design == CapsulePlayerDesign.IMMERSIVE)
             capsuleInlineLyricsSceneColors(inlineSceneColors, warmedImmersiveTone)
         else inlineSceneColors
     }
@@ -1157,8 +1141,8 @@ private fun CapsulePlayerLyricsHost(
             // Carry one shared photo-derived gradient through the entire
             // scrollable page. The former black parent background was visible
             // as a sharp strip below the Immersion viewport and above the card.
-            val immersiveBridgeStops = remember(transitioningPalette, design, canvasSeamColors) {
-                capsuleInlineLyricsImmersiveStops(canvasSeamColors ?: transitioningPalette)
+            val immersiveBridgeStops = remember(transitioningPalette, design) {
+                capsuleInlineLyricsImmersiveStops(transitioningPalette)
             }
             val scrollBackdrop = if (design == CapsulePlayerDesign.IMMERSIVE) {
                 Modifier.drawWithCache {
@@ -1177,12 +1161,7 @@ private fun CapsulePlayerLyricsHost(
                         // the second viewport. Its first reflected scanline is
                         // exactly the player's last visible pixel: no color-field
                         // approximation, second photo sample or seam to blend.
-                        if (canvasSeamColors != null) {
-                            // Continue the *real* VIDEO Canvas light at the
-                            // viewport seam. The album reflection would show
-                            // an unrelated coloured strip below moving Canvas.
-                            drawRect(fallback)
-                        } else if (immersiveReflection != null && extension >= 1f) {
+                        if (immersiveReflection != null && extension >= 1f) {
                             val slice = (immersiveReflection.height * 0.52f).roundToInt()
                                 .coerceIn(1, immersiveReflection.height)
                             withTransform({
@@ -1344,17 +1323,7 @@ private fun CapsulePlayerLyricsHost(
                             translationY = if (scrollToLyrics) 0f else -displacement
                         },
                     ) {
-                        if (scrollToLyrics && canvasLyricsFrame != null) {
-                            // Reuse the already captured Canvas field. One live
-                            // colour policy across artwork, scroll and full text;
-                            // no second decoder or extra TextureView readback.
-                            CapsuleVideoAmbientBackdrop(
-                                bands = canvasLyricsFrame.bands,
-                                field = canvasLyricsFrame.field,
-                                fallbackFloor = Color(0xFF111116),
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        } else if (scrollToLyrics) {
+                        if (scrollToLyrics) {
                             // The compact preview and normal fullscreen Lyrics
                             // use the SAME cover gradient, with no extra sampler,
                             // animated wallpaper or independently fading theme.
@@ -1362,13 +1331,7 @@ private fun CapsulePlayerLyricsHost(
                                 colors = if (design == CapsulePlayerDesign.IMMERSIVE)
                                     inlineCardColors else transitioningPalette,
                                 immersive = design == CapsulePlayerDesign.IMMERSIVE,
-                                // Canvas is a live VIDEO light field: its
-                                // colours already come from the moving decoder.
-                                // Never paint the old ALBUM reflection on top
-                                // of the full lyrics scene after Canvas starts.
-                                immersiveBitmap = immersiveReflection.takeIf {
-                                    canvasLyricsFrame == null
-                                },
+                                immersiveBitmap = immersiveReflection,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         } else {
