@@ -163,17 +163,6 @@ object YouTubeMusicVideoLinkResolver {
             require(sourceTitle.isNotBlank()) { "Missing song title" }
 
             cachedOrNull(sourceId, metadataKey)?.let { return@runCatching it }
-            // The artist screen may already have populated a trustworthy VIDEO
-            // shelf. Resolve it in memory before any /next or global search.
-            YouTubeMusicArtistVideoHints.match(
-                sourceTitle, cleanArtists, durationSeconds, sourceId, artistBrowseIds,
-            )?.let { match ->
-                store(sourceId, CacheEntry(
-                    link = match, metadataKey = metadataKey,
-                    expiresAtMs = System.currentTimeMillis() + POSITIVE_CACHE_MS,
-                ))
-                return@runCatching match
-            }
             if (isNegativeCached(sourceId, metadataKey)) {
                 throw IllegalStateException(
                     "Official music video is unavailable for this song",
@@ -268,8 +257,13 @@ object YouTubeMusicVideoLinkResolver {
                 val candidatesById = linkedMapOf<String, Candidate>()
                 var rowsSeen = 0
                 suspend fun tryArtistCatalog(): YouTubeMusicVideoLink? {
-                    // If not browsing the performer there is no reliable author
-                    // ID to query. Never search by a guessed name/UC channel.
+                    // Only after both native /next and global Videos search
+                    // FAILED to return a valid clip. First check the already
+                    // loaded artist catalog without network, then one verified
+                    // artist browse ID. No guessing channels from artist names.
+                    YouTubeMusicArtistVideoHints.match(
+                        sourceTitle, cleanArtists, durationSeconds, sourceId, artistBrowseIds,
+                    )?.let { return it }
                     val artistId = artistBrowseIds.firstOrNull { artistBrowseId.matches(it) }
                         ?: return null
                     val epoch = CapsuleVideoRequestGuard.resetEpoch()
@@ -293,19 +287,6 @@ object YouTubeMusicVideoLinkResolver {
                     return YouTubeMusicArtistVideoHints.match(
                         sourceTitle, cleanArtists, durationSeconds, sourceId, artistBrowseIds,
                     )
-                }
-
-                // Prefer a real clip from the source artist's own page BEFORE
-                // waiting for a possibly stuck global Videos search. That search
-                // is already speculatively running; one bounded artist browse
-                // adds no second global query and often wins in under 2 seconds.
-                tryArtistCatalog()?.let { fromArtist ->
-                    speculativeSearch?.cancel()
-                    store(sourceId, CacheEntry(
-                        link = fromArtist, metadataKey = metadataKey,
-                        expiresAtMs = System.currentTimeMillis() + POSITIVE_CACHE_MS,
-                    ))
-                    return@coroutineScope fromArtist
                 }
 
                 // One shared deadline for both search variants. The previous
@@ -357,6 +338,17 @@ object YouTubeMusicVideoLinkResolver {
                 speculativeSearch?.cancel()
                 val best = candidatesById.values.maxByOrNull { it.score }
                 if (best == null) {
+                    // Artist browse is strictly a FALLBACK. This keeps the
+                    // successful 4-5 second native search path authoritative:
+                    // no artist-page clip can preempt its verified OMV.
+                    // Incomplete searches must not create a negative cache.
+                    tryArtistCatalog()?.let { fromArtist ->
+                        store(sourceId, CacheEntry(
+                            link = fromArtist, metadataKey = metadataKey,
+                            expiresAtMs = System.currentTimeMillis() + POSITIVE_CACHE_MS,
+                        ))
+                        return@coroutineScope fromArtist
+                    }
                     if (rowsSeen == 0 || !searchCompleted) {
                         // Empty/unrecognised response layouts are not proof that
                         // the song has no video. Do not cache an N/A verdict.
