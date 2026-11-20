@@ -6,8 +6,29 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.Assert.assertEquals
 import androidx.media3.common.Player
+import com.nikhil.yt.innertube.video.CapsuleVideoDelivery
 
 class CapsuleVideoCompanionTest {
+    @Test fun videoStartupEstimatorLearnsOnlyFromPreparedDashAndSabr() {
+        val estimator = CapsuleVideoReadinessEstimator()
+        assertEquals(null, estimator.prediction(CapsuleVideoDelivery.DASH))
+        estimator.observe(CapsuleVideoDelivery.DASH, 2_500L)
+        assertEquals("A single potentially anomalous clip cannot alter startup seek",
+            null, estimator.prediction(CapsuleVideoDelivery.DASH))
+        estimator.observe(CapsuleVideoDelivery.DASH, 1_500L)
+        assertEquals(2_250L, estimator.prediction(CapsuleVideoDelivery.DASH))
+        assertEquals(null, estimator.prediction(CapsuleVideoDelivery.SABR))
+        estimator.observe(CapsuleVideoDelivery.DASH, 40_000L)
+        assertEquals("Outliers must not bias the next video", 2_250L,
+            estimator.prediction(CapsuleVideoDelivery.DASH))
+        estimator.observe(CapsuleVideoDelivery.SABR, 4_000L)
+        estimator.observe(CapsuleVideoDelivery.SABR, 5_000L)
+        assertEquals(4_250L, estimator.prediction(CapsuleVideoDelivery.SABR))
+        estimator.observe(CapsuleVideoDelivery.PROGRESSIVE, 2_000L)
+        estimator.observe(CapsuleVideoDelivery.PROGRESSIVE, 1_000L)
+        assertEquals(null, estimator.prediction(CapsuleVideoDelivery.PROGRESSIVE))
+    }
+
     @Test fun indexedDashDurationSupportsHoursMinutesFractionalSeconds() {
         assertEquals(241_500L, capsuleIndexedDashDurationMs(
             """<MPD mediaPresentationDuration="PT4M1.5S"/>""",

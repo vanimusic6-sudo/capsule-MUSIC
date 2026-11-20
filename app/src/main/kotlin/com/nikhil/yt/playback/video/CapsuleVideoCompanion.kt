@@ -52,6 +52,37 @@ internal const val CAPSULE_VIDEO_REBUFFER_MS = 5_000
 internal const val CAPSULE_VIDEO_TARGET_BUFFER_BYTES = 24 * 1024 * 1024
 
 /**
+ * Learn only the measured READY latency of successfully prepared VIDEO.
+ * A fixed prediction can seek a healthy DASH/SABR player forward and then
+ * immediately SEEK it backwards, forcing a second cold CDN range.
+ *
+ * No background probes, no persisted account or media metadata, and no
+ * predictor update on cached-decoder reuse. Outliers do not poison the next
+ * song. Two successful samples are needed before replacing the old defaults.
+ */
+internal class CapsuleVideoReadinessEstimator {
+    private data class Reading(var averageMs: Long, var count: Int)
+    private val readings = mutableMapOf<CapsuleVideoDelivery, Reading>()
+
+    fun observe(delivery: CapsuleVideoDelivery, readyElapsedMs: Long) {
+        if (delivery !in setOf(CapsuleVideoDelivery.DASH, CapsuleVideoDelivery.SABR) ||
+            readyElapsedMs !in 700L..8_000L) return
+        val current = readings[delivery]
+        if (current == null) readings[delivery] = Reading(readyElapsedMs, 1)
+        else {
+            // Smooth large network swings; bound the forward seek to a safe
+            // range even when a recent CDN session required a long prepare.
+            current.averageMs = ((current.averageMs * 3 + readyElapsedMs) / 4)
+                .coerceIn(700L, 6_000L)
+            current.count = (current.count + 1).coerceAtMost(10)
+        }
+    }
+
+    fun prediction(delivery: CapsuleVideoDelivery): Long? =
+        readings[delivery]?.takeIf { it.count >= 2 }?.averageMs
+}
+
+/**
  * DASH indexes may encode duration as PT241.5S, PT4M1.5S or PT1H3M.
  * A seconds-only parser silently disabled start-near-MUSIC for long clips,
  * forcing a cold decode at zero followed by another network seek.
@@ -74,6 +105,7 @@ internal fun capsuleIndexedDashDurationMs(manifest: String): Long? {
  */
 internal fun capsuleVideoInitialPosition(
     item: MediaItem, audioPositionMs: Long, audioPlaying: Boolean,
+    measuredReadyMs: Long? = null,
 ): Long? {
     val resolved = item.localConfiguration?.tag as? YouTubeVideoResolver.ResolvedVideo ?: return null
     val duration = when (resolved.delivery) {
@@ -97,10 +129,12 @@ internal fun capsuleVideoInitialPosition(
     // forcing a second network seek and sometimes a third buffered correction.
     // Predict the measured READY interval, not the earlier first-frame time.
     // Still keep pause, unknown duration and near-EOF paths unchanged.
-    val prediction = if (!audioPlaying) 0L else when (resolved.delivery) {
-        CapsuleVideoDelivery.SABR -> 4_500L
-        else -> 2_000L
-    }
+    val prediction = if (!audioPlaying) 0L else (
+        measuredReadyMs?.takeIf { it in 700L..6_000L } ?: when (resolved.delivery) {
+            CapsuleVideoDelivery.SABR -> 4_500L
+            else -> 2_000L
+        }
+    )
     return (position + prediction).coerceAtMost(duration - 3_000L)
 }
 
@@ -259,6 +293,8 @@ internal class CapsuleVideoSession(
     private var deferredVideoSeekMs: Long? = null
     private var startedAtMs = 0L
     private var readyReported = false
+    private var reusedThisSession = false
+    private val readinessEstimator = CapsuleVideoReadinessEstimator()
     // The source factory replaces the synthetic URI with the CDN URI in the
     // published timeline. Compare original requests, not the rewritten item.
     private var preparedItem: MediaItem? = null
@@ -329,8 +365,14 @@ internal class CapsuleVideoSession(
         override fun onPlaybackStateChanged(playbackState: Int) {
             if (playbackState == Player.STATE_READY && id != null && !readyReported) {
                 readyReported = true
+                val preparedMs = (clockMs() - startedAtMs).coerceAtLeast(0L)
+                if (!reusedThisSession) {
+                    val delivery = (preparedItem?.localConfiguration?.tag as?
+                        YouTubeVideoResolver.ResolvedVideo)?.delivery
+                    delivery?.let { readinessEstimator.observe(it, preparedMs) }
+                }
                 Timber.tag("CapsuleVideo").i("VIDEO timing ready session=%s prepareMs=%s", id,
-                    SystemClock.elapsedRealtime() - startedAtMs)
+                    preparedMs)
             }
             if (playbackState == Player.STATE_ENDED && id != null) {
                 // VIDEO end is a real track completion, never a recoverable network error.
@@ -583,6 +625,7 @@ internal class CapsuleVideoSession(
         val reuse = video.currentMediaItem?.mediaId == mediaId &&
             canReusePreparedVideo(preparedItem, item, video.playbackState)
         stop(keepPrepared = reuse)
+        reusedThisSession = reuse
         firstFrame = reuse && rendering && preparedFrameAvailable
         this.startupBudgetMs = startupBudgetMs
         id = mediaId
@@ -609,8 +652,10 @@ internal class CapsuleVideoSession(
                 // advancing MUSIC clock, not at byte/frame zero. Media3 gets the
                 // initial position before prepare, skipping a redundant network seek.
                 // Unindexed/short/near-EOF clips keep the proven old path.
+                val learnedLatency = (item.localConfiguration?.tag as?
+                    YouTubeVideoResolver.ResolvedVideo)?.delivery?.let(readinessEstimator::prediction)
                 val initialPosition = capsuleVideoInitialPosition(
-                    item, audio.currentPosition, audio.isPlaying,
+                    item, audio.currentPosition, audio.isPlaying, learnedLatency,
                 )
                 if (initialPosition != null) {
                     video.setMediaItem(item, initialPosition)
