@@ -1,6 +1,8 @@
 /*
  * Capsule MUSIC — process-retained Canvas transport.
- * The visual renderer can unmount while this muted Media3 timeline keeps looping.
+ * The visual renderer can unmount while the muted Media3 decoder stays PREPARED
+ * and PAUSED. It resumes at the same timeline only when Canvas is visibly
+ * active; an invisible video must not consume battery or mobile data.
  * No lookup is performed by this object. A new song is discovered only from an
  * opened Immersion player; closing the sheet never prepares a new track.
  * GPL-3.0.
@@ -27,7 +29,8 @@ import com.nikhil.yt.canvas.CapsuleMotionSource
 
 /**
  * One muted player for the application, not one player per Composable.
- * A TextureView can be detached/rebound without seeking to zero, while the
+ * A TextureView can be detached/rebound without seeking to zero; when detached
+ * playback is paused to avoid hidden codec and network usage. The
  * audio stream and its main MusicService are completely independent.
  * Call release() on Activity finish or when the feature is turned OFF.
  *
