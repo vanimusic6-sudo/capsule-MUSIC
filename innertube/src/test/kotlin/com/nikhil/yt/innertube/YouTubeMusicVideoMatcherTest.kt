@@ -15,6 +15,25 @@ import org.junit.Assert.fail
 
 @OptIn(ExperimentalSerializationApi::class)
 class YouTubeMusicVideoMatcherTest {
+    @Test fun validNativeClipAlwaysWinsWithoutTouchingArtistCatalog() = runBlocking {
+        val native = YouTubeMusicVideoLink("clip0000001", "MUSIC_VIDEO_TYPE_OMV", "Song", 275)
+        var catalogCalls = 0
+        assertEquals(native, capsuleNativeVideoBeforeArtistFallback(native) {
+            catalogCalls++
+            YouTubeMusicVideoLink("clip0000002", "MUSIC_VIDEO_TYPE_OMV", "Wrong", 300)
+        })
+        assertEquals("Valid native /next or Videos result must not call artist browse",
+            0, catalogCalls)
+
+        val fallback = YouTubeMusicVideoLink("clip0000003", "MUSIC_VIDEO_TYPE_OMV", "Song", 270)
+        assertEquals(fallback, capsuleNativeVideoBeforeArtistFallback(null) {
+            catalogCalls++
+            fallback
+        })
+        assertEquals(1, catalogCalls)
+        assertNull(capsuleNativeVideoBeforeArtistFallback(null) { null })
+    }
+
     @Test fun bracketedFeaturingCreditDoesNotHideAnOfficialClip() {
         assertEquals("blinding lights", YouTubeMusicVideoMatcher.normalizeTitle(
             "Blinding Lights (feat. Guest)",
