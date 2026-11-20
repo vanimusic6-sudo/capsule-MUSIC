@@ -45,6 +45,23 @@ class ImmersiveVideoArtworkClipRegressionTest {
             content.contains("alpha = capsuleImmersiveVideoBackplateAlpha(sharedVideoProgress.value)"))
     }
 
+    @Test fun canvasLightCannotUnmountTheNativeArtworkPhoto() {
+        val relative = "src/main/kotlin/com/nikhil/yt/ui/player/CapsuleImmersiveContent.kt"
+        val file = listOf(File(relative), File("app/$relative")).firstOrNull { it.isFile }
+            ?: error("Immersive source not found")
+        val source = file.readText()
+        val scene = source.substringAfter("internal fun ImmersiveAudioScene(")
+            .substringBefore("/** VIDEO never inherits")
+        assertTrue("Photo must remain mounted during Canvas palette animation",
+            scene.contains("Image(\\n            bitmap = background"))
+        assertFalse("Removing the photo at full Canvas alpha risks detaching the video",
+            scene.contains("if (canvasBackdropAlpha <"))
+        assertTrue("Native Canvas video must stay in artwork slot",
+            source.contains("CapsuleImmersiveAnimatedArtwork("))
+        assertTrue("Canvas samples belong to the main player",
+            source.contains("canvasAmbientFrame = activeCanvasAmbientFrame"))
+    }
+
     @Test fun immersiveFixedArtworkCannotHideItsGradientBehindOpaqueMatte() {
         val relative = "src/main/kotlin/com/nikhil/yt/ui/player/CapsuleVideoArtworkTransition.kt"
         val file = listOf(File(relative), File("app/$relative")).firstOrNull { it.isFile }

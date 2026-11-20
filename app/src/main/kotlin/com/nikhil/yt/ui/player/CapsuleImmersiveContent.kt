@@ -208,12 +208,14 @@ internal fun ImmersiveAudioScene(
             animationSpec = tween(500),
             label = "capsuleCanvasBackdropHandoff",
         )
-        if (canvasBackdropAlpha < 0.999f) {
-            Image(
-                bitmap = background, contentDescription = null,
-                contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize(),
-            )
-        }
+        // Keep the photo node composed for the lifetime of the native Canvas
+        // TextureView. Conditionally removing this sibling when sampled light
+        // reaches full opacity can invalidate the artwork composition and
+        // interrupt the retained silent video decoder.
+        Image(
+            bitmap = background, contentDescription = null,
+            contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize(),
+        )
         if (canvasBackdropAlpha > 0.001f) {
             retainedCanvasBackdrop?.let { frame ->
                 // Same shader, sample field and soft temporal interpolation
