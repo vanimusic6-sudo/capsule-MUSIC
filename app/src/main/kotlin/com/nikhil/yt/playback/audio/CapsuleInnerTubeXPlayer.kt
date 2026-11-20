@@ -19,6 +19,7 @@ import com.metrolist.innertubex.cipher.PlayerConfigRepository
 import com.metrolist.innertubex.cipher.RemotePlayerConfigStore
 import com.metrolist.innertubex.cipher.YouTubeCipherService
 import com.metrolist.innertubex.extraction.AudioQuality as InnerTubeXAudioQuality
+import com.metrolist.innertubex.sabr.SabrBootstrap
 import com.metrolist.innertubex.extraction.ContentHints
 import com.metrolist.innertubex.extraction.ExtractedStream
 import com.metrolist.innertubex.extraction.InnerTubeExtractor
@@ -87,6 +88,9 @@ object CapsuleInnerTubeXPlayer {
     private const val ENGINE_RESOLVE_TIMEOUT_MS = 18_000L
     private const val DEFAULT_STREAM_TTL_SECONDS = 5 * 60
     private const val MAX_SABR_ROLLOVERS = 1
+    // A distinct audio transport, not an extra primary client in settings.
+    private const val SABR_FALLBACK_PROFILE = "WEB_REMIX_SABR"
+    private const val DIRECT_ATTEMPTS_BEFORE_SABR = 2
 
     private val bundleMutex = Mutex()
     private val resolveMutex = Mutex()
@@ -224,6 +228,7 @@ object CapsuleInnerTubeXPlayer {
          * Zero means the library named no size, and the app's own default is used instead.
          */
         val rangeChunkSizeBytes: Long,
+        val sabrBootstrap: SabrBootstrap? = null,
     )
 
     suspend fun prewarm(prewarmWebPoToken: Boolean = false) {
@@ -438,11 +443,18 @@ object CapsuleInnerTubeXPlayer {
                     preferredProfiles = preferredProfiles,
                 )
 
+            val sabrEligible =
+                !download &&
+                    priorityBeforeAttempt == AudioResolvePriority.PLAYBACK &&
+                    !botSignalAlreadySeen &&
+                    attempted.size >= DIRECT_ATTEMPTS_BEFORE_SABR &&
+                    SABR_FALLBACK_PROFILE !in attempted
             val profileId =
                 onlyPostBotProfile
                     ?.takeIf { it !in attempted && it in plan }
                     ?: entitlementRecoveryProfile
                         ?.takeIf { it !in attempted && extractionBundle.innerTube.hasSapCookieAuth() }
+                    ?: SABR_FALLBACK_PROFILE.takeIf { sabrEligible }
                     ?: plan.firstOrNull { it !in attempted }
                     ?: run {
                         lastFailure?.let { throw it }
@@ -623,12 +635,17 @@ object CapsuleInnerTubeXPlayer {
         var excludedClients = failedStreamClients(videoId, download = download)
 
         while (true) {
+            val usingSabrRoute = !download &&
+                hints.playbackClientOverrideId == SABR_FALLBACK_PROFILE
+            val capabilities = if (usingSabrRoute) hints.withStreamCapabilities(
+                allowHls = false, allowSabr = true, allowBoundedRange = true,
+            ) else hints
             val extracted =
                 requireNotNull(
                     audioExtractorAttempt {
                         (if (download) extractionBundle.downloadExtractor else extractionBundle.extractor).extract(
                             videoId = videoId,
-                            hints = hints,
+                            hints = capabilities,
                             excludedClients = CapsuleAudioClientStrategy.exclusions(excludedClients),
                             audioQuality = audioQuality,
                             clientPlaybackNonce = generateClientPlaybackNonce(),
@@ -636,7 +653,7 @@ object CapsuleInnerTubeXPlayer {
                     },
                 ) { "InnerTubeX returned no playable AUDIO stream" }
 
-            if (extracted.sabrBootstrap == null) {
+            if (extracted.sabrBootstrap == null || usingSabrRoute) {
                 return extracted
             }
 
@@ -964,6 +981,7 @@ object CapsuleInnerTubeXPlayer {
             streamClient = CapsuleAudioClientStrategy.profileId(profileId),
             streamHeaders = headers,
             rangeChunkSizeBytes = rangeChunkSizeBytes,
+            sabrBootstrap = sabrBootstrap,
         )
     }
 

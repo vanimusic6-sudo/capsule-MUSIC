@@ -33,7 +33,7 @@ class CapsuleSabrAudioDataSourceTest {
     )
 
     private fun dataSpec(position: Long = 0, length: Long = C.LENGTH_UNSET.toLong()) =
-        DataSpec.Builder().setUri(Uri.parse("capsule-sabr://test"))
+        DataSpec.Builder().setUri(Uri.parse("capsule-sabr://audio/test"))
             .setCustomData(CapsuleSabrAudioOpenContext(bootstrap()))
             .setPosition(position).setLength(length).build()
 
@@ -88,10 +88,10 @@ class CapsuleSabrAudioDataSourceTest {
     @Test fun refusesMismatchedOrMissingSessionBeforeNetwork() {
         val source = source()
         assertThrows(java.io.IOException::class.java) {
-            source.open(DataSpec(Uri.parse("capsule-sabr://test")))
+            source.open(DataSpec(Uri.parse("capsule-sabr://audio/test")))
         }
         assertThrows(java.io.IOException::class.java) {
-            source.open(DataSpec.Builder().setUri(Uri.parse("capsule-sabr://other"))
+            source.open(DataSpec.Builder().setUri(Uri.parse("capsule-sabr://audio/other"))
                 .setCustomData(CapsuleSabrAudioOpenContext(bootstrap())).build())
         }
     }

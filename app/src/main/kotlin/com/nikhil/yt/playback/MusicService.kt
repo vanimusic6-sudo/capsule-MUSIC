@@ -206,6 +206,10 @@ import com.nikhil.yt.playback.audio.AudioCacheDataSource
 import com.nikhil.yt.discovery.ExperimentalCatalog.EXPERIMENTAL_MEDIA_PREFIX
 import com.nikhil.yt.constants.ExperimentalSourcesEnabledKey
 import com.nikhil.yt.playback.audio.AudioChunkedDataSource
+import com.nikhil.yt.playback.audio.CapsuleSabrAudioDataSource
+import com.nikhil.yt.playback.audio.CapsuleSabrAudioOpenContext
+import com.nikhil.yt.playback.audio.CapsuleAudioTransportDataSource
+import com.nikhil.yt.playback.audio.CAPSULE_AUDIO_SABR_SCHEME
 import com.nikhil.yt.playback.audio.DownloadPlaybackCoexistence
 import com.nikhil.yt.playback.audio.AudioCacheSource
 import com.nikhil.yt.playback.audio.AudioNetworkDiagnosticDataSource
@@ -4866,8 +4870,14 @@ class MusicService :
                 // the one-shot same-link read retry across that boundary.
                 currentNetworkIdentity = { connectivityManager.activeNetwork?.networkHandle },
             )
+        val audioTransport = DataSource.Factory {
+            CapsuleAudioTransportDataSource(
+                direct = networkUpstream.createDataSource(),
+                sabr = CapsuleSabrAudioDataSource(beforeNetworkOpen = ::awaitAudioNetworkOpenPermit),
+            )
+        }
         val streaming = CacheDataSource.Factory().setCache(playerCache)
-            .setUpstreamDataSourceFactory(networkUpstream)
+            .setUpstreamDataSourceFactory(audioTransport)
             .setFlags(FLAG_IGNORE_CACHE_ON_ERROR)
         val offline = CacheDataSource.Factory().setCache(downloadCache).setCacheWriteDataSinkFactory(null)
         return DataSource.Factory { AudioCacheDataSource(streaming.createDataSource(), offline.createDataSource()) }
@@ -5071,18 +5081,25 @@ class MusicService :
         val key = AudioCacheIdentity.key(mediaId, playback)
         contract.bind(key)
         AudioCacheIdentity.setLength(playerCache, key, playback.format.contentLength)
+        val sabr = playback.sabrBootstrap
+        val uri = if (sabr != null) {
+            android.net.Uri.parse("$CAPSULE_AUDIO_SABR_SCHEME://audio/${sabr.videoId}")
+        } else playback.streamUrl.toUri()
+        val openContext: Any = if (sabr != null) {
+            CapsuleSabrAudioOpenContext(sabr)
+        } else {
+            AudioCdnOpenContext(
+                mediaId = mediaId,
+                resolvedAtElapsedMs = playback.resolvedAtElapsedMs,
+                source = source,
+                streamClient = playback.streamClient,
+                rangeChunkSizeBytes = playback.rangeChunkSizeBytes,
+            )
+        }
         return dataSpec.buildUpon()
             .setKey(key)
-            .setUri(playback.streamUrl.toUri())
-            .setCustomData(
-                AudioCdnOpenContext(
-                    mediaId = mediaId,
-                    resolvedAtElapsedMs = playback.resolvedAtElapsedMs,
-                    source = source,
-                    streamClient = playback.streamClient,
-                    rangeChunkSizeBytes = playback.rangeChunkSizeBytes,
-                ),
-            )
+            .setUri(uri)
+            .setCustomData(openContext)
             .setHttpRequestHeaders(dataSpec.httpRequestHeaders + playback.streamHeaders)
             .build()
     }

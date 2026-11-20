@@ -66,7 +66,7 @@ internal class CapsuleSabrAudioDataSource(
         val bootstrap = (dataSpec.customData as? CapsuleSabrAudioOpenContext)?.bootstrap
             ?: throw IOException("Missing SABR playback session")
         if (dataSpec.uri.scheme != CAPSULE_AUDIO_SABR_SCHEME ||
-            dataSpec.uri.host != bootstrap.videoId
+            dataSpec.uri.lastPathSegment != bootstrap.videoId
         ) throw IOException("SABR media id does not match its session")
         val total = bootstrap.contentLengthBytes?.takeIf { it > 0L }
         if (total != null && dataSpec.position > total) {

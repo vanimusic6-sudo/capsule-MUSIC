@@ -11,6 +11,7 @@ package com.nikhil.yt.playback.audio
 
 import android.net.ConnectivityManager
 import androidx.media3.common.PlaybackException
+import com.metrolist.innertubex.sabr.SabrBootstrap
 import com.nikhil.yt.constants.AudioQuality
 import com.nikhil.yt.constants.AudioStreamPolicy
 import com.nikhil.yt.innertube.CapsuleAnonymousSession
@@ -41,6 +42,8 @@ object CapsuleAudioEngine {
         val resolvedAtElapsedMs: Long = 0L,
         /** Slice size InnerTubeX sizes for this client; 0 when it named none. */
         val rangeChunkSizeBytes: Long = 0L,
+        /** Offline downloads stay on direct streams until SABR renewal is validated. */
+        val sabrBootstrap: SabrBootstrap? = null,
     )
 
     fun prioritizePlayback(mediaId: String) = CapsuleInnerTubeXPlayer.prioritizePlayback(mediaId)
@@ -141,6 +144,7 @@ object CapsuleAudioEngine {
                     streamHeaders = resolved.streamHeaders,
                     resolvedAtElapsedMs = android.os.SystemClock.elapsedRealtime(),
                     rangeChunkSizeBytes = resolved.rangeChunkSizeBytes,
+                    sabrBootstrap = resolved.sabrBootstrap,
                 )
             }
             .onFailure(CapsulePlaybackSafety::observeFailure)
