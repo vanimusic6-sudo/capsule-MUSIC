@@ -48,7 +48,7 @@ internal class CapsuleVideoAmbientCaptureMemory {
     var previous: CapsuleColorField? = null
 
     fun shouldPublish(frame: CapsuleVideoAmbientFrame): Boolean {
-        if (!capsuleFieldChanged(previous, frame.field, threshold = 0.006f)) return false
+        if (!capsuleFieldChanged(previous, frame.field, threshold = 0.0045f)) return false
         previous = frame.field
         return true
     }
