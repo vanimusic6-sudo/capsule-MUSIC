@@ -100,8 +100,17 @@ internal object YouTubeMusicVideoMatcher {
         return score.takeIf { it >= MIN_MATCH_SCORE }
     }
 
+    // Title-side featured-artist credits belong to the metadata, not to the
+    // recording name. A Music row such as "Song (feat. Guest)" must still match
+    // the official clip titled "Artist - Song". Only remove explicitly
+    // bracketed credits: never delete arbitrary title words or a remix suffix.
     fun normalizeTitle(value: String): String =
-        normalizeText(value)
+        normalizeText(
+            value.replace(
+                Regex("""(?i)\s*[\[(]\s*(?:feat\.?|ft\.?|featuring)\s+[^\])]*[\])]"""),
+                " ",
+            ),
+        )
             .replace(Regex("\\bofficial\\s+music\\s+video\\b"), " ")
             .replace(Regex("\\bofficial\\s+video\\b"), " ")
             .replace(Regex("\\bmusic\\s+video\\b"), " ")
@@ -182,13 +191,6 @@ internal object YouTubeMusicVideoMatcher {
             )
 
         return alwaysReject.any { token -> candidate.contains(token) }
-    }
-
-    private fun titleTokenOverlap(left: String, right: String): Double {
-        val a = left.split(' ').filter { it.length > 1 }.toSet()
-        val b = right.split(' ').filter { it.length > 1 }.toSet()
-        if (a.isEmpty() || b.isEmpty()) return 0.0
-        return a.intersect(b).size.toDouble() / a.union(b).size.toDouble()
     }
 
     private fun containsWholePhrase(haystack: String, needle: String): Boolean =
