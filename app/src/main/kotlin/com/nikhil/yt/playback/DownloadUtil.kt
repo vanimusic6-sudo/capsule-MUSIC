@@ -22,7 +22,8 @@ import androidx.media3.exoplayer.offline.DefaultDownloadIndex
 import androidx.media3.exoplayer.offline.DownloaderFactory
 import com.nikhil.yt.playback.audio.CapsuleAudioRequestInterceptor
 import com.nikhil.yt.playback.audio.AudioCacheIdentity
-import com.nikhil.yt.playback.audio.AudioChunkedDataSource
+import com.nikhil.yt.playback.audio.AudioCdnHostHealth
+import com.nikhil.yt.playback.audio.createDownloadAudioTransport
 import com.nikhil.yt.playback.audio.DownloadYieldingDataSource
 import com.nikhil.yt.playback.audio.AudioDownloadUrlPolicy
 import com.nikhil.yt.playback.audio.isAudioCdnTransportFailure
@@ -138,6 +139,20 @@ constructor(
     private val resumeUrls = com.nikhil.yt.playback.audio.PlaybackDataCache(
         capacity = 8, nowMs = android.os.SystemClock::elapsedRealtime,
     )
+    // The offline CDN's health does not belong to the player. It is scoped
+    // to this singleton manager and reset when the phone changes networks.
+    private val downloadCdnHealth = AudioCdnHostHealth()
+    private var downloadNetworkIdentity: Long? = null
+
+    private fun refreshDownloadNetworkHealth() {
+        val current = connectivityManager.activeNetwork?.networkHandle
+        synchronized(downloadCdnHealth) {
+            if (current != downloadNetworkIdentity) {
+                downloadCdnHealth.forget()
+                downloadNetworkIdentity = current
+            }
+        }
+    }
 
     private val mediaOkHttpClient: OkHttpClient by lazy {
         OkHttpClient
@@ -178,6 +193,7 @@ constructor(
     ): CapsuleAudioEngine.PlaybackData {
         repeat(MAX_DOWNLOAD_RESOLVE_ATTEMPTS) { attempt ->
             awaitDownloadResolveWindow()
+            refreshDownloadNetworkHealth()
             val selection = playbackContext()
             // A signed URL is tied to a YouTube account/visitor as well as
             // network and quality. Do not reuse it after login/logout or account
@@ -305,14 +321,16 @@ constructor(
                                         // Stop consuming download bandwidth between bounded reads
                                         // when the foreground player is buffering or just became
                                         // READY. Do not pause/cancel Media3 or re-resolve URLs.
-                                        DownloadYieldingDataSource(
-                                            AudioChunkedDataSource(
-                                                OkHttpDataSource.Factory(
-                                                    mediaOkHttpClient.newBuilder().proxy(YouTube.streamProxy).build(),
-                                                ).createDataSource(),
-                                                chunkBytes = playback.rangeChunkSizeBytes.takeIf { it > 0L }
-                                                    ?: AUDIO_CHUNK_BYTES,
-                                            ),
+                                        refreshDownloadNetworkHealth()
+                                        createDownloadAudioTransport(
+                                            upstream = OkHttpDataSource.Factory(
+                                                mediaOkHttpClient.newBuilder().proxy(YouTube.streamProxy).build(),
+                                            ).createDataSource(),
+                                            health = downloadCdnHealth,
+                                            advertisedChunkBytes = playback.rangeChunkSizeBytes,
+                                            currentNetworkIdentity = {
+                                                connectivityManager.activeNetwork?.networkHandle
+                                            },
                                         )
                                     })
                                     .setFlags(FLAG_IGNORE_CACHE_ON_ERROR),
