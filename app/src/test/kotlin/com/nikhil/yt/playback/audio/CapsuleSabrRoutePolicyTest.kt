@@ -19,6 +19,36 @@ class CapsuleSabrRoutePolicyTest {
             false, false, AudioResolvePriority.PLAYBACK, false, attempted + "TVHTML5_SIMPLY"))
     }
 
+    @Test fun twoHistoricalCdnClientFailuresPreferSabrBeforeSlowNextClient() {
+        assertEquals(CapsuleSabrRoutePolicy.PROFILE, CapsuleSabrRoutePolicy.select(
+            forceSabr = false, download = false, priority = AudioResolvePriority.PLAYBACK,
+            botSignalAlreadySeen = false, attempted = emptySet(), previousDirectFailures = 2,
+        ))
+        assertNull(CapsuleSabrRoutePolicy.select(
+            forceSabr = false, download = false, priority = AudioResolvePriority.PLAYBACK,
+            botSignalAlreadySeen = false, attempted = emptySet(), previousDirectFailures = 1,
+        ))
+    }
+
+    @Test fun historicalSabrFailureBlocksAutomaticRescueButNotDirectFallback() {
+        assertNull(CapsuleSabrRoutePolicy.select(
+            forceSabr = false, download = false, priority = AudioResolvePriority.PLAYBACK,
+            botSignalAlreadySeen = false, attempted = setOf(CapsuleSabrRoutePolicy.PROFILE),
+            previousDirectFailures = 3,
+        ))
+    }
+
+    @Test fun previousDirectFailuresNeverStartSabrInDownloadOrPrefetch() {
+        assertNull(CapsuleSabrRoutePolicy.select(
+            forceSabr = false, download = true, priority = AudioResolvePriority.DOWNLOAD,
+            botSignalAlreadySeen = false, attempted = emptySet(), previousDirectFailures = 3,
+        ))
+        assertNull(CapsuleSabrRoutePolicy.select(
+            forceSabr = false, download = false, priority = AudioResolvePriority.PREFETCH,
+            botSignalAlreadySeen = false, attempted = emptySet(), previousDirectFailures = 3,
+        ))
+    }
+
     @Test fun forcedSabrCannotRetryItselfOrActivateForDownloads() {
         assertNull(CapsuleSabrRoutePolicy.select(true, false, AudioResolvePriority.PLAYBACK,
             false, setOf(CapsuleSabrRoutePolicy.PROFILE)))
