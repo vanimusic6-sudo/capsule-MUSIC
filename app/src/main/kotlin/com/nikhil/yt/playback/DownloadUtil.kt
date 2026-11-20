@@ -25,6 +25,7 @@ import com.nikhil.yt.playback.audio.AudioCacheIdentity
 import com.nikhil.yt.playback.audio.AudioChunkedDataSource
 import com.nikhil.yt.playback.audio.DownloadYieldingDataSource
 import com.nikhil.yt.playback.audio.AudioDownloadUrlPolicy
+import com.nikhil.yt.playback.audio.isAudioCdnTransportFailure
 import com.nikhil.yt.playback.audio.AUDIO_CHUNK_BYTES
 import com.nikhil.yt.playback.audio.AudioPlaybackContext
 import com.nikhil.yt.playback.audio.ResolvingAudioDownloader
@@ -98,7 +99,6 @@ internal fun isLikelyDownloadThrottleSignal(exception: Throwable): Boolean {
 internal fun canRetryDownloadAfterContextChange(attempt: Int, maxAttempts: Int): Boolean =
     attempt >= 0 && maxAttempts > 0 && attempt + 1 < maxAttempts
 
-@Singleton
 /**
  * Ignore stale completion callbacks after the same media ID was removed,
  * restarted or replaced while its Room write was queued on Dispatchers.IO.
@@ -109,6 +109,8 @@ internal fun downloadMetadataCompletionIsCurrent(current: Download?, completed: 
         current.updateTimeMs == completed.updateTimeMs &&
         current.request.id == completed.request.id
 
+/** One DownloadManager and one queue per app process and download index. */
+@Singleton
 class DownloadUtil
 @Inject
 constructor(
@@ -247,7 +249,6 @@ constructor(
     }
 
     private val downloaderFactory = DownloaderFactory { request ->
-            var refreshedClient: String? = null
             ResolvingAudioDownloader(
                 mediaId = request.id,
                 cache = downloadCache,
@@ -261,15 +262,35 @@ constructor(
                     val status = generateSequence(failure as Throwable?) { it.cause }
                         .take(12).filterIsInstance<InvalidResponseCodeException>()
                         .firstOrNull()?.responseCode
-                    if (status == 403 || status == 410) {
-                        resumeUrls.remove(request.id)
-                        if (refreshedClient == playback.streamClient) {
-                            CapsuleAudioEngine.markDownloadStreamClientFailed(request.id, playback.streamClient, status)
-                        } else refreshedClient = playback.streamClient
-                        true
-                    } else {
-                        if (status == 429) CapsuleAudioEngine.markRateLimitedFailure()
-                        false
+                    when {
+                        status == 403 || status == 410 -> {
+                            // Quarantine a refused source for this download alone;
+                            // retrying its same signed CDN link wastes the recovery budget.
+                            resumeUrls.remove(request.id)
+                            CapsuleAudioEngine.markDownloadStreamClientFailed(
+                                request.id, playback.streamClient, status,
+                            )
+                            timber.log.Timber.tag("AudioDownload").w(
+                                "download-recover id=%s reason=cdn-refused code=%d client=%s",
+                                request.id, status, playback.streamClient ?: "unknown",
+                            )
+                            true
+                        }
+                        status == 429 -> {
+                            CapsuleAudioEngine.markRateLimitedFailure()
+                            false // Respect global cooldown, never rotate identities.
+                        }
+                        failure.isAudioCdnTransportFailure() -> {
+                            // A reset/truncated response needs a fresh URL, not a
+                            // five-minute penalty against the extractor client.
+                            resumeUrls.remove(request.id)
+                            timber.log.Timber.tag("AudioDownload").w(
+                                "download-recover id=%s reason=transport type=%s",
+                                request.id, failure.javaClass.simpleName,
+                            )
+                            true
+                        }
+                        else -> false
                     }
                 },
                 dataSource = { playback ->
