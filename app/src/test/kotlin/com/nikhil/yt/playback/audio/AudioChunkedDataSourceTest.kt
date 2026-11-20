@@ -38,6 +38,20 @@ class AudioChunkedDataSourceTest {
         assertEquals(512L * 1024, policy.onChunkComplete())
     }
 
+    @Test fun onlyLongFormGetsAnAdaptiveRangeCeilingAndNeverExceedsOneMib() {
+        val halfMiB = 512L * 1024
+        assertEquals(halfMiB, adaptiveAudioMaxChunkBytes(3L * 1024 * 1024, halfMiB))
+        assertEquals(halfMiB, adaptiveAudioMaxChunkBytes(C.LENGTH_UNSET.toLong(), halfMiB))
+        assertEquals(1L * 1024 * 1024, adaptiveAudioMaxChunkBytes(46L * 1024 * 1024, halfMiB))
+        val policy = AudioCdnChunkRatePolicy(
+            halfMiB, maximumChunkBytes = adaptiveAudioMaxChunkBytes(46L * 1024 * 1024, halfMiB),
+        )
+        repeat(3) { policy.observeRead(8192, 8192, 1L) }
+        assertEquals(1L * 1024 * 1024, policy.onChunkComplete())
+        repeat(3) { policy.observeRead(8192, 8192, 400L) }
+        assertEquals(halfMiB, policy.onChunkComplete())
+    }
+
     /** Serves a known pattern and records the bounded requests it was asked for. */
     private class FakeUpstream(
         private val content: ByteArray,
