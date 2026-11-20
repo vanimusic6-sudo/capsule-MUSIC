@@ -11,7 +11,9 @@ import com.metrolist.innertubex.sabr.SabrFormatId
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.CancellationException
 import java.io.IOException
+import java.io.InterruptedIOException
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -103,6 +105,19 @@ class CapsuleSabrAudioDataSourceTest {
             assertEquals(null, failure.sabrTransportFailureFor("another"))
             assertEquals(null, IOException("ordinary CDN").sabrTransportFailureFor("test"))
         } finally { broken.close() }
+    }
+
+    @Test fun interruptedSabrProducerDoesNotLookLikeAnUnhealthyCdn() {
+        val cancelled = CapsuleSabrAudioDataSource(chunkStream = {
+            flow { throw CancellationException("user skipped track") }
+        })
+        try {
+            cancelled.open(dataSpec())
+            val failure = assertThrows(InterruptedIOException::class.java) {
+                cancelled.read(ByteArray(2), 0, 2)
+            }
+            assertEquals(null, failure.sabrTransportFailureFor("test"))
+        } finally { cancelled.close() }
     }
 
     @Test fun hungSabrSessionHasBoundedReadAndCancelsProducer() {
