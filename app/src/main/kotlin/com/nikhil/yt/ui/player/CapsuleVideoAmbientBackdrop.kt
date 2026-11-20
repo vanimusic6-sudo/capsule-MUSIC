@@ -25,10 +25,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
-// Retarget the sampled 2D light field from its currently visible colour.
-// 180ms blends finished before the next 220-660ms frame sample and looked
-// like successive steps. A ~440ms overlap follows live motion without snapping.
-internal const val VIDEO_AMBIENT_BLEND_DURATION_MS = 440
+// The animated field retargets from the currently visible colour whenever
+// the decoder publishes another sample. A 620ms overlap spans the next active
+// 340-560ms sample, preventing the stop/start colour steps seen in Canvas.
+// No timer, duplicated decoder, or full-resolution repaint is introduced.
+internal const val VIDEO_AMBIENT_BLEND_DURATION_MS = 620
 
 internal fun capsuleAmbientPaletteAt(previous: List<Color>, currentTarget: List<Color>, progress: Float): List<Color> {
     if (previous.size != currentTarget.size) return currentTarget
