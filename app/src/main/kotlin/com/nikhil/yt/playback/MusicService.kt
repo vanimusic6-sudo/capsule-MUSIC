@@ -3904,6 +3904,7 @@ class MusicService :
                 previousCanonicalId != null &&
                 transitionedMediaId != previousCanonicalId
         if (canonicalChanged) {
+            DownloadPlaybackCoexistence.priority.clear("video-resolve")
             videoPauseCollapseJob?.cancel()
             videoPauseCollapseJob = null
             videoModeSwitchJob?.cancel()
@@ -5407,6 +5408,7 @@ class MusicService :
     }
 
     private fun enterCapsuleVideoMode() {
+        DownloadPlaybackCoexistence.priority.clear("video-resolve")
         videoRequestedAtMs = android.os.SystemClock.elapsedRealtime()
         cancelVideoRecovery()
         videoResolveCoordinator.cancel()
@@ -5498,6 +5500,13 @@ class MusicService :
         audioResolveCoordinator.cancelSpeculativeExcept(setOf(canonicalMediaId)).forEach { id ->
             Timber.tag("CapsuleVideo").i("VIDEO admission: cancelled speculative AUDIO resolve id=%s", id)
         }
+        // VIDEO clip matching + extraction is foreground traffic too, even
+        // before the separate Media3 VIDEO player reaches BUFFERING. Pause
+        // optional file downloads for at most 12s, never AUDIO playback.
+        DownloadPlaybackCoexistence.priority.observe(
+            mediaId = canonicalMediaId, playWhenReady = player.playWhenReady,
+            buffering = true, ready = false, owner = "video-resolve",
+        )
 
         videoResolveCoordinator.resolve(
             request =
@@ -5523,6 +5532,7 @@ class MusicService :
                     videoPlaybackState.value.phase == CapsuleVideoPhase.RESOLVING
             },
             onResult = { resolved ->
+                DownloadPlaybackCoexistence.priority.clear("video-resolve")
                 resolved.onFailure { throwable ->
 
                     val noMatchingVideo =
@@ -5578,6 +5588,7 @@ class MusicService :
     }
 
     private fun leaveCapsuleVideoMode() {
+        DownloadPlaybackCoexistence.priority.clear("video-resolve")
         com.nikhil.yt.playback.video.sabr.SabrVideoRegistry.clear()
         cancelVideoRecovery()
         // The companion invokes the sound-handoff callback itself. Do not

@@ -49,6 +49,22 @@ class DownloadPlaybackNetworkPriorityTest {
         priority.observe("song-b", playWhenReady = true, buffering = true, ready = false)
         assertTrue(priority.shouldYield())
     }
+    @Test fun videoMatchingGetsBoundedPriorityBeforeVideoDecoderStarts() {
+        priority.observe("song-a", true, false, true, owner = "audio")
+        nowMs += DownloadPlaybackNetworkPriority.READY_REFILL_YIELD_MS
+        assertFalse(priority.shouldYield())
+        priority.observe("song-a", true, true, false, owner = "video-resolve")
+        assertTrue("Match and extractor requests should outrank optional downloads", priority.shouldYield())
+        nowMs += DownloadPlaybackNetworkPriority.MAX_BUFFERING_YIELD_MS
+        assertFalse("An unlucky VIDEO resolve must not starve downloads forever", priority.shouldYield())
+        priority.observe("song-a", true, true, false, owner = "video")
+        assertTrue("After extraction, Media3 buffering owns its own gate", priority.shouldYield())
+        priority.clear("video-resolve")
+        assertTrue(priority.shouldYield())
+        priority.clear("video")
+        assertFalse(priority.shouldYield())
+    }
+
     @Test fun audioReadyCannotReleaseDownloadsWhileVideoIsPreparing() {
         priority.observe("song-a", true, false, true)
         nowMs += 3_000
