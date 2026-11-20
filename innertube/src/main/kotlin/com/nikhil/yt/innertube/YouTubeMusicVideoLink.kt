@@ -94,6 +94,17 @@ internal fun nextOfficialVideoForSong(response: NextResponse, sourceId: String):
     return null
 }
 
+/**
+ * A valid result from the native Music toggle/Videos surface ALWAYS wins.
+ * Artist browsing may run only if that entire independent search produced
+ * no valid candidate. Keeping this policy in one place prevents future forks
+ * from accidentally moving the artist shortcut above the proper search.
+ */
+internal suspend fun capsuleNativeVideoBeforeArtistFallback(
+    native: YouTubeMusicVideoLink?,
+    artistFallback: suspend () -> YouTubeMusicVideoLink?,
+): YouTubeMusicVideoLink? = native ?: artistFallback()
+
 object YouTubeMusicVideoLinkResolver {
     private const val VIDEO_FILTER = "EgWKAQIQAWoKEAkQChAFEAMQBA%3D%3D"
     private const val POSITIVE_CACHE_MS = 2 * 60 * 60 * 1000L
