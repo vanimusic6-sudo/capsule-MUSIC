@@ -21,6 +21,10 @@ import com.nikhil.yt.innertube.models.YouTubeClient.Companion.WEB_REMIX
 import com.nikhil.yt.innertube.models.response.SearchResponse
 import io.ktor.client.call.body
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -93,6 +97,10 @@ object YouTubeMusicVideoLinkResolver {
     private const val POSITIVE_CACHE_MS = 2 * 60 * 60 * 1000L
     private const val FIRST_PARTY_TIMEOUT_MS = 4_000L
     private const val SEARCH_TIMEOUT_MS = 7_000L
+    // One natural Videos query can overlap a slow /next lookup. Do not
+    // launch it if /next returns quickly, and never hedge authenticated
+    // InnerTube's shared mutable session.
+    private const val ANONYMOUS_SEARCH_HEDGE_MS = 700L
     private const val NEGATIVE_CACHE_MS = 30 * 1000L
     private const val MAX_CACHE_ENTRIES = 600
 
@@ -172,6 +180,7 @@ object YouTubeMusicVideoLinkResolver {
                     )
                 }
 
+                coroutineScope {
                 val sourceTitleNorm =
                     YouTubeMusicVideoMatcher.normalizeTitle(sourceTitle)
                 val sourceArtistNorms =
@@ -199,11 +208,28 @@ object YouTubeMusicVideoLinkResolver {
                         }
                     }.distinct()
 
+                // The first-party counterpart is authoritative. On slow anonymous
+                // /next calls, hedge ONE natural Videos search after 700ms.
+                // The shared admission is mutex-protected; rate-limit and bot
+                // verdicts still terminate the whole operation.
+                val searchCanProceed = CompletableDeferred<Unit>()
+                val speculativeSearch = if (CapsuleAnonymousSession.enabled) {
+                    async(start = CoroutineStart.LAZY) {
+                        withTimeoutOrNull(ANONYMOUS_SEARCH_HEDGE_MS) {
+                            searchCanProceed.await()
+                        }
+                        runCatching {
+                            searchVideoRenderers(queries.first(), beforeMetadataRequest)
+                        }.onFailure { if (it is CancellationException) throw it }
+                    }.also { it.start() }
+                } else null
+
                 // Prefer the same audio/video toggle as the official Music
                 // player. Never infer identity from a similarly named upload
                 // when /next explicitly supplies a verified counterpart.
                 val canonical = lookupFirstPartyCounterpart(sourceId, beforeMetadataRequest)
                 if (canonical != null) {
+                    speculativeSearch?.cancel()
                     val link = YouTubeMusicVideoLink(
                         videoId = canonical,
                         musicVideoType = MUSIC_VIDEO_TYPE_OMV,
@@ -215,8 +241,11 @@ object YouTubeMusicVideoLinkResolver {
                         metadataKey = metadataKey,
                         expiresAtMs = System.currentTimeMillis() + POSITIVE_CACHE_MS,
                     ))
-                    return@withLock link
+                    return@coroutineScope link
                 }
+                // Avoid waiting for the 700ms hedge when /next already answered
+                // "no counterpart". A fast /next therefore costs no extra delay.
+                searchCanProceed.complete(Unit)
 
                 val candidatesById = linkedMapOf<String, Candidate>()
                 var rowsSeen = 0
@@ -234,7 +263,11 @@ object YouTubeMusicVideoLinkResolver {
                             candidatesById.values.maxOfOrNull { it.score }
                         )) break
 
-                    val renderers = searchVideoRenderers(query, beforeMetadataRequest)
+                    val renderers = if (index == 0 && speculativeSearch != null) {
+                        speculativeSearch.await().getOrThrow()
+                    } else {
+                        searchVideoRenderers(query, beforeMetadataRequest)
+                    }
                     rowsSeen += renderers.size
 
                     for (renderer in renderers) {
@@ -304,6 +337,7 @@ object YouTubeMusicVideoLinkResolver {
                 )
 
                 link
+                }
             }
         }.onFailure { failure ->
             // runCatching also catches Coroutine CancellationException. A
