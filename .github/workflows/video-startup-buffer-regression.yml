@@ -6,6 +6,7 @@ on:
     branches:
       - 'engine/**'
       - 'perf/**'
+      - 'fix/**'
     paths:
       - 'app/src/main/kotlin/com/nikhil/yt/playback/**'
       - 'app/src/test/kotlin/com/nikhil/yt/playback/**'
@@ -57,6 +58,9 @@ jobs:
           --tests 'com.nikhil.yt.playback.AudioNetworkSelectionPolicyTest'
           --tests 'com.nikhil.yt.playback.PlaybackSourceRetryTest'
           --tests 'com.nikhil.yt.playback.AudioCdnSkipBurstPolicyTest'
+          --tests 'com.nikhil.yt.playback.AudioBufferStallPolicyTest'
+          --tests 'com.nikhil.yt.playback.AudioCdnRecoveryPlanTest'
+          --tests 'com.nikhil.yt.playback.PlaybackRecoveryCoordinatorTest'
           --tests 'com.nikhil.yt.ui.CapsuleBackgroundMotionTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleBackgroundClockTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleBackgroundShaderTest'
