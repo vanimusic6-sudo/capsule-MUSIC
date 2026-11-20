@@ -15,6 +15,42 @@ internal object YouTubeMusicVideoMatcher {
     // launch another metadata search solely to chase a higher score.
     const val FIRST_QUERY_ACCEPT_SCORE = 170
 
+    // Every Videos result previously rebuilt a dozen regular expressions and
+    // variant lists. Cache the immutable matchers once: this path runs on
+    // every candidate, including on small/thermally constrained phones.
+    private val featuredCredit = Regex("""(?i)\s*[\[(]\s*(?:feat\.?|ft\.?|featuring)\s+[^\])]*[\])]""")
+    private val unsupportedCharacters = Regex("""[^\p{L}\p{N}]+""")
+    private val whitespace = Regex("""\s+""")
+    private val durationPattern = Regex("""(?<!\d)(\d{1,2}):(\d{2})(?::(\d{2}))?(?!\d)""")
+    private val titleCleanups = listOf(
+        Regex("""\bofficial\s+music\s+video\b"""),
+        Regex("""\bofficial\s+video\b"""),
+        Regex("""\bmusic\s+video\b"""),
+        Regex("""\bofficial\b"""),
+        Regex("""\bremaster(?:ed)?(?:\s+\d{4})?\b"""),
+        Regex("""\balbum\s+version\b"""),
+        Regex("""\bsingle\s+version\b"""),
+    )
+    private val contextualRejects = listOf(
+        " live ", " concert ", " performance ", " session ",
+        " acoustic ", " cover ", " karaoke ",
+        " animated video ", " dance video ",
+        " dance practice ", " slowed ", " reverb ", " sped up ",
+        " nightcore ", " remix ", " edit ", " fanmade ", " fan made ",
+        " amv ", " reaction ", " interview ", " behind the scenes ",
+        " making of ", " teaser ", " trailer ", " vertical video ",
+        " shorts ", " challenge ",
+    )
+    private val alwaysReject = listOf(
+        " lyric ", " lyrics ", " lyricvideo ", " lyricsvideo ",
+        " lyric video ", " lyrics video ",
+        " sing along ", " on screen lyrics ", " text only ",
+        " text video ", " words on screen ", " subtitles ", " subtitled ",
+        " текст песни ", " слова песни ", " видео с текстом ",
+        " субтитры ", " караоке ", " visualizer ",
+        " official audio ", " audio only ", " topic audio ",
+    )
+
     fun needsSecondQuery(bestScore: Int?): Boolean =
         bestScore == null || bestScore < FIRST_QUERY_ACCEPT_SCORE
 
@@ -105,34 +141,22 @@ internal object YouTubeMusicVideoMatcher {
     // the official clip titled "Artist - Song". Only remove explicitly
     // bracketed credits: never delete arbitrary title words or a remix suffix.
     fun normalizeTitle(value: String): String =
-        normalizeText(
-            value.replace(
-                Regex("""(?i)\s*[\[(]\s*(?:feat\.?|ft\.?|featuring)\s+[^\])]*[\])]"""),
-                " ",
-            ),
-        )
-            .replace(Regex("\\bofficial\\s+music\\s+video\\b"), " ")
-            .replace(Regex("\\bofficial\\s+video\\b"), " ")
-            .replace(Regex("\\bmusic\\s+video\\b"), " ")
-            .replace(Regex("\\bofficial\\b"), " ")
-            .replace(Regex("\\bremaster(?:ed)?(?:\\s+\\d{4})?\\b"), " ")
-            .replace(Regex("\\balbum\\s+version\\b"), " ")
-            .replace(Regex("\\bsingle\\s+version\\b"), " ")
-            .replace(Regex("\\s+"), " ")
-            .trim()
+        whitespace.replace(
+            titleCleanups.fold(normalizeText(featuredCredit.replace(value, " "))) { title, pattern ->
+                pattern.replace(title, " ")
+            },
+            " ",
+        ).trim()
 
     fun normalizeText(value: String): String =
-        value
-            .lowercase()
-            .replace('&', ' ')
-            .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
-            .replace(Regex("\\s+"), " ")
-            .trim()
+        whitespace.replace(
+            unsupportedCharacters.replace(value.lowercase().replace('&', ' '), " "),
+            " ",
+        ).trim()
 
     fun extractDurationSeconds(text: String): Int? {
         val match =
-            Regex("""(?<!\d)(\d{1,2}):(\d{2})(?::(\d{2}))?(?!\d)""")
-                .find(text)
+            durationPattern.find(text)
                 ?: return null
 
         val first = match.groupValues[1].toIntOrNull() ?: return null
@@ -157,18 +181,6 @@ internal object YouTubeMusicVideoMatcher {
         val source = " ${normalizeText(sourceTitle)} "
         val candidate = " ${normalizeText(candidateTitle)} "
 
-        val contextualRejects =
-            listOf(
-                " live ", " concert ", " performance ", " session ",
-                " acoustic ", " cover ", " karaoke ",
-                " animated video ", " dance video ",
-                " dance practice ", " slowed ", " reverb ", " sped up ",
-                " nightcore ", " remix ", " edit ", " fanmade ", " fan made ",
-                " amv ", " reaction ", " interview ", " behind the scenes ",
-                " making of ", " teaser ", " trailer ", " vertical video ",
-                " shorts ", " challenge ",
-            )
-
         if (
             contextualRejects.any { token ->
                 candidate.contains(token) && !source.contains(token)
@@ -179,17 +191,6 @@ internal object YouTubeMusicVideoMatcher {
 
         // A lyrics/text upload is never an acceptable replacement for a clip,
         // even if the original AUDIO title itself contains "Lyrics".
-        val alwaysReject =
-            listOf(
-                " lyric ", " lyrics ", " lyricvideo ", " lyricsvideo ",
-                " lyric video ", " lyrics video ",
-                " sing along ", " on screen lyrics ", " text only ",
-                " text video ", " words on screen ", " subtitles ", " subtitled ",
-                " текст песни ", " слова песни ", " видео с текстом ",
-                " субтитры ", " караоке ", " visualizer ",
-                " official audio ", " audio only ", " topic audio ",
-            )
-
         return alwaysReject.any { token -> candidate.contains(token) }
     }
 
