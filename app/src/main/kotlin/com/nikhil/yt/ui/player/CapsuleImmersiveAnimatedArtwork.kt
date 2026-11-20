@@ -61,6 +61,8 @@ internal fun CapsuleImmersiveAnimatedArtwork(
     metadata: MediaMetadata,
     discover: Boolean,
     enabled: Boolean,
+    /** True only for visible Immersion artwork while MUSIC is playing. */
+    renderActive: Boolean = discover,
     modifier: Modifier = Modifier,
 ) {
     val session = CapsuleMotionPlaybackSession
@@ -142,11 +144,24 @@ internal fun CapsuleImmersiveAnimatedArtwork(
                             runCatching { texture.getBitmap(256, 256) }.getOrNull()
                                 ?.let { session.retain(it) }
                         }
-                        runCatching { view.player = null } // detach surface, NOT ExoPlayer timeline
-                        if (attachedView === view) attachedView = null
+                        if (attachedView === view) {
+                            session.setRenderingActive(videoPlayer, false)
+                            attachedView = null
+                        }
+                        runCatching { view.player = null } // retain session, pause decoder
                     },
                 )
             }
+        }
+
+        // No silent codec/network work while the sheet is closed, music is
+        // paused or a true VIDEO clip owns the screen. The ready decoder is
+        // retained and resumes at the same timeline when Canvas is visible.
+        LaunchedEffect(videoPlayer, attachedView, renderActive) {
+            session.setRenderingActive(videoPlayer, renderActive && attachedView != null)
+        }
+        DisposableEffect(videoPlayer) {
+            onDispose { session.setRenderingActive(videoPlayer, false) }
         }
 
         DisposableEffect(videoPlayer, attachedView) {
@@ -162,11 +177,11 @@ internal fun CapsuleImmersiveAnimatedArtwork(
         // Reuse the restored player-design 48x28 video sampler and soft
         // image-derived background. Capture only while a TextureView is shown.
         // Decoder-frame metadata drives the loop; NO polling interval or
-        // second decoder. The original 700ms sampling cadence is shared.
-        LaunchedEffect(videoPlayer, attachedView, surfaceReady, metadata.id) {
+        // second decoder. Uses the shared adaptive frame sampling budget.
+        LaunchedEffect(videoPlayer, attachedView, surfaceReady, metadata.id, renderActive) {
             val view = attachedView?.videoSurfaceView as? TextureView
                 ?: return@LaunchedEffect
-            if (!surfaceReady) return@LaunchedEffect
+            if (!surfaceReady || !renderActive) return@LaunchedEffect
             val buffer = Bitmap.createBitmap(
                 VIDEO_AMBIENT_SAMPLE_WIDTH, VIDEO_AMBIENT_SAMPLE_HEIGHT,
                 Bitmap.Config.ARGB_8888,
