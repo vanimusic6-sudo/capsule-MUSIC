@@ -49,6 +49,21 @@ class CapsuleVideoAmbientTest {
         assertFalse(memory.shouldPublish(second))
     }
 
+    @Test fun subtleContinuousVideoColourChangeIsPublishedAtLiveCadence() {
+        val memory = CapsuleVideoAmbientCaptureMemory()
+        val original = CapsuleColorField(20, 16,
+            List(320) { androidx.compose.ui.graphics.Color(0.45f, 0.3f, 0.5f) })
+        val brighter = CapsuleColorField(20, 16,
+            List(320) { androidx.compose.ui.graphics.Color(0.465f, 0.3f, 0.5f) })
+        assertTrue(memory.shouldPublish(CapsuleVideoAmbientFrame(
+            "track", capsuleBandsFromField(original), original)))
+        assertTrue("Gradual scene changes must not be mistaken for static frames",
+            memory.shouldPublish(CapsuleVideoAmbientFrame(
+                "track", capsuleBandsFromField(brighter), brighter)))
+        assertFalse(memory.shouldPublish(CapsuleVideoAmbientFrame(
+            "track", capsuleBandsFromField(brighter), brighter)))
+    }
+
     @Test fun liveFrameKeepsBlueAndRedSidesSeparate() {
         val bitmap = Bitmap.createBitmap(48, 28, Bitmap.Config.ARGB_8888)
         for (y in 0 until 28) for (x in 0 until 48) {
