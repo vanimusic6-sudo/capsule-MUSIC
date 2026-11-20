@@ -51,7 +51,9 @@ internal fun firstPartyOfficialVideoCounterpart(
     if (primaryId != sourceMediaId) return null
     val candidate = counterpartId?.trim() ?: return null
     if (!candidate.matches(Regex("[A-Za-z0-9_-]{11}")) || candidate == sourceMediaId) return null
-    if (counterpartType != null && counterpartType != MUSIC_VIDEO_TYPE_OMV) return null
+    // An untyped /next counterpart may be a lyric/visualizer upload. Unlike an
+    // explicitly typed OMV, its ID alone does not prove a real music video.
+    if (counterpartType != MUSIC_VIDEO_TYPE_OMV) return null
     return candidate
 }
 
@@ -96,7 +98,9 @@ object YouTubeMusicVideoLinkResolver {
     private const val VIDEO_FILTER = "EgWKAQIQAWoKEAkQChAFEAMQBA%3D%3D"
     private const val POSITIVE_CACHE_MS = 2 * 60 * 60 * 1000L
     private const val FIRST_PARTY_TIMEOUT_MS = 4_000L
-    private const val SEARCH_TIMEOUT_MS = 7_000L
+    private const val SEARCH_TIMEOUT_MS = 6_000L
+    private const val ARTIST_CATALOG_BUDGET_MS = 1_800L
+    private val artistBrowseId = Regex("""(?:UC|MPLAUC)[A-Za-z0-9_-]{14,80}""")
     // One natural Videos query can overlap a slow /next lookup. Do not
     // launch it if /next returns quickly, and never hedge authenticated
     // InnerTube's shared mutable session.
@@ -141,6 +145,7 @@ object YouTubeMusicVideoLinkResolver {
         title: String,
         artists: List<String>,
         durationSeconds: Int?,
+        artistBrowseIds: List<String> = emptyList(),
         beforeMetadataRequest: suspend () -> Unit = CapsuleVideoRequestGuard::beforeMetadataRequest,
     ): Result<YouTubeMusicVideoLink> =
         runCatching {
@@ -150,12 +155,25 @@ object YouTubeMusicVideoLinkResolver {
                 artists.map { it.trim() }.filter { it.isNotBlank() }
             val metadataKey = listOf(YouTubeMusicVideoMatcher.normalizeTitle(sourceTitle),
                 cleanArtists.map(YouTubeMusicVideoMatcher::normalizeText).distinct().sorted().joinToString("|"),
-                durationSeconds?.toString().orEmpty()).joinToString(":")
+                durationSeconds?.toString().orEmpty(),
+                artistBrowseIds.filter(artistBrowseId::matches).distinct().sorted().take(3).joinToString("|")
+            ).joinToString(":")
 
             require(sourceId.isNotBlank()) { "Missing YouTube Music track id" }
             require(sourceTitle.isNotBlank()) { "Missing song title" }
 
             cachedOrNull(sourceId, metadataKey)?.let { return@runCatching it }
+            // The artist screen may already have populated a trustworthy VIDEO
+            // shelf. Resolve it in memory before any /next or global search.
+            YouTubeMusicArtistVideoHints.match(
+                sourceTitle, cleanArtists, durationSeconds, sourceId, artistBrowseIds,
+            )?.let { match ->
+                store(sourceId, CacheEntry(
+                    link = match, metadataKey = metadataKey,
+                    expiresAtMs = System.currentTimeMillis() + POSITIVE_CACHE_MS,
+                ))
+                return@runCatching match
+            }
             if (isNegativeCached(sourceId, metadataKey)) {
                 throw IllegalStateException(
                     "Official music video is unavailable for this song",
@@ -249,6 +267,24 @@ object YouTubeMusicVideoLinkResolver {
 
                 val candidatesById = linkedMapOf<String, Candidate>()
                 var rowsSeen = 0
+                var artistCatalogChecked = false
+
+                suspend fun tryArtistCatalog(): YouTubeMusicVideoLink? {
+                    if (artistCatalogChecked) return null
+                    artistCatalogChecked = true
+                    // If not browsing the performer there is no reliable author
+                    // ID to query. Never search by a guessed name/UC channel.
+                    val artistId = artistBrowseIds.firstOrNull { artistBrowseId.matches(it) }
+                        ?: return null
+                    val page = withTimeoutOrNull(ARTIST_CATALOG_BUDGET_MS) {
+                        beforeMetadataRequest()
+                        YouTube.artist(artistId).getOrNull()
+                    } ?: return null
+                    // YouTube.artist already remembers its VIDEO shelves.
+                    return YouTubeMusicArtistVideoHints.match(
+                        sourceTitle, cleanArtists, durationSeconds, sourceId, artistBrowseIds,
+                    )
+                }
 
                 // One shared deadline for both search variants. The previous
                 // per-query budget could double the wait after /next failed.
@@ -289,8 +325,13 @@ object YouTubeMusicVideoLinkResolver {
 
                     if (!YouTubeMusicVideoMatcher.needsSecondQuery(
                             candidatesById.values.maxOfOrNull { it.score }
-                        )) {
-                        break
+                        )) break
+
+                    // The first global Videos query was inconclusive. Before a
+                    // SECOND global query, try the exact performer's official
+                    // catalog once, if a genuine YouTube Music browse ID exists.
+                    if (index == 0) {
+                        tryArtistCatalog()?.let { return@coroutineScope it }
                     }
                     }
                     true
