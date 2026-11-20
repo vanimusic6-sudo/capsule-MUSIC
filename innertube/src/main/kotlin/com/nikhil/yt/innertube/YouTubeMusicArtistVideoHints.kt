@@ -110,10 +110,13 @@ internal object YouTubeMusicArtistVideoHints {
         artistBrowseIds: List<String>,
         nowMs: Long = System.currentTimeMillis(),
     ): YouTubeMusicVideoLink? {
-        if (artistBrowseIds.none(verifiedArtistBrowseId::matches)) return null
+        // A mixed list containing one real browse ID and an unrelated
+        // unverified token must NEVER authorize the unverified artist page.
+        val trustedIds = artistBrowseIds.filter(verifiedArtistBrowseId::matches).distinct()
+        if (trustedIds.isEmpty()) return null
         return match(
             sourceTitle, artists, durationSeconds, sourceId,
-            artistBrowseIds, nowMs, requireTypedOmv = true,
+            trustedIds, nowMs, requireTypedOmv = true,
         )
     }
 
