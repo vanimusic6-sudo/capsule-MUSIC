@@ -224,10 +224,13 @@ internal fun CapsuleLyricsBackdropLayer(
                                 }
                             }
                         }
-                        ImmersiveLyricsColoring(if (tone.ready) tone.edge else IMMERSIVE_NEUTRAL_COLOR)
-                        preparedBackground?.let { prepared ->
+                        if (preparedBackground == null) {
+                            ImmersiveLyricsColoring(if (tone.ready) tone.edge else IMMERSIVE_NEUTRAL_COLOR)
+                        } else {
+                            // Don't animate the obsolete single-colour gradient
+                            // beneath an entirely opaque prepared spatial field.
                             Image(
-                                bitmap = prepared,
+                                bitmap = requireNotNull(preparedBackground),
                                 contentDescription = null,
                                 contentScale = ContentScale.FillBounds,
                                 modifier = Modifier.fillMaxSize(),
