@@ -68,7 +68,9 @@ internal fun Throwable.sabrTransportFailureFor(mediaId: String?): CapsuleSabrTra
 internal class CapsuleSabrAudioDataSource(
     private val beforeNetworkOpen: (DataSpec) -> Unit = {},
     private val chunkStream: (SabrBootstrap) -> Flow<SabrChunk> = ::defaultSabrChunks,
+    private val readProgressTimeoutMs: Long = DEFAULT_SABR_READ_PROGRESS_TIMEOUT_MS,
 ) : BaseDataSource(true) {
+    init { require(readProgressTimeoutMs > 0L) }
     private var opened = false
     private var requestedUri: Uri? = null
     private var producer: Job? = null
@@ -195,7 +197,7 @@ internal class CapsuleSabrAudioDataSource(
             // An unresponsive UMP stream must not block Media3's loader
             // indefinitely after the audible Direct stream was exhausted.
             val next = runBlocking {
-                withTimeoutOrNull(SABR_READ_PROGRESS_TIMEOUT_MS) {
+                withTimeoutOrNull(readProgressTimeoutMs) {
                     requireNotNull(queue).receiveCatching()
                 }
             } ?: run {
@@ -248,7 +250,7 @@ internal class CapsuleSabrAudioDataSource(
     private companion object {
         const val MAX_SABR_CHUNK_BYTES = 8 * 1024 * 1024
         const val MAX_SABR_REPLAY_SEEK_BYTES = 8L * 1024 * 1024
-        const val SABR_READ_PROGRESS_TIMEOUT_MS = 20_000L
+        const val DEFAULT_SABR_READ_PROGRESS_TIMEOUT_MS = 20_000L
     }
 }
 
