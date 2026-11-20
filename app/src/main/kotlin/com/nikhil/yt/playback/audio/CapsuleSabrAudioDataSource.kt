@@ -55,6 +55,7 @@ internal class CapsuleSabrAudioDataSource(
     private var opened = false
     private var requestedUri: Uri? = null
     private var producer: Job? = null
+    private var producerScope: CoroutineScope? = null
     private var queue: Channel<SabrChunk>? = null
     private var pending: SabrChunk? = null
     private var pendingOffset = 0
@@ -87,7 +88,9 @@ internal class CapsuleSabrAudioDataSource(
         pendingOffset = 0
         val pipe = Channel<SabrChunk>(capacity = 2)
         queue = pipe
-        producer = CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+        val taskScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        producerScope = taskScope
+        producer = taskScope.launch {
             try {
                 var expectedOffset = 0L
                 chunkStream(bootstrap).collect { chunk ->
@@ -143,6 +146,9 @@ internal class CapsuleSabrAudioDataSource(
                 currentPosition += count
                 if (bytesLeft != Long.MAX_VALUE) bytesLeft -= count
                 bytesTransferred(count)
+                // A bounded request is complete: stop unused SABR prefetch
+                // before it burns network and CPU after Media3 has its bytes.
+                if (bytesLeft == 0L) producer?.cancel()
                 return count
             }
             pending = null
@@ -165,6 +171,8 @@ internal class CapsuleSabrAudioDataSource(
     override fun getUri(): Uri? = requestedUri
 
     override fun close() {
+        producerScope?.cancel()
+        producerScope = null
         producer?.cancel()
         producer = null
         queue?.cancel()
@@ -237,6 +245,9 @@ private fun defaultSabrChunks(bootstrap: SabrBootstrap): Flow<SabrChunk> = flow 
                 followRedirects(false)
                 followSslRedirects(false)
                 retryOnConnectionFailure(false)
+                // SABR POSTs must obey exactly the same global HTTP-429 gate
+                // as direct audio CDN requests. Never log the request body.
+                addInterceptor(CapsuleAudioRequestInterceptor(guardStreams = true))
             }
             selectedProxy?.let { proxy = it }
         }
