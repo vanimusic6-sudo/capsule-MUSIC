@@ -201,7 +201,7 @@ internal class CapsuleSabrAudioDataSource(
             } ?: run {
                 producer?.cancel()
                 throw CapsuleSabrTransportException(
-                    requireNotNull((currentContext?.bootstrap)?.videoId),
+                    currentContext?.bootstrap?.videoId ?: requestedUri?.lastPathSegment.orEmpty(),
                     "read-timeout",
                     IOException("SABR made no byte progress within the read deadline"),
                 )
@@ -209,10 +209,16 @@ internal class CapsuleSabrAudioDataSource(
             if (next.isClosed) {
                 val failure = next.exceptionOrNull()
                 if (failure != null) {
-                    throw if (failure is IOException) failure else IOException("SABR audio transport failed", failure)
+                    throw if (failure is IOException) failure else CapsuleSabrTransportException(
+                        currentContext?.bootstrap?.videoId ?: requestedUri?.lastPathSegment.orEmpty(),
+                        "producer-closed", failure,
+                    )
                 }
                 if (bytesLeft != Long.MAX_VALUE && bytesLeft > 0L) {
-                    throw IOException("SABR exhausted before the requested bytes were read")
+                    throw CapsuleSabrTransportException(
+                        currentContext?.bootstrap?.videoId ?: requestedUri?.lastPathSegment.orEmpty(),
+                        "truncated", IOException("SABR exhausted before the requested bytes were read"),
+                    )
                 }
                 return C.RESULT_END_OF_INPUT
             }
@@ -313,7 +319,7 @@ private fun defaultSabrChunks(bootstrap: SabrBootstrap): Flow<SabrChunk> = flow 
         var responses = 0
         emitAll(
             SabrAudioStream(
-                client = client,
+                httpClient = client,
                 bootstrap = bootstrap,
                 maxRequestsWithoutProgress = 3,
                 onResponse = { response ->
