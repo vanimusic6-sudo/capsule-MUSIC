@@ -6,6 +6,7 @@ on:
       - refactor/audio-video-download-20261120
       - fix/video-artist-catalog-lyrics-20261120
       - fix/video-search-thermal-ambient-20261120
+      - fix/lyrics-video-handoff-speed-20261120
     paths:
       - 'app/src/main/kotlin/com/nikhil/yt/playback/**'
       - 'app/src/main/kotlin/com/nikhil/yt/ui/player/**'
@@ -69,6 +70,10 @@ jobs:
           --tests 'com.nikhil.yt.ui.player.CapsuleVideoColourMotionTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleVideoAmbientResumeTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleMotionArtworkGateTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleInlineLyricsDemandAndPaletteTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleLyricsPaletteRecoveryTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveImageBackdropTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleLyricsThemeTest'
           --stacktrace --no-daemon --max-workers=2
       - name: Static integrity and safe network boundaries
         run: python3 scripts/capsule_integrity_gate.py
