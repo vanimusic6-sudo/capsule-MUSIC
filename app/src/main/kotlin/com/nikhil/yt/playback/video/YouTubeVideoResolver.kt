@@ -338,13 +338,26 @@ object YouTubeVideoResolver {
             beforeMetadataRequest()
             val remote = if (!muxedOnly && failedBackend != CapsuleWebVideoResolver.BACKEND) {
                 val preferredStart = SystemClock.elapsedRealtime()
+                val webBudget = CapsuleVideoFastStartPolicy.primaryBudgetMs(quality.maxHeight)
                 capsuleFastPrimaryOrFallback(
-                    primaryBudgetMs = CapsuleVideoFastStartPolicy.primaryBudgetMs(quality.maxHeight),
-                    primary = { CapsuleWebVideoResolver.resolve(videoId, quality) },
+                    primaryBudgetMs = webBudget,
+                    primary = {
+                        CapsuleWebVideoResolver.resolve(videoId, quality).also { result ->
+                            if (result != null) CapsuleVideoFastStartPolicy.notePrimaryResult(
+                                success = true,
+                                elapsedMs = SystemClock.elapsedRealtime() - preferredStart,
+                                allowedMs = webBudget,
+                            )
+                        }
+                    },
                     fallback = {
+                        val elapsedMs = SystemClock.elapsedRealtime() - preferredStart
+                        CapsuleVideoFastStartPolicy.notePrimaryResult(
+                            success = false, elapsedMs = elapsedMs, allowedMs = webBudget,
+                        )
                         Timber.tag(TAG).i(
-                            "VIDEO primary deadline hit; fallback clip=%s elapsedMs=%d",
-                            videoId, SystemClock.elapsedRealtime() - preferredStart,
+                            "VIDEO web route inconclusive; extractor clip=%s elapsedMs=%d budgetMs=%d",
+                            videoId, elapsedMs, webBudget,
                         )
                         callRemoteExtractor(videoId, quality, muxedOnly, failedBackend, refresh)
                     },
