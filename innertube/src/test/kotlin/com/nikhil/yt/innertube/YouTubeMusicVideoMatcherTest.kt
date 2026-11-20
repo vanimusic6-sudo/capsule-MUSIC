@@ -54,9 +54,8 @@ class YouTubeMusicVideoMatcherTest {
         assertNull(firstPartyOfficialVideoCounterpart(song, song, "https://evil/", official))
         assertNull(firstPartyOfficialVideoCounterpart(song, song, clip, "MUSIC_VIDEO_TYPE_ATV"))
         assertNull(firstPartyOfficialVideoCounterpart(song, song, clip, "MUSIC_VIDEO_TYPE_UGC"))
-        // Some official counterpart rows omit musicVideoType; the first-party
-        // toggle itself is authoritative, unlike untyped search cards.
-        assertEquals(clip, firstPartyOfficialVideoCounterpart(song, song, clip, null))
+        // An untyped /next counterpart is not proof of a true official clip.
+        assertNull(firstPartyOfficialVideoCounterpart(song, song, clip, null))
     }
 
     @Test fun nextWrapperParserDoesNotRequireFullQueueMetadata() {
@@ -76,7 +75,7 @@ class YouTubeMusicVideoMatcherTest {
 
     @Test fun entireWatchNextResponseSelectsOnlyTargetSongNotTheFirstRadioNeighbor() {
         val response = Json { ignoreUnknownKeys = true; explicitNulls = false }
-            .decodeFromString<NextResponse>("""{"contents":{"singleColumnMusicWatchNextResultsRenderer":{"tabbedRenderer":{"watchNextTabbedResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"musicQueueRenderer":{"content":{"playlistPanelRenderer":{"contents":[{"playlistPanelVideoWrapperRenderer":{"primaryRenderer":{"playlistPanelVideoRenderer":{"videoId":"otherclip01"}},"counterpart":[{"counterpartRenderer":{"playlistPanelVideoRenderer":{"videoId":"badclip0001"}}}]}},{"playlistPanelVideoWrapperRenderer":{"primaryRenderer":{"playlistPanelVideoRenderer":{"videoId":"abcdefghijk"}},"counterpart":[{"counterpartRenderer":{"playlistPanelVideoRenderer":{"videoId":"lmnopqrstuv"}}}]}}]}}}}}}]}}}}}""")
+            .decodeFromString<NextResponse>("""{"contents":{"singleColumnMusicWatchNextResultsRenderer":{"tabbedRenderer":{"watchNextTabbedResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"musicQueueRenderer":{"content":{"playlistPanelRenderer":{"contents":[{"playlistPanelVideoWrapperRenderer":{"primaryRenderer":{"playlistPanelVideoRenderer":{"videoId":"otherclip01"}},"counterpart":[{"counterpartRenderer":{"playlistPanelVideoRenderer":{"videoId":"badclip0001","navigationEndpoint":{"watchEndpoint":{"watchEndpointMusicSupportedConfigs":{"watchEndpointMusicConfig":{"musicVideoType":"MUSIC_VIDEO_TYPE_OMV"}}}}}}}]}},{"playlistPanelVideoWrapperRenderer":{"primaryRenderer":{"playlistPanelVideoRenderer":{"videoId":"abcdefghijk"}},"counterpart":[{"counterpartRenderer":{"playlistPanelVideoRenderer":{"videoId":"lmnopqrstuv","navigationEndpoint":{"watchEndpoint":{"watchEndpointMusicSupportedConfigs":{"watchEndpointMusicConfig":{"musicVideoType":"MUSIC_VIDEO_TYPE_OMV"}}}}}}}]}}]}}}}}}]}}}}}""")
         assertEquals("lmnopqrstuv", nextOfficialVideoForSong(response, "abcdefghijk"))
         assertEquals("badclip0001", nextOfficialVideoForSong(response, "otherclip01"))
         assertNull(nextOfficialVideoForSong(response, "missing12345"))
