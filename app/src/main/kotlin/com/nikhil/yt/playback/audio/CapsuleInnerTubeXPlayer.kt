@@ -322,9 +322,21 @@ object CapsuleInnerTubeXPlayer {
 
             val resolvedQuality = audioQuality.toInnerTubeX(connectivityManager)
             val effectivePriority = { if (download) AudioResolvePriority.DOWNLOAD else scheduler.effectivePriority(videoId, priority) }
+            val enqueuedAtNs = System.nanoTime()
             val stream =
                 scheduler.run(videoId, priority) {
+                    val schedulerWaitMs = (System.nanoTime() - enqueuedAtNs).coerceAtLeast(0L) / 1_000_000L
+                    if (schedulerWaitMs >= 300L) Timber.tag(TAG).i(
+                        "AUDIO resolve queue id=%s priority=%s waitMs=%d",
+                        videoId, effectivePriority(), schedulerWaitMs,
+                    )
+                    val mutexWaitStartedNs = System.nanoTime()
                     resolveMutex.withLock {
+                        val mutexWaitMs = (System.nanoTime() - mutexWaitStartedNs).coerceAtLeast(0L) / 1_000_000L
+                        if (mutexWaitMs >= 300L) Timber.tag(TAG).i(
+                            "AUDIO resolve mutex id=%s waitMs=%d",
+                            videoId, mutexWaitMs,
+                        )
                         withTimeout(ENGINE_RESOLVE_TIMEOUT_MS) {
                             CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
                             if (download) downloadBotGate.check()
@@ -491,6 +503,7 @@ object CapsuleInnerTubeXPlayer {
 
             attempted += profileId
             CapsulePlaybackSafety.blockedExceptionOrNull()?.let { throw it }
+            val attemptStartedNs = System.nanoTime()
 
             val wireGeneration = CapsulePlaybackSafety.wireBotSignalGeneration()
             Timber.tag(TAG).i(
@@ -509,6 +522,11 @@ object CapsuleInnerTubeXPlayer {
                         audioQuality = audioQuality,
                         download = download,
                     )
+                val elapsedMs = (System.nanoTime() - attemptStartedNs).coerceAtLeast(0L) / 1_000_000L
+                if (elapsedMs >= 1_000L) Timber.tag(TAG).i(
+                    "AUDIO profile result id=%s profile=%s outcome=ok elapsedMs=%d",
+                    videoId, profileId, elapsedMs,
+                )
                 if (profileId != primaryProfileId) {
                     Timber.tag(TAG).i(
                         "AUDIO fallback recovered id=%s primary=%s selected=%s",
@@ -538,6 +556,11 @@ object CapsuleInnerTubeXPlayer {
                         wireGenerationBeforeAttempt = wireGeneration,
                     )
                 val priorityAfterFailure = priorityProvider()
+                Timber.tag(TAG).w(
+                    "AUDIO profile result id=%s profile=%s outcome=failed kind=%s elapsedMs=%d",
+                    videoId, profileId, kind,
+                    (System.nanoTime() - attemptStartedNs).coerceAtLeast(0L) / 1_000_000L,
+                )
 
                 if (forceSabr) {
                     // Strict test: surface the failure; never retry another

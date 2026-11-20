@@ -348,9 +348,19 @@ object YouTubeVideoResolver {
             )
         }
 
+        val queueStartNs = System.nanoTime()
         return resolveMutex.withLock {
+            val waitMs = (System.nanoTime() - queueStartNs).coerceAtLeast(0L) / 1_000_000L
+            if (waitMs >= 300L) Timber.tag(TAG).i(
+                "VIDEO resolve queue clip=%s waitMs=%d", videoId, waitMs,
+            )
             cache[key]?.let { return@withLock capsuleVideoBindSource(it, sourceMediaId) }
+            val admissionStartNs = System.nanoTime()
             beforeMetadataRequest()
+            val admissionWaitMs = (System.nanoTime() - admissionStartNs).coerceAtLeast(0L) / 1_000_000L
+            if (admissionWaitMs >= 300L) Timber.tag(TAG).i(
+                "VIDEO metadata admission clip=%s waitMs=%d", videoId, admissionWaitMs,
+            )
             // Persist only temporary route health, never signed URLs or tokens.
             // A repeatedly timed-out WEB route must not add 5.2s to every next
             // clip before we even begin the already available isolated routes.
