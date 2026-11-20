@@ -32,6 +32,23 @@ import java.util.concurrent.Executors
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
+/** Video matches are only reusable for the same song metadata. A music
+ * metadata refresh must never resurrect a pairing made for an old title. */
+internal data class CapsuleVideoMatchIdentity(
+    val title: String,
+    val artists: List<String>,
+    val durationSeconds: Int?,
+)
+
+internal fun capsuleVideoMatchIdentity(
+    title: String, artists: List<String>, durationSeconds: Int?,
+): CapsuleVideoMatchIdentity = CapsuleVideoMatchIdentity(
+    title = title.trim().lowercase().take(256),
+    artists = artists.map { it.trim().lowercase().take(128) }
+        .filter(String::isNotBlank).distinct().sorted().take(8),
+    durationSeconds = durationSeconds?.takeIf { it > 0 },
+)
+
 object YouTubeVideoResolver {
     private const val TAG = "CapsuleVideo"
     private const val CACHE_SAFETY_MS = 45_000L
@@ -131,9 +148,14 @@ object YouTubeVideoResolver {
     private val songResolves = CapsuleVideoSingleFlight<Result<ResolvedVideo>>()
     // MUSIC media IDs and official clip IDs often differ. A successful match
     // remains useful even when its signed stream URL later expires.
-    private val matchedClips = object : LinkedHashMap<String, String>(64, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>): Boolean =
-            size > 64
+    private data class MatchedClip(
+        val videoId: String,
+        val identity: CapsuleVideoMatchIdentity,
+    )
+    private val matchedClips = object : LinkedHashMap<String, MatchedClip>(64, 0.75f, true) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<String, MatchedClip>,
+        ): Boolean = size > 64
     }
 
     @Volatile
@@ -183,8 +205,11 @@ object YouTubeVideoResolver {
             return Result.failure(IllegalArgumentException("Missing YouTube Music track id"))
         }
 
+        val identity = capsuleVideoMatchIdentity(title, artists, durationSeconds)
         val knownClipId = if (originalVideo) canonicalId
-            else synchronized(matchedClips) { matchedClips[canonicalId] }
+            else synchronized(matchedClips) {
+                matchedClips[canonicalId]?.takeIf { it.identity == identity }?.videoId
+            }
         // This requires neither another MUSIC search nor another player request.
         knownClipId?.let { id ->
             cache[cacheKey(id, quality, muxedOnly = false)]?.let { return Result.success(it) }
@@ -199,7 +224,7 @@ object YouTubeVideoResolver {
         // Only a real clip lookup has a useful parallel window. An already
         // known exact clip skips this warmup and goes straight to extraction.
         if (!originalVideo && knownClipId == null) startProcessWarmup()
-        val requestKey = "$canonicalId:${quality.name}:${if (originalVideo) "original" else "matched"}"
+        val requestKey = "$canonicalId:${quality.name}:${if (originalVideo) "original" else "matched"}:$identity"
         return songResolves.run(requestKey) {
             val result =
                 try {
@@ -228,7 +253,9 @@ object YouTubeVideoResolver {
                             }
                         // A verified song-to-clip match survives a transient stream
                         // failure; the next attempt need not repeat the MUSIC search.
-                        synchronized(matchedClips) { matchedClips[canonicalId] = videoId }
+                        synchronized(matchedClips) {
+                            matchedClips[canonicalId] = MatchedClip(videoId, identity)
+                        }
                         val matchedAt = SystemClock.elapsedRealtime()
                         Timber.tag(TAG).i("VIDEO timing match id=%s clip=%s ms=%s", canonicalId, videoId, matchedAt - startedAt)
 
@@ -243,7 +270,9 @@ object YouTubeVideoResolver {
                         Timber.tag(TAG).i("VIDEO timing extract clip=%s ms=%s backend=%s delivery=%s", videoId,
                             SystemClock.elapsedRealtime() - matchedAt, resolved.backend, resolved.delivery)
                         CapsuleVideoRequestGuard.noteSuccess()
-                        synchronized(matchedClips) { matchedClips[canonicalId] = videoId }
+                        synchronized(matchedClips) {
+                            matchedClips[canonicalId] = MatchedClip(videoId, identity)
+                        }
                         Result.success(resolved)
                     } ?: Result.failure(VideoBackendException(CapsuleVideoFailure.NETWORK, "VIDEO extraction timed out"))
                 } catch (cancelled: CancellationException) {
