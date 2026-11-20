@@ -383,7 +383,7 @@ object YouTube {
     suspend fun artist(browseId: String): Result<ArtistPage> = runCatchingCancellable {
         val response = innerTube.browse(WEB_REMIX, browseId).body<BrowseResponse>()
 
-        ArtistPage(
+        val page = ArtistPage(
             artist = ArtistItem(
                 id = browseId,
                 title = response.header?.musicImmersiveHeaderRenderer?.title?.runs?.firstOrNull()?.text
@@ -411,6 +411,11 @@ object YouTube {
                 ).orEmpty().mapNotNull(ArtistPage::fromSectionListRendererContent),
             description = response.header?.musicImmersiveHeaderRenderer?.description?.runs?.firstOrNull()?.text
         )
+        // Harvest only actual VIDEO shelves from this already-performed artist
+        // browse. Playback can now recognize a clip directly from the page
+        // without an extra query or another request to the artist endpoint.
+        YouTubeMusicArtistVideoHints.remember(page)
+        page
     }
 
     suspend fun artistItems(endpoint: BrowseEndpoint): Result<ArtistItemsPage> = runCatchingCancellable {
