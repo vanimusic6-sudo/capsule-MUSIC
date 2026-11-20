@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - refactor/audio-video-download-20261120
+      - fix/video-artist-catalog-lyrics-20261120
     paths:
       - 'app/src/main/kotlin/com/nikhil/yt/playback/**'
       - 'app/src/test/kotlin/com/nikhil/yt/playback/**'
