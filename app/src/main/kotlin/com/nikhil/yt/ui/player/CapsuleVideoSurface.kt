@@ -201,6 +201,7 @@ private fun CapsuleVideoTextureOutput(
             // Snapshot ownership for this effect. On pause the Compose state
             // already reads false while the cancelled effect runs its finally.
             val listeningForFrames = videoActuallyPlaying
+            var unchangedAmbientSamples = 0
             val metadata = VideoFrameMetadataListener { _, releaseTimeNs, _, _ ->
                 frames.trySend(releaseTimeNs)
             }
@@ -219,7 +220,12 @@ private fun CapsuleVideoTextureOutput(
                         capsuleSceneLightVideoFrame(it, ambientSceneFilter, System.nanoTime())
                     }
                 } ?: return false
-                if (ambientMemory.shouldPublish(sample)) sink(sample)
+                if (ambientMemory.shouldPublish(sample)) {
+                    unchangedAmbientSamples = 0
+                    sink(sample)
+                } else {
+                    unchangedAmbientSamples = (unchangedAmbientSamples + 1).coerceAtMost(8)
+                }
                 return true
             }
             try {
@@ -253,12 +259,21 @@ private fun CapsuleVideoTextureOutput(
                 for (signal in frames) {
                     if (!isActive) break
                     val now = System.nanoTime()
-                    if (now - lastCaptureNs < VIDEO_AMBIENT_CAPTURE_INTERVAL_MS * 1_000_000L) continue
+                    if (now - lastCaptureNs <
+                        capsuleVideoAmbientCaptureIntervalMs(unchangedAmbientSamples) * 1_000_000L
+                    ) continue
                     // Metadata precedes presentation: wait for the next display frame
                     // before reading the already-rendered TextureView.
                     withFrameNanos { }
                     try {
-                        if (capture()) { lastCaptureNs = now; failures = 0 }
+                        if (capture()) {
+                            lastCaptureNs = now
+                            failures = 0
+                        } else {
+                            // A decoder/surface handoff is not a reason to
+                            // read back on every video callback while unavailable.
+                            lastCaptureNs = now
+                        }
                     } catch (_: RuntimeException) {
                         if (++failures >= 3) break
                     }
