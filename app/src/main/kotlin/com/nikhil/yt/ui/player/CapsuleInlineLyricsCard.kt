@@ -163,6 +163,21 @@ internal fun capsuleInlineLyricsPreparedSeamColors(
     )
 }
 
+/**
+ * Lower boundary of the very same Nov-13 Canvas VIDEO light shader. The
+ * stage's final row corresponds to source Y=0.80 and mix amount=0.12; do not
+ * use album-colour samples under a moving native Canvas frame.
+ * Three cheap cell reads; no bitmap readback, network request or timer.
+ */
+internal fun capsuleCanvasLyricsSeamColors(field: CapsuleColorField): List<Color> {
+    val row = (field.height * 0.80f).toInt().coerceIn(0, field.height - 1)
+    val base = Color(0.050f, 0.054f, 0.061f)
+    return listOf(0.12f, 0.5f, 0.88f).map { x ->
+        val column = (field.width * x).toInt().coerceIn(0, field.width - 1)
+        lerp(base, field.cell(column, row), 0.12f)
+    }
+}
+
 /** Share Immersion's horizontal page continuation across the gap and card. */
 internal fun capsuleInlineLyricsImmersiveStops(colors: List<Color>): List<Color> {
     // Paint exactly the same seam colours. The scrollable parent gradually
