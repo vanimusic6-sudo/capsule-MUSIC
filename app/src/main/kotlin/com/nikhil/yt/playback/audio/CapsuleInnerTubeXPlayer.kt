@@ -448,12 +448,23 @@ object CapsuleInnerTubeXPlayer {
                     preferredProfiles = preferredProfiles,
                 )
 
+            // Media3 reloads run in separate resolves. Two different direct
+            // CDN clients rejected on a long track should activate the SABR
+            // rescue once, instead of waiting for two more slow /player failures.
+            // Do not count an attempted profile twice or retry quarantined SABR.
+            val previousDirectFailures = excludedBeforeAttempt.count {
+                it != SABR_FALLBACK_PROFILE && it !in attempted &&
+                    it in AudioClientOrder.supportedProfiles
+            }
+            val sabrAttempts = if (SABR_FALLBACK_PROFILE in excludedBeforeAttempt)
+                attempted + SABR_FALLBACK_PROFILE else attempted
             val sabrRoute = CapsuleSabrRoutePolicy.select(
                 forceSabr = forceSabr,
                 download = download,
                 priority = priorityBeforeAttempt,
                 botSignalAlreadySeen = botSignalAlreadySeen,
-                attempted = attempted,
+                attempted = sabrAttempts,
+                previousDirectFailures = previousDirectFailures,
             )
             val profileId = if (forceSabr) {
                 // Exact experimental mode: do not silently fall back to Direct.
