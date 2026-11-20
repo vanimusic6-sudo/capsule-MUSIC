@@ -56,6 +56,7 @@ jobs:
           --tests 'com.nikhil.yt.playback.AudioCdnRecoveryPlanTest'
           --tests 'com.nikhil.yt.playback.DownloadUtilSingletonTest'
           --tests 'com.nikhil.yt.playback.video.CapsuleVideoCompanionTest'
+          --tests 'com.nikhil.yt.playback.video.CapsuleVideoMatchIdentityTest'
           --tests 'com.nikhil.yt.playback.video.CapsuleVideoFastStartPolicyTest'
           --tests 'com.nikhil.yt.playback.video.CapsuleVideoSessionTest'
           --tests 'com.nikhil.yt.playback.video.CapsuleVideoTimelinePolicyTest'
