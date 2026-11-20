@@ -186,33 +186,45 @@ internal fun ImmersiveAudioScene(
     artworkHeight: Dp,
     sceneAlpha: () -> Float,
     mediaId: String,
+    canvasAmbientFrame: CapsuleVideoAmbientFrame?,
     artwork: @Composable () -> Unit,
 ) {
     Box(Modifier.fillMaxSize().graphicsLayer {
         compositingStrategy = CompositingStrategy.Auto
         alpha = sceneAlpha()
     }) {
-        Image(
-            bitmap = background, contentDescription = null,
-            contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize(),
-        )
-        // The SAME frame-sampled spatial colour field as the regular Capsule
-        // video wallpaper. This moves with Canvas itself rather than staying
-        // attached to a static image while the cover visibly changes colours.
-        val liveCanvasFrame = CapsuleMotionPlaybackSession.ambientFrame
-            ?.takeIf { it.mediaId == mediaId }
+        // Canvas has one owner: the main Immersion player wallpaper.
+        // Do not sample it in Lyrics or behind a detached/paused decoder.
+        // Keep the outgoing field during fade-out so returning to the album
+        // photo cannot reveal a neutral flash for one composition frame.
+        var retainedCanvasBackdrop by remember(mediaId) {
+            mutableStateOf<CapsuleVideoAmbientFrame?>(null)
+        }
+        LaunchedEffect(canvasAmbientFrame) {
+            if (canvasAmbientFrame != null) retainedCanvasBackdrop = canvasAmbientFrame
+        }
         val canvasBackdropAlpha by animateFloatAsState(
-            targetValue = if (liveCanvasFrame != null) 1f else 0f,
+            targetValue = if (canvasAmbientFrame != null) 1f else 0f,
             animationSpec = tween(500),
             label = "capsuleCanvasBackdropHandoff",
         )
-        if (liveCanvasFrame != null) {
-            Box(Modifier.fillMaxSize().graphicsLayer { alpha = canvasBackdropAlpha }) {
+        if (canvasBackdropAlpha < 0.999f) {
+            Image(
+                bitmap = background, contentDescription = null,
+                contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize(),
+            )
+        }
+        if (canvasBackdropAlpha > 0.001f) {
+            retainedCanvasBackdrop?.let { frame ->
+                // Same shader, sample field and soft temporal interpolation
+                // as ordinary VIDEO; do not run a second renderer.
                 CapsuleVideoAmbientBackdrop(
-                    bands = liveCanvasFrame.bands,
-                    field = liveCanvasFrame.field,
-                    animated = true,
-                    modifier = Modifier.fillMaxSize(),
+                    bands = frame.bands,
+                    field = frame.field,
+                    animated = canvasAmbientFrame != null,
+                    modifier = Modifier.fillMaxSize().graphicsLayer {
+                        alpha = canvasBackdropAlpha
+                    },
                     fallbackFloor = Color(0xFF111116),
                 )
             }
@@ -618,6 +630,14 @@ internal fun CapsuleImmersiveContent(
         presentingVideo = isVideo,
         videoNeedsSurface = needsVideoSurface,
     )
+    // Only the active Canvas belonging to THIS track may recolour the
+    // full player; Lyrics keeps its independent, cover-derived palette.
+    val activeCanvasAmbientFrame = CapsuleMotionPlaybackSession.ambientFrame
+        ?.takeIf {
+            motionArtworkActive &&
+                CapsuleMotionPlaybackSession.hasPrepared(mediaMetadata.id) &&
+                it.mediaId == mediaMetadata.id
+        }
 
     /*
      * Request fullscreen from the Activity instead of manipulating the Window here.
@@ -1000,6 +1020,7 @@ internal fun CapsuleImmersiveContent(
                         artworkHeight = artworkHeight,
                         sceneAlpha = { sceneRevealAlpha.value },
                         mediaId = mediaMetadata.id,
+                        canvasAmbientFrame = activeCanvasAmbientFrame,
                     ) {
                         Box(Modifier.fillMaxSize()) {
                             Image(
