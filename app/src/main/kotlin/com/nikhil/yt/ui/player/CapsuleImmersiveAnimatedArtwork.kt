@@ -206,7 +206,13 @@ internal fun CapsuleImmersiveAnimatedArtwork(
                 var lastSampleNs = 0L
                 var errors = 0
                 for (signal in frames) {
-                    if (!isActive || !view.isAvailable || !view.isShown) break
+                    if (!isActive) break
+                    // AndroidView can create its TextureView BEFORE attachment
+                    // and before a visible Compose frame. Breaking here drops
+                    // the only listener for the lifetime of this Canvas clip;
+                    // its video keeps playing but its wallpaper stays frozen.
+                    // Wait for the NEXT decoder frame instead. No polling.
+                    if (!view.isAvailable || !view.isShown) continue
                     val now = System.nanoTime()
                     // Canvas is a SECOND video decoder, so respect a conservative
                     // GPU-readback budget. Its spatial field still interpolates
