@@ -207,6 +207,7 @@ import com.nikhil.yt.playback.audio.AudioCacheDataSource
 import com.nikhil.yt.discovery.ExperimentalCatalog.EXPERIMENTAL_MEDIA_PREFIX
 import com.nikhil.yt.constants.ExperimentalSourcesEnabledKey
 import com.nikhil.yt.playback.audio.AudioChunkedDataSource
+import com.nikhil.yt.playback.audio.sabrTransportFailureFor
 import com.nikhil.yt.playback.audio.CapsuleSabrAudioDataSource
 import com.nikhil.yt.playback.audio.CapsuleSabrAudioOpenContext
 import com.nikhil.yt.playback.audio.CapsuleAudioTransportDataSource
@@ -4633,13 +4634,66 @@ class MusicService :
         }
 
         val requiresFreshCdnUrl = error.requiresFreshAudioUrlFor(currentMediaId)
-        if (!isNetworkConnected.value || (error.isTransientNetworkFailure() && !requiresFreshCdnUrl)) {
+        val sabrTransportFailure = error.sabrTransportFailureFor(currentMediaId)
+        if (!isNetworkConnected.value ||
+            (error.isTransientNetworkFailure() && !requiresFreshCdnUrl && sabrTransportFailure == null)
+        ) {
             // A CDN failure can arrive just as connectivity disappears. Do not leave its rejected
             // generation cached for the eventual reconnect, but do not resolve while offline.
             if (requiresFreshCdnUrl && currentMediaId != null) {
                 audioResolveCoordinator.cancelMedia(currentMediaId) { playbackUrlCache.remove(currentMediaId) }
             }
             playbackRecoveryCoordinator.recoverFromNetworkError()
+            return
+        }
+
+        // Direct CDN and SABR are different byte transports negotiated by
+        // the same InnerTubeX resolver, not two independent player clients.
+        // A failed UMP session must never be reopened endlessly or mistaken
+        // for a broken Direct URL. Replace the Media3 source at its current
+        // presentation position so the new transport cannot mix encoded bytes.
+        if (currentMediaId != null && sabrTransportFailure != null) {
+            if (forceSabrAudio) {
+                // Strict developer diagnosis is intentionally SABR-only.
+                Timber.tag("CapsuleHybrid").w(
+                    "sabr-failed id=%s stage=%s mode=forced; direct fallback suppressed",
+                    currentMediaId, sabrTransportFailure.stage,
+                )
+                pausePlaybackFor("forced-sabr-transport-failed")
+                return
+            }
+            val action = playbackRecoveryCoordinator.onSabrTransportFailure(currentMediaId)
+            val retryDelay = if (action == AudioCdnRecoveryAction.TRY_NEXT_CLIENT)
+                playbackRecoveryCoordinator.nextRetryDelayMs(currentMediaId) else null
+            if (retryDelay == null) {
+                Timber.tag("CapsuleHybrid").w(
+                    "sabr-failed id=%s stage=%s action=bounded-stop",
+                    currentMediaId, sabrTransportFailure.stage,
+                )
+                handleTerminalPlaybackError(autoSkipAfterCdnExhaustion = true)
+                return
+            }
+            // Mark the *transport profile*, not the unrelated Direct WEB_REMIX
+            // identity. Cache and stream failures remain scoped to this song.
+            CapsuleAudioEngine.markStreamClientFailed(
+                videoId = currentMediaId,
+                clientKey = com.nikhil.yt.playback.audio.CapsuleSabrRoutePolicy.PROFILE,
+                httpStatusCode = null,
+            )
+            audioResolveCoordinator.cancelMedia(currentMediaId) {
+                playbackUrlCache.remove(currentMediaId)
+            }
+            Timber.tag("CapsuleHybrid").w(
+                "sabr-failed id=%s stage=%s action=direct-recovery delayMs=%d",
+                currentMediaId, sabrTransportFailure.stage, minOf(350L, retryDelay),
+            )
+            scheduleStreamRefreshRetry(
+                mediaId = currentMediaId,
+                refreshCipherConfig = false,
+                retryReason = "hybrid SABR-to-Direct",
+                retryDelayMs = minOf(350L, retryDelay),
+                forceRecreateSources = true,
+            )
             return
         }
 
