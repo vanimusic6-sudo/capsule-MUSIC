@@ -54,6 +54,17 @@ internal fun capsuleVideoMatchIdentity(
         .distinct().sorted().take(3),
 )
 
+/** A signed clip stream can be reused by several distinct MUSIC rows.
+ * Rebind only its logical source; never mix track IDs in recovery callbacks.
+ * Signed URLs, codecs, expiry and the verified clip ID remain identical.
+ */
+internal fun capsuleVideoBindSource(
+    stream: YouTubeVideoResolver.ResolvedVideo,
+    sourceMediaId: String,
+): YouTubeVideoResolver.ResolvedVideo =
+    if (stream.sourceMediaId == sourceMediaId) stream
+    else stream.copy(sourceMediaId = sourceMediaId)
+
 object YouTubeVideoResolver {
     private const val TAG = "CapsuleVideo"
     private const val CACHE_SAFETY_MS = 45_000L
@@ -219,7 +230,9 @@ object YouTubeVideoResolver {
             }
         // This requires neither another MUSIC search nor another player request.
         knownClipId?.let { id ->
-            cache[cacheKey(id, quality, muxedOnly = false)]?.let { return Result.success(it) }
+            cache[cacheKey(id, quality, muxedOnly = false)]?.let {
+                return Result.success(capsuleVideoBindSource(it, canonicalId))
+            }
         }
         // A verified server challenge must prevent a *new* metadata search.
         // Previously the guard was checked only after the song->clip lookup.
@@ -327,7 +340,7 @@ object YouTubeVideoResolver {
         beforeMetadataRequest: suspend () -> Unit = CapsuleVideoRequestGuard::beforeMetadataRequest,
     ): ResolvedVideo {
         val key = cacheKey(videoId, quality, muxedOnly)
-        cache[key]?.let { return it }
+        cache[key]?.let { return capsuleVideoBindSource(it, sourceMediaId) }
 
         if (CapsuleVideoRequestGuard.isBlocked()) {
             throw CapsuleVideoRequestGuard.RequestBlockedException(
@@ -336,7 +349,7 @@ object YouTubeVideoResolver {
         }
 
         return resolveMutex.withLock {
-            cache[key]?.let { return@withLock it }
+            cache[key]?.let { return@withLock capsuleVideoBindSource(it, sourceMediaId) }
             beforeMetadataRequest()
             // Persist only temporary route health, never signed URLs or tokens.
             // A repeatedly timed-out WEB route must not add 5.2s to every next

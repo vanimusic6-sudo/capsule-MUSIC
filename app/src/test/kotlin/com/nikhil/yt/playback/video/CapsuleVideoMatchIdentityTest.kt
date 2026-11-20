@@ -32,6 +32,26 @@ class CapsuleVideoMatchIdentityTest {
             listOf("UC" + "A".repeat(22))))
     }
 
+    @Test fun sharedOfficialClipNeverRestoresThePreviousAudioTrackId() {
+        val stream = YouTubeVideoResolver.ResolvedVideo(
+            sourceMediaId = "abcdefghijk",
+            videoId = "clip123abcd",
+            videoStreamUrl = "https://rr.googlevideo.com/videoplayback?expire=4102444800",
+            videoFormat = YouTubeVideoResolver.StreamFormat(
+                itag = 136, width = 1280, height = 720, qualityLabel = "720p",
+            ),
+            expiresAtMs = 4_102_444_800_000L,
+        )
+        val rebound = capsuleVideoBindSource(stream, "mnopqrstuvw")
+        assertEquals("mnopqrstuvw", rebound.sourceMediaId)
+        assertEquals(stream.videoId, rebound.videoId)
+        assertEquals(stream.videoStreamUrl, rebound.videoStreamUrl)
+        assertEquals(stream.expiresAtMs, rebound.expiresAtMs)
+        assertEquals(stream.videoFormat, rebound.videoFormat)
+        assertEquals("abcdefghijk", stream.sourceMediaId)
+        org.junit.Assert.assertSame(stream, capsuleVideoBindSource(stream, "abcdefghijk"))
+    }
+
     @Test fun normalizedIdentityBoundsUntrustedSearchMetadata() {
         val huge = capsuleVideoMatchIdentity("T".repeat(12_000), List(24) {
             "Artist-$it " + "A".repeat(500)
