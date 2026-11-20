@@ -24,7 +24,7 @@ internal object YouTubeMusicArtistVideoHints {
     private const val MAX_ITEMS_PER_ARTIST = 100
     private val validId = Regex("""[A-Za-z0-9_-]{11}""")
     private val videoSection = Regex(
-        """(?i)(?:\bvideos?\b|\bclips?\b|\bmusic\s*videos?\b|клипы|видео|відео|音樂視頻|音乐视频|뮤직비디오|ミュージックビデオ)""",
+        """(?:\bvideos?\b|\bclips?\b|\bmusic\s*videos?\b|клипы|видео|відео|音樂視頻|音乐视频|뮤직비디오|ミュージックビデオ)""",
     )
     private data class CatalogRow(
         val videoId: String,
@@ -52,7 +52,10 @@ internal object YouTubeMusicArtistVideoHints {
         val browseId = page.artist.id.takeIf { it.length in 8..96 } ?: return
         val rows = page.sections.asSequence()
             .flatMap { section ->
-                val explicitlyVideos = videoSection.containsMatchIn(section.title)
+                // The original (?i) regex only matched ASCII case on some
+                // JVMs. "Клипы"/"Видео" therefore disappeared from the
+                // catalog despite being visible in the artist UI.
+                val explicitlyVideos = videoSection.containsMatchIn(section.title.lowercase(java.util.Locale.ROOT))
                 section.items.asSequence().filterIsInstance<SongItem>().mapNotNull { song ->
                     val type = song.endpoint?.watchEndpointMusicSupportedConfigs
                         ?.watchEndpointMusicConfig?.musicVideoType
