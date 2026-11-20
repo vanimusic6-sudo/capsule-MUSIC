@@ -1496,8 +1496,31 @@ class MusicService :
                     "audio-buffer-stall id=%s aheadMs=%d growthMs=%d attempt=%d; fresh URL requested",
                     id, bufferedAheadMs, growthMs, attempts + 1,
                 )
-                // This is NOT a 403 or bot-check: do not quarantine clients, rebuild BotGuard or
-                // refresh cipher config. Replace only this mediaId's cached stream URL.
+                // This is NOT a 403 or bot-check: never touch BotGuard,
+                // the global rate-limit breaker, or the player cipher.
+                // For a genuinely starved LONG stream, however, a CDN body can
+                // be permanently paced without ever returning HTTP failure.
+                // Promote one Direct client per confirmed stall, then let the
+                // existing InnerTubeX route policy negotiate SABR after two.
+                val stalledPlayback = playbackUrlCache.get(id)
+                if (stalledPlayback?.streamClient != null &&
+                    AudioBufferStallPolicy.shouldRotateLongFormClient(
+                        contentLengthBytes = stalledPlayback.format.contentLength,
+                        sabrSelected = stalledPlayback.sabrBootstrap != null,
+                        forceSabr = forceSabrAudio,
+                        observedStalls = attempts,
+                    )
+                ) {
+                    CapsuleAudioEngine.markStreamClientFailed(
+                        videoId = id,
+                        clientKey = stalledPlayback.streamClient,
+                        httpStatusCode = null,
+                    )
+                    Timber.tag("CapsuleHybrid").w(
+                        "longform-stall id=%s stalledClient=%s attempt=%d next=alternative-transport",
+                        id, stalledPlayback.streamClient, attempts + 1,
+                    )
+                }
                 audioResolveCoordinator.cancelMedia(id) { playbackUrlCache.remove(id) }
                 scheduleStreamRefreshRetry(
                     mediaId = id,
