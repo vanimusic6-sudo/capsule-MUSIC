@@ -7,13 +7,15 @@ import java.net.NoRouteToHostException
 import java.util.concurrent.TimeUnit
 
 internal enum class CapsuleVideoRoute(val wireName: String, val budgetMs: Long) {
-    ANDROID_VR("direct-android-vr", 4_000L),
-    VISIONOS("direct-visionos", 4_000L),
-    // PipePipe gets the first VIDEO-only probe, but a cold parser cannot
-    // hold the whole video toggle for ten seconds before healthy fallbacks.
-    PIPEPIPE("pipepipe", 4_800L),
-    NEWPIPE("newpipe", 7_000L),
-    ANDROID_REEL("direct-android-reel", 4_000L),
+    ANDROID_VR("direct-android-vr", 3_500L),
+    VISIONOS("direct-visionos", 3_500L),
+    // PipePipe remains preferred on cold starts, but its slower endpoints
+    // cannot occupy almost five seconds before independent direct fallbacks.
+    PIPEPIPE("pipepipe", 3_700L),
+    // Keep the maintained parser a longer rescue window: unlike a route
+    // hedge, this runs only after the cheaper verified VIDEO options failed.
+    NEWPIPE("newpipe", 6_000L),
+    ANDROID_REEL("direct-android-reel", 3_000L),
 }
 
 /**

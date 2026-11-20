@@ -8,9 +8,10 @@ import org.junit.Test
 
 class CapsuleVideoFastStartPolicyTest {
     @Test fun fastRouteBudgetsNeverWaitAllTenSeconds() {
-        assertEquals(4_200L, CapsuleVideoFastStartPolicy.primaryBudgetMs(480))
-        assertEquals(5_200L, CapsuleVideoFastStartPolicy.primaryBudgetMs(720))
-        assertEquals(6_200L, CapsuleVideoFastStartPolicy.primaryBudgetMs(1080))
+        assertEquals(3_200L, CapsuleVideoFastStartPolicy.primaryBudgetMs(480))
+        assertEquals(3_800L, CapsuleVideoFastStartPolicy.primaryBudgetMs(720))
+        assertEquals(4_600L, CapsuleVideoFastStartPolicy.primaryBudgetMs(1080))
+        assertTrue(CapsuleVideoFastStartPolicy.primaryBudgetMs(720) < 4_000L)
     }
     @Test fun twoDistinctWebDeadlinesTemporarilyPreferTheFallback() {
         var now = 1_000L

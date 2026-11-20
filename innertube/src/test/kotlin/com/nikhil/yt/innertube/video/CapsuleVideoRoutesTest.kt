@@ -54,6 +54,15 @@ class CapsuleVideoRoutesTest {
         assertTrue(result.isFailure)
         assertEquals(1, calls)
     }
+    @Test fun eachColdVideoRouteHasABoundedNetworkBudget() {
+        val budget = CapsuleVideoRoute.entries.sumOf { it.budgetMs }
+        assertTrue("A full cold cascade should no longer spend 24s in route timers", budget <= 20_000L)
+        assertTrue(CapsuleVideoRoute.PIPEPIPE.budgetMs <= 3_800L)
+        assertTrue(CapsuleVideoRoute.VISIONOS.budgetMs <= 3_800L)
+        assertTrue("The maintained parser keeps a separate later recovery window",
+            CapsuleVideoRoute.NEWPIPE.budgetMs >= 5_000L)
+    }
+
     @Test fun coldVideoProbesPipePipeFirstButRemembersSuccessfulRoute() {
         val health = CapsuleVideoRouteHealth()
         assertEquals(CapsuleVideoRoute.PIPEPIPE, health.order(null).first())

@@ -4,16 +4,19 @@ package com.nikhil.yt.playback.video
 import kotlinx.coroutines.withTimeoutOrNull
 import android.os.SystemClock
 
-/** The primary WEB path must not block an independent extractor for 10 seconds.
- * These budgets are ONLY the first route; never shorten normal audio streams,
- * nor bypass an explicit YouTube cooldown / bot-check response.
+/** The primary WEB path gets a short foreground VIDEO-only budget.
+ * If it stalls, the already-isolated parser still gets a proper chance.
+ * A 5.2s WEB timeout + 4.8s PipePipe timeout + decoder startup alone used
+ * to exceed the desired first-frame window before trying VisionOS.
+ * These are per-route ceilings, not a hard playback deadline.
+ * AUDIO, bot checks, signed URL validation and per-route cancellation stay intact.
  */
 internal object CapsuleVideoFastStartPolicy {
     fun primaryBudgetMs(maxHeight: Int?): Long = when {
-        maxHeight == null || maxHeight <= 480 -> 4_200L
-        maxHeight <= 720 -> 5_200L
-        maxHeight <= 1080 -> 6_200L
-        else -> 6_800L
+        maxHeight == null || maxHeight <= 480 -> 3_200L
+        maxHeight <= 720 -> 3_800L
+        maxHeight <= 1080 -> 4_600L
+        else -> 5_200L
     }
 }
 
