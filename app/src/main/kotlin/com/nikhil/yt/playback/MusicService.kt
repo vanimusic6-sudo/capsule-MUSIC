@@ -5475,6 +5475,11 @@ class MusicService :
                     artists = sourceArtists,
                     durationSeconds = sourceDurationSeconds,
                     quality = capsuleVideoQuality,
+                    artistBrowseIds = (
+                        sourceMetadata?.artists.orEmpty() +
+                            player.currentMetadata?.artists.orEmpty()
+                    ).mapNotNull { it.id?.trim()?.takeIf(String::isNotBlank) }
+                        .distinct().take(3),
                     originalVideo = com.nikhil.yt.playback.video.shouldUseCanonicalVideo(
                         sourceMetadata?.isOriginalVideo == true,
                         playbackUrlCache.get(canonicalMediaId)?.videoDetails?.musicVideoType,
