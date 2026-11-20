@@ -153,13 +153,20 @@ class YouTubeMusicVideoMatcherTest {
     }
 
     @Test
-    fun videoSearchCanTrustExactArtistTitleWhenOmvAndRuntimeAreMissing() {
-        assertTrue(YouTubeMusicVideoMatcher.scoreCandidate(
+    fun untypedSearchRequiresExplicitOfficialMarkerOrArtistPageProof() {
+        assertNull(YouTubeMusicVideoMatcher.scoreCandidate(
             sourceTitle = "Blinding Lights", sourceTitleNorm = "blinding lights",
             sourceArtistNorms = listOf("the weeknd"),
             candidateTitle = "The Weeknd - Blinding Lights",
             secondaryText = "The Weeknd", sourceDurationSeconds = 261,
             omvVerified = false,
+        ))
+        assertTrue(YouTubeMusicVideoMatcher.scoreCandidate(
+            sourceTitle = "Blinding Lights", sourceTitleNorm = "blinding lights",
+            sourceArtistNorms = listOf("the weeknd"),
+            candidateTitle = "The Weeknd - Blinding Lights",
+            secondaryText = "The Weeknd", sourceDurationSeconds = 261,
+            omvVerified = false, fromOfficialArtistPage = true,
         ) != null)
         assertNull(YouTubeMusicVideoMatcher.scoreCandidate(
             sourceTitle = "Blinding Lights", sourceTitleNorm = "blinding lights",
@@ -168,6 +175,30 @@ class YouTubeMusicVideoMatcherTest {
             secondaryText = "The Weeknd", sourceDurationSeconds = 261,
             omvVerified = false,
         ))
+    }
+
+    @Test fun wrongLyricEvenWithOmvAndSameIdCannotBypassSafety() {
+        assertNull(YouTubeMusicVideoMatcher.scoreCandidate(
+            sourceTitle = "Some Song", sourceTitleNorm = "some song",
+            sourceArtistNorms = listOf("the artist"),
+            candidateTitle = "The Artist - Some Song (Official Lyric Video)",
+            secondaryText = "The Artist • 3:20",
+            sourceDurationSeconds = 200,
+            sameOfficialVideo = true, omvVerified = true,
+        ))
+        assertNull(YouTubeMusicVideoMatcher.scoreCandidate(
+            sourceTitle = "Some Song", sourceTitleNorm = "some song",
+            sourceArtistNorms = listOf("the artist"),
+            candidateTitle = "The Artist - Some Song", secondaryText = "The Artist",
+            sourceDurationSeconds = 200, omvVerified = false,
+        ))
+        assertTrue(YouTubeMusicVideoMatcher.scoreCandidate(
+            sourceTitle = "Some Song", sourceTitleNorm = "some song",
+            sourceArtistNorms = listOf("the artist"),
+            candidateTitle = "The Artist - Some Song (Official Video)",
+            secondaryText = "The Artist", sourceDurationSeconds = 200,
+            omvVerified = false,
+        ) != null)
     }
 
     @Test
