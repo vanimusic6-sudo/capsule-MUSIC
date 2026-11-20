@@ -60,6 +60,37 @@ class CapsuleVideoChunkedDataSourceTest {
         } finally { source.close() }
     }
 
+    @Test fun emptyFirstReadTimeoutDoesNotReopenTheSameDeadCdn() {
+        val cdn = MemoryCdn(ByteArray(4096))
+        val stalled = object : DataSource by cdn {
+            override fun getResponseHeaders() = cdn.responseHeaders
+            override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+                throw java.io.IOException(
+                    "wrapped MEDIA3 timeout",
+                    java.net.SocketTimeoutException("No CDN body bytes"),
+                )
+            }
+        }
+        val source = CapsuleVideoChunkedDataSource(stalled, chunkBytes = 1024)
+        try {
+            source.open(DataSpec(uri))
+            org.junit.Assert.assertThrows(java.io.IOException::class.java) {
+                source.read(ByteArray(300), 0, 300)
+            }
+            assertEquals("A no-byte timeout must not double the full socket wait",
+                1, cdn.requests.size)
+        } finally { source.close() }
+        org.junit.Assert.assertFalse(isRecoverableVideoReadFailure(
+            java.net.SocketTimeoutException("no data"), rangeHasProgress = false,
+        ))
+        assertTrue(isRecoverableVideoReadFailure(
+            java.net.SocketTimeoutException("midrange delay"), rangeHasProgress = true,
+        ))
+        assertTrue(isRecoverableVideoReadFailure(
+            java.net.SocketException("Connection reset"), rangeHasProgress = false,
+        ))
+    }
+
     @Test fun midrangeTimeoutResumesMissingBytesWithoutResolvingAnotherClient() {
         val bytes = ByteArray(4096) { (it % 251).toByte() }
         val cdn = MemoryCdn(bytes)

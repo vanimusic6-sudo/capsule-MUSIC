@@ -37,14 +37,19 @@ internal fun isRecoverableVideoSocketReset(failure: IOException): Boolean =
                 (cause is IOException && cause.javaClass.simpleName == "ConnectionResetException")
         }
 
-internal fun isRecoverableVideoReadFailure(failure: IOException): Boolean {
+internal fun isRecoverableVideoReadFailure(failure: IOException, rangeHasProgress: Boolean): Boolean {
     val causes = generateSequence(failure as Throwable?) { it.cause }.take(8).toList()
     if (Thread.currentThread().isInterrupted || causes.any {
             it is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException ||
                 it is java.util.concurrent.CancellationException || it is InterruptedException ||
                 (it is java.io.InterruptedIOException && it !is SocketTimeoutException)
         }) return false
-    return isRecoverableVideoSocketReset(failure) || causes.any { it is SocketTimeoutException || it is EOFException }
+    // A read timeout before a single byte has arrived is evidence of a
+    // nonresponsive edge. Retrying that identical host can spend ANOTHER 8s
+    // with no first frame. Peer resets are cheap to retry once, but read
+    // timeouts/early EOFs are resumable only after this range made progress.
+    return isRecoverableVideoSocketReset(failure) ||
+        (rangeHasProgress && causes.any { it is SocketTimeoutException || it is EOFException })
 }
 
 
@@ -73,6 +78,7 @@ internal class CapsuleVideoChunkedDataSource(
     private var resourceLength = 0L
     private var opened = false
     private var readResumeAttempted = false
+    private var bytesDeliveredInRange = 0L
     private var ratePolicy = newRatePolicy()
 
     private fun newRatePolicy() = AudioCdnChunkRatePolicy(
@@ -92,6 +98,7 @@ internal class CapsuleVideoChunkedDataSource(
         check(!opened) { "VIDEO DataSource is already open" }
         opened = true
         readResumeAttempted = false
+        bytesDeliveredInRange = 0L
         ratePolicy = newRatePolicy()
 
         // Preserve native short-stream playback and pre-windowed signed URLs.
@@ -181,6 +188,7 @@ internal class CapsuleVideoChunkedDataSource(
         }
         chunkLeft = range.size
         readResumeAttempted = false
+        bytesDeliveredInRange = 0L
     }
 
     /**
@@ -197,7 +205,7 @@ internal class CapsuleVideoChunkedDataSource(
         } catch (failure: IOException) {
             val source = original ?: throw failure
             if (readResumeAttempted || chunkLeft <= 0L ||
-                !isRecoverableVideoReadFailure(failure)
+                !isRecoverableVideoReadFailure(failure, bytesDeliveredInRange > 0L)
             ) throw failure
             readResumeAttempted = true
             val remaining = source.buildUpon()
@@ -264,6 +272,7 @@ internal class CapsuleVideoChunkedDataSource(
             nextPosition += count
             bytesLeft -= count
             chunkLeft -= count
+            bytesDeliveredInRange += count
         }
         return count
     }
@@ -276,6 +285,7 @@ internal class CapsuleVideoChunkedDataSource(
     override fun close() {
         opened = false
         readResumeAttempted = false
+        bytesDeliveredInRange = 0L
         original = null
         nextPosition = 0L
         bytesLeft = 0L
