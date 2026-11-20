@@ -100,12 +100,35 @@ class CapsuleVideoAmbientTest {
         val interrupted = capsuleAmbientPaletteAt(partlyMixed, cool, 0f)
         assertTrue(kotlin.math.abs(partlyMixed[0].red - interrupted[0].red) < 0.0001f)
         assertTrue(partlyMixed[0].red > cool[0].red)
-        assertTrue(VIDEO_AMBIENT_CAPTURE_INTERVAL_MS in 180L..260L)
+        assertTrue(VIDEO_AMBIENT_CAPTURE_INTERVAL_MS in 300L..380L)
         assertTrue("Live light must overlap adjacent samples, smoothing moving video rather than stepping",
-            VIDEO_AMBIENT_BLEND_DURATION_MS in 380..520)
+            VIDEO_AMBIENT_BLEND_DURATION_MS in 580..700)
         assertTrue(capsuleVideoAmbientCaptureIntervalMs(0) < capsuleVideoAmbientCaptureIntervalMs(3))
         assertTrue(capsuleVideoAmbientCaptureIntervalMs(3) < capsuleVideoAmbientCaptureIntervalMs(8))
-        assertTrue(capsuleVideoAmbientCaptureIntervalMs(8) <= 700L)
+        assertTrue(capsuleVideoAmbientCaptureIntervalMs(8) <= 900L)
+    }
+
+    @Test fun canvasAndOrdinaryVideoDeriveIdenticalDiffusedLightFromOneFrame() {
+        val bitmap = Bitmap.createBitmap(48, 28, Bitmap.Config.ARGB_8888)
+        try {
+            for (y in 0 until 28) for (x in 0 until 48) {
+                bitmap.setPixel(x, y, if (x < 24) AndroidColor.RED else AndroidColor.BLUE)
+            }
+            val raw = requireNotNull(capsuleVideoAmbientFrameFromBitmap(bitmap, "song"))
+            val expected = capsuleSceneLightVideoFrame(raw, CapsuleVideoLightFilter(), 1_000_000_000L)
+            val actual = requireNotNull(capsuleCanvasAmbientFrameFromBitmap(
+                bitmap, "song", CapsuleVideoLightFilter(), 1_000_000_000L,
+            ))
+            assertTrue("Canvas must retain precisely the same VIDEO light map",
+                actual.field == expected.field)
+            val rawEdge = kotlin.math.abs(raw.field.cell(9, 8).red - raw.field.cell(10, 8).red)
+            val softEdge = kotlin.math.abs(actual.field.cell(9, 8).red - actual.field.cell(10, 8).red)
+            assertTrue("Canvas should not project the raw hard red/blue edge",
+                softEdge < rawEdge * 0.55f)
+            assertNull(capsuleCanvasAmbientFrameFromBitmap(
+                bitmap, "", CapsuleVideoLightFilter(), 1_000_000_000L,
+            ))
+        } finally { bitmap.recycle() }
     }
 
     @Test fun blackOrInvalidVideoFramesDoNotReplaceExistingPalette() {
