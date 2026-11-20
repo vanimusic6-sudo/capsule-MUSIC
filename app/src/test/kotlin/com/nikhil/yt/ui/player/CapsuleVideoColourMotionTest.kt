@@ -21,9 +21,9 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35], application = Application::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class CapsuleVideoColourMotionTest {
-    @Test fun sceneLightVideoRendererKeepsTheRestoredSoftTransition() {
-        // No RuntimeShader grid: VIDEO and Scene Light share the soft bitmap renderer.
-        assertEquals(850, VIDEO_AMBIENT_BLEND_DURATION_MS)
+    @Test fun november13GpuLightRendererRestoresFastSpatialBlend() {
+        // Original RuntimeShader interpolates tiny 2D light fields on a GPU layer.
+        assertEquals(180, VIDEO_AMBIENT_BLEND_DURATION_MS)
     }
 
     @Test fun rawVideoStripesAreDiffusedBeforeBeingUsedAsSceneLight() {
@@ -40,12 +40,12 @@ class CapsuleVideoColourMotionTest {
             softenedDelta < unfilteredDelta * 0.3f)
     }
 
-    @Test fun originalDesignRendersASoft176x256ImageRatherThanStretchedGridPixels() {
+    @Test fun originalDesignKeepsBlurred112x176FallbackUnderGpuShader() {
         val field = CapsuleColorField(20, 16, List(320) { Color(0xFF8AB1D6) })
         val bitmap = capsuleVideoSpatialBitmap(field, Color(0xFF111116)).asAndroidBitmap()
         try {
-            assertEquals(176, bitmap.width)
-            assertEquals(256, bitmap.height)
+            assertEquals(112, bitmap.width)
+            assertEquals(176, bitmap.height)
             val centre = bitmap.getPixel(bitmap.width / 2, bitmap.height / 2)
             val atLeft = bitmap.getPixel(bitmap.width / 8, bitmap.height / 2)
             val atRight = bitmap.getPixel(bitmap.width * 7 / 8, bitmap.height / 2)
