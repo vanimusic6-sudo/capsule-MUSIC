@@ -1,10 +1,28 @@
 package com.nikhil.yt.innertube
 
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.yield
 import org.junit.Assert.*
 import org.junit.Test
 
 class CapsuleVideoMetadataAdmissionTest {
+    @Test fun concurrentVideoStagesCannotBypassAdmissionOrDoubleSpendIt() = runBlocking {
+        val held = CompletableDeferred<Unit>()
+        var reservations = 0
+        val request = CapsuleVideoMetadataAdmission {
+            reservations++
+            held.await()
+        }
+        val waiters = List(16) { async { request.beforeRequest() } }
+        yield()
+        held.complete(Unit)
+        waiters.awaitAll()
+        assertEquals(1, reservations)
+    }
+
     @Test fun searchFallbackAndExtractionShareOneReservationButNextTrackGetsItsOwn() = runBlocking {
         var reservations = 0
         val request = CapsuleVideoMetadataAdmission { reservations++ }
