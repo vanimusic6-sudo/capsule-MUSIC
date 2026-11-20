@@ -6,11 +6,13 @@ package com.nikhil.yt.playback
  * to the same media selection; MusicService enforces that before using this predicate.
  */
 internal object AudioBufferStallPolicy {
-    const val INITIAL_WAIT_MS = 45_000L
-    // A 12 s wait plus a 4 s progress sample catches the observed ~20 s rebuffer
-    // without mistaking a normal 1-5 s URL resolve/redirect for a stuck stream.
-    const val REBUFFER_WAIT_MS = 12_000L
-    const val SAMPLE_WINDOW_MS = 4_000L
+    // A source which delivered no playable audio for 20s is not a normal
+    // cold start. A further 3s buffer-growth sample avoids penalizing a
+    // slow-but-progressing URL resolve or CDN connection.
+    const val INITIAL_WAIT_MS = 20_000L
+    // Mid-song stalls have an existing decoder and buffer; recover sooner.
+    const val REBUFFER_WAIT_MS = 10_000L
+    const val SAMPLE_WINDOW_MS = 3_000L
     const val MAX_BUFFER_AHEAD_MS = 8_000L
     const val MIN_BUFFER_GROWTH_MS = 2_000L
     const val MAX_AUTOMATIC_REFRESHES_PER_TRACK = 2
@@ -31,6 +33,26 @@ internal object AudioBufferStallPolicy {
         (contentLengthBytes ?: 0L) >= LONG_FORM_THRESHOLD_BYTES &&
             !sabrSelected && !forceSabr &&
             observedStalls in 0 until MAX_AUTOMATIC_REFRESHES_PER_TRACK
+
+    /**
+     * Long-form slow CDN bodies warrant an alternate client immediately.
+     * A short song which never reached READY must also be able to escape a
+     * broken profile: refreshing the same client twice can otherwise return
+     * the same non-playable stream indefinitely. For a short mid-song
+     * rebuffer, preserve the first same-client recovery.
+     */
+    fun shouldRotateClientAfterStall(
+        contentLengthBytes: Long?,
+        sabrSelected: Boolean,
+        forceSabr: Boolean,
+        observedStalls: Int,
+        hasEverBeenReady: Boolean,
+    ): Boolean =
+        !sabrSelected && !forceSabr &&
+            observedStalls in 0 until MAX_AUTOMATIC_REFRESHES_PER_TRACK &&
+            (!hasEverBeenReady ||
+                (contentLengthBytes ?: 0L) >= LONG_FORM_THRESHOLD_BYTES ||
+                observedStalls > 0)
 
     fun shouldRefresh(
         buffering: Boolean,

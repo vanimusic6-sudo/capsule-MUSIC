@@ -1504,11 +1504,12 @@ class MusicService :
                 // existing InnerTubeX route policy negotiate SABR after two.
                 val stalledPlayback = playbackUrlCache.get(id)
                 if (stalledPlayback?.streamClient != null &&
-                    AudioBufferStallPolicy.shouldRotateLongFormClient(
+                    AudioBufferStallPolicy.shouldRotateClientAfterStall(
                         contentLengthBytes = stalledPlayback.format.contentLength,
                         sabrSelected = stalledPlayback.sabrBootstrap != null,
                         forceSabr = forceSabrAudio,
                         observedStalls = attempts,
+                        hasEverBeenReady = audioBufferLastReadyMediaId == id,
                     )
                 ) {
                     CapsuleAudioEngine.markStreamClientFailed(
@@ -1517,7 +1518,7 @@ class MusicService :
                         httpStatusCode = null,
                     )
                     Timber.tag("CapsuleHybrid").w(
-                        "longform-stall id=%s stalledClient=%s attempt=%d next=alternative-transport",
+                        "audio-stall id=%s stalledClient=%s attempt=%d next=alternative-client",
                         id, stalledPlayback.streamClient, attempts + 1,
                     )
                 }

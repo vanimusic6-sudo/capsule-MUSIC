@@ -17,6 +17,32 @@ class AudioBufferStallPolicyTest {
         buffering, playWhenReady, connected, blocked, isVideo, ahead, growth,
     )
 
+    @Test fun completelyStalledStartupGetsASecondChanceWithoutFortyNineSecondsOfSilence() {
+        assertTrue(AudioBufferStallPolicy.INITIAL_WAIT_MS in 18_000L..24_000L)
+        assertTrue(AudioBufferStallPolicy.INITIAL_WAIT_MS +
+            AudioBufferStallPolicy.SAMPLE_WINDOW_MS <= 27_000L)
+        assertTrue(AudioBufferStallPolicy.REBUFFER_WAIT_MS +
+            AudioBufferStallPolicy.SAMPLE_WINDOW_MS <= 15_000L)
+    }
+
+    @Test fun shortTracksThatNeverStartedMaySwitchToAnotherClient() {
+        val policy = AudioBufferStallPolicy
+        assertTrue(policy.shouldRotateClientAfterStall(
+            2L * 1024 * 1024, false, false, 0, hasEverBeenReady = false))
+        assertFalse(policy.shouldRotateClientAfterStall(
+            2L * 1024 * 1024, false, false, 0, hasEverBeenReady = true))
+        assertTrue(policy.shouldRotateClientAfterStall(
+            2L * 1024 * 1024, false, false, 1, hasEverBeenReady = true))
+        assertTrue(policy.shouldRotateClientAfterStall(
+            30L * 1024 * 1024, false, false, 0, hasEverBeenReady = true))
+        assertFalse(policy.shouldRotateClientAfterStall(
+            30L * 1024 * 1024, true, false, 0, hasEverBeenReady = false))
+        assertFalse(policy.shouldRotateClientAfterStall(
+            30L * 1024 * 1024, false, true, 0, hasEverBeenReady = false))
+        assertFalse(policy.shouldRotateClientAfterStall(
+            30L * 1024 * 1024, false, false, 2, hasEverBeenReady = false))
+    }
+
     @Test fun stalledAudioWithoutNewBufferCanRefresh() {
         assertTrue(needsRefresh(ahead = 0L, growth = 0L))
         assertTrue(needsRefresh(ahead = 900L, growth = 100L))
