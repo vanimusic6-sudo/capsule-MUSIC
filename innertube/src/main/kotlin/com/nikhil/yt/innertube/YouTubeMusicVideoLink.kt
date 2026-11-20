@@ -174,7 +174,20 @@ object YouTubeMusicVideoLinkResolver {
             require(sourceTitle.isNotBlank()) { "Missing song title" }
 
             cachedOrNull(sourceId, metadataKey)?.let { return@runCatching it }
+            // A cached miss means the native search already failed. If the
+            // artist screen has since loaded a valid clip, use that local
+            // evidence without sending another network request.
+            fun artistAfterNativeMiss(): YouTubeMusicVideoLink? =
+                YouTubeMusicArtistVideoHints.match(
+                    sourceTitle, cleanArtists, durationSeconds, sourceId, artistBrowseIds,
+                )?.also { fromArtist ->
+                    store(sourceId, CacheEntry(
+                        link = fromArtist, metadataKey = metadataKey,
+                        expiresAtMs = System.currentTimeMillis() + POSITIVE_CACHE_MS,
+                    ))
+                }
             if (isNegativeCached(sourceId, metadataKey)) {
+                artistAfterNativeMiss()?.let { return@runCatching it }
                 throw IllegalStateException(
                     "Official music video is unavailable for this song",
                 )
@@ -193,6 +206,7 @@ object YouTubeMusicVideoLinkResolver {
             requestLock.withLock {
                 cachedOrNull(sourceId, metadataKey)?.let { return@withLock it }
                 if (isNegativeCached(sourceId, metadataKey)) {
+                    artistAfterNativeMiss()?.let { return@withLock it }
                     throw IllegalStateException(
                         "Official music video is unavailable for this song",
                     )
