@@ -44,6 +44,16 @@ import timber.log.Timber
  */
 internal const val AUDIO_CHUNK_BYTES = 1L * 1024 * 1024
 
+private const val LONG_FORM_AUDIO_MIN_BYTES = 12L * 1024 * 1024
+private const val LONG_FORM_MAX_CHUNK_BYTES = 1L * 1024 * 1024
+
+/** Keep short songs on the library's chosen range size. Only a large stream may
+ * grow past that size, and only after the rate policy observes fast socket reads. */
+internal fun adaptiveAudioMaxChunkBytes(contentLengthBytes: Long, initialBytes: Long): Long =
+    if (contentLengthBytes >= LONG_FORM_AUDIO_MIN_BYTES)
+        maxOf(initialBytes, LONG_FORM_MAX_CHUNK_BYTES)
+    else initialBytes
+
 // Media3's Matroska/WebM extractor requested ~19,000 tiny read() calls for
 // 1 MiB of Opus, versus ~3,000 for MP4/AAC in the same phone capture.
 // Readahead below coalesces ONLY upstream Opus network reads. It never
@@ -223,7 +233,10 @@ internal class AudioChunkedDataSource(
         request = dataSpec
         activeChunkBytes = chunkBytes
         adaptiveChunkBytes = chunkBytes
-        ratePolicy = AudioCdnChunkRatePolicy(chunkBytes)
+        ratePolicy = AudioCdnChunkRatePolicy(
+            chunkBytes,
+            maximumChunkBytes = adaptiveAudioMaxChunkBytes(dataSpec.length, chunkBytes),
+        )
         firstChunkBytes = firstBytes
         firstChunkPending = true
         nextPosition = dataSpec.position
@@ -384,11 +397,18 @@ internal class AudioChunkedDataSource(
             // At most the remainder of THIS bounded request. No speculative
             // requests, no seek across slices, no write of unused bytes to cache.
             val upstreamRequested = minOf(OPUS_READAHEAD_BYTES.toLong(), chunkLeft).toInt()
+            val startedNs = System.nanoTime()
             val filled = readChunkNetwork(opusReadAhead, 0, upstreamRequested)
-            // Do not reinterpret a coalesced 8K read as evidence for CDN
-            // rate adaptation. Before this change Media3 requested tiny
-            // WebM fragments that deliberately did not drive that policy.
-            // Keep the same next-range sizes and recovery budget.
+            // This is one real socket read, not one of Media3's thousands
+            // of 1-byte WebM extractor calls. Count its measured throughput
+            // for long-form range growth; short songs retain the old cap.
+            if (filled > 0 && upstreamRequested >= OPUS_READAHEAD_BYTES) {
+                ratePolicy.observeRead(
+                    requestedBytes = upstreamRequested,
+                    readBytes = filled,
+                    elapsedMs = (System.nanoTime() - startedNs).coerceAtLeast(0L) / 1_000_000L,
+                )
+            }
             if (filled > 0) {
                 bufferedOffset = minOf(requested, filled)
                 bufferedLength = filled
