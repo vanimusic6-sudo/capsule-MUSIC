@@ -4644,10 +4644,9 @@ class MusicService :
             // use the compact two-client failover. HTTP 429/bot/offline have
             // already returned above and must never rotate identities.
             if (signedUrlRejected || cdnTransportFailure) {
-                // The request layer already performed one retry of the SAME
-                // URL on 403/410. Ordinary transport failures get one reconnect;
-                // a no-byte CDN timeout must not reopen the same URL. Resolve
-                // a fresh URL once before retiring its otherwise healthy client.
+                // Only a transient connection reset is eligible for one
+                // reconnect. A refused signed URL or no-byte open timeout
+                // immediately switches the extractor client, never the same URL.
                 val unresponsiveOpen = error.isUnresponsiveCdnOpenFor(currentMediaId)
                 val recoveryAction = playbackRecoveryCoordinator.onCdnFailure(
                     currentMediaId,
@@ -4691,16 +4690,6 @@ class MusicService :
                         retryDelayMs = minOf(250L, retryDelay),
                         forceRecreateSources = true,
                     )
-                    return
-                }
-
-                if (recoveryAction == AudioCdnRecoveryAction.RESOLVE_FRESH_URL) {
-                    audioResolveCoordinator.cancelMedia(currentMediaId) { playbackUrlCache.remove(currentMediaId) }
-                    Timber.tag("PlaybackRecovery").i("cdn-recovery id=%s action=fresh-url delayMs=%d",
-                        currentMediaId, minOf(250L, retryDelay))
-                    scheduleStreamRefreshRetry(mediaId = currentMediaId, refreshCipherConfig = false,
-                        retryReason = "cdn fresh URL", retryDelayMs = minOf(250L, retryDelay),
-                        forceRecreateSources = true)
                     return
                 }
 

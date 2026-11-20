@@ -6,7 +6,6 @@ import android.net.Uri
 import androidx.media3.common.C
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
-import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
 import androidx.media3.datasource.TransferListener
 import com.nikhil.yt.utils.GlobalLog
 import timber.log.Timber
@@ -58,13 +57,11 @@ internal fun isOpusChunkKey(key: String?): Boolean {
 }
 
 /** Initial CDN open plus ONE same-link retry before the service tries the next client. */
-internal const val CHUNK_OPEN_ATTEMPTS = 2
 // Always respect the extractor's bounded audio ranges. The temporary
 // whole-short-song optimization skipped the staged first read and turned a
 // 3–4MB ordinary file into one long CDN request, reintroducing pacing/seek risks.
 
 /** Response codes that mean "not this request" rather than "not this stream". */
-internal val REFUSAL_CODES = setOf(403, 410)
 
 /**
  * Whether a request for [length] bytes should be split, given a chunk size of [chunkBytes].
@@ -207,7 +204,7 @@ internal class AudioChunkedDataSource(
             Timber.tag("AudioCDN").w("cdn-chunk-skipped reason=url-carries-its-own-range")
             request = null
             opened = true
-            return openWithRefusalRetry(dataSpec)
+            return openChunkOnce(dataSpec)
         }
 
         // Stage the first slice even when the entire song is smaller than the
@@ -220,7 +217,7 @@ internal class AudioChunkedDataSource(
         if (!shouldChunkAudioRequest(dataSpec.length, firstBytes)) {
             request = null
             opened = true
-            return openWithRefusalRetry(dataSpec)
+            return openChunkOnce(dataSpec)
         }
 
         request = dataSpec
@@ -249,36 +246,12 @@ internal class AudioChunkedDataSource(
                 .setLength(chunkLeft)
                 .build()
 
-        openWithRefusalRetry(chunkSpec)
+        openChunkOnce(chunkSpec)
     }
 
-    /**
-     * A short bounded retry also applies to small and unknown-length streams. Captured 403s can
-     * succeed on the unchanged request; persistent refusals and all transport failures propagate
-     * to the service's shared recovery budget. Never retry 429 or a cancellation here.
-     */
-    private fun openWithRefusalRetry(spec: DataSpec): Long {
-        var attempt = 1
-        while (true) {
-            try {
-                return upstream.open(spec)
-            } catch (refused: InvalidResponseCodeException) {
-                if (refused.responseCode !in REFUSAL_CODES || attempt >= CHUNK_OPEN_ATTEMPTS) throw refused
-                if (GlobalLog.isEnabled) {
-                    Timber.tag("AudioCDN").w(
-                        "cdn-chunk-refused linkRef=%s position=%d length=%d attempt=%d code=%d; asking again",
-                        AudioCdnLinkIdentity.ref(spec.uri.toString()),
-                        spec.position,
-                        spec.length,
-                        attempt,
-                        refused.responseCode,
-                    )
-                }
-                upstream.close()
-                attempt += 1
-            }
-        }
-    }
+    /** One HTTP open per slice. A rejected signed URL is handled once at the
+     * service boundary, not retried invisibly by the range adapter. */
+    private fun openChunkOnce(spec: DataSpec): Long = upstream.open(spec)
 
     /**
      * Media3's WebM extractor frequently asks for 1–60 bytes. The ordinary
@@ -379,7 +352,7 @@ internal class AudioChunkedDataSource(
             bufferedOffset = 0
             bufferedLength = 0
             try {
-                openWithRefusalRetry(remainingSpec)
+                openChunkOnce(remainingSpec)
                 return upstream.read(buffer, offset, length)
             } catch (retryFailure: java.io.IOException) {
                 retryFailure.addSuppressed(failure)

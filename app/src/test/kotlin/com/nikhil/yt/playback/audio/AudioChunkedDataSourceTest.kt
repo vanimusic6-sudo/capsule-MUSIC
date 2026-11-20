@@ -687,87 +687,62 @@ class AudioChunkedDataSourceTest {
     }
 
     /**
-     * A refused slice is asked for again rather than ending the track.
-     *
-     * googlevideo refuses about one open in ten with no reason given, and a capture shows the shape:
-     * on one link the slice at 47.8 MB was served and the slice at 48.9 MB refused moments later.
-     * Splitting a long stream multiplies that exposure -- a 66 MB item is 66 opens -- so without
-     * asking again, meeting a refusal somewhere inside an hour-long item is a near certainty.
+     * Refusal belongs to the recovery coordinator, not the chunk layer.
+     * Every 403/410 must be exposed after exactly one open, even mid-track.
      */
-    @Test
-    fun aRefusedSliceIsAskedForAgain() {
-        val bytes = content(1000)
-        val upstream = RefusingUpstream(bytes, refusalsLeft = 1)
+    @Test fun aRefusedSliceIsNotAskedForAgain() {
+        val upstream = RefusingUpstream(content(1000), refusalsLeft = 1)
         val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
-
-        source.open(spec(bytes.size.toLong()))
-        val delivered = drain(source)
-
-        assertArrayEquals("a single same-link retry must recover a transient refusal", bytes, delivered)
-        assertEquals("only one refusal is retried before client failover", 1, upstream.refusalsServed)
+        try {
+            val failure = runCatching { source.open(spec(1000)) }.exceptionOrNull()
+            assertTrue(failure is InvalidResponseCodeException)
+            assertEquals(1, upstream.refusalsServed)
+        } finally { source.close() }
     }
 
-    /** A slice that keeps being refused is handed to the player rather than retried forever. */
-    @Test
-    fun aSliceRefusedEveryTimeIsGivenUpOn() {
-        val bytes = content(1000)
-        val upstream = RefusingUpstream(bytes, refusalsLeft = Int.MAX_VALUE)
+    @Test fun aPersistentRefusalIsAlsoOpenedOnce() {
+        val upstream = RefusingUpstream(content(1000), refusalsLeft = Int.MAX_VALUE)
         val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
-
-        val failure = runCatching { source.open(spec(bytes.size.toLong())) }.exceptionOrNull()
-
-        assertTrue("the refusal must reach the player", failure is InvalidResponseCodeException)
-        assertEquals(CHUNK_OPEN_ATTEMPTS, upstream.refusalsServed)
+        try {
+            assertTrue(runCatching { source.open(spec(1000)) }.exceptionOrNull() is InvalidResponseCodeException)
+            assertEquals(1, upstream.refusalsServed)
+        } finally { source.close() }
     }
 
-    @Test
-    fun aShortTrackGetsTheSameBoundedRefusalRecovery() {
-        val bytes = content(64)
-        val upstream = RefusingUpstream(bytes, refusalsLeft = 1)
+    @Test fun aShortTrackDoesNotRepeat403() {
+        val upstream = RefusingUpstream(content(64), refusalsLeft = 1)
         val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
-        assertEquals(64L, source.open(spec(64)))
-        assertArrayEquals(bytes, drain(source))
-        assertEquals(1, upstream.refusalsServed)
+        try {
+            assertTrue(runCatching { source.open(spec(64)) }.exceptionOrNull() is InvalidResponseCodeException)
+            assertEquals(1, upstream.refusalsServed)
+        } finally { source.close() }
     }
 
-    @Test
-    fun anUnknownLengthTrackCanSurviveATransient403() {
-        val bytes = content(64)
-        val upstream = RefusingUpstream(bytes, refusalsLeft = 1)
+    @Test fun unknownLengthRefusalDoesNotRepeat() {
+        val upstream = RefusingUpstream(content(64), refusalsLeft = 1)
         val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
-        source.open(spec(C.LENGTH_UNSET.toLong()))
-        assertArrayEquals(bytes, drain(source))
-        assertEquals(1, upstream.refusalsServed)
+        try {
+            assertTrue(runCatching { source.open(spec(C.LENGTH_UNSET.toLong())) }.exceptionOrNull() is InvalidResponseCodeException)
+            assertEquals(1, upstream.refusalsServed)
+        } finally { source.close() }
     }
 
-    @Test
-    fun persistentShortTrackRefusalsStillStopAfterThreeAttempts() {
-        val upstream = RefusingUpstream(content(64), refusalsLeft = Int.MAX_VALUE)
-        val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
-        val failure = runCatching { source.open(spec(64)) }.exceptionOrNull()
-        assertTrue(failure is InvalidResponseCodeException)
-        assertEquals(CHUNK_OPEN_ATTEMPTS, upstream.refusalsServed)
-    }
-
-    @Test
-    fun aRateLimitedShortTrackIsNeverRetried() {
+    @Test fun aRateLimitedTrackIsNeverRetried() {
         val upstream = RefusingUpstream(content(64), refusalsLeft = Int.MAX_VALUE, code = 429)
         val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
-        val failure = runCatching { source.open(spec(64)) }.exceptionOrNull()
-        assertTrue(failure is InvalidResponseCodeException)
-        assertEquals(1, upstream.refusalsServed)
+        try {
+            assertTrue(runCatching { source.open(spec(64)) }.exceptionOrNull() is InvalidResponseCodeException)
+            assertEquals(1, upstream.refusalsServed)
+        } finally { source.close() }
     }
 
-    /** Anything that is not a refusal goes straight up: a real network failure is not ours to hide. */
-    @Test
-    fun aFailureThatIsNotARefusalIsNotRetried() {
-        val bytes = content(1000)
-        val upstream = RefusingUpstream(bytes, refusalsLeft = 1, code = 500)
+    @Test fun otherHttpErrorsAreNotRetriedHere() {
+        val upstream = RefusingUpstream(content(1000), refusalsLeft = 1, code = 500)
         val source = AudioChunkedDataSource(upstream, chunkBytes = 128)
-
-        runCatching { source.open(spec(bytes.size.toLong())) }
-
-        assertEquals("a server error must not be retried here", 1, upstream.refusalsServed)
+        try {
+            assertTrue(runCatching { source.open(spec(1000)) }.exceptionOrNull() is InvalidResponseCodeException)
+            assertEquals(1, upstream.refusalsServed)
+        } finally { source.close() }
     }
 
     @Test

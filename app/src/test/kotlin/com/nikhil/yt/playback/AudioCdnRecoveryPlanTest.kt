@@ -6,68 +6,40 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AudioCdnRecoveryPlanTest {
-    @Test
-    fun transportFailureReconnectsSameUrlOnceThenChangesClientThenSkips() {
+    @Test fun signedUrlRefusalImmediatelySwitchesClientThenStops() {
         val plan = AudioCdnRecoveryPlan()
-        assertEquals(AudioCdnRecoveryAction.RETRY_SAME_URL, plan.onFailure("track", false))
-        assertEquals(AudioCdnRecoveryAction.TRY_NEXT_CLIENT, plan.onFailure("track", false))
-        assertTrue(plan.nextClientAlreadyTried("track"))
-        assertEquals(AudioCdnRecoveryAction.SKIP_TRACK, plan.onFailure("track", false))
-        assertEquals(AudioCdnRecoveryAction.SKIP_TRACK, plan.onFailure("track", false))
+        assertEquals(AudioCdnRecoveryAction.TRY_NEXT_CLIENT, plan.onFailure("a", true))
+        assertTrue(plan.nextClientAlreadyTried("a"))
+        assertEquals(AudioCdnRecoveryAction.SKIP_TRACK, plan.onFailure("a", true))
+        assertEquals(AudioCdnRecoveryAction.SKIP_TRACK, plan.onFailure("a", false))
     }
 
-    @Test
-    fun noByteCdnOpenTimeoutRequestsFreshUrlBeforeRetiringHealthyClient() {
+    @Test fun noByteOpenTimeoutDoesNotReopenTheSameHost() {
         val plan = AudioCdnRecoveryPlan()
-        assertEquals(
-            AudioCdnRecoveryAction.RESOLVE_FRESH_URL,
-            plan.onFailure("song", signedUrlRejected = false, unresponsiveOpen = true),
-        )
-        assertFalse(plan.nextClientAlreadyTried("song"))
         assertEquals(AudioCdnRecoveryAction.TRY_NEXT_CLIENT,
-            plan.onFailure("song", signedUrlRejected = false, unresponsiveOpen = true))
-        assertTrue(plan.nextClientAlreadyTried("song"))
-        assertEquals(
-            AudioCdnRecoveryAction.SKIP_TRACK,
-            plan.onFailure("song", signedUrlRejected = false, unresponsiveOpen = true),
-        )
+            plan.onFailure("a", signedUrlRejected = false, unresponsiveOpen = true))
+        assertEquals(AudioCdnRecoveryAction.SKIP_TRACK, plan.onFailure("a", false))
     }
 
-    @Test
-    fun aReadTimeoutOnAnOpenedStreamStillGetsOneSameLinkReconnect() {
-        val plan = AudioCdnRecoveryPlan()
-        assertEquals(
-            AudioCdnRecoveryAction.RETRY_SAME_URL,
-            plan.onFailure("song", signedUrlRejected = false, unresponsiveOpen = false),
-        )
-        assertEquals(
-            AudioCdnRecoveryAction.TRY_NEXT_CLIENT,
-            plan.onFailure("song", signedUrlRejected = false, unresponsiveOpen = true),
-        )
-    }
-
-    @Test
-    fun rejectedSignedUrlRefreshesSamePolicyOnceThenChangesClient() {
-        val plan = AudioCdnRecoveryPlan()
-        assertEquals(AudioCdnRecoveryAction.RESOLVE_FRESH_URL, plan.onFailure("track", true))
-        assertEquals(AudioCdnRecoveryAction.TRY_NEXT_CLIENT, plan.onFailure("track", true))
-        assertEquals(AudioCdnRecoveryAction.SKIP_TRACK, plan.onFailure("track", true))
-    }
-
-    @Test
-    fun mixedTransportAndRejectionDoesNotRestartFailedClient() {
-        val plan = AudioCdnRecoveryPlan()
-        assertEquals(AudioCdnRecoveryAction.RETRY_SAME_URL, plan.onFailure("track", false))
-        assertEquals(AudioCdnRecoveryAction.TRY_NEXT_CLIENT, plan.onFailure("track", true))
-        assertEquals(AudioCdnRecoveryAction.SKIP_TRACK, plan.onFailure("track", false))
-    }
-
-    @Test
-    fun distinctSongsKeepSeparateBoundedPlansAndHealthyResetClearsState() {
+    @Test fun onlyTransientTransportFailureGetsOneReconnect() {
         val plan = AudioCdnRecoveryPlan()
         assertEquals(AudioCdnRecoveryAction.RETRY_SAME_URL, plan.onFailure("a", false))
-        assertEquals(AudioCdnRecoveryAction.RETRY_SAME_URL, plan.onFailure("b", false))
         assertFalse(plan.nextClientAlreadyTried("a"))
+        assertEquals(AudioCdnRecoveryAction.TRY_NEXT_CLIENT, plan.onFailure("a", false))
+        assertEquals(AudioCdnRecoveryAction.SKIP_TRACK, plan.onFailure("a", false))
+    }
+
+    @Test fun afterReconnectAnHttp403MustSwitchClientNotRetry() {
+        val plan = AudioCdnRecoveryPlan()
+        assertEquals(AudioCdnRecoveryAction.RETRY_SAME_URL, plan.onFailure("a", false))
+        assertEquals(AudioCdnRecoveryAction.TRY_NEXT_CLIENT, plan.onFailure("a", true))
+        assertEquals(AudioCdnRecoveryAction.SKIP_TRACK, plan.onFailure("a", false))
+    }
+
+    @Test fun tracksAndHealthyResetAreIsolated() {
+        val plan = AudioCdnRecoveryPlan()
+        assertEquals(AudioCdnRecoveryAction.TRY_NEXT_CLIENT, plan.onFailure("a", true))
+        assertEquals(AudioCdnRecoveryAction.RETRY_SAME_URL, plan.onFailure("b", false))
         plan.reset("a")
         assertEquals(AudioCdnRecoveryAction.RETRY_SAME_URL, plan.onFailure("a", false))
         assertEquals(AudioCdnRecoveryAction.TRY_NEXT_CLIENT, plan.onFailure("b", false))
