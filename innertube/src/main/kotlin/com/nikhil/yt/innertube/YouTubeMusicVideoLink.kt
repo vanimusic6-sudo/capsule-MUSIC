@@ -186,6 +186,21 @@ object YouTubeMusicVideoLinkResolver {
                         expiresAtMs = System.currentTimeMillis() + POSITIVE_CACHE_MS,
                     ))
                 }
+
+            // The user may already have browsed this *exact* official artist.
+            // A typed OMV on that artist's cached shelf is stronger evidence
+            // than a same-title global search result. Skip the expensive
+            // /next, global search, and artist-page reload entirely. This
+            // creates zero network jobs and is limited to verified browse IDs.
+            fun verifiedArtistCacheHit(): YouTubeMusicVideoLink? =
+                YouTubeMusicArtistVideoHints.matchVerifiedArtistOmv(
+                    sourceTitle, cleanArtists, durationSeconds, sourceId, artistBrowseIds,
+                )?.also { fromArtist ->
+                    store(sourceId, CacheEntry(
+                        link = fromArtist, metadataKey = metadataKey,
+                        expiresAtMs = System.currentTimeMillis() + POSITIVE_CACHE_MS,
+                    ))
+                }
             if (isNegativeCached(sourceId, metadataKey)) {
                 artistAfterNativeMiss()?.let { return@runCatching it }
                 throw IllegalStateException(
@@ -200,6 +215,8 @@ object YouTubeMusicVideoLinkResolver {
                 )
             }
 
+            verifiedArtistCacheHit()?.let { return@runCatching it }
+
             val requestLock = if (CapsuleAnonymousSession.enabled)
                 anonymousLocks[(sourceId.hashCode() and Int.MAX_VALUE) % anonymousLocks.size]
             else authMutex
@@ -211,6 +228,9 @@ object YouTubeMusicVideoLinkResolver {
                         "Official music video is unavailable for this song",
                     )
                 }
+                // An artist page may have completed while another request
+                // held this lock; don't repeat old metadata requests.
+                verifiedArtistCacheHit()?.let { return@withLock it }
 
                 coroutineScope {
                 val sourceTitleNorm =

@@ -106,6 +106,7 @@ jobs:
           gradle :innertube:test
           --tests 'com.nikhil.yt.innertube.CapsuleVideoRequestGuardTest'
           --tests 'com.nikhil.yt.innertube.YouTubeMusicVideoMatcherTest'
+          --tests 'com.nikhil.yt.innertube.YouTubeMusicArtistVideoHintsTest'
           --tests 'com.nikhil.yt.innertube.video.CapsuleVideoRoutesTest'
           --tests 'com.nikhil.yt.innertube.video.CapsuleNativeSabrVideoTest'
           --stacktrace --no-daemon --max-workers=2

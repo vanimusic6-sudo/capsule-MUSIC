@@ -23,6 +23,7 @@ internal object YouTubeMusicArtistVideoHints {
     private const val MAX_ARTISTS = 24
     private const val MAX_ITEMS_PER_ARTIST = 100
     private val validId = Regex("""[A-Za-z0-9_-]{11}""")
+    private val verifiedArtistBrowseId = Regex("""(?:UC|MPLAUC)[A-Za-z0-9_-]{14,80}""")
     private val videoSection = Regex(
         """(?:\bvideos?\b|\bclips?\b|\bmusic\s*videos?\b|клипы|видео|відео|音樂視頻|音乐视频|뮤직비디오|ミュージックビデオ)""",
     )
@@ -81,6 +82,27 @@ internal object YouTubeMusicArtistVideoHints {
         }
     }
 
+    /**
+     * Zero-network fast path. Only an explicit, verified artist browse ID
+     * AND an OMV-typed endpoint from that exact artist's cached catalog may
+     * bypass /next + global Videos search. Untyped "official video" titles
+     * remain eligible only for the slower independent fallback.
+     */
+    fun matchVerifiedArtistOmv(
+        sourceTitle: String,
+        artists: List<String>,
+        durationSeconds: Int?,
+        sourceId: String,
+        artistBrowseIds: List<String>,
+        nowMs: Long = System.currentTimeMillis(),
+    ): YouTubeMusicVideoLink? {
+        if (artistBrowseIds.none(verifiedArtistBrowseId::matches)) return null
+        return match(
+            sourceTitle, artists, durationSeconds, sourceId,
+            artistBrowseIds, nowMs, requireTypedOmv = true,
+        )
+    }
+
     fun match(
         sourceTitle: String,
         artists: List<String>,
@@ -88,6 +110,7 @@ internal object YouTubeMusicArtistVideoHints {
         sourceId: String,
         artistBrowseIds: List<String> = emptyList(),
         nowMs: Long = System.currentTimeMillis(),
+        requireTypedOmv: Boolean = false,
     ): YouTubeMusicVideoLink? {
         val requestedArtists = artists.flatMap { raw ->
             listOf(raw) + raw.split(Regex("""(?i)\s+(?:feat\.?|ft\.?|featuring|with)\s+|[,;&]"""))
@@ -107,6 +130,8 @@ internal object YouTubeMusicArtistVideoHints {
         }
         return candidates.asSequence().flatMap { it.rows.asSequence() }
             .mapNotNull { row ->
+                // The short path must not rely on an untyped title claim.
+                if (requireTypedOmv && !row.omvVerified) return@mapNotNull null
                 // A generic row on a public artist VIDEO shelf can still
                 // be a lyric upload or a fan edit whose type was omitted.
                 // Treat it as a real clip only when the endpoint verifies OMV

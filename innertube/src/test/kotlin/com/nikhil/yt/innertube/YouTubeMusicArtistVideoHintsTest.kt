@@ -9,6 +9,7 @@ import com.nikhil.yt.innertube.pages.ArtistSection
 import org.junit.Assert.*
 import org.junit.After
 import org.junit.Test
+import kotlinx.coroutines.runBlocking
 
 class YouTubeMusicArtistVideoHintsTest {
     private val artistId = "UC" + "X".repeat(22)
@@ -33,6 +34,51 @@ class YouTubeMusicArtistVideoHintsTest {
         description = null,
     )
     @After fun clear() = YouTubeMusicArtistVideoHints.clear()
+
+    @Test fun verifiedOmvFromLoadedArtistPageSkipsAllMetadataNetworkCalls() = runBlocking {
+        val clipId = "clipVID00EA"
+        val sourceId = "audioID00EA"
+        YouTubeMusicArtistVideoHints.remember(page("Videos", listOf(
+            song(clipId, "My Song", "MUSIC_VIDEO_TYPE_OMV"),
+        )))
+        var calls = 0
+        val result = YouTubeMusicVideoLinkResolver.resolve(
+            sourceMediaId = sourceId, title = "My Song", artists = listOf("The Artist"),
+            durationSeconds = 220, artistBrowseIds = listOf(artistId),
+            beforeMetadataRequest = {
+                calls++
+                error("A verified cached OMV must not start a network lookup")
+            },
+        )
+        assertEquals(clipId, result.getOrThrow().videoId)
+        assertEquals("No /next, title search or artist re-browse", 0, calls)
+    }
+
+    @Test fun cacheFastPathRejectsUntypedAndUnrelatedArtistCatalogRows() {
+        YouTubeMusicArtistVideoHints.remember(page("Videos", listOf(
+            song("clipVID00EB", "My Song (Official Video)"),
+        )))
+        assertNull(YouTubeMusicArtistVideoHints.matchVerifiedArtistOmv(
+            "My Song", listOf("The Artist"), 220, "audioID00EB", listOf(artistId),
+        ))
+        YouTubeMusicArtistVideoHints.remember(page("Videos", listOf(
+            song("clipVID00EC", "My Song", "MUSIC_VIDEO_TYPE_OMV"),
+            song("clipVID00ED", "Different Song", "MUSIC_VIDEO_TYPE_OMV"),
+        )))
+        assertNull(YouTubeMusicArtistVideoHints.matchVerifiedArtistOmv(
+            "My Song", listOf("The Artist"), 220, "audioID00EC", emptyList(),
+        ))
+        assertNull(YouTubeMusicArtistVideoHints.matchVerifiedArtistOmv(
+            "My Song", listOf("The Artist"), 220, "audioID00EC",
+            listOf("UC" + "Z".repeat(22)),
+        ))
+        assertNull(YouTubeMusicArtistVideoHints.matchVerifiedArtistOmv(
+            "My Song", listOf("Different Artist"), 220, "audioID00EC", listOf(artistId),
+        ))
+        assertEquals("clipVID00EC", YouTubeMusicArtistVideoHints.matchVerifiedArtistOmv(
+            "My Song", listOf("The Artist"), 220, "audioID00EC", listOf(artistId),
+        )?.videoId)
+    }
 
     @Test fun existingArtistPageReplacesGlobalSearchWithoutANetworkCall() {
         val id = "clipVID001A"
