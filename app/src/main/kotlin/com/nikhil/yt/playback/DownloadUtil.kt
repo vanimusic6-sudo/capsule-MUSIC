@@ -25,8 +25,7 @@ import com.nikhil.yt.playback.audio.AudioCacheIdentity
 import com.nikhil.yt.playback.audio.AudioCdnHostHealth
 import com.nikhil.yt.playback.audio.createDownloadAudioTransport
 import com.nikhil.yt.playback.audio.AudioDownloadUrlPolicy
-import com.nikhil.yt.playback.audio.isAudioCdnTransportFailure
-import com.nikhil.yt.playback.audio.audioCdnRefreshRequiredOrNull
+import com.nikhil.yt.playback.audio.isRecoverableOfflineCdnFailure
 import com.nikhil.yt.playback.audio.AudioPlaybackContext
 import com.nikhil.yt.playback.audio.ResolvingAudioDownloader
 import androidx.media3.exoplayer.offline.DownloadManager
@@ -297,8 +296,7 @@ constructor(
                             CapsuleAudioEngine.markRateLimitedFailure()
                             false // Respect global cooldown, never rotate identities.
                         }
-                        failure.audioCdnRefreshRequiredOrNull() != null ||
-                            failure.isAudioCdnTransportFailure() -> {
+                        isRecoverableOfflineCdnFailure(failure) -> {
                             // Even a typed HOST_COOLDOWN/slow-read verdict with
                             // no nested IOException needs a fresh URL. It is a
                             // transport problem, not an extractor-client ban.
