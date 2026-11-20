@@ -358,9 +358,9 @@ object YouTubeVideoResolver {
                 failedBackend != CapsuleWebVideoResolver.BACKEND
             val tryWeb = eligibleForWeb &&
                 primaryRouteHealth.shouldTryWeb(CapsuleInnerTubeXPlayer.sessionIdentity())
+            var missedWebDeadline = false
             val remote = if (tryWeb) {
                 val preferredStart = SystemClock.elapsedRealtime()
-                var missedDeadline = false
                 capsuleFastPrimaryOrFallback(
                     primaryBudgetMs = CapsuleVideoFastStartPolicy.primaryBudgetMs(quality.maxHeight),
                     primary = {
@@ -370,14 +370,16 @@ object YouTubeVideoResolver {
                     fallback = {
                         Timber.tag(TAG).i(
                             "VIDEO fallback clip=%s reason=%s elapsedMs=%d",
-                            videoId, if (missedDeadline) "web-timeout" else "web-unavailable",
+                            videoId, if (missedWebDeadline) "web-timeout" else "web-unavailable",
                             SystemClock.elapsedRealtime() - preferredStart,
                         )
                         callRemoteExtractor(videoId, quality, muxedOnly, failedBackend, refresh)
                     },
                     onPrimaryDeadline = {
-                        missedDeadline = true
-                        primaryRouteHealth.onWebDeadline(videoId)
+                        // Only learn from a timeout if an independent fallback
+                        // actually returns a validated stream. No fallback means
+                        // no evidence that skipping WEB could help next time.
+                        missedWebDeadline = true
                     },
                 )
             } else {
@@ -387,6 +389,7 @@ object YouTubeVideoResolver {
                 callRemoteExtractor(videoId, quality, muxedOnly, failedBackend, refresh)
             }
             val resolved = remote.toResolved(sourceMediaId)
+            if (missedWebDeadline) primaryRouteHealth.onWebDeadline(videoId)
             cache.put(videoId, key, resolved)
             resolved
         }
