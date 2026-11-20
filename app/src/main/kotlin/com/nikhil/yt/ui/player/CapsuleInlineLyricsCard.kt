@@ -109,17 +109,17 @@ internal fun capsuleInlineLyricsStops(colors: List<Color>): List<Color> {
     }
     val rawStops = if (brightCover) {
         listOf(
-            lerp(ink, upper, 0.54f),
-            lerp(ink, lower, 0.51f),
-            lerp(ink, tail, 0.49f),
+            lerp(ink, upper, 0.46f),
+            lerp(ink, lower, 0.43f),
+            lerp(ink, tail, 0.41f),
         )
     } else {
         // Keep the same hue through the whole card; the former tail factor
         // of 0.34 made even a colourful Immersion cover turn nearly black.
         listOf(
-            lerp(ink, upper, 0.76f),
-            lerp(ink, lower, 0.67f),
-            lerp(ink, tail, 0.58f),
+            lerp(ink, upper, 0.55f),
+            lerp(ink, lower, 0.50f),
+            lerp(ink, tail, 0.45f),
         )
     }
 
@@ -176,11 +176,15 @@ internal fun capsuleInlineLyricsImmersiveStops(colors: List<Color>): List<Color>
 internal fun capsuleInlineLyricsImmersivePanelStops(colors: List<Color>): List<Color> {
     val source = colors.getOrNull(1) ?: Color(0xFF262225)
     val ink = Color(0xFF17171B)
-    val base = lerp(ink, source, 0.78f)
-    val lift = if (maxOf(source.red, source.green, source.blue) > 0.75f) 0.06f else 0.17f
+    // Compact lyrics is a paper/card surface ABOVE the player floor.
+    // The old 78% source + 17% white boost saturated red/pink artwork
+    // into a solid neon panel. Reduce only this surface, not the artwork
+    // or its large immersive backdrop.
+    val base = lerp(ink, source, 0.52f)
+    val lift = if (maxOf(source.red, source.green, source.blue) > 0.75f) 0.025f else 0.065f
     val top = lerp(base, Color.White, lift)
     val bottom = lerp(base, Color.White, lift * 0.68f)
-    return listOf(top.copy(alpha = 0.88f), bottom.copy(alpha = 0.90f))
+    return listOf(top.copy(alpha = 0.89f), bottom.copy(alpha = 0.93f))
 }
 
 /**
