@@ -7,6 +7,7 @@ on:
       - fix/video-artist-catalog-lyrics-20261120
       - fix/video-search-thermal-ambient-20261120
       - fix/lyrics-video-handoff-speed-20261120
+      - fix/canvas-ambient-lyrics-thermal-20261120
     paths:
       - 'app/src/main/kotlin/com/nikhil/yt/playback/**'
       - 'app/src/main/kotlin/com/nikhil/yt/ui/player/**'
