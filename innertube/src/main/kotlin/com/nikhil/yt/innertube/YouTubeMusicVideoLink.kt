@@ -268,6 +268,7 @@ object YouTubeMusicVideoLinkResolver {
                 val candidatesById = linkedMapOf<String, Candidate>()
                 var rowsSeen = 0
                 var artistCatalogChecked = false
+                var artistCatalogMatch: YouTubeMusicVideoLink? = null
 
                 suspend fun tryArtistCatalog(): YouTubeMusicVideoLink? {
                     if (artistCatalogChecked) return null
@@ -276,7 +277,7 @@ object YouTubeMusicVideoLinkResolver {
                     // ID to query. Never search by a guessed name/UC channel.
                     val artistId = artistBrowseIds.firstOrNull { artistBrowseId.matches(it) }
                         ?: return null
-                    val page = withTimeoutOrNull(ARTIST_CATALOG_BUDGET_MS) {
+                    withTimeoutOrNull(ARTIST_CATALOG_BUDGET_MS) {
                         beforeMetadataRequest()
                         YouTube.artist(artistId).getOrNull()
                     } ?: return null
@@ -331,7 +332,10 @@ object YouTubeMusicVideoLinkResolver {
                     // SECOND global query, try the exact performer's official
                     // catalog once, if a genuine YouTube Music browse ID exists.
                     if (index == 0) {
-                        tryArtistCatalog()?.let { return@coroutineScope it }
+                        tryArtistCatalog()?.let {
+                            artistCatalogMatch = it
+                            break
+                        }
                     }
                     }
                     true
@@ -339,6 +343,13 @@ object YouTubeMusicVideoLinkResolver {
                 // Cancel any still-running speculative query on timeout; do not
                 // let an orphan request outlive this VIDEO resolve generation.
                 speculativeSearch?.cancel()
+                artistCatalogMatch?.let { fromArtist ->
+                    store(sourceId, CacheEntry(
+                        link = fromArtist, metadataKey = metadataKey,
+                        expiresAtMs = System.currentTimeMillis() + POSITIVE_CACHE_MS,
+                    ))
+                    return@coroutineScope fromArtist
+                }
 
                 val best = candidatesById.values.maxByOrNull { it.score }
                 if (best == null) {
