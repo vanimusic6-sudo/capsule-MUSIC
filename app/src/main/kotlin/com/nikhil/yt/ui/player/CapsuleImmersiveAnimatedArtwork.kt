@@ -105,6 +105,9 @@ internal fun CapsuleImmersiveAnimatedArtwork(
     key(metadata.id, current.uri, videoPlayer) {
         var attachedView by remember { mutableStateOf<PlayerView?>(null) }
         var surfaceReady by remember { mutableStateOf(false) }
+        // Exactly the same spatial/temporal filter as ordinary VIDEO. Keep
+        // its history across decoder pauses and composition restarts.
+        val ambientLightFilter = remember(videoPlayer, metadata.id) { CapsuleVideoLightFilter() }
         val frameOpacity by animateFloatAsState(
             targetValue = if (surfaceReady) 1f else 0f,
             animationSpec = tween(durationMillis = 400),
@@ -205,15 +208,22 @@ internal fun CapsuleImmersiveAnimatedArtwork(
                 for (signal in frames) {
                     if (!isActive || !view.isAvailable || !view.isShown) break
                     val now = System.nanoTime()
-                    if (now - lastSampleNs < 420L * 1_000_000L) continue
+                    // Canvas is a SECOND video decoder, so respect a conservative
+                    // GPU-readback budget. Its spatial field still interpolates
+                    // smoothly on screen between samples.
+                    if (now - lastSampleNs < 560L * 1_000_000L) continue
                     withFrameNanos { }
                     try {
                         view.getBitmap(buffer)
                         val frame = withContext(Dispatchers.Default) {
-                            capsuleVideoAmbientFrameFromBitmap(buffer, metadata.id)
-                        } ?: continue
-                        session.onFrame(frame)
+                            capsuleVideoAmbientFrameFromBitmap(buffer, metadata.id)?.let {
+                                capsuleSceneLightVideoFrame(it, ambientLightFilter, now)
+                            }
+                        }
+                        // Black cuts and not-yet-ready surfaces must not spin
+                        // at the decoder frame rate or overwrite retained light.
                         lastSampleNs = now
+                        if (frame != null) session.onFrame(frame)
                         errors = 0
                     } catch (_: RuntimeException) {
                         if (++errors >= 3) break
