@@ -32,6 +32,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
+import java.io.InterruptedIOException
 import timber.log.Timber
 
 /** SABR is a transport, never a signed HTTP URL. No tokens enter this URI. */
@@ -214,6 +215,11 @@ internal class CapsuleSabrAudioDataSource(
             if (next.isClosed) {
                 val failure = next.exceptionOrNull()
                 if (failure != null) {
+                    // A user skip/seek cancels the old flow. Never quarantine
+                    // SABR or spend hybrid retries for intentional cancellation.
+                    if (failure is CancellationException) {
+                        throw InterruptedIOException("SABR playback cancelled").apply { initCause(failure) }
+                    }
                     throw if (failure is IOException) failure else CapsuleSabrTransportException(
                         currentContext?.bootstrap?.videoId ?: requestedUri?.lastPathSegment.orEmpty(),
                         "producer-closed", failure,
