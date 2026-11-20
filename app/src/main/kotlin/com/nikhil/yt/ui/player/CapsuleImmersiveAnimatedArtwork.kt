@@ -46,6 +46,11 @@ import kotlinx.coroutines.withContext
  * suppress new requests while paused/hidden/video, without dropping the
  * retained Canvas timeline or replacing the video with the album image.
  */
+/** A retained Canvas session is allowed to decode only behind a visible
+ * active artwork surface; a prepared player without a surface stays paused. */
+internal fun capsuleCanvasDecoderShouldRun(active: Boolean, surfaceMounted: Boolean): Boolean =
+    active && surfaceMounted
+
 internal fun capsuleShouldPlayMotionArtwork(
     enabled: Boolean,
     visible: Boolean,
@@ -158,7 +163,8 @@ internal fun CapsuleImmersiveAnimatedArtwork(
         // paused or a true VIDEO clip owns the screen. The ready decoder is
         // retained and resumes at the same timeline when Canvas is visible.
         LaunchedEffect(videoPlayer, attachedView, renderActive) {
-            session.setRenderingActive(videoPlayer, renderActive && attachedView != null)
+            session.setRenderingActive(videoPlayer,
+                capsuleCanvasDecoderShouldRun(renderActive, attachedView != null))
         }
         DisposableEffect(videoPlayer) {
             onDispose { session.setRenderingActive(videoPlayer, false) }
@@ -198,7 +204,7 @@ internal fun CapsuleImmersiveAnimatedArtwork(
                 for (signal in frames) {
                     if (!isActive || !view.isAvailable || !view.isShown) break
                     val now = System.nanoTime()
-                    if (now - lastSampleNs < VIDEO_AMBIENT_CAPTURE_INTERVAL_MS * 1_000_000L) continue
+                    if (now - lastSampleNs < 420L * 1_000_000L) continue
                     withFrameNanos { }
                     try {
                         view.getBitmap(buffer)
