@@ -389,8 +389,17 @@ fun BottomSheetPlayer(
     }
     // Buffering and a recovered decoder may temporarily clear firstFrameReady.
     // The last valid VIDEO field must not blink back to the album gradient.
+    var videoFrameWasPresented by remember(enrichedMetadata?.id) { mutableStateOf(false) }
+    LaunchedEffect(videoPlaybackState.mode, videoPlaybackState.preferredMode,
+        videoPlaybackState.presentingVideo, enrichedMetadata?.id) {
+        if (videoPlaybackState.preferredMode != CapsulePlaybackMode.VIDEO ||
+            videoPlaybackState.mode != CapsulePlaybackMode.VIDEO
+        ) videoFrameWasPresented = false
+        else if (videoPlaybackState.presentingVideo) videoFrameWasPresented = true
+    }
     val videoBackdropActive = capsuleVideoAmbientShouldStayVisible(
         videoPlaybackState, enrichedMetadata?.id, videoAmbientEnabled,
+        everPresentedFrame = videoFrameWasPresented,
     )
     val activeVideoAmbientBands = videoAmbientFrame?.takeIf { sample ->
         videoBackdropActive && sample.mediaId == enrichedMetadata?.id
