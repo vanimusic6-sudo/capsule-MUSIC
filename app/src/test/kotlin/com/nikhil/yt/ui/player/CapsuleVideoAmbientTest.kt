@@ -27,9 +27,19 @@ class CapsuleVideoAmbientTest {
         )
         assertTrue(capsuleVideoAmbientShouldStayVisible(initial, "song", true))
         assertTrue(capsuleVideoAmbientShouldStayVisible(
-            initial.copy(phase = CapsuleVideoPhase.BUFFERING, firstFrameReady = false), "song", true))
+            initial.copy(phase = CapsuleVideoPhase.BUFFERING, firstFrameReady = false),
+            "song", true, everPresentedFrame = true))
         assertTrue(capsuleVideoAmbientShouldStayVisible(
-            initial.copy(phase = CapsuleVideoPhase.RECOVERING, firstFrameReady = false), "song", true))
+            initial.copy(phase = CapsuleVideoPhase.RECOVERING, firstFrameReady = false),
+            "song", true, everPresentedFrame = true))
+        assertFalse("An old saved VIDEO palette must not show before the new first frame",
+            capsuleVideoAmbientShouldStayVisible(
+                initial.copy(phase = CapsuleVideoPhase.PREPARING, firstFrameReady = false),
+                "song", true))
+        assertFalse("A rebuffered clip without any presented frame must stay on AUDIO colours",
+            capsuleVideoAmbientShouldStayVisible(
+                initial.copy(phase = CapsuleVideoPhase.BUFFERING, firstFrameReady = false),
+                "song", true))
         assertFalse(capsuleVideoAmbientShouldStayVisible(
             initial.copy(preferredMode = CapsulePlaybackMode.AUDIO), "song", true))
         assertFalse(capsuleVideoAmbientShouldStayVisible(initial, "next", true))
