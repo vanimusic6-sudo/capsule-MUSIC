@@ -26,6 +26,7 @@ import com.nikhil.yt.playback.audio.AudioCdnHostHealth
 import com.nikhil.yt.playback.audio.createDownloadAudioTransport
 import com.nikhil.yt.playback.audio.AudioDownloadUrlPolicy
 import com.nikhil.yt.playback.audio.isAudioCdnTransportFailure
+import com.nikhil.yt.playback.audio.audioCdnRefreshRequiredOrNull
 import com.nikhil.yt.playback.audio.AudioPlaybackContext
 import com.nikhil.yt.playback.audio.ResolvingAudioDownloader
 import androidx.media3.exoplayer.offline.DownloadManager
@@ -296,9 +297,13 @@ constructor(
                             CapsuleAudioEngine.markRateLimitedFailure()
                             false // Respect global cooldown, never rotate identities.
                         }
-                        failure.isAudioCdnTransportFailure() -> {
-                            // A reset/truncated response needs a fresh URL, not a
-                            // five-minute penalty against the extractor client.
+                        failure.audioCdnRefreshRequiredOrNull() != null ||
+                            failure.isAudioCdnTransportFailure() -> {
+                            // Even a typed HOST_COOLDOWN/slow-read verdict with
+                            // no nested IOException needs a fresh URL. It is a
+                            // transport problem, not an extractor-client ban.
+                            // Reset/truncation likewise recovers without poisoning
+                            // the user's configured audio clients.
                             resumeUrls.remove(request.id)
                             timber.log.Timber.tag("AudioDownload").w(
                                 "download-recover id=%s reason=transport type=%s",
