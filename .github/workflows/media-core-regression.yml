@@ -5,9 +5,12 @@ on:
     branches:
       - refactor/audio-video-download-20261120
       - fix/video-artist-catalog-lyrics-20261120
+      - fix/video-search-thermal-ambient-20261120
     paths:
       - 'app/src/main/kotlin/com/nikhil/yt/playback/**'
+      - 'app/src/main/kotlin/com/nikhil/yt/ui/player/**'
       - 'app/src/test/kotlin/com/nikhil/yt/playback/**'
+      - 'app/src/test/kotlin/com/nikhil/yt/ui/player/**'
       - 'innertube/src/main/kotlin/com/nikhil/yt/innertube/**'
       - 'innertube/src/test/kotlin/com/nikhil/yt/innertube/**'
       - '.github/workflows/media-core-regression.yml'
@@ -62,6 +65,10 @@ jobs:
           --tests 'com.nikhil.yt.playback.video.CapsuleVideoSessionTest'
           --tests 'com.nikhil.yt.playback.video.CapsuleVideoTimelinePolicyTest'
           --tests 'com.nikhil.yt.playback.video.CapsuleVideoWarmupTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleVideoAmbientTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleVideoColourMotionTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleVideoAmbientResumeTest'
+          --tests 'com.nikhil.yt.ui.player.CapsuleMotionArtworkGateTest'
           --stacktrace --no-daemon --max-workers=2
       - name: Static integrity and safe network boundaries
         run: python3 scripts/capsule_integrity_gate.py
