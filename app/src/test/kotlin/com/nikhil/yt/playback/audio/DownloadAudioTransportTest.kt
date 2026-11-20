@@ -18,6 +18,23 @@ import java.io.IOException
 /** Offline bytes must cross the same exact, bounded CDN ranges as playback. */
 @RunWith(RobolectricTestRunner::class)
 class DownloadAudioTransportTest {
+    @Test fun typedHostCooldownCanRetryWithoutAHiddenSocketException() {
+        val refresh = AudioCdnRefreshRequiredException(
+            "testid00001", AudioCdnRefreshReason.HOST_COOLDOWN,
+        )
+        assertTrue(isRecoverableOfflineCdnFailure(refresh))
+        assertTrue(isRecoverableOfflineCdnFailure(IOException("Media3 wrapper", refresh)))
+        assertTrue(isRecoverableOfflineCdnFailure(java.net.SocketTimeoutException("CDN read")))
+        org.junit.Assert.assertFalse(isRecoverableOfflineCdnFailure(
+            androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException(
+                429, "rate limited", null, emptyMap(),
+                DataSpec.Builder().setUri("https://rr1.googlevideo.com/videoplayback").build(),
+                ByteArray(0),
+            ),
+        ))
+        org.junit.Assert.assertFalse(isRecoverableOfflineCdnFailure(IOException("Canceled")))
+    }
+
     @Test fun advertisedChunkSizesAreBoundedBeforeAnyNetworkOpen() {
         assertEquals(AUDIO_CHUNK_BYTES, downloadAudioChunkSizeBytes(0L))
         assertEquals(AUDIO_CHUNK_BYTES, downloadAudioChunkSizeBytes(Long.MAX_VALUE))
