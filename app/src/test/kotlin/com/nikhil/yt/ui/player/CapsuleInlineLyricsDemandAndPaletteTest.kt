@@ -110,6 +110,10 @@ class CapsuleInlineLyricsDemandAndPaletteTest {
         val immersive = capsuleInlineLyricsImmersivePanelStops(saturated)
         assertTrue(ordinary.first().red < saturated.first().red * 0.72f)
         assertTrue(immersive.first().red < saturated[1].red * 0.72f)
+        assertTrue("The actual tinted card should be dark even for brilliant red art",
+            immersive.first().red < 0.34f)
+        assertTrue("Nearly opaque paper must prevent red photo bleed-through",
+            immersive.all { it.alpha >= 0.98f })
         assertTrue("Card still keeps a warm/red tint", immersive.first().red > immersive.first().blue)
     }
 
