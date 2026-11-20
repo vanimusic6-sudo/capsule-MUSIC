@@ -39,14 +39,16 @@ internal const val VIDEO_AMBIENT_SAMPLE_WIDTH = 48
 internal const val VIDEO_AMBIENT_SAMPLE_HEIGHT = 28
 
 /**
- * Keep the last video colour field across transient decoder events, without
- * changing the original 700ms sampling cadence or 0.018 visual-noise gate.
+ * Keep the last video colour field across transient decoder events.
+ * The previous 0.018 noise gate suppressed gradual colour shifts even when
+ * frames were available. Restore the original spatial renderer's finer gate;
+ * static frames still use an adaptive lower sampling frequency.
  */
 internal class CapsuleVideoAmbientCaptureMemory {
     var previous: CapsuleColorField? = null
 
     fun shouldPublish(frame: CapsuleVideoAmbientFrame): Boolean {
-        if (!capsuleFieldChanged(previous, frame.field)) return false
+        if (!capsuleFieldChanged(previous, frame.field, threshold = 0.006f)) return false
         previous = frame.field
         return true
     }
