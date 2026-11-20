@@ -63,12 +63,24 @@ internal object YouTubeMusicVideoMatcher {
         sourceDurationSeconds: Int?,
         sameOfficialVideo: Boolean = false,
         omvVerified: Boolean = true,
+        fromOfficialArtistPage: Boolean = false,
     ): Int? {
         // Playlist rows may omit the video type or carry incomplete artist/title
         // metadata. A search result explicitly marked OMV for the exact source ID
         // is already the canonical clip, not a competing title/artist match.
-        if (sameOfficialVideo) return STRONG_MATCH_SCORE + 1
         if (isRejectedVariant(sourceTitle, candidateTitle)) return null
+        if (sameOfficialVideo) return STRONG_MATCH_SCORE + 1
+        // Some untyped YouTube Music search cards are actually generated
+        // lyric/visualizer uploads. An exact name + artist is NOT proof that
+        // the recording has a real official video. Require either a verified
+        // OMV endpoint, the official artist's VIDEO shelf, or an explicit
+        // official-video title (still subject to the text-variant blacklist).
+        if (!omvVerified && !fromOfficialArtistPage) {
+            val title = normalizeText(candidateTitle)
+            if (!title.contains("official music video") && !title.contains("official video")) {
+                return null
+            }
+        }
         // A generic title plus OMV classification still does not establish
         // song identity without any artist. The only safe missing-artist case
         // is an explicitly verified same-ID OMV, handled above.
