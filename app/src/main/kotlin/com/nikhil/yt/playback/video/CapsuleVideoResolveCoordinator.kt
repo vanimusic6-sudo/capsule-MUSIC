@@ -15,9 +15,9 @@ internal data class CapsuleVideoResolveRequest(
     val artists: List<String>,
     val durationSeconds: Int?,
     val quality: CapsuleVideoQuality,
+    val originalVideo: Boolean = false,
     /** Actual YouTube Music artist browse IDs, never guessed from names. */
     val artistBrowseIds: List<String> = emptyList(),
-    val originalVideo: Boolean = false,
 )
 
 /** Use all existing metadata before rejecting clips for missing source artist. */
