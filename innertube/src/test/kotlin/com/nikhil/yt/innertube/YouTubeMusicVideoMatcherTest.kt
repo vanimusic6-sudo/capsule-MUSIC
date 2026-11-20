@@ -14,6 +14,34 @@ import org.junit.Assert.fail
 
 @OptIn(ExperimentalSerializationApi::class)
 class YouTubeMusicVideoMatcherTest {
+    @Test fun bracketedFeaturingCreditDoesNotHideAnOfficialClip() {
+        assertEquals("blinding lights", YouTubeMusicVideoMatcher.normalizeTitle(
+            "Blinding Lights (feat. Guest)",
+        ))
+        assertEquals("новый день", YouTubeMusicVideoMatcher.normalizeTitle(
+            "Новый день [ft. Гость]",
+        ))
+        val match = YouTubeMusicVideoMatcher.scoreCandidate(
+            sourceTitle = "Blinding Lights (feat. Guest)",
+            sourceTitleNorm = YouTubeMusicVideoMatcher.normalizeTitle("Blinding Lights (feat. Guest)"),
+            sourceArtistNorms = listOf("the weeknd"),
+            candidateTitle = "The Weeknd - Blinding Lights (Official Video)",
+            secondaryText = "The Weeknd • 3:20",
+            sourceDurationSeconds = 200,
+            omvVerified = true,
+        )
+        assertNotNull(match)
+        assertNull(YouTubeMusicVideoMatcher.scoreCandidate(
+            sourceTitle = "Blinding Lights (feat. Guest)",
+            sourceTitleNorm = YouTubeMusicVideoMatcher.normalizeTitle("Blinding Lights (feat. Guest)"),
+            sourceArtistNorms = listOf("the weeknd"),
+            candidateTitle = "Other Artist - Blinding Lights (Official Video)",
+            secondaryText = "Other Artist • 3:20",
+            sourceDurationSeconds = 200,
+            omvVerified = true,
+        ))
+    }
+
     @Test fun firstPartyVideoToggleSelectsOnlyTheRequestedSourceAndOfficialVideoType() {
         val song = "abcdefghijk"
         val clip = "lmnopqrstuv"
