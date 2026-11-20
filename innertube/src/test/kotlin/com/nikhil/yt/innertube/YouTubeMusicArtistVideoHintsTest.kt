@@ -86,9 +86,9 @@ class YouTubeMusicArtistVideoHintsTest {
     }
 
     @Test fun artistFallbackNeverTrustsAnUnverifiedPlainTitle() {
-        val official = "official001A"
+        val official = "offcl00100A"
         YouTubeMusicArtistVideoHints.remember(page("Videos", listOf(
-            song("untagged001A", "My Song"),
+            song("untag001AAX", "My Song"),
             song(official, "My Song (Official Video)"),
         )), nowMs = 1000)
         assertEquals(official, YouTubeMusicArtistVideoHints.match(
@@ -98,7 +98,7 @@ class YouTubeMusicArtistVideoHintsTest {
 
         YouTubeMusicArtistVideoHints.clear()
         YouTubeMusicArtistVideoHints.remember(page("Videos", listOf(
-            song("untagged001A", "My Song"),
+            song("untag001AAX", "My Song"),
         )), nowMs = 1000)
         assertNull(YouTubeMusicArtistVideoHints.match(
             "My Song", listOf("The Artist"), 180, "audioID001A",
