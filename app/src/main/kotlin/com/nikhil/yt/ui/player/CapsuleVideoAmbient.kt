@@ -14,9 +14,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import kotlin.math.abs
 
-// Original player-design cadence: about 1.4 low-resolution frame samples per
-// second. The video itself remains at full frame rate.
-internal const val VIDEO_AMBIENT_CAPTURE_INTERVAL_MS = 700L
+// Live, decoder-frame-driven ambient sampling. The Nov 13 colour renderer
+// reacts in 180 ms; a fixed 700 ms capture interval made scenes appear stale.
+// ~4.5 samples/s when video colours change, slowing to ~1.5/s on static shots.
+// This limits synchronous TextureView GPU readbacks without changing video FPS.
+internal const val VIDEO_AMBIENT_CAPTURE_INTERVAL_MS = 220L
+internal fun capsuleVideoAmbientCaptureIntervalMs(unchangedSamples: Int): Long = when {
+    unchangedSamples < 3 -> VIDEO_AMBIENT_CAPTURE_INTERVAL_MS
+    unchangedSamples < 8 -> 420L
+    else -> 660L
+}
 
 /** Preserve the last VIDEO palette during buffer/surface interruptions. */
 internal fun capsuleVideoAmbientShouldStayVisible(
