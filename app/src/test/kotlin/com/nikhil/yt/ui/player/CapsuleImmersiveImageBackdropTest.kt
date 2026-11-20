@@ -103,6 +103,23 @@ class CapsuleImmersiveImageBackdropTest {
         }
     }
 
+    @Test fun photoToBlurDoesNotJumpAcrossTheArtworkBoundary() {
+        for (stage in listOf(0.35f, 0.55f, 0.75f)) {
+            for (x in listOf(0f, 0.1f, 0.5f, 0.9f, 1f)) {
+                val before = capsuleImmersiveBackdropSourceX(x, stage - 0.001f, stage)
+                val at = capsuleImmersiveBackdropSourceX(x, stage, stage)
+                val after = capsuleImmersiveBackdropSourceX(x, stage + 0.001f, stage)
+                assertEquals("The visible photo keeps the exact same X coordinate at its fade",
+                    x, at, 0.00001f)
+                assertTrue("No sudden horizontal contraction at the photo/blur seam",
+                    abs(before - after) < 0.002f)
+                assertEquals("The lower continuation still folds into the wide blur",
+                    0.5f + (x - 0.5f) * stage,
+                    capsuleImmersiveBackdropSourceX(x, 1f, stage), 0.00001f)
+            }
+        }
+    }
+
     private fun preview(bitmap: Bitmap, name: String) {
         val path = File("build/video-morph-preview/$name.png")
         path.parentFile.mkdirs()

@@ -147,6 +147,27 @@ private class SplineAxis(output: Int, source: Int) {
 private val backdropSplineX = SplineAxis(PAINT_WIDTH, PAGE_COLUMNS)
 private val backdropSplineY = SplineAxis(PAINT_HEIGHT, PAGE_ROWS)
 
+/**
+ * Keep the generated, blurred continuation horizontally aligned with the actual
+ * centre-cropped photo at the seam. The old implementation instantaneously
+ * narrowed the sample to stageFraction at pageY == stageFraction, introducing
+ * an image-dependent horizontal jump (visible as a stripe on busy covers).
+ *
+ * Ease the narrowing ONLY below the artwork boundary. The sharp cover and
+ * sampled source colour are untouched; no extra GPU layer or frame loop.
+ */
+internal fun capsuleImmersiveBackdropSourceX(
+    pageX: Float,
+    pageY: Float,
+    stageFraction: Float,
+): Float {
+    val stage = stageFraction.coerceIn(0.35f, 0.75f)
+    val progress = ((pageY - stage) / (1f - stage)).coerceIn(0f, 1f)
+    val eased = progress * progress * (3f - 2f * progress)
+    val widthScale = 1f - (1f - stage) * eased
+    return (0.5f + (pageX - 0.5f) * widthScale).coerceIn(0f, 1f)
+}
+
 /** Full photographic continuation, baked once on a worker. No progressive blur strip. */
 internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stageFraction: Float): ImageBitmap {
     val stage = stageFraction.coerceIn(0.35f, 0.75f)
@@ -161,7 +182,7 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
     }
     for (y in 0 until PAGE_ROWS) for (x in 0 until PAGE_COLUMNS) {
         val pageY = (y + 0.5f) / PAGE_ROWS; val pageX = (x + 0.5f) / PAGE_COLUMNS
-        val sourceX = if (pageY < stage) pageX else 0.5f + (pageX - 0.5f) * stage
+        val sourceX = capsuleImmersiveBackdropSourceX(pageX, pageY, stage)
         val visibleY = if (pageY < stage) pageY / stage else 1f - (pageY - stage)
         val color = sample(sourceX, visibleY.coerceIn(0f, IMMERSIVE_VISIBLE_SAMPLE_END) / IMMERSIVE_VISIBLE_SAMPLE_END)
         val i = (y * PAGE_COLUMNS + x) * 3
