@@ -1362,7 +1362,13 @@ private fun CapsulePlayerLyricsHost(
                                 colors = if (design == CapsulePlayerDesign.IMMERSIVE)
                                     inlineCardColors else transitioningPalette,
                                 immersive = design == CapsulePlayerDesign.IMMERSIVE,
-                                immersiveBitmap = immersiveReflection,
+                                // Canvas is a live VIDEO light field: its
+                                // colours already come from the moving decoder.
+                                // Never paint the old ALBUM reflection on top
+                                // of the full lyrics scene after Canvas starts.
+                                immersiveBitmap = immersiveReflection.takeIf {
+                                    canvasLyricsFrame == null
+                                },
                                 modifier = Modifier.fillMaxSize(),
                             )
                         } else {
