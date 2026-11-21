@@ -16,6 +16,9 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import kotlin.math.exp
 import kotlin.math.floor
+import kotlin.math.sin
+import kotlin.math.cos
+import kotlin.math.PI
 
 internal const val IMMERSIVE_VISIBLE_SAMPLE_END = 0.82f
 private const val COVER_COLUMNS = 32
@@ -169,7 +172,38 @@ internal fun capsuleImmersiveBackdropSourceX(
     val progress = ((pageY - stage) / (1f - stage)).coerceIn(0f, 1f)
     val eased = progress * progress * (3f - 2f * progress)
     val widthScale = 1f - (1f - stage) * eased
-    return (0.5f + (pageX - 0.5f) * widthScale).coerceIn(0f, 1f)
+    // The old affine X map created long, ruler-straight colour columns
+    // regardless of the artwork. A bounded two-dimensional displacement
+    // bends the *precomputed* colour field, not the sharp photograph.
+    // It is exactly zero at the cover seam and bottom, so neither boundary
+    // acquires a new mismatch. No frame-clock, GPU blur or allocations.
+    val envelope = sin(PI.toFloat() * progress).let { it * it }
+    val flow = sin(2f * PI.toFloat() *
+        (pageY * 0.87f + pageX * 0.31f + 0.13f))
+    val bend = 0.055f * envelope * flow
+    return (0.5f + (pageX - 0.5f) * widthScale + bend).coerceIn(0f, 1f)
+}
+
+/**
+ * Reflect the actual sampled lower photo smoothly into the continuation.
+ * The previous source Y stayed pinned at 0.82 over a large region, forming
+ * a perfectly horizontal flat band. Both halves now join at 0.82 without
+ * any clamped plateau, then diffuse deeper into the picture.
+ */
+internal fun capsuleImmersiveBackdropSourceY(
+    pageX: Float, pageY: Float, stageFraction: Float,
+): Float {
+    val stage = stageFraction.coerceIn(0.35f, 0.75f)
+    if (pageY <= stage) {
+        return ((pageY / stage).coerceIn(0f, 1f) * IMMERSIVE_VISIBLE_SAMPLE_END)
+    }
+    val progress = ((pageY - stage) / (1f - stage)).coerceIn(0f, 1f)
+    val envelope = sin(PI.toFloat() * progress).let { it * it }
+    val curved = 0.026f * envelope * cos(
+        2f * PI.toFloat() * (pageX * 0.93f + pageY * 0.43f)
+    )
+    return (IMMERSIVE_VISIBLE_SAMPLE_END - progress * 0.43f + curved)
+        .coerceIn(0f, IMMERSIVE_VISIBLE_SAMPLE_END)
 }
 
 /** Full photographic continuation, baked once on a worker. No progressive blur strip. */
@@ -187,8 +221,8 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
     for (y in 0 until PAGE_ROWS) for (x in 0 until PAGE_COLUMNS) {
         val pageY = (y + 0.5f) / PAGE_ROWS; val pageX = (x + 0.5f) / PAGE_COLUMNS
         val sourceX = capsuleImmersiveBackdropSourceX(pageX, pageY, stage)
-        val visibleY = if (pageY < stage) pageY / stage else 1f - (pageY - stage)
-        val color = sample(sourceX, visibleY.coerceIn(0f, IMMERSIVE_VISIBLE_SAMPLE_END) / IMMERSIVE_VISIBLE_SAMPLE_END)
+        val visibleY = capsuleImmersiveBackdropSourceY(pageX, pageY, stage)
+        val color = sample(sourceX, visibleY / IMMERSIVE_VISIBLE_SAMPLE_END)
         val i = (y * PAGE_COLUMNS + x) * 3
         raw[i] = color.red; raw[i + 1] = color.green; raw[i + 2] = color.blue
     }

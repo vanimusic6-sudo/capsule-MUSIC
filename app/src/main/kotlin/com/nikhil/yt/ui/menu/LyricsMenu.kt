@@ -92,7 +92,7 @@ fun LyricsMenu(
     if (showEditDialog) {
         TextFieldDialog(
             onDismiss = { showEditDialog = false },
-            icon = { Icon(painter = painterResource(R.drawable.edit), contentDescription = null) },
+            icon = { Icon(painter = painterResource(R.drawable.capsule_soft_edit), contentDescription = null) },
             title = { Text(text = mediaMetadataProvider().title) },
             initialTextFieldValue = TextFieldValue(lyricsProvider()?.lyrics.orEmpty()),
             singleLine = false,
@@ -272,7 +272,7 @@ fun LyricsMenu(
                             )
                             if (result.lyrics.startsWith("[") || isTtml(result.lyrics)) {
                                 Icon(
-                                    painter = painterResource(R.drawable.sync),
+                                    painter = painterResource(R.drawable.capsule_soft_sync),
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.secondary,
                                     modifier =
@@ -346,7 +346,7 @@ fun LyricsMenu(
                     NewAction(
                         icon = {
                             Icon(
-                                painter = painterResource(R.drawable.edit),
+                                painter = painterResource(R.drawable.capsule_soft_edit),
                                 contentDescription = null,
                                 modifier = Modifier.size(28.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant

@@ -292,7 +292,7 @@ fun AlbumMenu(
                     NewAction(
                         icon = {
                             Icon(
-                                painter = painterResource(R.drawable.play),
+                                painter = painterResource(R.drawable.capsule_soft_play),
                                 contentDescription = null,
                                 modifier = Modifier.size(28.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -314,7 +314,7 @@ fun AlbumMenu(
                     NewAction(
                         icon = {
                             Icon(
-                                painter = painterResource(R.drawable.shuffle),
+                                painter = painterResource(R.drawable.capsule_soft_shuffle),
                                 contentDescription = null,
                                 modifier = Modifier.size(28.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -339,7 +339,7 @@ fun AlbumMenu(
                     NewAction(
                         icon = {
                             Icon(
-                                painter = painterResource(R.drawable.share),
+                                painter = painterResource(R.drawable.capsule_soft_share),
                                 contentDescription = null,
                                 modifier = Modifier.size(28.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -365,7 +365,7 @@ fun AlbumMenu(
                 headlineContent = { Text(text = stringResource(R.string.play_next)) },
                 leadingContent = {
                     Icon(
-                        painter = painterResource(R.drawable.playlist_play),
+                        painter = painterResource(R.drawable.capsule_soft_playlist_play),
                         contentDescription = null,
                     )
                 },
@@ -380,7 +380,7 @@ fun AlbumMenu(
                 headlineContent = { Text(text = stringResource(R.string.add_to_queue)) },
                 leadingContent = {
                     Icon(
-                        painter = painterResource(R.drawable.queue_music),
+                        painter = painterResource(R.drawable.capsule_soft_queue_music),
                         contentDescription = null,
                     )
                 },
@@ -395,7 +395,7 @@ fun AlbumMenu(
                 headlineContent = { Text(text = stringResource(R.string.add_to_playlist)) },
                 leadingContent = {
                     Icon(
-                        painter = painterResource(R.drawable.playlist_add),
+                        painter = painterResource(R.drawable.capsule_soft_playlist_add),
                         contentDescription = null,
                     )
                 },
@@ -441,7 +441,7 @@ fun AlbumMenu(
                 headlineContent = { Text(text = stringResource(R.string.view_artist)) },
                 leadingContent = {
                     Icon(
-                        painter = painterResource(R.drawable.artist),
+                        painter = painterResource(R.drawable.capsule_soft_artist),
                         contentDescription = null,
                     )
                 },
@@ -460,7 +460,7 @@ fun AlbumMenu(
                 headlineContent = { Text(text = stringResource(R.string.refetch)) },
                 leadingContent = {
                     Icon(
-                        painter = painterResource(R.drawable.sync),
+                        painter = painterResource(R.drawable.capsule_soft_sync),
                         contentDescription = null,
                         modifier = Modifier.graphicsLayer(rotationZ = rotationAnimation),
                     )

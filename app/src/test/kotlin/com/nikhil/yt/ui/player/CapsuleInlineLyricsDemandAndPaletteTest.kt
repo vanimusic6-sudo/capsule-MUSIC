@@ -44,6 +44,19 @@ class CapsuleInlineLyricsDemandAndPaletteTest {
             capsuleInlineLyricsSceneColors(parent, tone.copy(ready = false)))
     }
 
+    @Test fun expandedImmersionLyricsNeverHideThePhotoUnderOpaquePaper() {
+        val colours = listOf(
+            Color(0xFFA64A20), Color(0xFF3B244D), Color(0xFF501A46),
+        )
+        val wash = capsuleFullscreenLyricsColourWash(colours)
+        assertEquals(3, wash.size)
+        assertTrue("Fullscreen text must keep the prepared image visible",
+            wash.all { it.alpha in 0.09f..0.16f })
+        assertTrue("Orange and violet must remain spatially distinct",
+            wash.first().red > wash.first().blue &&
+            wash.last().blue > wash.last().green)
+    }
+
     @Test fun compactAndFullScreenStopsStayConsistentAndHued() {
         val sample = listOf(
             Color(0xFF6F298C), Color(0xFF441C68), Color(0xFF261334),

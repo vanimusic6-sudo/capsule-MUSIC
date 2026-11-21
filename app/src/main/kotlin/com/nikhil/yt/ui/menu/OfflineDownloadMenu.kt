@@ -139,15 +139,15 @@ fun OfflineDownloadMenu(
             }
         }
         MenuSurfaceSection(modifier = Modifier.padding(vertical = 4.dp)) {
-            Action(stringResource(R.string.play_next), R.drawable.playlist_play) {
+            Action(stringResource(R.string.play_next), R.drawable.capsule_soft_playlist_play) {
                 player?.playNext(OfflineAudioQueue.mediaItem(file))
                 onDismiss()
             }
-            Action(stringResource(R.string.add_to_queue), R.drawable.queue_music) {
+            Action(stringResource(R.string.add_to_queue), R.drawable.capsule_soft_queue_music) {
                 player?.addToQueue(OfflineAudioQueue.mediaItem(file))
                 onDismiss()
             }
-            Action(stringResource(R.string.add_to_playlist), R.drawable.playlist_add) {
+            Action(stringResource(R.string.add_to_playlist), R.drawable.capsule_soft_playlist_add) {
                 choosePlaylist = true
             }
             Action(
@@ -184,7 +184,7 @@ fun OfflineDownloadMenu(
                     }
                 }
             }
-            Action(stringResource(R.string.share), R.drawable.share) {
+            Action(stringResource(R.string.share), R.drawable.capsule_soft_share) {
                 val intent = Intent(Intent.ACTION_SEND).apply {
                     type = "audio/*"
                     putExtra(Intent.EXTRA_STREAM, file.uri)

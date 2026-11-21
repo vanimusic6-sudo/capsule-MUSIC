@@ -66,7 +66,10 @@ class MoreMenuScrollRegressionTest {
         assertTrue(press.contains("drawRoundRect("))
         val tiles = source("com/nikhil/yt/ui/component/NewMenuComponents.kt")
         assertTrue(tiles.contains("interactionSource = interactionSource"))
-        assertTrue(tiles.contains("containerColor = if (pressed)"))
+        assertTrue(tiles.contains("normal = CapsuleMenuBlack") ||
+            tiles.contains("CapsuleMenuBlack, CapsuleMenuPressed, pressed"))
+        assertTrue("No unnecessary colour animation when black is fixed",
+            !tiles.contains("val animatedBackground by animateColorAsState"))
         val search = source("com/nikhil/yt/ui/screens/search/OnlineSearchResult.kt")
         assertTrue(search.contains("capsulePressCombinedClickable("))
     }

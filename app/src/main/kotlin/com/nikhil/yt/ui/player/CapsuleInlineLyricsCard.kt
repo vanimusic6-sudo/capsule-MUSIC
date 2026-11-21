@@ -210,12 +210,17 @@ internal fun capsuleInlineLyricsImmersivePanelStops(colors: List<Color>): List<C
  * completely covered by this opaque brush, wasting draw/GPU work.
  * Remember the brush across progress ticks and the page reveal.
  */
+/** A translucent photo-matched wash for the FULL text player, not its card. */
+internal fun capsuleFullscreenLyricsColourWash(colors: List<Color>): List<Color> =
+    capsuleInlineLyricsImmersiveStops(colors).map { it.copy(alpha = 0.13f) }
+
 @Composable
 internal fun CapsuleInlineLyricsBackdrop(
     colors: List<Color>,
     modifier: Modifier = Modifier,
     immersive: Boolean = false,
     immersiveBitmap: ImageBitmap? = null,
+    fullscreenImmersion: Boolean = false,
 ) {
     // The regular player already animates its shared artworkScene.colors.
     // Re-animating the same RGB values here for 1400ms made Lyrics lag behind
@@ -226,13 +231,24 @@ internal fun CapsuleInlineLyricsBackdrop(
         if (immersive) capsuleInlineLyricsImmersiveStops(colors)
         else capsuleInlineLyricsStops(colors)
     }
-    val panelStops = remember(colors, immersive) {
-        if (immersive) capsuleInlineLyricsImmersivePanelStops(colors) else emptyList()
+    val panelStops = remember(colors, immersive, fullscreenImmersion) {
+        if (immersive && !fullscreenImmersion)
+            capsuleInlineLyricsImmersivePanelStops(colors) else emptyList()
+    }
+    val fullscreenStops = remember(colors, fullscreenImmersion) {
+        if (fullscreenImmersion) capsuleFullscreenLyricsColourWash(colors) else emptyList()
     }
     Box(modifier.drawWithCache {
         val fallback = if (immersive) Brush.horizontalGradient(stops)
             else Brush.verticalGradient(capsuleInlineLyricsStops(colors))
-        val panel = if (immersive) Brush.verticalGradient(panelStops) else null
+        val panel = if (immersive && !fullscreenImmersion)
+            Brush.verticalGradient(panelStops) else null
+        val photoWash = if (fullscreenImmersion)
+            Brush.horizontalGradient(fullscreenStops) else null
+        val inkVeil = if (fullscreenImmersion) Brush.verticalGradient(
+            0f to Color.Black.copy(alpha = 0.12f),
+            1f to Color.Black.copy(alpha = 0.28f),
+        ) else null
         onDrawBehind {
             if (immersive && immersiveBitmap != null) {
                 // Expanded lyrics reveal the same lower photo crop as the
@@ -254,9 +270,16 @@ internal fun CapsuleInlineLyricsBackdrop(
                         ),
                     )
                 }
+                // Compact cards still use their dense tonal paper. Fullscreen
+                // Lyrics must NEVER cover the artwork's colour field with that
+                // old 98.5–99% opaque slab. A faint wash and a soft dark veil
+                // keep the real gradient visible under white synced text.
                 panel?.let { drawRect(it) }
+                photoWash?.let { drawRect(it) }
+                inkVeil?.let { drawRect(it) }
             } else {
                 drawRect(fallback)
+                inkVeil?.let { drawRect(it) }
             }
         }
     })

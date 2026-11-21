@@ -121,6 +121,29 @@ class CapsuleImmersiveImageBackdropTest {
         }
     }
 
+    @Test fun diffuseFieldCurvesInBothDirectionsWithoutIntroducingSeamLines() {
+        val stage = 0.60f
+        val x = 0.20f
+        val y = 0.80f
+        val progress = (y - stage) / (1f - stage)
+        val eased = progress * progress * (3f - 2f * progress)
+        val oldStraightX = 0.5f + (x - 0.5f) * (1f - (1f - stage) * eased)
+        val curvedX = capsuleImmersiveBackdropSourceX(x, y, stage)
+        assertTrue("Colour must no longer travel in perfectly vertical strips",
+            abs(curvedX - oldStraightX) > 0.012f)
+        val leftY = capsuleImmersiveBackdropSourceY(0.12f, y, stage)
+        val rightY = capsuleImmersiveBackdropSourceY(0.88f, y, stage)
+        assertTrue("The lower photograph must diffuse in two dimensions",
+            abs(leftY - rightY) > 0.008f)
+        assertEquals(IMMERSIVE_VISIBLE_SAMPLE_END,
+            capsuleImmersiveBackdropSourceY(0.5f, stage, stage), 0.00001f)
+        for (xSample in listOf(0f, 0.12f, 0.5f, 0.88f, 1f)) {
+            val before = capsuleImmersiveBackdropSourceY(xSample, stage - 0.0001f, stage)
+            val after = capsuleImmersiveBackdropSourceY(xSample, stage + 0.0001f, stage)
+            assertTrue("No horizontal seam at the album edge", abs(before - after) < 0.001f)
+        }
+    }
+
     @Test fun photoToBlurDoesNotJumpAcrossTheArtworkBoundary() {
         for (stage in listOf(0.35f, 0.55f, 0.75f)) {
             for (x in listOf(0f, 0.1f, 0.5f, 0.9f, 1f)) {

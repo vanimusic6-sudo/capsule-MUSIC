@@ -198,7 +198,7 @@ fun SongMenu(
         TextFieldDialog(
             icon = {
                 Icon(
-                    painter = painterResource(R.drawable.edit),
+                    painter = painterResource(R.drawable.capsule_soft_edit),
                     contentDescription = null
                 )
             },
@@ -321,7 +321,7 @@ fun SongMenu(
 
     Surface(
         shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        color = com.nikhil.yt.ui.component.CapsuleMenuBlack,
         modifier = Modifier.fillMaxWidth(),
     ) {
         SongListItem(
@@ -392,7 +392,7 @@ fun SongMenu(
             NewAction(
                 icon = {
                     Icon(
-                        painter = painterResource(R.drawable.radio),
+                        painter = painterResource(R.drawable.capsule_soft_radio),
                         contentDescription = null,
                         modifier = Modifier.size(28.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -410,7 +410,7 @@ fun SongMenu(
             NewAction(
                 icon = {
                     Icon(
-                        painter = painterResource(R.drawable.playlist_play),
+                        painter = painterResource(R.drawable.capsule_soft_playlist_play),
                         contentDescription = null,
                         modifier = Modifier.size(28.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -425,7 +425,7 @@ fun SongMenu(
             NewAction(
                 icon = {
                     Icon(
-                        painter = painterResource(R.drawable.queue_music),
+                        painter = painterResource(R.drawable.capsule_soft_queue_music),
                         contentDescription = null,
                         modifier = Modifier.size(28.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -440,7 +440,7 @@ fun SongMenu(
             NewAction(
                 icon = {
                     Icon(
-                        painter = painterResource(R.drawable.playlist_add),
+                        painter = painterResource(R.drawable.capsule_soft_playlist_add),
                         contentDescription = null,
                         modifier = Modifier.size(28.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -452,7 +452,7 @@ fun SongMenu(
             NewAction(
                 icon = {
                     Icon(
-                        painter = painterResource(R.drawable.share),
+                        painter = painterResource(R.drawable.capsule_soft_share),
                         contentDescription = null,
                         modifier = Modifier.size(28.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -485,7 +485,7 @@ fun SongMenu(
             NewAction(
                 icon = {
                     Icon(
-                        painter = painterResource(R.drawable.edit),
+                        painter = painterResource(R.drawable.capsule_soft_edit),
                         contentDescription = null,
                         modifier = Modifier.size(28.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -724,7 +724,7 @@ fun SongMenu(
                         },
                         leadingContent = {
                             Icon(
-                                painter = painterResource(R.drawable.artist),
+                                painter = painterResource(R.drawable.capsule_soft_artist),
                                 contentDescription = null,
                             )
                         },
@@ -757,7 +757,7 @@ fun SongMenu(
                             headlineContent = { Text(text = stringResource(R.string.view_album)) },
                             leadingContent = {
                                 Icon(
-                                    painter = painterResource(R.drawable.album),
+                                    painter = painterResource(R.drawable.capsule_soft_album),
                                     contentDescription = null,
                                 )
                             },
@@ -784,7 +784,7 @@ fun SongMenu(
                         headlineContent = { Text(text = stringResource(R.string.refetch)) },
                         leadingContent = {
                             Icon(
-                                painter = painterResource(R.drawable.sync),
+                                painter = painterResource(R.drawable.capsule_soft_sync),
                                 contentDescription = null,
                                 modifier = Modifier.graphicsLayer(rotationZ = rotationAnimation),
                             )

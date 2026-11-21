@@ -63,6 +63,10 @@ import com.nikhil.yt.ui.motion.CapsuleStandardEasing
  * the sheet's presentation or a custom colour's alpha. This also eliminates
  * the former 6.5%-alpha "acrylic" cards, which vanished on some devices.
  */
+// A single dark surface shared by every modal action, row and section.
+internal val CapsuleMenuBlack = Color(0xFF111113)
+internal val CapsuleMenuPressed = Color(0xFF242428)
+
 internal fun capsuleMenuOpaqueTile(
     normal: Color,
     pressedColor: Color,
@@ -80,12 +84,7 @@ fun NewActionButton(
     backgroundColor: Color = MaterialTheme.colorScheme.surfaceVariant,
     contentColor: Color = MaterialTheme.colorScheme.onSurfaceVariant
 ) {
-    val animatedBackground by animateColorAsState(
-        targetValue = if (enabled) backgroundColor else backgroundColor.copy(alpha = 0.5f),
-        animationSpec = tween(200, easing = CapsuleStandardEasing),
-        label = "background"
-    )
-    
+
     val animatedContent by animateColorAsState(
         targetValue = if (enabled) contentColor else contentColor.copy(alpha = 0.5f),
         animationSpec = tween(200, easing = CapsuleStandardEasing),
@@ -118,22 +117,14 @@ fun NewActionButton(
     // Both normal and pressed cards have an opaque, readable material.
     // Keep explicit action colours when supplied, but reject translucency
     // inside a modal sheet: the cross-window backdrop is not reliable.
-    val tileColor = if (pressGuard) capsuleMenuOpaqueTile(
-        normal = if (backgroundColor == MaterialTheme.colorScheme.surfaceVariant)
-            MaterialTheme.colorScheme.surfaceContainerHighest else animatedBackground,
-        pressedColor = MaterialTheme.colorScheme.secondaryContainer,
-        pressed = pressed,
-    ) else if (pressed) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = ActiveBoxAlpha)
-    else animatedBackground
+    val tileColor = capsuleMenuOpaqueTile(CapsuleMenuBlack, CapsuleMenuPressed, pressed)
     Card(
         modifier = actionModifier,
         colors = CardDefaults.cardColors(
             containerColor = tileColor,
         ),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = 0.dp
-        )
+        shape = RoundedCornerShape(19.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
             modifier = Modifier
@@ -142,14 +133,8 @@ fun NewActionButton(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Soft icon well shared by all menu action grids. No new vector
-            // assets, shadows, blur layers or animation clocks.
-            Box(
-                modifier = Modifier.size(36.dp)
-                    .clip(RoundedCornerShape(13.dp))
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.085f)),
-                contentAlignment = Alignment.Center,
-            ) {
+            // The icon is the decoration, not another grey button-in-a-button.
+            Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
                 icon()
             }
             
@@ -162,7 +147,7 @@ fun NewActionButton(
                 lineHeight = 16.sp,
                 color = if (pressGuard) MaterialTheme.colorScheme.onSurface else animatedContent,
                 textAlign = TextAlign.Center,
-                maxLines = 2,
+                maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
                 // Scrolling a sheet with 3–9 independently running marquee
                 // clocks causes frequent small re-layouts at 60Hz. The text
@@ -203,42 +188,32 @@ internal fun CapsuleCompactMenuAction(
             onClick = action.onClick,
         )
     }
-    val baseColor = action.backgroundColor.takeUnless { it == Color.Unspecified }
-        ?: MaterialTheme.colorScheme.surfaceContainer
-    val tileColor = capsuleMenuOpaqueTile(
-        normal = baseColor,
-        pressedColor = MaterialTheme.colorScheme.secondaryContainer,
-        pressed = pressed,
-    )
+    val tileColor = capsuleMenuOpaqueTile(CapsuleMenuBlack, CapsuleMenuPressed, pressed)
     Card(
         modifier = clickableModifier,
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(19.dp),
         colors = CardDefaults.cardColors(containerColor = tileColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 58.dp)
-                .padding(horizontal = 11.dp, vertical = 8.dp),
+                .heightIn(min = 74.dp)
+                .padding(horizontal = 12.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                Modifier.size(35.dp).clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.09f)),
-                contentAlignment = Alignment.Center,
-            ) {
+            Box(Modifier.size(30.dp), contentAlignment = Alignment.Center) {
                 action.icon()
             }
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(10.dp))
             Text(
                 text = action.text,
                 style = MaterialTheme.typography.labelMedium,
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
+                fontSize = 13.sp,
+                lineHeight = 17.sp,
                 color = if (action.enabled) MaterialTheme.colorScheme.onSurface
                     else MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
+                maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
         }
@@ -268,16 +243,14 @@ fun CapsuleMenuListItem(
 ) {
     ListItem(
         headlineContent = headlineContent,
-        modifier = modifier,
+        modifier = modifier.background(CapsuleMenuBlack, RoundedCornerShape(18.dp)),
         overlineContent = overlineContent,
         supportingContent = supportingContent,
         leadingContent = if (leadingContent == null) null else {
             {
-                Box(
-                    Modifier.size(36.dp).clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.075f)),
-                    contentAlignment = Alignment.Center,
-                ) { leadingContent() }
+                Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+                    leadingContent()
+                }
             }
         },
         trailingContent = trailingContent,
@@ -302,17 +275,16 @@ fun NewMenuItem(
         headlineContent = headlineContent,
         leadingContent = if (leadingContent == null) null else {
             {
-                Box(
-                    Modifier.size(36.dp).clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.075f)),
-                    contentAlignment = Alignment.Center,
-                ) { leadingContent() }
+                Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+                    leadingContent()
+                }
             }
         },
         trailingContent = trailingContent,
         supportingContent = supportingContent,
         modifier = modifier
             .capsulePressClickable(enabled = enabled) { onClick?.invoke() }
+            .background(CapsuleMenuBlack, RoundedCornerShape(18.dp))
             .padding(horizontal = 4.dp),
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         tonalElevation = 0.dp
@@ -454,12 +426,7 @@ fun NewIconButton(
     backgroundColor: Color = MaterialTheme.colorScheme.surfaceVariant,
     contentColor: Color = MaterialTheme.colorScheme.onSurfaceVariant
 ) {
-    val animatedBackground by animateColorAsState(
-        targetValue = if (enabled) backgroundColor else backgroundColor.copy(alpha = 0.5f),
-        animationSpec = tween(200, easing = CapsuleStandardEasing),
-        label = "background"
-    )
-    
+
     val animatedContent by animateColorAsState(
         targetValue = if (enabled) contentColor else contentColor.copy(alpha = 0.5f),
         animationSpec = tween(200, easing = CapsuleStandardEasing),
@@ -492,12 +459,9 @@ fun NewIconButton(
     Card(
         modifier = actionModifier,
         colors = CardDefaults.cardColors(
-            containerColor = if (pressGuard) capsuleMenuOpaqueTile(
-                normal = animatedBackground,
-                pressedColor = MaterialTheme.colorScheme.secondaryContainer,
-                pressed = pressed,
-            ) else if (pressed) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = ActiveBoxAlpha)
-            else animatedBackground
+            containerColor = capsuleMenuOpaqueTile(
+                CapsuleMenuBlack, CapsuleMenuPressed, pressed,
+            )
         ),
         shape = CircleShape,
         elevation = CardDefaults.cardElevation(
@@ -524,8 +488,8 @@ fun NewMenuContainer(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp)
-            .padding(bottom = 32.dp)
+            .padding(horizontal = 0.dp)
+            .padding(bottom = 24.dp)
     ) {
         content()
     }
@@ -536,13 +500,10 @@ fun MenuSurfaceSection(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    // Every bottom sheet shares a soft, continuous, slightly tinted acrylic
-    // family instead of black rectangular panels with mismatched elevations.
-    val base = MaterialTheme.colorScheme.surfaceContainerHigh
-    val section = lerp(base, MaterialTheme.colorScheme.primary, 0.036f)
+    // The group and the individual actions have exactly the same black.
     Surface(
         shape = RoundedCornerShape(22.dp),
-        color = section.copy(alpha = 1f),
+        color = CapsuleMenuBlack,
         border = BorderStroke(0.65.dp,
             MaterialTheme.colorScheme.onSurface.copy(alpha = 0.055f)),
         modifier = modifier.fillMaxWidth(),

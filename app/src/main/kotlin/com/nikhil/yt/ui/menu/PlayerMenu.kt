@@ -331,7 +331,7 @@ fun PlayerMenu(
     // The song identity belongs to the sheet itself, not a third black card.
     Surface(
         shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        color = com.nikhil.yt.ui.component.CapsuleMenuBlack,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
@@ -414,7 +414,7 @@ fun PlayerMenu(
             NewAction(
                 icon = {
                     Icon(
-                        painter = painterResource(R.drawable.radio),
+                        painter = painterResource(R.drawable.capsule_soft_radio),
                         contentDescription = null,
                         modifier = Modifier.size(28.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -434,7 +434,7 @@ fun PlayerMenu(
             NewAction(
                 icon = {
                     Icon(
-                        painter = painterResource(R.drawable.playlist_add),
+                        painter = painterResource(R.drawable.capsule_soft_playlist_add),
                         contentDescription = null,
                         modifier = Modifier.size(28.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -526,7 +526,7 @@ fun PlayerMenu(
                                 },
                                 leadingContent = {
                                     Icon(
-                                        painter = painterResource(R.drawable.artist),
+                                        painter = painterResource(R.drawable.capsule_soft_artist),
                                         contentDescription = null,
                                     )
                                 },
@@ -559,7 +559,7 @@ fun PlayerMenu(
                                 headlineContent = { Text(text = stringResource(R.string.view_album)) },
                                 leadingContent = {
                                     Icon(
-                                        painter = painterResource(R.drawable.album),
+                                        painter = painterResource(R.drawable.capsule_soft_album),
                                         contentDescription = null,
                                     )
                                 },
@@ -724,7 +724,7 @@ private fun PlayerVolumeCard(
 
     Surface(
         shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        color = com.nikhil.yt.ui.component.CapsuleMenuBlack,
         modifier = modifier.fillMaxWidth(),
     ) {
         Column(
@@ -1468,7 +1468,7 @@ fun EqualizerDialog(
 
                     if (caps == null || bandCount <= 0) {
                         Surface(
-                            color = MaterialTheme.colorScheme.surfaceContainer,
+                            color = com.nikhil.yt.ui.component.CapsuleMenuBlack,
                             shape = RoundedCornerShape(24.dp),
                             modifier = Modifier.fillMaxWidth(),
                         ) {
@@ -1740,7 +1740,7 @@ private fun EqSection(
     content: @Composable () -> Unit,
 ) {
     Surface(
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        color = com.nikhil.yt.ui.component.CapsuleMenuBlack,
         shape = RoundedCornerShape(24.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {

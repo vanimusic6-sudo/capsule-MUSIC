@@ -178,7 +178,6 @@ fun BottomSheetMenu(
         // Our previous bespoke Dialog accidentally deleted and broke them.
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
         val playerAppearance = state.presentation == MenuPresentation.CAPSULE_PLAYER
-        val gel = remember { Animatable(0f) }
         val dismissPull = remember { Animatable(0f) }
         val density = LocalDensity.current
         val sheetColor = capsuleMenuOpaqueSurface(
@@ -192,15 +191,15 @@ fun BottomSheetMenu(
         val accent = MaterialTheme.colorScheme.primary
         val lipWash = remember(sheetColor, accent) {
             Brush.verticalGradient(
-                0f to lerp(sheetColor, accent, 0.105f),
-                0.35f to lerp(sheetColor, accent, 0.035f),
+                0f to lerp(sheetColor, accent, 0.065f),
+                0.35f to lerp(sheetColor, accent, 0.020f),
                 1f to sheetColor,
             )
         }
         val pageWash = remember(sheetColor, accent) {
             Brush.verticalGradient(
-                0f to lerp(sheetColor, accent, 0.065f),
-                0.52f to lerp(sheetColor, accent, 0.025f),
+                0f to lerp(sheetColor, accent, 0.028f),
+                0.52f to lerp(sheetColor, accent, 0.010f),
                 1f to sheetColor,
             )
         }
@@ -209,20 +208,6 @@ fun BottomSheetMenu(
             Brush.horizontalGradient(listOf(
                 Color.Transparent, accent.copy(alpha = 0.11f), Color.Transparent,
             ))
-        }
-        LaunchedEffect(Unit) {
-            // Short, controlled impulse. This does NOT own any touch,
-            // sheet height or anchor: the stock Material3 spring still
-            // handles partial/full expansion and scroll coordination.
-            gel.snapTo(-0.006f)
-            gel.animateTo(
-                0f,
-                spring(
-                    dampingRatio = 0.96f,
-                    stiffness = 270f,
-                    visibilityThreshold = 0.0001f,
-                ),
-            )
         }
         var observedGeneration by remember { mutableStateOf(state.generation) }
         LaunchedEffect(state.generation, state.dismissRequested) {
@@ -330,17 +315,10 @@ fun BottomSheetMenu(
             properties = ModalBottomSheetDefaults.properties(
                 shouldDismissOnBackPress = false,
             ),
-            modifier = modifier.fillMaxHeight().graphicsLayer {
-                transformOrigin = TransformOrigin(0.5f, 1f)
-                // Keep native sheet translation completely untouched.
-                // A tiny launch recoil gives way to one committed-close
-                // retreat: the bottom-anchored panel shrinks gently into
-                // its downward exit without a separate snapping stage.
-                val closeScale = capsuleMenuDismissScale(dismissPull.value)
-                scaleX = capsuleMenuElasticX(gel.value) * closeScale
-                scaleY = capsuleMenuElasticY(gel.value) * closeScale
-                translationY = dismissPull.value * with(density) { 4.dp.toPx() }
-            },
+            // Material owns the only sheet geometry/gesture spring. Previously
+            // two additional fullscreen scale springs distorted icons and
+            // caused a small jump when releasing a partial swipe.
+            modifier = modifier.fillMaxHeight(),
         ) {
             PredictiveBackHandler(enabled = !state.dismissRequested) { progress ->
                 // Ignore progress (including prolonged holds). At the first
@@ -365,6 +343,14 @@ fun BottomSheetMenu(
                             // No second scale applied to child controls:
                             // one outer GPU layer owns both the body and handle.
                             .background(pageWash)
+                            .graphicsLayer {
+                                // A subtle optical follow-through on committed
+                                // close only; reopening reverses the SAME value.
+                                // The opaque sheet itself never fades or shrinks.
+                                alpha = 1f - 0.10f * dismissPull.value
+                                translationY = dismissPull.value *
+                                    with(density) { 6.dp.toPx() }
+                            }
                             .padding(horizontal = 16.dp),
                 ) {
                     state.content(this)

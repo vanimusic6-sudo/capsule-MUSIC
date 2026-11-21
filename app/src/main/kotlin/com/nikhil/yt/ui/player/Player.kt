@@ -1334,6 +1334,7 @@ private fun CapsulePlayerLyricsHost(
                                     inlineCardColors else transitioningPalette,
                                 immersive = design == CapsulePlayerDesign.IMMERSIVE,
                                 immersiveBitmap = immersiveReflection,
+                                fullscreenImmersion = design == CapsulePlayerDesign.IMMERSIVE,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         } else if (design == CapsulePlayerDesign.IMMERSIVE) {
@@ -1345,6 +1346,7 @@ private fun CapsulePlayerLyricsHost(
                                 colors = inlineCardColors,
                                 immersive = true,
                                 immersiveBitmap = immersiveReflection,
+                                fullscreenImmersion = true,
                                 modifier = Modifier.fillMaxSize(),
                             )
                         } else {

@@ -159,7 +159,7 @@ fun SelectionSongMenu(
                     NewAction(
                         icon = {
                             Icon(
-                                painter = painterResource(R.drawable.play),
+                                painter = painterResource(R.drawable.capsule_soft_play),
                                 contentDescription = null,
                                 modifier = Modifier.size(28.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -180,7 +180,7 @@ fun SelectionSongMenu(
                     NewAction(
                         icon = {
                             Icon(
-                                painter = painterResource(R.drawable.shuffle),
+                                painter = painterResource(R.drawable.capsule_soft_shuffle),
                                 contentDescription = null,
                                 modifier = Modifier.size(28.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -201,7 +201,7 @@ fun SelectionSongMenu(
                     NewAction(
                         icon = {
                             Icon(
-                                painter = painterResource(R.drawable.playlist_add),
+                                painter = painterResource(R.drawable.capsule_soft_playlist_add),
                                 contentDescription = null,
                                 modifier = Modifier.size(28.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -221,7 +221,7 @@ fun SelectionSongMenu(
                 headlineContent = { Text(text = stringResource(R.string.play)) },
                 leadingContent = {
                     Icon(
-                        painter = painterResource(R.drawable.play),
+                        painter = painterResource(R.drawable.capsule_soft_play),
                         contentDescription = null,
                     )
                 },
@@ -242,7 +242,7 @@ fun SelectionSongMenu(
                 headlineContent = { Text(text = stringResource(R.string.shuffle)) },
                 leadingContent = {
                     Icon(
-                        painter = painterResource(R.drawable.shuffle),
+                        painter = painterResource(R.drawable.capsule_soft_shuffle),
                         contentDescription = null,
                     )
                 },
@@ -263,7 +263,7 @@ fun SelectionSongMenu(
                 headlineContent = { Text(text = stringResource(R.string.add_to_queue)) },
                 leadingContent = {
                     Icon(
-                        painter = painterResource(R.drawable.queue_music),
+                        painter = painterResource(R.drawable.capsule_soft_queue_music),
                         contentDescription = null,
                     )
                 },
@@ -279,7 +279,7 @@ fun SelectionSongMenu(
                 headlineContent = { Text(text = stringResource(R.string.add_to_playlist)) },
                 leadingContent = {
                     Icon(
-                        painter = painterResource(R.drawable.playlist_add),
+                        painter = painterResource(R.drawable.capsule_soft_playlist_add),
                         contentDescription = null,
                     )
                 },
@@ -515,7 +515,7 @@ fun SelectionMediaMetadataMenu(
                 headlineContent = { Text(text = stringResource(R.string.play)) },
                 leadingContent = {
                     Icon(
-                        painter = painterResource(R.drawable.play),
+                        painter = painterResource(R.drawable.capsule_soft_play),
                         contentDescription = null,
                     )
                 },
@@ -536,7 +536,7 @@ fun SelectionMediaMetadataMenu(
                 headlineContent = { Text(text = stringResource(R.string.shuffle)) },
                 leadingContent = {
                     Icon(
-                        painter = painterResource(R.drawable.shuffle),
+                        painter = painterResource(R.drawable.capsule_soft_shuffle),
                         contentDescription = null,
                     )
                 },
@@ -557,7 +557,7 @@ fun SelectionMediaMetadataMenu(
                 headlineContent = { Text(text = stringResource(R.string.add_to_queue)) },
                 leadingContent = {
                     Icon(
-                        painter = painterResource(R.drawable.queue_music),
+                        painter = painterResource(R.drawable.capsule_soft_queue_music),
                         contentDescription = null,
                     )
                 },
@@ -573,7 +573,7 @@ fun SelectionMediaMetadataMenu(
                 headlineContent = { Text(text = stringResource(R.string.add_to_playlist)) },
                 leadingContent = {
                     Icon(
-                        painter = painterResource(R.drawable.playlist_add),
+                        painter = painterResource(R.drawable.capsule_soft_playlist_add),
                         contentDescription = null,
                     )
                 },

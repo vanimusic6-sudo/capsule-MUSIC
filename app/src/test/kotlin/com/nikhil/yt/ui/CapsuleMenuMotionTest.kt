@@ -54,6 +54,20 @@ class CapsuleMenuMotionTest {
         assertFalse(sheet.contains("hazeBlur("))
     }
 
+    @Test fun everyMenuActionHasOneBlackMaterialAndNoNestedGreyIconSquare() {
+        assertEquals(Color(0xFF111113),
+            com.nikhil.yt.ui.component.CapsuleMenuBlack)
+        val actions = listOf(
+            java.io.File("src/main/kotlin/com/nikhil/yt/ui/component/NewMenuComponents.kt"),
+            java.io.File("app/src/main/kotlin/com/nikhil/yt/ui/component/NewMenuComponents.kt"),
+        ).first(java.io.File::isFile).readText()
+        assertTrue(actions.contains("heightIn(min = 74.dp)"))
+        assertTrue(actions.contains("maxLines = 3"))
+        assertTrue(actions.contains("color = CapsuleMenuBlack"))
+        assertFalse(actions.contains("primary.copy(alpha = 0.09f)"))
+        assertFalse(actions.contains("primary.copy(alpha = 0.075f)"))
+    }
+
     @Test fun modalSheetNeverReliesOnATransparentBackground() {
         val surface = Color(0xFF101015)
         val highSurface = Color(0xFF303038)

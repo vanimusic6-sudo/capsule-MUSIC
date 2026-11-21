@@ -286,7 +286,7 @@ fun YouTubeSongMenu(
                     NewAction(
                         icon = {
                             Icon(
-                                painter = painterResource(R.drawable.playlist_play),
+                                painter = painterResource(R.drawable.capsule_soft_playlist_play),
                                 contentDescription = null,
                                 modifier = Modifier.size(28.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -301,7 +301,7 @@ fun YouTubeSongMenu(
                     NewAction(
                         icon = {
                             Icon(
-                                painter = painterResource(R.drawable.playlist_add),
+                                painter = painterResource(R.drawable.capsule_soft_playlist_add),
                                 contentDescription = null,
                                 modifier = Modifier.size(28.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -315,7 +315,7 @@ fun YouTubeSongMenu(
                     NewAction(
                         icon = {
                             Icon(
-                                painter = painterResource(R.drawable.share),
+                                painter = painterResource(R.drawable.capsule_soft_share),
                                 contentDescription = null,
                                 modifier = Modifier.size(28.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -341,7 +341,7 @@ fun YouTubeSongMenu(
                 headlineContent = { Text(text = stringResource(R.string.start_radio)) },
                 leadingContent = {
                     Icon(
-                        painter = painterResource(R.drawable.radio),
+                        painter = painterResource(R.drawable.capsule_soft_radio),
                         contentDescription = null,
                     )
                 },
@@ -356,7 +356,7 @@ fun YouTubeSongMenu(
                 headlineContent = { Text(text = stringResource(R.string.add_to_queue)) },
                 leadingContent = {
                     Icon(
-                        painter = painterResource(R.drawable.queue_music),
+                        painter = painterResource(R.drawable.capsule_soft_queue_music),
                         contentDescription = null,
                     )
                 },
@@ -419,7 +419,7 @@ fun YouTubeSongMenu(
                     },
                     leadingContent = {
                         Icon(
-                            painter = painterResource(R.drawable.artist),
+                            painter = painterResource(R.drawable.capsule_soft_artist),
                             contentDescription = null,
                         )
                     },
@@ -440,7 +440,7 @@ fun YouTubeSongMenu(
                     headlineContent = { Text(text = stringResource(R.string.view_album)) },
                     leadingContent = {
                         Icon(
-                            painter = painterResource(R.drawable.album),
+                            painter = painterResource(R.drawable.capsule_soft_album),
                             contentDescription = null,
                         )
                     },

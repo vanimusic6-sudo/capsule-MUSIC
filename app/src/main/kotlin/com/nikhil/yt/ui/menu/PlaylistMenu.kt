@@ -246,7 +246,7 @@ fun PlaylistMenu(
                     NewAction(
                         icon = {
                             Icon(
-                                painter = painterResource(R.drawable.play),
+                                painter = painterResource(R.drawable.capsule_soft_play),
                                 contentDescription = null,
                                 modifier = Modifier.size(28.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -268,7 +268,7 @@ fun PlaylistMenu(
                     NewAction(
                         icon = {
                             Icon(
-                                painter = painterResource(R.drawable.shuffle),
+                                painter = painterResource(R.drawable.capsule_soft_shuffle),
                                 contentDescription = null,
                                 modifier = Modifier.size(28.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -290,7 +290,7 @@ fun PlaylistMenu(
                     NewAction(
                         icon = {
                             Icon(
-                                painter = painterResource(R.drawable.share),
+                                painter = painterResource(R.drawable.capsule_soft_share),
                                 contentDescription = null,
                                 modifier = Modifier.size(28.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -318,7 +318,7 @@ fun PlaylistMenu(
                     headlineContent = { Text(text = stringResource(R.string.start_radio)) },
                     leadingContent = {
                         Icon(
-                            painter = painterResource(R.drawable.radio),
+                            painter = painterResource(R.drawable.capsule_soft_radio),
                             contentDescription = null,
                         )
                     },
@@ -343,7 +343,7 @@ fun PlaylistMenu(
                 headlineContent = { Text(text = stringResource(R.string.play_next)) },
                 leadingContent = {
                     Icon(
-                        painter = painterResource(R.drawable.playlist_play),
+                        painter = painterResource(R.drawable.capsule_soft_playlist_play),
                         contentDescription = null,
                     )
                 },
@@ -360,7 +360,7 @@ fun PlaylistMenu(
                 headlineContent = { Text(text = stringResource(R.string.add_to_queue)) },
                 leadingContent = {
                     Icon(
-                        painter = painterResource(R.drawable.queue_music),
+                        painter = painterResource(R.drawable.capsule_soft_queue_music),
                         contentDescription = null,
                     )
                 },
@@ -377,7 +377,7 @@ fun PlaylistMenu(
                     headlineContent = { Text(text = stringResource(R.string.edit)) },
                     leadingContent = {
                         Icon(
-                            painter = painterResource(R.drawable.edit),
+                            painter = painterResource(R.drawable.capsule_soft_edit),
                             contentDescription = null,
                         )
                     },
@@ -459,7 +459,7 @@ fun PlaylistMenu(
                     headlineContent = { Text(text = stringResource(R.string.share)) },
                     leadingContent = {
                         Icon(
-                            painter = painterResource(R.drawable.share),
+                            painter = painterResource(R.drawable.capsule_soft_share),
                             contentDescription = null,
                         )
                     },
