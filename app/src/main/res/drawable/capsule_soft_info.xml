@@ -1,28 +1,15 @@
-<!-- Capsule Music: original 24dp optical grid, 1.8dp rounded strokes. GPL-3.0. -->
+<!-- Capsule Music: original 24dp pictograms matched to player transport controls. GPL-3.0. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
-    android:viewportWidth="24"
-    android:viewportHeight="24">
-    <path
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.8"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M12,3.9 C16.5,3.9 20.1,7.5 20.1,12 C20.1,16.5 16.5,20.1 12,20.1 C7.5,20.1 3.9,16.5 3.9,12 C3.9,7.5 7.5,3.9 12,3.9 Z" />
-    <path
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.8"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M12,10.8 L12,16.2" />
-    <path
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.8"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M12,7.5 L12,7.8" />
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="1.95"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M12,4.05 C16.4,4.05 19.95,7.6 19.95,12 C19.95,16.4 16.4,19.95 12,19.95 C7.6,19.95 4.05,16.4 4.05,12 C4.05,7.6 7.6,4.05 12,4.05 Z" />
+    <path android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="1.95"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M12,11 L12,15.95" />
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M12,7.55 C12.55,7.55 12.98,7.98 12.98,8.53 C12.98,9.08 12.55,9.5 12,9.5 C11.45,9.5 11.02,9.08 11.02,8.53 C11.02,7.98 11.45,7.55 12,7.55 Z" />
 </vector>

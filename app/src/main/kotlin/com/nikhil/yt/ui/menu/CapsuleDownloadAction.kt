@@ -3,6 +3,7 @@ package com.nikhil.yt.ui.menu
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
+import com.nikhil.yt.ui.component.CapsuleMenuListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -154,7 +155,7 @@ internal fun CapsuleDownloadAction(
                     },
                     leadingContent = {
                         Icon(painterResource(if (choiceOpenedDuringDownload) R.drawable.pause
-                            else R.drawable.download), contentDescription = null)
+                            else R.drawable.capsule_soft_download), contentDescription = null)
                     },
                     modifier = Modifier.clickable {
                         showChoices = false
@@ -181,7 +182,7 @@ internal fun CapsuleDownloadAction(
                         )
                     },
                     leadingContent = {
-                        Icon(painterResource(R.drawable.offline), contentDescription = null,
+                        Icon(painterResource(R.drawable.capsule_soft_delete), contentDescription = null,
                             tint = MaterialTheme.colorScheme.error)
                     },
                     modifier = Modifier.clickable {
@@ -237,7 +238,8 @@ internal fun CapsuleDownloadAction(
             currentlyDownloading -> R.string.downloading
             else -> idleDownloadTitle
         },
-        iconRes = if (completed && !deleting) R.drawable.offline else R.drawable.download,
+        iconRes = if (completed && !deleting) R.drawable.capsule_soft_delete
+            else R.drawable.capsule_soft_download,
         isLoading = currentlyDownloading || deleting,
         enabled = !deleting &&
             (enabled || currentlyDownloading || completed || hasStoredItems),
@@ -267,7 +269,7 @@ internal fun CapsuleDownloadAction(
     if (renderAction != null) {
         renderAction(visual, onActionClick)
     } else {
-        ListItem(
+        CapsuleMenuListItem(
             headlineContent = {
                 Text(
                     stringResource(visual.labelRes),
@@ -289,6 +291,7 @@ internal fun CapsuleDownloadAction(
             },
             modifier = Modifier.clickable(enabled = visual.enabled, onClick = onActionClick),
             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            highlightBorder = true,
         )
     }
 }

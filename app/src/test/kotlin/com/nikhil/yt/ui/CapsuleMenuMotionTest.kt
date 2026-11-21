@@ -51,14 +51,18 @@ class CapsuleMenuMotionTest {
         ).first(java.io.File::isFile).readText()
         assertTrue(sheet.contains("capsuleMenuGrain"))
         assertTrue(sheet.contains(".drawWithCache"))
-        assertTrue(sheet.contains("containerColor = sheetColor.copy(alpha = 0.78f)"))
+        assertTrue(sheet.contains("containerColor = sheetColor,"))
+        assertFalse(sheet.contains("pageWash"))
+        assertFalse(sheet.contains("lipSheen"))
+        assertFalse(sheet.contains("topGlow"))
+        assertFalse(sheet.contains("sideWave"))
         assertFalse(sheet.contains("openingJelly"))
         assertFalse(sheet.contains("hazeSource("))
         assertFalse(sheet.contains("hazeBlur("))
     }
 
     @Test fun everyMenuActionHasOneBlackMaterialAndNoNestedGreyIconSquare() {
-        assertEquals(Color(0xDC202128),
+        assertEquals(Color(0xFF111113),
             com.nikhil.yt.ui.component.CapsuleMenuBlack)
         val actions = listOf(
             java.io.File("src/main/kotlin/com/nikhil/yt/ui/component/NewMenuComponents.kt"),
@@ -104,8 +108,8 @@ class CapsuleMenuMotionTest {
         val selected = Color(0xFF515161).copy(alpha = 0.13f)
         val idle = capsuleMenuOpaqueTile(normal, selected, pressed = false)
         val down = capsuleMenuOpaqueTile(normal, selected, pressed = true)
-        assertEquals(0.86f, idle.alpha, 0.0001f)
-        assertEquals(0.94f, down.alpha, 0.0001f)
+        assertEquals(1f, idle.alpha, 0.0001f)
+        assertEquals(1f, down.alpha, 0.0001f)
         assertEquals(normal.red, idle.red, 0.0001f)
         assertEquals(selected.blue, down.blue, 0.0001f)
     }
@@ -121,6 +125,27 @@ class CapsuleMenuMotionTest {
         assertTrue(source.contains("Column(modifier = modifier.fillMaxWidth(), content = content)"))
         assertTrue(source.contains("Modifier.padding(vertical = 5.dp)"))
         assertTrue(source.contains("softWrap = true"))
+        assertTrue(source.contains("internal val CapsuleMenuTileShape = RoundedCornerShape(18.dp)"))
+        assertTrue(source.contains("highlightBorder: Boolean = false"))
+    }
+
+    @Test fun downloadTileIsOutlinedInEveryDownloadMenu() {
+        val player = listOf(
+            java.io.File("src/main/kotlin/com/nikhil/yt/ui/menu/PlayerMenu.kt"),
+            java.io.File("app/src/main/kotlin/com/nikhil/yt/ui/menu/PlayerMenu.kt"),
+        ).first(java.io.File::isFile).readText()
+        val download = listOf(
+            java.io.File("src/main/kotlin/com/nikhil/yt/ui/menu/CapsuleDownloadAction.kt"),
+            java.io.File("app/src/main/kotlin/com/nikhil/yt/ui/menu/CapsuleDownloadAction.kt"),
+        ).first(java.io.File::isFile).readText()
+        val offline = listOf(
+            java.io.File("src/main/kotlin/com/nikhil/yt/ui/menu/OfflineDownloadMenu.kt"),
+            java.io.File("app/src/main/kotlin/com/nikhil/yt/ui/menu/OfflineDownloadMenu.kt"),
+        ).first(java.io.File::isFile).readText()
+        assertTrue(player.contains("highlightBorder = true"))
+        assertTrue(download.contains("CapsuleMenuListItem("))
+        assertTrue(download.contains("highlightBorder = true"))
+        assertTrue(offline.contains("highlightBorder = destructive"))
     }
 
     @Test fun narrowPlaylistActionsNeverBreakLongRussianWordsIntoThreeTiles() {

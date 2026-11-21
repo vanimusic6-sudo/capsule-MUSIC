@@ -11,6 +11,7 @@ package com.nikhil.yt.ui.component
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -60,13 +61,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
-/**
- * 86%-opaque rounded action tiles stay readable over a translucent sheet.
- * No GPU readback, Haze layer or animated background capture.
- */
-// Softly translucent material: independent surfaces for every button and row.
-internal val CapsuleMenuBlack = Color(0xDC202128)
-internal val CapsuleMenuPressed = Color(0xF02D2D35)
+/** Original opaque Capsule menu palette, shared by all action tiles. */
+internal val CapsuleMenuBlack = Color(0xFF111113)
+internal val CapsuleMenuPressed = Color(0xFF242428)
+internal val CapsuleMenuTileShape = RoundedCornerShape(18.dp)
 
 internal fun capsuleCompactMenuStackedLabel(label: String): Boolean =
     label.split(' ', '-', '—').any { it.length >= 12 }
@@ -75,9 +73,7 @@ internal fun capsuleMenuOpaqueTile(
     normal: Color,
     pressedColor: Color,
     pressed: Boolean,
-): Color = (if (pressed) pressedColor else normal).copy(
-    alpha = if (pressed) 0.94f else 0.86f,
-)
+): Color = (if (pressed) pressedColor else normal).copy(alpha = 1f)
 
 // Enhanced Action Button - Material 3 Expressive Design
 @Composable
@@ -129,7 +125,7 @@ fun NewActionButton(
         colors = CardDefaults.cardColors(
             containerColor = tileColor,
         ),
-        shape = RoundedCornerShape(19.dp),
+        shape = CapsuleMenuTileShape,
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
@@ -199,7 +195,7 @@ internal fun CapsuleCompactMenuAction(
     val stacked = remember(action.text) { capsuleCompactMenuStackedLabel(action.text) }
     Card(
         modifier = clickableModifier,
-        shape = RoundedCornerShape(19.dp),
+        shape = CapsuleMenuTileShape,
         colors = CardDefaults.cardColors(containerColor = tileColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
@@ -268,13 +264,20 @@ fun CapsuleMenuListItem(
     colors: ListItemColors = ListItemDefaults.colors(containerColor = Color.Transparent),
     tonalElevation: Dp = 0.dp,
     shadowElevation: Dp = 0.dp,
+    highlightBorder: Boolean = false,
 ) {
+    val highlightColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.30f)
     ListItem(
         headlineContent = headlineContent,
         modifier = Modifier.padding(vertical = 5.dp)
             .then(modifier)
-            .clip(RoundedCornerShape(18.dp))
-            .background(CapsuleMenuBlack),
+            .clip(CapsuleMenuTileShape)
+            .background(CapsuleMenuBlack)
+            .then(
+                if (highlightBorder) Modifier.border(
+                    BorderStroke(1.dp, highlightColor), CapsuleMenuTileShape,
+                ) else Modifier
+            ),
         overlineContent = overlineContent,
         supportingContent = supportingContent,
         leadingContent = if (leadingContent == null) null else {
@@ -315,7 +318,7 @@ fun NewMenuItem(
         supportingContent = supportingContent,
         modifier = Modifier.padding(vertical = 5.dp)
             .then(modifier)
-            .clip(RoundedCornerShape(18.dp))
+            .clip(CapsuleMenuTileShape)
             .background(CapsuleMenuBlack)
             .capsulePressClickable(enabled = enabled) { onClick?.invoke() }
             .padding(horizontal = 4.dp),

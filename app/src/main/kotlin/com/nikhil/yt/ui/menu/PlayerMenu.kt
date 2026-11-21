@@ -618,6 +618,7 @@ if (mediaMetadata.album != null) {
                             }
                         },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        highlightBorder = true,
                     )
                 }
             } else {

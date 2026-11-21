@@ -10,7 +10,6 @@ package com.nikhil.yt.ui.component
 import androidx.compose.foundation.background
 import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.foundation.layout.height
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalConfiguration
@@ -45,7 +44,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
@@ -186,33 +184,7 @@ fun BottomSheetMenu(
             themeSurface = MaterialTheme.colorScheme.surface,
             themeSurfaceHigh = MaterialTheme.colorScheme.surfaceContainerHigh,
         )
-        // Capsule Acrylic: a cheap, self-owned solid material. The sheet
-        // remains opaque for readability and the wash is a cached brush,
-        // never a Haze/Backdrop capture or an animated fullscreen shader.
-        val accent = MaterialTheme.colorScheme.primary
-        val lipWash = remember(accent) {
-            Brush.verticalGradient(
-                0f to accent.copy(alpha = 0.035f),
-                0.62f to accent.copy(alpha = 0.012f),
-                1f to Color.Transparent,
-            )
-        }
-        val pageWash = remember(accent) {
-            Brush.verticalGradient(
-                0f to accent.copy(alpha = 0.023f),
-                0.50f to accent.copy(alpha = 0.010f),
-                1f to Color.Transparent,
-            )
-        }
-        // Only immutable tint shaders plus one process-wide 61x67px grain
-        // texture. No continuously changing shader, bitmap capture or blur.
-
-        // One STATIC, faint edge glint. No timer, no animated shimmer shader.
-        val lipSheen = remember(accent) {
-            Brush.horizontalGradient(listOf(
-                Color.Transparent, accent.copy(alpha = 0.045f), Color.Transparent,
-            ))
-        }
+        // Opaque native theme material; only a fixed sand grain on the background.
         var observedGeneration by remember { mutableStateOf(state.generation) }
         LaunchedEffect(state.generation, state.dismissRequested) {
             val generation = state.generation
@@ -262,9 +234,8 @@ fun BottomSheetMenu(
                 focusManager.clearFocus()
                 state.dismiss()
             },
-            // Real 22% translucency: unlike the former Haze implementation,
-            // all content is still rendered on an independent visible sheet.
-            containerColor = sheetColor.copy(alpha = 0.78f),
+            // Native opaque colour: no acrylic, backdrop sampling or translucency.
+            containerColor = sheetColor,
             // Same 16dp softness as the VIDEO window; the previous 28dp
             // sheet curvature looked ragged during vertical travel.
             shape = if (playerAppearance) {
@@ -275,42 +246,14 @@ fun BottomSheetMenu(
             // full-screen scrim. Its alpha follows the anchored offset in
             // the draw phase; no fast scroll recomposes the menu to fill it.
             dragHandle = {
-                if (playerAppearance) {
-                    Box(
-                        modifier = Modifier.fillMaxWidth().height(28.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Box(
-                            Modifier.fillMaxWidth().height(28.dp)
-                                // Stable tint at every sheet anchor. Do not
-                                // reveal a grey strip as the menu expands.
-                                // Also avoids sampling sheet offset every frame.
-                                .background(lipWash),
-                        )
-                        Box(
-                            Modifier.fillMaxWidth().height(1.dp)
-                                .align(Alignment.TopCenter)
-                                .background(lipSheen),
-                        )
-                        Box(
-                            Modifier.size(width = 40.dp, height = 4.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(
-                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                                ),
-                        )
-                    }
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .padding(vertical = 12.dp)
-                            .size(width = 40.dp, height = 4.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(
-                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                            ),
-                    )
-                }
+                Box(
+                    modifier = Modifier
+                        .padding(vertical = 12.dp)
+                        .size(width = 40.dp, height = 4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)),
+                )
+
             },
             // Material3's default predictive-back scales the entire sheet
             // immediately on BACK-down/gesture-hold. Releasing then hands it
@@ -349,28 +292,10 @@ fun BottomSheetMenu(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            // Only a tiny elastic response to opening, applied
-                            // AFTER layout. No continuously repainted gradients,
-                            // custom nested scroll or per-frame composition.
-                            // No second scale applied to child controls:
-                            // one outer GPU layer owns both the body and handle.
+                            // A cached texture is drawn just once per invalidation;
+                            // cards remain entirely smooth and flat.
                             .drawWithCache {
-                                val topGlow = Brush.radialGradient(
-                                    listOf(accent.copy(alpha = 0.032f), Color.Transparent),
-                                    center = Offset(size.width * 0.18f, size.height * 0.10f),
-                                    radius = size.width.coerceAtLeast(1f) * 1.05f,
-                                )
-                                val sideWave = Brush.radialGradient(
-                                    listOf(Color.White.copy(alpha = 0.009f), Color.Transparent),
-                                    center = Offset(size.width * 0.95f, size.height * 0.55f),
-                                    radius = size.width.coerceAtLeast(1f) * 0.86f,
-                                )
-                                onDrawBehind {
-                                    drawRect(pageWash)
-                                    drawRect(topGlow)
-                                    drawRect(sideWave)
-                                    drawRect(capsuleMenuGrain)
-                                }
+                                onDrawBehind { drawRect(capsuleMenuGrain) }
                             }
                             .padding(horizontal = 16.dp),
                 ) {

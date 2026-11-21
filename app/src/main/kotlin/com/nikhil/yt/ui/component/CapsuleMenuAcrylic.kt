@@ -1,5 +1,5 @@
 /*
- * Capsule Music — original, GPU-light acrylic surface.
+ * Capsule Music — original, GPU-light matte menu texture.
  * GPL-3.0. No third-party blur, image readback or per-frame CPU noise.
  */
 package com.nikhil.yt.ui.component
@@ -14,8 +14,7 @@ import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asImageBitmap
 
 // Tiny deterministic tile shared by all menus. ~16KB once per process,
-// Sub-2% alpha with rare 2% flecks: no visible shimmer.
-// no time-driven shimmer, no TextureView readbacks or RenderEffect layers.
+// Fixed sand-like microspeckle. No timer, readback, shimmer or blur.
 internal val capsuleMenuGrain: Brush by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
     val width = 61
     val height = 67
@@ -26,8 +25,8 @@ internal val capsuleMenuGrain: Brush by lazy(LazyThreadSafetyMode.SYNCHRONIZED) 
         seed = seed xor (seed ushr 17)
         seed = seed xor (seed shl 5)
         val level = seed ushr 24
-        val alpha = if (level > 250) 5 else 1 + (level % 3)
-        val ink = if (level < 100) 0 else 255
+        val alpha = if (level > 247) 9 else 4 + (level % 4)
+        val ink = if (level < 112) 24 else if (level > 208) 215 else 118
         pixels[index] = (alpha shl 24) or (ink shl 16) or (ink shl 8) or ink
     }
     val image = Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888).asImageBitmap()

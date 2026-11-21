@@ -1,21 +1,13 @@
-<!-- Capsule Music: original 24dp optical grid, 1.8dp rounded strokes. GPL-3.0. -->
+<!-- Capsule Music: original 24dp pictograms matched to player transport controls. GPL-3.0. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
-    android:viewportWidth="24"
-    android:viewportHeight="24">
-    <path
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.8"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M12,4.2 C14.3,4.2 16,5.9 16,8.2 C16,10.5 14.3,12.3 12,12.3 C9.7,12.3 8,10.5 8,8.2 C8,5.9 9.7,4.2 12,4.2 Z" />
-    <path
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.8"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M4.5,20 L4.5,18.7 C4.5,15.9 7.6,14.2 12,14.2 C16.4,14.2 19.5,15.9 19.5,18.7 L19.5,20" />
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="1.95"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M12,4.25 C14.45,4.25 16.25,6.05 16.25,8.55 C16.25,11.05 14.45,12.85 12,12.85 C9.55,12.85 7.75,11.05 7.75,8.55 C7.75,6.05 9.55,4.25 12,4.25 Z" />
+    <path android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="1.95"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M4.2,19.65 C4.2,16.45 7.5,14.65 12,14.65 C16.5,14.65 19.8,16.45 19.8,19.65" />
 </vector>

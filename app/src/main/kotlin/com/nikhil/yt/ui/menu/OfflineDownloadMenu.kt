@@ -103,6 +103,7 @@ fun OfflineDownloadMenu(
             },
             modifier = Modifier.capsulePressClickable(onClick = action),
             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            highlightBorder = destructive,
         )
     }
 
