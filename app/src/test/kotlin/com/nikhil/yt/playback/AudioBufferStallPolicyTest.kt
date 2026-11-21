@@ -17,12 +17,12 @@ class AudioBufferStallPolicyTest {
         buffering, playWhenReady, connected, blocked, isVideo, ahead, growth,
     )
 
-    @Test fun completelyStalledStartupGetsASecondChanceWithoutFortyNineSecondsOfSilence() {
-        assertTrue(AudioBufferStallPolicy.INITIAL_WAIT_MS in 18_000L..24_000L)
+    @Test fun completelyStalledStartupAndMidSongRebufferRecoverWithinBoundedWindows() {
+        assertTrue(AudioBufferStallPolicy.INITIAL_WAIT_MS in 10_000L..14_000L)
         assertTrue(AudioBufferStallPolicy.INITIAL_WAIT_MS +
-            AudioBufferStallPolicy.SAMPLE_WINDOW_MS <= 27_000L)
-        assertTrue(AudioBufferStallPolicy.REBUFFER_WAIT_MS +
             AudioBufferStallPolicy.SAMPLE_WINDOW_MS <= 15_000L)
+        assertTrue(AudioBufferStallPolicy.REBUFFER_WAIT_MS +
+            AudioBufferStallPolicy.SAMPLE_WINDOW_MS <= 9_000L)
     }
 
     @Test fun shortTracksThatNeverStartedMaySwitchToAnotherClient() {
@@ -46,11 +46,12 @@ class AudioBufferStallPolicyTest {
     @Test fun stalledAudioWithoutNewBufferCanRefresh() {
         assertTrue(needsRefresh(ahead = 0L, growth = 0L))
         assertTrue(needsRefresh(ahead = 900L, growth = 100L))
+        assertTrue(needsRefresh(ahead = 900L, growth = 1_100L))
     }
 
     @Test fun progressOrAdequateBufferPreventsRefresh() {
         assertFalse(needsRefresh(ahead = 8_000L))
-        assertFalse(needsRefresh(ahead = 0L, growth = 2_000L))
+        assertFalse(needsRefresh(ahead = 0L, growth = 1_500L))
         assertFalse(needsRefresh(ahead = -1L))
     }
 

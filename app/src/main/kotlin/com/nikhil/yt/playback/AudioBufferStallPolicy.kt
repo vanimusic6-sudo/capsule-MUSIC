@@ -6,15 +6,16 @@ package com.nikhil.yt.playback
  * to the same media selection; MusicService enforces that before using this predicate.
  */
 internal object AudioBufferStallPolicy {
-    // A source which delivered no playable audio for 20s is not a normal
-    // cold start. A further 3s buffer-growth sample avoids penalizing a
-    // slow-but-progressing URL resolve or CDN connection.
-    const val INITIAL_WAIT_MS = 20_000L
-    // Mid-song stalls have an existing decoder and buffer; recover sooner.
-    const val REBUFFER_WAIT_MS = 10_000L
-    const val SAMPLE_WINDOW_MS = 3_000L
+    // Media3's CDN-open timeout already bounds the first broken socket; do not
+    // leave a no-byte BUFFERING state idle for another 20 seconds. Sample real
+    // buffer growth before touching the existing bounded recovery path.
+    const val INITIAL_WAIT_MS = 12_000L
+    // A mid-song stall has an existing decoder. Recover before it feels permanent.
+    const val REBUFFER_WAIT_MS = 6_000L
+    const val SAMPLE_WINDOW_MS = 2_000L
     const val MAX_BUFFER_AHEAD_MS = 8_000L
-    const val MIN_BUFFER_GROWTH_MS = 2_000L
+    // Require meaningful progress, but tolerate a temporarily slow mobile CDN.
+    const val MIN_BUFFER_GROWTH_MS = 1_200L
     const val MAX_AUTOMATIC_REFRESHES_PER_TRACK = 2
 
     // A real rebuffer with almost no growth on an hour-long track may be a

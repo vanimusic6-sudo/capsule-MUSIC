@@ -33,6 +33,31 @@ internal fun canSwitchToVideoSound(
     musicIsPlaying: Boolean, clipIsPlaying: Boolean,
 ): Boolean = firstFrameRendered && ready && originalAudioSelected && musicIsPlaying && clipIsPlaying
 
+/**
+ * Lead only a COLD, unbuffered startup seek. On progressive streams Media3
+ * must first discover the timeline, then seek to the advancing MUSIC clock.
+ * A seek often takes about as long as initial READY; targeting today's MUSIC
+ * position alone makes it arrive late and triggers a second CDN seek.
+ *
+ * A buffered seek is cheap and must NOT be predicted forward. The existing
+ * post-seek frame/READY/alignment guard still corrects any bad estimate.
+ */
+internal fun predictedVideoSeekLeadMs(
+    musicPlaying: Boolean,
+    targetMs: Long,
+    bufferedUntilMs: Long,
+    previousSeekMs: Long,
+    initialReadyMs: Long,
+): Long {
+    if (!musicPlaying || targetMs <= 0L) return 0L
+    if (bufferedUntilMs >= targetMs && bufferedUntilMs - targetMs >= 1_500L) return 0L
+    return when {
+        previousSeekMs in 150L..3_000L -> previousSeekMs.coerceAtMost(2_000L)
+        initialReadyMs in 500L..5_000L -> initialReadyMs.coerceIn(500L, 1_900L)
+        else -> 0L
+    }
+}
+
 internal const val CAPSULE_VIDEO_SOUND_GAP_MS = 180L
 internal const val CAPSULE_SOUND_RAMP_STEP_MS = 16L
 internal const val CAPSULE_SOUND_RAMP_STEPS = 5
@@ -284,6 +309,7 @@ internal class CapsuleVideoSession(
     private var catchupPending = false
     private var seekStartedAtMs: Long? = null
     private var seekLatencyMs = 0L
+    private var startupReadyMs = 0L
     private var startupBudgetMs = 15_000L
     private var committed = false
     private var reportedBuffering = false
@@ -351,9 +377,9 @@ internal class CapsuleVideoSession(
             renderedFrameRevision++
             if (id == null || !rendering) return
             seekStartedAtMs?.let {
-                // A network seek can take far longer than a subsequent
-                // buffered seek. Bound prediction to the handoff tolerance.
-                seekLatencyMs = (clockMs() - it).coerceIn(0L, 400L)
+                // Learn observed seek cost without letting an anomalous stall
+                // bias later video starts indefinitely.
+                seekLatencyMs = (clockMs() - it).coerceIn(0L, 2_500L)
                 seekStartedAtMs = null
             }
             firstFrame = true
@@ -368,6 +394,7 @@ internal class CapsuleVideoSession(
             if (playbackState == Player.STATE_READY && id != null && !readyReported) {
                 readyReported = true
                 val preparedMs = (clockMs() - startedAtMs).coerceAtLeast(0L)
+                startupReadyMs = if (reusedThisSession) 0L else preparedMs
                 if (!reusedThisSession) {
                     val delivery = (preparedItem?.localConfiguration?.tag as?
                         YouTubeVideoResolver.ResolvedVideo)?.delivery
@@ -389,13 +416,24 @@ internal class CapsuleVideoSession(
     private fun targetPosition(): Long =
         capsuleVideoStartupSeek(audio.currentPosition, video.duration)
 
-    private fun startupSeekTarget(): Long {
+    private fun startupSeekTarget(predictSeekLatency: Boolean = true): Long {
         // A shorter clip requested while AUDIO is already past EOF starts at 0.
         // Prediction must not offset that explicit reset or a paused seek.
         val duration = capsuleKnownDuration(video.duration)
         val pastEnd = duration != null && audio.currentPosition >= duration
-        val prediction = if (audio.isPlaying && !pastEnd) seekLatencyMs else 0L
-        return capsuleClampDecoderSeek(targetPosition() + prediction, video.duration)
+        val target = targetPosition()
+        val prediction = if (predictSeekLatency && !pastEnd) {
+            predictedVideoSeekLeadMs(
+                musicPlaying = audio.isPlaying,
+                targetMs = target,
+                bufferedUntilMs = video.bufferedPosition,
+                previousSeekMs = seekLatencyMs,
+                initialReadyMs = startupReadyMs,
+            )
+        } else 0L
+        // Unknown-duration timelines may have unbounded positions. Never overflow.
+        val predictedTarget = if (target > Long.MAX_VALUE - prediction) Long.MAX_VALUE else target + prediction
+        return capsuleClampDecoderSeek(predictedTarget, video.duration)
     }
 
     /**
@@ -512,9 +550,13 @@ internal class CapsuleVideoSession(
             aligned = true
             val target = targetPosition()
             if (abs(video.currentPosition - target) > 400L) {
-                Timber.tag("CapsuleVideo").i("VIDEO timing align session=%s deltaMs=%s", current, target - video.currentPosition)
+                val predictedTarget = startupSeekTarget()
+                Timber.tag("CapsuleVideo").i(
+                    "VIDEO timing align session=%s deltaMs=%s leadMs=%s",
+                    current, target - video.currentPosition, predictedTarget - target,
+                )
                 catchupPending = true
-                seekForStartup(startupSeekTarget())
+                seekForStartup(predictedTarget)
                 ensureWatchdog()
                 return
             }
@@ -522,7 +564,10 @@ internal class CapsuleVideoSession(
         // A slow first seek can finish behind MUSIC. Correct it once, only
         // inside the available buffer. Never chase MUSIC with a seek loop.
         if (!ownsSound && catchupPending && rendering && ready && firstFrame) {
-            val target = startupSeekTarget()
+            // A second seek is permitted only inside an already-buffered
+            // window. Target exactly the MUSIC clock, without predicting an
+            // additional network delay that would cause another overshoot.
+            val target = startupSeekTarget(predictSeekLatency = false)
             if (abs(video.currentPosition - targetPosition()) > 400L) {
                 // After a slow CDN startup another seek with only 350ms
                 // banked ahead consumed the last decoded frames and left the
@@ -633,6 +678,7 @@ internal class CapsuleVideoSession(
         id = mediaId
         surfaceEverAttachedForSession = surfaceAttached
         startedAtMs = SystemClock.elapsedRealtime()
+        startupReadyMs = 0L
         readyReported = false
         val lease = generation
         volume = outputVolume.coerceIn(0f, 1f)

@@ -9,6 +9,24 @@ import androidx.media3.common.Player
 import com.nikhil.yt.innertube.video.CapsuleVideoDelivery
 
 class CapsuleVideoCompanionTest {
+    @Test fun progressiveColdSeekLeadsAdvancingMusicOnce() {
+        assertEquals(1_700L, predictedVideoSeekLeadMs(
+            musicPlaying = true, targetMs = 3_800L, bufferedUntilMs = 2_000L,
+            previousSeekMs = 0L, initialReadyMs = 1_700L,
+        ))
+        assertEquals(1_840L, predictedVideoSeekLeadMs(
+            musicPlaying = true, targetMs = 3_800L, bufferedUntilMs = 2_000L,
+            previousSeekMs = 1_840L, initialReadyMs = 1_700L,
+        ))
+    }
+
+    @Test fun bufferedPausedAndUnknownStartupNeverOvershoot() {
+        assertEquals(0L, predictedVideoSeekLeadMs(true, 3_800L, 6_000L, 0L, 1_700L))
+        assertEquals(0L, predictedVideoSeekLeadMs(false, 3_800L, 2_000L, 0L, 1_700L))
+        assertEquals(0L, predictedVideoSeekLeadMs(true, 3_800L, 2_000L, 0L, 0L))
+        assertEquals(2_000L, predictedVideoSeekLeadMs(true, 3_800L, 2_000L, 2_500L, 1_700L))
+    }
+
     @Test fun videoStartupEstimatorLearnsOnlyFromPreparedDashAndSabr() {
         val estimator = CapsuleVideoReadinessEstimator()
         assertEquals(null, estimator.prediction(CapsuleVideoDelivery.DASH))
