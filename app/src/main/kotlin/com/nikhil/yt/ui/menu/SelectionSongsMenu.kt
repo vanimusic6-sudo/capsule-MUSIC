@@ -286,9 +286,9 @@ fun SelectionSongMenu(
                 },
                 modifier = Modifier.clickable {
                     showChoosePlaylistDialog = true
-                }
-            
-                highlightBorder = true,)
+                },
+                highlightBorder = true,
+            )
         }
         item {
             ListItem(
@@ -581,9 +581,9 @@ fun SelectionMediaMetadataMenu(
                 },
                 modifier = Modifier.clickable {
                     showChoosePlaylistDialog = true
-                }
-            
-                highlightBorder = true,)
+                },
+                highlightBorder = true,
+            )
         }
         item {
             ListItem(

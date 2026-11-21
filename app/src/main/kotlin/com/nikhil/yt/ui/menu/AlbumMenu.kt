@@ -401,9 +401,9 @@ fun AlbumMenu(
                 },
                 modifier = Modifier.clickable {
                     showChoosePlaylistDialog = true
-                }
-            
-                highlightBorder = true,)
+                },
+                highlightBorder = true,
+            )
         }
         item {
             CapsuleDownloadAction(
