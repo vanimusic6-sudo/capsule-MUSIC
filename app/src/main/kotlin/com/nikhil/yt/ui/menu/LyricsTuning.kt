@@ -1,261 +1,175 @@
 /**
- * Capsule MUSIC
- * Nudging the lyrics into line, from the player.
- * GPL-3.0
+ * Capsule MUSIC — compact, always-visible lyrics positioning and sync.
+ * GPL-3.0.
  */
-
 package com.nikhil.yt.ui.menu
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.nikhil.yt.R
-import com.nikhil.yt.ui.component.DefaultDialog
-import com.nikhil.yt.ui.screens.settings.LyricsPosition
 import com.nikhil.yt.constants.LyricsSyncOffsetKey
 import com.nikhil.yt.constants.LyricsTextPositionKey
+import com.nikhil.yt.ui.component.CapsuleMenuBlack
+import com.nikhil.yt.ui.component.CapsuleMenuTileGap
+import com.nikhil.yt.ui.component.CapsuleMenuTileShape
+import com.nikhil.yt.ui.screens.settings.LyricsPosition
 import com.nikhil.yt.utils.rememberEnumPreference
 import com.nikhil.yt.utils.rememberPreference
-import kotlin.math.roundToInt
 
-/** One press. Small enough to home in on a bad file, big enough to be worth pressing. */
 private const val OFFSET_STEP_MS = 100
-
-/**
- * The furthest the offset may go either way.
- *
- * Past a couple of seconds a file is not offset, it is the wrong file — and letting someone drag it
- * to a minute out just lets them lose the lyrics entirely with no obvious way back.
- */
 internal const val OFFSET_LIMIT_MS = 3_000
+private val LyricsTuningTileHeight = 52.dp
 
-/**
- * Where the lyrics sit, and how far ahead of the music they run.
- *
- * Both belong here rather than only in settings: you find out a file is early while it is playing,
- * and fixing it three screens away means leaving the song to do it.
- *
- * There is no scroll speed, and there cannot be one — synced lyrics are pinned to timestamps, so
- * nothing about them scrolls at a rate that could be changed. A file that is uniformly early or
- * late is a constant offset, and a file that drifts further out as it goes is one with the wrong
- * timings, which no single number can rescue.
- */
+/** Single, bounded, non-expanding control group. No modal inside a modal. */
 @Composable
 internal fun LyricsTuning() {
     val (position, onPositionChange) =
         rememberEnumPreference(LyricsTextPositionKey, LyricsPosition.LEFT)
-    val (offsetMs, onOffsetChange) = rememberPreference(LyricsSyncOffsetKey, defaultValue = 0)
-    var showOffsetDialog by rememberSaveable { mutableStateOf(false) }
+    val (storedOffsetMs, onOffsetChange) = rememberPreference(LyricsSyncOffsetKey, defaultValue = 0)
+    val offsetMs = clampOffset(storedOffsetMs)
+    val positions = listOf(LyricsPosition.LEFT, LyricsPosition.CENTER, LyricsPosition.RIGHT)
+    val ink = MaterialTheme.colorScheme.onSurface
+    val mutedInk = MaterialTheme.colorScheme.onSurfaceVariant
+    val selectedOutline = MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
 
-    if (showOffsetDialog) {
-        var tempOffset by remember(offsetMs, showOffsetDialog) {
-            mutableFloatStateOf(offsetMs.toFloat())
-        }
-
-        DefaultDialog(
-            onDismiss = { showOffsetDialog = false },
-            icon = {
-                Icon(
-                    painter = painterResource(R.drawable.sync),
-                    contentDescription = null,
-                )
-            },
-            title = { Text(stringResource(R.string.lyrics_sync_offset)) },
-            buttons = {
-                TextButton(onClick = { tempOffset = 0f }) {
-                    Text(stringResource(R.string.reset))
-                }
-
-                Spacer(Modifier.weight(1f))
-
-                TextButton(onClick = { showOffsetDialog = false }) {
-                    Text(stringResource(android.R.string.cancel))
-                }
-
-                TextButton(
-                    onClick = {
-                        onOffsetChange(clampOffset(tempOffset.roundToInt()))
-                        showOffsetDialog = false
-                    },
-                ) {
-                    Text(stringResource(android.R.string.ok))
-                }
-            },
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    text =
-                        stringResource(
-                            R.string.lyrics_sync_offset_value,
-                            tempOffset / 1000f,
-                        ),
-                    style = MaterialTheme.typography.titleMedium,
-                    textAlign = TextAlign.Center,
-                )
-
-                Spacer(Modifier.height(14.dp))
-
-                Slider(
-                    value = tempOffset,
-                    onValueChange = { tempOffset = it },
-                    valueRange = -OFFSET_LIMIT_MS.toFloat()..OFFSET_LIMIT_MS.toFloat(),
-                    steps = (OFFSET_LIMIT_MS * 2 / OFFSET_STEP_MS) - 1,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-    }
-
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-        val positions = listOf(LyricsPosition.LEFT, LyricsPosition.CENTER, LyricsPosition.RIGHT)
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(CapsuleMenuTileGap),
+    ) {
+        // Three independent, equally sized tiles, not one merged segmented bar.
         Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainer),
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(CapsuleMenuTileGap),
         ) {
             positions.forEach { value ->
                 val selected = position == value
-                Box(
-                    modifier =
-                        Modifier
-                            .weight(1f)
-                            .background(
-                                if (selected) {
-                                    MaterialTheme.colorScheme.primaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceContainer
-                                },
-                            )
-                            .clickable {
-                                onPositionChange(value)
-                            }
-                            .padding(vertical = 11.dp),
-                    contentAlignment = Alignment.Center,
+                Surface(
+                    onClick = { onPositionChange(value) },
+                    modifier = Modifier.weight(1f).height(LyricsTuningTileHeight),
+                    shape = CapsuleMenuTileShape,
+                    color = CapsuleMenuBlack,
+                    border = if (selected) BorderStroke(1.dp, selectedOutline) else null,
                 ) {
-                    Text(
-                        text =
-                            stringResource(
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = stringResource(
                                 when (value) {
                                     LyricsPosition.LEFT -> R.string.left
                                     LyricsPosition.CENTER -> R.string.center
                                     LyricsPosition.RIGHT -> R.string.right
                                 },
-                            ).replaceFirstChar { it.lowercase() },
-                        color =
-                            if (selected) {
-                                MaterialTheme.colorScheme.onPrimaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                    )
+                            ),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (selected) ink else mutedInk,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
                 }
             }
         }
 
-        Spacer(Modifier.height(20.dp))
+        Text(
+            text = stringResource(R.string.lyrics_sync_offset),
+            style = MaterialTheme.typography.labelMedium,
+            color = mutedInk,
+        )
 
-        Column(
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
+            horizontalArrangement = Arrangement.spacedBy(CapsuleMenuTileGap),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = stringResource(R.string.lyrics_sync_offset),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.secondary,
-                textAlign = TextAlign.Center,
-            )
-
-            Spacer(Modifier.height(10.dp))
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
+            Surface(
+                onClick = { onOffsetChange(clampOffset(offsetMs - OFFSET_STEP_MS)) },
+                enabled = offsetMs > -OFFSET_LIMIT_MS,
+                modifier = Modifier.size(LyricsTuningTileHeight),
+                shape = CapsuleMenuTileShape,
+                color = CapsuleMenuBlack,
             ) {
-                FilledTonalIconButton(
-                    onClick = { onOffsetChange(clampOffset(offsetMs - OFFSET_STEP_MS)) },
-                    enabled = offsetMs > -OFFSET_LIMIT_MS,
-                ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Icon(
                         painter = painterResource(R.drawable.remove),
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-
-                Text(
-                    text = stringResource(R.string.lyrics_sync_offset_value, offsetMs / 1000f),
-                    style = MaterialTheme.typography.titleMedium,
-                    textAlign = TextAlign.Center,
-                    modifier =
-                        Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { showOffsetDialog = true }
-                            .padding(horizontal = 14.dp, vertical = 8.dp)
-                            .widthIn(min = 72.dp),
-                )
-
-                FilledTonalIconButton(
-                    onClick = { onOffsetChange(clampOffset(offsetMs + OFFSET_STEP_MS)) },
-                    enabled = offsetMs < OFFSET_LIMIT_MS,
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.add),
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
+                        contentDescription = stringResource(R.string.lyrics_sync_offset),
+                        tint = mutedInk,
+                        modifier = Modifier.size(22.dp),
                     )
                 }
             }
-
-            if (offsetMs != 0) {
-                Spacer(Modifier.height(10.dp))
-
-                FilledTonalButton(
-                    onClick = { onOffsetChange(0) },
-                    shape = RoundedCornerShape(14.dp),
-                ) {
-                    Text(stringResource(R.string.reset))
+            // The numeric value is read-only. Adjustments are direct; no
+            // offset dialog or nested popup is required to complete the task.
+            Surface(
+                modifier = Modifier.weight(1f).height(LyricsTuningTileHeight),
+                shape = CapsuleMenuTileShape,
+                color = CapsuleMenuBlack,
+            ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = stringResource(R.string.lyrics_sync_offset_value, offsetMs / 1000f),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = ink,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Surface(
+                onClick = { onOffsetChange(clampOffset(offsetMs + OFFSET_STEP_MS)) },
+                enabled = offsetMs < OFFSET_LIMIT_MS,
+                modifier = Modifier.size(LyricsTuningTileHeight),
+                shape = CapsuleMenuTileShape,
+                color = CapsuleMenuBlack,
+            ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Icon(
+                        painter = painterResource(R.drawable.add),
+                        contentDescription = stringResource(R.string.lyrics_sync_offset),
+                        tint = mutedInk,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+            }
+            Surface(
+                onClick = { onOffsetChange(0) },
+                enabled = offsetMs != 0,
+                modifier = Modifier.width(64.dp).height(LyricsTuningTileHeight),
+                shape = CapsuleMenuTileShape,
+                color = CapsuleMenuBlack,
+            ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = stringResource(R.string.reset),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (offsetMs == 0) mutedInk.copy(alpha = 0.48f) else ink,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }
     }
 }
 
-/** Keeps a stored value in range too, not only a pressed one. */
 internal fun clampOffset(offsetMs: Int): Int = offsetMs.coerceIn(-OFFSET_LIMIT_MS, OFFSET_LIMIT_MS)
-

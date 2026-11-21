@@ -119,7 +119,7 @@ class PlayerMenuGestureTest {
     @Test fun playerQuickActionsAreCompactReadableAndAllReachable() {
         val labels = listOf(
             "Начать радио", "Добавить в плейлист", "Таймер сна",
-            "Скопировать ссылку", "Слушать вместе",
+            "Скопировать ссылку", "Эквалайзер", "Темп и тональность",
         )
         compose.setContent {
             MaterialTheme {
@@ -137,8 +137,10 @@ class PlayerMenuGestureTest {
             compose.onNodeWithText(text).assertIsDisplayed()
         }
         val rect = compose.onNodeWithTag("compact-actions").fetchSemanticsNode().boundsInRoot
-        assertTrue("Five actions must not fill a giant three-row tile panel",
-            rect.height < rect.width * 0.85f)
+        assertTrue("Six actions should use three compact, equal-height rows",
+            rect.height < rect.width * 1.1f)
+        assertTrue("No last-action full-width expansion in compact grid",
+            rect.height > 200f)
     }
 
     @Test fun aReplacementMenuIsVisibleAfterAnInterruptedExit() {

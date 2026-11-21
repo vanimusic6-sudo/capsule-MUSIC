@@ -341,7 +341,7 @@ fun YouTubeSongMenu(
                 headlineContent = { Text(text = stringResource(R.string.start_radio)) },
                 leadingContent = {
                     Icon(
-                        painter = painterResource(R.drawable.capsule_soft_radio),
+                        painter = painterResource(R.drawable.radio),
                         contentDescription = null,
                     )
                 },

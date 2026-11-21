@@ -432,7 +432,7 @@ fun PlayerMenu(
                     NewAction(
                         icon = {
                             Icon(
-                                painter = painterResource(R.drawable.capsule_soft_radio),
+                                painter = painterResource(R.drawable.radio),
                                 contentDescription = null,
                                 modifier = Modifier.size(24.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -493,21 +493,32 @@ fun PlayerMenu(
                             onDismiss()
                         }
                     ),
+                    // One uniform 2-column grid, including the EQ and tempo actions.
                     NewAction(
                         icon = {
                             Icon(
-                                painter = painterResource(R.drawable.capsule_soft_fire),
+                                painter = painterResource(R.drawable.graphic_eq),
                                 contentDescription = null,
                                 modifier = Modifier.size(24.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         },
-                        text = stringResource(R.string.music_together),
-                        onClick = {
-                            onDismiss()
-                            playerBottomSheetState.snapTo(playerBottomSheetState.collapsedBound)
-                            navController.navigate("settings/music_together")
-                        }
+                        text = stringResource(R.string.equalizer),
+                        enabled = isQueueTrigger != true,
+                        onClick = { showEqualizerDialog = true },
+                    ),
+                    NewAction(
+                        icon = {
+                            Icon(
+                                painter = painterResource(R.drawable.speed),
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
+                        text = stringResource(R.string.tempo_and_pitch),
+                        enabled = isQueueTrigger != true,
+                        onClick = { showPitchTempoDialog = true },
                     )
                 ),
                 modifier = Modifier,
@@ -660,38 +671,6 @@ if (mediaMetadata.album != null) {
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
 
-                    if (isQueueTrigger != true) {
-ListItem(
-                            headlineContent = { Text(text = stringResource(R.string.equalizer)) },
-                            leadingContent = {
-                                Icon(
-                                    painter = painterResource(R.drawable.equalizer),
-                                    contentDescription = null,
-                                )
-                            },
-                            modifier = Modifier.clickable { showEqualizerDialog = true },
-                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                        )
-ListItem(
-                            headlineContent = { Text(text = stringResource(R.string.tempo_and_pitch)) },
-                            leadingContent = {
-                                Icon(
-                                    painter = painterResource(R.drawable.speed),
-                                    contentDescription = null,
-                                )
-                            },
-                            supportingContent = {
-                                val playbackParameters by playerConnection.playbackParameters.collectAsState()
-                                Text(
-                                    text = "x${formatMultiplier(playbackParameters.speed)} • x${formatMultiplier(playbackParameters.pitch)}",
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            },
-                            modifier = Modifier.clickable { showPitchTempoDialog = true },
-                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                        )
-                    }
                 }
             }
         }
@@ -718,8 +697,11 @@ private fun PlayerVolumeCard(
         modifier = modifier.fillMaxWidth(),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-            verticalArrangement = Arrangement.spacedBy(0.dp),
+            // A taller, full-width backing aligned with every other menu tile.
+            modifier = Modifier.fillMaxWidth()
+                .heightIn(min = 112.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,

@@ -68,8 +68,8 @@ class CapsuleMenuMotionTest {
             java.io.File("src/main/kotlin/com/nikhil/yt/ui/component/NewMenuComponents.kt"),
             java.io.File("app/src/main/kotlin/com/nikhil/yt/ui/component/NewMenuComponents.kt"),
         ).first(java.io.File::isFile).readText()
-        assertTrue(actions.contains("heightIn(min = CapsuleMenuMinActionHeight)"))
-        assertTrue(actions.contains("CapsuleMenuMinActionHeight = 88.dp"))
+        assertTrue(actions.contains("heightIn(min = CapsuleMenuMinActionHeight, max = CapsuleMenuMinActionHeight)"))
+        assertTrue(actions.contains("CapsuleMenuMinActionHeight = 100.dp"))
         assertTrue(actions.contains("CapsuleMenuMinRowHeight = 64.dp"))
         assertTrue(actions.contains("maxLines = 2"))
         assertFalse(actions.contains("color = CapsuleMenuBlack"))
@@ -210,6 +210,45 @@ class CapsuleMenuMotionTest {
         assertEquals(1, capsuleActionGridColumns(
             1, 350, listOf("Радио"), compact = true,
         ))
+    }
+
+    @Test fun gridKeepsOddLastItemAtSingleColumnWidth() {
+        val source = listOf(
+            java.io.File("src/main/kotlin/com/nikhil/yt/ui/component/NewMenuComponents.kt"),
+            java.io.File("app/src/main/kotlin/com/nikhil/yt/ui/component/NewMenuComponents.kt"),
+        ).first(java.io.File::isFile).readText()
+        assertTrue(source.contains("repeat(safeColumns - row.size)"))
+        assertFalse(source.contains("repeat(if (compact) 0"))
+    }
+
+    @Test fun playerAudioControlsUseOneGridAndPaddedVolumeSurface() {
+        val source = listOf(
+            java.io.File("src/main/kotlin/com/nikhil/yt/ui/menu/PlayerMenu.kt"),
+            java.io.File("app/src/main/kotlin/com/nikhil/yt/ui/menu/PlayerMenu.kt"),
+        ).first(java.io.File::isFile).readText()
+        assertFalse(source.contains("settings/music_together"))
+        assertTrue(source.contains("painterResource(R.drawable.graphic_eq)"))
+        assertTrue(source.contains("showEqualizerDialog = true"))
+        assertTrue(source.contains("heightIn(min = 112.dp)"))
+        assertTrue(source.contains("R.drawable.radio"))
+    }
+
+    @Test fun lyricsControlsStayCompactWithoutNestedExpansion() {
+        val files = listOf(
+            java.io.File("src/main/kotlin/com/nikhil/yt/ui/menu/LyricsTuning.kt"),
+            java.io.File("app/src/main/kotlin/com/nikhil/yt/ui/menu/LyricsTuning.kt"),
+        )
+        val tuning = files.first(java.io.File::isFile).readText()
+        assertTrue(tuning.contains("LyricsTuningTileHeight = 52.dp"))
+        assertTrue(tuning.contains("onPositionChange(value)"))
+        assertTrue(tuning.contains("onOffsetChange(clampOffset("))
+        assertFalse(tuning.contains("showOffsetDialog"))
+        val path = "com/nikhil/yt/ui/menu/LyricsMenu.kt"
+        val lyrics = listOf(java.io.File("src/main/kotlin/$path"),
+            java.io.File("app/src/main/kotlin/$path"))
+            .first(java.io.File::isFile).readText()
+        assertTrue(lyrics.indexOf("item(key = \"lyrics-tuning\"") <
+            lyrics.indexOf("item(key = \"lyrics-actions\""))
     }
 
     @Test fun nativePlayerMenuIsKeptUntilMaterialHideCompletes() {

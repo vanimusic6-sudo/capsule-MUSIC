@@ -322,7 +322,7 @@ fun LyricsMenu(
         }
     }
 
-    Spacer(modifier = Modifier.height(12.dp))
+    Spacer(modifier = Modifier.height(8.dp))
 
     // Previously portrait explicitly disabled the actual LazyColumn scroll.
     // The gesture then fell straight through to the modal sheet, producing
@@ -339,6 +339,12 @@ fun LyricsMenu(
             bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
         ),
     ) {
+        item(key = "lyrics-tuning", contentType = "controls") {
+            // Position and sync live here because you find out a file is early while it is playing.
+            LyricsTuning()
+            Spacer(Modifier.height(8.dp))
+        }
+
         item(key = "lyrics-actions", contentType = "actions") {
             // Enhanced Action Grid using NewMenuComponents
             NewActionGrid(
@@ -383,14 +389,11 @@ fun LyricsMenu(
                         onClick = { showSearchDialog = true }
                     )
                 ),
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 16.dp)
+                modifier = Modifier.padding(vertical = 4.dp),
+                columns = 3,
+                compact = false,
             )
         }
 
-        item(key = "lyrics-tuning", contentType = "controls") {
-            // Position and sync live here because you find out a file is early while it is playing.
-            LyricsTuning()
-            Spacer(Modifier.height(8.dp))
-        }
     }
 }

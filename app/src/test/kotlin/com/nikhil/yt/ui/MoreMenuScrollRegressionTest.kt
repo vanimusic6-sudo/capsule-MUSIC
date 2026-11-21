@@ -36,7 +36,7 @@ class MoreMenuScrollRegressionTest {
         val tiles = source("com/nikhil/yt/ui/component/NewMenuComponents.kt")
         assertFalse("rapid menu scrolling must not run per-tile marquee clocks",
             tiles.contains("basicMarquee()"))
-        assertTrue(tiles.contains("CapsuleMenuMinActionHeight = 88.dp"))
+        assertTrue(tiles.contains("CapsuleMenuMinActionHeight = 100.dp"))
     }
 
     @Test fun nativeSheetStillHandlesItsOwnGesturesInsteadOfCustomNestedDrags() {

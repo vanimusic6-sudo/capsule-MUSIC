@@ -99,7 +99,7 @@ fun YouTubeArtistMenu(
                             NewAction(
                                 icon = {
                                     Icon(
-                                        painter = painterResource(R.drawable.capsule_soft_radio),
+                                        painter = painterResource(R.drawable.radio),
                                         contentDescription = null,
                                         modifier = Modifier.size(24.dp),
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant

@@ -68,7 +68,7 @@ internal val CapsuleMenuTileShape = RoundedCornerShape(18.dp)
 internal val CapsuleMenuTileGap = 8.dp
 internal val CapsuleMenuRowPadding = 4.dp
 internal val CapsuleMenuMinRowHeight = 64.dp
-internal val CapsuleMenuMinActionHeight = 88.dp
+internal val CapsuleMenuMinActionHeight = 100.dp
 internal val CapsuleMenuIconSize = 28.dp
 
 internal fun capsuleCompactMenuStackedLabel(label: String): Boolean =
@@ -136,8 +136,9 @@ fun NewActionButton(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = CapsuleMenuMinActionHeight)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                // Exact shared size, independent of one- or two-line titles.
+                .heightIn(min = CapsuleMenuMinActionHeight, max = CapsuleMenuMinActionHeight)
+                .padding(horizontal = 10.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -150,9 +151,9 @@ fun NewActionButton(
             
             Text(
                 text = text,
-                style = MaterialTheme.typography.labelMedium,
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
+                style = MaterialTheme.typography.labelLarge,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
                 color = if (pressGuard) MaterialTheme.colorScheme.onSurface else animatedContent,
                 textAlign = TextAlign.Center,
                 maxLines = 2,
@@ -203,8 +204,8 @@ internal fun CapsuleCompactMenuAction(
         // Uniform 24dp icons and up to two lines; no orientation switching.
         Column(
             modifier = Modifier.fillMaxWidth()
-                .heightIn(min = CapsuleMenuMinActionHeight)
-                .padding(horizontal = 10.dp, vertical = 10.dp),
+                .heightIn(min = CapsuleMenuMinActionHeight, max = CapsuleMenuMinActionHeight)
+                .padding(horizontal = 10.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
@@ -214,9 +215,9 @@ internal fun CapsuleCompactMenuAction(
             Spacer(Modifier.height(8.dp))
             Text(
                 text = action.text,
-                style = MaterialTheme.typography.labelMedium,
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
+                style = MaterialTheme.typography.labelLarge,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
                 color = labelInk,
                 textAlign = TextAlign.Center,
                 softWrap = true,
@@ -379,9 +380,9 @@ fun NewActionGrid(
                     }
                 }
 
-                // Standard grids retain empty slots; compact menus give a
-                // lone final action the entire width (no empty half-cell).
-                repeat(if (compact) 0 else safeColumns - row.size) {
+                // A final unpaired action retains its normal width.
+                // Fill only the unused grid cell with a non-clickable spacer.
+                repeat(safeColumns - row.size) {
                     Spacer(modifier = Modifier.weight(1f))
                 }
             }
