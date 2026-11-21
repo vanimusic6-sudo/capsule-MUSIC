@@ -42,7 +42,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -50,6 +49,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
+
+/**
+ * Every interactive menu control must remain visibly opaque regardless of
+ * the sheet's presentation or a custom colour's alpha. This also eliminates
+ * the former 6.5%-alpha "acrylic" cards, which vanished on some devices.
+ */
+internal fun capsuleMenuOpaqueTile(
+    normal: Color,
+    pressedColor: Color,
+    pressed: Boolean,
+): Color = (if (pressed) pressedColor else normal).copy(alpha = 1f)
 
 // Enhanced Action Button - Material 3 Expressive Design
 @Composable
@@ -97,14 +107,15 @@ fun NewActionButton(
                 onClick = onClick,
             )
         }
-    // An acrylic sheet is ONE material; default action cards are only
-    // subtle highlights in it, not dark opaque tiles hiding the backdrop.
-    val isDefaultMenuTile = backgroundColor == MaterialTheme.colorScheme.surfaceVariant
-    val ink = if (MaterialTheme.colorScheme.surface.luminance() < 0.42f)
-        Color.White else Color.Black
-    val tileColor = if (pressGuard && isDefaultMenuTile)
-        ink.copy(alpha = if (pressed) 0.13f else 0.065f)
-    else if (pressed) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = ActiveBoxAlpha)
+    // Both normal and pressed cards have an opaque, readable material.
+    // Keep explicit action colours when supplied, but reject translucency
+    // inside a modal sheet: the cross-window backdrop is not reliable.
+    val tileColor = if (pressGuard) capsuleMenuOpaqueTile(
+        normal = if (backgroundColor == MaterialTheme.colorScheme.surfaceVariant)
+            MaterialTheme.colorScheme.surfaceContainerHighest else animatedBackground,
+        pressedColor = MaterialTheme.colorScheme.secondaryContainer,
+        pressed = pressed,
+    ) else if (pressed) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = ActiveBoxAlpha)
     else animatedBackground
     Card(
         modifier = actionModifier,
@@ -336,7 +347,12 @@ fun NewIconButton(
     Card(
         modifier = actionModifier,
         colors = CardDefaults.cardColors(
-            containerColor = if (pressed) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = ActiveBoxAlpha) else animatedBackground
+            containerColor = if (pressGuard) capsuleMenuOpaqueTile(
+                normal = animatedBackground,
+                pressedColor = MaterialTheme.colorScheme.secondaryContainer,
+                pressed = pressed,
+            ) else if (pressed) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = ActiveBoxAlpha)
+            else animatedBackground
         ),
         shape = CircleShape,
         elevation = CardDefaults.cardElevation(
@@ -377,10 +393,12 @@ fun MenuSurfaceSection(
 ) {
     Surface(
         shape = RoundedCornerShape(24.dp),
-        // Lists belong to the same captured acrylic surface as their sheet;
-        // a second opaque panel is the black rectangle seen in the screenshot.
-        color = if (LocalCapsuleMenuPressGuard.current) Color.Transparent
-            else MaterialTheme.colorScheme.surfaceContainerLow,
+        // A list section MUST own a real opaque surface. Previously it was
+        // fully transparent while the parent was an unreliable Haze window.
+        // Use an adjacent tonal step, not a black overlay or GPU blur.
+        color = if (LocalCapsuleMenuPressGuard.current)
+            MaterialTheme.colorScheme.surfaceContainerHighest
+        else MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = modifier.fillMaxWidth(),
     ) {
         Column(content = content)

@@ -86,6 +86,15 @@ class PlayerMenuGestureTest {
         assertTrue("An upward swipe must fully expand the menu", expandedTop < initialTop)
     }
 
+    @Test fun menuActionsAndListItemsRemainDisplayedWhenExpanded() {
+        openMenu()
+        expandWithSwipe()
+        compose.onNodeWithText("Radio").assertIsDisplayed()
+        compose.onNodeWithText("Action 0").assertIsDisplayed()
+        // A modal that exists semantically but has no opaque container
+        // must also fail the separate pure-colour contract tests.
+    }
+
     @Test fun aReplacementMenuIsVisibleAfterAnInterruptedExit() {
         openMenu(MenuPresentation.STANDARD)
         compose.mainClock.autoAdvance = false

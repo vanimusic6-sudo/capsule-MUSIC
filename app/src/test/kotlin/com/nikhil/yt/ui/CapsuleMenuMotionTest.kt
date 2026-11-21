@@ -6,10 +6,10 @@ import com.nikhil.yt.ui.component.capsuleMenuElasticX
 import com.nikhil.yt.ui.component.capsuleMenuElasticY
 import com.nikhil.yt.ui.component.capsuleMenuDismissScale
 import com.nikhil.yt.ui.component.capsuleMenuTopFill
-import com.nikhil.yt.ui.component.CAPSULE_MENU_ACRYLIC_BLUR_DP
-import com.nikhil.yt.ui.component.CAPSULE_MENU_ACRYLIC_NOISE
-import com.nikhil.yt.ui.component.CAPSULE_MENU_ACRYLIC_TINT_ALPHA
+import com.nikhil.yt.ui.component.capsuleMenuOpaqueSurface
+import com.nikhil.yt.ui.component.capsuleMenuOpaqueTile
 import com.nikhil.yt.ui.component.capsuleActionGridColumns
+import androidx.compose.ui.graphics.Color
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -17,10 +17,27 @@ import org.junit.Test
 
 /** The original Material3 sheet retains the real anchored gesture owner. */
 class CapsuleMenuMotionTest {
-    @Test fun acrylicIsTheRealArchiveTuneBlurNotAFlatGradient() {
-        assertEquals(32, CAPSULE_MENU_ACRYLIC_BLUR_DP)
-        assertEquals(0.12f, CAPSULE_MENU_ACRYLIC_NOISE, 0.0001f)
-        assertEquals(0.72f, CAPSULE_MENU_ACRYLIC_TINT_ALPHA, 0.0001f)
+    @Test fun modalSheetNeverReliesOnATransparentBackground() {
+        val surface = Color(0xFF101015)
+        val highSurface = Color(0xFF303038)
+        val resolved = capsuleMenuOpaqueSurface(surface, surface, highSurface)
+        assertEquals(highSurface, resolved)
+        assertEquals(1f, resolved.alpha, 0.0001f)
+        val translucentCustom = Color(0xFF4F435A).copy(alpha = 0.1f)
+        val customResolved = capsuleMenuOpaqueSurface(translucentCustom, surface, highSurface)
+        assertEquals(1f, customResolved.alpha, 0.0001f)
+        assertEquals(translucentCustom.red, customResolved.red, 0.0001f)
+    }
+
+    @Test fun acrylicActionTilesAreAlwaysOpaqueAndReadable() {
+        val normal = Color(0xFF404047).copy(alpha = 0.065f)
+        val selected = Color(0xFF515161).copy(alpha = 0.13f)
+        val idle = capsuleMenuOpaqueTile(normal, selected, pressed = false)
+        val down = capsuleMenuOpaqueTile(normal, selected, pressed = true)
+        assertEquals(1f, idle.alpha, 0.0001f)
+        assertEquals(1f, down.alpha, 0.0001f)
+        assertEquals(normal.red, idle.red, 0.0001f)
+        assertEquals(selected.blue, down.blue, 0.0001f)
     }
 
     @Test fun narrowPlaylistActionsNeverBreakLongRussianWordsIntoThreeTiles() {

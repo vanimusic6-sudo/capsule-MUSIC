@@ -306,9 +306,6 @@ dependencies {
     implementation(project(":kizzy"))
     implementation("com.github.Kyant0:m3color:2025.4")
     implementation(libs.backdrop)
-    // Source-backed acrylic Blur: Apache-2.0 (Chris Banes / Haze).
-    implementation(libs.haze)
-    implementation(libs.haze.blur)
 
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
