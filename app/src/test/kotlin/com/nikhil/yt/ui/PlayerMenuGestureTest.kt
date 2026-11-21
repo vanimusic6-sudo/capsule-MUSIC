@@ -53,12 +53,6 @@ class PlayerMenuGestureTest {
         menu.show(presentation = presentation) {
             // The fixed header and volume area above the menu's lazy list.
             Box(Modifier.fillMaxWidth().height(80.dp).testTag("header")) { Text("Now playing") }
-            NewActionButton(
-                icon = { Text("▶") },
-                text = "Radio",
-                modifier = Modifier.fillMaxWidth().testTag("hold-action"),
-                onClick = {},
-            )
             Box(Modifier.fillMaxWidth().height(112.dp)) { Text("Volume") }
             list = rememberLazyListState()
             LazyColumn(
@@ -66,6 +60,15 @@ class PlayerMenuGestureTest {
                 modifier = Modifier.fillMaxWidth().testTag("items"),
                 contentPadding = PaddingValues(bottom = 32.dp),
             ) {
+                // Matches production: scrolling begins after the fixed volume.
+                item(key = "quick-actions") {
+                    NewActionButton(
+                        icon = { Text("▶") },
+                        text = "Radio",
+                        modifier = Modifier.fillMaxWidth().testTag("hold-action"),
+                        onClick = {},
+                    )
+                }
                 items(30) { index ->
                     ListItem(
                         headlineContent = { Text("Action $index") },
@@ -86,6 +89,17 @@ class PlayerMenuGestureTest {
         compose.waitForIdle()
         val expandedTop = compose.onNodeWithTag("header").fetchSemanticsNode().boundsInRoot.top
         assertTrue("An upward swipe must fully expand the menu", expandedTop < initialTop)
+    }
+
+    @Test fun swipeScrollsQuickActionsAndRowsWhileVolumeStaysFixed() {
+        openMenu()
+        expandWithSwipe()
+        val before = compose.onNodeWithText("Volume").fetchSemanticsNode().boundsInRoot.top
+        compose.onNodeWithTag("items").performScrollToIndex(12)
+        compose.waitForIdle()
+        val after = compose.onNodeWithText("Volume").fetchSemanticsNode().boundsInRoot.top
+        assertEquals("Volume must not travel with the scrolling actions", before, after, 1.5f)
+        compose.runOnIdle { assertTrue(list.firstVisibleItemIndex >= 12) }
     }
 
     @Test fun menuActionsAndListItemsRemainDisplayedWhenExpanded() {

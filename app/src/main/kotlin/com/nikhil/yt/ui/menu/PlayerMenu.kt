@@ -137,6 +137,8 @@ import com.nikhil.yt.ui.component.ListDialog
 import com.nikhil.yt.ui.component.MenuSurfaceSection
 import com.nikhil.yt.ui.component.NewAction
 import com.nikhil.yt.ui.component.NewActionGrid
+import com.nikhil.yt.ui.player.CapsuleLyricsVolumeSlider
+import com.nikhil.yt.ui.player.CapsuleLyricsVolumeIcon
 import com.nikhil.yt.ui.component.TextFieldDialog
 import com.nikhil.yt.utils.rememberPreference
 import kotlinx.coroutines.Dispatchers
@@ -404,100 +406,6 @@ fun PlayerMenu(
         PlayerVolumeCard(playerConnection = playerConnection)
     }
 
-    Spacer(modifier = Modifier.height(10.dp))
-
-    // Quick actions stay above the scrollable list, preserving swipe/flick
-    // arbitration. Their small horizontal form avoids the former three rows
-    // of oversized icon tiles and shows the next section immediately.
-    NewActionGrid(
-        actions = listOf(
-            NewAction(
-                icon = {
-                    Icon(
-                        painter = painterResource(R.drawable.capsule_soft_radio),
-                        contentDescription = null,
-                        modifier = Modifier.size(28.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                },
-                text = stringResource(R.string.start_radio),
-                enabled = !isExternalCatalog,
-                onClick = {
-                    if (!isExternalCatalog) {
-                        Toast.makeText(context, resources.getString(R.string.starting_radio),
-                            Toast.LENGTH_SHORT).show()
-                        playerConnection.startRadioSeamlessly()
-                        onDismiss()
-                    }
-                }
-            ),
-            NewAction(
-                icon = {
-                    Icon(
-                        painter = painterResource(R.drawable.capsule_soft_playlist_add),
-                        contentDescription = null,
-                        modifier = Modifier.size(28.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                },
-                text = stringResource(R.string.add_to_playlist),
-                onClick = { showChoosePlaylistDialog = true }
-            ),
-            NewAction(
-                icon = { Icon(painterResource(R.drawable.capsule_soft_bedtime), contentDescription = null) },
-                text = stringResource(R.string.sleep_timer),
-                enabled = canSetSleepTimer,
-                onClick = { showSleepTimer = true },
-            ),
-            NewAction(
-                icon = {
-                    Icon(
-                        painter = painterResource(R.drawable.capsule_soft_link),
-                        contentDescription = null,
-                        modifier = Modifier.size(28.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                },
-                text = stringResource(R.string.copy_link),
-                onClick = {
-                    val clipboard =
-                        context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                    val clip =
-                        android.content.ClipData.newPlainText(
-                            resources.getString(R.string.copy_link),
-                            (if (isExternalCatalog) mediaMetadata.sourceUrl
-                                ?.takeIf { it.startsWith("https://") }
-                                ?: ""
-                            else "https://music.youtube.com/watch?v=${mediaMetadata.id}"),
-                        )
-                    clipboard.setPrimaryClip(clip)
-                    android.widget.Toast.makeText(context, R.string.link_copied, android.widget.Toast.LENGTH_SHORT).show()
-                    onDismiss()
-                }
-            ),
-            NewAction(
-                icon = {
-                    Icon(
-                        painter = painterResource(R.drawable.capsule_soft_fire),
-                        contentDescription = null,
-                        modifier = Modifier.size(28.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                },
-                text = stringResource(R.string.music_together),
-                onClick = {
-                    onDismiss()
-                    playerBottomSheetState.snapTo(playerBottomSheetState.collapsedBound)
-                    navController.navigate("settings/music_together")
-                }
-            )
-        ),
-        modifier = Modifier.padding(vertical = 4.dp),
-        compact = true,
-    )
-
-    Spacer(modifier = Modifier.height(8.dp))
-
     LazyColumn(
             flingBehavior = rememberCapsuleFlingBehavior(),
             overscrollEffect = null,
@@ -510,6 +418,105 @@ fun PlayerMenu(
             bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
         ),
     ) {
+        // The scrollable content begins immediately after the VOLUME card.
+        item(key = "quick-actions", contentType = "menu-section") {
+            // One measured root per LazyColumn item: no phantom gaps or
+            // independently measured spacer nodes during fast flings.
+            Column(modifier = Modifier.fillMaxWidth()) {
+            Spacer(modifier = Modifier.height(10.dp))
+    
+            // Quick actions are the FIRST lazy item after volume, so scrolls
+            // begin under the slider instead of after Capsule Together.
+            NewActionGrid(
+                actions = listOf(
+                    NewAction(
+                        icon = {
+                            Icon(
+                                painter = painterResource(R.drawable.capsule_soft_radio),
+                                contentDescription = null,
+                                modifier = Modifier.size(28.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        text = stringResource(R.string.start_radio),
+                        enabled = !isExternalCatalog,
+                        onClick = {
+                            if (!isExternalCatalog) {
+                                Toast.makeText(context, resources.getString(R.string.starting_radio),
+                                    Toast.LENGTH_SHORT).show()
+                                playerConnection.startRadioSeamlessly()
+                                onDismiss()
+                            }
+                        }
+                    ),
+                    NewAction(
+                        icon = {
+                            Icon(
+                                painter = painterResource(R.drawable.capsule_soft_playlist_add),
+                                contentDescription = null,
+                                modifier = Modifier.size(28.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        text = stringResource(R.string.add_to_playlist),
+                        onClick = { showChoosePlaylistDialog = true }
+                    ),
+                    NewAction(
+                        icon = { Icon(painterResource(R.drawable.capsule_soft_bedtime), contentDescription = null) },
+                        text = stringResource(R.string.sleep_timer),
+                        enabled = canSetSleepTimer,
+                        onClick = { showSleepTimer = true },
+                    ),
+                    NewAction(
+                        icon = {
+                            Icon(
+                                painter = painterResource(R.drawable.capsule_soft_link),
+                                contentDescription = null,
+                                modifier = Modifier.size(28.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        text = stringResource(R.string.copy_link),
+                        onClick = {
+                            val clipboard =
+                                context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            val clip =
+                                android.content.ClipData.newPlainText(
+                                    resources.getString(R.string.copy_link),
+                                    (if (isExternalCatalog) mediaMetadata.sourceUrl
+                                        ?.takeIf { it.startsWith("https://") }
+                                        ?: ""
+                                    else "https://music.youtube.com/watch?v=${mediaMetadata.id}"),
+                                )
+                            clipboard.setPrimaryClip(clip)
+                            android.widget.Toast.makeText(context, R.string.link_copied, android.widget.Toast.LENGTH_SHORT).show()
+                            onDismiss()
+                        }
+                    ),
+                    NewAction(
+                        icon = {
+                            Icon(
+                                painter = painterResource(R.drawable.capsule_soft_fire),
+                                contentDescription = null,
+                                modifier = Modifier.size(28.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        },
+                        text = stringResource(R.string.music_together),
+                        onClick = {
+                            onDismiss()
+                            playerBottomSheetState.snapTo(playerBottomSheetState.collapsedBound)
+                            navController.navigate("settings/music_together")
+                        }
+                    )
+                ),
+                modifier = Modifier.padding(vertical = 4.dp),
+                compact = true,
+            )
+    
+            Spacer(modifier = Modifier.height(8.dp))
+            }
+        }
         if ((!isRadio && !isOfflineAudio && splitArtists.isNotEmpty()) || mediaMetadata.album != null) {
             item(key = "artists-album", contentType = "menu-section") {
                 MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
@@ -748,53 +755,26 @@ private fun PlayerVolumeCard(
                 )
             }
 
-            VolumeSliderL(
-                value = safeVolume,
-                onValueChange = onVolumeChange,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            // Same tactile graphite slider AND endpoint icons as the
+            // fullscreen Lyrics player. No second Material Slider implementation.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CapsuleLyricsVolumeIcon(
+                    muted = true,
+                    onClick = { onVolumeChange(0f) },
+                )
+                CapsuleLyricsVolumeSlider(
+                    value = safeVolume,
+                    onValueChange = onVolumeChange,
+                    modifier = Modifier.weight(1f).padding(horizontal = 6.dp),
+                )
+                CapsuleLyricsVolumeIcon(
+                    muted = false,
+                    onClick = { onVolumeChange(1f) },
+                )
+            }
 
         }
     }
-}
-
-@Composable
-@OptIn(ExperimentalMaterial3Api::class)
-private fun VolumeSliderL(
-    value: Float,
-    onValueChange: (Float) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val safeValue = value.coerceIn(0f, 1f)
-    var sliderValue by remember { mutableFloatStateOf(safeValue) }
-    var isDragging by remember { mutableStateOf(false) }
-
-    LaunchedEffect(safeValue) {
-        if (!isDragging) sliderValue = safeValue
-    }
-
-    val insetIcon = if (sliderValue <= 0f) R.drawable.volume_off else R.drawable.volume_up
-
-    Slider(
-        value = sliderValue,
-        onValueChange = { updated ->
-            isDragging = true
-            val coerced = updated.coerceIn(0f, 1f)
-            sliderValue = coerced
-            onValueChange(coerced)
-        },
-        onValueChangeFinished = { isDragging = false },
-        valueRange = 0f..1f,
-        modifier = modifier.height(48.dp),
-        thumb = {
-            Icon(
-                painter = painterResource(insetIcon),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        },
-        colors = SliderDefaults.colors(),
-    )
 }
 
 @Composable

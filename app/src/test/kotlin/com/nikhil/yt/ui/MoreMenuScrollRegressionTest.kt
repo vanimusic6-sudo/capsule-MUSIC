@@ -15,11 +15,13 @@ class MoreMenuScrollRegressionTest {
         val player = source("com/nikhil/yt/ui/menu/PlayerMenu.kt")
         val lyrics = source("com/nikhil/yt/ui/menu/LyricsMenu.kt")
         assertTrue(player.contains("rememberLazyListState()"))
-        // The action cards and their background stay pinned above the scroll list.
-        val pinned = player.indexOf("NewActionGrid(")
+        // The volume stays fixed; quick actions and every list section
+        // share the same LazyColumn and scroll with one native gesture.
+        val volume = player.indexOf("PlayerVolumeCard(playerConnection =")
         val list = player.indexOf("    LazyColumn(")
-        assertTrue("More action surface must not slide with list rows", pinned in 0 until list)
-        assertFalse(player.contains("key = \"quick-actions\""))
+        assertTrue("Volume must stay pinned above scrolling content", volume in 0 until list)
+        assertTrue("Quick actions must begin scrolling directly after volume",
+            player.indexOf("item(key = \"quick-actions\"") > list)
         assertTrue(player.contains("contentType = \"menu-section\""))
         assertTrue(lyrics.contains("key = \"lyrics-actions\""))
         assertFalse(lyrics.contains("userScrollEnabled = !isPortrait"))
@@ -39,7 +41,7 @@ class MoreMenuScrollRegressionTest {
         val menu = source("com/nikhil/yt/ui/component/BottomSheetMenu.kt")
         assertTrue(menu.contains("rememberModalBottomSheetState(skipPartiallyExpanded = false)"))
         assertFalse(menu.contains("rememberDraggableState("))
-        assertTrue(menu.contains("RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)"))
+        assertTrue(menu.contains("RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)"))
     }
     @Test fun allMoreMenusScrollInPortraitLikePlayer() {
         val variants = listOf(

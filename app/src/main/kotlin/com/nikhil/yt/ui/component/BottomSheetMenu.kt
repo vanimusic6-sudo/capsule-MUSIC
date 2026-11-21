@@ -39,17 +39,21 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 
 /**
  * The menu lives in its own Android modal window. A backdrop capture from
@@ -99,7 +103,7 @@ internal fun capsuleMenuTopFill(offsetPx: Float, viewportPx: Float): Float {
 internal fun capsuleMenuDismissScale(close: Float): Float {
     val p = close.coerceIn(0f, 1f)
     val ease = p * p * (3f - 2f * p)
-    return 1f - 0.018f * ease
+    return 1f - 0.055f * ease
 }
 
 val LocalMenuState = compositionLocalOf { MenuState() }
@@ -179,7 +183,7 @@ fun BottomSheetMenu(
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
         val playerAppearance = state.presentation == MenuPresentation.CAPSULE_PLAYER
         val dismissPull = remember { Animatable(0f) }
-        val density = LocalDensity.current
+        val openingJelly = remember { Animatable(0f) }
         val sheetColor = capsuleMenuOpaqueSurface(
             requested = background,
             themeSurface = MaterialTheme.colorScheme.surface,
@@ -189,25 +193,43 @@ fun BottomSheetMenu(
         // remains opaque for readability and the wash is a cached brush,
         // never a Haze/Backdrop capture or an animated fullscreen shader.
         val accent = MaterialTheme.colorScheme.primary
-        val lipWash = remember(sheetColor, accent) {
+        val lipWash = remember(accent) {
             Brush.verticalGradient(
-                0f to lerp(sheetColor, accent, 0.065f),
-                0.35f to lerp(sheetColor, accent, 0.020f),
-                1f to sheetColor,
+                0f to accent.copy(alpha = 0.075f),
+                0.62f to accent.copy(alpha = 0.025f),
+                1f to Color.Transparent,
             )
         }
-        val pageWash = remember(sheetColor, accent) {
+        val pageWash = remember(accent) {
             Brush.verticalGradient(
-                0f to lerp(sheetColor, accent, 0.028f),
-                0.52f to lerp(sheetColor, accent, 0.010f),
-                1f to sheetColor,
+                0f to accent.copy(alpha = 0.046f),
+                0.50f to accent.copy(alpha = 0.022f),
+                1f to Color.Transparent,
             )
         }
+        // Only immutable tint shaders plus one process-wide 61x67px grain
+        // texture. No continuously changing shader, bitmap capture or blur.
+
         // One STATIC, faint edge glint. No timer, no animated shimmer shader.
         val lipSheen = remember(accent) {
             Brush.horizontalGradient(listOf(
                 Color.Transparent, accent.copy(alpha = 0.11f), Color.Transparent,
             ))
+        }
+        // Material first reaches its real partial/full anchor; only THEN
+        // give the content a tiny end-of-open jelly settle (no relayout).
+        LaunchedEffect(state.generation) {
+            snapshotFlow {
+                sheetState.isVisible && sheetState.currentValue == sheetState.targetValue
+            }.first { it }
+            if (!state.dismissRequested) {
+                openingJelly.snapTo(-0.018f)
+                openingJelly.animateTo(
+                    0f,
+                    spring(dampingRatio = 0.63f, stiffness = 365f,
+                        visibilityThreshold = 0.0001f),
+                )
+            }
         }
         var observedGeneration by remember { mutableStateOf(state.generation) }
         LaunchedEffect(state.generation, state.dismissRequested) {
@@ -258,11 +280,13 @@ fun BottomSheetMenu(
                 focusManager.clearFocus()
                 state.dismiss()
             },
-            containerColor = sheetColor,
+            // Real 5% translucency: unlike the former Haze implementation,
+            // all content is still rendered on an independent visible sheet.
+            containerColor = sheetColor.copy(alpha = 0.95f),
             // Same 16dp softness as the VIDEO window; the previous 28dp
             // sheet curvature looked ragged during vertical travel.
             shape = if (playerAppearance) {
-                RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+                RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)
             } else MaterialTheme.shapes.extraLarge,
             contentColor = MaterialTheme.colorScheme.onSurface,
             // This is a cached top tint, not live blur or an offscreen
@@ -315,10 +339,16 @@ fun BottomSheetMenu(
             properties = ModalBottomSheetDefaults.properties(
                 shouldDismissOnBackPress = false,
             ),
-            // Material owns the only sheet geometry/gesture spring. Previously
-            // two additional fullscreen scale springs distorted icons and
-            // caused a small jump when releasing a partial swipe.
-            modifier = modifier.fillMaxHeight(),
+            // Apple-style committed dismissal: a small, reversible zoom-out
+            // attached to the SAME native slide-down. Never runs while
+            // dragging or holding Back; no extra layout animation.
+            modifier = modifier.fillMaxHeight().graphicsLayer {
+                transformOrigin = TransformOrigin(0.5f, 0.75f)
+                val scale = capsuleMenuDismissScale(dismissPull.value)
+                scaleX = scale
+                scaleY = scale
+                alpha = 1f - 0.10f * dismissPull.value
+            },
         ) {
             PredictiveBackHandler(enabled = !state.dismissRequested) { progress ->
                 // Ignore progress (including prolonged holds). At the first
@@ -342,14 +372,27 @@ fun BottomSheetMenu(
                             // custom nested scroll or per-frame composition.
                             // No second scale applied to child controls:
                             // one outer GPU layer owns both the body and handle.
-                            .background(pageWash)
+                            .drawWithCache {
+                                val topGlow = Brush.radialGradient(
+                                    listOf(accent.copy(alpha = 0.075f), Color.Transparent),
+                                    center = Offset(size.width * 0.18f, size.height * 0.10f),
+                                    radius = size.width.coerceAtLeast(1f) * 1.05f,
+                                )
+                                val sideWave = Brush.radialGradient(
+                                    listOf(Color.White.copy(alpha = 0.026f), Color.Transparent),
+                                    center = Offset(size.width * 0.95f, size.height * 0.55f),
+                                    radius = size.width.coerceAtLeast(1f) * 0.86f,
+                                )
+                                onDrawBehind {
+                                    drawRect(pageWash)
+                                    drawRect(topGlow)
+                                    drawRect(sideWave)
+                                    drawRect(capsuleMenuGrain)
+                                }
+                            }
                             .graphicsLayer {
-                                // A subtle optical follow-through on committed
-                                // close only; reopening reverses the SAME value.
-                                // The opaque sheet itself never fades or shrinks.
-                                alpha = 1f - 0.10f * dismissPull.value
-                                translationY = dismissPull.value *
-                                    with(density) { 6.dp.toPx() }
+                                transformOrigin = TransformOrigin(0.5f, 0f)
+                                scaleY = 1f + openingJelly.value
                             }
                             .padding(horizontal = 16.dp),
                 ) {

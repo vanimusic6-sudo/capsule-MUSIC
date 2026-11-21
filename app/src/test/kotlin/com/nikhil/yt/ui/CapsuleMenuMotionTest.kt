@@ -49,7 +49,10 @@ class CapsuleMenuMotionTest {
             java.io.File("src/main/kotlin/com/nikhil/yt/ui/component/BottomSheetMenu.kt"),
             java.io.File("app/src/main/kotlin/com/nikhil/yt/ui/component/BottomSheetMenu.kt"),
         ).first(java.io.File::isFile).readText()
-        assertTrue(sheet.contains(".background(pageWash)"))
+        assertTrue(sheet.contains("capsuleMenuGrain"))
+        assertTrue(sheet.contains(".drawWithCache"))
+        assertTrue(sheet.contains("containerColor = sheetColor.copy(alpha = 0.95f)"))
+        assertTrue(sheet.contains("openingJelly"))
         assertFalse(sheet.contains("hazeSource("))
         assertFalse(sheet.contains("hazeBlur("))
     }
@@ -105,6 +108,17 @@ class CapsuleMenuMotionTest {
         assertEquals(1f, down.alpha, 0.0001f)
         assertEquals(normal.red, idle.red, 0.0001f)
         assertEquals(selected.blue, down.blue, 0.0001f)
+    }
+
+    @Test fun longSingleWordsUseVerticalActionLabelsAndSectionsHaveOneSurface() {
+        assertTrue(com.nikhil.yt.ui.component.capsuleCompactMenuStackedLabel("Воспроизвести"))
+        assertFalse(com.nikhil.yt.ui.component.capsuleCompactMenuStackedLabel("Начать радио"))
+        val source = listOf(
+            java.io.File("src/main/kotlin/com/nikhil/yt/ui/component/NewMenuComponents.kt"),
+            java.io.File("app/src/main/kotlin/com/nikhil/yt/ui/component/NewMenuComponents.kt"),
+        ).first(java.io.File::isFile).readText()
+        assertTrue(source.contains("LocalCapsuleMenuGroupedRow provides true"))
+        assertTrue(source.contains("Modifier.padding(vertical = 5.dp)"))
     }
 
     @Test fun narrowPlaylistActionsNeverBreakLongRussianWordsIntoThreeTiles() {
@@ -187,7 +201,7 @@ class CapsuleMenuMotionTest {
     }
     @Test fun appleClosePullStartsAtFullSizeAndShrinksSmoothlyWithoutJump() {
         assertEquals(1f, capsuleMenuDismissScale(0f), 0.00001f)
-        assertEquals(0.982f, capsuleMenuDismissScale(1f), 0.00001f)
+        assertEquals(0.945f, capsuleMenuDismissScale(1f), 0.00001f)
         var previous = 1f
         for (frame in 1..60) {
             val now = capsuleMenuDismissScale(frame / 60f)

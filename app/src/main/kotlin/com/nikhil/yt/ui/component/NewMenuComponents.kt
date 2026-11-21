@@ -42,6 +42,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -66,6 +68,12 @@ import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 // A single dark surface shared by every modal action, row and section.
 internal val CapsuleMenuBlack = Color(0xFF111113)
 internal val CapsuleMenuPressed = Color(0xFF242428)
+
+/** Rows inherit their group's black canvas instead of painting touching rounded tiles. */
+internal val LocalCapsuleMenuGroupedRow = compositionLocalOf { false }
+
+internal fun capsuleCompactMenuStackedLabel(label: String): Boolean =
+    label.split(' ', '-', '—').any { it.length >= 12 }
 
 internal fun capsuleMenuOpaqueTile(
     normal: Color,
@@ -189,33 +197,55 @@ internal fun CapsuleCompactMenuAction(
         )
     }
     val tileColor = capsuleMenuOpaqueTile(CapsuleMenuBlack, CapsuleMenuPressed, pressed)
+    val labelInk = if (action.enabled) Color.White else Color.White.copy(alpha = 0.52f)
+    val stacked = remember(action.text) { capsuleCompactMenuStackedLabel(action.text) }
     Card(
         modifier = clickableModifier,
         shape = RoundedCornerShape(19.dp),
         colors = CardDefaults.cardColors(containerColor = tileColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 74.dp)
-                .padding(horizontal = 12.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.size(30.dp), contentAlignment = Alignment.Center) {
-                action.icon()
+        if (stacked) {
+            // Long unbroken words (e.g. "Воспроизвести") get the full tile width.
+            // Never split the last Cyrillic letter on a narrow phone.
+            Column(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 74.dp)
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Box(Modifier.size(27.dp), contentAlignment = Alignment.Center) { action.icon() }
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = action.text,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontSize = 12.sp,
+                    lineHeight = 15.sp,
+                    color = labelInk,
+                    textAlign = TextAlign.Center,
+                    softWrap = false,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
-            Spacer(Modifier.width(10.dp))
-            Text(
-                text = action.text,
-                style = MaterialTheme.typography.labelMedium,
-                fontSize = 13.sp,
-                lineHeight = 17.sp,
-                color = if (action.enabled) MaterialTheme.colorScheme.onSurface
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 74.dp)
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(30.dp), contentAlignment = Alignment.Center) { action.icon() }
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text = action.text,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontSize = 13.sp,
+                    lineHeight = 17.sp,
+                    color = labelInk,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
@@ -241,9 +271,14 @@ fun CapsuleMenuListItem(
     tonalElevation: Dp = 0.dp,
     shadowElevation: Dp = 0.dp,
 ) {
+    val grouped = LocalCapsuleMenuGroupedRow.current
     ListItem(
         headlineContent = headlineContent,
-        modifier = modifier.background(CapsuleMenuBlack, RoundedCornerShape(18.dp)),
+        modifier = modifier.then(
+            if (grouped) Modifier
+            else Modifier.padding(vertical = 5.dp)
+                .background(CapsuleMenuBlack, RoundedCornerShape(18.dp))
+        ),
         overlineContent = overlineContent,
         supportingContent = supportingContent,
         leadingContent = if (leadingContent == null) null else {
@@ -271,6 +306,7 @@ fun NewMenuItem(
     enabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
+    val grouped = LocalCapsuleMenuGroupedRow.current
     androidx.compose.material3.ListItem(
         headlineContent = headlineContent,
         leadingContent = if (leadingContent == null) null else {
@@ -284,7 +320,8 @@ fun NewMenuItem(
         supportingContent = supportingContent,
         modifier = modifier
             .capsulePressClickable(enabled = enabled) { onClick?.invoke() }
-            .background(CapsuleMenuBlack, RoundedCornerShape(18.dp))
+            .then(if (grouped) Modifier else Modifier.padding(vertical = 5.dp)
+                .background(CapsuleMenuBlack, RoundedCornerShape(18.dp)))
             .padding(horizontal = 4.dp),
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         tonalElevation = 0.dp
@@ -508,6 +545,10 @@ fun MenuSurfaceSection(
             MaterialTheme.colorScheme.onSurface.copy(alpha = 0.055f)),
         modifier = modifier.fillMaxWidth(),
     ) {
-        Column(content = content)
+        Column {
+            CompositionLocalProvider(LocalCapsuleMenuGroupedRow provides true) {
+                content()
+            }
+        }
     }
 }
