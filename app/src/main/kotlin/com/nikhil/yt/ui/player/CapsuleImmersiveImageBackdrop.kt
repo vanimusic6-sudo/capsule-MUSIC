@@ -182,9 +182,12 @@ internal fun capsuleImmersiveBackdropSourceX(
     // It is exactly zero at the cover seam and bottom, so neither boundary
     // acquires a new mismatch. No frame-clock, GPU blur or allocations.
     val envelope = sin(PI.toFloat() * progress).let { it * it }
+    // A broad, elliptical colour-cloud drift rather than a tiny pixel wiggle.
+    // The original 5.5% warp vanished into the horizontal Gaussian blur;
+    // this low-frequency 13% displacement remains visible after smoothing.
     val flow = sin(2f * PI.toFloat() *
-        (pageY * 0.87f + pageX * 0.31f + 0.13f))
-    val bend = 0.055f * envelope * flow
+        (pageY * 1.15f + pageX * 0.25f + 0.21f))
+    val bend = 0.13f * envelope * flow
     return (0.5f + (pageX - 0.5f) * widthScale + bend).coerceIn(0f, 1f)
 }
 
@@ -203,7 +206,7 @@ internal fun capsuleImmersiveBackdropSourceY(
     }
     val progress = ((pageY - stage) / (1f - stage)).coerceIn(0f, 1f)
     val envelope = sin(PI.toFloat() * progress).let { it * it }
-    val curved = 0.026f * envelope * cos(
+    val curved = 0.045f * envelope * cos(
         2f * PI.toFloat() * (pageX * 0.93f + pageY * 0.43f)
     )
     return (IMMERSIVE_VISIBLE_SAMPLE_END - progress * 0.43f + curved)

@@ -130,7 +130,10 @@ class CapsuleImmersiveImageBackdropTest {
         val oldStraightX = 0.5f + (x - 0.5f) * (1f - (1f - stage) * eased)
         val curvedX = capsuleImmersiveBackdropSourceX(x, y, stage)
         assertTrue("Colour must no longer travel in perfectly vertical strips",
-            abs(curvedX - oldStraightX) > 0.012f)
+            abs(curvedX - oldStraightX) > 0.045f)
+        val curvedCentre = capsuleImmersiveBackdropSourceX(0.5f, y, stage)
+        assertTrue("The middle of a two-colour cover needs a real soft bend",
+            abs(curvedCentre - 0.5f) > 0.07f)
         val leftY = capsuleImmersiveBackdropSourceY(0.12f, y, stage)
         val rightY = capsuleImmersiveBackdropSourceY(0.88f, y, stage)
         assertTrue("The lower photograph must diffuse in two dimensions",
