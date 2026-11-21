@@ -71,6 +71,8 @@ class AudioNetworkSelectionPolicyTest {
         ))
         assertEquals(AUDIO_PREFETCH_SAFE_BUFFER_MS,
             audioPrefetchRequiredBufferMs(15_000L, -1L))
+        assertEquals(0L, audioPrefetchRequiredBufferMs(Long.MAX_VALUE, 30_000L))
+        assertEquals(12_000L, audioPrefetchRequiredBufferMs(Long.MIN_VALUE, 30_000L))
     }
 
     @Test fun videoPlaybackCannotLaunchNormalAudioLookahead() {

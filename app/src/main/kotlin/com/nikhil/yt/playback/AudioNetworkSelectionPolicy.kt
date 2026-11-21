@@ -17,8 +17,10 @@ internal fun audioPrefetchRequiredBufferMs(
     currentPositionMs: Long,
     currentDurationMs: Long,
 ): Long = if (currentDurationMs > 0L) {
-    minOf(AUDIO_PREFETCH_SAFE_BUFFER_MS,
-        (currentDurationMs - currentPositionMs.coerceAtLeast(0L)).coerceAtLeast(0L))
+    val playedMs = currentPositionMs.coerceAtLeast(0L)
+    // A corrupt/beyond-end position must not wrap Long subtraction.
+    val remainingMs = if (playedMs >= currentDurationMs) 0L else currentDurationMs - playedMs
+    minOf(AUDIO_PREFETCH_SAFE_BUFFER_MS, remainingMs)
 } else AUDIO_PREFETCH_SAFE_BUFFER_MS
 
 internal fun canResolveUpcomingAudioWhile(
