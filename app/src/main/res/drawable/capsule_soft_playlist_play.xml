@@ -1,4 +1,4 @@
-<!-- Capsule Music • original soft-line menu icon. GPL-3.0 -->
+<!-- Capsule Music: original 24dp optical grid, 1.8dp rounded strokes. GPL-3.0. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
@@ -7,29 +7,29 @@
     <path
         android:fillColor="@android:color/transparent"
         android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.9"
+        android:strokeWidth="1.8"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M3.8,6.2 L14,6.2" />
+        android:pathData="M3.8,6 L14.5,6" />
     <path
         android:fillColor="@android:color/transparent"
         android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.9"
+        android:strokeWidth="1.8"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M3.8,10.2 L14,10.2" />
+        android:pathData="M3.8,10.4 L14.5,10.4" />
     <path
         android:fillColor="@android:color/transparent"
         android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.9"
+        android:strokeWidth="1.8"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M3.8,14.2 L10.8,14.2" />
+        android:pathData="M3.8,14.8 L10.8,14.8" />
     <path
         android:fillColor="@android:color/transparent"
         android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.9"
+        android:strokeWidth="1.8"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M14,13.1 C14,12.55 14.55,12.25 15.05,12.6 L21,16.5 L15.05,20.3 C14.55,20.65 14,20.35 14,19.8 Z" />
+        android:pathData="M15.5,12.2 L15.5,20 L21.3,16.1 Z" />
 </vector>

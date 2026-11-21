@@ -1,4 +1,4 @@
-<!-- Capsule Music • original soft-line menu icon. GPL-3.0 -->
+<!-- Capsule Music: original 24dp optical grid, 1.8dp rounded strokes. GPL-3.0. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
@@ -7,36 +7,36 @@
     <path
         android:fillColor="@android:color/transparent"
         android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.9"
+        android:strokeWidth="1.8"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M3.4,6.1 L13.6,6.1" />
+        android:pathData="M4,6 L14,6" />
     <path
         android:fillColor="@android:color/transparent"
         android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.9"
+        android:strokeWidth="1.8"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M3.4,10.5 L13.6,10.5" />
+        android:pathData="M4,10.5 L14,10.5" />
     <path
         android:fillColor="@android:color/transparent"
         android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.9"
+        android:strokeWidth="1.8"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M3.4,14.8 L10.5,14.8" />
+        android:pathData="M4,15 L10,15" />
     <path
         android:fillColor="@android:color/transparent"
         android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.9"
+        android:strokeWidth="1.8"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M17.3,10.8 L17.3,20.5" />
+        android:pathData="M18,12 L18,20" />
     <path
         android:fillColor="@android:color/transparent"
         android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.9"
+        android:strokeWidth="1.8"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M12.45,15.65 L22.15,15.65" />
+        android:pathData="M14,16 L22,16" />
 </vector>

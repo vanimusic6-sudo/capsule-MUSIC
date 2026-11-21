@@ -39,7 +39,6 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -53,7 +52,6 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.first
 
 /**
  * The menu lives in its own Android modal window. A backdrop capture from
@@ -183,7 +181,6 @@ fun BottomSheetMenu(
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
         val playerAppearance = state.presentation == MenuPresentation.CAPSULE_PLAYER
         val dismissPull = remember { Animatable(0f) }
-        val openingJelly = remember { Animatable(0f) }
         val sheetColor = capsuleMenuOpaqueSurface(
             requested = background,
             themeSurface = MaterialTheme.colorScheme.surface,
@@ -195,15 +192,15 @@ fun BottomSheetMenu(
         val accent = MaterialTheme.colorScheme.primary
         val lipWash = remember(accent) {
             Brush.verticalGradient(
-                0f to accent.copy(alpha = 0.075f),
-                0.62f to accent.copy(alpha = 0.025f),
+                0f to accent.copy(alpha = 0.035f),
+                0.62f to accent.copy(alpha = 0.012f),
                 1f to Color.Transparent,
             )
         }
         val pageWash = remember(accent) {
             Brush.verticalGradient(
-                0f to accent.copy(alpha = 0.046f),
-                0.50f to accent.copy(alpha = 0.022f),
+                0f to accent.copy(alpha = 0.023f),
+                0.50f to accent.copy(alpha = 0.010f),
                 1f to Color.Transparent,
             )
         }
@@ -213,23 +210,8 @@ fun BottomSheetMenu(
         // One STATIC, faint edge glint. No timer, no animated shimmer shader.
         val lipSheen = remember(accent) {
             Brush.horizontalGradient(listOf(
-                Color.Transparent, accent.copy(alpha = 0.11f), Color.Transparent,
+                Color.Transparent, accent.copy(alpha = 0.045f), Color.Transparent,
             ))
-        }
-        // Material first reaches its real partial/full anchor; only THEN
-        // give the content a tiny end-of-open jelly settle (no relayout).
-        LaunchedEffect(state.generation) {
-            snapshotFlow {
-                sheetState.isVisible && sheetState.currentValue == sheetState.targetValue
-            }.first { it }
-            if (!state.dismissRequested) {
-                openingJelly.snapTo(-0.018f)
-                openingJelly.animateTo(
-                    0f,
-                    spring(dampingRatio = 0.63f, stiffness = 365f,
-                        visibilityThreshold = 0.0001f),
-                )
-            }
         }
         var observedGeneration by remember { mutableStateOf(state.generation) }
         LaunchedEffect(state.generation, state.dismissRequested) {
@@ -280,9 +262,9 @@ fun BottomSheetMenu(
                 focusManager.clearFocus()
                 state.dismiss()
             },
-            // Real 5% translucency: unlike the former Haze implementation,
+            // Real 22% translucency: unlike the former Haze implementation,
             // all content is still rendered on an independent visible sheet.
-            containerColor = sheetColor.copy(alpha = 0.95f),
+            containerColor = sheetColor.copy(alpha = 0.78f),
             // Same 16dp softness as the VIDEO window; the previous 28dp
             // sheet curvature looked ragged during vertical travel.
             shape = if (playerAppearance) {
@@ -374,12 +356,12 @@ fun BottomSheetMenu(
                             // one outer GPU layer owns both the body and handle.
                             .drawWithCache {
                                 val topGlow = Brush.radialGradient(
-                                    listOf(accent.copy(alpha = 0.075f), Color.Transparent),
+                                    listOf(accent.copy(alpha = 0.032f), Color.Transparent),
                                     center = Offset(size.width * 0.18f, size.height * 0.10f),
                                     radius = size.width.coerceAtLeast(1f) * 1.05f,
                                 )
                                 val sideWave = Brush.radialGradient(
-                                    listOf(Color.White.copy(alpha = 0.026f), Color.Transparent),
+                                    listOf(Color.White.copy(alpha = 0.009f), Color.Transparent),
                                     center = Offset(size.width * 0.95f, size.height * 0.55f),
                                     radius = size.width.coerceAtLeast(1f) * 0.86f,
                                 )
@@ -389,10 +371,6 @@ fun BottomSheetMenu(
                                     drawRect(sideWave)
                                     drawRect(capsuleMenuGrain)
                                 }
-                            }
-                            .graphicsLayer {
-                                transformOrigin = TransformOrigin(0.5f, 0f)
-                                scaleY = 1f + openingJelly.value
                             }
                             .padding(horizontal = 16.dp),
                 ) {

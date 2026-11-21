@@ -61,16 +61,12 @@ import androidx.compose.ui.unit.sp
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 
 /**
- * Every interactive menu control must remain visibly opaque regardless of
- * the sheet's presentation or a custom colour's alpha. This also eliminates
- * the former 6.5%-alpha "acrylic" cards, which vanished on some devices.
+ * 86%-opaque rounded action tiles stay readable over a translucent sheet.
+ * No GPU readback, Haze layer or animated background capture.
  */
-// A single dark surface shared by every modal action, row and section.
-internal val CapsuleMenuBlack = Color(0xFF111113)
-internal val CapsuleMenuPressed = Color(0xFF242428)
-
-/** Rows inherit their group's black canvas instead of painting touching rounded tiles. */
-internal val LocalCapsuleMenuGroupedRow = compositionLocalOf { false }
+// Softly translucent material: independent surfaces for every button and row.
+internal val CapsuleMenuBlack = Color(0xDC202128)
+internal val CapsuleMenuPressed = Color(0xF02D2D35)
 
 internal fun capsuleCompactMenuStackedLabel(label: String): Boolean =
     label.split(' ', '-', '—').any { it.length >= 12 }
@@ -79,7 +75,9 @@ internal fun capsuleMenuOpaqueTile(
     normal: Color,
     pressedColor: Color,
     pressed: Boolean,
-): Color = (if (pressed) pressedColor else normal).copy(alpha = 1f)
+): Color = (if (pressed) pressedColor else normal).copy(
+    alpha = if (pressed) 0.94f else 0.86f,
+)
 
 // Enhanced Action Button - Material 3 Expressive Design
 @Composable
@@ -223,8 +221,8 @@ internal fun CapsuleCompactMenuAction(
                     lineHeight = 15.sp,
                     color = labelInk,
                     textAlign = TextAlign.Center,
-                    softWrap = false,
-                    maxLines = 1,
+                    softWrap = true,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -271,14 +269,12 @@ fun CapsuleMenuListItem(
     tonalElevation: Dp = 0.dp,
     shadowElevation: Dp = 0.dp,
 ) {
-    val grouped = LocalCapsuleMenuGroupedRow.current
     ListItem(
         headlineContent = headlineContent,
-        modifier = modifier.then(
-            if (grouped) Modifier
-            else Modifier.padding(vertical = 5.dp)
-                .background(CapsuleMenuBlack, RoundedCornerShape(18.dp))
-        ),
+        modifier = Modifier.padding(vertical = 5.dp)
+            .then(modifier)
+            .clip(RoundedCornerShape(18.dp))
+            .background(CapsuleMenuBlack),
         overlineContent = overlineContent,
         supportingContent = supportingContent,
         leadingContent = if (leadingContent == null) null else {
@@ -306,7 +302,6 @@ fun NewMenuItem(
     enabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    val grouped = LocalCapsuleMenuGroupedRow.current
     androidx.compose.material3.ListItem(
         headlineContent = headlineContent,
         leadingContent = if (leadingContent == null) null else {
@@ -318,10 +313,11 @@ fun NewMenuItem(
         },
         trailingContent = trailingContent,
         supportingContent = supportingContent,
-        modifier = modifier
+        modifier = Modifier.padding(vertical = 5.dp)
+            .then(modifier)
+            .clip(RoundedCornerShape(18.dp))
+            .background(CapsuleMenuBlack)
             .capsulePressClickable(enabled = enabled) { onClick?.invoke() }
-            .then(if (grouped) Modifier else Modifier.padding(vertical = 5.dp)
-                .background(CapsuleMenuBlack, RoundedCornerShape(18.dp)))
             .padding(horizontal = 4.dp),
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         tonalElevation = 0.dp
@@ -537,18 +533,6 @@ fun MenuSurfaceSection(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    // The group and the individual actions have exactly the same black.
-    Surface(
-        shape = RoundedCornerShape(22.dp),
-        color = CapsuleMenuBlack,
-        border = BorderStroke(0.65.dp,
-            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.055f)),
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        Column {
-            CompositionLocalProvider(LocalCapsuleMenuGroupedRow provides true) {
-                content()
-            }
-        }
-    }
+    // Section groups never paint an opaque merged canvas.
+    Column(modifier = modifier.fillMaxWidth(), content = content)
 }

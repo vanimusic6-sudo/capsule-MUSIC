@@ -1,4 +1,4 @@
-<!-- Capsule Music • original soft-line menu icon. GPL-3.0 -->
+<!-- Capsule Music: original 24dp optical grid, 1.8dp rounded strokes. GPL-3.0. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
@@ -7,29 +7,36 @@
     <path
         android:fillColor="@android:color/transparent"
         android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.9"
+        android:strokeWidth="1.8"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M3.5,6.3 L14.8,6.3" />
+        android:pathData="M3.8,5.8 L14,5.8" />
     <path
         android:fillColor="@android:color/transparent"
         android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.9"
+        android:strokeWidth="1.8"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M3.5,10.3 L12.5,10.3" />
+        android:pathData="M3.8,10.2 L12.8,10.2" />
     <path
         android:fillColor="@android:color/transparent"
         android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.9"
+        android:strokeWidth="1.8"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M3.5,14.3 L10.2,14.3" />
+        android:pathData="M3.8,14.6 L10.6,14.6" />
     <path
         android:fillColor="@android:color/transparent"
         android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="1.9"
+        android:strokeWidth="1.8"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M15.5,9 L21,7.6 L21,15.9 C20.1,15.45 18.9,15.5 18.2,16.15 C17.2,17.05 17.2,18.25 18.2,19 C19.3,19.85 21,19.15 21,17.9" />
+        android:pathData="M15.3,10 L20.4,8.8 L20.4,17.4" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M17.8,16.4 C19.3,16.1 20.4,16.5 20.4,17.5 C20.4,18.7 19.5,19.4 18.1,19.6 C16.7,19.8 15.7,19.2 15.7,18.2 C15.7,17.4 16.4,16.7 17.8,16.4 Z" />
 </vector>

@@ -554,14 +554,7 @@ fun PlayerMenu(
                             )
                         }
 
-                        if (!isOfflineAudio && splitArtists.isNotEmpty() && mediaMetadata.album != null) {
-                            HorizontalDivider(
-                                modifier = Modifier.padding(start = 56.dp),
-                                color = MaterialTheme.colorScheme.outlineVariant,
-                            )
-                        }
-
-                        if (mediaMetadata.album != null) {
+if (mediaMetadata.album != null) {
                             ListItem(
                                 headlineContent = { Text(text = stringResource(R.string.view_album)) },
                                 leadingContent = {
@@ -667,12 +660,7 @@ fun PlayerMenu(
                     )
 
                     if (isQueueTrigger != true) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(start = 56.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant,
-                        )
-
-                        ListItem(
+ListItem(
                             headlineContent = { Text(text = stringResource(R.string.equalizer)) },
                             leadingContent = {
                                 Icon(
@@ -683,13 +671,7 @@ fun PlayerMenu(
                             modifier = Modifier.clickable { showEqualizerDialog = true },
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         )
-
-                        HorizontalDivider(
-                            modifier = Modifier.padding(start = 56.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant,
-                        )
-
-                        ListItem(
+ListItem(
                             headlineContent = { Text(text = stringResource(R.string.tempo_and_pitch)) },
                             leadingContent = {
                                 Icon(

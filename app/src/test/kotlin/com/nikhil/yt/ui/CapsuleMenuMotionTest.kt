@@ -51,14 +51,14 @@ class CapsuleMenuMotionTest {
         ).first(java.io.File::isFile).readText()
         assertTrue(sheet.contains("capsuleMenuGrain"))
         assertTrue(sheet.contains(".drawWithCache"))
-        assertTrue(sheet.contains("containerColor = sheetColor.copy(alpha = 0.95f)"))
-        assertTrue(sheet.contains("openingJelly"))
+        assertTrue(sheet.contains("containerColor = sheetColor.copy(alpha = 0.78f)"))
+        assertFalse(sheet.contains("openingJelly"))
         assertFalse(sheet.contains("hazeSource("))
         assertFalse(sheet.contains("hazeBlur("))
     }
 
     @Test fun everyMenuActionHasOneBlackMaterialAndNoNestedGreyIconSquare() {
-        assertEquals(Color(0xFF111113),
+        assertEquals(Color(0xDC202128),
             com.nikhil.yt.ui.component.CapsuleMenuBlack)
         val actions = listOf(
             java.io.File("src/main/kotlin/com/nikhil/yt/ui/component/NewMenuComponents.kt"),
@@ -66,7 +66,7 @@ class CapsuleMenuMotionTest {
         ).first(java.io.File::isFile).readText()
         assertTrue(actions.contains("heightIn(min = 74.dp)"))
         assertTrue(actions.contains("maxLines = 3"))
-        assertTrue(actions.contains("color = CapsuleMenuBlack"))
+        assertFalse(actions.contains("color = CapsuleMenuBlack"))
         assertFalse(actions.contains("primary.copy(alpha = 0.09f)"))
         assertFalse(actions.contains("primary.copy(alpha = 0.075f)"))
     }
@@ -99,26 +99,28 @@ class CapsuleMenuMotionTest {
         assertEquals(translucentCustom.red, customResolved.red, 0.0001f)
     }
 
-    @Test fun acrylicActionTilesAreAlwaysOpaqueAndReadable() {
+    @Test fun acrylicActionTilesHaveBoundedTransparencyAndReadablePress() {
         val normal = Color(0xFF404047).copy(alpha = 0.065f)
         val selected = Color(0xFF515161).copy(alpha = 0.13f)
         val idle = capsuleMenuOpaqueTile(normal, selected, pressed = false)
         val down = capsuleMenuOpaqueTile(normal, selected, pressed = true)
-        assertEquals(1f, idle.alpha, 0.0001f)
-        assertEquals(1f, down.alpha, 0.0001f)
+        assertEquals(0.86f, idle.alpha, 0.0001f)
+        assertEquals(0.94f, down.alpha, 0.0001f)
         assertEquals(normal.red, idle.red, 0.0001f)
         assertEquals(selected.blue, down.blue, 0.0001f)
     }
 
-    @Test fun longSingleWordsUseVerticalActionLabelsAndSectionsHaveOneSurface() {
+    @Test fun longSingleWordsWrapAndSectionsNeverFuseActions() {
         assertTrue(com.nikhil.yt.ui.component.capsuleCompactMenuStackedLabel("Воспроизвести"))
         assertFalse(com.nikhil.yt.ui.component.capsuleCompactMenuStackedLabel("Начать радио"))
         val source = listOf(
             java.io.File("src/main/kotlin/com/nikhil/yt/ui/component/NewMenuComponents.kt"),
             java.io.File("app/src/main/kotlin/com/nikhil/yt/ui/component/NewMenuComponents.kt"),
         ).first(java.io.File::isFile).readText()
-        assertTrue(source.contains("LocalCapsuleMenuGroupedRow provides true"))
+        assertFalse(source.contains("LocalCapsuleMenuGroupedRow provides true"))
+        assertTrue(source.contains("Column(modifier = modifier.fillMaxWidth(), content = content)"))
         assertTrue(source.contains("Modifier.padding(vertical = 5.dp)"))
+        assertTrue(source.contains("softWrap = true"))
     }
 
     @Test fun narrowPlaylistActionsNeverBreakLongRussianWordsIntoThreeTiles() {
