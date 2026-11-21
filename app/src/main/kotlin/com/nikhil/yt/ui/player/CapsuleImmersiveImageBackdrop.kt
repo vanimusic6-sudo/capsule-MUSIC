@@ -91,10 +91,11 @@ private fun capsuleImmersiveRejectSmallMarks(field: CapsuleColorField): CapsuleC
             // Preserve a little of the real highlight, but use surrounding
             // RGB material, not a grey exposure cap that creates a pale lamp.
             val local = if (neighbours.isEmpty()) fallback else medianColor(neighbours)
-            // A white label is a small bright glyph, not ambient light.
-            // Retain only a faint trace; the older 20% residual produced
-            // visible false lamps after the two-dimensional page diffusion.
-            androidx.compose.ui.graphics.lerp(local, color, 0.10f)
+            // For the AMBIENT field, sparse white glyphs must inherit the
+            // surrounding material exactly. Even a 10% white residual became
+            // a false bright lamp after the new 2D blur (9/255 pixel error).
+            // The original, sharp album artwork is never modified.
+            local
         }
     })
 }
