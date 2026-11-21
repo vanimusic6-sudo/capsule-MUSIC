@@ -1,12 +1,7 @@
-<!-- Capsule Music: same shuffle gesture as player controls. GPL-3.0. -->
+<!-- Google Material Icons Rounded: av/shuffle; Apache-2.0.
+See assets/third-party-material-icons-license.txt. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp" android:height="24dp"
-    android:viewportWidth="24" android:viewportHeight="24">
-    <!-- Gentle 1.95dp strokes and lifted, rounded arrowheads. -->
-    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.95"
-        android:strokeLineCap="round" android:strokeLineJoin="round"
-        android:pathData="M4.2,7.15L5.85,7.15 C10.85,7.15 13.4,16.85 18.35,16.85L19.9,16.85 M16.95,13.9L20.0,16.85L16.95,19.8"/>
-    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.95"
-        android:strokeLineCap="round" android:strokeLineJoin="round"
-        android:pathData="M4.2,16.85L5.85,16.85 C8.2,16.85 9.65,14.6 11.25,12.25 M13.6,8.75C14.95,7.6 16.4,7.15 18.35,7.15L19.9,7.15 M16.95,4.2L20.0,7.15L16.95,10.1"/>
+  android:width="24dp" android:height="24dp"
+  android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M10.59 9.17L6.12 4.7c-.39-.39-1.02-.39-1.41 0-.39.39-.39 1.02 0 1.41l4.46 4.46 1.42-1.4zm4.76-4.32l1.19 1.19L4.7 17.88c-.39.39-.39 1.02 0 1.41.39.39 1.02.39 1.41 0L17.96 7.46l1.19 1.19c.31.31.85.09.85-.36V4.5c0-.28-.22-.5-.5-.5h-3.79c-.45 0-.67.54-.36.85zm-.52 8.56l-1.41 1.41 3.13 3.13-1.2 1.2c-.31.31-.09.85.36.85h3.79c.28 0 .5-.22.5-.5v-3.79c0-.45-.54-.67-.85-.35l-1.19 1.19-3.13-3.14z" />
 </vector>

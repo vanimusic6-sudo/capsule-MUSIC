@@ -310,7 +310,7 @@ fun YouTubePlaylistMenu(
     ) {
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
         }
 
         item {
@@ -324,7 +324,7 @@ fun YouTubePlaylistMenu(
                                     Icon(
                                         painter = painterResource(R.drawable.capsule_soft_play),
                                         contentDescription = null,
-                                        modifier = Modifier.size(28.dp),
+                                        modifier = Modifier.size(24.dp),
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 },
@@ -343,7 +343,7 @@ fun YouTubePlaylistMenu(
                                     Icon(
                                         painter = painterResource(R.drawable.capsule_soft_shuffle),
                                         contentDescription = null,
-                                        modifier = Modifier.size(28.dp),
+                                        modifier = Modifier.size(24.dp),
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 },
@@ -362,7 +362,7 @@ fun YouTubePlaylistMenu(
                                     Icon(
                                         painter = painterResource(R.drawable.capsule_soft_radio),
                                         contentDescription = null,
-                                        modifier = Modifier.size(28.dp),
+                                        modifier = Modifier.size(24.dp),
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 },
@@ -375,7 +375,7 @@ fun YouTubePlaylistMenu(
                         )
                     }
                 },
-                modifier = Modifier.padding(horizontal = 0.dp, vertical = 8.dp)
+                modifier = Modifier
             )
         }
 

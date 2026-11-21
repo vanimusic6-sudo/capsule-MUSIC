@@ -34,7 +34,9 @@ class MoreMenuScrollRegressionTest {
         assertTrue("volume subscription must live inside the small card", producer > leaf)
         assertFalse(player.contains("basicMarquee()"))
         val tiles = source("com/nikhil/yt/ui/component/NewMenuComponents.kt")
-        assertTrue(tiles.contains("if (pressGuard) Modifier else Modifier.basicMarquee()"))
+        assertFalse("rapid menu scrolling must not run per-tile marquee clocks",
+            tiles.contains("basicMarquee()"))
+        assertTrue(tiles.contains("CapsuleMenuMinActionHeight = 88.dp"))
     }
 
     @Test fun nativeSheetStillHandlesItsOwnGesturesInsteadOfCustomNestedDrags() {

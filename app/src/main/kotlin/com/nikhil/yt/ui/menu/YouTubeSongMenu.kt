@@ -275,7 +275,7 @@ fun YouTubeSongMenu(
     ) {
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
         }
 
         item {
@@ -288,7 +288,7 @@ fun YouTubeSongMenu(
                             Icon(
                                 painter = painterResource(R.drawable.capsule_soft_playlist_play),
                                 contentDescription = null,
-                                modifier = Modifier.size(28.dp),
+                                modifier = Modifier.size(24.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
@@ -303,7 +303,7 @@ fun YouTubeSongMenu(
                             Icon(
                                 painter = painterResource(R.drawable.capsule_soft_playlist_add),
                                 contentDescription = null,
-                                modifier = Modifier.size(28.dp),
+                                modifier = Modifier.size(24.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
@@ -317,7 +317,7 @@ fun YouTubeSongMenu(
                             Icon(
                                 painter = painterResource(R.drawable.capsule_soft_share),
                                 contentDescription = null,
-                                modifier = Modifier.size(28.dp),
+                                modifier = Modifier.size(24.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
@@ -333,7 +333,7 @@ fun YouTubeSongMenu(
                         }
                     )
                 ),
-                modifier = Modifier.padding(horizontal = 0.dp, vertical = 8.dp)
+                modifier = Modifier
             )
         }
         item {

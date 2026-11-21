@@ -1,17 +1,9 @@
-<!-- Capsule Music: original 24dp pictograms matched to player transport controls. GPL-3.0. -->
+<!-- Google Material Icons Rounded: image/edit (24px), Apache-2.0.
+     https://github.com/google/material-design-icons
+     License bundled in assets/third-party-material-icons-license.txt. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp" android:height="24dp"
     android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="@android:color/transparent"
-        android:strokeColor="#FFFFFFFF" android:strokeWidth="1.95"
-        android:strokeLineCap="round" android:strokeLineJoin="round"
-        android:pathData="M5,18.8 L5.9,14.95 L15.7,5.15 C16.3,4.55 17.25,4.55 17.85,5.15 L18.9,6.2 C19.5,6.8 19.5,7.75 18.9,8.35 L9.1,18.15 Z" />
-    <path android:fillColor="@android:color/transparent"
-        android:strokeColor="#FFFFFFFF" android:strokeWidth="1.95"
-        android:strokeLineCap="round" android:strokeLineJoin="round"
-        android:pathData="M13.95,6.9 L17.15,10.1" />
-    <path android:fillColor="@android:color/transparent"
-        android:strokeColor="#FFFFFFFF" android:strokeWidth="1.95"
-        android:strokeLineCap="round" android:strokeLineJoin="round"
-        android:pathData="M5,18.8 L10.8,18.8" />
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M3 17.46v3.04c0 .28.22.5.5.5h3.04c.13 0 .26-.05.35-.15L17.81 9.94l-3.75-3.75L3.15 17.1c-.1.1-.15.22-.15.36zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
 </vector>

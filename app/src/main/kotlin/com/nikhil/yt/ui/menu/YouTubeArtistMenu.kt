@@ -101,7 +101,7 @@ fun YouTubeArtistMenu(
                                     Icon(
                                         painter = painterResource(R.drawable.capsule_soft_radio),
                                         contentDescription = null,
-                                        modifier = Modifier.size(28.dp),
+                                        modifier = Modifier.size(24.dp),
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 },
@@ -122,7 +122,7 @@ fun YouTubeArtistMenu(
                                     Icon(
                                         painter = painterResource(R.drawable.capsule_soft_shuffle),
                                         contentDescription = null,
-                                        modifier = Modifier.size(28.dp),
+                                        modifier = Modifier.size(24.dp),
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 },
@@ -142,7 +142,7 @@ fun YouTubeArtistMenu(
                                 Icon(
                                     painter = painterResource(R.drawable.capsule_soft_share),
                                     contentDescription = null,
-                                    modifier = Modifier.size(28.dp),
+                                    modifier = Modifier.size(24.dp),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             },

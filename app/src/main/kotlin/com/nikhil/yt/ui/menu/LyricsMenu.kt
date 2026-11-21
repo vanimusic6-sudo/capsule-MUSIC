@@ -348,7 +348,7 @@ fun LyricsMenu(
                             Icon(
                                 painter = painterResource(R.drawable.capsule_soft_edit),
                                 contentDescription = null,
-                                modifier = Modifier.size(28.dp),
+                                modifier = Modifier.size(24.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
@@ -360,7 +360,7 @@ fun LyricsMenu(
                             Icon(
                                 painter = painterResource(R.drawable.cached),
                                 contentDescription = null,
-                                modifier = Modifier.size(28.dp),
+                                modifier = Modifier.size(24.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
@@ -375,7 +375,7 @@ fun LyricsMenu(
                             Icon(
                                 painter = painterResource(R.drawable.search),
                                 contentDescription = null,
-                                modifier = Modifier.size(28.dp),
+                                modifier = Modifier.size(24.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },

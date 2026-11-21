@@ -139,7 +139,7 @@ fun OfflineDownloadMenu(
                     overflow = TextOverflow.Ellipsis)
             }
         }
-        MenuSurfaceSection(modifier = Modifier.padding(vertical = 4.dp)) {
+        MenuSurfaceSection() {
             Action(stringResource(R.string.play_next), R.drawable.capsule_soft_playlist_play) {
                 player?.playNext(OfflineAudioQueue.mediaItem(file))
                 onDismiss()
@@ -195,11 +195,11 @@ fun OfflineDownloadMenu(
                 onDismiss()
             }
         }
-        MenuSurfaceSection(modifier = Modifier.padding(vertical = 8.dp)) {
+        MenuSurfaceSection() {
             Action(stringResource(R.string.remove_download), R.drawable.capsule_soft_download, destructive = true) {
                 onRemove()
             }
         }
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(8.dp))
     }
 }

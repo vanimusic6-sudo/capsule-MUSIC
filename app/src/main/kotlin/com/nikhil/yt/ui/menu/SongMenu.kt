@@ -394,7 +394,7 @@ fun SongMenu(
                     Icon(
                         painter = painterResource(R.drawable.capsule_soft_radio),
                         contentDescription = null,
-                        modifier = Modifier.size(28.dp),
+                        modifier = Modifier.size(24.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 },
@@ -412,7 +412,7 @@ fun SongMenu(
                     Icon(
                         painter = painterResource(R.drawable.capsule_soft_playlist_play),
                         contentDescription = null,
-                        modifier = Modifier.size(28.dp),
+                        modifier = Modifier.size(24.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 },
@@ -427,7 +427,7 @@ fun SongMenu(
                     Icon(
                         painter = painterResource(R.drawable.capsule_soft_queue_music),
                         contentDescription = null,
-                        modifier = Modifier.size(28.dp),
+                        modifier = Modifier.size(24.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 },
@@ -442,7 +442,7 @@ fun SongMenu(
                     Icon(
                         painter = painterResource(R.drawable.capsule_soft_playlist_add),
                         contentDescription = null,
-                        modifier = Modifier.size(28.dp),
+                        modifier = Modifier.size(24.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 },
@@ -454,7 +454,7 @@ fun SongMenu(
                     Icon(
                         painter = painterResource(R.drawable.capsule_soft_share),
                         contentDescription = null,
-                        modifier = Modifier.size(28.dp),
+                        modifier = Modifier.size(24.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 },
@@ -487,7 +487,7 @@ fun SongMenu(
                     Icon(
                         painter = painterResource(R.drawable.capsule_soft_edit),
                         contentDescription = null,
-                        modifier = Modifier.size(28.dp),
+                        modifier = Modifier.size(24.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 },
@@ -514,20 +514,20 @@ fun SongMenu(
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection() {
                 NewActionGrid(
                     actions = primaryActions,
-                    modifier = Modifier.padding(horizontal = 0.dp, vertical = 8.dp),
+                    modifier = Modifier,
                 )
             }
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection() {
                 ListItem(
                     headlineContent = {
                         Text(
@@ -572,12 +572,11 @@ fun SongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
-                val dividerModifier = Modifier.padding(start = 56.dp)
+            MenuSurfaceSection() {
                 Column {
                     if (event != null) {
                         ListItem(
@@ -605,14 +604,8 @@ fun SongMenu(
                         )
                     }
 
-                    if (event != null) {
-                        HorizontalDivider(
-                            modifier = dividerModifier,
-                            color = MaterialTheme.colorScheme.outlineVariant,
-                        )
-                    }
 
-                    if (playlistSong != null) {
+if (playlistSong != null) {
                         ListItem(
                             headlineContent = {
                                 Text(
@@ -652,12 +645,7 @@ fun SongMenu(
                                 },
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         )
-
-                        HorizontalDivider(
-                            modifier = dividerModifier,
-                            color = MaterialTheme.colorScheme.outlineVariant,
-                        )
-                    }
+}
 
                     if (isFromCache && !independentSong) {
                         ListItem(
@@ -681,12 +669,7 @@ fun SongMenu(
                                 },
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         )
-
-                        HorizontalDivider(
-                            modifier = dividerModifier,
-                            color = MaterialTheme.colorScheme.outlineVariant,
-                        )
-                    }
+}
 
                     if (!independentSong) {
                         YouTubeDownloadMenuItems(
@@ -707,11 +690,11 @@ fun SongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection() {
                 Column {
                     if (!offlineSong) ListItem(
                         headlineContent = { Text(text = stringResource(R.string.view_artist)) },
@@ -748,12 +731,7 @@ fun SongMenu(
                     )
 
                     if (song.song.albumId != null) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(start = 56.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant,
-                        )
-
-                        ListItem(
+ListItem(
                             headlineContent = { Text(text = stringResource(R.string.view_album)) },
                             leadingContent = {
                                 Icon(
@@ -774,11 +752,11 @@ fun SongMenu(
         }
 
         item {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
         }
 
         item {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection() {
                 Column {
                     if (!independentSong) ListItem(
                         headlineContent = { Text(text = stringResource(R.string.refetch)) },
@@ -806,12 +784,8 @@ fun SongMenu(
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
 
-                    if (!independentSong) HorizontalDivider(
-                        modifier = Modifier.padding(start = 56.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant,
-                    )
-
-                    ListItem(
+                    if (!independentSong)
+ListItem(
                         headlineContent = { Text(text = stringResource(R.string.details)) },
                         leadingContent = {
                             Icon(

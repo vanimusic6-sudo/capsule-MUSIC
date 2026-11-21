@@ -332,7 +332,7 @@ fun PlayerMenu(
 
     // The song identity belongs to the sheet itself, not a third black card.
     Surface(
-        shape = RoundedCornerShape(20.dp),
+        shape = com.nikhil.yt.ui.component.CapsuleMenuTileShape,
         color = com.nikhil.yt.ui.component.CapsuleMenuBlack,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -423,7 +423,7 @@ fun PlayerMenu(
             // One measured root per LazyColumn item: no phantom gaps or
             // independently measured spacer nodes during fast flings.
             Column(modifier = Modifier.fillMaxWidth()) {
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
     
             // Quick actions are the FIRST lazy item after volume, so scrolls
             // begin under the slider instead of after Capsule Together.
@@ -434,7 +434,7 @@ fun PlayerMenu(
                             Icon(
                                 painter = painterResource(R.drawable.capsule_soft_radio),
                                 contentDescription = null,
-                                modifier = Modifier.size(28.dp),
+                                modifier = Modifier.size(24.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
@@ -454,7 +454,7 @@ fun PlayerMenu(
                             Icon(
                                 painter = painterResource(R.drawable.capsule_soft_playlist_add),
                                 contentDescription = null,
-                                modifier = Modifier.size(28.dp),
+                                modifier = Modifier.size(24.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
@@ -472,7 +472,7 @@ fun PlayerMenu(
                             Icon(
                                 painter = painterResource(R.drawable.capsule_soft_link),
                                 contentDescription = null,
-                                modifier = Modifier.size(28.dp),
+                                modifier = Modifier.size(24.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
@@ -498,7 +498,7 @@ fun PlayerMenu(
                             Icon(
                                 painter = painterResource(R.drawable.capsule_soft_fire),
                                 contentDescription = null,
-                                modifier = Modifier.size(28.dp),
+                                modifier = Modifier.size(24.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
@@ -510,7 +510,7 @@ fun PlayerMenu(
                         }
                     )
                 ),
-                modifier = Modifier.padding(vertical = 4.dp),
+                modifier = Modifier,
                 compact = true,
             )
     
@@ -519,7 +519,7 @@ fun PlayerMenu(
         }
         if ((!isRadio && !isOfflineAudio && splitArtists.isNotEmpty()) || mediaMetadata.album != null) {
             item(key = "artists-album", contentType = "menu-section") {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                MenuSurfaceSection() {
                     Column {
                         if (!isRadio && !isOfflineAudio && splitArtists.isNotEmpty()) {
                             ListItem(
@@ -576,12 +576,12 @@ if (mediaMetadata.album != null) {
                 }
             }
             item(key = "artists-gap", contentType = "spacer") {
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
             }
         }
         if (!isExternalCatalog || isOfflineAudio) item(key = "download", contentType = "menu-section") {
             if (isOfflineAudio) {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                MenuSurfaceSection() {
                     ListItem(
                         headlineContent = {
                             Text(stringResource(R.string.remove_download),
@@ -622,7 +622,7 @@ if (mediaMetadata.album != null) {
                     )
                 }
             } else {
-                MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+                MenuSurfaceSection() {
                     YouTubeDownloadMenuItems(
                         download = download, mediaId = mediaMetadata.id, onDismiss = onDismiss,
                         trackTitle = mediaMetadata.title,
@@ -642,7 +642,7 @@ if (mediaMetadata.album != null) {
             }
         }
         item(key = "tools", contentType = "menu-section") {
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
+            MenuSurfaceSection() {
                 Column {
                     ListItem(
                         headlineContent = { Text(text = stringResource(R.string.details)) },
@@ -713,7 +713,7 @@ private fun PlayerVolumeCard(
     val safeVolume = volume.coerceIn(0f, 1f)
 
     Surface(
-        shape = RoundedCornerShape(20.dp),
+        shape = com.nikhil.yt.ui.component.CapsuleMenuTileShape,
         color = com.nikhil.yt.ui.component.CapsuleMenuBlack,
         modifier = modifier.fillMaxWidth(),
     ) {

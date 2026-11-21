@@ -12,7 +12,6 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -65,6 +64,12 @@ import com.nikhil.yt.ui.motion.CapsuleStandardEasing
 internal val CapsuleMenuBlack = Color(0xFF111113)
 internal val CapsuleMenuPressed = Color(0xFF242428)
 internal val CapsuleMenuTileShape = RoundedCornerShape(18.dp)
+// An 8dp visual rhythm. Exterior row padding is never part of the hit target.
+internal val CapsuleMenuTileGap = 8.dp
+internal val CapsuleMenuRowPadding = 4.dp
+internal val CapsuleMenuMinRowHeight = 64.dp
+internal val CapsuleMenuMinActionHeight = 88.dp
+internal val CapsuleMenuIconSize = 28.dp
 
 internal fun capsuleCompactMenuStackedLabel(label: String): Boolean =
     label.split(' ', '-', '—').any { it.length >= 12 }
@@ -131,16 +136,17 @@ fun NewActionButton(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .heightIn(min = CapsuleMenuMinActionHeight)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
             // The icon is the decoration, not another grey button-in-a-button.
-            Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(CapsuleMenuIconSize), contentAlignment = Alignment.Center) {
                 icon()
             }
             
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             
             Text(
                 text = text,
@@ -149,13 +155,9 @@ fun NewActionButton(
                 lineHeight = 16.sp,
                 color = if (pressGuard) MaterialTheme.colorScheme.onSurface else animatedContent,
                 textAlign = TextAlign.Center,
-                maxLines = 3,
+                maxLines = 2,
+                softWrap = true,
                 overflow = TextOverflow.Ellipsis,
-                // Scrolling a sheet with 3–9 independently running marquee
-                // clocks causes frequent small re-layouts at 60Hz. The text
-                // already has a 2-line ellipsis, so do not run a marquee
-                // inside the player/Lyrics More menu.
-                modifier = if (pressGuard) Modifier else Modifier.basicMarquee(),
             )
         }
     }
@@ -192,54 +194,35 @@ internal fun CapsuleCompactMenuAction(
     }
     val tileColor = capsuleMenuOpaqueTile(CapsuleMenuBlack, CapsuleMenuPressed, pressed)
     val labelInk = if (action.enabled) Color.White else Color.White.copy(alpha = 0.52f)
-    val stacked = remember(action.text) { capsuleCompactMenuStackedLabel(action.text) }
     Card(
         modifier = clickableModifier,
         shape = CapsuleMenuTileShape,
         colors = CardDefaults.cardColors(containerColor = tileColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        if (stacked) {
-            // Long unbroken words (e.g. "Воспроизвести") get the full tile width.
-            // Never split the last Cyrillic letter on a narrow phone.
-            Column(
-                modifier = Modifier.fillMaxWidth().heightIn(min = 74.dp)
-                    .padding(horizontal = 6.dp, vertical = 6.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Box(Modifier.size(27.dp), contentAlignment = Alignment.Center) { action.icon() }
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    text = action.text,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontSize = 12.sp,
-                    lineHeight = 15.sp,
-                    color = labelInk,
-                    textAlign = TextAlign.Center,
-                    softWrap = true,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+        // Uniform 24dp icons and up to two lines; no orientation switching.
+        Column(
+            modifier = Modifier.fillMaxWidth()
+                .heightIn(min = CapsuleMenuMinActionHeight)
+                .padding(horizontal = 10.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Box(Modifier.size(CapsuleMenuIconSize), contentAlignment = Alignment.Center) {
+                action.icon()
             }
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth().heightIn(min = 74.dp)
-                    .padding(horizontal = 12.dp, vertical = 9.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.size(30.dp), contentAlignment = Alignment.Center) { action.icon() }
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    text = action.text,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontSize = 13.sp,
-                    lineHeight = 17.sp,
-                    color = labelInk,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = action.text,
+                style = MaterialTheme.typography.labelMedium,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                color = labelInk,
+                textAlign = TextAlign.Center,
+                softWrap = true,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -266,35 +249,41 @@ fun CapsuleMenuListItem(
     shadowElevation: Dp = 0.dp,
     highlightBorder: Boolean = false,
 ) {
-    val highlightColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.30f)
-    ListItem(
-        headlineContent = headlineContent,
-        modifier = Modifier.padding(vertical = 5.dp)
-            .then(modifier)
-            .clip(CapsuleMenuTileShape)
-            .background(CapsuleMenuBlack)
-            .then(
-                if (highlightBorder) Modifier.border(
-                    BorderStroke(1.dp, highlightColor), CapsuleMenuTileShape,
-                ) else Modifier
-            ),
-        overlineContent = overlineContent,
-        supportingContent = supportingContent,
-        leadingContent = if (leadingContent == null) null else {
-            {
-                Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
-                    leadingContent()
+    // The 4dp outside margin belongs to the layout, NOT to the click hitbox.
+    // Adjacent 64dp targets therefore keep a visible 8dp rounded gap.
+    Box(Modifier.fillMaxWidth().padding(vertical = CapsuleMenuRowPadding)) {
+        ListItem(
+            headlineContent = headlineContent,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = CapsuleMenuMinRowHeight)
+                .clip(CapsuleMenuTileShape)
+                .background(CapsuleMenuBlack)
+                .then(
+                    if (highlightBorder) Modifier.border(
+                        BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.30f)),
+                        CapsuleMenuTileShape,
+                    ) else Modifier
+                )
+                .then(modifier),
+            overlineContent = overlineContent,
+            supportingContent = supportingContent,
+            leadingContent = if (leadingContent == null) null else {
+                {
+                    Box(Modifier.size(CapsuleMenuIconSize), contentAlignment = Alignment.Center) {
+                        leadingContent()
+                    }
                 }
-            }
-        },
-        trailingContent = trailingContent,
-        colors = colors,
-        tonalElevation = tonalElevation,
-        shadowElevation = shadowElevation,
-    )
+            },
+            trailingContent = trailingContent,
+            colors = colors,
+            tonalElevation = tonalElevation,
+            shadowElevation = shadowElevation,
+        )
+    }
 }
 
-// Enhanced Menu Item - Material 3 Expressive Design
+// All menu rows delegate to the same tappable surface and shape tokens.
 @Composable
 fun NewMenuItem(
     headlineContent: @Composable () -> Unit,
@@ -303,27 +292,16 @@ fun NewMenuItem(
     supportingContent: @Composable (() -> Unit)? = null,
     onClick: (() -> Unit)? = null,
     enabled: Boolean = true,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
-    androidx.compose.material3.ListItem(
+    CapsuleMenuListItem(
         headlineContent = headlineContent,
-        leadingContent = if (leadingContent == null) null else {
-            {
-                Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
-                    leadingContent()
-                }
-            }
-        },
+        leadingContent = leadingContent,
         trailingContent = trailingContent,
         supportingContent = supportingContent,
-        modifier = Modifier.padding(vertical = 5.dp)
-            .then(modifier)
-            .clip(CapsuleMenuTileShape)
-            .background(CapsuleMenuBlack)
-            .capsulePressClickable(enabled = enabled) { onClick?.invoke() }
-            .padding(horizontal = 4.dp),
-        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-        tonalElevation = 0.dp
+        modifier = modifier.capsulePressClickable(enabled = enabled) {
+            onClick?.invoke()
+        },
     )
 }
 
@@ -375,12 +353,12 @@ fun NewActionGrid(
     
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp),
+        verticalArrangement = Arrangement.spacedBy(CapsuleMenuTileGap),
     ) {
         rows.forEach { row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(CapsuleMenuTileGap),
             ) {
                 row.forEach { action ->
                     if (compact) {

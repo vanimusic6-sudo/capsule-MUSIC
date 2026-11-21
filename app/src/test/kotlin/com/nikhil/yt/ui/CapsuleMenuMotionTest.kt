@@ -68,8 +68,10 @@ class CapsuleMenuMotionTest {
             java.io.File("src/main/kotlin/com/nikhil/yt/ui/component/NewMenuComponents.kt"),
             java.io.File("app/src/main/kotlin/com/nikhil/yt/ui/component/NewMenuComponents.kt"),
         ).first(java.io.File::isFile).readText()
-        assertTrue(actions.contains("heightIn(min = 74.dp)"))
-        assertTrue(actions.contains("maxLines = 3"))
+        assertTrue(actions.contains("heightIn(min = CapsuleMenuMinActionHeight)"))
+        assertTrue(actions.contains("CapsuleMenuMinActionHeight = 88.dp"))
+        assertTrue(actions.contains("CapsuleMenuMinRowHeight = 64.dp"))
+        assertTrue(actions.contains("maxLines = 2"))
         assertFalse(actions.contains("color = CapsuleMenuBlack"))
         assertFalse(actions.contains("primary.copy(alpha = 0.09f)"))
         assertFalse(actions.contains("primary.copy(alpha = 0.075f)"))
@@ -86,7 +88,8 @@ class CapsuleMenuMotionTest {
                 java.io.File("src/main/kotlin/$relative"),
                 java.io.File("app/src/main/kotlin/$relative"),
             ).first(java.io.File::isFile).readText()
-            assertTrue("$name should align its actions with black list rows",
+            assertTrue("$name uses the common actions grid", source.contains("NewActionGrid("))
+            assertFalse("$name must not introduce its own competing grid padding",
                 source.contains("modifier = Modifier.padding(horizontal = 0.dp, vertical = 8.dp)"))
         }
     }
@@ -115,18 +118,56 @@ class CapsuleMenuMotionTest {
     }
 
     @Test fun longSingleWordsWrapAndSectionsNeverFuseActions() {
-        assertTrue(com.nikhil.yt.ui.component.capsuleCompactMenuStackedLabel("Воспроизвести"))
-        assertFalse(com.nikhil.yt.ui.component.capsuleCompactMenuStackedLabel("Начать радио"))
+        // Long and short labels now use the SAME column orientation and height.
         val source = listOf(
             java.io.File("src/main/kotlin/com/nikhil/yt/ui/component/NewMenuComponents.kt"),
             java.io.File("app/src/main/kotlin/com/nikhil/yt/ui/component/NewMenuComponents.kt"),
         ).first(java.io.File::isFile).readText()
         assertFalse(source.contains("LocalCapsuleMenuGroupedRow provides true"))
         assertTrue(source.contains("Column(modifier = modifier.fillMaxWidth(), content = content)"))
-        assertTrue(source.contains("Modifier.padding(vertical = 5.dp)"))
+        assertTrue(source.contains("CapsuleMenuRowPadding = 4.dp"))
+        assertTrue(source.contains("CapsuleMenuTileGap = 8.dp"))
+        assertTrue(source.contains("Box(Modifier.fillMaxWidth().padding(vertical = CapsuleMenuRowPadding))"))
         assertTrue(source.contains("softWrap = true"))
         assertTrue(source.contains("internal val CapsuleMenuTileShape = RoundedCornerShape(18.dp)"))
         assertTrue(source.contains("highlightBorder: Boolean = false"))
+    }
+
+    @Test fun allMenuIconsUseProfessionalRoundedMaterialVectors() {
+        val names = listOf(
+            "album", "artist", "bedtime", "delete", "download", "edit", "fire",
+            "info", "library_add", "library_add_check", "link", "music_note",
+            "play", "playlist_add", "playlist_play", "queue_music", "radio",
+            "select_all", "share", "shuffle", "sync",
+        )
+        for (name in names) {
+            val path = "res/drawable/capsule_soft_${name}.xml"
+            val file = listOf(
+                java.io.File("src/main/$path"),
+                java.io.File("app/src/main/$path"),
+            ).first(java.io.File::isFile)
+            val xml = file.readText()
+            assertTrue("Material icon attribution missing for $name",
+                xml.contains("Google Material Icons Rounded"))
+            assertTrue("Apache-2.0 icon license missing for $name",
+                xml.contains("Apache-2.0"))
+            assertTrue("$name must be a 24dp vector",
+                xml.contains("android:viewportWidth=\"24\""))
+            assertFalse("$name must not contain hand-drawn stroke paths",
+                xml.contains("android:strokeWidth="))
+        }
+    }
+
+    @Test fun independentMenuRowsAreNotClickableAcrossTheirGaps() {
+        val path = "com/nikhil/yt/ui/component/NewMenuComponents.kt"
+        val source = listOf(java.io.File("src/main/kotlin/$path"),
+            java.io.File("app/src/main/kotlin/$path"))
+            .first(java.io.File::isFile).readText()
+        val row = source.substringAfter("fun CapsuleMenuListItem(")
+            .substringBefore("// All menu rows delegate")
+        assertTrue(row.contains("Box(Modifier.fillMaxWidth().padding(vertical = CapsuleMenuRowPadding))"))
+        assertTrue(row.contains(".then(modifier)"))
+        assertTrue(row.indexOf(".clip(CapsuleMenuTileShape)") < row.indexOf(".then(modifier)"))
     }
 
     @Test fun downloadTileIsOutlinedInEveryDownloadMenu() {

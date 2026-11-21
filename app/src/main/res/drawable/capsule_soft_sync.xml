@@ -1,21 +1,7 @@
-<!-- Capsule Music: original 24dp pictograms matched to player transport controls. GPL-3.0. -->
+<!-- Google Material Icons Rounded: notification/sync; Apache-2.0.
+See assets/third-party-material-icons-license.txt. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp" android:height="24dp"
-    android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="@android:color/transparent"
-        android:strokeColor="#FFFFFFFF" android:strokeWidth="1.95"
-        android:strokeLineCap="round" android:strokeLineJoin="round"
-        android:pathData="M19.25,8.8 C18.1,6.1 15.45,4.4 12,4.4 C8.7,4.4 6.3,5.8 4.75,8.2" />
-    <path android:fillColor="@android:color/transparent"
-        android:strokeColor="#FFFFFFFF" android:strokeWidth="1.95"
-        android:strokeLineCap="round" android:strokeLineJoin="round"
-        android:pathData="M4.75,4.85 L4.75,8.2 L8.15,8.2" />
-    <path android:fillColor="@android:color/transparent"
-        android:strokeColor="#FFFFFFFF" android:strokeWidth="1.95"
-        android:strokeLineCap="round" android:strokeLineJoin="round"
-        android:pathData="M4.75,15.2 C5.9,17.9 8.55,19.6 12,19.6 C15.3,19.6 17.7,18.2 19.25,15.8" />
-    <path android:fillColor="@android:color/transparent"
-        android:strokeColor="#FFFFFFFF" android:strokeWidth="1.95"
-        android:strokeLineCap="round" android:strokeLineJoin="round"
-        android:pathData="M15.85,15.8 L19.25,15.8 L19.25,19.15" />
+  android:width="24dp" android:height="24dp"
+  android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M12 4V2.21c0-.45-.54-.67-.85-.35l-2.8 2.79c-.2.2-.2.51 0 .71l2.79 2.79c.32.31.86.09.86-.36V6c3.31 0 6 2.69 6 6 0 .79-.15 1.56-.44 2.25-.15.36-.04.77.23 1.04.51.51 1.37.33 1.64-.34.37-.91.57-1.91.57-2.95 0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-.79.15-1.56.44-2.25.15-.36.04-.77-.23-1.04-.51-.51-1.37-.33-1.64.34C4.2 9.96 4 10.96 4 12c0 4.42 3.58 8 8 8v1.79c0 .45.54.67.85.35l2.79-2.79c.2-.2.2-.51 0-.71l-2.79-2.79c-.31-.31-.85-.09-.85.36V18z" />
 </vector>

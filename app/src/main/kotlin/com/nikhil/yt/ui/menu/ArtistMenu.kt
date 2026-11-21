@@ -107,7 +107,7 @@ fun ArtistMenu(
                                     Icon(
                                         painter = painterResource(R.drawable.capsule_soft_play),
                                         contentDescription = null,
-                                        modifier = Modifier.size(28.dp),
+                                        modifier = Modifier.size(24.dp),
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 },
@@ -138,7 +138,7 @@ fun ArtistMenu(
                                     Icon(
                                         painter = painterResource(R.drawable.capsule_soft_shuffle),
                                         contentDescription = null,
-                                        modifier = Modifier.size(28.dp),
+                                        modifier = Modifier.size(24.dp),
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 },
@@ -172,7 +172,7 @@ fun ArtistMenu(
                                     Icon(
                                         painter = painterResource(R.drawable.capsule_soft_share),
                                         contentDescription = null,
-                                        modifier = Modifier.size(28.dp),
+                                        modifier = Modifier.size(24.dp),
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 },
