@@ -635,8 +635,8 @@ private fun PlayerVolumeCard(
         Column(
             // A taller, full-width backing aligned with every other menu tile.
             modifier = Modifier.fillMaxWidth()
-                .heightIn(min = 96.dp)
-                .padding(horizontal = 16.dp, vertical = 9.dp),
+                .heightIn(min = 88.dp)
+                .padding(horizontal = 16.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Row(
@@ -688,7 +688,9 @@ private fun TempoPitchSection() {
     var pitch by remember { mutableFloatStateOf(
         playerConnection.player.playbackParameters.pitch.safeCoerceIn(PitchMin, PitchMax, 1f)
     ) }
-    var pitchMode by rememberSaveable { mutableStateOf(PitchMode.Semitones) }
+    var pitchMode by rememberSaveable {
+        mutableStateOf(if (isPitchSemitoneAligned(pitch)) PitchMode.Semitones else PitchMode.Multiplier)
+    }
     val apply: (Float, Float) -> Unit = { speed, note ->
         playerConnection.player.playbackParameters = PlaybackParameters(
             speed.coerceIn(TempoMin, TempoMax),
@@ -1438,7 +1440,7 @@ private fun EqSection(
 ) {
     Surface(
         color = com.nikhil.yt.ui.component.CapsuleMenuBlack,
-        shape = RoundedCornerShape(24.dp),
+        shape = com.nikhil.yt.ui.component.CapsuleMenuTileShape,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(vertical = 16.dp)) {
