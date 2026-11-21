@@ -5,15 +5,34 @@ package com.nikhil.yt.playback
  * An item just skipped backwards can become "upcoming" again while the new song still buffers.
  * Only genuinely steady foreground playback permits background look-ahead.
  */
+/**
+ * Only optional /player look-ahead needs a safe foreground buffer. Near the
+ * natural end of a known song a smaller buffer suffices if it covers ALL
+ * remaining playback. Unknown duration requires the full runway.
+ * Never gate Media3's real next-period loader (below).
+ */
+internal const val AUDIO_PREFETCH_SAFE_BUFFER_MS = 12_000L
+
+internal fun audioPrefetchRequiredBufferMs(
+    currentPositionMs: Long,
+    currentDurationMs: Long,
+): Long = if (currentDurationMs > 0L) {
+    minOf(AUDIO_PREFETCH_SAFE_BUFFER_MS,
+        (currentDurationMs - currentPositionMs.coerceAtLeast(0L)).coerceAtLeast(0L))
+} else AUDIO_PREFETCH_SAFE_BUFFER_MS
+
 internal fun canResolveUpcomingAudioWhile(
     currentIsPlaying: Boolean,
     currentPositionMs: Long,
     currentIsVideo: Boolean,
+    currentBufferedAheadMs: Long = 0L,
+    currentDurationMs: Long = -1L,
     minimumPlayedMs: Long = AUDIO_PREFETCH_MIN_CURRENT_PROGRESS_MS,
-): Boolean =
-    currentIsPlaying &&
-        currentPositionMs >= minimumPlayedMs &&
-        !currentIsVideo
+): Boolean {
+    if (!currentIsPlaying || currentIsVideo || currentPositionMs < minimumPlayedMs) return false
+    val required = audioPrefetchRequiredBufferMs(currentPositionMs, currentDurationMs)
+    return required > 0L && currentBufferedAheadMs >= required
+}
 
 /** Actual Media3 period loading is not speculative prefetch. Still reject abandoned queue items. */
 internal fun isAudioLoaderSelectionRelevant(

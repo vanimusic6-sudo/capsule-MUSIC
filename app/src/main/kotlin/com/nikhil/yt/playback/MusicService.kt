@@ -352,6 +352,9 @@ internal const val SIGNED_URL_REJECTIONS_BEFORE_CLIENT_ROLLOVER = 2
 internal const val AUDIO_PREFETCH_LEAD_TIME_MS = 45_000L
 internal const val AUDIO_PREFETCH_MIN_CURRENT_PROGRESS_MS = 3_000L
 internal const val AUDIO_PREFETCH_RECHECK_MS = 20_000L
+// Only when a track is in the look-ahead window but its buffer is starving.
+// Do not poll at display-frame cadence or preempt Media3's own network requests.
+internal const val AUDIO_PREFETCH_BUFFER_RECHECK_MS = 5_000L
 internal const val AUDIO_PREFETCH_PAUSED_RECHECK_MS = 30_000L
 internal const val AUDIO_PREFETCHED_URL_MAX_AGE_MS = 60_000L
 
@@ -885,6 +888,10 @@ class MusicService :
                 currentIsPlaying = player.isPlaying,
                 currentPositionMs = player.currentPosition,
                 currentIsVideo = isCurrentCapsuleVideoItem() || isCompanionVideoRequested(),
+                currentBufferedAheadMs = player.totalBufferedDuration.coerceAtLeast(0L),
+                currentDurationMs = player.duration.takeIf { it > 0L && it != C.TIME_UNSET }
+                    ?: player.currentMetadata?.duration?.takeIf { it > 0 }?.toLong()?.times(1_000L)
+                    ?: C.TIME_UNSET,
             )
 
     private fun isAudioNetworkSelectionRelevant(mediaId: String): Boolean =
@@ -984,11 +991,17 @@ class MusicService :
                                     ?: metadataDurationMs
                                     ?: C.TIME_UNSET
                             val isPlayingNow = player.isPlaying
-                            audioPrefetchWaitMs(
+                            val timeWaitMs = audioPrefetchWaitMs(
                                 durationMs = durationMs,
                                 positionMs = player.currentPosition,
                                 isPlaying = isPlayingNow,
-                            ) to isPlayingNow
+                            )
+                            // A played position alone is not proof of buffer safety.
+                            // Do not compete with a starving current CDN connection.
+                            val safeWaitMs = if (timeWaitMs == 0L &&
+                                !isUpcomingAudioNetworkEligible(mediaId)
+                            ) AUDIO_PREFETCH_BUFFER_RECHECK_MS else timeWaitMs
+                            safeWaitMs to isPlayingNow
                         }
 
                     if (waitMs <= 0L) break
@@ -1014,7 +1027,12 @@ class MusicService :
                     return@launch
                 }
 
-                if (!isNetworkConnected.value ||
+                // Recheck after asynchronous cache/network work: the active
+                // track may have rebuffered while our coroutine was suspended.
+                val stillSafe = withContext(Dispatchers.Main.immediate) {
+                    isUpcomingAudioNetworkEligible(mediaId)
+                }
+                if (!stillSafe || !isNetworkConnected.value ||
                     AudioCacheIdentity.completeKey(downloadCache, mediaId) != null ||
                     AudioCacheIdentity.completeKey(playerCache, mediaId) != null
                 ) return@launch
