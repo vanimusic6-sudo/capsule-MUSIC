@@ -10,6 +10,7 @@ package com.nikhil.yt.ui.component
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -35,6 +37,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.ListItemColors
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -42,12 +45,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nikhil.yt.ui.motion.CapsuleStandardEasing
@@ -136,9 +142,13 @@ fun NewActionButton(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            // Soft icon well shared by all menu action grids. No new vector
+            // assets, shadows, blur layers or animation clocks.
             Box(
-                modifier = Modifier.size(28.dp),
-                contentAlignment = Alignment.Center
+                modifier = Modifier.size(36.dp)
+                    .clip(RoundedCornerShape(13.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.085f)),
+                contentAlignment = Alignment.Center,
             ) {
                 icon()
             }
@@ -213,7 +223,11 @@ internal fun CapsuleCompactMenuAction(
                 .padding(horizontal = 11.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier.size(35.dp).clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.09f)),
+                contentAlignment = Alignment.Center,
+            ) {
                 action.icon()
             }
             Spacer(Modifier.width(8.dp))
@@ -231,6 +245,48 @@ internal fun CapsuleCompactMenuAction(
     }
 }
 
+/**
+ * A universal, inexpensive row for all Capsule menus. Material3's default
+ * ListItem container used to paint a black opaque rectangle even when its
+ * parent sheet was already opaque. The hierarchy now owns exactly one solid
+ * sheet and a soft transparent grouping. This also gives legacy menus the
+ * same rounded icon wells as the current player, without replacing assets.
+ *
+ * Explicit caller colours and destructive-action semantics are preserved.
+ */
+@Composable
+fun CapsuleMenuListItem(
+    headlineContent: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    overlineContent: @Composable (() -> Unit)? = null,
+    supportingContent: @Composable (() -> Unit)? = null,
+    leadingContent: @Composable (() -> Unit)? = null,
+    trailingContent: @Composable (() -> Unit)? = null,
+    colors: ListItemColors = ListItemDefaults.colors(containerColor = Color.Transparent),
+    tonalElevation: Dp = 0.dp,
+    shadowElevation: Dp = 0.dp,
+) {
+    ListItem(
+        headlineContent = headlineContent,
+        modifier = modifier,
+        overlineContent = overlineContent,
+        supportingContent = supportingContent,
+        leadingContent = if (leadingContent == null) null else {
+            {
+                Box(
+                    Modifier.size(36.dp).clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.075f)),
+                    contentAlignment = Alignment.Center,
+                ) { leadingContent() }
+            }
+        },
+        trailingContent = trailingContent,
+        colors = colors,
+        tonalElevation = tonalElevation,
+        shadowElevation = shadowElevation,
+    )
+}
+
 // Enhanced Menu Item - Material 3 Expressive Design
 @Composable
 fun NewMenuItem(
@@ -244,7 +300,15 @@ fun NewMenuItem(
 ) {
     androidx.compose.material3.ListItem(
         headlineContent = headlineContent,
-        leadingContent = leadingContent,
+        leadingContent = if (leadingContent == null) null else {
+            {
+                Box(
+                    Modifier.size(36.dp).clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.075f)),
+                    contentAlignment = Alignment.Center,
+                ) { leadingContent() }
+            }
+        },
         trailingContent = trailingContent,
         supportingContent = supportingContent,
         modifier = modifier
@@ -292,7 +356,7 @@ fun NewActionGrid(
     actions: List<NewAction>,
     modifier: Modifier = Modifier,
     columns: Int = 3,
-    compact: Boolean = false,
+    compact: Boolean = true,
 ) {
     val widthDp = LocalConfiguration.current.screenWidthDp
     val safeColumns = remember(actions, columns, widthDp, compact) {
@@ -472,13 +536,15 @@ fun MenuSurfaceSection(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    // Every bottom sheet shares a soft, continuous, slightly tinted acrylic
+    // family instead of black rectangular panels with mismatched elevations.
+    val base = MaterialTheme.colorScheme.surfaceContainerHigh
+    val section = lerp(base, MaterialTheme.colorScheme.primary, 0.036f)
     Surface(
-        shape = RoundedCornerShape(20.dp),
-        // A single low-contrast tonal level ties list items to the sheet.
-        // Keep this opaque: the old cross-window blur hid the entire list.
-        color = if (LocalCapsuleMenuPressGuard.current)
-            MaterialTheme.colorScheme.surfaceContainer
-        else MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(22.dp),
+        color = section.copy(alpha = 1f),
+        border = BorderStroke(0.65.dp,
+            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.055f)),
         modifier = modifier.fillMaxWidth(),
     ) {
         Column(content = content)

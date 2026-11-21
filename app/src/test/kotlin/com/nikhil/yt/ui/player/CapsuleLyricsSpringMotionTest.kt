@@ -6,6 +6,19 @@ import org.junit.Test
 
 /** The same spring values are valid at 60 and 120Hz without a frame clock. */
 class CapsuleLyricsSpringMotionTest {
+    @Test fun firstFrameOfLyricsSheetDoesNotFlashAnOpaqueBackdrop() {
+        assertEquals(0f, capsuleLyricsSheetBackdropOpacity(1f), 0.00001f)
+        assertEquals(1f, capsuleLyricsSheetBackdropOpacity(0f), 0.00001f)
+        var last = 0f
+        for (frame in 0..120) {
+            val position = 1f - frame / 120f
+            val alpha = capsuleLyricsSheetBackdropOpacity(position)
+            assertTrue("No hard coloured sheet on first opening frame", alpha >= last - 0.000001f)
+            assertTrue("The page must not jump between frames", alpha - last < 0.04f)
+            last = alpha
+        }
+    }
+
     @Test fun openingLandingIsBoundedAndThereIsNoZoom() {
         assertEquals(-0.004f, capsuleLyricsLandingTravel(-0.03f), 0.00001f)
         assertEquals(0f, capsuleLyricsLandingTravel(0f), 0.00001f)

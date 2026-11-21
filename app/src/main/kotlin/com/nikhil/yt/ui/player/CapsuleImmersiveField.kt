@@ -244,8 +244,16 @@ internal fun immersiveSpatialFieldBitmap(
         // A second independent 8.5%-tall brightness ramp made a dark
         // horizontal band and abruptly erased the scene below the title.
         val illumination = if (withinPhoto) 1f else 1f - 0.13f * p
+        // A single, tiny horizontal bend PER ROW breaks rigid vertical
+        // colour columns on asymmetric covers. It starts at zero inside
+        // the sharp photo and returns to zero at the floor, preventing a
+        // mismatch with either boundary. This is cached off-main and
+        // adds no continuous CPU/GPU work during music playback.
+        val bend = 0.034f * kotlin.math.sin((y * 1.72f + 0.17f) *
+            kotlin.math.PI.toFloat()) * (4f * p * (1f - p))
         for (px in 0 until width) {
-            val sx = (px + 0.5f) / width * (source.width - 1)
+            val sx = (((px + 0.5f) / width + bend).coerceIn(0f, 1f)) *
+                (source.width - 1)
             fun value(c: Int): Int {
                 // The backdrop carries only diffuse light, never enlarged
                 // photographic cells. All real detail belongs to the retained

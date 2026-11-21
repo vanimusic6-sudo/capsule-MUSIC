@@ -17,6 +17,35 @@ import org.junit.Test
 
 /** The original Material3 sheet retains the real anchored gesture owner. */
 class CapsuleMenuMotionTest {
+    @Test fun newAcrylicIsStaticAndAllLegacyMenusShareReadableRows() {
+        val component = listOf(
+            java.io.File("src/main/kotlin/com/nikhil/yt/ui/component/NewMenuComponents.kt"),
+            java.io.File("app/src/main/kotlin/com/nikhil/yt/ui/component/NewMenuComponents.kt"),
+        ).first(java.io.File::isFile).readText()
+        assertTrue(component.contains("compact: Boolean = true"))
+        assertTrue(component.contains("fun CapsuleMenuListItem("))
+        assertTrue(component.contains("containerColor = Color.Transparent"))
+        for (name in listOf(
+            "SongMenu", "PlaylistMenu", "PlayerMenu", "YouTubePlaylistMenu",
+            "YouTubeAlbumMenu", "ArtistMenu", "YouTubeArtistMenu",
+            "SelectionSongsMenu", "OfflineDownloadMenu",
+        )) {
+            val path = "com/nikhil/yt/ui/menu/$name.kt"
+            val source = listOf(java.io.File("src/main/kotlin/$path"),
+                java.io.File("app/src/main/kotlin/$path"))
+                .first(java.io.File::isFile).readText()
+            assertTrue("$name must use shared rounded actions",
+                source.contains("CapsuleMenuListItem as ListItem"))
+        }
+        val sheet = listOf(
+            java.io.File("src/main/kotlin/com/nikhil/yt/ui/component/BottomSheetMenu.kt"),
+            java.io.File("app/src/main/kotlin/com/nikhil/yt/ui/component/BottomSheetMenu.kt"),
+        ).first(java.io.File::isFile).readText()
+        assertTrue(sheet.contains(".background(pageWash)"))
+        assertFalse(sheet.contains("hazeSource("))
+        assertFalse(sheet.contains("hazeBlur("))
+    }
+
     @Test fun modalSheetNeverReliesOnATransparentBackground() {
         val surface = Color(0xFF101015)
         val highSurface = Color(0xFF303038)
@@ -120,7 +149,7 @@ class CapsuleMenuMotionTest {
     }
     @Test fun appleClosePullStartsAtFullSizeAndShrinksSmoothlyWithoutJump() {
         assertEquals(1f, capsuleMenuDismissScale(0f), 0.00001f)
-        assertEquals(0.968f, capsuleMenuDismissScale(1f), 0.00001f)
+        assertEquals(0.982f, capsuleMenuDismissScale(1f), 0.00001f)
         var previous = 1f
         for (frame in 1..60) {
             val now = capsuleMenuDismissScale(frame / 60f)

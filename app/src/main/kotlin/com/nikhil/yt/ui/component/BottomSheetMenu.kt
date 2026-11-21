@@ -12,6 +12,7 @@ import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.activity.compose.PredictiveBackHandler
@@ -98,7 +99,7 @@ internal fun capsuleMenuTopFill(offsetPx: Float, viewportPx: Float): Float {
 internal fun capsuleMenuDismissScale(close: Float): Float {
     val p = close.coerceIn(0f, 1f)
     val ease = p * p * (3f - 2f * p)
-    return 1f - 0.032f * ease
+    return 1f - 0.018f * ease
 }
 
 val LocalMenuState = compositionLocalOf { MenuState() }
@@ -185,25 +186,40 @@ fun BottomSheetMenu(
             themeSurface = MaterialTheme.colorScheme.surface,
             themeSurfaceHigh = MaterialTheme.colorScheme.surfaceContainerHigh,
         )
-        // A tiny STATIC top lip, not a fullscreen acrylic capture. Brush
-        // changes only when the theme changes, never during scroll.
-        val lipColor = MaterialTheme.colorScheme.surfaceContainerHighest
-        val lipWash = remember(lipColor) {
+        // Capsule Acrylic: a cheap, self-owned solid material. The sheet
+        // remains opaque for readability and the wash is a cached brush,
+        // never a Haze/Backdrop capture or an animated fullscreen shader.
+        val accent = MaterialTheme.colorScheme.primary
+        val lipWash = remember(sheetColor, accent) {
             Brush.verticalGradient(
-                0f to lipColor.copy(alpha = 0.32f),
-                1f to lipColor.copy(alpha = 0f),
+                0f to lerp(sheetColor, accent, 0.105f),
+                0.35f to lerp(sheetColor, accent, 0.035f),
+                1f to sheetColor,
             )
+        }
+        val pageWash = remember(sheetColor, accent) {
+            Brush.verticalGradient(
+                0f to lerp(sheetColor, accent, 0.065f),
+                0.52f to lerp(sheetColor, accent, 0.025f),
+                1f to sheetColor,
+            )
+        }
+        // One STATIC, faint edge glint. No timer, no animated shimmer shader.
+        val lipSheen = remember(accent) {
+            Brush.horizontalGradient(listOf(
+                Color.Transparent, accent.copy(alpha = 0.11f), Color.Transparent,
+            ))
         }
         LaunchedEffect(Unit) {
             // Short, controlled impulse. This does NOT own any touch,
             // sheet height or anchor: the stock Material3 spring still
             // handles partial/full expansion and scroll coordination.
-            gel.snapTo(-0.011f)
+            gel.snapTo(-0.006f)
             gel.animateTo(
                 0f,
                 spring(
-                    dampingRatio = 0.91f,
-                    stiffness = 206f,
+                    dampingRatio = 0.96f,
+                    stiffness = 270f,
                     visibilityThreshold = 0.0001f,
                 ),
             )
@@ -264,7 +280,7 @@ fun BottomSheetMenu(
                 RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
             } else MaterialTheme.shapes.extraLarge,
             contentColor = MaterialTheme.colorScheme.onSurface,
-            // The haze belongs to the TOP lip only, not a costly
+            // This is a cached top tint, not live blur or an offscreen
             // full-screen scrim. Its alpha follows the anchored offset in
             // the draw phase; no fast scroll recomposes the menu to fill it.
             dragHandle = {
@@ -279,6 +295,11 @@ fun BottomSheetMenu(
                                 // reveal a grey strip as the menu expands.
                                 // Also avoids sampling sheet offset every frame.
                                 .background(lipWash),
+                        )
+                        Box(
+                            Modifier.fillMaxWidth().height(1.dp)
+                                .align(Alignment.TopCenter)
+                                .background(lipSheen),
                         )
                         Box(
                             Modifier.size(width = 40.dp, height = 4.dp)
@@ -318,7 +339,7 @@ fun BottomSheetMenu(
                 val closeScale = capsuleMenuDismissScale(dismissPull.value)
                 scaleX = capsuleMenuElasticX(gel.value) * closeScale
                 scaleY = capsuleMenuElasticY(gel.value) * closeScale
-                translationY = dismissPull.value * with(density) { 6.dp.toPx() }
+                translationY = dismissPull.value * with(density) { 4.dp.toPx() }
             },
         ) {
             PredictiveBackHandler(enabled = !state.dismissRequested) { progress ->
@@ -343,7 +364,8 @@ fun BottomSheetMenu(
                             // custom nested scroll or per-frame composition.
                             // No second scale applied to child controls:
                             // one outer GPU layer owns both the body and handle.
-                            .padding(horizontal = 20.dp),
+                            .background(pageWash)
+                            .padding(horizontal = 16.dp),
                 ) {
                     state.content(this)
                 }

@@ -1258,7 +1258,9 @@ private fun CapsulePlayerLyricsHost(
                 // The same host survives a live settings change. Never carry
                 // the inline morph's opacity, X offset or top-left pivot into
                 // the ordinary (non-scroll) lyrics sheet.
-                alpha = 1f
+                // Do not flash an opaque flat intermediate page while the
+                // off-main prepared artwork and lyrics ink are still settling.
+                alpha = capsuleLyricsSheetBackdropOpacity(sheetOffset.value)
                 translationX = 0f
                 transformOrigin = TransformOrigin.Center
                 val displacement = capsuleLyricsTranslation(
@@ -1331,6 +1333,17 @@ private fun CapsulePlayerLyricsHost(
                                 colors = if (design == CapsulePlayerDesign.IMMERSIVE)
                                     inlineCardColors else transitioningPalette,
                                 immersive = design == CapsulePlayerDesign.IMMERSIVE,
+                                immersiveBitmap = immersiveReflection,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        } else if (design == CapsulePlayerDesign.IMMERSIVE) {
+                            // Reuse the SAME prepared photo-continuation and
+                            // cover-derived palette as the underlying player.
+                            // A second Lyrics-specific gradient was flashing as
+                            // a flat orange/gray canvas on the first frames.
+                            CapsuleInlineLyricsBackdrop(
+                                colors = inlineCardColors,
+                                immersive = true,
                                 immersiveBitmap = immersiveReflection,
                                 modifier = Modifier.fillMaxSize(),
                             )

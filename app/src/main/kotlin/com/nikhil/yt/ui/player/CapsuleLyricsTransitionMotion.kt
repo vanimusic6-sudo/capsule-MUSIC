@@ -27,6 +27,16 @@ internal fun capsuleLyricsEdgeRecoil(body: Float, lead: Float): Float {
 internal fun capsuleLyricsLandingTravel(body: Float): Float =
     body.coerceIn(-0.004f, 1f)
 
+/**
+ * No solid-colour page should flash before the lyric document has settled.
+ * The fullscreen backdrop is introduced by the SAME spring as its vertical
+ * travel; the current player remains visible during the earliest frames.
+ */
+internal fun capsuleLyricsSheetBackdropOpacity(body: Float): Float {
+    val p = ((0.98f - body.coerceIn(0f, 1f)) / 0.55f).coerceIn(0f, 1f)
+    return p * p * (3f - 2f * p)
+}
+
 /** Sheet opening and page ink are one motion; reversible on every single frame. */
 internal fun capsuleLyricsForegroundOpacity(body: Float): Float {
     val progress = body.coerceIn(0f, 1f)
