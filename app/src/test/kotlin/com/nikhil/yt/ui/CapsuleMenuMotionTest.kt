@@ -68,6 +68,22 @@ class CapsuleMenuMotionTest {
         assertFalse(actions.contains("primary.copy(alpha = 0.075f)"))
     }
 
+    @Test fun everyActionGridSharesTheSameOuterHorizontalEdges() {
+        for (name in listOf(
+            "SongMenu", "PlaylistMenu", "YouTubeSongMenu",
+            "YouTubePlaylistMenu", "AlbumMenu", "YouTubeAlbumMenu",
+            "SelectionSongsMenu",
+        )) {
+            val relative = "com/nikhil/yt/ui/menu/$name.kt"
+            val source = listOf(
+                java.io.File("src/main/kotlin/$relative"),
+                java.io.File("app/src/main/kotlin/$relative"),
+            ).first(java.io.File::isFile).readText()
+            assertTrue("$name should align its actions with black list rows",
+                source.contains("modifier = Modifier.padding(horizontal = 0.dp, vertical = 8.dp)"))
+        }
+    }
+
     @Test fun modalSheetNeverReliesOnATransparentBackground() {
         val surface = Color(0xFF101015)
         val highSurface = Color(0xFF303038)

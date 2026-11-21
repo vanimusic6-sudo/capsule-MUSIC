@@ -357,7 +357,7 @@ fun AlbumMenu(
                         }
                     )
                 ),
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 16.dp)
+                modifier = Modifier.padding(horizontal = 0.dp, vertical = 8.dp)
             )
         }
         item {

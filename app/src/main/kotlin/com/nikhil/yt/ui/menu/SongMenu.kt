@@ -517,7 +517,7 @@ fun SongMenu(
             MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
                 NewActionGrid(
                     actions = primaryActions,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                    modifier = Modifier.padding(horizontal = 0.dp, vertical = 8.dp),
                 )
             }
         }
