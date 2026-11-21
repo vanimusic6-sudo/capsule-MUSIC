@@ -225,7 +225,7 @@ class CapsuleMenuMotionTest {
         assertFalse(source.contains("repeat(if (compact) 0"))
     }
 
-    @Test fun playerAudioControlsUseOneGridAndPaddedVolumeSurface() {
+    @Test fun playerAudioControlsShareSoundStudioAndFittedVolumeSurface() {
         val source = listOf(
             java.io.File("src/main/kotlin/com/nikhil/yt/ui/menu/PlayerMenu.kt"),
             java.io.File("app/src/main/kotlin/com/nikhil/yt/ui/menu/PlayerMenu.kt"),
@@ -233,7 +233,10 @@ class CapsuleMenuMotionTest {
         assertFalse(source.contains("settings/music_together"))
         assertTrue(source.contains("painterResource(R.drawable.graphic_eq)"))
         assertTrue(source.contains("showEqualizerDialog = true"))
-        assertTrue(source.contains("heightIn(min = 96.dp)"))
+        assertTrue(source.contains("CapsuleEqualizerGraph("))
+        assertTrue(source.contains("TempoPitchSection()"))
+        assertFalse(source.contains("showPitchTempoDialog"))
+        assertTrue(source.contains("heightIn(min = 88.dp)"))
         assertTrue(source.contains("R.drawable.radio"))
         assertTrue(source.contains("item(key = \"sleep-timer\""))
         assertTrue(source.contains("showSleepTimer = true"))
