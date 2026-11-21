@@ -6,6 +6,7 @@
 
 
 package com.nikhil.yt.ui.menu
+import com.nikhil.yt.ui.component.CapsuleMenuListItem
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.playback.canPrioritize
@@ -42,7 +43,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.ListItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -83,7 +83,6 @@ import com.nikhil.yt.models.toMediaMetadata
 import com.nikhil.yt.playback.ExoDownloadService
 import com.nikhil.yt.playback.queues.YouTubeQueue
 import com.nikhil.yt.ui.component.ListDialog
-import com.nikhil.yt.ui.component.ListItem
 import com.nikhil.yt.ui.component.LocalBottomSheetPageState
 import com.nikhil.yt.ui.component.NewAction
 import com.nikhil.yt.ui.component.NewActionGrid
@@ -196,7 +195,7 @@ fun YouTubeSongMenu(
         }
     }  
 
-    ListItem(  
+    CapsuleMenuListItem(  
         headlineContent = {
             Text(
                 text = song.title,
@@ -338,7 +337,7 @@ fun YouTubeSongMenu(
             )
         }
         item {
-            ListItem(
+            CapsuleMenuListItem(
                 headlineContent = { Text(text = stringResource(R.string.start_radio)) },
                 leadingContent = {
                     Icon(
@@ -353,7 +352,7 @@ fun YouTubeSongMenu(
             )
         }
         item {
-            ListItem(
+            CapsuleMenuListItem(
                 headlineContent = { Text(text = stringResource(R.string.add_to_queue)) },
                 leadingContent = {
                     Icon(
@@ -368,7 +367,7 @@ fun YouTubeSongMenu(
             )
         }
         item {
-            ListItem(
+            CapsuleMenuListItem(
                 headlineContent = { 
                     Text(text = if (librarySong?.song?.inLibrary != null) stringResource(R.string.remove_from_library) else stringResource(R.string.add_to_library))
                 },
@@ -409,7 +408,7 @@ fun YouTubeSongMenu(
         }
         if (splitArtists.isNotEmpty()) {
             item {
-                ListItem(
+                CapsuleMenuListItem(
                     headlineContent = { Text(text = stringResource(R.string.view_artist)) },
                     supportingContent = {
                         Text(
@@ -437,7 +436,7 @@ fun YouTubeSongMenu(
         }
         song.album?.let { album ->
             item {
-                ListItem(
+                CapsuleMenuListItem(
                     headlineContent = { Text(text = stringResource(R.string.view_album)) },
                     leadingContent = {
                         Icon(
@@ -453,7 +452,7 @@ fun YouTubeSongMenu(
             }
         }
         item {
-             ListItem(
+             CapsuleMenuListItem(
                  headlineContent = { Text(text = stringResource(R.string.details)) },
                  leadingContent = {
                      Icon(

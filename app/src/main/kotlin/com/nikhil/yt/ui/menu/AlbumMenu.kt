@@ -6,6 +6,7 @@
 
 
 package com.nikhil.yt.ui.menu
+import com.nikhil.yt.ui.component.CapsuleMenuListItem
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import com.nikhil.yt.ui.component.StandardChrome
@@ -36,7 +37,6 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.ListItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -361,7 +361,7 @@ fun AlbumMenu(
             )
         }
         item {
-            ListItem(
+            CapsuleMenuListItem(
                 headlineContent = { Text(text = stringResource(R.string.play_next)) },
                 leadingContent = {
                     Icon(
@@ -376,7 +376,7 @@ fun AlbumMenu(
             )
         }
         item {
-            ListItem(
+            CapsuleMenuListItem(
                 headlineContent = { Text(text = stringResource(R.string.add_to_queue)) },
                 leadingContent = {
                     Icon(
@@ -391,7 +391,7 @@ fun AlbumMenu(
             )
         }
         item {
-            ListItem(
+            CapsuleMenuListItem(
                 headlineContent = { Text(text = stringResource(R.string.add_to_playlist)) },
                 leadingContent = {
                     Icon(
@@ -437,7 +437,7 @@ fun AlbumMenu(
         }
 
         item {
-            ListItem(
+            CapsuleMenuListItem(
                 headlineContent = { Text(text = stringResource(R.string.view_artist)) },
                 leadingContent = {
                     Icon(
@@ -456,7 +456,7 @@ fun AlbumMenu(
             )
         }
         item {
-            ListItem(
+            CapsuleMenuListItem(
                 headlineContent = { Text(text = stringResource(R.string.refetch)) },
                 leadingContent = {
                     Icon(

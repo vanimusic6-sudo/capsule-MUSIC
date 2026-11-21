@@ -37,6 +37,14 @@ class CapsuleMenuMotionTest {
             assertTrue("$name must use shared rounded actions",
                 source.contains("CapsuleMenuListItem as ListItem"))
         }
+        for (name in listOf("AlbumMenu", "YouTubeSongMenu")) {
+            val path = "com/nikhil/yt/ui/menu/$name.kt"
+            val source = listOf(java.io.File("src/main/kotlin/$path"),
+                java.io.File("app/src/main/kotlin/$path"))
+                .first(java.io.File::isFile).readText()
+            assertTrue("$name uses the common acrylic row",
+                source.contains("CapsuleMenuListItem("))
+        }
         val sheet = listOf(
             java.io.File("src/main/kotlin/com/nikhil/yt/ui/component/BottomSheetMenu.kt"),
             java.io.File("app/src/main/kotlin/com/nikhil/yt/ui/component/BottomSheetMenu.kt"),
