@@ -208,6 +208,7 @@ fun SelectionSongMenu(
                             )
                         },
                         text = stringResource(R.string.add_to_playlist),
+                        outlined = true,
                         onClick = {
                             showChoosePlaylistDialog = true
                         }
@@ -286,7 +287,8 @@ fun SelectionSongMenu(
                 modifier = Modifier.clickable {
                     showChoosePlaylistDialog = true
                 }
-            )
+            
+                highlightBorder = true,)
         }
         item {
             ListItem(
@@ -580,7 +582,8 @@ fun SelectionMediaMetadataMenu(
                 modifier = Modifier.clickable {
                     showChoosePlaylistDialog = true
                 }
-            )
+            
+                highlightBorder = true,)
         }
         item {
             ListItem(

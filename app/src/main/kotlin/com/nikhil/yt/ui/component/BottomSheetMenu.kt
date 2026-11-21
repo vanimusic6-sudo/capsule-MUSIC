@@ -234,8 +234,8 @@ fun BottomSheetMenu(
                 focusManager.clearFocus()
                 state.dismiss()
             },
-            // Native opaque colour: no acrylic, backdrop sampling or translucency.
-            containerColor = sheetColor,
+            // Only 4% translucency; no dynamic blur or backdrop readback.
+            containerColor = sheetColor.copy(alpha = 0.96f),
             // Same 16dp softness as the VIDEO window; the previous 28dp
             // sheet curvature looked ragged during vertical travel.
             shape = if (playerAppearance) {

@@ -95,9 +95,9 @@ internal fun CapsuleLyricsVolumeSlider(
                 }
             },
     ) {
-        val trackHeight = min(25.dp.toPx(), size.height)
+        val trackHeight = min(32.dp.toPx(), size.height)
         val top = (size.height - trackHeight) / 2f
-        val radius = min(trackHeight / 2f, 7.dp.toPx())
+        val radius = min(trackHeight / 2f, 8.dp.toPx())
         val corner = CornerRadius(radius)
         val fill = (size.width * volume).coerceIn(0f, size.width)
         val contour = Path().apply {

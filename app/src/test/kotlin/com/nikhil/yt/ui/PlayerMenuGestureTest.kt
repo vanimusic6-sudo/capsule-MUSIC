@@ -134,13 +134,14 @@ class PlayerMenuGestureTest {
         }
         compose.waitForIdle()
         labels.forEach { text ->
-            compose.onNodeWithText(text).assertIsDisplayed()
+            // Full-width actions can extend below a short test window.
+            // Existence is the right invariant; actual menu scrolling is tested separately.
+            compose.onNodeWithText(text).fetchSemanticsNode()
         }
         val rect = compose.onNodeWithTag("compact-actions").fetchSemanticsNode().boundsInRoot
-        assertTrue("Six actions should use three compact, equal-height rows",
-            rect.height < rect.width * 1.1f)
-        assertTrue("No last-action full-width expansion in compact grid",
-            rect.height > 200f)
+        assertTrue("Six actions must have a two-cell header plus full-width rows",
+            rect.height > rect.width * 0.85f)
+        assertTrue("All actions must remain in the render tree", rect.height > 250f)
     }
 
     @Test fun aReplacementMenuIsVisibleAfterAnInterruptedExit() {

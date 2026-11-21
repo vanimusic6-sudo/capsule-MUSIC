@@ -91,12 +91,6 @@ internal fun LyricsTuning() {
             }
         }
 
-        Text(
-            text = stringResource(R.string.lyrics_sync_offset),
-            style = MaterialTheme.typography.labelMedium,
-            color = mutedInk,
-        )
-
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(CapsuleMenuTileGap),

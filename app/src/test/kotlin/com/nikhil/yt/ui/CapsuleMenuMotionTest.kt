@@ -51,7 +51,7 @@ class CapsuleMenuMotionTest {
         ).first(java.io.File::isFile).readText()
         assertTrue(sheet.contains("capsuleMenuGrain"))
         assertTrue(sheet.contains(".drawWithCache"))
-        assertTrue(sheet.contains("containerColor = sheetColor,"))
+        assertTrue(sheet.contains("containerColor = sheetColor.copy(alpha = 0.96f),"))
         assertFalse(sheet.contains("pageWash"))
         assertFalse(sheet.contains("lipSheen"))
         assertFalse(sheet.contains("topGlow"))
@@ -186,7 +186,8 @@ class CapsuleMenuMotionTest {
         assertTrue(player.contains("highlightBorder = true"))
         assertTrue(download.contains("CapsuleMenuListItem("))
         assertTrue(download.contains("highlightBorder = true"))
-        assertTrue(offline.contains("highlightBorder = destructive"))
+        assertTrue(offline.contains("highlightBorder = destructive || outlined"))
+        assertTrue(download.contains("highlightBorderColor = if (completed && !deleting)"))
     }
 
     @Test fun narrowPlaylistActionsNeverBreakLongRussianWordsIntoThreeTiles() {
@@ -218,6 +219,9 @@ class CapsuleMenuMotionTest {
             java.io.File("app/src/main/kotlin/com/nikhil/yt/ui/component/NewMenuComponents.kt"),
         ).first(java.io.File::isFile).readText()
         assertTrue(source.contains("repeat(safeColumns - row.size)"))
+        assertTrue(source.contains("actions.take(2)"))
+        assertTrue(source.contains("CapsuleMenuActionRow(action = action"))
+        assertTrue(source.contains("highlightBorderColor: Color"))
         assertFalse(source.contains("repeat(if (compact) 0"))
     }
 
@@ -229,7 +233,7 @@ class CapsuleMenuMotionTest {
         assertFalse(source.contains("settings/music_together"))
         assertTrue(source.contains("painterResource(R.drawable.graphic_eq)"))
         assertTrue(source.contains("showEqualizerDialog = true"))
-        assertTrue(source.contains("heightIn(min = 112.dp)"))
+        assertTrue(source.contains("heightIn(min = 96.dp)"))
         assertTrue(source.contains("R.drawable.radio"))
     }
 
@@ -247,8 +251,9 @@ class CapsuleMenuMotionTest {
         val lyrics = listOf(java.io.File("src/main/kotlin/$path"),
             java.io.File("app/src/main/kotlin/$path"))
             .first(java.io.File::isFile).readText()
-        assertTrue(lyrics.indexOf("item(key = \"lyrics-tuning\"") <
-            lyrics.indexOf("item(key = \"lyrics-actions\""))
+        assertTrue(lyrics.indexOf("item(key = \"lyrics-actions\"") <
+            lyrics.indexOf("item(key = \"lyrics-tuning\""))
+        assertFalse(tuning.contains("text = stringResource(R.string.lyrics_sync_offset),"))
     }
 
     @Test fun nativePlayerMenuIsKeptUntilMaterialHideCompletes() {

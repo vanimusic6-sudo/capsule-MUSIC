@@ -25,7 +25,7 @@ internal val capsuleMenuGrain: Brush by lazy(LazyThreadSafetyMode.SYNCHRONIZED) 
         seed = seed xor (seed ushr 17)
         seed = seed xor (seed shl 5)
         val level = seed ushr 24
-        val alpha = if (level > 247) 9 else 4 + (level % 4)
+        val alpha = if (level > 247) 15 else 8 + (level % 5)
         val ink = if (level < 112) 24 else if (level > 208) 215 else 118
         pixels[index] = (alpha shl 24) or (ink shl 16) or (ink shl 8) or ink
     }

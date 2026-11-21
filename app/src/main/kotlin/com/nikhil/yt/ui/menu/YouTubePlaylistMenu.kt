@@ -449,7 +449,8 @@ fun YouTubePlaylistMenu(
                 modifier = Modifier.clickable {
                     showChoosePlaylistDialog = true
                 }
-            )
+            
+                highlightBorder = true,)
         }
         item {
             ListItem(

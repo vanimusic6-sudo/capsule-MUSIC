@@ -392,7 +392,8 @@ fun YouTubeAlbumMenu(
                 modifier = Modifier.clickable {
                     showChoosePlaylistDialog = true
                 }
-            )
+            
+                highlightBorder = true,)
         }
         item {
             CapsuleDownloadAction(

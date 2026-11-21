@@ -69,6 +69,7 @@ internal val CapsuleMenuTileGap = 8.dp
 internal val CapsuleMenuRowPadding = 4.dp
 internal val CapsuleMenuMinRowHeight = 64.dp
 internal val CapsuleMenuMinActionHeight = 100.dp
+internal val CapsuleMenuTopActionHeight = 92.dp
 internal val CapsuleMenuIconSize = 28.dp
 
 internal fun capsuleCompactMenuStackedLabel(label: String): Boolean =
@@ -200,11 +201,14 @@ internal fun CapsuleCompactMenuAction(
         shape = CapsuleMenuTileShape,
         colors = CardDefaults.cardColors(containerColor = tileColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = if (action.outlined) BorderStroke(
+            1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.32f)
+        ) else null,
     ) {
-        // Uniform 24dp icons and up to two lines; no orientation switching.
+        // Two priority actions use one small, equal-sized top row.
         Column(
             modifier = Modifier.fillMaxWidth()
-                .heightIn(min = CapsuleMenuMinActionHeight, max = CapsuleMenuMinActionHeight)
+                .height(CapsuleMenuTopActionHeight)
                 .padding(horizontal = 10.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
@@ -223,6 +227,69 @@ internal fun CapsuleCompactMenuAction(
                 softWrap = true,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+
+/**
+ * Standard Android-style full-width action. Every non-priority action in More
+ * shares this touch height, icon box and readable, left-aligned label.
+ */
+@Composable
+fun CapsuleMenuActionRow(
+    action: NewAction,
+    modifier: Modifier = Modifier,
+) {
+    val guard = LocalCapsuleMenuPressGuard.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val touch = if (guard) {
+        modifier.combinedClickable(
+            enabled = action.enabled,
+            interactionSource = interaction,
+            indication = null,
+            onClick = action.onClick,
+            onLongClick = {},
+        )
+    } else {
+        modifier.clickable(
+            enabled = action.enabled,
+            interactionSource = interaction,
+            indication = null,
+            onClick = action.onClick,
+        )
+    }
+    Card(
+        modifier = touch,
+        shape = CapsuleMenuTileShape,
+        colors = CardDefaults.cardColors(
+            containerColor = capsuleMenuOpaqueTile(CapsuleMenuBlack, CapsuleMenuPressed, pressed),
+        ),
+        border = if (action.outlined) BorderStroke(
+            1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.32f),
+        ) else null,
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth()
+                .heightIn(min = CapsuleMenuMinRowHeight)
+                .padding(horizontal = 18.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Box(Modifier.size(CapsuleMenuIconSize), contentAlignment = Alignment.Center) {
+                action.icon()
+            }
+            Text(
+                text = action.text,
+                style = MaterialTheme.typography.titleMedium,
+                color = if (action.enabled) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
         }
     }
@@ -249,6 +316,7 @@ fun CapsuleMenuListItem(
     tonalElevation: Dp = 0.dp,
     shadowElevation: Dp = 0.dp,
     highlightBorder: Boolean = false,
+    highlightBorderColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.30f),
 ) {
     // The 4dp outside margin belongs to the layout, NOT to the click hitbox.
     // Adjacent 64dp targets therefore keep a visible 8dp rounded gap.
@@ -262,7 +330,7 @@ fun CapsuleMenuListItem(
                 .background(CapsuleMenuBlack)
                 .then(
                     if (highlightBorder) Modifier.border(
-                        BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.30f)),
+                        BorderStroke(1.dp, highlightBorderColor),
                         CapsuleMenuTileShape,
                     ) else Modifier
                 )
@@ -349,41 +417,53 @@ fun NewActionGrid(
     val safeColumns = remember(actions, columns, widthDp, compact) {
         capsuleActionGridColumns(columns, widthDp, actions.map { it.text }, compact)
     }
-    // Keep menu row groups stable while the sheet is animating or scrolling.
-    val rows = remember(actions, safeColumns) { actions.chunked(safeColumns) }
-    
     Column(
-        modifier = modifier,
+        modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(CapsuleMenuTileGap),
     ) {
-        rows.forEach { row ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(CapsuleMenuTileGap),
-            ) {
-                row.forEach { action ->
-                    if (compact) {
+        if (compact) {
+            // Only the first TWO priority actions are small top tiles.
+            // The rest are full-width rows: no huge square action walls.
+            if (actions.size >= 2) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(CapsuleMenuTileGap),
+                ) {
+                    actions.take(2).forEach { action ->
                         CapsuleCompactMenuAction(
                             action = action,
                             modifier = Modifier.weight(1f),
                         )
-                    } else {
+                    }
+                }
+            }
+            actions.drop(if (actions.size >= 2) 2 else 0).forEach { action ->
+                CapsuleMenuActionRow(action = action, modifier = Modifier.fillMaxWidth())
+            }
+        } else {
+            // Lyrics retains its 3-cell compact action bar.
+            val rows = actions.chunked(safeColumns)
+            rows.forEach { row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(CapsuleMenuTileGap),
+                ) {
+                    row.forEach { action ->
                         NewActionButton(
                             icon = action.icon,
                             text = action.text,
                             onClick = action.onClick,
                             modifier = Modifier.weight(1f),
                             enabled = action.enabled,
-                            backgroundColor = if (action.backgroundColor != Color.Unspecified) action.backgroundColor else MaterialTheme.colorScheme.surfaceVariant,
-                            contentColor = if (action.contentColor != Color.Unspecified) action.contentColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                            backgroundColor = if (action.backgroundColor != Color.Unspecified)
+                                action.backgroundColor else MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = if (action.contentColor != Color.Unspecified)
+                                action.contentColor else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                }
-
-                // A final unpaired action retains its normal width.
-                // Fill only the unused grid cell with a non-clickable spacer.
-                repeat(safeColumns - row.size) {
-                    Spacer(modifier = Modifier.weight(1f))
+                    repeat(safeColumns - row.size) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
                 }
             }
         }
@@ -397,7 +477,8 @@ data class NewAction(
     val onClick: () -> Unit,
     val enabled: Boolean = true,
     val backgroundColor: Color = Color.Unspecified,
-    val contentColor: Color = Color.Unspecified
+    val contentColor: Color = Color.Unspecified,
+    val outlined: Boolean = false,
 )
 
 // Enhanced Menu Content - Material 3 Expressive Design

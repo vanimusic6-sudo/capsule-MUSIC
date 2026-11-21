@@ -428,101 +428,51 @@ fun PlayerMenu(
     
             // Quick actions are the FIRST lazy item after volume, so scrolls
             // begin under the slider instead of after Capsule Together.
+            // Priority actions: exactly two small, outlined playlist / copy tiles.
             NewActionGrid(
                 actions = listOf(
                     NewAction(
                         icon = {
                             Icon(
-                                painter = painterResource(R.drawable.radio),
-                                contentDescription = null,
-                                modifier = Modifier.size(24.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        },
-                        text = stringResource(R.string.start_radio),
-                        enabled = !isExternalCatalog,
-                        onClick = {
-                            if (!isExternalCatalog) {
-                                Toast.makeText(context, resources.getString(R.string.starting_radio),
-                                    Toast.LENGTH_SHORT).show()
-                                playerConnection.startRadioSeamlessly()
-                                onDismiss()
-                            }
-                        }
-                    ),
-                    NewAction(
-                        icon = {
-                            Icon(
                                 painter = painterResource(R.drawable.capsule_soft_playlist_add),
-                                contentDescription = null,
-                                modifier = Modifier.size(24.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                contentDescription = null, modifier = Modifier.size(24.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         },
                         text = stringResource(R.string.add_to_playlist),
-                        onClick = { showChoosePlaylistDialog = true }
-                    ),
-                    NewAction(
-                        icon = { Icon(painterResource(R.drawable.capsule_soft_bedtime), contentDescription = null) },
-                        text = stringResource(R.string.sleep_timer),
-                        enabled = canSetSleepTimer,
-                        onClick = { showSleepTimer = true },
+                        onClick = { showChoosePlaylistDialog = true },
+                        outlined = true,
                     ),
                     NewAction(
                         icon = {
                             Icon(
                                 painter = painterResource(R.drawable.capsule_soft_link),
-                                contentDescription = null,
-                                modifier = Modifier.size(24.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                contentDescription = null, modifier = Modifier.size(24.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         },
                         text = stringResource(R.string.copy_link),
                         onClick = {
-                            val clipboard =
-                                context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                            val clip =
-                                android.content.ClipData.newPlainText(
-                                    resources.getString(R.string.copy_link),
-                                    (if (isExternalCatalog) mediaMetadata.sourceUrl
-                                        ?.takeIf { it.startsWith("https://") }
-                                        ?: ""
-                                    else "https://music.youtube.com/watch?v=${mediaMetadata.id}"),
-                                )
-                            clipboard.setPrimaryClip(clip)
-                            android.widget.Toast.makeText(context, R.string.link_copied, android.widget.Toast.LENGTH_SHORT).show()
-                            onDismiss()
-                        }
-                    ),
-                    // One uniform 2-column grid, including the EQ and tempo actions.
-                    NewAction(
-                        icon = {
-                            Icon(
-                                painter = painterResource(R.drawable.graphic_eq),
-                                contentDescription = null,
-                                modifier = Modifier.size(24.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                            val url = if (isExternalCatalog) {
+                                mediaMetadata.sourceUrl?.takeIf { it.startsWith("https://") }
+                            } else {
+                                "https://music.youtube.com/watch?v=${mediaMetadata.id}"
+                            }
+                            if (!url.isNullOrBlank()) {
+                                val clipboard = context.getSystemService(
+                                    android.content.Context.CLIPBOARD_SERVICE,
+                                ) as android.content.ClipboardManager
+                                clipboard.setPrimaryClip(android.content.ClipData.newPlainText(
+                                    resources.getString(R.string.copy_link), url,
+                                ))
+                                android.widget.Toast.makeText(
+                                    context, R.string.link_copied, android.widget.Toast.LENGTH_SHORT,
+                                ).show()
+                                onDismiss()
+                            }
                         },
-                        text = stringResource(R.string.equalizer),
-                        enabled = isQueueTrigger != true,
-                        onClick = { showEqualizerDialog = true },
                     ),
-                    NewAction(
-                        icon = {
-                            Icon(
-                                painter = painterResource(R.drawable.speed),
-                                contentDescription = null,
-                                modifier = Modifier.size(24.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        },
-                        text = stringResource(R.string.tempo_and_pitch),
-                        enabled = isQueueTrigger != true,
-                        onClick = { showPitchTempoDialog = true },
-                    )
                 ),
-                modifier = Modifier,
                 compact = true,
             )
     
@@ -587,8 +537,39 @@ if (mediaMetadata.album != null) {
                     }
                 }
             }
-            item(key = "artists-gap", contentType = "spacer") {
-                Spacer(modifier = Modifier.height(8.dp))
+        }
+        // Keep audio tools after the artist/album tiles, never as giant squares.
+        if (isQueueTrigger != true) {
+            item(key = "audio-tools", contentType = "menu-section") {
+                MenuSurfaceSection {
+                    ListItem(
+                        headlineContent = { Text(stringResource(R.string.equalizer)) },
+                        leadingContent = {
+                            Icon(painterResource(R.drawable.graphic_eq), contentDescription = null)
+                        },
+                        modifier = Modifier.clickable { showEqualizerDialog = true },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                    ListItem(
+                        headlineContent = { Text(stringResource(R.string.tempo_and_pitch)) },
+                        leadingContent = {
+                            Icon(painterResource(R.drawable.speed), contentDescription = null)
+                        },
+                        modifier = Modifier.clickable { showPitchTempoDialog = true },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                    // Preserve the existing timer functionality without displacing Details.
+                    ListItem(
+                        headlineContent = { Text(stringResource(R.string.sleep_timer)) },
+                        leadingContent = {
+                            Icon(painterResource(R.drawable.capsule_soft_bedtime), contentDescription = null)
+                        },
+                        modifier = Modifier.clickable(enabled = canSetSleepTimer) {
+                            showSleepTimer = true
+                        },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    )
+                }
             }
         }
         if (!isExternalCatalog || isOfflineAudio) item(key = "download", contentType = "menu-section") {
@@ -631,6 +612,7 @@ if (mediaMetadata.album != null) {
                         },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         highlightBorder = true,
+                        highlightBorderColor = MaterialTheme.colorScheme.error,
                     )
                 }
             } else {
@@ -649,6 +631,27 @@ if (mediaMetadata.album != null) {
                                 context, ExoDownloadService::class.java, request, false,
                             )
                         },
+                    )
+                }
+            }
+        }
+        if (!isExternalCatalog) {
+            item(key = "radio-action", contentType = "menu-section") {
+                MenuSurfaceSection {
+                    ListItem(
+                        headlineContent = { Text(stringResource(R.string.start_radio)) },
+                        leadingContent = {
+                            Icon(painterResource(R.drawable.radio), contentDescription = null)
+                        },
+                        modifier = Modifier.clickable {
+                            Toast.makeText(
+                                context, resources.getString(R.string.starting_radio),
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                            playerConnection.startRadioSeamlessly()
+                            onDismiss()
+                        },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
                 }
             }
@@ -700,9 +703,9 @@ private fun PlayerVolumeCard(
         Column(
             // A taller, full-width backing aligned with every other menu tile.
             modifier = Modifier.fillMaxWidth()
-                .heightIn(min = 112.dp)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+                .heightIn(min = 96.dp)
+                .padding(horizontal = 16.dp, vertical = 9.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -731,7 +734,7 @@ private fun PlayerVolumeCard(
                 CapsuleLyricsVolumeSlider(
                     value = safeVolume,
                     onValueChange = onVolumeChange,
-                    modifier = Modifier.weight(1f).padding(horizontal = 6.dp),
+                    modifier = Modifier.weight(1f).padding(horizontal = 2.dp),
                 )
                 CapsuleLyricsVolumeIcon(
                     muted = false,

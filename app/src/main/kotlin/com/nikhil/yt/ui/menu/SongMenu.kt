@@ -374,7 +374,7 @@ fun SongMenu(
     val playNextText = stringResource(R.string.play_next)
     val addToQueueText = stringResource(R.string.add_to_queue)
     val addToPlaylistText = stringResource(R.string.add_to_playlist)
-    val shareText = stringResource(R.string.share)
+    val shareText = stringResource(if (offlineSong) R.string.share else R.string.copy_link)
     val editText = stringResource(R.string.edit)
 
     val primaryActions = remember(
@@ -452,7 +452,9 @@ fun SongMenu(
             NewAction(
                 icon = {
                     Icon(
-                        painter = painterResource(R.drawable.capsule_soft_share),
+                        painter = painterResource(
+                            if (offlineSong) R.drawable.capsule_soft_share else R.drawable.capsule_soft_link
+                        ),
                         contentDescription = null,
                         modifier = Modifier.size(24.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -460,26 +462,35 @@ fun SongMenu(
                 },
                 text = shareText,
                 onClick = {
-                    onDismiss()
-                    val intent =
-                        Intent().apply {
-                            action = Intent.ACTION_SEND
-                            type = "text/plain"
-                            if (offlineSong) {
-                                type = "audio/*"
-                                putExtra(Intent.EXTRA_STREAM,
-                                    song.toMediaItem().localConfiguration?.uri)
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            } else if (independentSong) {
-                                putExtra(Intent.EXTRA_TEXT,
-                                    com.nikhil.yt.discovery.ExperimentalCatalog
-                                        .playingTrack(song.id)?.sourcePage ?: "")
-                            } else {
-                                putExtra(Intent.EXTRA_TEXT,
-                                    "https://music.youtube.com/watch?v=${song.id}")
-                            }
+                    if (offlineSong) {
+                        // Local files are shared as streams, never copied as fake YT links.
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "audio/*"
+                            putExtra(Intent.EXTRA_STREAM, song.toMediaItem().localConfiguration?.uri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }
-                    context.startActivity(Intent.createChooser(intent, null))
+                        context.startActivity(Intent.createChooser(intent, null))
+                        onDismiss()
+                    } else {
+                        val link = if (independentSong) {
+                            com.nikhil.yt.discovery.ExperimentalCatalog
+                                .playingTrack(song.id)?.sourcePage
+                        } else {
+                            "https://music.youtube.com/watch?v=${song.id}"
+                        }
+                        if (!link.isNullOrBlank() && link.startsWith("https://")) {
+                            val clipboard = context.getSystemService(
+                                android.content.Context.CLIPBOARD_SERVICE,
+                            ) as android.content.ClipboardManager
+                            clipboard.setPrimaryClip(
+                                android.content.ClipData.newPlainText(shareText, link),
+                            )
+                            android.widget.Toast.makeText(
+                                context, R.string.link_copied, android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                            onDismiss()
+                        }
+                    }
                 },
             ),
             NewAction(
@@ -494,7 +505,12 @@ fun SongMenu(
                 text = editText,
                 onClick = { showEditDialog = true },
             ),
-        )
+        ).let { actions ->
+            // The two quick tiles are link/share and outlined playlist;
+            // radio, queue and edit become full-width rows automatically.
+            listOf(actions[4], actions[3].copy(outlined = true)) +
+                actions.filterIndexed { index, _ -> index != 4 && index != 3 }
+        }
     }
 
     LazyColumn(

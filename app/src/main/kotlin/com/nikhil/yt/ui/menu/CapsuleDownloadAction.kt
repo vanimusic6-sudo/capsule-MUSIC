@@ -292,6 +292,9 @@ internal fun CapsuleDownloadAction(
             modifier = Modifier.clickable(enabled = visual.enabled, onClick = onActionClick),
             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
             highlightBorder = true,
+            highlightBorderColor = if (completed && !deleting)
+                MaterialTheme.colorScheme.error
+            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.30f),
         )
     }
 }
