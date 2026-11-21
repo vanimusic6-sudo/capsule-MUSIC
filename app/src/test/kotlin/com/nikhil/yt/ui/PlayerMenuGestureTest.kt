@@ -105,6 +105,11 @@ class PlayerMenuGestureTest {
     @Test fun menuActionsAndListItemsRemainDisplayedWhenExpanded() {
         openMenu()
         expandWithSwipe()
+        // Native expansion can transfer a short remaining drag to the nested
+        // list. Verify first-item visibility at the beginning of that list,
+        // rather than assuming the gesture finished at zero scroll offset.
+        compose.onNodeWithTag("items").performScrollToIndex(0)
+        compose.waitForIdle()
         compose.onNodeWithText("Radio").assertIsDisplayed()
         compose.onNodeWithText("Action 0").assertIsDisplayed()
         // A modal that exists semantically but has no opaque container

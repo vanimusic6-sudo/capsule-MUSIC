@@ -60,7 +60,7 @@ class MoreMenuScrollRegressionTest {
         }
         val offline = source("com/nikhil/yt/ui/menu/OfflineDownloadMenu.kt")
         assertTrue("Offline More must also reach its destructive bottom action",
-            offline.contains(".verticalScroll(rememberScrollState())"))
+            offline.contains(".verticalScroll(rememberScrollState(),"))
     }
 
     @Test fun theSharedPressStyleReplacesMismatchedRipplesOnRowsAndMenus() {
