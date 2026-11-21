@@ -247,11 +247,16 @@ class LyricsUiRegressionTest {
     }
 
     @Test
-    fun `lyrics tuning uses lowercase positions and centered sync controls`() {
+    fun `lyrics tuning keeps three fixed alignment tiles and bounded inline sync`() {
         val tuning = source("com/nikhil/yt/ui/menu/LyricsTuning.kt")
-        assertTrue(tuning.contains(".replaceFirstChar { it.lowercase() }"))
-        assertTrue(tuning.contains("horizontalArrangement = Arrangement.Center"))
+        // Old expand/dialog layout was removed deliberately. Verify the current
+        // contract, not implementation details from the retired control panel.
+        assertTrue(tuning.contains("val positions = listOf(LyricsPosition.LEFT, LyricsPosition.CENTER, LyricsPosition.RIGHT)"))
+        assertTrue(tuning.contains("modifier = Modifier.weight(1f).height(LyricsTuningTileHeight)"))
         assertTrue(tuning.contains("textAlign = TextAlign.Center"))
+        assertTrue(tuning.contains("val offsetMs = clampOffset(storedOffsetMs)"))
+        assertTrue(tuning.contains("internal const val OFFSET_LIMIT_MS = 3_000"))
+        assertFalse(tuning.contains("showOffsetDialog"))
         assertFalse(tuning.contains("LyricsBackgroundStyle"))
     }
 
