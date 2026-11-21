@@ -10,10 +10,14 @@ package com.nikhil.yt.ui.component
 import androidx.compose.foundation.background
 import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.foundation.layout.height
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.luminance
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.HazePerformanceMode
+import dev.chrisbanes.haze.HazeSourceRetention
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.blur.HazeBlurStyle
+import dev.chrisbanes.haze.blur.HazeColorEffect
+import dev.chrisbanes.haze.blur.hazeBlur
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.activity.compose.PredictiveBackHandler
@@ -53,20 +57,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
 
 /**
- * Acrylic-inspired static colour depth, not a live blurred screenshot.
- * No GPU readback, external Haze source or ongoing repaint timer.
+ * Capsule Acrylic uses the actual source-backed BLUR material from
+ * ArchiveTune's acrylic mini-player and navigation bar — never the glass
+ * shader or the former flat "acrylic" gradient.
+ *
+ * Haze 2.1 by Chris Banes is Apache-2.0; ArchiveTune GPL-3.0 attribution
+ * is retained above. Source capture is enabled only for an open menu.
  */
-internal data class CapsuleMenuAcrylicPalette(val top: Color, val middle: Color, val bottom: Color)
-
-internal fun capsuleMenuAcrylicPalette(base: Color, accent: Color): CapsuleMenuAcrylicPalette {
-    val dark = base.luminance() < 0.42f
-    return CapsuleMenuAcrylicPalette(
-        top = lerp(lerp(base, accent, if (dark) 0.22f else 0.10f),
-            Color.White, if (dark) 0.075f else 0.022f),
-        middle = lerp(base, accent, if (dark) 0.095f else 0.05f),
-        bottom = lerp(base, Color.Black, if (dark) 0.022f else 0.008f),
-    )
-}
+internal const val CAPSULE_MENU_ACRYLIC_BLUR_DP = 32
+internal const val CAPSULE_MENU_ACRYLIC_NOISE = 0.12f
+internal const val CAPSULE_MENU_ACRYLIC_TINT_ALPHA = 0.72f
 
 /** Preserve the original Material3 sheet's appearance and THREE swipe anchors. */
 enum class MenuPresentation { STANDARD, CAPSULE_PLAYER }
@@ -168,6 +168,7 @@ fun BottomSheetMenu(
     modifier: Modifier = Modifier,
     state: MenuState,
     background: Color = MaterialTheme.colorScheme.surface,
+    hazeState: HazeState? = null,
 ) {
     val focusManager = LocalFocusManager.current
 
@@ -183,23 +184,39 @@ fun BottomSheetMenu(
         val gel = remember { Animatable(0f) }
         val dismissPull = remember { Animatable(0f) }
         val density = LocalDensity.current
-        val upperTint = MaterialTheme.colorScheme.surfaceContainerHighest
-        val acrylic = remember(background, upperTint) {
-            capsuleMenuAcrylicPalette(background, upperTint)
+        // ArchiveTune's ACRYLIC style: 32dp backdrop diffusion, 12% grain
+        // and 72% opaque material tint, not specular/liquid GLASS.
+        // Keep the chosen explicit sheet colour; otherwise use M3 high
+        // surface so the material is visibly softer than a black rectangle.
+        val acrylicColor = if (background == MaterialTheme.colorScheme.surface)
+            MaterialTheme.colorScheme.surfaceContainerHigh else background
+        val acrylicStyle = remember(acrylicColor) {
+            HazeBlurStyle {
+                backgroundColor(acrylicColor)
+                blurRadius(CAPSULE_MENU_ACRYLIC_BLUR_DP.dp)
+                noiseFactor(CAPSULE_MENU_ACRYLIC_NOISE)
+                colorEffects(
+                    listOf(HazeColorEffect.tint(acrylicColor.copy(alpha = CAPSULE_MENU_ACRYLIC_TINT_ALPHA)))
+                )
+                fallbackColorEffect(HazeColorEffect.tint(acrylicColor))
+            }
         }
-        val acrylicBrush = remember(acrylic) {
-            Brush.verticalGradient(
-                0f to acrylic.top,
-                0.42f to acrylic.middle,
-                1f to acrylic.bottom,
-            )
+        // A ModalBottomSheet lives in a separate Android window. Use
+        // explicit Sources, not Backdrop: the latter would only capture
+        // the sheet's OWN window and appear flat again.
+        val acrylicInput = remember(hazeState) {
+            hazeState?.let {
+                HazeInput.Sources(
+                    state = it,
+                    retention = HazeSourceRetention.ClearWhenUnavailable,
+                )
+            }
         }
-        val haze = remember(upperTint, acrylic) {
-            Brush.verticalGradient(
-                0f to acrylic.top.copy(alpha = 0.52f),
-                1f to upperTint.copy(alpha = 0f),
-            )
-        }
+        val material = if (acrylicInput != null) Modifier.hazeBlur(
+            input = acrylicInput,
+            style = acrylicStyle,
+            performanceMode = HazePerformanceMode.Balanced,
+        ) else Modifier.background(acrylicColor)
         LaunchedEffect(Unit) {
             // Short, controlled impulse. This does NOT own any touch,
             // sheet height or anchor: the stock Material3 spring still
@@ -263,51 +280,25 @@ fun BottomSheetMenu(
                 focusManager.clearFocus()
                 state.dismiss()
             },
-            containerColor = acrylic.bottom,
+            containerColor = if (acrylicInput != null) Color.Transparent else acrylicColor,
             // Same 16dp softness as the VIDEO window; the previous 28dp
             // sheet curvature looked ragged during vertical travel.
             shape = if (playerAppearance) {
                 RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
             } else MaterialTheme.shapes.extraLarge,
             contentColor = MaterialTheme.colorScheme.onSurface,
-            // The haze belongs to the TOP lip only, not a costly
-            // full-screen scrim. Its alpha follows the anchored offset in
-            // the draw phase; no fast scroll recomposes the menu to fill it.
+            // A single material layer covers both handle and body. Do not
+            // add a second gradient strip that introduces a seam at the lip.
             dragHandle = {
-                if (playerAppearance) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(30.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
                     Box(
-                        modifier = Modifier.fillMaxWidth().height(28.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Box(
-                            Modifier.fillMaxWidth().height(28.dp)
-                                // Stable tint at every sheet anchor. Do not
-                                // reveal a grey strip as the menu expands.
-                                // Also avoids sampling sheet offset every frame.
-                                .background(haze),
-                        )
-                        Box(
-                            Modifier.size(width = 40.dp, height = 4.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(
-                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                                ),
-                        )
-                    }
-                } else {
-                    Box(
-                        modifier = Modifier.fillMaxWidth().height(28.dp)
-                            .background(haze),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Box(
-                            Modifier.size(width = 40.dp, height = 4.dp)
-                                .clip(RoundedCornerShape(2.dp))
-                                .background(
-                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                                ),
-                        )
-                    }
+                        Modifier.size(width = 40.dp, height = 4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.48f)),
+                    )
                 }
             },
             // Material3's default predictive-back scales the entire sheet
@@ -319,7 +310,7 @@ fun BottomSheetMenu(
             properties = ModalBottomSheetDefaults.properties(
                 shouldDismissOnBackPress = false,
             ),
-            modifier = modifier.fillMaxHeight().graphicsLayer {
+            modifier = modifier.fillMaxHeight().then(material).graphicsLayer {
                 transformOrigin = TransformOrigin(0.5f, 1f)
                 // Keep native sheet translation completely untouched.
                 // A tiny launch recoil gives way to one committed-close
@@ -348,8 +339,8 @@ fun BottomSheetMenu(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            // Cached gradient: no scroll-driven blur or extra pointer owner.
-                            .background(acrylicBrush)
+                            // The material belongs to the sheet's single
+                            // Haze layer; children must stay translucent.
                             // Only a tiny elastic response to opening, applied
                             // AFTER layout. No continuously repainted gradients,
                             // custom nested scroll or per-frame composition.

@@ -42,6 +42,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -95,10 +97,19 @@ fun NewActionButton(
                 onClick = onClick,
             )
         }
+    // An acrylic sheet is ONE material; default action cards are only
+    // subtle highlights in it, not dark opaque tiles hiding the backdrop.
+    val isDefaultMenuTile = backgroundColor == MaterialTheme.colorScheme.surfaceVariant
+    val ink = if (MaterialTheme.colorScheme.surface.luminance() < 0.42f)
+        Color.White else Color.Black
+    val tileColor = if (pressGuard && isDefaultMenuTile)
+        ink.copy(alpha = if (pressed) 0.13f else 0.065f)
+    else if (pressed) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = ActiveBoxAlpha)
+    else animatedBackground
     Card(
         modifier = actionModifier,
         colors = CardDefaults.cardColors(
-            containerColor = if (pressed) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = ActiveBoxAlpha) else animatedBackground
+            containerColor = tileColor,
         ),
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.cardElevation(
@@ -124,7 +135,9 @@ fun NewActionButton(
             Text(
                 text = text,
                 style = MaterialTheme.typography.labelMedium,
-                color = animatedContent,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                color = if (pressGuard) MaterialTheme.colorScheme.onSurface else animatedContent,
                 textAlign = TextAlign.Center,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -179,6 +192,18 @@ fun NewMenuSectionHeader(
     )
 }
 
+// Two readable columns beat three broken Cyrillic words on a narrow phone.
+// A tablet keeps the intended 3-column layout; no font-layout polling.
+internal fun capsuleActionGridColumns(
+    requested: Int,
+    screenWidthDp: Int,
+    labels: List<String>,
+): Int = when {
+    requested < 1 -> 1
+    requested >= 3 && screenWidthDp < 480 && labels.any { it.length > 11 } -> 2
+    else -> requested
+}
+
 // Enhanced Action Grid - Material 3 Expressive Design
 @Composable
 fun NewActionGrid(
@@ -186,7 +211,10 @@ fun NewActionGrid(
     modifier: Modifier = Modifier,
     columns: Int = 3
 ) {
-    val safeColumns = columns.coerceAtLeast(1)
+    val widthDp = LocalConfiguration.current.screenWidthDp
+    val safeColumns = remember(actions, columns, widthDp) {
+        capsuleActionGridColumns(columns, widthDp, actions.map { it.text })
+    }
     // Keep menu row groups stable while the sheet is animating or scrolling.
     val rows = remember(actions, safeColumns) { actions.chunked(safeColumns) }
     
@@ -349,7 +377,10 @@ fun MenuSurfaceSection(
 ) {
     Surface(
         shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        // Lists belong to the same captured acrylic surface as their sheet;
+        // a second opaque panel is the black rectangle seen in the screenshot.
+        color = if (LocalCapsuleMenuPressGuard.current) Color.Transparent
+            else MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = modifier.fillMaxWidth(),
     ) {
         Column(content = content)

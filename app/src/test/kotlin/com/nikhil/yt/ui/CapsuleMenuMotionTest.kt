@@ -6,9 +6,10 @@ import com.nikhil.yt.ui.component.capsuleMenuElasticX
 import com.nikhil.yt.ui.component.capsuleMenuElasticY
 import com.nikhil.yt.ui.component.capsuleMenuDismissScale
 import com.nikhil.yt.ui.component.capsuleMenuTopFill
-import com.nikhil.yt.ui.component.capsuleMenuAcrylicPalette
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
+import com.nikhil.yt.ui.component.CAPSULE_MENU_ACRYLIC_BLUR_DP
+import com.nikhil.yt.ui.component.CAPSULE_MENU_ACRYLIC_NOISE
+import com.nikhil.yt.ui.component.CAPSULE_MENU_ACRYLIC_TINT_ALPHA
+import com.nikhil.yt.ui.component.capsuleActionGridColumns
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -16,14 +17,25 @@ import org.junit.Test
 
 /** The original Material3 sheet retains the real anchored gesture owner. */
 class CapsuleMenuMotionTest {
-    @Test fun acrylicSurfaceHasStableDepthWithoutLiveBlurOrTransparency() {
-        val dark = capsuleMenuAcrylicPalette(Color(0xFF101016), Color(0xFF34343E))
-        val light = capsuleMenuAcrylicPalette(Color(0xFFF7F7F8), Color(0xFFE7E7EA))
-        assertEquals(1f, dark.top.alpha, 0.0001f)
-        assertEquals(1f, dark.bottom.alpha, 0.0001f)
-        assertTrue(dark.top.luminance() > dark.bottom.luminance())
-        assertTrue(light.top.luminance() > light.bottom.luminance())
-        assertEquals(1f, light.middle.alpha, 0.0001f)
+    @Test fun acrylicIsTheRealArchiveTuneBlurNotAFlatGradient() {
+        assertEquals(32, CAPSULE_MENU_ACRYLIC_BLUR_DP)
+        assertEquals(0.12f, CAPSULE_MENU_ACRYLIC_NOISE, 0.0001f)
+        assertEquals(0.72f, CAPSULE_MENU_ACRYLIC_TINT_ALPHA, 0.0001f)
+    }
+
+    @Test fun narrowPlaylistActionsNeverBreakLongRussianWordsIntoThreeTiles() {
+        assertEquals(2, capsuleActionGridColumns(
+            3, 360, listOf("Воспроизвести", "Перемешать", "Поделиться"),
+        ))
+        assertEquals(3, capsuleActionGridColumns(
+            3, 360, listOf("Изменить", "Обновить", "Поиск"),
+        ))
+        assertEquals(3, capsuleActionGridColumns(
+            3, 620, listOf("Воспроизвести", "Перемешать", "Поделиться"),
+        ))
+        assertEquals(1, capsuleActionGridColumns(
+            0, 360, listOf("Воспроизвести"),
+        ))
     }
 
     @Test fun nativePlayerMenuIsKeptUntilMaterialHideCompletes() {

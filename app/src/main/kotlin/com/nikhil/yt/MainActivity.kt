@@ -158,6 +158,8 @@ import coil3.toBitmap
 import com.valentinilk.shimmer.LocalShimmerTheme
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -660,6 +662,10 @@ class MainActivity : ComponentActivity() {
                                 if(pureBlack) Color.Black else MaterialTheme.colorScheme.surface
                             )
                 ) {
+                    // The menus use ArchiveTune-style ACRYLIC (Haze Blur), not our
+                    // mini-player's liquid GLASS. No capture while menus are hidden.
+                    val capsuleMenuHazeState = rememberHazeState()
+                    val capsuleMenuState = LocalMenuState.current
                     val focusManager = LocalFocusManager.current
                     val keyboardController = LocalSoftwareKeyboardController.current
                     val density = LocalDensity.current
@@ -1455,7 +1461,15 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
 
-                            Box(Modifier.fillMaxSize().background(Color.Black)) {
+                            Box(
+                                Modifier.fillMaxSize()
+                                    .background(Color.Black)
+                                    .then(
+                                        if (capsuleMenuState.isVisible)
+                                            Modifier.hazeSource(capsuleMenuHazeState)
+                                        else Modifier
+                                    ),
+                            ) {
                                 PlayerSceneBackdrop(progress = { playerBottomSheetState.visualProgress }, blocked = playerSceneBlocksTouch) {
                                     Scaffold(
                                         topBar = {
@@ -1866,7 +1880,8 @@ class MainActivity : ComponentActivity() {
                         }
 
                         BottomSheetMenu(
-                            state = LocalMenuState.current,
+                            state = capsuleMenuState,
+                            hazeState = capsuleMenuHazeState,
                             modifier = Modifier.align(Alignment.BottomCenter)
                         )
 
