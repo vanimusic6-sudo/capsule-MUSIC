@@ -28,6 +28,8 @@ import com.nikhil.yt.ui.component.BottomSheetMenu
 import com.nikhil.yt.ui.component.MenuState
 import com.nikhil.yt.ui.component.MenuPresentation
 import com.nikhil.yt.ui.component.NewActionButton
+import com.nikhil.yt.ui.component.NewAction
+import com.nikhil.yt.ui.component.NewActionGrid
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -93,6 +95,31 @@ class PlayerMenuGestureTest {
         compose.onNodeWithText("Action 0").assertIsDisplayed()
         // A modal that exists semantically but has no opaque container
         // must also fail the separate pure-colour contract tests.
+    }
+
+    @Test fun playerQuickActionsAreCompactReadableAndAllReachable() {
+        val labels = listOf(
+            "Начать радио", "Добавить в плейлист", "Таймер сна",
+            "Скопировать ссылку", "Слушать вместе",
+        )
+        compose.setContent {
+            MaterialTheme {
+                NewActionGrid(
+                    actions = labels.map { label ->
+                        NewAction(icon = { Text("♪") }, text = label, onClick = {})
+                    },
+                    compact = true,
+                    modifier = Modifier.fillMaxWidth().testTag("compact-actions"),
+                )
+            }
+        }
+        compose.waitForIdle()
+        labels.forEach { text ->
+            compose.onNodeWithText(text).assertIsDisplayed()
+        }
+        val rect = compose.onNodeWithTag("compact-actions").fetchSemanticsNode().boundsInRoot
+        assertTrue("Five actions must not fill a giant three-row tile panel",
+            rect.height < rect.width * 0.85f)
     }
 
     @Test fun aReplacementMenuIsVisibleAfterAnInterruptedExit() {

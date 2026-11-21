@@ -328,22 +328,23 @@ fun PlayerMenu(
             artists.joinToString(separator = ", ") { it.name }
         }
 
+    // The song identity belongs to the sheet itself, not a third black card.
     Surface(
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
         ) {
             val thumb = mediaMetadata.thumbnailUrl
             if (thumb.isNullOrBlank()) {
                 Box(
                     modifier =
                         Modifier
-                            .size(56.dp)
+                            .size(52.dp)
                             .clip(RoundedCornerShape(16.dp))
                             .background(MaterialTheme.colorScheme.surfaceContainerHighest),
                     contentAlignment = Alignment.Center,
@@ -362,7 +363,7 @@ fun PlayerMenu(
                     contentScale = ContentScale.Crop,
                     modifier =
                         Modifier
-                            .size(56.dp)
+                            .size(52.dp)
                             .clip(RoundedCornerShape(16.dp)),
                 )
             }
@@ -398,106 +399,104 @@ fun PlayerMenu(
     }
 
     if (isQueueTrigger != true) {
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         PlayerVolumeCard(playerConnection = playerConnection)
     }
 
-    Spacer(modifier = Modifier.height(16.dp))
+    Spacer(modifier = Modifier.height(10.dp))
 
-    // These quick buttons (and their rounded surface) are a fixed part of
-    // the More sheet, not a scrolling LazyColumn item. Moving the old section
-    // through the viewport made the background visibly slide out from beneath
-    // the buttons on fast flings or initial sheet expansion.
-            MenuSurfaceSection(modifier = Modifier.padding(vertical = 6.dp)) {
-                NewActionGrid(
-                    actions = listOf(
-                        NewAction(
-                            icon = {
-                                Icon(
-                                    painter = painterResource(R.drawable.radio),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(28.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            },
-                            text = stringResource(R.string.start_radio),
-                            enabled = !isExternalCatalog,
-                            onClick = {
-                                if (!isExternalCatalog) {
-                                    Toast.makeText(context, resources.getString(R.string.starting_radio),
-                                        Toast.LENGTH_SHORT).show()
-                                    playerConnection.startRadioSeamlessly()
-                                    onDismiss()
-                                }
-                            }
-                        ),
-                        NewAction(
-                            icon = {
-                                Icon(
-                                    painter = painterResource(R.drawable.playlist_add),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(28.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            },
-                            text = stringResource(R.string.add_to_playlist),
-                            onClick = { showChoosePlaylistDialog = true }
-                        ),
-                        NewAction(
-                            icon = { Icon(painterResource(R.drawable.bedtime), contentDescription = null) },
-                            text = stringResource(R.string.sleep_timer),
-                            enabled = canSetSleepTimer,
-                            onClick = { showSleepTimer = true },
-                        ),
-                        NewAction(
-                            icon = {
-                                Icon(
-                                    painter = painterResource(R.drawable.link),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(28.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            },
-                            text = stringResource(R.string.copy_link),
-                            onClick = {
-                                val clipboard =
-                                    context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                val clip =
-                                    android.content.ClipData.newPlainText(
-                                        resources.getString(R.string.copy_link),
-                                        (if (isExternalCatalog) mediaMetadata.sourceUrl
-                                            ?.takeIf { it.startsWith("https://") }
-                                            ?: ""
-                                        else "https://music.youtube.com/watch?v=${mediaMetadata.id}"),
-                                    )
-                                clipboard.setPrimaryClip(clip)
-                                android.widget.Toast.makeText(context, R.string.link_copied, android.widget.Toast.LENGTH_SHORT).show()
-                                onDismiss()
-                            }
-                        ),
-                        NewAction(
-                            icon = {
-                                Icon(
-                                    painter = painterResource(R.drawable.fire),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(28.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            },
-                            text = stringResource(R.string.music_together),
-                            onClick = {
-                                onDismiss()
-                                playerBottomSheetState.snapTo(playerBottomSheetState.collapsedBound)
-                                navController.navigate("settings/music_together")
-                            }
+    // Quick actions stay above the scrollable list, preserving swipe/flick
+    // arbitration. Their small horizontal form avoids the former three rows
+    // of oversized icon tiles and shows the next section immediately.
+    NewActionGrid(
+        actions = listOf(
+            NewAction(
+                icon = {
+                    Icon(
+                        painter = painterResource(R.drawable.radio),
+                        contentDescription = null,
+                        modifier = Modifier.size(28.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                },
+                text = stringResource(R.string.start_radio),
+                enabled = !isExternalCatalog,
+                onClick = {
+                    if (!isExternalCatalog) {
+                        Toast.makeText(context, resources.getString(R.string.starting_radio),
+                            Toast.LENGTH_SHORT).show()
+                        playerConnection.startRadioSeamlessly()
+                        onDismiss()
+                    }
+                }
+            ),
+            NewAction(
+                icon = {
+                    Icon(
+                        painter = painterResource(R.drawable.playlist_add),
+                        contentDescription = null,
+                        modifier = Modifier.size(28.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                },
+                text = stringResource(R.string.add_to_playlist),
+                onClick = { showChoosePlaylistDialog = true }
+            ),
+            NewAction(
+                icon = { Icon(painterResource(R.drawable.bedtime), contentDescription = null) },
+                text = stringResource(R.string.sleep_timer),
+                enabled = canSetSleepTimer,
+                onClick = { showSleepTimer = true },
+            ),
+            NewAction(
+                icon = {
+                    Icon(
+                        painter = painterResource(R.drawable.link),
+                        contentDescription = null,
+                        modifier = Modifier.size(28.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                },
+                text = stringResource(R.string.copy_link),
+                onClick = {
+                    val clipboard =
+                        context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    val clip =
+                        android.content.ClipData.newPlainText(
+                            resources.getString(R.string.copy_link),
+                            (if (isExternalCatalog) mediaMetadata.sourceUrl
+                                ?.takeIf { it.startsWith("https://") }
+                                ?: ""
+                            else "https://music.youtube.com/watch?v=${mediaMetadata.id}"),
                         )
-                    ),
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)
-                )
-            }
+                    clipboard.setPrimaryClip(clip)
+                    android.widget.Toast.makeText(context, R.string.link_copied, android.widget.Toast.LENGTH_SHORT).show()
+                    onDismiss()
+                }
+            ),
+            NewAction(
+                icon = {
+                    Icon(
+                        painter = painterResource(R.drawable.fire),
+                        contentDescription = null,
+                        modifier = Modifier.size(28.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                },
+                text = stringResource(R.string.music_together),
+                onClick = {
+                    onDismiss()
+                    playerBottomSheetState.snapTo(playerBottomSheetState.collapsedBound)
+                    navController.navigate("settings/music_together")
+                }
+            )
+        ),
+        modifier = Modifier.padding(vertical = 4.dp),
+        compact = true,
+    )
 
-    Spacer(modifier = Modifier.height(12.dp))
+    Spacer(modifier = Modifier.height(8.dp))
 
     LazyColumn(
             flingBehavior = rememberCapsuleFlingBehavior(),
@@ -724,13 +723,13 @@ private fun PlayerVolumeCard(
     val safeVolume = volume.coerceIn(0f, 1f)
 
     Surface(
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = modifier.fillMaxWidth(),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -786,7 +785,7 @@ private fun VolumeSliderL(
         },
         onValueChangeFinished = { isDragging = false },
         valueRange = 0f..1f,
-        modifier = modifier.height(56.dp),
+        modifier = modifier.height(48.dp),
         thumb = {
             Icon(
                 painter = painterResource(insetIcon),

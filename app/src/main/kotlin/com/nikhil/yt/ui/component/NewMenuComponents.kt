@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -162,6 +164,73 @@ fun NewActionButton(
     }
 }
 
+/**
+ * Short horizontal actions for the player sheet: two compact columns instead
+ * of five enormous vertically stacked icon tiles. Unlike the old acrylic
+ * cards every action has an opaque Material surface at rest.
+ */
+@Composable
+internal fun CapsuleCompactMenuAction(
+    action: NewAction,
+    modifier: Modifier = Modifier,
+) {
+    val guard = LocalCapsuleMenuPressGuard.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val clickableModifier = if (guard) {
+        modifier.combinedClickable(
+            enabled = action.enabled,
+            interactionSource = interaction,
+            indication = null,
+            onClick = action.onClick,
+            onLongClick = {},
+        )
+    } else {
+        modifier.clickable(
+            enabled = action.enabled,
+            interactionSource = interaction,
+            indication = null,
+            onClick = action.onClick,
+        )
+    }
+    val baseColor = action.backgroundColor.takeUnless { it == Color.Unspecified }
+        ?: MaterialTheme.colorScheme.surfaceContainer
+    val tileColor = capsuleMenuOpaqueTile(
+        normal = baseColor,
+        pressedColor = MaterialTheme.colorScheme.secondaryContainer,
+        pressed = pressed,
+    )
+    Card(
+        modifier = clickableModifier,
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = tileColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 58.dp)
+                .padding(horizontal = 11.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) {
+                action.icon()
+            }
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = action.text,
+                style = MaterialTheme.typography.labelMedium,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                color = if (action.enabled) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
 // Enhanced Menu Item - Material 3 Expressive Design
 @Composable
 fun NewMenuItem(
@@ -209,8 +278,10 @@ internal fun capsuleActionGridColumns(
     requested: Int,
     screenWidthDp: Int,
     labels: List<String>,
+    compact: Boolean = false,
 ): Int = when {
     requested < 1 -> 1
+    compact -> minOf(requested, 2)
     requested >= 3 && screenWidthDp < 480 && labels.any { it.length > 11 } -> 2
     else -> requested
 }
@@ -220,37 +291,47 @@ internal fun capsuleActionGridColumns(
 fun NewActionGrid(
     actions: List<NewAction>,
     modifier: Modifier = Modifier,
-    columns: Int = 3
+    columns: Int = 3,
+    compact: Boolean = false,
 ) {
     val widthDp = LocalConfiguration.current.screenWidthDp
-    val safeColumns = remember(actions, columns, widthDp) {
-        capsuleActionGridColumns(columns, widthDp, actions.map { it.text })
+    val safeColumns = remember(actions, columns, widthDp, compact) {
+        capsuleActionGridColumns(columns, widthDp, actions.map { it.text }, compact)
     }
     // Keep menu row groups stable while the sheet is animating or scrolling.
     val rows = remember(actions, safeColumns) { actions.chunked(safeColumns) }
     
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp),
     ) {
         rows.forEach { row ->
             Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp),
             ) {
                 row.forEach { action ->
-                    NewActionButton(
-                        icon = action.icon,
-                        text = action.text,
-                        onClick = action.onClick,
-                        modifier = Modifier.weight(1f),
-                        enabled = action.enabled,
-                        backgroundColor = if (action.backgroundColor != Color.Unspecified) action.backgroundColor else MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = if (action.contentColor != Color.Unspecified) action.contentColor else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    if (compact) {
+                        CapsuleCompactMenuAction(
+                            action = action,
+                            modifier = Modifier.weight(1f),
+                        )
+                    } else {
+                        NewActionButton(
+                            icon = action.icon,
+                            text = action.text,
+                            onClick = action.onClick,
+                            modifier = Modifier.weight(1f),
+                            enabled = action.enabled,
+                            backgroundColor = if (action.backgroundColor != Color.Unspecified) action.backgroundColor else MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = if (action.contentColor != Color.Unspecified) action.contentColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
-                
-                // Fill remaining space if row is not full
-                repeat(safeColumns - row.size) {
+
+                // Standard grids retain empty slots; compact menus give a
+                // lone final action the entire width (no empty half-cell).
+                repeat(if (compact) 0 else safeColumns - row.size) {
                     Spacer(modifier = Modifier.weight(1f))
                 }
             }
@@ -392,12 +473,11 @@ fun MenuSurfaceSection(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Surface(
-        shape = RoundedCornerShape(24.dp),
-        // A list section MUST own a real opaque surface. Previously it was
-        // fully transparent while the parent was an unreliable Haze window.
-        // Use an adjacent tonal step, not a black overlay or GPU blur.
+        shape = RoundedCornerShape(20.dp),
+        // A single low-contrast tonal level ties list items to the sheet.
+        // Keep this opaque: the old cross-window blur hid the entire list.
         color = if (LocalCapsuleMenuPressGuard.current)
-            MaterialTheme.colorScheme.surfaceContainerHighest
+            MaterialTheme.colorScheme.surfaceContainer
         else MaterialTheme.colorScheme.surfaceContainerLow,
         modifier = modifier.fillMaxWidth(),
     ) {

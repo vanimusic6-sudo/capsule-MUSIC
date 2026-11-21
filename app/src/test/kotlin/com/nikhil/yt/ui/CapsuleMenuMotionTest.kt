@@ -53,6 +53,14 @@ class CapsuleMenuMotionTest {
         assertEquals(1, capsuleActionGridColumns(
             0, 360, listOf("Воспроизвести"),
         ))
+        // A compact player menu must stay at two columns even on tablets:
+        // the 5-item layout uses two short rows and one full-width action.
+        assertEquals(2, capsuleActionGridColumns(
+            3, 700, listOf("Начать радио", "Добавить в плейлист"), compact = true,
+        ))
+        assertEquals(1, capsuleActionGridColumns(
+            1, 350, listOf("Радио"), compact = true,
+        ))
     }
 
     @Test fun nativePlayerMenuIsKeptUntilMaterialHideCompletes() {
