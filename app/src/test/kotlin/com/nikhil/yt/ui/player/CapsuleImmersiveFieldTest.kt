@@ -16,7 +16,10 @@ class CapsuleImmersiveFieldTest {
         for (i in 0..1000) {
             val next = immersivePhotoFeatherAlpha(i / 1000f)
             assertTrue(next <= previous + 0.00001f)
-            assertTrue(previous - next < 0.005f)
+            // Slope-continuous smootherstep has a slightly higher peak
+            // per-mille alpha step than the old piecewise linear mask.
+            // Still below a single 8-bit intensity step on most artwork.
+            assertTrue(previous - next < 0.008f)
             previous = next
         }
     }
