@@ -558,6 +558,12 @@ if (mediaMetadata.album != null) {
                         modifier = Modifier.clickable { showPitchTempoDialog = true },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
+                }
+            }
+        }
+        // Sleep timer is available even when More was opened from the queue.
+        item(key = "sleep-timer", contentType = "menu-section") {
+            MenuSurfaceSection {
                     // Preserve the existing timer functionality without displacing Details.
                     ListItem(
                         headlineContent = { Text(stringResource(R.string.sleep_timer)) },
@@ -569,7 +575,6 @@ if (mediaMetadata.album != null) {
                         },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
-                }
             }
         }
         if (!isExternalCatalog || isOfflineAudio) item(key = "download", contentType = "menu-section") {

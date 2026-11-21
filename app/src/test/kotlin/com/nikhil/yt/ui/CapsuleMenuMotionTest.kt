@@ -235,6 +235,8 @@ class CapsuleMenuMotionTest {
         assertTrue(source.contains("showEqualizerDialog = true"))
         assertTrue(source.contains("heightIn(min = 96.dp)"))
         assertTrue(source.contains("R.drawable.radio"))
+        assertTrue(source.contains("item(key = \"sleep-timer\""))
+        assertTrue(source.contains("showSleepTimer = true"))
     }
 
     @Test fun lyricsControlsStayCompactWithoutNestedExpansion() {
