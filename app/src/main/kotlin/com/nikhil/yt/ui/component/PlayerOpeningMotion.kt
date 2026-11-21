@@ -107,7 +107,11 @@ internal fun playerMiniApproach(progress: Float): Float =
 // on device. The real mini card owns the first/last frames, not a tiny copy of the full UI.
 internal fun playerPresentationOpacity(progress: Float): Float = window(progress, 0.035f, 0.70f)
 internal fun playerContentOpacity(progress: Float): Float = window(progress, 0.13f, 0.72f)
-internal fun playerPresentationScale(progress: Float): Float = 0.95f + 0.05f * CapsuleMotion.smooth(boundedProgress(progress))
+// The real contour supplies the size transformation. The previous extra
+// 5% scale on revealed artwork looked like a second card snapping into place.
+// Keep a quiet 2.5% GPU settle, with no new layout or animation clock.
+internal fun playerPresentationScale(progress: Float): Float =
+    0.975f + 0.025f * CapsuleMotion.smooth(boundedProgress(progress))
 
 // The near-full-size page follows the ascending top edge of the morphing frame. The small
 // underlap keeps artwork IN the revealed card, not cropped to a one-sided strip. At rest both

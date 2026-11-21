@@ -23,6 +23,24 @@ class CapsuleImmersiveImageBackdropTest {
         eraseColor(0xFF553625.toInt())
     }
 
+    @Test fun photoFeatherIsSmoothAndMonotonicAcrossTheCoverBoundary() {
+        assertEquals(1f, immersivePhotoFeatherAlpha(0f), 0.0001f)
+        assertEquals(0f, immersivePhotoFeatherAlpha(1f), 0.0001f)
+        assertEquals(0f, immersivePhotoFeatherAlpha(Float.NaN), 0.0001f)
+        var last = 1f
+        for (i in 1..1_000) {
+            val alpha = immersivePhotoFeatherAlpha(i / 1_000f)
+            assertTrue("Photo must not regain opacity below the join", alpha <= last + 0.00001f)
+            assertTrue("No hard horizontal mask edge", last - alpha < 0.008f)
+            last = alpha
+        }
+        for (stop in listOf(0.44f, 0.58f, 0.70f, 0.82f)) {
+            assertTrue("Smooth slope at $stop",
+                abs(immersivePhotoFeatherAlpha(stop - 0.001f) -
+                    immersivePhotoFeatherAlpha(stop + 0.001f)) < 0.002f)
+        }
+    }
+
     @Test fun hiddenBottomLabelCannotChangeAnyBackdropPixel() {
         val plain = photo()
         val labelled = photo().apply {

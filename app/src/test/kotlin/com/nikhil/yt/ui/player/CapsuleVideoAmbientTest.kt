@@ -105,7 +105,7 @@ class CapsuleVideoAmbientTest {
             VIDEO_AMBIENT_BLEND_DURATION_MS in 580..700)
         assertTrue(capsuleVideoAmbientCaptureIntervalMs(0) < capsuleVideoAmbientCaptureIntervalMs(3))
         assertTrue(capsuleVideoAmbientCaptureIntervalMs(3) < capsuleVideoAmbientCaptureIntervalMs(8))
-        assertTrue(capsuleVideoAmbientCaptureIntervalMs(8) <= 900L)
+        assertTrue(capsuleVideoAmbientCaptureIntervalMs(8) in 1_000L..1_300L)
     }
 
     @Test fun videoSceneLightDiffusesHardEdgesWithoutAnotherDecoder() {

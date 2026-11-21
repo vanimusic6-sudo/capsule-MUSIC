@@ -12,6 +12,8 @@ import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.activity.compose.PredictiveBackHandler
@@ -49,6 +51,22 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
+
+/**
+ * Acrylic-inspired static colour depth, not a live blurred screenshot.
+ * No GPU readback, external Haze source or ongoing repaint timer.
+ */
+internal data class CapsuleMenuAcrylicPalette(val top: Color, val middle: Color, val bottom: Color)
+
+internal fun capsuleMenuAcrylicPalette(base: Color, accent: Color): CapsuleMenuAcrylicPalette {
+    val dark = base.luminance() < 0.42f
+    return CapsuleMenuAcrylicPalette(
+        top = lerp(lerp(base, accent, if (dark) 0.22f else 0.10f),
+            Color.White, if (dark) 0.075f else 0.022f),
+        middle = lerp(base, accent, if (dark) 0.095f else 0.05f),
+        bottom = lerp(base, Color.Black, if (dark) 0.022f else 0.008f),
+    )
+}
 
 /** Preserve the original Material3 sheet's appearance and THREE swipe anchors. */
 enum class MenuPresentation { STANDARD, CAPSULE_PLAYER }
@@ -166,9 +184,19 @@ fun BottomSheetMenu(
         val dismissPull = remember { Animatable(0f) }
         val density = LocalDensity.current
         val upperTint = MaterialTheme.colorScheme.surfaceContainerHighest
-        val haze = remember(upperTint) {
+        val acrylic = remember(background, upperTint) {
+            capsuleMenuAcrylicPalette(background, upperTint)
+        }
+        val acrylicBrush = remember(acrylic) {
             Brush.verticalGradient(
-                0f to upperTint.copy(alpha = 0.55f),
+                0f to acrylic.top,
+                0.42f to acrylic.middle,
+                1f to acrylic.bottom,
+            )
+        }
+        val haze = remember(upperTint, acrylic) {
+            Brush.verticalGradient(
+                0f to acrylic.top.copy(alpha = 0.52f),
                 1f to upperTint.copy(alpha = 0f),
             )
         }
@@ -235,7 +263,7 @@ fun BottomSheetMenu(
                 focusManager.clearFocus()
                 state.dismiss()
             },
-            containerColor = background,
+            containerColor = acrylic.bottom,
             // Same 16dp softness as the VIDEO window; the previous 28dp
             // sheet curvature looked ragged during vertical travel.
             shape = if (playerAppearance) {
@@ -268,14 +296,18 @@ fun BottomSheetMenu(
                     }
                 } else {
                     Box(
-                        modifier = Modifier
-                            .padding(vertical = 12.dp)
-                            .size(width = 40.dp, height = 4.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(
-                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                            ),
-                    )
+                        modifier = Modifier.fillMaxWidth().height(28.dp)
+                            .background(haze),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            Modifier.size(width = 40.dp, height = 4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                ),
+                        )
+                    }
                 }
             },
             // Material3's default predictive-back scales the entire sheet
@@ -316,6 +348,8 @@ fun BottomSheetMenu(
                     modifier =
                         Modifier
                             .fillMaxWidth()
+                            // Cached gradient: no scroll-driven blur or extra pointer owner.
+                            .background(acrylicBrush)
                             // Only a tiny elastic response to opening, applied
                             // AFTER layout. No continuously repainted gradients,
                             // custom nested scroll or per-frame composition.

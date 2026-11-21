@@ -104,12 +104,16 @@ private val stageMaskPositions = floatArrayOf(0f, 0.44f, 0.58f, 0.70f, 0.82f, 1f
 private val stageMaskOpacity = floatArrayOf(1f, 1f, 0.96f, 0.70f, 0.28f, 0f)
 
 internal fun immersivePhotoFeatherAlpha(fraction: Float): Float {
+    if (!fraction.isFinite()) return 0f
     val y = fraction.coerceIn(0f, 1f)
     val stops = stageMaskPositions
     val alpha = stageMaskOpacity
     for (i in 1 until stops.size) if (y <= stops[i]) {
-        val p = (y - stops[i - 1]) / (stops[i] - stops[i - 1])
-        return alpha[i - 1] + (alpha[i] - alpha[i - 1]) * p
+        // Zero slope at each stop: piecewise linear fade created horizontal
+        // band edges on detailed covers. Called only for the cached mask.
+        val p = ((y - stops[i - 1]) / (stops[i] - stops[i - 1])).coerceIn(0f, 1f)
+        val ease = p * p * p * (p * (p * 6f - 15f) + 10f)
+        return alpha[i - 1] + (alpha[i] - alpha[i - 1]) * ease
     }
     return 0f
 }

@@ -21,8 +21,10 @@ import kotlin.math.abs
 internal const val VIDEO_AMBIENT_CAPTURE_INTERVAL_MS = 340L
 internal fun capsuleVideoAmbientCaptureIntervalMs(unchangedSamples: Int): Long = when {
     unchangedSamples < 3 -> VIDEO_AMBIENT_CAPTURE_INTERVAL_MS
-    unchangedSamples < 8 -> 580L
-    else -> 860L
+    unchangedSamples < 8 -> 640L
+    // Identical frames need fewer TextureView GPU readbacks. Motion
+    // retains the original 340ms cadence; actual decoder FPS is untouched.
+    else -> 1_200L
 }
 
 /** Preserve the last VIDEO palette during buffer/surface interruptions. */

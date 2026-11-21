@@ -6,6 +6,9 @@ import com.nikhil.yt.ui.component.capsuleMenuElasticX
 import com.nikhil.yt.ui.component.capsuleMenuElasticY
 import com.nikhil.yt.ui.component.capsuleMenuDismissScale
 import com.nikhil.yt.ui.component.capsuleMenuTopFill
+import com.nikhil.yt.ui.component.capsuleMenuAcrylicPalette
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -13,6 +16,16 @@ import org.junit.Test
 
 /** The original Material3 sheet retains the real anchored gesture owner. */
 class CapsuleMenuMotionTest {
+    @Test fun acrylicSurfaceHasStableDepthWithoutLiveBlurOrTransparency() {
+        val dark = capsuleMenuAcrylicPalette(Color(0xFF101016), Color(0xFF34343E))
+        val light = capsuleMenuAcrylicPalette(Color(0xFFF7F7F8), Color(0xFFE7E7EA))
+        assertEquals(1f, dark.top.alpha, 0.0001f)
+        assertEquals(1f, dark.bottom.alpha, 0.0001f)
+        assertTrue(dark.top.luminance() > dark.bottom.luminance())
+        assertTrue(light.top.luminance() > light.bottom.luminance())
+        assertEquals(1f, light.middle.alpha, 0.0001f)
+    }
+
     @Test fun nativePlayerMenuIsKeptUntilMaterialHideCompletes() {
         val state = MenuState()
         state.show(presentation = MenuPresentation.CAPSULE_PLAYER) {}

@@ -102,7 +102,7 @@ fun NewActionButton(
         ),
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.cardElevation(
-            defaultElevation = 2.dp
+            defaultElevation = 0.dp
         )
     ) {
         Column(
@@ -186,7 +186,9 @@ fun NewActionGrid(
     modifier: Modifier = Modifier,
     columns: Int = 3
 ) {
-    val rows = actions.chunked(columns)
+    val safeColumns = columns.coerceAtLeast(1)
+    // Keep menu row groups stable while the sheet is animating or scrolling.
+    val rows = remember(actions, safeColumns) { actions.chunked(safeColumns) }
     
     Column(
         modifier = modifier,
@@ -209,7 +211,7 @@ fun NewActionGrid(
                 }
                 
                 // Fill remaining space if row is not full
-                repeat(columns - row.size) {
+                repeat(safeColumns - row.size) {
                     Spacer(modifier = Modifier.weight(1f))
                 }
             }
@@ -310,7 +312,7 @@ fun NewIconButton(
         ),
         shape = CircleShape,
         elevation = CardDefaults.cardElevation(
-            defaultElevation = 2.dp
+            defaultElevation = 0.dp
         )
     ) {
         Box(
