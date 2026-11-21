@@ -85,6 +85,7 @@ import com.nikhil.yt.ui.component.ListDialog
 import com.nikhil.yt.ui.component.NewAction
 import com.nikhil.yt.ui.component.NewActionGrid
 import com.nikhil.yt.ui.component.YouTubeListItem
+import com.nikhil.yt.ui.component.CapsuleMenuMediaHeader
 import com.nikhil.yt.utils.joinByBullet
 import com.nikhil.yt.utils.makeTimeString
 import kotlinx.coroutines.CoroutineScope
@@ -146,11 +147,17 @@ fun YouTubePlaylistMenu(
         },
     )
 
-    YouTubeListItem(
-        item = playlist,
+    CapsuleMenuMediaHeader(
+        title = playlist.title,
+        subtitle = playlist.songCountText.orEmpty(),
+        thumbnailUrl = playlist.thumbnail,
         trailingContent = {
             if (playlist.id != "LM" && !playlist.isEditable) {
+                val favoriteInteraction = remember {
+                    androidx.compose.foundation.interaction.MutableInteractionSource()
+                }
                 IconButton(
+                    interactionSource = favoriteInteraction,
                     onClick = {
                         if (dbPlaylist?.playlist == null) {
                             database.transaction {
@@ -193,16 +200,16 @@ fun YouTubePlaylistMenu(
                         }
                     }
                 ) {
-                    Icon(
-                        painter = painterResource(if (dbPlaylist?.playlist?.bookmarkedAt != null) R.drawable.favorite else R.drawable.favorite_border),
-                        tint = if (dbPlaylist?.playlist?.bookmarkedAt != null) StandardChrome.favorite else LocalContentColor.current,
-                        contentDescription = null
+                    com.nikhil.yt.ui.component.CapsuleFavoriteIcon(
+                        liked = dbPlaylist?.playlist?.bookmarkedAt != null,
+                        interactionSource = favoriteInteraction,
+                        tint = LocalContentColor.current,
                     )
                 }
             }
         }
     )
-    HorizontalDivider()
+    Spacer(Modifier.height(8.dp))
 
     // Reading the menu must be cheap and side-effect free. The process-owned
     // download coordinator resolves continuation pages on an actual DOWNLOAD

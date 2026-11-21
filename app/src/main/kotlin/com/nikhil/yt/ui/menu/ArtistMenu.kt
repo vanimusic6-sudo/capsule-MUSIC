@@ -74,15 +74,16 @@ fun ArtistMenu(
     val artistState = database.artist(originalArtist.id).collectAsState(initial = originalArtist)
     val artist = artistState.value ?: originalArtist
 
-    ArtistListItem(
-        artist = artist,
-        badges = {},
-        trailingContent = {},
-    )
+    com.nikhil.yt.ui.component.CapsuleMenuHeaderSurface {
+        ArtistListItem(
+            artist = artist,
+            badges = {},
+            trailingContent = {},
+        )
+    
+    }
 
-    HorizontalDivider()
-
-    Spacer(modifier = Modifier.height(12.dp))
+    Spacer(modifier = Modifier.height(8.dp))
 
     LazyColumn(
             flingBehavior = rememberCapsuleFlingBehavior(),

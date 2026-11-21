@@ -18,6 +18,10 @@ internal class PlaybackAudioEffectsController(
     private var bassBoost: BassBoost? = null
     private var virtualizer: Virtualizer? = null
     private var loudnessEnhancer: LoudnessEnhancer? = null
+    // Avoid rewriting identical hardware parameters on unrelated preference
+    // updates. Invalidated whenever the audio session or preset changes.
+    private var appliedBandLevels: IntArray = intArrayOf()
+    private var appliedEnabled: Boolean? = null
 
     fun applySettings(settings: EqSettings) {
         desiredSettings = settings
@@ -54,6 +58,8 @@ internal class PlaybackAudioEffectsController(
         val maxPreset = runCatching { eq.numberOfPresets.toInt() }.getOrNull() ?: 0
         if (presetIndex !in 0 until maxPreset) return null
         runCatching { eq.usePreset(presetIndex.toShort()) }.getOrNull() ?: return null
+        // Android changed the hardware levels directly; cached values are stale.
+        appliedBandLevels = intArrayOf()
 
         val bandCount = runCatching { eq.numberOfBands.toInt() }.getOrNull() ?: 0
         return (0 until bandCount).map { band ->
@@ -68,6 +74,8 @@ internal class PlaybackAudioEffectsController(
         releaseEffect("release virtualizer") { virtualizer?.release() }
         releaseEffect("release loudness enhancer") { loudnessEnhancer?.release() }
         equalizer = null
+        appliedBandLevels = intArrayOf()
+        appliedEnabled = null
         bassBoost = null
         virtualizer = null
         loudnessEnhancer = null
@@ -124,10 +132,21 @@ internal class PlaybackAudioEffectsController(
                 ?: 1500
 
         val levels = resampleEqLevelsByIndex(settings.bandLevelsMb, bandCount)
-        runCatching { eq.enabled = settings.enabled }
+        if (appliedEnabled != settings.enabled) {
+            if (runCatching { eq.enabled = settings.enabled }.isSuccess) {
+                appliedEnabled = settings.enabled
+            }
+        }
+        if (appliedBandLevels.size != bandCount) {
+            appliedBandLevels = IntArray(bandCount) { Int.MIN_VALUE }
+        }
         for (band in 0 until bandCount) {
             val levelMb = levels.getOrNull(band)?.coerceIn(minMb, maxMb) ?: 0
-            runCatching { eq.setBandLevel(band.toShort(), levelMb.toShort()) }
+            if (appliedBandLevels[band] != levelMb &&
+                runCatching { eq.setBandLevel(band.toShort(), levelMb.toShort()) }.isSuccess
+            ) {
+                appliedBandLevels[band] = levelMb
+            }
         }
 
         bassBoost?.let { effect ->

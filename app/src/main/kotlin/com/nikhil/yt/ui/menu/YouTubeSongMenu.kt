@@ -13,6 +13,7 @@ import com.nikhil.yt.playback.canPrioritize
 import com.nikhil.yt.playback.visibleState
 
 import com.nikhil.yt.ui.component.CapsuleFavoriteIcon
+import com.nikhil.yt.ui.component.CapsuleMenuMediaHeader
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.component.ArtistSelectionItem
@@ -195,39 +196,13 @@ fun YouTubeSongMenu(
         }
     }  
 
-    CapsuleMenuListItem(  
-        headlineContent = {
-            Text(
-                text = song.title,
-                modifier = Modifier.basicMarquee(),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        },  
-        supportingContent = {  
-            Text(  
-                text = joinByBullet(
-                    song.artists.joinToString { it.name },
-                    song.duration?.let { makeTimeString(it * 1000L) },
-                )
-            )  
-        },  
-        leadingContent = {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(ListThumbnailSize)
-                    .clip(RoundedCornerShape(ThumbnailCornerRadius))
-            ) {
-                AsyncImage(
-                    model = song.thumbnail,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(ThumbnailCornerRadius))
-                )
-            }
-        },
+    CapsuleMenuMediaHeader(
+        title = song.title,
+        subtitle = joinByBullet(
+            song.artists.joinToString { it.name },
+            song.duration?.let { makeTimeString(it * 1000L) },
+        ),
+        thumbnailUrl = song.thumbnail,
         trailingContent = {  
             val favoriteInteraction = remember { MutableInteractionSource() }
             IconButton(
@@ -257,7 +232,7 @@ fun YouTubeSongMenu(
         },  
     )  
 
-    HorizontalDivider()
+    Spacer(Modifier.height(8.dp))
 
     val bottomSheetPageState = LocalBottomSheetPageState.current
 
@@ -339,7 +314,7 @@ fun YouTubeSongMenu(
                         }
                     )
                 ).let { actions ->
-                    listOf(actions[2], actions[1].copy(outlined = true), actions[0])
+                    listOf(actions[1], actions[2], actions[0])
                 },
                 modifier = Modifier
             )

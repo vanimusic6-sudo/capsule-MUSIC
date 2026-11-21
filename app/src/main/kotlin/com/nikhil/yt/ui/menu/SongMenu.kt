@@ -320,7 +320,7 @@ fun SongMenu(
     }
 
     Surface(
-        shape = RoundedCornerShape(28.dp),
+        shape = com.nikhil.yt.ui.component.CapsuleMenuTileShape,
         color = com.nikhil.yt.ui.component.CapsuleMenuBlack,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -508,7 +508,7 @@ fun SongMenu(
         ).let { actions ->
             // The two quick tiles are link/share and outlined playlist;
             // radio, queue and edit become full-width rows automatically.
-            listOf(actions[4], actions[3].copy(outlined = true)) +
+            listOf(actions[3], actions[4]) +
                 actions.filterIndexed { index, _ -> index != 4 && index != 3 }
         }
     }

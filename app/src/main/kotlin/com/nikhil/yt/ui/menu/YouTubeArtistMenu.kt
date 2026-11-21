@@ -69,14 +69,15 @@ fun YouTubeArtistMenu(
     val playerConnection = LocalPlayerConnection.current ?: return
     val libraryArtist by database.artist(artist.id).collectAsState(initial = null)
 
-    YouTubeListItem(
-        item = artist,
-        trailingContent = {},
-    )
+    com.nikhil.yt.ui.component.CapsuleMenuHeaderSurface {
+        YouTubeListItem(
+            item = artist,
+            trailingContent = {},
+        )
+    
+    }
 
-    HorizontalDivider()
-
-    Spacer(modifier = Modifier.height(12.dp))
+    Spacer(modifier = Modifier.height(8.dp))
     LazyColumn(
             flingBehavior = rememberCapsuleFlingBehavior(),
             overscrollEffect = null,

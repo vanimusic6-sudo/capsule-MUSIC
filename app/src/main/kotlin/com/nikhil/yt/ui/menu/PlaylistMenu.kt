@@ -202,28 +202,38 @@ fun PlaylistMenu(
         )
     }
 
-    PlaylistListItem(
-        playlist = playlist,
-        trailingContent = {
-            if (playlist.playlist.isEditable != true) {
-                IconButton(
-                    onClick = {
-                        database.query {
-                            dbPlaylist?.playlist?.toggleLike()?.let { update(it) }
-                        }
+    androidx.compose.material3.Surface(
+        shape = com.nikhil.yt.ui.component.CapsuleMenuTileShape,
+        color = com.nikhil.yt.ui.component.CapsuleMenuBlack,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        PlaylistListItem(
+            playlist = playlist,
+            trailingContent = {
+                if (playlist.playlist.isEditable != true) {
+                    val favoriteInteraction = remember {
+                        androidx.compose.foundation.interaction.MutableInteractionSource()
                     }
-                ) {
-                    Icon(
-                        painter = painterResource(if (dbPlaylist?.playlist?.bookmarkedAt != null) R.drawable.favorite else R.drawable.favorite_border),
-                        tint = if (dbPlaylist?.playlist?.bookmarkedAt != null) StandardChrome.favorite else LocalContentColor.current,
-                        contentDescription = null
-                    )
+                    IconButton(
+                        interactionSource = favoriteInteraction,
+                        onClick = {
+                            database.query {
+                                dbPlaylist?.playlist?.toggleLike()?.let { update(it) }
+                            }
+                        },
+                    ) {
+                        com.nikhil.yt.ui.component.CapsuleFavoriteIcon(
+                            liked = dbPlaylist?.playlist?.bookmarkedAt != null,
+                            interactionSource = favoriteInteraction,
+                            tint = LocalContentColor.current,
+                        )
+                    }
                 }
-            }
-        },
-    )
+            },
+        )
+    }
 
-    HorizontalDivider()
+    Spacer(Modifier.height(8.dp))
 
     Spacer(modifier = Modifier.height(12.dp))
 

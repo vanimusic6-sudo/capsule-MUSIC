@@ -136,6 +136,7 @@ import com.nikhil.yt.playback.queues.YouTubeQueue
 import com.nikhil.yt.ui.component.BottomSheetState
 import com.nikhil.yt.ui.component.ListDialog
 import com.nikhil.yt.ui.component.MenuSurfaceSection
+import com.nikhil.yt.ui.component.CapsuleMenuMediaHeader
 import com.nikhil.yt.ui.component.NewAction
 import com.nikhil.yt.ui.component.NewActionGrid
 import com.nikhil.yt.ui.player.CapsuleLyricsVolumeSlider
@@ -263,16 +264,6 @@ fun PlayerMenu(
         }
     }
 
-    var showPitchTempoDialog by rememberSaveable {
-        mutableStateOf(false)
-    }
-
-    if (showPitchTempoDialog) {
-        TempoPitchDialog(
-            onDismiss = { showPitchTempoDialog = false },
-        )
-    }
-
     var showEqualizerDialog by rememberSaveable {
         mutableStateOf(false)
     }
@@ -331,75 +322,12 @@ fun PlayerMenu(
             artists.joinToString(separator = ", ") { it.name }
         }
 
-    // The song identity belongs to the sheet itself, not a third black card.
-    Surface(
-        shape = com.nikhil.yt.ui.component.CapsuleMenuTileShape,
-        color = com.nikhil.yt.ui.component.CapsuleMenuBlack,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
-        ) {
-            val thumb = mediaMetadata.thumbnailUrl
-            if (thumb.isNullOrBlank()) {
-                Box(
-                    modifier =
-                        Modifier
-                            .size(52.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.capsule_soft_music_note),
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
-            } else {
-                AsyncImage(
-                    model = thumb,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier =
-                        Modifier
-                            .size(52.dp)
-                            .clip(RoundedCornerShape(16.dp)),
-                )
-            }
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.now_playing),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = nowPlayingTitle,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier,
-                )
-                if (nowPlayingSubtitle.isNotBlank()) {
-                    Text(
-                        text = nowPlayingSubtitle,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier,
-                    )
-                }
-            }
-        }
-    }
+    CapsuleMenuMediaHeader(
+        title = nowPlayingTitle,
+        subtitle = nowPlayingSubtitle,
+        overline = stringResource(R.string.now_playing),
+        thumbnailUrl = mediaMetadata.thumbnailUrl,
+    )
 
     if (isQueueTrigger != true) {
         Spacer(modifier = Modifier.height(8.dp))
@@ -441,8 +369,7 @@ fun PlayerMenu(
                         },
                         text = stringResource(R.string.add_to_playlist),
                         onClick = { showChoosePlaylistDialog = true },
-                        outlined = true,
-                    ),
+                     ),
                     NewAction(
                         icon = {
                             Icon(
@@ -555,7 +482,7 @@ if (mediaMetadata.album != null) {
                         leadingContent = {
                             Icon(painterResource(R.drawable.speed), contentDescription = null)
                         },
-                        modifier = Modifier.clickable { showPitchTempoDialog = true },
+                        modifier = Modifier.clickable { showEqualizerDialog = true },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
                 }
@@ -751,330 +678,128 @@ private fun PlayerVolumeCard(
     }
 }
 
+/** Inline tempo and pitch controls in the ONE audio panel. */
 @Composable
-fun TempoPitchDialog(onDismiss: () -> Unit) {
+private fun TempoPitchSection() {
     val playerConnection = LocalPlayerConnection.current ?: return
-    val initialSpeed = remember { playerConnection.player.playbackParameters.speed }
-    val initialPitch = remember { playerConnection.player.playbackParameters.pitch }
-
-    var tempo by remember {
-        mutableFloatStateOf(initialSpeed.safeCoerceIn(TempoMin, TempoMax, fallback = 1f))
-    }
-
-    var pitch by remember {
-        mutableFloatStateOf(initialPitch.safeCoerceIn(PitchMin, PitchMax, fallback = 1f))
-    }
-
-    var pitchMode by rememberSaveable {
-        mutableStateOf(
-            if (isPitchSemitoneAligned(pitch)) PitchMode.Semitones else PitchMode.Multiplier
+    var tempo by remember { mutableFloatStateOf(
+        playerConnection.player.playbackParameters.speed.safeCoerceIn(TempoMin, TempoMax, 1f)
+    ) }
+    var pitch by remember { mutableFloatStateOf(
+        playerConnection.player.playbackParameters.pitch.safeCoerceIn(PitchMin, PitchMax, 1f)
+    ) }
+    var pitchMode by rememberSaveable { mutableStateOf(PitchMode.Semitones) }
+    val apply: (Float, Float) -> Unit = { speed, note ->
+        playerConnection.player.playbackParameters = PlaybackParameters(
+            speed.coerceIn(TempoMin, TempoMax),
+            note.coerceIn(PitchMin, PitchMax),
         )
     }
 
-    val applyPlaybackParameters: (Float, Float) -> Unit = { speed, pitchMultiplier ->
-        playerConnection.player.playbackParameters =
-            PlaybackParameters(
-                speed.coerceIn(TempoMin, TempoMax),
-                pitchMultiplier.coerceIn(PitchMin, PitchMax),
-            )
-    }
-
-    AlertDialog(
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-        onDismissRequest = onDismiss,
-        title = {
-            Text(stringResource(R.string.tempo_and_pitch))
+    EqSection(
+        title = stringResource(R.string.tempo_and_pitch),
+        trailing = {
+            TextButton(onClick = {
+                tempo = 1f
+                pitch = 1f
+                apply(tempo, pitch)
+            }) { Text(stringResource(R.string.reset)) }
         },
-        dismissButton = {
-            TextButton(
-                onClick = {
-                    tempo = 1f
-                    pitch = 1f
-                    applyPlaybackParameters(tempo, pitch)
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.tempo), modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelLarge)
+                Text("×${formatMultiplier(tempo)}", style = MaterialTheme.typography.titleSmall)
+            }
+            Slider(
+                value = multiplierToSlider(tempo),
+                onValueChange = { position ->
+                    val next = sliderToMultiplier(position).quantize(0.01f)
+                    if (abs(next - tempo) >= 0.005f) {
+                        tempo = next
+                        apply(tempo, pitch)
+                    }
                 },
+                modifier = Modifier.fillMaxWidth(),
+                valueRange = 0f..1f,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(stringResource(R.string.reset))
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = onDismiss,
-            ) {
-                Text(stringResource(android.R.string.ok))
-            }
-        },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(18.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 12.dp),
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.speed),
-                        contentDescription = null,
-                        modifier = Modifier.size(28.dp),
-                    )
-
-                    Text(
-                        text = stringResource(R.string.tempo),
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.weight(1f),
-                    )
-
-                    Text(
-                        text = "x${formatMultiplier(tempo)}",
-                        style = MaterialTheme.typography.titleMedium,
-                        textAlign = TextAlign.End,
-                    )
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    IconButton(
-                        enabled = tempo > TempoMin,
-                        onClick = {
-                            tempo = (tempo - 0.01f).coerceIn(TempoMin, TempoMax).quantize(0.01f)
-                            applyPlaybackParameters(tempo, pitch)
-                        }
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.remove),
-                            contentDescription = null,
-                        )
-                    }
-
-                    Slider(
-                        value = multiplierToSlider(tempo),
-                        onValueChange = { slider ->
-                            val updated = sliderToMultiplier(slider).quantize(0.01f)
-                            if (abs(updated - tempo) >= 0.005f) {
-                                tempo = updated
-                                applyPlaybackParameters(tempo, pitch)
-                            }
-                        },
-                        valueRange = 0f..1f,
-                        modifier = Modifier.weight(1f),
-                        colors = SliderDefaults.colors(),
-                    )
-
-                    IconButton(
-                        enabled = tempo < TempoMax,
-                        onClick = {
-                            tempo = (tempo + 0.01f).coerceIn(TempoMin, TempoMax).quantize(0.01f)
-                            applyPlaybackParameters(tempo, pitch)
-                        }
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.add),
-                            contentDescription = null,
-                        )
-                    }
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState(),
-            flingBehavior = rememberCapsuleFlingBehavior(),
-            overscrollEffect = null),
-                ) {
-                    val presets = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
-                    presets.forEach { preset ->
-                        val selected = abs(tempo - preset) < 0.005f
-                        FilterChip(
-                            selected = selected,
-                            onClick = {
-                                tempo = preset
-                                applyPlaybackParameters(tempo, pitch)
-                            },
-                            label = { Text("x${formatMultiplier(preset)}") },
-                        )
-                    }
-                }
-
-                HorizontalDivider()
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.discover_tune),
-                        contentDescription = null,
-                        modifier = Modifier.size(28.dp),
-                    )
-
-                    Text(
-                        text = stringResource(R.string.pitch),
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.weight(1f),
-                    )
-
-                    Text(
-                        text =
-                        when (pitchMode) {
-                            PitchMode.Semitones -> {
-                                val semitones = pitchToSemitones(pitch)
-                                "${if (semitones > 0) "+" else ""}$semitones"
-                            }
-
-                            PitchMode.Multiplier -> "x${formatMultiplier(pitch)}"
-                        },
-                        style = MaterialTheme.typography.titleMedium,
-                        textAlign = TextAlign.End,
-                    )
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState(),
-            flingBehavior = rememberCapsuleFlingBehavior(),
-            overscrollEffect = null),
-                ) {
+                listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f).forEach { preset ->
                     FilterChip(
-                        selected = pitchMode == PitchMode.Semitones,
-                        onClick = { pitchMode = PitchMode.Semitones },
-                        label = { Text(stringResource(R.string.pitch_mode_semitones_short)) },
-                    )
-                    FilterChip(
-                        selected = pitchMode == PitchMode.Multiplier,
-                        onClick = { pitchMode = PitchMode.Multiplier },
-                        label = { Text(stringResource(R.string.pitch_mode_multiplier_short)) },
+                        selected = abs(tempo - preset) < 0.005f,
+                        onClick = { tempo = preset; apply(tempo, pitch) },
+                        label = { Text("×${formatMultiplier(preset)}") },
                     )
                 }
-
-                when (pitchMode) {
-                    PitchMode.Semitones -> {
-                        val currentSemitones = pitchToSemitones(pitch)
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.pitch), modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelLarge)
+                FilterChip(
+                    selected = pitchMode == PitchMode.Semitones,
+                    onClick = { pitchMode = PitchMode.Semitones },
+                    label = { Text(stringResource(R.string.pitch_mode_semitones_short)) },
+                )
+                Spacer(Modifier.width(6.dp))
+                FilterChip(
+                    selected = pitchMode == PitchMode.Multiplier,
+                    onClick = { pitchMode = PitchMode.Multiplier },
+                    label = { Text(stringResource(R.string.pitch_mode_multiplier_short)) },
+                )
+            }
+            when (pitchMode) {
+                PitchMode.Semitones -> {
+                    val semitones = pitchToSemitones(pitch)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "${if (semitones > 0) "+" else ""}$semitones",
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.width(42.dp),
+                        )
                         Slider(
-                            value = currentSemitones.toFloat(),
-                            onValueChange = { slider ->
-                                val semitones = slider.roundToInt().coerceIn(-12, 12)
-                                val updated = semitonesToPitch(semitones)
-                                if (abs(updated - pitch) >= 0.0005f) {
-                                    pitch = updated
-                                    applyPlaybackParameters(tempo, pitch)
+                            value = semitones.toFloat().coerceIn(-12f, 12f),
+                            onValueChange = { value ->
+                                val next = semitonesToPitch(value.roundToInt().coerceIn(-12, 12))
+                                if (abs(pitch - next) > 0.0005f) {
+                                    pitch = next
+                                    apply(tempo, pitch)
                                 }
                             },
                             valueRange = -12f..12f,
                             steps = 23,
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = SliderDefaults.colors(),
+                            modifier = Modifier.weight(1f),
                         )
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState(),
-            flingBehavior = rememberCapsuleFlingBehavior(),
-            overscrollEffect = null),
-                        ) {
-                            val presets = listOf(-12, -7, -5, 0, 5, 7, 12)
-                            presets.forEach { preset ->
-                                val selected = currentSemitones == preset
-                                FilterChip(
-                                    selected = selected,
-                                    onClick = {
-                                        pitch = semitonesToPitch(preset)
-                                        applyPlaybackParameters(tempo, pitch)
-                                    },
-                                    label = { Text("${if (preset > 0) "+" else ""}$preset") },
-                                )
-                            }
-                        }
                     }
-
-                    PitchMode.Multiplier -> {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            IconButton(
-                                enabled = pitch > PitchMin,
-                                onClick = {
-                                    pitch = (pitch - 0.01f).coerceIn(PitchMin, PitchMax).quantize(0.01f)
-                                    applyPlaybackParameters(tempo, pitch)
+                }
+                PitchMode.Multiplier -> {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "×${formatMultiplier(pitch)}",
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.width(56.dp),
+                        )
+                        Slider(
+                            value = multiplierToSlider(pitch),
+                            onValueChange = { position ->
+                                val next = sliderToMultiplier(position).quantize(0.01f)
+                                if (abs(pitch - next) >= 0.005f) {
+                                    pitch = next
+                                    apply(tempo, pitch)
                                 }
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.remove),
-                                    contentDescription = null,
-                                )
-                            }
-
-                            Slider(
-                                value = multiplierToSlider(pitch),
-                                onValueChange = { slider ->
-                                    val updated = sliderToMultiplier(slider).quantize(0.01f)
-                                    if (abs(updated - pitch) >= 0.005f) {
-                                        pitch = updated
-                                        applyPlaybackParameters(tempo, pitch)
-                                    }
-                                },
-                                valueRange = 0f..1f,
-                                modifier = Modifier.weight(1f),
-                                colors = SliderDefaults.colors(),
-                            )
-
-                            IconButton(
-                                enabled = pitch < PitchMax,
-                                onClick = {
-                                    pitch = (pitch + 0.01f).coerceIn(PitchMin, PitchMax).quantize(0.01f)
-                                    applyPlaybackParameters(tempo, pitch)
-                                }
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.add),
-                                    contentDescription = null,
-                                )
-                            }
-                        }
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState(),
-            flingBehavior = rememberCapsuleFlingBehavior(),
-            overscrollEffect = null),
-                        ) {
-                            val presets = listOf(0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
-                            presets.forEach { preset ->
-                                val selected = abs(pitch - preset) < 0.005f
-                                FilterChip(
-                                    selected = selected,
-                                    onClick = {
-                                        pitch = preset
-                                        applyPlaybackParameters(tempo, pitch)
-                                    },
-                                    label = { Text("x${formatMultiplier(preset)}") },
-                                )
-                            }
-                        }
+                            },
+                            valueRange = 0f..1f,
+                            modifier = Modifier.weight(1f),
+                        )
                     }
                 }
             }
-        },
-    )
+        }
+    }
 }
 
 private enum class PitchMode {
@@ -1375,7 +1100,7 @@ fun EqualizerDialog(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 TopAppBar(
-                    title = { Text(text = stringResource(R.string.equalizer)) },
+                    title = { Text(text = stringResource(R.string.equalizer) + " · " + stringResource(R.string.tempo_and_pitch)) },
                     navigationIcon = {
                         IconButton(onClick = onDismiss) {
                             Icon(
@@ -1418,6 +1143,9 @@ fun EqualizerDialog(
                             .padding(horizontal = 16.dp)
                             .padding(bottom = 24.dp),
                 ) {
+                    Spacer(Modifier.height(12.dp))
+
+                    TempoPitchSection()
                     Spacer(Modifier.height(12.dp))
 
                     if (caps == null || bandCount <= 0) {
@@ -1568,54 +1296,69 @@ fun EqualizerDialog(
                             }
                         },
                     ) {
-                        caps.centerFreqHz.forEachIndexed { band, hz ->
-                            val label = formatHz(hz)
-                            val value = bandLevelsMb.getOrNull(band) ?: 0
-                            val valueDb = (value / 100f).coerceIn(-24f, 24f)
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 8.dp, vertical = 10.dp),
-                            ) {
-                                Text(
-                                    text = label,
-                                    style = MaterialTheme.typography.labelLarge,
-                                    modifier = Modifier.width(64.dp),
-                                )
-
-                                Slider(
-                                    value = value.toFloat().coerceIn(minMb.toFloat(), maxMb.toFloat()),
-                                    onValueChange = { newValue ->
-                                        val coerced = newValue.toInt().coerceIn(minMb, maxMb)
-                                        bandLevelsMb =
-                                            bandLevelsMb.toMutableList().apply {
-                                                while (size < bandCount) add(0)
-                                                set(band, coerced)
-                                            }
-                                    },
-                                    onValueChangeFinished = {
-                                        setSelectedProfileId("manual")
-                                        setBandLevelsRaw(encodeBandLevelsMb(bandLevelsMb))
-                                    },
-                                    valueRange = minMb.toFloat()..maxMb.toFloat(),
-                                    colors =
-                                        SliderDefaults.colors(
-                                            activeTrackColor = MaterialTheme.colorScheme.primary,
-                                            inactiveTrackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                        ),
-                                    modifier = Modifier.weight(1f),
-                                )
-
-                                Text(
-                                    text = formatDb(valueDb),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    textAlign = TextAlign.End,
-                                    modifier = Modifier.width(64.dp),
-                                )
-                            }
+                        // Draw the actual hardware bands; no fixed six-band fakery.
+                        var selectedBand by remember { mutableIntStateOf(0) }
+                        val effectiveBand = selectedBand.coerceIn(0, bandCount - 1)
+                        CapsuleEqualizerGraph(
+                            frequenciesHz = caps.centerFreqHz,
+                            levelsMb = bandLevelsMb,
+                            minMb = minMb,
+                            maxMb = maxMb,
+                            selectedBand = effectiveBand,
+                            onBandSelected = { selectedBand = it },
+                            onLevelChanged = { band, level ->
+                                if (band in 0 until bandCount) {
+                                    bandLevelsMb = bandLevelsMb.toMutableList().apply {
+                                        while (size < bandCount) add(0)
+                                        this[band] = level
+                                    }
+                                }
+                            },
+                            onFinished = { band, level ->
+                                if (band in 0 until bandCount) {
+                                    val updated = bandLevelsMb.toMutableList().apply {
+                                        while (size < bandCount) add(0)
+                                        this[band] = level
+                                    }
+                                    bandLevelsMb = updated
+                                    setSelectedProfileId("manual")
+                                    setBandLevelsRaw(encodeBandLevelsMb(updated))
+                                }
+                            },
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        ) {
+                            Text(
+                                text = formatHz(caps.centerFreqHz.getOrElse(effectiveBand) { 0 }),
+                                style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier.width(60.dp),
+                            )
+                            Slider(
+                                value = (bandLevelsMb.getOrNull(effectiveBand) ?: 0)
+                                    .toFloat().coerceIn(minMb.toFloat(), maxMb.toFloat()),
+                                onValueChange = { level ->
+                                    bandLevelsMb = bandLevelsMb.toMutableList().apply {
+                                        while (size < bandCount) add(0)
+                                        this[effectiveBand] = level.toInt().coerceIn(minMb, maxMb)
+                                    }
+                                },
+                                onValueChangeFinished = {
+                                    setSelectedProfileId("manual")
+                                    setBandLevelsRaw(encodeBandLevelsMb(bandLevelsMb))
+                                },
+                                valueRange = minMb.toFloat()..maxMb.toFloat(),
+                                modifier = Modifier.weight(1f),
+                                colors = SliderDefaults.colors(),
+                            )
+                            Text(
+                                text = formatDb((bandLevelsMb.getOrNull(effectiveBand) ?: 0) / 100f),
+                                style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier.width(74.dp),
+                                textAlign = TextAlign.End,
+                            )
                         }
                     }
 

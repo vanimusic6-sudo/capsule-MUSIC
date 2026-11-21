@@ -242,29 +242,34 @@ fun YouTubeAlbumMenu(
         }
     }
 
-    YouTubeListItem(
-        item = albumItem,
-        badges = {},
-        trailingContent = {
-            IconButton(
-                onClick = {
-                    database.query {
-                        album?.album?.toggleLike()?.let(::update)
-                    }
-                },
-            ) {
-                Icon(
-                    painter = painterResource(if (album?.album?.bookmarkedAt != null) R.drawable.favorite else R.drawable.favorite_border),
-                    tint = if (album?.album?.bookmarkedAt != null) StandardChrome.favorite else LocalContentColor.current,
-                    contentDescription = null,
-                )
-            }
-        },
-    )
+    com.nikhil.yt.ui.component.CapsuleMenuHeaderSurface {
+        YouTubeListItem(
+            item = albumItem,
+            badges = {},
+            trailingContent = {
+                val favoriteInteraction = remember {
+                    androidx.compose.foundation.interaction.MutableInteractionSource()
+                }
+                IconButton(
+                    interactionSource = favoriteInteraction,
+                    onClick = {
+                        database.query {
+                            album?.album?.toggleLike()?.let(::update)
+                        }
+                    },
+                ) {
+                    com.nikhil.yt.ui.component.CapsuleFavoriteIcon(
+                        liked = album?.album?.bookmarkedAt != null,
+                        interactionSource = favoriteInteraction,
+                        tint = LocalContentColor.current,
+                    )
+                }
+            },
+        )
+    
+    }
 
-    HorizontalDivider()
-
-    Spacer(modifier = Modifier.height(12.dp))
+    Spacer(modifier = Modifier.height(8.dp))
 
     LazyColumn(
             flingBehavior = rememberCapsuleFlingBehavior(),

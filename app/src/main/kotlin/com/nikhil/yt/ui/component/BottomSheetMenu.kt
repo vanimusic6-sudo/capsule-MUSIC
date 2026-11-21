@@ -16,7 +16,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -193,7 +193,7 @@ fun BottomSheetMenu(
             if (!state.dismissRequested && reopened) {
                 // An interrupted exit must not leave the replacement menu shrunken or hidden.
                 coroutineScope {
-                    launch { dismissPull.animateTo(0f, spring(dampingRatio = 1f, stiffness = 295f)) }
+                    launch { dismissPull.snapTo(0f) }
                     if (sheetState.targetValue == androidx.compose.material3.SheetValue.Hidden) {
                         launch { sheetState.show() }
                     }
@@ -214,14 +214,10 @@ fun BottomSheetMenu(
                     // Exit contraction and native sheet slide happen together.
                     // Starting either on pointer DOWN is expressly forbidden.
                     launch {
-                        dismissPull.animateTo(
-                            1f,
-                            spring(
-                                dampingRatio = 0.97f,
-                                stiffness = 295f,
-                                visibilityThreshold = 0.001f,
-                            ),
-                        )
+                        // A lengthy spring used to keep the invisible modal
+                        // window alive after the native sheet had disappeared.
+                        // End the decorative zoom before native hide completes.
+                        dismissPull.animateTo(1f, tween(durationMillis = 145))
                     }
                     launch { sheetState.hide() }
                 }
