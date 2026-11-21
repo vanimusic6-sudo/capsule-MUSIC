@@ -1,4 +1,4 @@
-Google Material Icons Rounded (24dp)
+Google Material Symbols Rounded Filled (24dp)
 Source: https://github.com/google/material-design-icons
 Copyright (c) Google LLC and contributors.
 Licensed under Apache License, Version 2.0.

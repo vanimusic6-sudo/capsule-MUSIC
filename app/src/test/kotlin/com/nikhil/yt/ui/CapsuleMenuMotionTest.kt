@@ -133,7 +133,7 @@ class CapsuleMenuMotionTest {
         assertTrue(source.contains("highlightBorder: Boolean = false"))
     }
 
-    @Test fun allMenuIconsUseProfessionalRoundedMaterialVectors() {
+    @Test fun allMenuIconsUseGoogleMaterialSymbolsRounded() {
         val names = listOf(
             "album", "artist", "bedtime", "delete", "download", "edit", "fire",
             "info", "library_add", "library_add_check", "link", "music_note",
@@ -148,11 +148,11 @@ class CapsuleMenuMotionTest {
             ).first(java.io.File::isFile)
             val xml = file.readText()
             assertTrue("Material icon attribution missing for $name",
-                xml.contains("Google Material Icons Rounded"))
+                xml.contains("Google Material Symbols Rounded"))
             assertTrue("Apache-2.0 icon license missing for $name",
                 xml.contains("Apache-2.0"))
             assertTrue("$name must be a 24dp vector",
-                xml.contains("android:viewportWidth=\"24\""))
+                xml.contains("android:viewportWidth=\"960\""))
             assertFalse("$name must not contain hand-drawn stroke paths",
                 xml.contains("android:strokeWidth="))
         }
