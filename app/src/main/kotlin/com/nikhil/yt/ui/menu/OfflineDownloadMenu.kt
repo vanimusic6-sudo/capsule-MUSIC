@@ -127,7 +127,7 @@ fun OfflineDownloadMenu(
                     shape = RoundedCornerShape(12.dp),
                 )
             } else {
-                Icon(painter = painterResource(R.drawable.music_note),
+                Icon(painter = painterResource(R.drawable.capsule_soft_music_note),
                     contentDescription = null, modifier = Modifier.size(48.dp))
             }
             Column(Modifier.weight(1f)) {
@@ -195,7 +195,7 @@ fun OfflineDownloadMenu(
             }
         }
         MenuSurfaceSection(modifier = Modifier.padding(vertical = 8.dp)) {
-            Action(stringResource(R.string.remove_download), R.drawable.offline, destructive = true) {
+            Action(stringResource(R.string.remove_download), R.drawable.capsule_soft_download, destructive = true) {
                 onRemove()
             }
         }

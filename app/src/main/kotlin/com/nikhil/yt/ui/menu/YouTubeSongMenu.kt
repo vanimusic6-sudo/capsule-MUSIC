@@ -373,7 +373,7 @@ fun YouTubeSongMenu(
                 },
                 leadingContent = {
                     Icon(
-                        painter = painterResource(if (librarySong?.song?.inLibrary != null) R.drawable.library_add_check else R.drawable.library_add),
+                        painter = painterResource(if (librarySong?.song?.inLibrary != null) R.drawable.capsule_soft_library_add_check else R.drawable.capsule_soft_library_add),
                         contentDescription = null,
                     )
                 },
@@ -456,7 +456,7 @@ fun YouTubeSongMenu(
                  headlineContent = { Text(text = stringResource(R.string.details)) },
                  leadingContent = {
                      Icon(
-                         painter = painterResource(R.drawable.info),
+                         painter = painterResource(R.drawable.capsule_soft_info),
                          contentDescription = null,
                      )
                  },

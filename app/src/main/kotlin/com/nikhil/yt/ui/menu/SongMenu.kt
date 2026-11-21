@@ -542,8 +542,8 @@ fun SongMenu(
                         Icon(
                             painter =
                                 painterResource(
-                                    if (song.song.inLibrary == null) R.drawable.library_add
-                                    else R.drawable.library_add_check,
+                                    if (song.song.inLibrary == null) R.drawable.capsule_soft_library_add
+                                    else R.drawable.capsule_soft_library_add_check,
                                 ),
                             contentDescription = null,
                         )
@@ -589,7 +589,7 @@ fun SongMenu(
                             },
                             leadingContent = {
                                 Icon(
-                                    painter = painterResource(R.drawable.delete),
+                                    painter = painterResource(R.drawable.capsule_soft_delete),
                                     tint = MaterialTheme.colorScheme.error,
                                     contentDescription = null,
                                 )
@@ -622,7 +622,7 @@ fun SongMenu(
                             },
                             leadingContent = {
                                 Icon(
-                                    painter = painterResource(R.drawable.delete),
+                                    painter = painterResource(R.drawable.capsule_soft_delete),
                                     tint = MaterialTheme.colorScheme.error,
                                     contentDescription = null,
                                 )
@@ -669,7 +669,7 @@ fun SongMenu(
                             },
                             leadingContent = {
                                 Icon(
-                                    painter = painterResource(R.drawable.delete),
+                                    painter = painterResource(R.drawable.capsule_soft_delete),
                                     tint = MaterialTheme.colorScheme.error,
                                     contentDescription = null,
                                 )
@@ -815,7 +815,7 @@ fun SongMenu(
                         headlineContent = { Text(text = stringResource(R.string.details)) },
                         leadingContent = {
                             Icon(
-                                painter = painterResource(R.drawable.info),
+                                painter = painterResource(R.drawable.capsule_soft_info),
                                 contentDescription = null,
                             )
                         },

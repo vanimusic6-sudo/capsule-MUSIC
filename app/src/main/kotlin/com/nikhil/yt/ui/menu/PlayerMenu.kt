@@ -350,7 +350,7 @@ fun PlayerMenu(
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        painter = painterResource(R.drawable.music_note),
+                        painter = painterResource(R.drawable.capsule_soft_music_note),
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(22.dp),
@@ -444,7 +444,7 @@ fun PlayerMenu(
                 onClick = { showChoosePlaylistDialog = true }
             ),
             NewAction(
-                icon = { Icon(painterResource(R.drawable.bedtime), contentDescription = null) },
+                icon = { Icon(painterResource(R.drawable.capsule_soft_bedtime), contentDescription = null) },
                 text = stringResource(R.string.sleep_timer),
                 enabled = canSetSleepTimer,
                 onClick = { showSleepTimer = true },
@@ -452,7 +452,7 @@ fun PlayerMenu(
             NewAction(
                 icon = {
                     Icon(
-                        painter = painterResource(R.drawable.link),
+                        painter = painterResource(R.drawable.capsule_soft_link),
                         contentDescription = null,
                         modifier = Modifier.size(28.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -478,7 +478,7 @@ fun PlayerMenu(
             NewAction(
                 icon = {
                     Icon(
-                        painter = painterResource(R.drawable.fire),
+                        painter = painterResource(R.drawable.capsule_soft_fire),
                         contentDescription = null,
                         modifier = Modifier.size(28.dp),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -588,7 +588,7 @@ fun PlayerMenu(
                                 color = MaterialTheme.colorScheme.error)
                         },
                         leadingContent = {
-                            Icon(painterResource(R.drawable.offline), contentDescription = null,
+                            Icon(painterResource(R.drawable.capsule_soft_download), contentDescription = null,
                                 tint = MaterialTheme.colorScheme.error)
                         },
                         modifier = Modifier.clickable {
@@ -647,7 +647,7 @@ fun PlayerMenu(
                         headlineContent = { Text(text = stringResource(R.string.details)) },
                         leadingContent = {
                             Icon(
-                                painter = painterResource(R.drawable.info),
+                                painter = painterResource(R.drawable.capsule_soft_info),
                                 contentDescription = null,
                             )
                         },
@@ -1400,7 +1400,7 @@ fun EqualizerDialog(
                         },
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.delete),
+                            painter = painterResource(R.drawable.capsule_soft_delete),
                             contentDescription = null,
                         )
                     }

@@ -300,7 +300,7 @@ fun SelectionSongMenu(
                 leadingContent = {
                     Icon(
                         painter = painterResource(
-                            if (allInLibrary) R.drawable.library_add_check else R.drawable.library_add
+                            if (allInLibrary) R.drawable.capsule_soft_library_add_check else R.drawable.capsule_soft_library_add
                         ),
                         contentDescription = null,
                     )
@@ -397,7 +397,7 @@ fun SelectionSongMenu(
                     headlineContent = { Text(text = stringResource(R.string.delete)) },
                     leadingContent = {
                         Icon(
-                            painter = painterResource(R.drawable.delete),
+                            painter = painterResource(R.drawable.capsule_soft_delete),
                             contentDescription = null,
                         )
                     },
@@ -493,7 +493,7 @@ fun SelectionMediaMetadataMenu(
                     headlineContent = { Text(text = stringResource(R.string.delete)) },
                     leadingContent = {
                         Icon(
-                            painter = painterResource(R.drawable.delete),
+                            painter = painterResource(R.drawable.capsule_soft_delete),
                             contentDescription = null,
                         )
                     },

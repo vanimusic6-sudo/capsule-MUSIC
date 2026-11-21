@@ -443,7 +443,7 @@ fun PlaylistMenu(
                     headlineContent = { Text(text = stringResource(R.string.delete)) },
                     leadingContent = {
                         Icon(
-                            painter = painterResource(R.drawable.delete),
+                            painter = painterResource(R.drawable.capsule_soft_delete),
                             contentDescription = null,
                         )
                     },

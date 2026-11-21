@@ -1,0 +1,28 @@
+<!-- Capsule Music • original soft-line menu icon. GPL-3.0 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.9"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M8,3.5 L19,3.5 C19.8,3.5 20.5,4.2 20.5,5 L20.5,16" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.9"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M4,8.1 L15.4,8.1 C16.2,8.1 16.9,8.8 16.9,9.6 L16.9,19.3 C16.9,20.1 16.2,20.8 15.4,20.8 L4,20.8 C3.2,20.8 2.5,20.1 2.5,19.3 L2.5,9.6 C2.5,8.8 3.2,8.1 4,8.1 Z" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.9"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M6,14.4 L8.4,16.8 L13.1,12" />
+</vector>
