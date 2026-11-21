@@ -565,9 +565,14 @@ internal class CapsuleVideoSession(
         // inside the available buffer. Never chase MUSIC with a seek loop.
         if (!ownsSound && catchupPending && rendering && ready && firstFrame) {
             // A second seek is permitted only inside an already-buffered
-            // window. Target exactly the MUSIC clock, without predicting an
-            // additional network delay that would cause another overshoot.
-            val target = startupSeekTarget(predictSeekLatency = false)
+            // window. A bounded 400ms lead compensates the moving music clock
+            // while the post-seek frame is decoded. NEVER reuse the larger
+            // cold-network prediction here or a repeated CDN seek can starve.
+            val bufferedLeadMs = if (audio.isPlaying) seekLatencyMs.coerceIn(0L, 400L) else 0L
+            val position = targetPosition()
+            val predicted = if (position > Long.MAX_VALUE - bufferedLeadMs) Long.MAX_VALUE
+                else position + bufferedLeadMs
+            val target = capsuleClampDecoderSeek(predicted, video.duration)
             if (abs(video.currentPosition - targetPosition()) > 400L) {
                 // After a slow CDN startup another seek with only 350ms
                 // banked ahead consumed the last decoded frames and left the
