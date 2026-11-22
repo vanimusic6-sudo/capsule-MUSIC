@@ -19,4 +19,7 @@
     <string name="eq_simple_back">Вернуться к простому режиму</string>
     <string name="eq_effects_title">Звуковые эффекты</string>
     <string name="eq_effect_spatial">Объёмный звук</string>
+    <string name="eq_offline_edit_hint">Звук можно настроить заранее. Параметры применятся при воспроизведении.</string>
+    <string name="eq_curve_intensity">Выразительность</string>
+    <string name="eq_curve_intensity_hint">До 200% в пределах возможностей телефона. Сильное усиление может искажать звук.</string>
 </resources>
