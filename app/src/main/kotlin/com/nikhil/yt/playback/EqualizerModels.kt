@@ -77,6 +77,62 @@ internal fun inverseScaledEqLevel(
         .coerceIn(deviceMinMb.toLong(), deviceMaxMb.toLong()).toInt()
 }
 
+/**
+ * Conservative, always-on bounds for the phone's output stage.
+ * These protect against excessive combined boost but cannot measure speaker
+ * temperature, acoustic excursion, or guarantee physical speaker safety.
+ */
+internal const val CAPSULE_MAX_EQ_BOOST_MB = 650      // +6.5 dB per EQ band
+internal const val CAPSULE_MAX_BASS_STRENGTH = 400    // native scale 0..1000
+internal const val CAPSULE_MAX_VIRTUALIZER_STRENGTH = 350
+internal const val CAPSULE_MAX_OUTPUT_GAIN_MB = 300   // +3 dB
+
+/** Hardware-mapped effective EQ curve, or flat when the studio is bypassed. */
+internal fun protectedEqLevels(
+    settings: EqSettings,
+    bandCount: Int,
+    minMb: Int,
+    maxMb: Int,
+): List<Int> {
+    if (bandCount <= 0) return emptyList()
+    if (!settings.enabled) return List(bandCount) { 0 }
+    val boundedMax = maxMb.coerceAtMost(CAPSULE_MAX_EQ_BOOST_MB).coerceAtLeast(minMb)
+    return scaleEqBandLevels(
+        resampleEqLevelsByIndex(settings.bandLevelsMb, bandCount),
+        settings.intensityPercent,
+        minMb,
+        maxMb,
+    ).map { it.coerceIn(minMb, boundedMax) }
+}
+
+/**
+ * Reserve track headroom *before* the Android session effects. A track with
+ * peaks near 0 dBFS can distort when independently boosted EQ/Bass/Gain bands
+ * are summed. Never increase the track level from this policy.
+ */
+internal fun protectedEqAudioFactor(settings: EqSettings): Float {
+    if (!settings.enabled) return 1f
+    val maxPositiveEqMb = settings.bandLevelsMb
+        .maxOfOrNull { it.coerceAtLeast(0) } ?: 0
+    val eqBoostDb = (maxPositiveEqMb.toDouble() *
+        settings.intensityPercent.coerceIn(100, 200) / 100.0 / 100.0)
+        .coerceIn(0.0, CAPSULE_MAX_EQ_BOOST_MB / 100.0)
+    val bassReserveDb = if (settings.bassBoostEnabled) {
+        settings.bassBoostStrength.coerceIn(0, CAPSULE_MAX_BASS_STRENGTH) *
+            (4.5 / CAPSULE_MAX_BASS_STRENGTH)
+    } else 0.0
+    val surroundReserveDb = if (settings.virtualizerEnabled) {
+        settings.virtualizerStrength.coerceIn(0, CAPSULE_MAX_VIRTUALIZER_STRENGTH) *
+            (1.5 / CAPSULE_MAX_VIRTUALIZER_STRENGTH)
+    } else 0.0
+    val gainReserveDb = if (settings.outputGainEnabled) {
+        settings.outputGainMb.coerceIn(0, CAPSULE_MAX_OUTPUT_GAIN_MB) / 100.0
+    } else 0.0
+    val totalDb = eqBoostDb + bassReserveDb + surroundReserveDb +
+        gainReserveDb + if (eqBoostDb + bassReserveDb + gainReserveDb > 0.0) 1.0 else 0.0
+    return kotlin.math.pow(10.0, -totalDb / 20.0).toFloat().coerceIn(0.1f, 1f)
+}
+
 internal object EqualizerJson {
     val json: Json =
         Json {
