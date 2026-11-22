@@ -119,6 +119,8 @@ import com.nikhil.yt.constants.EqualizerBassBoostEnabledKey
 import com.nikhil.yt.constants.EqualizerBassBoostStrengthKey
 import com.nikhil.yt.constants.EqualizerCustomProfilesJsonKey
 import com.nikhil.yt.constants.EqualizerEnabledKey
+import com.nikhil.yt.constants.SoundStudioSpeedKey
+import com.nikhil.yt.constants.SoundStudioPitchKey
 import com.nikhil.yt.constants.EqualizerOutputGainEnabledKey
 import com.nikhil.yt.constants.EqualizerOutputGainMbKey
 import com.nikhil.yt.constants.EqualizerSelectedProfileIdKey
@@ -131,6 +133,10 @@ import com.nikhil.yt.discovery.ExperimentalDownload
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.models.sanitizedArtistCredits
 import com.nikhil.yt.playback.EqCapabilities
+import com.nikhil.yt.playback.CAPSULE_MAX_BASS_STRENGTH
+import com.nikhil.yt.playback.CAPSULE_MAX_VIRTUALIZER_STRENGTH
+import com.nikhil.yt.playback.CAPSULE_MAX_OUTPUT_GAIN_MB
+import com.nikhil.yt.playback.CAPSULE_MAX_EQ_BOOST_MB
 import com.nikhil.yt.playback.CapsuleEqPresets
 import com.nikhil.yt.playback.scaleEqBandLevels
 import com.nikhil.yt.playback.inverseScaledEqLevel
@@ -734,6 +740,12 @@ fun EqualizerDialog(
     val eqCapabilities by playerConnection.service.eqCapabilities.collectAsState()
 
     val (eqEnabled, setEqEnabled) = rememberPreference(EqualizerEnabledKey, defaultValue = false)
+    val (studioSpeed, setStudioSpeed) = rememberPreference(SoundStudioSpeedKey, defaultValue = 1f)
+    val (studioPitch, setStudioPitch) = rememberPreference(SoundStudioPitchKey, defaultValue = 1f)
+    var speed by rememberSaveable { mutableFloatStateOf(studioSpeed.coerceIn(0.25f, 2f)) }
+    var pitch by rememberSaveable { mutableFloatStateOf(studioPitch.coerceIn(0.25f, 2f)) }
+    LaunchedEffect(studioSpeed) { speed = studioSpeed.coerceIn(0.25f, 2f) }
+    LaunchedEffect(studioPitch) { pitch = studioPitch.coerceIn(0.25f, 2f) }
     val (selectedProfileId, setSelectedProfileId) = rememberPreference(EqualizerSelectedProfileIdKey, defaultValue = "flat")
     val (bandLevelsRaw, setBandLevelsRaw) = rememberPreference(EqualizerBandLevelsMbKey, defaultValue = "")
     val (curveIntensity, setCurveIntensity) =
@@ -902,7 +914,6 @@ fun EqualizerDialog(
                         Modifier
                             .fillMaxWidth()
                             .clickable {
-                                setEqEnabled(true)
                                 setBandLevelsRaw(encodeBandLevelsMb(profile.bandLevelsMb))
                                 setOutputGainMb(profile.outputGainMb)
                                 setOutputGainEnabled(profile.outputGainMb != 0)
@@ -974,9 +985,15 @@ fun EqualizerDialog(
                     actions = {
                         Switch(
                             checked = eqEnabled,
-                            onCheckedChange = {
-                                setEqEnabled(it)
-                                if (it && selectedProfileId.isBlank()) setSelectedProfileId("manual")
+                            onCheckedChange = { enabled ->
+                                // Apply to every sound parameter, not just native EQ.
+                                playerConnection.player.playbackParameters =
+                                    if (enabled) PlaybackParameters(speed, pitch)
+                                    else PlaybackParameters(1f, 1f)
+                                setEqEnabled(enabled)
+                                if (enabled && selectedProfileId.isBlank()) {
+                                    setSelectedProfileId("manual")
+                                }
                             },
                             thumbContent = {
                                 Icon(
@@ -1007,13 +1024,7 @@ fun EqualizerDialog(
                 ) {
                     Spacer(Modifier.height(6.dp))
 
-                    // Playback speed is independent of the Android equalizer session.
-                    var speed by remember {
-                        mutableFloatStateOf(
-                            playerConnection.player.playbackParameters.speed
-                                .safeCoerceIn(TempoMin, TempoMax, 1f)
-                        )
-                    }
+                    // Tempo and pitch share the EQ master switch.
                     EqSection(
                         title = stringResource(R.string.tempo),
                         trailing = {
@@ -1026,9 +1037,9 @@ fun EqualizerDialog(
                                 modifier = Modifier.size(38.dp),
                                 onClick = {
                                     speed = 1f
-                                    val pitch = playerConnection.player.playbackParameters.pitch
-                                        .safeCoerceIn(PitchMin, PitchMax, 1f)
-                                    playerConnection.player.playbackParameters = PlaybackParameters(1f, pitch)
+                                    setStudioSpeed(1f)
+                                    if (eqEnabled) playerConnection.player.playbackParameters =
+                                        PlaybackParameters(1f, pitch)
                                 },
                             ) {
                                 Icon(
@@ -1052,14 +1063,13 @@ fun EqualizerDialog(
                                     val newSpeed = sliderToMultiplier(position).quantize(0.01f)
                                     if (abs(newSpeed - speed) >= 0.005f) {
                                         speed = newSpeed
-                                        val pitch = playerConnection.player.playbackParameters.pitch
-                                            .safeCoerceIn(PitchMin, PitchMax, 1f)
-                                        playerConnection.player.playbackParameters =
+                                        if (eqEnabled) playerConnection.player.playbackParameters =
                                             PlaybackParameters(speed, pitch)
                                     }
                                 },
                                 modifier = Modifier.weight(1f),
                                 valueRange = 0f..1f,
+                                onValueChangeFinished = { setStudioSpeed(speed) },
                             )
                             Text("2×", color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.labelSmall)
@@ -1075,7 +1085,6 @@ fun EqualizerDialog(
                                 onClick = {
                                     val flat = List(bandCount) { 0 }
                                     bandLevelsMb = flat
-                                    setEqEnabled(true)
                                     setSelectedProfileId("flat")
                                     setBandLevelsRaw(encodeBandLevelsMb(flat))
                                 },
@@ -1103,7 +1112,6 @@ fun EqualizerDialog(
                                                 preset, caps.centerFreqHz, minMb, maxMb,
                                             )
                                             bandLevelsMb = levels
-                                            setEqEnabled(true)
                                             setSelectedProfileId("capsule:${preset.id}")
                                             setBandLevelsRaw(encodeBandLevelsMb(levels))
                                         },
@@ -1169,7 +1177,6 @@ fun EqualizerDialog(
                                         )
                                     }
                                     bandLevelsMb = updated
-                                    setEqEnabled(true)
                                     setSelectedProfileId("manual")
                                     setBandLevelsRaw(encodeBandLevelsMb(updated))
                                 }
@@ -1255,12 +1262,6 @@ fun EqualizerDialog(
                         )
                         HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
 
-                        var pitch by remember {
-                            mutableFloatStateOf(
-                                playerConnection.player.playbackParameters.pitch
-                                    .safeCoerceIn(PitchMin, PitchMax, 1f)
-                            )
-                        }
                         Row(
                             modifier = Modifier.fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 4.dp),
@@ -1276,7 +1277,8 @@ fun EqualizerDialog(
                                 modifier = Modifier.size(38.dp),
                                 onClick = {
                                     pitch = 1f
-                                    playerConnection.player.playbackParameters =
+                                    setStudioPitch(1f)
+                                    if (eqEnabled) playerConnection.player.playbackParameters =
                                         PlaybackParameters(speed, 1f)
                                 },
                             ) {
@@ -1292,11 +1294,12 @@ fun EqualizerDialog(
                             onValueChange = { position ->
                                 val newPitch = sliderToMultiplier(position).quantize(0.01f)
                                 pitch = newPitch
-                                playerConnection.player.playbackParameters =
+                                if (eqEnabled) playerConnection.player.playbackParameters =
                                     PlaybackParameters(speed, pitch)
                             },
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
                             valueRange = 0f..1f,
+                            onValueChangeFinished = { setStudioPitch(pitch) },
                         )
                     }
 
