@@ -131,6 +131,7 @@ import com.nikhil.yt.discovery.ExperimentalDownload
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.models.sanitizedArtistCredits
 import com.nikhil.yt.playback.EqCapabilities
+import com.nikhil.yt.playback.CapsuleEqPresets
 import com.nikhil.yt.playback.scaleEqBandLevels
 import com.nikhil.yt.playback.inverseScaledEqLevel
 import com.nikhil.yt.playback.EqProfile
@@ -779,8 +780,6 @@ fun EqualizerDialog(
     }
 
     val profiles = remember(customProfilesJson) { decodeProfilesPayload(customProfilesJson).profiles }
-    val activeProfileId = selectedProfileId.removePrefix("profile:").takeIf { selectedProfileId.startsWith("profile:") }
-    val activeProfile = remember(profiles, activeProfileId) { profiles.firstOrNull { it.id == activeProfileId } }
 
     var showSaveProfileDialog by rememberSaveable { mutableStateOf(false) }
     var showManageProfilesDialog by rememberSaveable { mutableStateOf(false) }
@@ -1006,8 +1005,7 @@ fun EqualizerDialog(
                             .padding(horizontal = 16.dp)
                             .padding(bottom = 24.dp),
                 ) {
-                    Spacer(Modifier.height(12.dp))
-
+                    Spacer(Modifier.height(6.dp))
 
                     // Playback speed is independent of the Android equalizer session.
                     var speed by remember {
@@ -1019,12 +1017,26 @@ fun EqualizerDialog(
                     EqSection(
                         title = stringResource(R.string.tempo),
                         trailing = {
-                            TextButton(onClick = {
-                                speed = 1f
-                                val pitch = playerConnection.player.playbackParameters.pitch
-                                    .safeCoerceIn(PitchMin, PitchMax, 1f)
-                                playerConnection.player.playbackParameters = PlaybackParameters(1f, pitch)
-                            }) { Text(stringResource(R.string.reset)) }
+                            Text(
+                                text = "×${formatMultiplier(speed)}",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            IconButton(
+                                modifier = Modifier.size(38.dp),
+                                onClick = {
+                                    speed = 1f
+                                    val pitch = playerConnection.player.playbackParameters.pitch
+                                        .safeCoerceIn(PitchMin, PitchMax, 1f)
+                                    playerConnection.player.playbackParameters = PlaybackParameters(1f, pitch)
+                                },
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.restore),
+                                    contentDescription = stringResource(R.string.reset),
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
                         },
                     ) {
                         Row(
@@ -1052,94 +1064,80 @@ fun EqualizerDialog(
                             Text("2×", color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.labelSmall)
                         }
-                        Text(
-                            text = "×${formatMultiplier(speed)}",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
                     }
-                    Spacer(Modifier.height(12.dp))
-
-                    if (eqCapabilities == null) {
-                        Text(
-                            text = stringResource(R.string.eq_offline_edit_hint),
-                            modifier = Modifier.fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.labelMedium,
-                            textAlign = TextAlign.Center,
-                        )
-                    }
+                    Spacer(Modifier.height(10.dp))
 
                     EqSection(
                         title = stringResource(R.string.equalizer),
                         trailing = {
-                            TextButton(onClick = {
-                                val flat = List(bandCount) { 0 }
-                                bandLevelsMb = flat
-                                setEqEnabled(true)
-                                setSelectedProfileId("flat")
-                                setBandLevelsRaw(encodeBandLevelsMb(flat))
-                            }) { Text(stringResource(R.string.reset)) }
+                            IconButton(
+                                modifier = Modifier.size(38.dp),
+                                onClick = {
+                                    val flat = List(bandCount) { 0 }
+                                    bandLevelsMb = flat
+                                    setEqEnabled(true)
+                                    setSelectedProfileId("flat")
+                                    setBandLevelsRaw(encodeBandLevelsMb(flat))
+                                },
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.restore),
+                                    contentDescription = stringResource(R.string.reset),
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
                         },
                     ) {
-                        // Only real platform-provided preset names. Do not invent or
-                        // translate a "Bass/Clarity" curve that the native EQ never had.
-                        val availablePresets = listOf(-1 to "Flat") +
-                            caps.systemPresets.mapIndexed { index, name -> index to name }
-                        availablePresets.chunked(3).forEach { row ->
+                        // Exactly six recognizable Capsule signatures; frequencies and
+                        // strength are mapped to the active Android EQ hardware.
+                        CapsuleEqPresets.all.chunked(3).forEachIndexed { rowIndex, row ->
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                row.forEach { (preset, label) ->
+                                row.forEach { preset ->
                                     FilterChip(
-                                        selected = selectedProfileId ==
-                                            (if (preset == -1) "flat" else "system:$preset"),
+                                        selected = selectedProfileId == "capsule:${preset.id}",
                                         onClick = {
-                                            if (preset == -1) {
-                                                val levels = List(bandCount) { 0 }
-                                                bandLevelsMb = levels
-                                                setEqEnabled(true)
-                                                setSelectedProfileId("flat")
-                                                setBandLevelsRaw(encodeBandLevelsMb(levels))
-                                            } else {
-                                                // The service writes the real hardware preset
-                                                // levels and selected ID only after success.
-                                                playerConnection.service.applySystemEqPreset(preset)
-                                            }
+                                            val levels = CapsuleEqPresets.levelsFor(
+                                                preset, caps.centerFreqHz, minMb, maxMb,
+                                            )
+                                            bandLevelsMb = levels
+                                            setEqEnabled(true)
+                                            setSelectedProfileId("capsule:${preset.id}")
+                                            setBandLevelsRaw(encodeBandLevelsMb(levels))
                                         },
                                         modifier = Modifier.weight(1f).heightIn(min = 44.dp),
                                         label = {
                                             Text(
-                                                text = label,
-                                                maxLines = 2,
+                                                preset.name,
+                                                modifier = Modifier.fillMaxWidth(),
+                                                maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,
+                                                textAlign = TextAlign.Center,
                                                 style = MaterialTheme.typography.labelMedium,
                                             )
                                         },
                                         border = null,
                                         colors = FilterChipDefaults.filterChipColors(
                                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                            labelColor = MaterialTheme.colorScheme.onSurface,
+                                            labelColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.86f),
                                             selectedContainerColor =
-                                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f),
+                                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f),
                                             selectedLabelColor = MaterialTheme.colorScheme.onSurface,
                                         ),
                                     )
                                 }
-                                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                             }
+                            if (rowIndex == 0) Spacer(Modifier.height(6.dp))
                         }
 
-                        Spacer(Modifier.height(10.dp))
+                        Spacer(Modifier.height(6.dp))
                         val heightDp = LocalConfiguration.current.screenHeightDp
                         val graphHeight = when {
-                            heightDp < 690 -> 164.dp
-                            heightDp < 800 -> 188.dp
-                            else -> 212.dp
+                            heightDp < 690 -> 158.dp
+                            heightDp < 800 -> 180.dp
+                            else -> 202.dp
                         }
                         var selectedBand by remember { mutableIntStateOf(0) }
                         val displayedLevels = scaleEqBandLevels(
@@ -1202,12 +1200,7 @@ fun EqualizerDialog(
                             valueRange = 100f..200f,
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                         )
-                        Text(
-                            stringResource(R.string.eq_curve_intensity_hint),
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+
                     }
 
                     Spacer(Modifier.height(12.dp))
@@ -1301,18 +1294,6 @@ fun EqualizerDialog(
 
                     Spacer(Modifier.height(12.dp))
                     EqSection(title = stringResource(R.string.eq_profiles)) {
-                        val current = when {
-                            selectedProfileId == "flat" -> stringResource(R.string.eq_flat)
-                            selectedProfileId.startsWith("system:") ->
-                                caps.systemPresets.getOrNull(
-                                    selectedProfileId.removePrefix("system:").toIntOrNull() ?: -1
-                                ) ?: stringResource(R.string.eq_system_preset)
-                            activeProfile != null -> activeProfile.name
-                            else -> stringResource(R.string.eq_manual)
-                        }
-                        Text(current, style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                             horizontalArrangement = Arrangement.SpaceEvenly,
