@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="eq_simple_title">Быстрый звук</string>
+    <string name="eq_simple_natural">Обычный</string>
+    <string name="eq_simple_bass">Басы</string>
+    <string name="eq_simple_clear">Чёткость</string>
+    <string name="eq_simple_voice">Вокал</string>
+    <string name="eq_simple_soft">Мягко</string>
+    <string name="eq_simple_energy">Энергия</string>
+    <string name="eq_simple_custom">Настроить под себя</string>
+    <string name="eq_simple_low">Низкие</string>
+    <string name="eq_simple_mid">Средние</string>
+    <string name="eq_simple_high">Высокие</string>
+    <string name="eq_simple_advanced">Расширенные настройки звука</string>
+    <string name="eq_simple_back">Вернуться к простому режиму</string>
+</resources>
