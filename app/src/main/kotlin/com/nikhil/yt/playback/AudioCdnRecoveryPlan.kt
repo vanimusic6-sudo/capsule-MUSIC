@@ -4,10 +4,9 @@ package com.nikhil.yt.playback
  * One deterministic CDN recovery episode per track. The caller must handle
  * offline, HTTP 429 and server bot challenges BEFORE entering this plan.
  *
- * A 403/410 does not reissue the same signed URL or silently obtain another
- * URL from the same client. Repeated HTTP refusals and unresponsive opens are
- * immediately handed to the next eligible extraction client. Only a proven
- * transient transport failure may reconnect once.
+ * A first 403/410 obtains ONE fresh signed URL from the same client, without
+ * reusing the refused URL. A repeated refusal or unresponsive open changes the
+ * extraction client; a transient transport failure may reconnect once.
  *
  * On the second distinct Direct failure the bounded hybrid plan gets one
  * chance to negotiate SABR. A failed SABR session may return once to Direct,
@@ -17,13 +16,14 @@ package com.nikhil.yt.playback
  */
 internal enum class AudioCdnRecoveryAction {
     RETRY_SAME_URL,
+    TRY_FRESH_URL_SAME_CLIENT,
     TRY_NEXT_CLIENT,
     SKIP_TRACK,
 }
 
 internal class AudioCdnRecoveryPlan {
     private enum class Stage {
-        INITIAL, RECONNECTED, ALTERNATE_TRIED, HYBRID_TRIED, SABR_FAILED,
+        INITIAL, FRESH_URL_TRIED, RECONNECTED, ALTERNATE_TRIED, HYBRID_TRIED, SABR_FAILED,
     }
     private val stages = LinkedHashMap<String, Stage>()
 
@@ -34,12 +34,14 @@ internal class AudioCdnRecoveryPlan {
     ): AudioCdnRecoveryAction {
         val stage = stages[mediaId] ?: Stage.INITIAL
         val action = when (stage) {
-            Stage.INITIAL -> if (signedUrlRejected || unresponsiveOpen) {
-                AudioCdnRecoveryAction.TRY_NEXT_CLIENT
-            } else {
-                AudioCdnRecoveryAction.RETRY_SAME_URL
+            Stage.INITIAL -> when {
+                // One refused signed URL is not proof that the extraction client is broken.
+                // Re-resolve exactly once; never reopen the rejected URL itself.
+                signedUrlRejected -> AudioCdnRecoveryAction.TRY_FRESH_URL_SAME_CLIENT
+                unresponsiveOpen -> AudioCdnRecoveryAction.TRY_NEXT_CLIENT
+                else -> AudioCdnRecoveryAction.RETRY_SAME_URL
             }
-            Stage.RECONNECTED -> AudioCdnRecoveryAction.TRY_NEXT_CLIENT
+            Stage.FRESH_URL_TRIED, Stage.RECONNECTED -> AudioCdnRecoveryAction.TRY_NEXT_CLIENT
             // A second distinct CDN failure can now promote the independently
             // negotiated SABR transport, rather than ending the track before
             // the hybrid route has ever had a chance.
@@ -48,6 +50,7 @@ internal class AudioCdnRecoveryPlan {
         }
         stages[mediaId] = when (action) {
             AudioCdnRecoveryAction.RETRY_SAME_URL -> Stage.RECONNECTED
+            AudioCdnRecoveryAction.TRY_FRESH_URL_SAME_CLIENT -> Stage.FRESH_URL_TRIED
             AudioCdnRecoveryAction.TRY_NEXT_CLIENT ->
                 if (stage == Stage.ALTERNATE_TRIED) Stage.HYBRID_TRIED else Stage.ALTERNATE_TRIED
             AudioCdnRecoveryAction.SKIP_TRACK -> stage
