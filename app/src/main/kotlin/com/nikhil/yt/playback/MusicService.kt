@@ -2373,7 +2373,7 @@ class MusicService :
             .collect(scope) { (settings, speed, pitch) ->
                 // An optional loudness boost (up to +3 dB) must never undo
                 // the gain reserve required by native EQ/BassBoost.
-                soundStudioEnabledForVolume.value = settings.enabled
+                if (settings.enabled) soundStudioEnabledForVolume.value = true
                 val playbackParams = if (settings.enabled) PlaybackParameters(speed, pitch)
                     else PlaybackParameters(1f, 1f)
                 val currentParams = player.playbackParameters
@@ -2407,6 +2407,8 @@ class MusicService :
                     soundStudioSafetyFactor.value = minOf(
                         soundStudioSafetyFactor.value, targetSafety)
                     audioEffectsController.applySettings(settings)
+                    // Restore normalization gain only after native EQ is flat.
+                    if (!settings.enabled) soundStudioEnabledForVolume.value = false
                     if (paramChange) player.playbackParameters = playbackParams
                     previousSoundStudioSettings = settings
                     if (sensitive) {
