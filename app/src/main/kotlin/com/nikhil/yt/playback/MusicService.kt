@@ -2394,7 +2394,7 @@ class MusicService :
                             delay(12L)
                         }
                     }
-                    val targetSafety = protectedEqAudioFactor(settings)
+                    val targetSafety = protectedEqAudioFactor(settings, eqCapabilities.value)
                     // Attenuate before increasing native boosts, and remove
                     // the reserve only after the DSP has been neutralized.
                     soundStudioSafetyFactor.value = minOf(
@@ -3902,14 +3902,26 @@ class MusicService :
 
     fun applySystemEqPreset(presetIndex: Int) {
         scope.launch {
+            // An OEM preset writes directly into the native mixer, before
+            // DataStore notifies our static headroom calculation. Duck FIRST,
+            // then let the regular effect observer restore the correct gain.
+            val previousSafety = soundStudioSafetyFactor.value
+            soundStudioSafetyFactor.value = minOf(previousSafety, 0.1f)
             val levels =
                 audioEffectsController.applySystemPreset(
                     sessionId = player.audioSessionId,
                     presetIndex = presetIndex,
-                ) ?: return@launch
+                )
+            if (levels == null) {
+                soundStudioSafetyFactor.value = previousSafety
+                return@launch
+            }
 
             val encoded = encodeBandLevelsMb(levels)
-            if (encoded.isBlank()) return@launch
+            if (encoded.isBlank()) {
+                soundStudioSafetyFactor.value = previousSafety
+                return@launch
+            }
 
             ioScope.launch {
                 dataStore.edit { prefs ->

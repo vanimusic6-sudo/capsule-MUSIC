@@ -63,7 +63,7 @@ class PlaybackAudioEffectsControllerTest {
             virtualizerEnabled = true, virtualizerStrength = 1000,
             intensityPercent = 200,
         )
-        assertEquals(listOf(650, 650, -400, -1000, 650),
+        assertEquals(listOf(300, 650, -400, -1000, 650),
             protectedEqLevels(base, 5, -1500, 1500))
         assertEquals(listOf(0, 0, 0, 0, 0),
             protectedEqLevels(base.copy(enabled = false), 5, -1500, 1500))
@@ -81,18 +81,18 @@ class PlaybackAudioEffectsControllerTest {
             intensityPercent = 200,
         )
         val factor = protectedEqAudioFactor(base)
-        org.junit.Assert.assertTrue("Strong EQ must reserve moderate headroom", factor in 0.60f..0.90f)
-        // A single bass or tonal adjustment must not halve the whole track.
+        org.junit.Assert.assertTrue("Combined effects must get additive headroom", factor in 0.10f..0.19f)
+        // An isolated +6.5 dB EQ band needs real headroom, not the old -4 dB cap.
         val eqOnly = base.copy(
             bassBoostEnabled = false, virtualizerEnabled = false,
             outputGainEnabled = false,
         )
-        org.junit.Assert.assertTrue(protectedEqAudioFactor(eqOnly) > 0.70f)
+        org.junit.Assert.assertTrue(protectedEqAudioFactor(eqOnly) in 0.35f..0.46f)
         val bassOnly = base.copy(
             bandLevelsMb = List(5) { 0 },
             virtualizerEnabled = false, outputGainEnabled = false,
         )
-        org.junit.Assert.assertTrue(protectedEqAudioFactor(bassOnly) > 0.80f)
+        org.junit.Assert.assertTrue(protectedEqAudioFactor(bassOnly) in 0.45f..0.55f)
         assertEquals(1f, protectedEqAudioFactor(base.copy(
             bandLevelsMb = List(5) { 0 }, outputGainEnabled = false,
             bassBoostEnabled = false, virtualizerEnabled = false,
@@ -103,12 +103,56 @@ class PlaybackAudioEffectsControllerTest {
     }
 
     @Test
+    fun extremeSubBassIsClampedEvenWhenTheOEMReportsWideBandLimits() {
+        val values = EqSettings(
+            enabled = true, bandLevelsMb = listOf(1500, 1500, 1500),
+            outputGainEnabled = false, outputGainMb = 0,
+            bassBoostEnabled = false, bassBoostStrength = 0,
+            virtualizerEnabled = false, virtualizerStrength = 0,
+            intensityPercent = 200,
+        )
+        assertEquals(
+            listOf(300, 650, 650),
+            protectedEqLevels(values, 3, -1500, 1500, listOf(60, 230, 1_000)),
+        )
+        assertEquals(
+            listOf(650, 300, 650),
+            protectedEqLevels(values, 3, -1500, 1500, listOf(1_000, 90, 5_000)),
+        )
+        val caps = EqCapabilities(3, -1500, 1500, listOf(60, 230, 1000), emptyList())
+        org.junit.Assert.assertTrue(protectedEqAudioFactor(values, caps) < 0.45f)
+    }
+
+    @Test
+    fun headroomIsUnityWhenNothingBoostsAndNeverExceedsUnity() {
+        val base = EqSettings(
+            enabled = true, bandLevelsMb = listOf(-1500, -500, 0),
+            outputGainEnabled = true, outputGainMb = -100,
+            bassBoostEnabled = true, bassBoostStrength = 0,
+            virtualizerEnabled = true, virtualizerStrength = 0,
+        )
+        assertEquals(1f, protectedEqAudioFactor(base), 0.000001f)
+        assertEquals(1f, protectedEqAudioFactor(base.copy(enabled = false)), 0.000001f)
+        val boost = base.copy(
+            bandLevelsMb = listOf(1500, 1500, 1500),
+            bassBoostStrength = 1_000, virtualizerStrength = 1_000,
+            outputGainMb = 1_000,
+        )
+        val withGain = protectedEqAudioFactor(boost)
+        val withoutGain = protectedEqAudioFactor(boost.copy(outputGainEnabled = false))
+        org.junit.Assert.assertTrue(withGain in 0f..1f)
+        org.junit.Assert.assertTrue(withGain < withoutGain)
+        // Captures the regression: the old headroom floor was 0.63f.
+        org.junit.Assert.assertTrue(withGain < 0.30f)
+    }
+
+    @Test
     fun serviceProtectsMusicButNotTheSeparateVideoAudioSession() {
         val service = listOf(
             java.io.File("src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"),
             java.io.File("app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"),
         ).first(java.io.File::isFile).readText()
-        org.junit.Assert.assertTrue(service.contains("protectedEqAudioFactor(settings)"))
+        org.junit.Assert.assertTrue(service.contains("protectedEqAudioFactor(settings, eqCapabilities.value)"))
         org.junit.Assert.assertTrue(service.contains("soundStudioTransitionFactor.value = fade"))
         org.junit.Assert.assertTrue(service.contains(
             "videoCompanion?.setVolume(base)"))
@@ -137,5 +181,8 @@ class PlaybackAudioEffectsControllerTest {
         org.junit.Assert.assertFalse(apply.contains("effect.enabled = settings.bassBoostEnabled"))
         org.junit.Assert.assertFalse(apply.contains("effect.enabled = settings.virtualizerEnabled"))
         org.junit.Assert.assertTrue(source.contains("if (audioEffectsSessionId == sessionId) return"))
+        org.junit.Assert.assertTrue(source.contains("updatePeakLimiter(settings)"))
+        org.junit.Assert.assertTrue(source.contains("attemptedPeakLimiter = true"))
+        org.junit.Assert.assertTrue(source.contains("effect.setLimiterAllChannelsTo"))
     }
 }

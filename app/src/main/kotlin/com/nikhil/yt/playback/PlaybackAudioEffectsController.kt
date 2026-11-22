@@ -1,7 +1,9 @@
 package com.nikhil.yt.playback
 
 import android.media.audiofx.BassBoost
+import android.media.audiofx.DynamicsProcessing
 import android.media.audiofx.Equalizer
+import android.os.Build
 import android.media.audiofx.LoudnessEnhancer
 import android.media.audiofx.Virtualizer
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,6 +20,11 @@ internal class PlaybackAudioEffectsController(
     private var bassBoost: BassBoost? = null
     private var virtualizer: Virtualizer? = null
     private var loudnessEnhancer: LoudnessEnhancer? = null
+    // Optional session peak limiting on API 28+. Static headroom is always
+    // enforced as well, including when this device lacks DynamicsProcessing.
+    private var peakLimiter: DynamicsProcessing? = null
+    private var attemptedPeakLimiter = false
+    private var activeLimiterCurve: Boolean? = null
     // Avoid rewriting identical hardware parameters on unrelated preference
     // updates. Invalidated whenever the audio session or preset changes.
     private var appliedBandLevels: IntArray = intArrayOf()
@@ -93,6 +100,7 @@ internal class PlaybackAudioEffectsController(
         releaseEffect("release bass boost") { bassBoost?.release() }
         releaseEffect("release virtualizer") { virtualizer?.release() }
         releaseEffect("release loudness enhancer") { loudnessEnhancer?.release() }
+        releaseEffect("release peak limiter") { peakLimiter?.release() }
         equalizer = null
         appliedBandLevels = intArrayOf()
         appliedEnabled = null
@@ -105,6 +113,9 @@ internal class PlaybackAudioEffectsController(
         bassBoost = null
         virtualizer = null
         loudnessEnhancer = null
+        peakLimiter = null
+        attemptedPeakLimiter = false
+        activeLimiterCurve = null
         // Retain the last native frequency map while paused. No effects remain
         // attached, but the UI can edit a profile for the next valid session.
     }
@@ -157,7 +168,9 @@ internal class PlaybackAudioEffectsController(
             }.getOrDefault(0)
             val minMb = caps?.minBandLevelMb ?: -1500
             val maxMb = caps?.maxBandLevelMb ?: 1500
-            val levels = protectedEqLevels(settings, bandCount, minMb, maxMb)
+            val levels = protectedEqLevels(
+                settings, bandCount, minMb, maxMb, caps?.centerFreqHz.orEmpty(),
+            )
             val nonFlat = levels.any { it != 0 }
             // Never activate a new effect for an inactive/flat profile.
             // When bypassing an already active EQ, keep it attached and make
@@ -251,7 +264,65 @@ internal class PlaybackAudioEffectsController(
                 }
             }
         }
+        updatePeakLimiter(settings)
     }
+
+    /**
+     * A post-processing limiter is useful on devices that implement the
+     * Android DynamicsProcessing effect. Its ordering relative to OTHER OEM
+     * effects is not guaranteed, so it supplements rather than replaces the
+     * static attenuation above. Created once per session, never per slider.
+     */
+    private fun updatePeakLimiter(settings: EqSettings) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
+        val needsLimiter = settings.enabled && (
+            settings.bandLevelsMb.any { it > 0 } ||
+                (settings.bassBoostEnabled && settings.bassBoostStrength > 0) ||
+                (settings.virtualizerEnabled && settings.virtualizerStrength > 0) ||
+                (settings.outputGainEnabled && settings.outputGainMb > 0)
+            )
+        if (needsLimiter && !attemptedPeakLimiter) {
+            attemptedPeakLimiter = true
+            val sessionId = audioEffectsSessionId ?: return
+            try {
+                val limiter = nativeLimiter(active = true)
+                val config = DynamicsProcessing.Config.Builder(
+                    DynamicsProcessing.VARIANT_FAVOR_TIME_RESOLUTION,
+                    2, false, 0, false, 0, false, 0, true,
+                ).setLimiterAllChannelsTo(limiter).build()
+                val effect = DynamicsProcessing(0, sessionId, config)
+                try {
+                    effect.enabled = true
+                    if (!effect.enabled) error("Peak limiter did not activate")
+                    peakLimiter = effect
+                    activeLimiterCurve = true
+                } catch (failure: Exception) {
+                    effect.release()
+                    throw failure
+                }
+            } catch (failure: Exception) {
+                onRecoverableError("configure optional peak limiter", failure)
+            }
+        }
+        val effect = peakLimiter ?: return
+        if (activeLimiterCurve == needsLimiter) return
+        try {
+            // Ratio 1:1 turns the limiter neutral when the EQ is bypassed.
+            // Keep its insert attached to avoid native mixer disconnect pops.
+            effect.setLimiterAllChannelsTo(nativeLimiter(needsLimiter))
+            activeLimiterCurve = needsLimiter
+        } catch (failure: Exception) {
+            onRecoverableError("update peak limiter", failure)
+        }
+    }
+
+    private fun nativeLimiter(active: Boolean): DynamicsProcessing.Limiter =
+        DynamicsProcessing.Limiter(
+            true, true, 0, 0.5f, 120f,
+            if (active) 20f else 1f,
+            if (active) -1.0f else 0f,
+            0f,
+        )
 
     companion object {
         private val DEFAULT_SETTINGS =
