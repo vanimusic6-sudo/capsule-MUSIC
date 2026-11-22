@@ -8,6 +8,8 @@ import org.junit.Test
 class AudioCdnRecoveryPlanTest {
     @Test fun signedUrlRefusalTriesDirectThenHybridBeforeStopping() {
         val plan = AudioCdnRecoveryPlan()
+        assertEquals(AudioCdnRecoveryAction.TRY_FRESH_URL_SAME_CLIENT, plan.onFailure("a", true))
+        assertFalse(plan.nextClientAlreadyTried("a"))
         assertEquals(AudioCdnRecoveryAction.TRY_NEXT_CLIENT, plan.onFailure("a", true))
         assertTrue(plan.nextClientAlreadyTried("a"))
         assertEquals(AudioCdnRecoveryAction.TRY_NEXT_CLIENT, plan.onFailure("a", true))
@@ -41,6 +43,7 @@ class AudioCdnRecoveryPlanTest {
 
     @Test fun failedSabrReturnsToDirectExactlyOnce() {
         val plan = AudioCdnRecoveryPlan()
+        assertEquals(AudioCdnRecoveryAction.TRY_FRESH_URL_SAME_CLIENT, plan.onFailure("podcast", true))
         assertEquals(AudioCdnRecoveryAction.TRY_NEXT_CLIENT, plan.onFailure("podcast", true))
         assertEquals(AudioCdnRecoveryAction.TRY_NEXT_CLIENT, plan.onFailure("podcast", true))
         assertEquals(AudioCdnRecoveryAction.TRY_NEXT_CLIENT, plan.onSabrFailure("podcast"))
@@ -52,7 +55,7 @@ class AudioCdnRecoveryPlanTest {
 
     @Test fun tracksAndHealthyResetAreIsolated() {
         val plan = AudioCdnRecoveryPlan()
-        assertEquals(AudioCdnRecoveryAction.TRY_NEXT_CLIENT, plan.onFailure("a", true))
+        assertEquals(AudioCdnRecoveryAction.TRY_FRESH_URL_SAME_CLIENT, plan.onFailure("a", true))
         assertEquals(AudioCdnRecoveryAction.RETRY_SAME_URL, plan.onFailure("b", false))
         plan.reset("a")
         assertEquals(AudioCdnRecoveryAction.RETRY_SAME_URL, plan.onFailure("a", false))
