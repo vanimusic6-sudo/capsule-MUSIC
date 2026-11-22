@@ -42,7 +42,7 @@ timber = "5.0.1"
 kuromojiIpadic = "0.9.0"
 rhino = "1.9.1"
 multiplatformMarkdown = "0.39.2"
-innertubex = "v0.11.9"
+innertubex = "v0.13.0"
 
 [libraries]
 annotation = { module = "androidx.annotation:annotation", version.ref = "annotation" }
