@@ -19,4 +19,7 @@
     <string name="eq_simple_back">Back to simple controls</string>
     <string name="eq_effects_title">Sound effects</string>
     <string name="eq_effect_spatial">Spatial audio</string>
+    <string name="eq_offline_edit_hint">Tune sound now. Settings apply when Capsule Music starts playing.</string>
+    <string name="eq_curve_intensity">Curve intensity</string>
+    <string name="eq_curve_intensity_hint">100–200% within this device’s EQ limits. Strong boosts can distort audio.</string>
 </resources>
