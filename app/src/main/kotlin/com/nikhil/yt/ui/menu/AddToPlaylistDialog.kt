@@ -130,6 +130,12 @@ fun AddToPlaylistDialog(
         }
     }
 
+    // If login changes with the picker open, stale hidden cloud selections
+    // must not remain actionable.
+    LaunchedEffect(isLoggedIn, allowSyncing) {
+        setSelectedPlaylistIds(emptySet())
+    }
+
     LaunchedEffect(isVisible) {
         if (isVisible) {
             songIds = null
@@ -196,7 +202,8 @@ fun AddToPlaylistDialog(
             },
             confirmButton = {
                 TextButton(
-                    enabled = selectedPlaylistIds.isNotEmpty() && !isAddingToPlaylist,
+                    enabled = !isAddingToPlaylist &&
+                        playlists.any { it.id in selectedPlaylistIds },
                     onClick = {
                         isAddingToPlaylist = true
                         coroutineScope.launch {
