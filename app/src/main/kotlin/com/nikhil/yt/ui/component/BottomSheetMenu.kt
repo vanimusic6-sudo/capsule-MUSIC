@@ -185,7 +185,10 @@ fun BottomSheetMenu(
             themeSurface = MaterialTheme.colorScheme.surface,
             themeSurfaceHigh = MaterialTheme.colorScheme.surfaceContainerHigh,
         )
-        // Opaque native theme material; only a fixed sand grain on the background.
+        // One continuous color/grain material across handle, content and bottom inset.
+        val sheetShape = if (playerAppearance) {
+            RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)
+        } else MaterialTheme.shapes.extraLarge
         var observedGeneration by remember { mutableStateOf(state.generation) }
         LaunchedEffect(state.generation, state.dismissRequested) {
             val generation = state.generation
@@ -232,12 +235,10 @@ fun BottomSheetMenu(
                 state.dismiss()
             },
             // Only 1% translucency; no blur, live shimmer or backdrop readback.
-            containerColor = sheetColor.copy(alpha = 0.99f),
+            containerColor = Color.Transparent,
             // Same 16dp softness as the VIDEO window; the previous 28dp
             // sheet curvature looked ragged during vertical travel.
-            shape = if (playerAppearance) {
-                RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)
-            } else MaterialTheme.shapes.extraLarge,
+            shape = sheetShape,
             contentColor = MaterialTheme.colorScheme.onSurface,
             // This is a cached top tint, not live blur or an offscreen
             // full-screen scrim. Its alpha follows the anchored offset in
@@ -274,6 +275,12 @@ fun BottomSheetMenu(
                 scaleX = scale
                 scaleY = scale
                 alpha = 1f - 0.10f * dismissPull.value
+            }.clip(sheetShape).drawWithCache {
+                // One cached acrylic canvas; covers the drag handle and bottom inset too.
+                onDrawBehind {
+                    drawRect(sheetColor.copy(alpha = 0.99f))
+                    drawRect(capsuleMenuGrain)
+                }
             },
         ) {
             PredictiveBackHandler(enabled = !state.dismissRequested) { progress ->
@@ -293,11 +300,7 @@ fun BottomSheetMenu(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            // A cached texture is drawn just once per invalidation;
-                            // cards remain entirely smooth and flat.
-                            .drawWithCache {
-                                onDrawBehind { drawRect(capsuleMenuGrain) }
-                            }
+                            // Texture is painted once by the entire sheet, not by this list.
                             .padding(horizontal = 16.dp),
                 ) {
                     state.content(this)
