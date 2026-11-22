@@ -88,7 +88,7 @@ fun OfflineDownloadMenu(
 
     @Composable
     fun Action(label: String, drawable: Int, destructive: Boolean = false,
-        outlined: Boolean = false, action: () -> Unit) {
+        action: () -> Unit) {
         ListItem(
             headlineContent = {
                 Text(label, color = if (destructive) MaterialTheme.colorScheme.error
@@ -104,7 +104,7 @@ fun OfflineDownloadMenu(
             },
             modifier = Modifier.capsulePressClickable(onClick = action),
             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-            highlightBorder = destructive || outlined,
+            highlightBorder = destructive,
             highlightBorderColor = if (destructive) MaterialTheme.colorScheme.error
                 else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.30f),
         )
@@ -151,7 +151,7 @@ fun OfflineDownloadMenu(
                 player?.addToQueue(OfflineAudioQueue.mediaItem(file))
                 onDismiss()
             }
-            Action(stringResource(R.string.add_to_playlist), R.drawable.capsule_soft_playlist_add, outlined = true) {
+            Action(stringResource(R.string.add_to_playlist), R.drawable.capsule_soft_playlist_add) {
                 choosePlaylist = true
             }
             Action(

@@ -186,7 +186,8 @@ class CapsuleMenuMotionTest {
         assertTrue(player.contains("highlightBorder = true"))
         assertTrue(download.contains("CapsuleMenuListItem("))
         assertTrue(download.contains("highlightBorder = true"))
-        assertTrue(offline.contains("highlightBorder = destructive || outlined"))
+        assertTrue(offline.contains("highlightBorder = destructive,"))
+        assertFalse(offline.contains("outlined = true"))
         assertTrue(download.contains("highlightBorderColor = if (completed && !deleting)"))
     }
 

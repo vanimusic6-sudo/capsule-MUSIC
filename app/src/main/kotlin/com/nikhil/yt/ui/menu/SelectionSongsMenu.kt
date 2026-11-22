@@ -208,55 +208,12 @@ fun SelectionSongMenu(
                             )
                         },
                         text = stringResource(R.string.add_to_playlist),
-                        outlined = true,
                         onClick = {
                             showChoosePlaylistDialog = true
                         }
                     )
                 ),
                 modifier = Modifier
-            )
-        }
-        item {
-            ListItem(
-                headlineContent = { Text(text = stringResource(R.string.play)) },
-                leadingContent = {
-                    Icon(
-                        painter = painterResource(R.drawable.capsule_soft_play),
-                        contentDescription = null,
-                    )
-                },
-                modifier = Modifier.clickable {
-                    onDismiss()
-                    playerConnection.playQueue(
-                        ListQueue(
-                            title = "Selection",
-                            items = songSelection.map { it.toMediaItem() },
-                        ),
-                    )
-                    clearAction()
-                }
-            )
-        }
-        item {
-            ListItem(
-                headlineContent = { Text(text = stringResource(R.string.shuffle)) },
-                leadingContent = {
-                    Icon(
-                        painter = painterResource(R.drawable.capsule_soft_shuffle),
-                        contentDescription = null,
-                    )
-                },
-                modifier = Modifier.clickable {
-                    onDismiss()
-                    playerConnection.playQueue(
-                        ListQueue(
-                            title = "Selection",
-                            items = songSelection.shuffled().map { it.toMediaItem() },
-                        ),
-                    )
-                    clearAction()
-                }
             )
         }
         item {
@@ -273,21 +230,6 @@ fun SelectionSongMenu(
                     playerConnection.addToQueue(songSelection.map { it.toMediaItem() })
                     clearAction()
                 }
-            )
-        }
-        item {
-            ListItem(
-                headlineContent = { Text(text = stringResource(R.string.add_to_playlist)) },
-                leadingContent = {
-                    Icon(
-                        painter = painterResource(R.drawable.capsule_soft_playlist_add),
-                        contentDescription = null,
-                    )
-                },
-                modifier = Modifier.clickable {
-                    showChoosePlaylistDialog = true
-                },
-                highlightBorder = true,
             )
         }
         item {
@@ -582,7 +524,6 @@ fun SelectionMediaMetadataMenu(
                 modifier = Modifier.clickable {
                     showChoosePlaylistDialog = true
                 },
-                highlightBorder = true,
             )
         }
         item {
