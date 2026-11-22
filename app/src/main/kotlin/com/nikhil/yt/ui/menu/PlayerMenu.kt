@@ -777,14 +777,27 @@ fun EqualizerDialog(
     val minMb = caps.minBandLevelMb
     val maxMb = caps.maxBandLevelMb
 
-    var outputGainLocal by rememberSaveable { mutableIntStateOf(outputGainMb) }
-    LaunchedEffect(outputGainMb) { outputGainLocal = outputGainMb }
+    var outputGainLocal by rememberSaveable {
+        mutableIntStateOf(outputGainMb.coerceIn(-1500, CAPSULE_MAX_OUTPUT_GAIN_MB))
+    }
+    LaunchedEffect(outputGainMb) {
+        outputGainLocal = outputGainMb.coerceIn(-1500, CAPSULE_MAX_OUTPUT_GAIN_MB)
+    }
 
-    var bassBoostStrengthLocal by rememberSaveable { mutableIntStateOf(bassBoostStrength) }
-    LaunchedEffect(bassBoostStrength) { bassBoostStrengthLocal = bassBoostStrength }
+    var bassBoostStrengthLocal by rememberSaveable {
+        mutableIntStateOf(bassBoostStrength.coerceIn(0, CAPSULE_MAX_BASS_STRENGTH))
+    }
+    LaunchedEffect(bassBoostStrength) {
+        bassBoostStrengthLocal = bassBoostStrength.coerceIn(0, CAPSULE_MAX_BASS_STRENGTH)
+    }
 
-    var virtualizerStrengthLocal by rememberSaveable { mutableIntStateOf(virtualizerStrength) }
-    LaunchedEffect(virtualizerStrength) { virtualizerStrengthLocal = virtualizerStrength }
+    var virtualizerStrengthLocal by rememberSaveable {
+        mutableIntStateOf(virtualizerStrength.coerceIn(0, CAPSULE_MAX_VIRTUALIZER_STRENGTH))
+    }
+    LaunchedEffect(virtualizerStrength) {
+        virtualizerStrengthLocal =
+            virtualizerStrength.coerceIn(0, CAPSULE_MAX_VIRTUALIZER_STRENGTH)
+    }
 
     var bandLevelsMb by remember { mutableStateOf<List<Int>>(emptyList()) }
     LaunchedEffect(bandLevelsRaw, bandCount) {
@@ -1150,7 +1163,7 @@ fun EqualizerDialog(
                         var selectedBand by remember { mutableIntStateOf(0) }
                         val displayedLevels = scaleEqBandLevels(
                             bandLevelsMb, intensityLocal, minMb, maxMb,
-                        )
+                        ).map { it.coerceAtMost(CAPSULE_MAX_EQ_BOOST_MB) }
                         CapsuleEqualizerGraph(
                             frequenciesHz = caps.centerFreqHz,
                             levelsMb = displayedLevels,
@@ -1163,7 +1176,8 @@ fun EqualizerDialog(
                                     bandLevelsMb = bandLevelsMb.toMutableList().apply {
                                         while (size < bandCount) add(0)
                                         this[band] = inverseScaledEqLevel(
-                                            level, intensityLocal, minMb, maxMb,
+                                            level.coerceAtMost(CAPSULE_MAX_EQ_BOOST_MB),
+                                            intensityLocal, minMb, maxMb,
                                         )
                                     }
                                 }
@@ -1173,7 +1187,8 @@ fun EqualizerDialog(
                                     val updated = bandLevelsMb.toMutableList().apply {
                                         while (size < bandCount) add(0)
                                         this[band] = inverseScaledEqLevel(
-                                            level, intensityLocal, minMb, maxMb,
+                                            level.coerceAtMost(CAPSULE_MAX_EQ_BOOST_MB),
+                                            intensityLocal, minMb, maxMb,
                                         )
                                     }
                                     bandLevelsMb = updated
@@ -1223,7 +1238,7 @@ fun EqualizerDialog(
                                 setBassBoostEnabled(enabled)
                             },
                             value = bassBoostStrengthLocal,
-                            valueRange = 0..1000,
+                            valueRange = 0..CAPSULE_MAX_BASS_STRENGTH,
                             valueLabel = "${bassBoostStrengthLocal / 10}%",
                             onValueChange = { bassBoostStrengthLocal = it },
                             onValueChangeFinished = {
@@ -1242,7 +1257,7 @@ fun EqualizerDialog(
                                 setVirtualizerEnabled(enabled)
                             },
                             value = virtualizerStrengthLocal,
-                            valueRange = 0..1000,
+                            valueRange = 0..CAPSULE_MAX_VIRTUALIZER_STRENGTH,
                             valueLabel = "${virtualizerStrengthLocal / 10}%",
                             onValueChange = { virtualizerStrengthLocal = it },
                             onValueChangeFinished = {
@@ -1255,7 +1270,7 @@ fun EqualizerDialog(
                             checked = outputGainEnabled,
                             onCheckedChange = setOutputGainEnabled,
                             value = outputGainLocal,
-                            valueRange = -1500..1500,
+                            valueRange = -1500..CAPSULE_MAX_OUTPUT_GAIN_MB,
                             valueLabel = formatDb(outputGainLocal / 100f),
                             onValueChange = { outputGainLocal = it },
                             onValueChangeFinished = { setOutputGainMb(outputGainLocal) },
