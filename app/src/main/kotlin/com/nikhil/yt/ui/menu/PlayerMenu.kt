@@ -1034,7 +1034,7 @@ fun EqualizerDialog(
                         ) {
                             Text("0.25×", color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.labelSmall)
-                            Slider(
+                            CapsuleStudioSlider(
                                 value = multiplierToSlider(speed),
                                 onValueChange = { position ->
                                     val newSpeed = sliderToMultiplier(position).quantize(0.01f)
@@ -1286,7 +1286,7 @@ fun EqualizerDialog(
                                     PlaybackParameters(speed, 1f)
                             }) { Text(stringResource(R.string.reset)) }
                         }
-                        Slider(
+                        CapsuleStudioSlider(
                             value = multiplierToSlider(pitch),
                             onValueChange = { position ->
                                 val newPitch = sliderToMultiplier(position).quantize(0.01f)
@@ -1335,6 +1335,54 @@ fun EqualizerDialog(
     }
 }
 
+/**
+ * Capsule pill slider: large invisible Material touch target and accessibility,
+ * but a narrow matte track and a soft capsule thumb. No manual pointer handling.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CapsuleStudioSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    onValueChangeFinished: (() -> Unit)? = null,
+) {
+    val colors = SliderDefaults.colors(
+        activeTrackColor = MaterialTheme.colorScheme.primary,
+        inactiveTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f),
+        thumbColor = MaterialTheme.colorScheme.primary,
+        disabledActiveTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+        disabledInactiveTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f),
+    )
+    Slider(
+        value = value.coerceIn(valueRange.start, valueRange.endInclusive),
+        onValueChange = onValueChange,
+        onValueChangeFinished = onValueChangeFinished,
+        valueRange = valueRange,
+        modifier = modifier,
+        enabled = enabled,
+        colors = colors,
+        thumb = { _ ->
+            Box(
+                Modifier.size(width = 12.dp, height = 22.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(MaterialTheme.colorScheme.primary),
+            )
+        },
+        track = { state ->
+            SliderDefaults.Track(
+                sliderState = state,
+                colors = colors,
+                modifier = Modifier.height(7.dp),
+                drawStopIndicator = null,
+                thumbTrackGapSize = 0.dp,
+            )
+        },
+    )
+}
+
 /** Compact effect controls share one surface instead of stacking nested cards. */
 @Composable
 private fun CapsuleEffectRow(
@@ -1366,7 +1414,7 @@ private fun CapsuleEffectRow(
             Switch(checked = checked, onCheckedChange = onCheckedChange)
         }
         if (checked) {
-            Slider(
+            CapsuleStudioSlider(
                 value = value.toFloat().coerceIn(
                     valueRange.first.toFloat(), valueRange.last.toFloat(),
                 ),
@@ -1389,10 +1437,13 @@ private fun EqSection(
 ) {
     Surface(
         color = com.nikhil.yt.ui.component.CapsuleMenuBlack,
-        shape = com.nikhil.yt.ui.component.CapsuleMenuTileShape,
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(
+            1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.075f),
+        ),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.padding(vertical = 16.dp)) {
+        Column(modifier = Modifier.padding(vertical = 14.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
