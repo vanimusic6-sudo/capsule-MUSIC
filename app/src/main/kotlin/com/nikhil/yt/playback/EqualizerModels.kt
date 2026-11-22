@@ -142,7 +142,17 @@ internal fun protectedEqAudioFactor(
         maxMb = capabilities?.maxBandLevelMb ?: CAPSULE_MAX_EQ_BOOST_MB,
         centerFreqHz = capabilities?.centerFreqHz.orEmpty(),
     )
-    val eqBoostDb = (levels.maxOfOrNull { it.coerceAtLeast(0) } ?: 0) / 100.0
+    val eqBoostDb = if (capabilities == null) {
+        // Until the OEM band map is known, assume even band zero can be a
+        // mid/high band. Never use the sub-bass cap to UNDERestimate headroom.
+        val requestedMaxMb = settings.bandLevelsMb.maxOfOrNull {
+            it.coerceAtLeast(0)
+        } ?: 0
+        (requestedMaxMb.toDouble() * settings.intensityPercent.coerceIn(100, 200) /
+            10_000.0).coerceIn(0.0, CAPSULE_MAX_EQ_BOOST_MB / 100.0)
+    } else {
+        (levels.maxOfOrNull { it.coerceAtLeast(0) } ?: 0) / 100.0
+    }
     val bassAllowanceDb = if (settings.bassBoostEnabled) {
         settings.bassBoostStrength.coerceIn(0, CAPSULE_MAX_BASS_STRENGTH) *
             (5.0 / CAPSULE_MAX_BASS_STRENGTH)

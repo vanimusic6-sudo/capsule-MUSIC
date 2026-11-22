@@ -137,6 +137,12 @@ class PlaybackAudioEffectsControllerTest {
             virtualizerEnabled = true, virtualizerStrength = 0,
         )
         assertEquals(1f, protectedEqAudioFactor(base), 0.000001f)
+        // The first band might NOT be low bass until the OEM reports its
+        // center frequency; missing capabilities must not under-attenuate.
+        val unknownFirstBand = base.copy(bandLevelsMb = listOf(1500))
+        org.junit.Assert.assertTrue(
+            protectedEqAudioFactor(unknownFirstBand) < 0.45f
+        )
         assertEquals(1f, protectedEqAudioFactor(base.copy(enabled = false)), 0.000001f)
         val boost = base.copy(
             bandLevelsMb = listOf(1500, 1500, 1500),
