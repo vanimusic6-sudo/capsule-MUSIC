@@ -187,7 +187,7 @@ internal class PlaybackAudioEffectsController(
                 settings.bassBoostStrength.coerceIn(0, CAPSULE_MAX_BASS_STRENGTH)
             } else 0
             val supported = runCatching { effect.strengthSupported }.getOrDefault(false)
-            if (target > 0 && appliedBassEnabled != true) {
+            if (target > 0 && supported && appliedBassEnabled != true) {
                 if (supported && appliedBassStrength != target &&
                     runCatching { effect.setStrength(target.toShort()) }.isSuccess
                 ) appliedBassStrength = target
@@ -202,7 +202,7 @@ internal class PlaybackAudioEffectsController(
             }
             // An unsupported-strength OEM processor cannot be neutralized.
             // Disable it only as the fallback (the service ducks audio then).
-            if (target == 0 && !supported && appliedBassEnabled == true) {
+            if (!supported && appliedBassEnabled == true) {
                 if (runCatching { effect.enabled = false }.isSuccess) {
                     appliedBassEnabled = false
                 }
@@ -214,7 +214,7 @@ internal class PlaybackAudioEffectsController(
                 settings.virtualizerStrength.coerceIn(0, CAPSULE_MAX_VIRTUALIZER_STRENGTH)
             } else 0
             val supported = runCatching { effect.strengthSupported }.getOrDefault(false)
-            if (target > 0 && appliedVirtualizerEnabled != true) {
+            if (target > 0 && supported && appliedVirtualizerEnabled != true) {
                 if (supported && appliedVirtualizerStrength != target &&
                     runCatching { effect.setStrength(target.toShort()) }.isSuccess
                 ) appliedVirtualizerStrength = target
@@ -229,7 +229,7 @@ internal class PlaybackAudioEffectsController(
                     appliedVirtualizerStrength = target
                 }
             }
-            if (target == 0 && !supported && appliedVirtualizerEnabled == true) {
+            if (!supported && appliedVirtualizerEnabled == true) {
                 if (runCatching { effect.enabled = false }.isSuccess) {
                     appliedVirtualizerEnabled = false
                 }
