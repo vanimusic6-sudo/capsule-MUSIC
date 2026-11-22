@@ -109,7 +109,8 @@ internal fun protectedEqLevels(
         // If an OEM omits its frequency map, treat the first band as bass.
         // Restrict both positive shelving boost and the independent BassBoost.
         val center = centerFreqHz.getOrNull(index)
-        val lowBass = center?.let { it in 1..120 } ?: (index == 0)
+        val lowBass = if (center == null || center <= 0) index == 0
+            else center <= 120
         val upper = if (lowBass) {
             boundedMax.coerceAtMost(CAPSULE_MAX_LOW_BASS_BOOST_MB)
         } else boundedMax

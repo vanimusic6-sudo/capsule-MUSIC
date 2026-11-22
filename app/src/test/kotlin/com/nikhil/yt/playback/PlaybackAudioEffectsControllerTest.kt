@@ -119,6 +119,11 @@ class PlaybackAudioEffectsControllerTest {
             listOf(650, 300, 650),
             protectedEqLevels(values, 3, -1500, 1500, listOf(1_000, 90, 5_000)),
         )
+        // Some OEM effects report 0 on a failed center-frequency query.
+        assertEquals(
+            listOf(300, 650, 650),
+            protectedEqLevels(values, 3, -1500, 1500, listOf(0, 230, 1_000)),
+        )
         val caps = EqCapabilities(3, -1500, 1500, listOf(60, 230, 1000), emptyList())
         org.junit.Assert.assertTrue(protectedEqAudioFactor(values, caps) < 0.45f)
     }
