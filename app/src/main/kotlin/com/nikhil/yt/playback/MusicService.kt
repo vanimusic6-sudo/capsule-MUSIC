@@ -2383,16 +2383,14 @@ class MusicService :
                 // Short duck avoids an audible edge on legacy OEM mixer
                 // transitions or a large EQ-curve change. No delayed threads
                 // keep running after the scope is cancelled.
+                // OEM graph switching or playback-rate changes need ducking.
+                // Continuous band/strength edits do NOT: that caused the
+                // previous app to briefly whisper on every curve movement.
                 val sensitive = previous != null && player.isPlaying &&
                     (previous.enabled != settings.enabled ||
                         previous.bassBoostEnabled != settings.bassBoostEnabled ||
                         previous.virtualizerEnabled != settings.virtualizerEnabled ||
                         previous.outputGainEnabled != settings.outputGainEnabled ||
-                        previous.bandLevelsMb != settings.bandLevelsMb ||
-                        previous.intensityPercent != settings.intensityPercent ||
-                        previous.bassBoostStrength != settings.bassBoostStrength ||
-                        previous.virtualizerStrength != settings.virtualizerStrength ||
-                        previous.outputGainMb != settings.outputGainMb ||
                         paramChange)
                 try {
                     if (sensitive) {
@@ -2401,14 +2399,29 @@ class MusicService :
                             delay(12L)
                         }
                     }
-                    val targetSafety = protectedEqAudioFactor(settings, eqCapabilities.value)
-                    // Attenuate before increasing native boosts, and remove
-                    // the reserve only after the DSP has been neutralized.
-                    soundStudioSafetyFactor.value = minOf(
-                        soundStudioSafetyFactor.value, targetSafety)
+                    val legacySafety = protectedEqAudioFactor(settings, eqCapabilities.value)
+                    // Before a legacy DSP switch, retain pre-attenuation.
+                    // On the unified DPE path, its own final limiter handles
+                    // continuous EQ changes without global volume pumping.
+                    if (sensitive || !audioEffectsController.isUnifiedDynamicsActive) {
+                        soundStudioSafetyFactor.value = minOf(
+                            soundStudioSafetyFactor.value, legacySafety)
+                    }
                     audioEffectsController.applySettings(settings)
+                    val targetSafety = when {
+                        !settings.enabled -> 1f
+                        audioEffectsController.isUnifiedDynamicsActive &&
+                            settings.virtualizerEnabled -> 0.84f
+                        audioEffectsController.isUnifiedDynamicsActive -> 0.94f
+                        else -> legacySafety
+                    }
                     // Restore normalization gain only after native EQ is flat.
                     if (!settings.enabled) soundStudioEnabledForVolume.value = false
+                    // Session effects can be skipped by compressed audio offload.
+                    // Permit hardware offload again only when EQ is bypassed.
+                    if (previous?.enabled != settings.enabled) {
+                        updateAudioOffload(dataStore.get(AudioOffload, false))
+                    }
                     if (paramChange) player.playbackParameters = playbackParams
                     previousSoundStudioSettings = settings
                     if (sensitive) {
@@ -6215,7 +6228,7 @@ class MusicService :
     private fun updateAudioOffload(enabled: Boolean) {
         player.setOffloadEnabled(
             shouldEnableAudioOffload(
-                requested = enabled,
+                requested = enabled && !soundStudioEnabledForVolume.value,
                 crossfadeDurationMs = crossfadeDurationMs.value,
             ),
         )
