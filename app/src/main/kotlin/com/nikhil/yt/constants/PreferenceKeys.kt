@@ -130,6 +130,8 @@ val PlaylistTagsFilterKey = stringPreferencesKey("playlistTagsFilter")
 val ShowTagsInLibraryKey = booleanPreferencesKey("showTagsInLibrary")
 
 val EqualizerEnabledKey = booleanPreferencesKey("equalizerEnabled")
+val SoundStudioSpeedKey = floatPreferencesKey("soundStudioSpeed")
+val SoundStudioPitchKey = floatPreferencesKey("soundStudioPitch")
 val EqualizerBandLevelsMbKey = stringPreferencesKey("equalizerBandLevelsMb")
 val EqualizerCurveIntensityPercentKey = intPreferencesKey("equalizerCurveIntensityPercent")
 val EqualizerOutputGainEnabledKey = booleanPreferencesKey("equalizerOutputGainEnabled")
