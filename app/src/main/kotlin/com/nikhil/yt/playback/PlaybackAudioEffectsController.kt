@@ -55,6 +55,16 @@ internal class PlaybackAudioEffectsController(
         virtualizer = runCatching { Virtualizer(0, sessionId) }.getOrNull()
         loudnessEnhancer = runCatching { LoudnessEnhancer(sessionId) }.getOrNull()
 
+        // Read the engine's initial state rather than blindly calling
+        // setEnabled(false) on every new session. Some OEM mixers briefly
+        // underrun even on a redundant OFF command.
+        appliedEnabled = equalizer?.let { runCatching { it.enabled }.getOrNull() }
+        appliedBassEnabled = bassBoost?.let { runCatching { it.enabled }.getOrNull() }
+        appliedVirtualizerEnabled = virtualizer?.let {
+            runCatching { it.enabled }.getOrNull()
+        }
+        appliedGainEnabled = loudnessEnhancer?.let { runCatching { it.enabled }.getOrNull() }
+
         equalizer?.let(::updateCapabilitiesFromEffect)
         applySettingsToEffects(desiredSettings)
     }
