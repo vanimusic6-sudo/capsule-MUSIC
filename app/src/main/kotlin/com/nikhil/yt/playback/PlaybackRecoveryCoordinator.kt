@@ -7,6 +7,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
+/**
+ * Automatic queue navigation policy, not a stream retry budget.
+ * A manually requested retry or a rejected CDN URL must never advance to the next song.
+ */
+internal fun mayAutoSkipAfterTerminalFailure(
+    autoSkipRequested: Boolean,
+    rejectedStream: Boolean,
+    manualRetry: Boolean,
+): Boolean = autoSkipRequested && !rejectedStream && !manualRetry
+
 internal enum class TerminalPlaybackAction {
     SKIP,
     STOP,
