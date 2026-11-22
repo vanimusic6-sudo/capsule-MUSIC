@@ -45,7 +45,7 @@ internal class PlaybackAudioEffectsController(
 
     fun ensure(sessionId: Int) {
         if (sessionId <= 0) return
-        if (audioEffectsSessionId == sessionId && equalizer != null) return
+        if (audioEffectsSessionId == sessionId) return
 
         release()
         audioEffectsSessionId = sessionId
@@ -146,81 +146,108 @@ internal class PlaybackAudioEffectsController(
     }
 
     private fun applySettingsToEffects(settings: EqSettings) {
-        // Bass, spatializer and loudness can exist on devices whose native
-        // Equalizer instance is unavailable. They must not be disabled by an
-        // early return from an unrelated processor.
+        // A native enabled=false/true transition can rebuild the OEM output
+        // mixer and glitch playback. Once a processor is enabled, bypass it by
+        // sending a *neutral curve/strength/gain* instead of disconnecting it.
+        // Effect instances are actually released when the audio session ends.
         equalizer?.let { eq ->
-        val caps = capabilities.value
-        val bandCount = caps?.bandCount ?: eq.numberOfBands.toInt()
-        val minMb =
-            caps?.minBandLevelMb
-                ?: runCatching { eq.bandLevelRange.getOrNull(0)?.toInt() }.getOrNull()
-                ?: -1500
-        val maxMb =
-            caps?.maxBandLevelMb
-                ?: runCatching { eq.bandLevelRange.getOrNull(1)?.toInt() }.getOrNull()
-                ?: 1500
-
-        val levels = scaleEqBandLevels(
-            resampleEqLevelsByIndex(settings.bandLevelsMb, bandCount),
-            settings.intensityPercent,
-            minMb,
-            maxMb,
-        )
-        if (appliedEnabled != settings.enabled) {
-            if (runCatching { eq.enabled = settings.enabled }.isSuccess) {
-                appliedEnabled = settings.enabled
+            val caps = capabilities.value
+            val bandCount = caps?.bandCount ?: runCatching {
+                eq.numberOfBands.toInt()
+            }.getOrDefault(0)
+            val minMb = caps?.minBandLevelMb ?: -1500
+            val maxMb = caps?.maxBandLevelMb ?: 1500
+            val levels = protectedEqLevels(settings, bandCount, minMb, maxMb)
+            val nonFlat = levels.any { it != 0 }
+            // Never activate a new effect for an inactive/flat profile.
+            // When bypassing an already active EQ, keep it attached and make
+            // its hardware bands flat instead of calling setEnabled(false).
+            if (nonFlat && appliedEnabled != true) {
+                if (runCatching { eq.enabled = true }.isSuccess) {
+                    appliedEnabled = true
+                }
+            }
+            if (appliedEnabled == true && bandCount > 0) {
+                if (appliedBandLevels.size != bandCount) {
+                    appliedBandLevels = IntArray(bandCount) { Int.MIN_VALUE }
+                }
+                for (band in 0 until bandCount) {
+                    val mb = levels[band].coerceIn(minMb, maxMb)
+                    if (appliedBandLevels[band] != mb &&
+                        runCatching { eq.setBandLevel(band.toShort(), mb.toShort()) }.isSuccess
+                    ) {
+                        appliedBandLevels[band] = mb
+                    }
+                }
             }
         }
-        if (appliedBandLevels.size != bandCount) {
-            appliedBandLevels = IntArray(bandCount) { Int.MIN_VALUE }
-        }
-        for (band in 0 until bandCount) {
-            val levelMb = levels.getOrNull(band)?.coerceIn(minMb, maxMb) ?: 0
-            if (appliedBandLevels[band] != levelMb &&
-                runCatching { eq.setBandLevel(band.toShort(), levelMb.toShort()) }.isSuccess
-            ) {
-                appliedBandLevels[band] = levelMb
-            }
-        }
-        } // end native EQ configuration
 
         bassBoost?.let { effect ->
-            val desiredStrength = settings.bassBoostStrength.coerceIn(0, 1000)
-            if (settings.bassBoostEnabled && appliedBassStrength != desiredStrength) {
-                if (runCatching {
-                        if (effect.strengthSupported) effect.setStrength(desiredStrength.toShort())
-                    }.isSuccess) appliedBassStrength = desiredStrength
+            val target = if (settings.enabled && settings.bassBoostEnabled) {
+                settings.bassBoostStrength.coerceIn(0, CAPSULE_MAX_BASS_STRENGTH)
+            } else 0
+            val supported = runCatching { effect.strengthSupported }.getOrDefault(false)
+            if (target > 0 && appliedBassEnabled != true) {
+                if (supported && appliedBassStrength != target &&
+                    runCatching { effect.setStrength(target.toShort()) }.isSuccess
+                ) appliedBassStrength = target
+                if (runCatching { effect.enabled = true }.isSuccess) {
+                    appliedBassEnabled = true
+                }
             }
-            if (appliedBassEnabled != settings.bassBoostEnabled) {
-                if (runCatching { effect.enabled = settings.bassBoostEnabled }.isSuccess) {
-                    appliedBassEnabled = settings.bassBoostEnabled
+            if (appliedBassEnabled == true && supported && appliedBassStrength != target) {
+                if (runCatching { effect.setStrength(target.toShort()) }.isSuccess) {
+                    appliedBassStrength = target
+                }
+            }
+            // An unsupported-strength OEM processor cannot be neutralized.
+            // Disable it only as the fallback (the service ducks audio then).
+            if (target == 0 && !supported && appliedBassEnabled == true) {
+                if (runCatching { effect.enabled = false }.isSuccess) {
+                    appliedBassEnabled = false
                 }
             }
         }
+
         virtualizer?.let { effect ->
-            val desiredStrength = settings.virtualizerStrength.coerceIn(0, 1000)
-            if (settings.virtualizerEnabled && appliedVirtualizerStrength != desiredStrength) {
-                if (runCatching {
-                        if (effect.strengthSupported) effect.setStrength(desiredStrength.toShort())
-                    }.isSuccess) appliedVirtualizerStrength = desiredStrength
+            val target = if (settings.enabled && settings.virtualizerEnabled) {
+                settings.virtualizerStrength.coerceIn(0, CAPSULE_MAX_VIRTUALIZER_STRENGTH)
+            } else 0
+            val supported = runCatching { effect.strengthSupported }.getOrDefault(false)
+            if (target > 0 && appliedVirtualizerEnabled != true) {
+                if (supported && appliedVirtualizerStrength != target &&
+                    runCatching { effect.setStrength(target.toShort()) }.isSuccess
+                ) appliedVirtualizerStrength = target
+                if (runCatching { effect.enabled = true }.isSuccess) {
+                    appliedVirtualizerEnabled = true
+                }
             }
-            if (appliedVirtualizerEnabled != settings.virtualizerEnabled) {
-                if (runCatching { effect.enabled = settings.virtualizerEnabled }.isSuccess) {
-                    appliedVirtualizerEnabled = settings.virtualizerEnabled
+            if (appliedVirtualizerEnabled == true && supported &&
+                appliedVirtualizerStrength != target
+            ) {
+                if (runCatching { effect.setStrength(target.toShort()) }.isSuccess) {
+                    appliedVirtualizerStrength = target
+                }
+            }
+            if (target == 0 && !supported && appliedVirtualizerEnabled == true) {
+                if (runCatching { effect.enabled = false }.isSuccess) {
+                    appliedVirtualizerEnabled = false
                 }
             }
         }
+
         loudnessEnhancer?.let { effect ->
-            val gainMb = settings.outputGainMb.coerceIn(-1500, 1500)
-            if (settings.outputGainEnabled && appliedGainMb != gainMb) {
-                if (runCatching { effect.setTargetGain(gainMb) }.isSuccess) {
-                    appliedGainMb = gainMb
+            val targetMb = if (settings.enabled && settings.outputGainEnabled) {
+                settings.outputGainMb.coerceIn(-1500, CAPSULE_MAX_OUTPUT_GAIN_MB)
+            } else 0
+            if (targetMb != 0 && appliedGainEnabled != true) {
+                if (runCatching { effect.enabled = true }.isSuccess) {
+                    appliedGainEnabled = true
                 }
             }
-            if (appliedGainEnabled != settings.outputGainEnabled) {
-                if (runCatching { effect.enabled = settings.outputGainEnabled }.isSuccess) {
-                    appliedGainEnabled = settings.outputGainEnabled
+            if (appliedGainEnabled == true && appliedGainMb != targetMb) {
+                if (runCatching { effect.setTargetGain(targetMb) }.isSuccess) {
+                    appliedGainMb = targetMb
                 }
             }
         }
