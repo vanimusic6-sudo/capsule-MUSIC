@@ -17,4 +17,6 @@
     <string name="eq_simple_high">Treble</string>
     <string name="eq_simple_advanced">Advanced sound settings</string>
     <string name="eq_simple_back">Back to simple controls</string>
+    <string name="eq_effects_title">Sound effects</string>
+    <string name="eq_effect_spatial">Spatial audio</string>
 </resources>
