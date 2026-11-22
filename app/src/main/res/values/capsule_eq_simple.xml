@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="eq_simple_title">Quick sound</string>
+    <string name="eq_simple_natural">Natural</string>
+    <string name="eq_simple_bass">Bass</string>
+    <string name="eq_simple_clear">Clarity</string>
+    <string name="eq_simple_voice">Vocals</string>
+    <string name="eq_simple_soft">Soft</string>
+    <string name="eq_simple_energy">Energy</string>
+    <string name="eq_simple_custom">Fine-tune</string>
+    <string name="eq_simple_low">Bass</string>
+    <string name="eq_simple_mid">Mids</string>
+    <string name="eq_simple_high">Treble</string>
+    <string name="eq_simple_advanced">Advanced sound settings</string>
+    <string name="eq_simple_back">Back to simple controls</string>
+</resources>
