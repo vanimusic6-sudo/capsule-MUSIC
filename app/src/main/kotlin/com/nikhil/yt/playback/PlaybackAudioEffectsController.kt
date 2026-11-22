@@ -22,6 +22,16 @@ internal class PlaybackAudioEffectsController(
     // updates. Invalidated whenever the audio session or preset changes.
     private var appliedBandLevels: IntArray = intArrayOf()
     private var appliedEnabled: Boolean? = null
+    // Native OEM effects can rebuild the output mixer on redundant parameter
+    // writes. Keep desired and applied states separate and avoid touching an
+    // OFF effect's strength when another preference changes.
+    private var appliedBassEnabled: Boolean? = null
+    private var appliedBassStrength: Int? = null
+    private var appliedVirtualizerEnabled: Boolean? = null
+    private var appliedVirtualizerStrength: Int? = null
+    private var appliedGainEnabled: Boolean? = null
+    private var appliedGainMb: Int? = null
+
 
     fun applySettings(settings: EqSettings) {
         desiredSettings = settings
@@ -76,10 +86,17 @@ internal class PlaybackAudioEffectsController(
         equalizer = null
         appliedBandLevels = intArrayOf()
         appliedEnabled = null
+        appliedBassEnabled = null
+        appliedBassStrength = null
+        appliedVirtualizerEnabled = null
+        appliedVirtualizerStrength = null
+        appliedGainEnabled = null
+        appliedGainMb = null
         bassBoost = null
         virtualizer = null
         loudnessEnhancer = null
-        capabilities.value = null
+        // Retain the last native frequency map while paused. No effects remain
+        // attached, but the UI can edit a profile for the next valid session.
     }
 
     private fun releaseEffect(
@@ -131,7 +148,12 @@ internal class PlaybackAudioEffectsController(
                 ?: runCatching { eq.bandLevelRange.getOrNull(1)?.toInt() }.getOrNull()
                 ?: 1500
 
-        val levels = resampleEqLevelsByIndex(settings.bandLevelsMb, bandCount)
+        val levels = scaleEqBandLevels(
+            resampleEqLevelsByIndex(settings.bandLevelsMb, bandCount),
+            settings.intensityPercent,
+            minMb,
+            maxMb,
+        )
         if (appliedEnabled != settings.enabled) {
             if (runCatching { eq.enabled = settings.enabled }.isSuccess) {
                 appliedEnabled = settings.enabled
@@ -150,22 +172,43 @@ internal class PlaybackAudioEffectsController(
         }
 
         bassBoost?.let { effect ->
-            runCatching { effect.enabled = settings.bassBoostEnabled }
-            runCatching { effect.setStrength(settings.bassBoostStrength.toShort()) }
+            val desiredStrength = settings.bassBoostStrength.coerceIn(0, 1000)
+            if (settings.bassBoostEnabled && appliedBassStrength != desiredStrength) {
+                if (runCatching {
+                        if (effect.strengthSupported) effect.setStrength(desiredStrength.toShort())
+                    }.isSuccess) appliedBassStrength = desiredStrength
+            }
+            if (appliedBassEnabled != settings.bassBoostEnabled) {
+                if (runCatching { effect.enabled = settings.bassBoostEnabled }.isSuccess) {
+                    appliedBassEnabled = settings.bassBoostEnabled
+                }
+            }
         }
         virtualizer?.let { effect ->
-            runCatching { effect.enabled = settings.virtualizerEnabled }
-            runCatching { effect.setStrength(settings.virtualizerStrength.toShort()) }
+            val desiredStrength = settings.virtualizerStrength.coerceIn(0, 1000)
+            if (settings.virtualizerEnabled && appliedVirtualizerStrength != desiredStrength) {
+                if (runCatching {
+                        if (effect.strengthSupported) effect.setStrength(desiredStrength.toShort())
+                    }.isSuccess) appliedVirtualizerStrength = desiredStrength
+            }
+            if (appliedVirtualizerEnabled != settings.virtualizerEnabled) {
+                if (runCatching { effect.enabled = settings.virtualizerEnabled }.isSuccess) {
+                    appliedVirtualizerEnabled = settings.virtualizerEnabled
+                }
+            }
         }
         loudnessEnhancer?.let { effect ->
-            val gainMb =
-                if (settings.outputGainEnabled) {
-                    settings.outputGainMb.coerceIn(-1500, 1500)
-                } else {
-                    0
+            val gainMb = settings.outputGainMb.coerceIn(-1500, 1500)
+            if (settings.outputGainEnabled && appliedGainMb != gainMb) {
+                if (runCatching { effect.setTargetGain(gainMb) }.isSuccess) {
+                    appliedGainMb = gainMb
                 }
-            runCatching { effect.setTargetGain(gainMb) }
-            runCatching { effect.enabled = settings.outputGainEnabled }
+            }
+            if (appliedGainEnabled != settings.outputGainEnabled) {
+                if (runCatching { effect.enabled = settings.outputGainEnabled }.isSuccess) {
+                    appliedGainEnabled = settings.outputGainEnabled
+                }
+            }
         }
     }
 
