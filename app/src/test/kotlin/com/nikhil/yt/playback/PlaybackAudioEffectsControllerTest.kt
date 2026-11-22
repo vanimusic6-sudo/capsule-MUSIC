@@ -70,7 +70,11 @@ class PlaybackAudioEffectsControllerTest {
         org.junit.Assert.assertFalse(source.contains(
             "effect.setStrength(settings.bassBoostStrength.toShort())"))
         org.junit.Assert.assertTrue(source.contains("equalizer?.let { eq ->"))
-        org.junit.Assert.assertFalse(source.contains("val eq = equalizer ?: return"))
+        // A native preset legitimately needs an EQ. Only ordinary effect
+        // updates must continue when the native equalizer is unavailable.
+        val settingsPath = source.substringAfter(
+            "private fun applySettingsToEffects(settings: EqSettings)")
+        org.junit.Assert.assertFalse(settingsPath.contains("val eq = equalizer ?: return"))
         org.junit.Assert.assertTrue(source.contains("if (appliedGainEnabled != settings.outputGainEnabled)"))
         org.junit.Assert.assertTrue(source.contains(
             "appliedBassEnabled = bassBoost?.let { runCatching { it.enabled }.getOrNull() }"))
