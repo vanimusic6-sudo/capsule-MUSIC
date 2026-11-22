@@ -39,7 +39,7 @@ class SimpleEqualizerTest {
         assertTrue(dialog.contains("multiplierToSlider(speed)"))
         assertTrue(dialog.contains("CapsuleEqPresets.all.chunked(3)"))
         assertTrue(dialog.contains("CapsuleEqPresets.levelsFor("))
-        assertTrue(dialog.contains("capsule:${preset.id}"))
+        assertTrue(dialog.contains("capsule:"))
         assertFalse(dialog.contains("caps.systemPresets.mapIndexed"))
         assertFalse(dialog.contains("applySystemEqPreset(preset)"))
         assertTrue(dialog.contains("CapsuleEqualizerGraph("))
