@@ -70,10 +70,13 @@ fun AddToPlaylistDialog(
     var allPlaylists by remember { mutableStateOf(emptyList<Playlist>()) }
     val (innerTubeCookie) = rememberPreference(InnerTubeCookieKey, "")
     val isLoggedIn = remember(innerTubeCookie) { "SAPISID" in parseCookieString(innerTubeCookie) }
-    val playlists = remember(allPlaylists, allowSyncing) {
+    // Reactive account state: hide cloud-only playlist mutations until the
+    // cookie is valid. Local Capsule playlists remain usable as a guest.
+    val playlists = remember(allPlaylists, allowSyncing, isLoggedIn) {
         playlistsForAddToPlaylist(allPlaylists)
-            .filter {
-                allowSyncing || (it.playlist.isEditable && it.playlist.browseId == null)
+            .filter { entry ->
+                val cloud = !entry.playlist.browseId.isNullOrBlank()
+                if (cloud) allowSyncing && isLoggedIn else entry.playlist.isEditable
             }
             .asReversed()
     }
@@ -92,7 +95,10 @@ fun AddToPlaylistDialog(
         if (requestedSongIds.isEmpty()) return 0
 
         val browseId = playlist.playlist.browseId
-        if (allowSyncing && isLoggedIn && browseId != null) {
+        if (browseId != null) {
+            // Do not silently change only the local DB when an account-only
+            // YouTube playlist operation could not be authenticated.
+            if (!allowSyncing || !isLoggedIn) return 0
             val acceptedSongIds = mutableListOf<String>()
             requestedSongIds.forEach { songId ->
                 var wasAdded = false
