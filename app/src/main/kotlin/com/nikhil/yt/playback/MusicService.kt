@@ -3955,6 +3955,19 @@ class MusicService :
         }
     }
 
+    /** Reconcile output headroom when Android creates or replaces AudioTrack. */
+    private fun restoreSoundStudioSafetyAfterSessionChange() {
+        val settings = previousSoundStudioSettings ?: return
+        val safety = when {
+            !settings.enabled -> 1f
+            audioEffectsController.isUnifiedDynamicsActive &&
+                settings.virtualizerEnabled -> 0.84f
+            audioEffectsController.isUnifiedDynamicsActive -> 0.94f
+            else -> protectedEqAudioFactor(settings, eqCapabilities.value)
+        }
+        soundStudioSafetyFactor.value = safety
+    }
+
     private fun openAudioEffectSession() {
         if (isAudioEffectSessionOpened) return
         val sessionId = player.audioSessionId
@@ -3962,6 +3975,7 @@ class MusicService :
         isAudioEffectSessionOpened = true
         openedAudioSessionId = sessionId
         audioEffectsController.ensure(sessionId)
+        restoreSoundStudioSafetyAfterSessionChange()
         sendBroadcast(
             Intent(AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION).apply {
                 putExtra(AudioEffect.EXTRA_AUDIO_SESSION, sessionId)
@@ -4518,6 +4532,7 @@ class MusicService :
             )
             openedAudioSessionId = newSessionId
             audioEffectsController.ensure(newSessionId)
+            restoreSoundStudioSafetyAfterSessionChange()
             sendBroadcast(
                 Intent(AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION).apply {
                     putExtra(AudioEffect.EXTRA_AUDIO_SESSION, newSessionId)
