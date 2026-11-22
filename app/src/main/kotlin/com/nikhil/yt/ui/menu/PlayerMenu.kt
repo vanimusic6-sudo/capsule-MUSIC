@@ -1142,9 +1142,12 @@ fun EqualizerDialog(
                             else -> 212.dp
                         }
                         var selectedBand by remember { mutableIntStateOf(0) }
+                        val displayedLevels = scaleEqBandLevels(
+                            bandLevelsMb, intensityLocal, minMb, maxMb,
+                        )
                         CapsuleEqualizerGraph(
                             frequenciesHz = caps.centerFreqHz,
-                            levelsMb = bandLevelsMb,
+                            levelsMb = displayedLevels,
                             minMb = minMb,
                             maxMb = maxMb,
                             selectedBand = selectedBand.coerceIn(0, bandCount - 1),
@@ -1153,7 +1156,9 @@ fun EqualizerDialog(
                                 if (band in 0 until bandCount) {
                                     bandLevelsMb = bandLevelsMb.toMutableList().apply {
                                         while (size < bandCount) add(0)
-                                        this[band] = level
+                                        this[band] = inverseScaledEqLevel(
+                                            level, intensityLocal, minMb, maxMb,
+                                        )
                                     }
                                 }
                             },
@@ -1161,7 +1166,9 @@ fun EqualizerDialog(
                                 if (band in 0 until bandCount) {
                                     val updated = bandLevelsMb.toMutableList().apply {
                                         while (size < bandCount) add(0)
-                                        this[band] = level
+                                        this[band] = inverseScaledEqLevel(
+                                            level, intensityLocal, minMb, maxMb,
+                                        )
                                     }
                                     bandLevelsMb = updated
                                     setEqEnabled(true)
@@ -1171,6 +1178,35 @@ fun EqualizerDialog(
                             },
                             graphHeight = graphHeight,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                stringResource(R.string.eq_curve_intensity),
+                                style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                "${intensityLocal}%",
+                                color = MaterialTheme.colorScheme.primary,
+                                style = MaterialTheme.typography.labelLarge,
+                            )
+                        }
+                        CapsuleStudioSlider(
+                            value = intensityLocal.toFloat(),
+                            onValueChange = { intensityLocal = it.toInt().coerceIn(100, 200) },
+                            onValueChangeFinished = { setCurveIntensity(intensityLocal) },
+                            valueRange = 100f..200f,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        )
+                        Text(
+                            stringResource(R.string.eq_curve_intensity_hint),
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
 
