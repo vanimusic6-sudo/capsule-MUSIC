@@ -38,6 +38,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Player.EVENT_POSITION_DISCONTINUITY
 import androidx.media3.common.Player.EVENT_TIMELINE_CHANGED
@@ -107,6 +108,8 @@ import com.nikhil.yt.constants.EqualizerCurveIntensityPercentKey
 import com.nikhil.yt.constants.EqualizerBassBoostEnabledKey
 import com.nikhil.yt.constants.EqualizerBassBoostStrengthKey
 import com.nikhil.yt.constants.EqualizerEnabledKey
+import com.nikhil.yt.constants.SoundStudioSpeedKey
+import com.nikhil.yt.constants.SoundStudioPitchKey
 import com.nikhil.yt.constants.EqualizerOutputGainEnabledKey
 import com.nikhil.yt.constants.EqualizerOutputGainMbKey
 import com.nikhil.yt.constants.EqualizerSelectedProfileIdKey
@@ -1083,6 +1086,11 @@ class MusicService :
     private var videoModeSwitchGeneration = 0L
     private var lastVideoExitElapsedMs = 0L
     private var effectiveAudioVolume = 1f
+    // Reserve peak headroom before native DSP so boosted EQ/Bass/Gain do not
+    // stack into full-scale source peaks. Video has a separate audio session.
+    private val soundStudioSafetyFactor = MutableStateFlow(1f)
+    private val soundStudioTransitionFactor = MutableStateFlow(1f)
+    private var previousSoundStudioSettings: EqSettings? = null
     private var videoRequestedAtMs = 0L
     val videoRenderPlayer: Player?
         get() = videoCompanion?.player
@@ -2223,12 +2231,20 @@ class MusicService :
             }
         }
 
-        combine(playerVolume, normalizeFactor, audioFocusVolumeFactor, playbackFadeFactor) { playerVolume, normalizeFactor, audioFocusVolumeFactor, playbackFadeFactor ->
-            playerVolume * normalizeFactor * audioFocusVolumeFactor * playbackFadeFactor
-        }.collectLatest(scope) { finalVolume ->
-            effectiveAudioVolume = finalVolume
-            player.volume = if (videoAudioOwned || videoReturnGapActive) 0f else finalVolume
-            videoCompanion?.setVolume(finalVolume)
+        val baseVolumeFlow = combine(
+            playerVolume, normalizeFactor, audioFocusVolumeFactor, playbackFadeFactor,
+        ) { playerVolume, normalizeFactor, focus, fade ->
+            playerVolume * normalizeFactor * focus * fade
+        }
+        combine(
+            baseVolumeFlow, soundStudioSafetyFactor, soundStudioTransitionFactor,
+        ) { base, safety, transition ->
+            base to (base * safety * transition).coerceAtLeast(0f)
+        }.collectLatest(scope) { (base, protectedVolume) ->
+            effectiveAudioVolume = protectedVolume
+            player.volume = if (videoAudioOwned || videoReturnGapActive) 0f else protectedVolume
+            // Companion VIDEO plays on a separate audio session without our EQ.
+            videoCompanion?.setVolume(base)
         }
 
         playerVolume.debounce(1000).collect(ioScope) { volume ->
@@ -2344,8 +2360,61 @@ class MusicService :
         dataStore.data
             .map(::readEqSettingsFromPrefs)
             .distinctUntilChanged()
-            .collectLatest(scope) { settings ->
-                audioEffectsController.applySettings(settings)
+            .collect(scope) { settings ->
+                val previous = previousSoundStudioSettings
+                // Short duck avoids an audible edge on legacy OEM mixer
+                // transitions or a large EQ-curve change. No delayed threads
+                // keep running after the scope is cancelled.
+                val sensitive = previous != null && player.isPlaying &&
+                    (previous.enabled != settings.enabled ||
+                        previous.bassBoostEnabled != settings.bassBoostEnabled ||
+                        previous.virtualizerEnabled != settings.virtualizerEnabled ||
+                        previous.outputGainEnabled != settings.outputGainEnabled)
+                try {
+                    if (sensitive) {
+                        for (fade in listOf(0.82f, 0.54f, 0.26f)) {
+                            soundStudioTransitionFactor.value = fade
+                            delay(12L)
+                        }
+                    }
+                    val targetSafety = protectedEqAudioFactor(settings)
+                    // Attenuate before increasing native boosts, and remove
+                    // the reserve only after the DSP has been neutralized.
+                    soundStudioSafetyFactor.value = minOf(
+                        soundStudioSafetyFactor.value, targetSafety)
+                    audioEffectsController.applySettings(settings)
+                    previousSoundStudioSettings = settings
+                    soundStudioSafetyFactor.value = targetSafety
+                    if (sensitive) {
+                        for (fade in listOf(0.42f, 0.60f, 0.78f, 0.91f, 1f)) {
+                            soundStudioTransitionFactor.value = fade
+                            delay(18L)
+                        }
+                    }
+                } finally {
+                    soundStudioTransitionFactor.value = 1f
+                }
+            }
+
+        // Every parameter in the combined sound studio obeys the same master
+        // switch. Keep the preferred speed/pitch while off, restoring them when
+        // turned on instead of permanently erasing the user's adjustments.
+        dataStore.data
+            .map { prefs ->
+                Triple(
+                    prefs[EqualizerEnabledKey] ?: false,
+                    (prefs[SoundStudioSpeedKey] ?: 1f).coerceIn(0.25f, 2f),
+                    (prefs[SoundStudioPitchKey] ?: 1f).coerceIn(0.25f, 2f),
+                )
+            }
+            .distinctUntilChanged()
+            .collect(scope) { (enabled, speed, pitch) ->
+                val target = if (enabled) PlaybackParameters(speed, pitch)
+                    else PlaybackParameters(1f, 1f)
+                val current = player.playbackParameters
+                if (current.speed != target.speed || current.pitch != target.pitch) {
+                    player.playbackParameters = target
+                }
             }
 
         combine(
