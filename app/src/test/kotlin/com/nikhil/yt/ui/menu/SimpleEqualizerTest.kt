@@ -2,48 +2,61 @@ package com.nikhil.yt.ui.menu
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import java.io.File
 
 class SimpleEqualizerTest {
-    private val frequencies = listOf(60, 250, 910, 3_600, 14_000)
+    private fun source(name: String): String = listOf(
+        File("src/main/kotlin/com/nikhil/yt/ui/menu/$name.kt"),
+        File("app/src/main/kotlin/com/nikhil/yt/ui/menu/$name.kt"),
+    ).first(File::isFile).readText()
 
-    @Test fun graphSelectsRealHardwareBandInsteadOfThreeSyntheticGroups() {
+    @Test fun graphAdjustsRealHardwareBands() {
         assertEquals(0, capsuleEqualizerBandAt(18f, 300f, 5, 18f))
         assertEquals(2, capsuleEqualizerBandAt(150f, 300f, 5, 18f))
         assertEquals(4, capsuleEqualizerBandAt(282f, 300f, 5, 18f))
         assertEquals(0, capsuleEqualizerBandAt(150f, 300f, 1, 18f))
-    }
-
-    @Test fun graphClampsVerticalTouchesToRealDeviceGainRange() {
         assertEquals(1_500, capsuleEqualizerLevelAt(0f, 220f, -1_500, 1_500, 18f))
         assertEquals(-1_500, capsuleEqualizerLevelAt(220f, 220f, -1_500, 1_500, 18f))
         assertEquals(0, capsuleEqualizerLevelAt(110f, 220f, -1_500, 1_500, 18f))
     }
 
-    @Test fun presetValuesRespectNativeBandCountAndHardwareLimits() {
-        assertEquals(5, simpleEqPresetLevels(frequencies, 5, -1_500, 1_500, "bass").size)
-        assertEquals(List(5) { 0 }, simpleEqPresetLevels(frequencies, 5, -1_500, 1_500, "flat"))
-        assertTrue(simpleEqPresetLevels(frequencies, 5, -1_500, 1_500, "bass")[0] >
-            simpleEqPresetLevels(frequencies, 5, -1_500, 1_500, "bass")[4])
-        assertEquals(emptyList<Int>(), simpleEqPresetLevels(emptyList(), 0, -1_500, 1_500, "bass"))
-        assertTrue(simpleEqPresetLevels(frequencies, 5, -120, 130, "energy").all { it in -120..130 })
+    @Test fun frequenciesAreOriginalDeviceCentersWithUnits() {
+        assertEquals("60 Hz", capsuleGraphHz(60))
+        assertEquals("230 Hz", capsuleGraphHz(230))
+        assertEquals("910 Hz", capsuleGraphHz(910))
+        assertEquals("3.6 kHz", capsuleGraphHz(3600))
+        assertEquals("14 kHz", capsuleGraphHz(14000))
+        assertEquals("—", capsuleGraphHz(0))
     }
 
-    @Test fun mainEqualizerPutsVersionsPresetsAndActualCurveOnOnePage() {
-        val file = listOf(
-            File("src/main/kotlin/com/nikhil/yt/ui/menu/PlayerMenu.kt"),
-            File("app/src/main/kotlin/com/nikhil/yt/ui/menu/PlayerMenu.kt"),
-        ).first(File::isFile)
-        val source = file.readText()
-        val simple = source.substringAfter("if (!showAdvancedEqualizer) {")
-            .substringBefore("TextButton(onClick = { showAdvancedEqualizer = false })")
-        assertTrue(simple.contains("eq_versions_title"))
-        assertTrue(simple.contains("presetOptions.forEach"))
-        assertTrue(simple.contains("CapsuleEqualizerGraph("))
-        assertTrue(simple.contains("graphHeight = graphHeight"))
-        assertTrue(simple.contains("return@Column"))
-        assertTrue(!simple.contains("CompactTempoPitchSection()"))
-        assertTrue(!simple.contains("Slider("))
+    @Test fun allSoundControlsShareOneScrollSurface() {
+        val s = source("PlayerMenu")
+        val dialog = s.substringAfter("fun EqualizerDialog(")
+            .substringBefore("@Composable\nprivate fun CapsuleEffectRow(")
+        assertTrue(dialog.contains("Slider("))
+        assertTrue(dialog.contains("multiplierToSlider(speed)"))
+        assertTrue(dialog.contains("caps.systemPresets.mapIndexed"))
+        assertTrue(dialog.contains("applySystemEqPreset(preset)"))
+        assertTrue(dialog.contains("CapsuleEqualizerGraph("))
+        assertTrue(dialog.contains("graphHeight = graphHeight"))
+        assertTrue(dialog.contains("CapsuleEffectRow("))
+        assertTrue(dialog.contains("eq_effect_spatial"))
+        assertTrue(dialog.contains("eq_output_gain"))
+        assertTrue(dialog.contains("showSaveProfileDialog = true"))
+        assertFalse(dialog.contains("showAdvancedEqualizer"))
+        assertFalse(dialog.contains("eq_simple_bass"))
+        assertFalse(dialog.contains("eq_versions_title"))
+        assertFalse(dialog.contains("simpleEqPresetLevels"))
+        assertFalse(dialog.contains("TempoPitchSection()"))
+    }
+
+    @Test fun presetsAreFromAndroidAndEffectStrengthIsBounded() {
+        val s = source("PlayerMenu")
+        assertTrue(s.contains("caps.systemPresets.mapIndexed"))
+        assertTrue(s.contains("valueRange = 0..1000"))
+        assertTrue(s.contains("valueRange = -1500..1500"))
+        assertFalse(s.contains("simpleEqPresetLevels("))
     }
 }
