@@ -51,9 +51,13 @@ class CapsuleMenuMotionTest {
         ).first(java.io.File::isFile).readText()
         assertTrue(sheet.contains("capsuleMenuGrain"))
         assertTrue(sheet.contains(".drawWithCache"))
-        assertTrue(sheet.contains("containerColor = Color.Transparent,"))
-        assertTrue(sheet.contains("drawRect(sheetColor.copy(alpha = 0.99f))"))
-        assertTrue(sheet.contains(".clip(sheetShape).drawWithCache"))
+        assertTrue(sheet.contains("containerColor = sheetColor.copy(alpha = 0.99f),"))
+        assertTrue(sheet.contains("drawRect(capsuleMenuGrain)"))
+        // Painting the acrylic on the outer full-height modifier caused a
+        // grainy empty half-screen when More was only partially expanded.
+        assertFalse(sheet.contains("}.clip(sheetShape).drawWithCache"))
+        assertFalse(sheet.contains("containerColor = Color.Transparent,"))
+        assertTrue(sheet.contains("dragHandle = {"))
         assertFalse(sheet.contains("pageWash"))
         assertFalse(sheet.contains("lipSheen"))
         assertFalse(sheet.contains("topGlow"))
