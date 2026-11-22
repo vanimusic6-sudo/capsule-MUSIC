@@ -46,10 +46,16 @@ internal fun capsuleEqualizerLevelAt(
         .div(50).times(50).coerceIn(minMb, maxMb)
 }
 
-private fun capsuleGraphHz(hz: Int): String = when {
+/** Display original Android frequency centers in Hz/kHz, not awkward shorthand. */
+internal fun capsuleGraphHz(hz: Int): String = when {
     hz <= 0 -> "—"
-    hz >= 1_000 -> "${(hz / 1_000f * 10f).roundToInt() / 10f}k"
-    else -> "${hz}"
+    hz >= 1_000 -> {
+        val tenths = (hz / 100f).roundToInt()
+        val formatted = if (tenths % 10 == 0) "${tenths / 10}"
+            else "${tenths / 10}.${tenths % 10}"
+        "$formatted kHz"
+    }
+    else -> "$hz Hz"
 }
 
 /**
@@ -73,8 +79,8 @@ internal fun CapsuleEqualizerGraph(
     val count = minOf(frequenciesHz.size, levelsMb.size)
     if (count <= 0) return
     val accent = MaterialTheme.colorScheme.primary
-    val grid = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.13f)
-    val neutral = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+    val grid = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+    val neutral = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
     val updateSelected by rememberUpdatedState(onBandSelected)
     val updateLevel by rememberUpdatedState(onLevelChanged)
     val finish by rememberUpdatedState(onFinished)
@@ -136,9 +142,10 @@ internal fun CapsuleEqualizerGraph(
             }
             val baseline = (inset + innerH * (1f - (0 - minMb) / span))
                 .coerceIn(inset, size.height - inset)
-            repeat(5) { i ->
-                val y = inset + innerH * i / 4f
-                drawLine(grid, Offset(inset, y), Offset(size.width - inset, y), 1.dp.toPx())
+            // Two subtle helpers, not a harsh table/grid behind every drag.
+            for (fraction in listOf(0.25f, 0.75f)) {
+                val y = inset + innerH * fraction
+                drawLine(grid, Offset(inset, y), Offset(size.width - inset, y), 0.8.dp.toPx())
             }
             drawLine(neutral, Offset(inset, baseline), Offset(size.width - inset, baseline), 1.dp.toPx())
             repeat(count) { i ->
@@ -166,25 +173,25 @@ internal fun CapsuleEqualizerGraph(
             drawPath(
                 path = fill,
                 brush = Brush.verticalGradient(
-                    colors = listOf(accent.copy(alpha = 0.20f), accent.copy(alpha = 0.015f)),
+                    colors = listOf(accent.copy(alpha = 0.15f), accent.copy(alpha = 0.008f)),
                     startY = inset,
                     endY = size.height,
                 ),
             )
             drawPath(curve, color = accent, style = androidx.compose.ui.graphics.drawscope.Stroke(
-                width = 2.6.dp.toPx(), cap = StrokeCap.Round,
+                width = 2.8.dp.toPx(), cap = StrokeCap.Round,
             ))
             repeat(count) { i ->
                 val p = point(i)
                 val active = i == selectedBand
+                if (active) {
+                    drawCircle(accent.copy(alpha = 0.18f), radius = 11.dp.toPx(), center = p)
+                }
                 drawCircle(
-                    color = if (active) androidx.compose.ui.graphics.Color.White else accent,
-                    radius = if (active) 6.5.dp.toPx() else 5.dp.toPx(),
+                    color = accent,
+                    radius = if (active) 5.5.dp.toPx() else 4.5.dp.toPx(),
                     center = p,
                 )
-                if (active) {
-                    drawCircle(accent, radius = 3.dp.toPx(), center = p)
-                }
             }
         }
         Row(
