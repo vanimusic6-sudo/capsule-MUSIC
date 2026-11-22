@@ -107,7 +107,11 @@ internal class PlaybackAudioEffectsController(
         releaseEffect("release virtualizer") { virtualizer?.release() }
         releaseEffect("release loudness enhancer") { loudnessEnhancer?.release() }
         releaseEffect("release peak limiter") { peakLimiter?.release() }
-        releaseEffect("release unified dynamics") { unifiedDynamics?.release() }
+        releaseEffect("release unified dynamics") {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                unifiedDynamics?.release()
+            }
+        }
         equalizer = null
         appliedBandLevels = intArrayOf()
         appliedEnabled = null
@@ -191,18 +195,20 @@ internal class PlaybackAudioEffectsController(
             }
         }
 
-        unifiedDynamics?.let { engine ->
-            try {
-                engine.apply(settings)
-                // Android has no virtualizer stage inside DynamicsProcessing.
-                // Spatial widening remains optional and separately constrained.
-                applyUnifiedVirtualizer(settings)
-                return
-            } catch (failure: Exception) {
-                onRecoverableError("update unified dynamics", failure)
-                runCatching { engine.release() }
-                unifiedDynamics = null
-                // Fall back to the legacy session processors on this device.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            unifiedDynamics?.let { engine ->
+                try {
+                    engine.apply(settings)
+                    // Android has no virtualizer stage inside DynamicsProcessing.
+                    // Spatial widening remains optional and separately constrained.
+                    applyUnifiedVirtualizer(settings)
+                    return
+                } catch (failure: Exception) {
+                    onRecoverableError("update unified dynamics", failure)
+                    runCatching { engine.release() }
+                    unifiedDynamics = null
+                    // Fall back to the legacy session processors on this device.
+                }
             }
         }
 
