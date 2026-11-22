@@ -17,4 +17,6 @@
     <string name="eq_simple_high">Высокие</string>
     <string name="eq_simple_advanced">Расширенные настройки звука</string>
     <string name="eq_simple_back">Вернуться к простому режиму</string>
+    <string name="eq_effects_title">Звуковые эффекты</string>
+    <string name="eq_effect_spatial">Объёмный звук</string>
 </resources>
