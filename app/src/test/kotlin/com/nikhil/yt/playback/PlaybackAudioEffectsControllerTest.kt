@@ -69,5 +69,8 @@ class PlaybackAudioEffectsControllerTest {
             "appliedVirtualizerEnabled != settings.virtualizerEnabled"))
         org.junit.Assert.assertFalse(source.contains(
             "effect.setStrength(settings.bassBoostStrength.toShort())"))
+        org.junit.Assert.assertTrue(source.contains("equalizer?.let { eq ->"))
+        org.junit.Assert.assertFalse(source.contains("val eq = equalizer ?: return"))
+        org.junit.Assert.assertTrue(source.contains("if (appliedGainEnabled != settings.outputGainEnabled)"))
     }
 }
