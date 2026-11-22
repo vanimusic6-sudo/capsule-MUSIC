@@ -79,6 +79,21 @@ class CapsuleUnifiedDynamicsProcessorTest {
         assertTrue(values.drop(1).all { it <= 650 })
     }
 
+    @Test fun limiterMustEngageBeforeAnyEqBoostAndLeaveAfterNeutralization() {
+        val file = listOf(
+            java.io.File("src/main/kotlin/com/nikhil/yt/playback/CapsuleUnifiedDynamicsProcessor.kt"),
+            java.io.File("app/src/main/kotlin/com/nikhil/yt/playback/CapsuleUnifiedDynamicsProcessor.kt"),
+        ).first(java.io.File::isFile).readText()
+        val apply = file.substringAfter("fun apply(settings: EqSettings)")
+            .substringBefore("fun release()")
+        val enable = apply.indexOf("if (settings.enabled && appliedLimiter != true)")
+        val boost = apply.indexOf("val levels = capsuleUnifiedEqLevels")
+        val gain = apply.indexOf("processor.setInputGainAllChannelsTo")
+        val disable = apply.indexOf("if (!settings.enabled && appliedLimiter != false)")
+        assertTrue(enable >= 0 && enable < boost && boost < gain && gain < disable)
+        assertTrue(file.contains(".setLimiterAllChannelsTo(nativeLimiter(true))"))
+    }
+
     @Test fun sourceMustNotStackIndependentNativeBoostsWhenUnified() {
         val src = listOf(
             java.io.File("src/main/kotlin/com/nikhil/yt/playback/PlaybackAudioEffectsController.kt"),
