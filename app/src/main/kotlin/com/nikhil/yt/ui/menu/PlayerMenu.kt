@@ -963,7 +963,7 @@ fun EqualizerDialog(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 TopAppBar(
-                    title = { Text(text = stringResource(R.string.equalizer)) },
+                    title = { Text(text = stringResource(R.string.eq_audio_studio)) },
                     navigationIcon = {
                         IconButton(onClick = onDismiss) {
                             Icon(
