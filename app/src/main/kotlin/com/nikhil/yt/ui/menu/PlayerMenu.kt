@@ -1702,34 +1702,6 @@ private fun EqToggleSliderRow(
 }
 
 
-/** Map variable hardware bands into three understandable tone controls. */
-internal fun simpleEqBandIndices(freqHz: List<Int>, bandCount: Int, group: Int): List<Int> =
-    (0 until bandCount.coerceAtLeast(0)).filter { i ->
-        val freq = freqHz.getOrNull(i) ?: 0
-        val bucket = if (freq > 0) when {
-            freq < 320 -> 0
-            freq < 4_500 -> 1
-            else -> 2
-        } else (i * 3 / bandCount.coerceAtLeast(1)).coerceIn(0, 2)
-        bucket == group
-    }
-
-internal fun simpleEqShiftBandGroup(
-    levels: List<Int>, count: Int, freqs: List<Int>, group: Int,
-    targetMb: Int, minMb: Int, maxMb: Int,
-): List<Int> {
-    if (count <= 0 || maxMb <= minMb) return emptyList()
-    val indices = simpleEqBandIndices(freqs, count, group)
-    if (indices.isEmpty()) return List(count) { levels.getOrElse(it) { 0 }.coerceIn(minMb, maxMb) }
-    val current = indices.map { levels.getOrElse(it) { 0 }.coerceIn(minMb, maxMb) }
-        .average().toInt()
-    val delta = targetMb.coerceIn(minMb, maxMb) - current
-    return List(count) { i ->
-        val old = levels.getOrElse(i) { 0 }
-        (if (i in indices) old + delta else old).coerceIn(minMb, maxMb)
-    }
-}
-
 internal fun simpleEqPresetLevels(
     freqs: List<Int>, count: Int, minMb: Int, maxMb: Int, id: String,
 ): List<Int> {
@@ -1749,58 +1721,6 @@ internal fun simpleEqPresetLevels(
             else -> 0
         }
         value.coerceIn(minMb, maxMb)
-    }
-}
-
-@Composable
-private fun CompactTempoPitchSection() {
-    val connection = LocalPlayerConnection.current ?: return
-    var speed by remember { mutableFloatStateOf(
-        connection.player.playbackParameters.speed.safeCoerceIn(TempoMin, TempoMax, 1f)
-    ) }
-    var pitch by remember { mutableFloatStateOf(
-        connection.player.playbackParameters.pitch.safeCoerceIn(PitchMin, PitchMax, 1f)
-    ) }
-    val apply: (Float, Float) -> Unit = { s, p ->
-        connection.player.playbackParameters = PlaybackParameters(
-            s.coerceIn(TempoMin, TempoMax), p.coerceIn(PitchMin, PitchMax)
-        )
-    }
-    EqSection(
-        title = stringResource(R.string.tempo_and_pitch),
-        trailing = {
-            TextButton(onClick = {
-                speed = 1f
-                pitch = 1f
-                apply(1f, 1f)
-            }) { Text(stringResource(R.string.reset)) }
-        },
-    ) {
-        listOf(R.string.tempo, R.string.pitch).forEachIndexed { index, title ->
-            val value = if (index == 0) speed else pitch
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(stringResource(title), modifier = Modifier.width(70.dp),
-                    style = MaterialTheme.typography.labelMedium)
-                Slider(
-                    value = multiplierToSlider(value),
-                    onValueChange = {
-                        val next = sliderToMultiplier(it).quantize(0.01f)
-                        if (index == 0) speed = next else pitch = next
-                        apply(speed, pitch)
-                    },
-                    valueRange = 0f..1f,
-                    modifier = Modifier.weight(1f),
-                )
-                Text("×${formatMultiplier(value)}",
-                    modifier = Modifier.width(64.dp),
-                    textAlign = TextAlign.End,
-                    style = MaterialTheme.typography.labelSmall,
-                )
-            }
-        }
     }
 }
 
