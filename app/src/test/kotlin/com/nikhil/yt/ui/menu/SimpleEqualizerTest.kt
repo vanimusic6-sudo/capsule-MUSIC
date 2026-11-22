@@ -73,14 +73,26 @@ class SimpleEqualizerTest {
         assertFalse(dialog.contains("setEqEnabled(true)"))
     }
 
+    @Test fun graphConsumesTouchBeforeParentScroll() {
+        val graph = source("CapsuleEqualizerGraph")
+        assertTrue(graph.contains("awaitEachGesture"))
+        assertTrue(graph.contains("down.consume()"))
+        assertTrue(graph.contains("change.consume()"))
+        assertFalse(graph.contains("detectDragGestures"))
+    }
+
     @Test fun presetsAreFromAndroidAndEffectStrengthIsBounded() {
         val s = source("PlayerMenu")
         assertTrue(s.contains("CapsuleEqPresets.all.chunked(3)"))
         assertFalse(s.contains("caps.systemPresets.mapIndexed"))
         assertFalse(s.contains("availablePresets"))
         assertFalse(s.contains("Text(current,"))
-        assertTrue(s.contains("valueRange = 0..CAPSULE_MAX_BASS_STRENGTH"))
-        assertTrue(s.contains("valueRange = 0..CAPSULE_MAX_VIRTUALIZER_STRENGTH"))
+        assertTrue(s.contains("valueRange = 0..100"))
+        assertTrue(s.contains("percent * CAPSULE_MAX_BASS_STRENGTH / 100"))
+        assertTrue(s.contains("percent * CAPSULE_MAX_VIRTUALIZER_STRENGTH / 100"))
+        assertTrue(s.contains("val graphMaxMb ="))
+        assertTrue(s.contains("maxMb = graphMaxMb"))
+        assertTrue(s.contains("enabled = enabled && checked"))
         assertTrue(s.contains("valueRange = -1500..CAPSULE_MAX_OUTPUT_GAIN_MB"))
         assertFalse(s.contains("simpleEqPresetLevels("))
     }

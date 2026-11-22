@@ -128,9 +128,19 @@ internal fun protectedEqAudioFactor(settings: EqSettings): Float {
     val gainReserveDb = if (settings.outputGainEnabled) {
         settings.outputGainMb.coerceIn(0, CAPSULE_MAX_OUTPUT_GAIN_MB) / 100.0
     } else 0.0
-    val totalDb = eqBoostDb + bassReserveDb + surroundReserveDb +
-        gainReserveDb + if (eqBoostDb + bassReserveDb + gainReserveDb > 0.0) 1.0 else 0.0
-    return Math.pow(10.0, -totalDb / 20.0).toFloat().coerceIn(0.1f, 1f)
+    // Avoid summing independent theoretical worst-case boosts: that made
+    // everyday EQ sound much quieter than the unprocessed track. Bass and
+    // tonal boosts often occupy different frequency regions. This is a
+    // moderate static headroom estimate, not a true-peak limiter.
+    val primaryReserveDb = maxOf(
+        eqBoostDb * 0.45,
+        bassReserveDb * 0.35,
+        gainReserveDb, // A real output-gain boost needs equal input headroom.
+    )
+    val overlappingBassDb = minOf(eqBoostDb, bassReserveDb) * 0.12
+    val reserveDb = (primaryReserveDb + overlappingBassDb +
+        surroundReserveDb * 0.10).coerceIn(0.0, 4.0)
+    return Math.pow(10.0, -reserveDb / 20.0).toFloat().coerceIn(0.63f, 1f)
 }
 
 internal object EqualizerJson {

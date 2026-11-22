@@ -5,8 +5,8 @@
 package com.nikhil.yt.ui.menu
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -94,42 +94,40 @@ internal fun CapsuleEqualizerGraph(
                 .height(graphHeight)
                 .pointerInput(count, minMb, maxMb) {
                     val inset = pad.toPx()
-                    detectTapGestures { point ->
-                        val index = capsuleEqualizerBandAt(point.x, size.width.toFloat(), count, inset)
-                        updateSelected(index)
-                        val level = capsuleEqualizerLevelAt(
-                            point.y, size.height.toFloat(), minMb, maxMb, inset,
+                    // Claim the gesture immediately on the graph. Waiting for
+                    // drag touch-slop let the parent verticalScroll steal it,
+                    // producing random small jumps while editing EQ points.
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val band = capsuleEqualizerBandAt(
+                            down.position.x, size.width.toFloat(), count, inset,
                         )
-                        updateLevel(index, level)
-                        finish(index, level)
+                        updateSelected(band)
+                        var level = capsuleEqualizerLevelAt(
+                            down.position.y, size.height.toFloat(), minMb, maxMb, inset,
+                        )
+                        updateLevel(band, level)
+                        down.consume()
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) {
+                                change.consume()
+                                break
+                            }
+                            val next = capsuleEqualizerLevelAt(
+                                change.position.y, size.height.toFloat(),
+                                minMb, maxMb, inset,
+                            )
+                            if (next != level) {
+                                level = next
+                                updateLevel(band, level)
+                            }
+                            change.consume()
+                        }
+                        finish(band, level)
                     }
                 }
-                .pointerInput(count, minMb, maxMb) {
-                    val inset = pad.toPx()
-                    var dragBand = 0
-                    var dragLevel = 0
-                    detectDragGestures(
-                        onDragStart = { point ->
-                            dragBand = capsuleEqualizerBandAt(
-                                point.x, size.width.toFloat(), count, inset,
-                            )
-                            updateSelected(dragBand)
-                            dragLevel = capsuleEqualizerLevelAt(
-                                point.y, size.height.toFloat(), minMb, maxMb, inset,
-                            )
-                            updateLevel(dragBand, dragLevel)
-                        },
-                        onDragEnd = { finish(dragBand, dragLevel) },
-                        onDragCancel = { finish(dragBand, dragLevel) },
-                        onDrag = { change, _ ->
-                            dragLevel = capsuleEqualizerLevelAt(
-                                change.position.y, size.height.toFloat(), minMb, maxMb, inset,
-                            )
-                            updateLevel(dragBand, dragLevel)
-                            change.consume()
-                        },
-                    )
-                },
         ) {
             val inset = pad.toPx()
             val innerW = (size.width - inset * 2f).coerceAtLeast(1f)

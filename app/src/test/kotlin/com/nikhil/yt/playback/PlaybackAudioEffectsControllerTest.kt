@@ -81,7 +81,18 @@ class PlaybackAudioEffectsControllerTest {
             intensityPercent = 200,
         )
         val factor = protectedEqAudioFactor(base)
-        org.junit.Assert.assertTrue("Strong EQ must reserve headroom", factor in 0.1f..0.5f)
+        org.junit.Assert.assertTrue("Strong EQ must reserve moderate headroom", factor in 0.60f..0.90f)
+        // A single bass or tonal adjustment must not halve the whole track.
+        val eqOnly = base.copy(
+            bassBoostEnabled = false, virtualizerEnabled = false,
+            outputGainEnabled = false,
+        )
+        org.junit.Assert.assertTrue(protectedEqAudioFactor(eqOnly) > 0.70f)
+        val bassOnly = base.copy(
+            bandLevelsMb = List(5) { 0 },
+            virtualizerEnabled = false, outputGainEnabled = false,
+        )
+        org.junit.Assert.assertTrue(protectedEqAudioFactor(bassOnly) > 0.80f)
         assertEquals(1f, protectedEqAudioFactor(base.copy(
             bandLevelsMb = List(5) { 0 }, outputGainEnabled = false,
             bassBoostEnabled = false, virtualizerEnabled = false,

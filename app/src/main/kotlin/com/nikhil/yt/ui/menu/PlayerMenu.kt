@@ -776,6 +776,9 @@ fun EqualizerDialog(
     val bandCount = caps.bandCount
     val minMb = caps.minBandLevelMb
     val maxMb = caps.maxBandLevelMb
+    // The graph uses the current safe DSP ceiling, not the obsolete
+    // hardware-wide maximum. Thus a safe maximum reaches its TOP edge.
+    val graphMaxMb = minOf(maxMb, CAPSULE_MAX_EQ_BOOST_MB).coerceAtLeast(minMb)
 
     var outputGainLocal by rememberSaveable {
         mutableIntStateOf(outputGainMb.coerceIn(-1500, CAPSULE_MAX_OUTPUT_GAIN_MB))
@@ -1163,12 +1166,12 @@ fun EqualizerDialog(
                         var selectedBand by remember { mutableIntStateOf(0) }
                         val displayedLevels = scaleEqBandLevels(
                             bandLevelsMb, intensityLocal, minMb, maxMb,
-                        ).map { it.coerceAtMost(CAPSULE_MAX_EQ_BOOST_MB) }
+                        ).map { it.coerceAtMost(graphMaxMb) }
                         CapsuleEqualizerGraph(
                             frequenciesHz = caps.centerFreqHz,
                             levelsMb = displayedLevels,
                             minMb = minMb,
-                            maxMb = maxMb,
+                            maxMb = graphMaxMb,
                             selectedBand = selectedBand.coerceIn(0, bandCount - 1),
                             onBandSelected = { selectedBand = it },
                             onLevelChanged = { band, level ->
@@ -1176,7 +1179,7 @@ fun EqualizerDialog(
                                     bandLevelsMb = bandLevelsMb.toMutableList().apply {
                                         while (size < bandCount) add(0)
                                         this[band] = inverseScaledEqLevel(
-                                            level.coerceAtMost(CAPSULE_MAX_EQ_BOOST_MB),
+                                            level.coerceAtMost(graphMaxMb),
                                             intensityLocal, minMb, maxMb,
                                         )
                                     }
@@ -1187,7 +1190,7 @@ fun EqualizerDialog(
                                     val updated = bandLevelsMb.toMutableList().apply {
                                         while (size < bandCount) add(0)
                                         this[band] = inverseScaledEqLevel(
-                                            level.coerceAtMost(CAPSULE_MAX_EQ_BOOST_MB),
+                                            level.coerceAtMost(graphMaxMb),
                                             intensityLocal, minMb, maxMb,
                                         )
                                     }
@@ -1239,10 +1242,14 @@ fun EqualizerDialog(
                                 }
                                 setBassBoostEnabled(enabled)
                             },
-                            value = bassBoostStrengthLocal,
-                            valueRange = 0..CAPSULE_MAX_BASS_STRENGTH,
-                            valueLabel = "${bassBoostStrengthLocal / 10}%",
-                            onValueChange = { bassBoostStrengthLocal = it },
+                            value = (bassBoostStrengthLocal * 100 + CAPSULE_MAX_BASS_STRENGTH / 2) /
+                                CAPSULE_MAX_BASS_STRENGTH,
+                            valueRange = 0..100,
+                            valueLabel = "${(bassBoostStrengthLocal * 100 + CAPSULE_MAX_BASS_STRENGTH / 2) /
+                                CAPSULE_MAX_BASS_STRENGTH}%",
+                            onValueChange = { percent ->
+                                bassBoostStrengthLocal = percent * CAPSULE_MAX_BASS_STRENGTH / 100
+                            },
                             onValueChangeFinished = {
                                 setBassBoostStrength(bassBoostStrengthLocal)
                             },
@@ -1259,10 +1266,17 @@ fun EqualizerDialog(
                                 }
                                 setVirtualizerEnabled(enabled)
                             },
-                            value = virtualizerStrengthLocal,
-                            valueRange = 0..CAPSULE_MAX_VIRTUALIZER_STRENGTH,
-                            valueLabel = "${virtualizerStrengthLocal / 10}%",
-                            onValueChange = { virtualizerStrengthLocal = it },
+                            value = (virtualizerStrengthLocal * 100 +
+                                CAPSULE_MAX_VIRTUALIZER_STRENGTH / 2) /
+                                CAPSULE_MAX_VIRTUALIZER_STRENGTH,
+                            valueRange = 0..100,
+                            valueLabel = "${(virtualizerStrengthLocal * 100 +
+                                CAPSULE_MAX_VIRTUALIZER_STRENGTH / 2) /
+                                CAPSULE_MAX_VIRTUALIZER_STRENGTH}%",
+                            onValueChange = { percent ->
+                                virtualizerStrengthLocal =
+                                    percent * CAPSULE_MAX_VIRTUALIZER_STRENGTH / 100
+                            },
                             onValueChangeFinished = {
                                 setVirtualizerStrength(virtualizerStrengthLocal)
                             },
@@ -1417,17 +1431,16 @@ private fun CapsuleEffectRow(
         ) {
             Text(title, modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.titleSmall)
-            if (checked) {
-                Text(valueLabel,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.width(12.dp))
-            }
+            // Keep all rows the same height when effects turn on/off.
+            // Conditional content caused the entire scroll position to jump.
+            Text(valueLabel,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(12.dp))
             Switch(checked = checked, enabled = enabled, onCheckedChange = onCheckedChange)
         }
-        if (checked) {
-            CapsuleStudioSlider(
+        CapsuleStudioSlider(
                 value = value.toFloat().coerceIn(
                     valueRange.first.toFloat(), valueRange.last.toFloat(),
                 ),
@@ -1436,10 +1449,9 @@ private fun CapsuleEffectRow(
                 },
                 onValueChangeFinished = onValueChangeFinished,
                 valueRange = valueRange.first.toFloat()..valueRange.last.toFloat(),
-                enabled = enabled,
+                enabled = enabled && checked,
                 modifier = Modifier.fillMaxWidth(),
             )
-        }
     }
 }
 
