@@ -103,6 +103,7 @@ import com.nikhil.yt.constants.AutoStartOnBluetoothKey
 import com.nikhil.yt.constants.DiscordTokenKey
 import com.nikhil.yt.constants.EnableDiscordRPCKey
 import com.nikhil.yt.constants.EqualizerBandLevelsMbKey
+import com.nikhil.yt.constants.EqualizerCurveIntensityPercentKey
 import com.nikhil.yt.constants.EqualizerBassBoostEnabledKey
 import com.nikhil.yt.constants.EqualizerBassBoostStrengthKey
 import com.nikhil.yt.constants.EqualizerEnabledKey
@@ -3807,13 +3808,16 @@ class MusicService :
             bassBoostStrength = (prefs[EqualizerBassBoostStrengthKey] ?: 0).coerceIn(0, 1000),
             virtualizerEnabled = prefs[EqualizerVirtualizerEnabledKey] ?: false,
             virtualizerStrength = (prefs[EqualizerVirtualizerStrengthKey] ?: 0).coerceIn(0, 1000),
+            intensityPercent = (prefs[EqualizerCurveIntensityPercentKey] ?: 100).coerceIn(100, 200),
         )
     }
 
     fun applyEqFlatPreset() {
         ioScope.launch {
-            val bandCount = audioEffectsController.currentBandCount()
-            val encoded = encodeBandLevelsMb(List(bandCount.coerceAtLeast(0)) { 0 })
+            // Preserve an editable five-band flat profile even before the
+            // first AudioTrack session exists. Resampled when playback starts.
+            val bandCount = audioEffectsController.currentBandCount().takeIf { it > 0 } ?: 5
+            val encoded = encodeBandLevelsMb(List(bandCount) { 0 })
             dataStore.edit { prefs ->
                 prefs[EqualizerEnabledKey] = true
                 prefs[EqualizerBandLevelsMbKey] = encoded
