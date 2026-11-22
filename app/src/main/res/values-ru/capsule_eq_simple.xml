@@ -22,4 +22,5 @@
     <string name="eq_offline_edit_hint">Звук можно настроить заранее. Параметры применятся при воспроизведении.</string>
     <string name="eq_curve_intensity">Выразительность</string>
     <string name="eq_curve_intensity_hint">До 200% в пределах возможностей телефона. Сильное усиление может искажать звук.</string>
+    <string name="eq_audio_studio">Звук</string>
 </resources>
