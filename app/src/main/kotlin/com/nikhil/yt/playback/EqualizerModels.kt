@@ -46,7 +46,36 @@ data class EqSettings(
     val bassBoostStrength: Int,
     val virtualizerEnabled: Boolean,
     val virtualizerStrength: Int,
+    // 100% = original hardware curve. 200% expands the curve until the
+    // device-reported band limits, without pretending to exceed native DSP.
+    val intensityPercent: Int = 100,
 )
+
+/** Amplifies EQ *shape*, not master output volume; prevents out-of-range native calls. */
+internal fun scaleEqBandLevels(
+    levels: List<Int>,
+    percent: Int,
+    deviceMinMb: Int,
+    deviceMaxMb: Int,
+): List<Int> {
+    if (deviceMaxMb < deviceMinMb) return levels
+    val p = percent.coerceIn(100, 200)
+    return levels.map { level ->
+        ((level.toLong() * p + if (level >= 0) 50L else -50L) / 100L)
+            .coerceIn(deviceMinMb.toLong(), deviceMaxMb.toLong()).toInt()
+    }
+}
+
+internal fun inverseScaledEqLevel(
+    effectiveMb: Int,
+    percent: Int,
+    deviceMinMb: Int,
+    deviceMaxMb: Int,
+): Int {
+    val p = percent.coerceIn(100, 200)
+    return ((effectiveMb.toLong() * 100L) / p.toLong())
+        .coerceIn(deviceMinMb.toLong(), deviceMaxMb.toLong()).toInt()
+}
 
 internal object EqualizerJson {
     val json: Json =
