@@ -5037,6 +5037,27 @@ class MusicService :
                     return
                 }
 
+                if (recoveryAction == AudioCdnRecoveryAction.TRY_FRESH_URL_SAME_CLIENT) {
+                    // A 403 on one CDN URL does not condemn the issuing client.
+                    // Preserve BotGuard/visitor state and the user's client order,
+                    // but remove the rejected generation before re-resolving.
+                    audioResolveCoordinator.cancelMedia(currentMediaId) {
+                        playbackUrlCache.remove(currentMediaId)
+                    }
+                    Timber.tag("PlaybackRecovery").i(
+                        "cdn-recovery id=%s action=fresh-url-same-client delayMs=%d",
+                        currentMediaId, minOf(FIRST_SIGNED_URL_REJECTION_DELAY_MS, retryDelay),
+                    )
+                    scheduleStreamRefreshRetry(
+                        mediaId = currentMediaId,
+                        refreshCipherConfig = false,
+                        retryReason = "cdn fresh signed URL",
+                        retryDelayMs = minOf(FIRST_SIGNED_URL_REJECTION_DELAY_MS, retryDelay),
+                        forceRecreateSources = true,
+                    )
+                    return
+                }
+
                 if (recoveryAction == AudioCdnRecoveryAction.RETRY_SAME_URL) {
                     // Do not invalidate the signed URL or session; rebuild the
                     // failed Media3 source so it reopens the exact stream once.
