@@ -967,4 +967,13 @@
     <string name="capsule_inline_lyrics_hint">Листайте вниз к тексту песни</string>
     <string name="dev_force_sabr_audio">Принудительно использовать SABR (экспериментально)</string>
     <string name="dev_force_sabr_audio_description">Для новых запросов используется только SABR, без скрытого перехода на Direct. Чтобы применить к текущему треку, перезапусти воспроизведение. Загрузки не затрагиваются. На длинных записях возможен повышенный расход трафика и энергии.</string>
+    <string name="hearing_care_title">Защита слуха в наушниках</string>
+    <string name="hearing_care_description">Дополнительное цифровое ограничение при высокой громкости наушников. Включено по умолчанию. Это НЕ измерение дБА. Ориентиры ВОЗ: 75 дБА для молодых слушателей, 80 дБА для взрослых за 40 ч/нед. Системные предупреждения Android сохраняются.</string>
+    <string name="hearing_care_override_title">Изменить защиту слуха?</string>
+    <string name="hearing_care_override_explanation">Громкий звук в наушниках может повредить слух, даже если нет искажений. Capsule не измеряет звуковое давление именно в ваших наушниках. Для доступности можно приостановить дополнительную защиту на 20 минут или отключить её. Защита Android продолжит работать.</string>
+    <string name="hearing_care_override_20m">Приостановить на 20 минут</string>
+    <string name="hearing_care_disable">Отключить полностью</string>
+    <string name="hearing_care_cancel">Отмена</string>
+    <string name="hearing_care_resume">Вернуть защиту слуха сейчас</string>
+    <string name="hearing_care_override_active">Временное исключение активно. Нажмите, чтобы вернуть защиту раньше.</string>
 </resources>

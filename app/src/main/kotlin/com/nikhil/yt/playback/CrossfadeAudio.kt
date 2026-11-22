@@ -39,6 +39,7 @@ internal class CrossfadeAudio(
     private val crossfadeDurationMs: MutableStateFlow<Int>,
     private val playbackFadeFactor: MutableStateFlow<Float>,
     private val playerVolume: MutableStateFlow<Float>,
+    private val hearingCareMaxAppVolume: MutableStateFlow<Float>,
     private val audioFocusVolumeFactor: MutableStateFlow<Float>,
     private val audioNormalizationEnabled: MutableStateFlow<Boolean>,
     private val maxSafeGainFactor: Float,
@@ -251,8 +252,13 @@ internal class CrossfadeAudio(
             return
         }
 
-        val baseOverlapVolume =
-            (playerVolume.value * overlapNormalizeFactor * audioFocusVolumeFactor.value).coerceIn(0f, 1f)
+        // Crossfade uses an independent ExoPlayer. Apply the SAME high-volume
+        // headphone ceiling so transitions cannot bypass the listening guard.
+        val baseOverlapVolume = hearingCareOutputVolume(
+            (playerVolume.value * overlapNormalizeFactor * audioFocusVolumeFactor.value)
+                .coerceIn(0f, 1f),
+            hearingCareMaxAppVolume.value,
+        )
 
         if (handoffActive) {
             val nowElapsedMs = android.os.SystemClock.elapsedRealtime()

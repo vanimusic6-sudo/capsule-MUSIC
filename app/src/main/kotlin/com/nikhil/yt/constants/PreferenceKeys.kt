@@ -116,6 +116,10 @@ val PersistentQueueKey = booleanPreferencesKey("persistentQueue")
 val PermanentShuffleKey = booleanPreferencesKey("permanentShuffle")
 val SkipSilenceKey = booleanPreferencesKey("skipSilence")
 val AudioNormalizationKey = booleanPreferencesKey("audioNormalization")
+/** Adds an uncalibrated *software* output ceiling when headphones are used. */
+val SafeListeningEnabledKey = booleanPreferencesKey("safeListeningEnabled")
+/** Short, voluntary accessibility override. Never used as an acoustic dBA value. */
+val SafeListeningOverrideUntilMsKey = longPreferencesKey("safeListeningOverrideUntilMs")
 val AudioOffload = booleanPreferencesKey("audioOffload")
 val PreferAacAudioKey = booleanPreferencesKey("preferAacAudio")
 val AudioCrossfadeDurationKey = intPreferencesKey("audioCrossfadeDuration")

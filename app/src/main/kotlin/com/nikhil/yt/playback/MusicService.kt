@@ -91,6 +91,8 @@ import com.nikhil.yt.constants.ForceSabrAudioKey
 import com.nikhil.yt.constants.ReleasePlaybackDefaults
 import com.nikhil.yt.constants.AudioCrossfadeDurationKey
 import com.nikhil.yt.constants.AudioNormalizationKey
+import com.nikhil.yt.constants.SafeListeningEnabledKey
+import com.nikhil.yt.constants.SafeListeningOverrideUntilMsKey
 import com.nikhil.yt.constants.AudioOffload
 import com.nikhil.yt.constants.AudioQuality
 import com.nikhil.yt.constants.AudioStreamPolicy
@@ -1091,6 +1093,9 @@ class MusicService :
     private val soundStudioSafetyFactor = MutableStateFlow(1f)
     private val soundStudioTransitionFactor = MutableStateFlow(1f)
     private val soundStudioEnabledForVolume = MutableStateFlow(false)
+    // This is a relative SOFTWARE player-volume ceiling, never measured dBA.
+    private val hearingCareMaxAppVolume = MutableStateFlow(1f)
+    private val hearingCarePreference = MutableStateFlow(true to 0L)
     private var previousSoundStudioSettings: EqSettings? = null
     private var videoRequestedAtMs = 0L
     val videoRenderPlayer: Player?
@@ -2070,6 +2075,13 @@ class MusicService :
         CapsuleVideoGuardStore.initialize(applicationContext)
 
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        // Protect the first audio frame, before the first asynchronous poll.
+        hearingCareMaxAppVolume.value = runCatching {
+            CapsuleHeadphoneRouting.appVolumeCeiling(
+                audioManager, enabled = true, overrideUntilMs = 0L,
+                nowMs = System.currentTimeMillis(),
+            )
+        }.getOrDefault(1f)
         playbackFocusController.initialize()
 
         mediaLibrarySessionCallback.apply {
@@ -2232,23 +2244,65 @@ class MusicService :
             }
         }
 
+        dataStore.data.map { prefs ->
+            (prefs[SafeListeningEnabledKey] ?: true) to
+                (prefs[SafeListeningOverrideUntilMsKey] ?: 0L)
+        }.distinctUntilChanged().collect(scope) { config ->
+            hearingCarePreference.value = config
+        }
+
+        // The OS volume can change through the hardware buttons while this
+        // app is playing. Check only occasionally and ramp gain changes to
+        // avoid zipper clicks; no microphone/network/health-data collection.
+        scope.launch {
+            while (isActive) {
+                val (enabled, overrideUntilMs) = hearingCarePreference.value
+                // Keep the cap up to date even while paused: resuming must not
+                // briefly play at an unguarded volume before the next poll.
+                val target = if (enabled) {
+                    runCatching {
+                        CapsuleHeadphoneRouting.appVolumeCeiling(
+                            audioManager, enabled, overrideUntilMs,
+                            System.currentTimeMillis(),
+                        )
+                    }.getOrDefault(1f)
+                } else 1f
+                val from = hearingCareMaxAppVolume.value
+                if (kotlin.math.abs(from - target) > 0.002f) {
+                    for (step in 1..8) {
+                        hearingCareMaxAppVolume.value =
+                            from + (target - from) * (step / 8f)
+                        delay(22L)
+                    }
+                }
+                delay(if (player.isPlaying) 1500L else 2500L)
+            }
+        }
+
         val baseVolumeFlow = combine(
             playerVolume, normalizeFactor, audioFocusVolumeFactor, playbackFadeFactor,
         ) { playerVolume, normalizeFactor, focus, fade ->
             playerVolume * normalizeFactor * focus * fade
         }
+        val hearingCareBaseVolumeFlow = combine(
+            baseVolumeFlow, hearingCareMaxAppVolume,
+        ) { base, ceiling -> base to ceiling }
         combine(
-            baseVolumeFlow, soundStudioSafetyFactor, soundStudioTransitionFactor,
-            normalizeFactor, soundStudioEnabledForVolume,
-        ) { base, safety, transition, normalization, eqEnabled ->
-            base to protectedEqPlaybackVolume(
+            hearingCareBaseVolumeFlow, soundStudioSafetyFactor,
+            soundStudioTransitionFactor, normalizeFactor,
+            soundStudioEnabledForVolume,
+        ) { (base, ceiling), safety, transition, normalization, eqEnabled ->
+            val protected = protectedEqPlaybackVolume(
                 base, normalization, safety, transition, eqEnabled,
             )
-        }.collectLatest(scope) { (base, protectedVolume) ->
+            base to (ceiling to hearingCareOutputVolume(protected, ceiling))
+        }.collectLatest(scope) { (base, protected) ->
+            val (ceiling, protectedVolume) = protected
             effectiveAudioVolume = protectedVolume
-            player.volume = if (videoAudioOwned || videoReturnGapActive) 0f else protectedVolume
-            // Companion VIDEO plays on a separate audio session without our EQ.
-            videoCompanion?.setVolume(base)
+            player.volume = if (videoAudioOwned || videoReturnGapActive) 0f
+                else protectedVolume
+            // VIDEO has a different audio session: apply the same output cap.
+            videoCompanion?.setVolume(hearingCareOutputVolume(base, ceiling))
         }
 
         playerVolume.debounce(1000).collect(ioScope) { volume ->
@@ -2331,6 +2385,7 @@ class MusicService :
                 crossfadeDurationMs = crossfadeDurationMs,
                 playbackFadeFactor = playbackFadeFactor,
                 playerVolume = playerVolume,
+                hearingCareMaxAppVolume = hearingCareMaxAppVolume,
                 audioFocusVolumeFactor = audioFocusVolumeFactor,
                 audioNormalizationEnabled = audioNormalizationEnabled,
                 maxSafeGainFactor = maxSafeGainFactor,

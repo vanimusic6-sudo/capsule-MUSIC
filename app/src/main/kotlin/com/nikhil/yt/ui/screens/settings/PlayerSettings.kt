@@ -10,6 +10,12 @@ import com.nikhil.yt.ui.component.StandardChrome
 import com.nikhil.yt.ui.utils.rememberCapsuleFlingBehavior
 
 import android.widget.Toast
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import com.nikhil.yt.constants.SafeListeningEnabledKey
+import com.nikhil.yt.constants.SafeListeningOverrideUntilMsKey
+import com.nikhil.yt.playback.SAFE_LISTENING_OVERRIDE_MS
+import com.nikhil.yt.playback.safeListeningOverrideActive
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -228,6 +234,14 @@ fun PlayerSettings(
             AudioNormalizationKey,
             defaultValue = ReleasePlaybackDefaults.normalization,
         )
+    val (safeListeningEnabled, setSafeListeningEnabled) =
+        rememberPreference(SafeListeningEnabledKey, true)
+    val (safeListeningOverrideUntil, setSafeListeningOverrideUntil) =
+        rememberPreference(SafeListeningOverrideUntilMsKey, 0L)
+    var showHearingCareOverrideDialog by remember { mutableStateOf(false) }
+    val isHearingCareTemporarilyOverridden = safeListeningOverrideActive(
+        safeListeningOverrideUntil, System.currentTimeMillis(),
+    )
     val (audioOffload, onAudioOffloadChange) =
         rememberPreference(
             AudioOffload,
@@ -318,6 +332,39 @@ fun PlayerSettings(
         )
     }
 
+    if (showHearingCareOverrideDialog) {
+        AlertDialog(
+            onDismissRequest = { showHearingCareOverrideDialog = false },
+            title = { Text(stringResource(R.string.hearing_care_override_title)) },
+            text = { Text(stringResource(R.string.hearing_care_override_explanation)) },
+            confirmButton = {
+                Column {
+                    TextButton(onClick = {
+                        setSafeListeningOverrideUntil(
+                            System.currentTimeMillis() + SAFE_LISTENING_OVERRIDE_MS,
+                        )
+                        showHearingCareOverrideDialog = false
+                    }) {
+                        Text(stringResource(R.string.hearing_care_override_20m))
+                    }
+                    TextButton(onClick = {
+                        // Permanent disable is explicitly requested, never silent.
+                        setSafeListeningEnabled(false)
+                        setSafeListeningOverrideUntil(0L)
+                        showHearingCareOverrideDialog = false
+                    }) {
+                        Text(stringResource(R.string.hearing_care_disable))
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showHearingCareOverrideDialog = false }) {
+                    Text(stringResource(R.string.hearing_care_cancel))
+                }
+            },
+        )
+    }
+
     Column(
         Modifier
             .windowInsetsPadding(
@@ -403,6 +450,31 @@ fun PlayerSettings(
                     bottom = 8.dp,
                 ),
         )
+
+        SwitchPreference(
+            title = { Text(stringResource(R.string.hearing_care_title)) },
+            description = stringResource(R.string.hearing_care_description),
+            icon = {
+                Icon(painterResource(R.drawable.volume_up), null)
+            },
+            checked = safeListeningEnabled,
+            onCheckedChange = { newValue ->
+                if (newValue) {
+                    setSafeListeningEnabled(true)
+                    setSafeListeningOverrideUntil(0L)
+                } else {
+                    showHearingCareOverrideDialog = true
+                }
+            },
+        )
+        if (safeListeningEnabled && isHearingCareTemporarilyOverridden) {
+            PreferenceEntry(
+                title = { Text(stringResource(R.string.hearing_care_resume)) },
+                description = stringResource(R.string.hearing_care_override_active),
+                icon = { Icon(painterResource(R.drawable.volume_up), null) },
+                onClick = { setSafeListeningOverrideUntil(0L) },
+            )
+        }
 
         SwitchPreference(
             title = {

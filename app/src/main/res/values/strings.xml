@@ -1046,4 +1046,13 @@ Capsule will only extract your token, and everything else is stored locally.</st
     <string name="capsule_inline_lyrics_hint">Scroll to see synced lyrics</string>
     <string name="dev_force_sabr_audio">Force SABR audio (experimental)</string>
     <string name="dev_force_sabr_audio_description">Use SABR only for new audio requests, with no silent Direct fallback. Restart the current track to apply. Downloads are unchanged. Long tracks may use more data and energy.</string>
+    <string name="hearing_care_title">Hearing protection for headphones</string>
+    <string name="hearing_care_description">Extra digital volume ceiling at high headphone volume. Enabled by default. NOT a calibrated dBA limit: WHO–ITU references are 75 dBA for younger listeners and 80 dBA for adults, averaged over 40 hours/week. Android system hearing warnings still apply.</string>
+    <string name="hearing_care_override_title">Change hearing protection?</string>
+    <string name="hearing_care_override_explanation">Higher headphone volume can damage hearing even when audio sounds clean. Capsule cannot measure the actual sound pressure in your headphones. For accessibility, you may pause this additional protection for 20 minutes or disable it. System hearing protection remains active.</string>
+    <string name="hearing_care_override_20m">Pause for 20 minutes</string>
+    <string name="hearing_care_disable">Turn off permanently</string>
+    <string name="hearing_care_cancel">Cancel</string>
+    <string name="hearing_care_resume">Restore hearing protection now</string>
+    <string name="hearing_care_override_active">Temporary exception is active. Tap to restore protection early.</string>
 </resources>
