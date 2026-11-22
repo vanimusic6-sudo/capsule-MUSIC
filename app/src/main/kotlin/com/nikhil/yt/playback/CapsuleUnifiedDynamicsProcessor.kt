@@ -96,7 +96,8 @@ internal class CapsuleUnifiedDynamicsProcessor(
     private val appliedLevels = IntArray(cutoffs.size) { Int.MIN_VALUE }
     private var appliedBassDynamics: Boolean? = null
     private var appliedInputGain: Int? = null
-    private var appliedLimiter: Boolean? = null
+    // The initial platform graph is already limited before it processes a sample.
+    private var appliedLimiter: Boolean? = true
     private val processor: DynamicsProcessing
 
     init {
@@ -115,7 +116,7 @@ internal class CapsuleUnifiedDynamicsProcessor(
             2, true, cutoffs.size, true, 2, false, 0, true,
         ).setPreEqAllChannelsTo(eq)
             .setMbcAllChannelsTo(mbc)
-            .setLimiterAllChannelsTo(nativeLimiter(false))
+            .setLimiterAllChannelsTo(nativeLimiter(true))
             .build()
         val effect = DynamicsProcessing(0, sessionId, config)
         try {
@@ -129,6 +130,12 @@ internal class CapsuleUnifiedDynamicsProcessor(
     }
 
     fun apply(settings: EqSettings) {
+        // Activate the final limiter BEFORE any EQ/input gain increases.
+        // When bypassing, the curve/gain are neutralized BEFORE limiter removal.
+        if (settings.enabled && appliedLimiter != true) {
+            processor.setLimiterAllChannelsTo(nativeLimiter(true))
+            appliedLimiter = true
+        }
         val levels = capsuleUnifiedEqLevels(settings, capabilities)
         require(levels.size == cutoffs.size)
         for (band in levels.indices) {
@@ -151,9 +158,9 @@ internal class CapsuleUnifiedDynamicsProcessor(
             processor.setInputGainAllChannelsTo(inputGain / 100f)
             appliedInputGain = inputGain
         }
-        if (appliedLimiter != settings.enabled) {
-            processor.setLimiterAllChannelsTo(nativeLimiter(settings.enabled))
-            appliedLimiter = settings.enabled
+        if (!settings.enabled && appliedLimiter != false) {
+            processor.setLimiterAllChannelsTo(nativeLimiter(false))
+            appliedLimiter = false
         }
     }
 
