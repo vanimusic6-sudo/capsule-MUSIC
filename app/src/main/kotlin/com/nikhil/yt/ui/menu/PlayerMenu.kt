@@ -890,8 +890,6 @@ fun EqualizerDialog(
 
     val (customProfilesJson, setCustomProfilesJson) = rememberPreference(EqualizerCustomProfilesJsonKey, defaultValue = "")
 
-    var showAdvancedEqualizer by rememberSaveable { mutableStateOf(false) }
-
     val caps = eqCapabilities
     val bandCount = caps?.bandCount ?: 0
     val minMb = caps?.minBandLevelMb ?: -1500
@@ -1141,179 +1139,145 @@ fun EqualizerDialog(
                 ) {
                     Spacer(Modifier.height(12.dp))
 
-                    if (caps == null || bandCount <= 0) {
-                        Surface(
-                            color = com.nikhil.yt.ui.component.CapsuleMenuBlack,
-                            shape = RoundedCornerShape(24.dp),
-                            modifier = Modifier.fillMaxWidth(),
+
+                    // Playback speed is independent of the Android equalizer session.
+                    var speed by remember {
+                        mutableFloatStateOf(
+                            playerConnection.player.playbackParameters.speed
+                                .safeCoerceIn(TempoMin, TempoMax, 1f)
+                        )
+                    }
+                    EqSection(
+                        title = stringResource(R.string.tempo),
+                        trailing = {
+                            TextButton(onClick = {
+                                speed = 1f
+                                val pitch = playerConnection.player.playbackParameters.pitch
+                                    .safeCoerceIn(PitchMin, PitchMax, 1f)
+                                playerConnection.player.playbackParameters = PlaybackParameters(1f, pitch)
+                            }) { Text(stringResource(R.string.reset)) }
+                        },
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
+                            Text("0.25×", color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.labelSmall)
+                            Slider(
+                                value = multiplierToSlider(speed),
+                                onValueChange = { position ->
+                                    val newSpeed = sliderToMultiplier(position).quantize(0.01f)
+                                    if (abs(newSpeed - speed) >= 0.005f) {
+                                        speed = newSpeed
+                                        val pitch = playerConnection.player.playbackParameters.pitch
+                                            .safeCoerceIn(PitchMin, PitchMax, 1f)
+                                        playerConnection.player.playbackParameters =
+                                            PlaybackParameters(speed, pitch)
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                valueRange = 0f..1f,
+                            )
+                            Text("2×", color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.labelSmall)
+                        }
+                        Text(
+                            text = "×${formatMultiplier(speed)}",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    Spacer(Modifier.height(12.dp))
+
+                    if (caps == null || bandCount <= 0) {
+                        EqSection(title = stringResource(R.string.equalizer)) {
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.padding(24.dp),
+                                modifier = Modifier.fillMaxWidth().padding(18.dp),
                             ) {
-                                VeluneLoader()
-                                Spacer(Modifier.height(16.dp))
-                                Text(
-                                    text = stringResource(R.string.eq_waiting_for_audio_session),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                Text(stringResource(R.string.eq_waiting_for_audio_session),
                                     textAlign = TextAlign.Center,
-                                )
-                                Spacer(Modifier.height(16.dp))
-                                Button(onClick = openSystemEqualizer) {
-                                    Text(text = stringResource(R.string.eq_open_system_equalizer))
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Spacer(Modifier.height(8.dp))
+                                TextButton(onClick = openSystemEqualizer) {
+                                    Text(stringResource(R.string.eq_open_system_equalizer))
                                 }
                             }
                         }
-                        Spacer(Modifier.height(12.dp))
-                        // Tempo and pitch remain available while the current
-                        // audio device does not expose equalizer bands.
-                        TempoPitchSection()
                         return@Column
                     }
 
-                    if (!showAdvancedEqualizer) {
-                        // Compact Capsule layout: quick versions, presets, then the
-                        // actual touch-controlled hardware EQ curve. No nested
-                        // scroll carousels and no stack of technical sliders.
-                        var selectedVersion by remember {
-                            mutableStateOf(
-                                when (playerConnection.player.playbackParameters.speed) {
-                                    1.25f -> "fast"
-                                    0.85f -> "slow"
-                                    else -> "original"
-                                }
-                            )
-                        }
-                        LaunchedEffect(showAdvancedEqualizer) {
-                            val params = playerConnection.player.playbackParameters
-                            selectedVersion = when {
-                                kotlin.math.abs(params.speed - 1.25f) < 0.02f -> "fast"
-                                kotlin.math.abs(params.speed - 0.85f) < 0.02f -> "slow"
-                                kotlin.math.abs(params.speed - 1f) < 0.02f &&
-                                    kotlin.math.abs(params.pitch - 1f) < 0.02f -> "original"
-                                else -> "custom"
-                            }
-                        }
-
-                        Text(
-                            text = stringResource(R.string.eq_versions_title),
-                            style = MaterialTheme.typography.titleLarge,
-                            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            listOf(
-                                Triple("original", R.string.eq_version_original, 1f),
-                                Triple("fast", R.string.eq_version_fast, 1.25f),
-                                Triple("slow", R.string.eq_version_slow, 0.85f),
-                            ).forEach { (id, label, speed) ->
-                                FilterChip(
-                                    modifier = Modifier.weight(1f),
-                                    selected = selectedVersion == id,
-                                    onClick = {
-                                        // Versions are speed presets. Pitch stays natural;
-                                        // exact pitch and tempo remain in advanced sound.
-                                        playerConnection.player.playbackParameters =
-                                            PlaybackParameters(speed, 1f)
-                                        selectedVersion = id
-                                    },
-                                    label = {
-                                        Text(
-                                            text = stringResource(label),
-                                            maxLines = 1,
-                                            style = MaterialTheme.typography.labelMedium,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    },
-                                    border = null,
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        containerColor = com.nikhil.yt.ui.component.CapsuleMenuBlack,
-                                    ),
-                                )
-                            }
-                        }
-
-                        Spacer(Modifier.height(20.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(start = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                stringResource(R.string.equalizer),
-                                style = MaterialTheme.typography.titleLarge,
-                                modifier = Modifier.weight(1f),
-                            )
+                    EqSection(
+                        title = stringResource(R.string.equalizer),
+                        trailing = {
                             TextButton(onClick = {
                                 val flat = List(bandCount) { 0 }
                                 bandLevelsMb = flat
                                 setEqEnabled(true)
-                                setBandLevelsRaw(encodeBandLevelsMb(flat))
                                 setSelectedProfileId("flat")
+                                setBandLevelsRaw(encodeBandLevelsMb(flat))
                             }) { Text(stringResource(R.string.reset)) }
-                        }
-
-                        val presetOptions = listOf(
-                            listOf(
-                                "flat" to R.string.eq_simple_natural,
-                                "bass" to R.string.eq_simple_bass,
-                                "clear" to R.string.eq_simple_clear,
-                            ),
-                            listOf(
-                                "voice" to R.string.eq_simple_voice,
-                                "soft" to R.string.eq_simple_soft,
-                                "energy" to R.string.eq_simple_energy,
-                            ),
-                        )
-                        // Derive the highlight from actual EQ data so switching out
-                        // of advanced mode or reopening never shows a stale preset.
-                        val selectedPreset = presetOptions.flatten().firstOrNull { (id, _) ->
-                            simpleEqPresetLevels(caps.centerFreqHz, bandCount, minMb, maxMb, id) ==
-                                bandLevelsMb
-                        }?.first
-                        presetOptions.forEach { row ->
+                        },
+                    ) {
+                        // Only real platform-provided preset names. Do not invent or
+                        // translate a "Bass/Clarity" curve that the native EQ never had.
+                        val availablePresets = listOf(-1 to "Flat") +
+                            caps.systemPresets.mapIndexed { index, name -> index to name }
+                        availablePresets.chunked(3).forEach { row ->
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                row.forEach { (id, label) ->
+                                row.forEach { (preset, label) ->
                                     FilterChip(
-                                        modifier = Modifier.weight(1f),
-                                        selected = selectedPreset == id,
+                                        selected = selectedProfileId ==
+                                            (if (preset == -1) "flat" else "system:$preset"),
                                         onClick = {
-                                            val next = simpleEqPresetLevels(
-                                                caps.centerFreqHz, bandCount, minMb, maxMb, id,
-                                            )
-                                            bandLevelsMb = next
-                                            setEqEnabled(true)
-                                            setBandLevelsRaw(encodeBandLevelsMb(next))
-                                            setSelectedProfileId(if (id == "flat") "flat" else "manual")
+                                            if (preset == -1) {
+                                                val levels = List(bandCount) { 0 }
+                                                bandLevelsMb = levels
+                                                setEqEnabled(true)
+                                                setSelectedProfileId("flat")
+                                                setBandLevelsRaw(encodeBandLevelsMb(levels))
+                                            } else {
+                                                // The service writes the real hardware preset
+                                                // levels and selected ID only after success.
+                                                playerConnection.service.applySystemEqPreset(preset)
+                                            }
                                         },
+                                        modifier = Modifier.weight(1f).heightIn(min = 44.dp),
                                         label = {
                                             Text(
-                                                text = stringResource(label),
-                                                maxLines = 1,
+                                                text = label,
+                                                maxLines = 2,
                                                 overflow = TextOverflow.Ellipsis,
-                                                style = MaterialTheme.typography.labelSmall,
+                                                style = MaterialTheme.typography.labelMedium,
                                             )
                                         },
                                         border = null,
                                         colors = FilterChipDefaults.filterChipColors(
-                                            containerColor = com.nikhil.yt.ui.component.CapsuleMenuBlack,
+                                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                            labelColor = MaterialTheme.colorScheme.onSurface,
+                                            selectedContainerColor =
+                                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f),
+                                            selectedLabelColor = MaterialTheme.colorScheme.onSurface,
                                         ),
                                     )
                                 }
+                                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                             }
                         }
 
                         Spacer(Modifier.height(10.dp))
                         val heightDp = LocalConfiguration.current.screenHeightDp
                         val graphHeight = when {
-                            heightDp < 690 -> 168.dp
-                            heightDp < 800 -> 218.dp
-                            else -> 254.dp
+                            heightDp < 690 -> 164.dp
+                            heightDp < 800 -> 188.dp
+                            else -> 212.dp
                         }
                         var selectedBand by remember { mutableIntStateOf(0) }
                         CapsuleEqualizerGraph(
@@ -1333,286 +1297,140 @@ fun EqualizerDialog(
                             },
                             onFinished = { band, level ->
                                 if (band in 0 until bandCount) {
-                                    val levels = bandLevelsMb.toMutableList().apply {
-                                        while (size < bandCount) add(0)
-                                        this[band] = level
-                                    }
-                                    bandLevelsMb = levels
-                                    setEqEnabled(true)
-                                    setSelectedProfileId("manual")
-                                    setBandLevelsRaw(encodeBandLevelsMb(levels))
-                                }
-                            },
-                            graphHeight = graphHeight,
-                            modifier = Modifier.padding(horizontal = 2.dp),
-                        )
-
-                        Spacer(Modifier.height(6.dp))
-                        TextButton(
-                            onClick = { showAdvancedEqualizer = true },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { Text(stringResource(R.string.eq_simple_advanced)) }
-                        return@Column
-                    }
-
-                    TextButton(onClick = { showAdvancedEqualizer = false }) {
-                        Text(stringResource(R.string.eq_simple_back))
-                    }
-
-                    EqSection(
-                        title = stringResource(R.string.eq_presets),
-                        trailing = {
-                            TextButton(onClick = openSystemEqualizer) {
-                                Text(text = stringResource(R.string.eq_system))
-                            }
-                        },
-                    ) {
-                        Row(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 8.dp)
-                                    .horizontalScroll(rememberScrollState(),
-            flingBehavior = rememberCapsuleFlingBehavior(),
-            overscrollEffect = null),
-                        ) {
-                            FilterChip(
-                                selected = selectedProfileId == "flat",
-                                onClick = {
-                                    playerConnection.service.applyEqFlatPreset()
-                                    setSelectedProfileId("flat")
-                                },
-                                label = { Text(text = stringResource(R.string.eq_flat)) },
-                                colors =
-                                    FilterChipDefaults.filterChipColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                    ),
-                                border = null,
-                            )
-
-                            Spacer(Modifier.width(8.dp))
-
-                            caps.systemPresets.forEachIndexed { index, name ->
-                                FilterChip(
-                                    selected = selectedProfileId == "system:$index",
-                                    onClick = {
-                                        playerConnection.service.applySystemEqPreset(index)
-                                        setSelectedProfileId("system:$index")
-                                    },
-                                    label = {
-                                        Text(
-                                            text = name,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    },
-                                    colors =
-                                        FilterChipDefaults.filterChipColors(
-                                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                        ),
-                                    border = null,
-                                )
-                                Spacer(Modifier.width(8.dp))
-                            }
-                        }
-                    }
-
-                    Spacer(Modifier.height(12.dp))
-
-                    EqSection(
-                        title = stringResource(R.string.eq_profiles),
-                        trailing = {
-                            TextButton(onClick = { showManageProfilesDialog = true }) {
-                                Text(text = stringResource(R.string.eq_manage))
-                            }
-                        },
-                    ) {
-                        val subtitle =
-                            when {
-                                selectedProfileId == "flat" -> stringResource(R.string.eq_flat)
-                                selectedProfileId.startsWith("system:") -> stringResource(R.string.eq_system_preset)
-                                activeProfile != null -> activeProfile.name
-                                else -> stringResource(R.string.eq_manual)
-                            }
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 8.dp),
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = subtitle,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Text(
-                                    text = stringResource(R.string.eq_profile_hint),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            TextButton(onClick = { showSaveProfileDialog = true }) {
-                                Text(text = stringResource(R.string.eq_save))
-                            }
-                            TextButton(onClick = { showImportProfilesDialog = true }) {
-                                Text(text = stringResource(R.string.eq_import))
-                            }
-                        }
-                    }
-
-                    Spacer(Modifier.height(12.dp))
-
-                    EqSection(
-                        title = stringResource(R.string.eq_bands),
-                        trailing = {
-                            TextButton(
-                                onClick = {
-                                    setSelectedProfileId("manual")
-                                    setBandLevelsRaw(encodeBandLevelsMb(List(bandCount) { 0 }))
-                                },
-                            ) {
-                                Text(text = stringResource(R.string.reset))
-                            }
-                        },
-                    ) {
-                        // Draw the actual hardware bands; no fixed six-band fakery.
-                        var selectedBand by remember { mutableIntStateOf(0) }
-                        val effectiveBand = selectedBand.coerceIn(0, bandCount - 1)
-                        CapsuleEqualizerGraph(
-                            frequenciesHz = caps.centerFreqHz,
-                            levelsMb = bandLevelsMb,
-                            minMb = minMb,
-                            maxMb = maxMb,
-                            selectedBand = effectiveBand,
-                            onBandSelected = { selectedBand = it },
-                            onLevelChanged = { band, level ->
-                                if (band in 0 until bandCount) {
-                                    bandLevelsMb = bandLevelsMb.toMutableList().apply {
-                                        while (size < bandCount) add(0)
-                                        this[band] = level
-                                    }
-                                }
-                            },
-                            onFinished = { band, level ->
-                                if (band in 0 until bandCount) {
                                     val updated = bandLevelsMb.toMutableList().apply {
                                         while (size < bandCount) add(0)
                                         this[band] = level
                                     }
                                     bandLevelsMb = updated
+                                    setEqEnabled(true)
                                     setSelectedProfileId("manual")
                                     setBandLevelsRaw(encodeBandLevelsMb(updated))
                                 }
                             },
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        )
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        ) {
-                            Text(
-                                text = formatHz(caps.centerFreqHz.getOrElse(effectiveBand) { 0 }),
-                                style = MaterialTheme.typography.labelLarge,
-                                modifier = Modifier.width(60.dp),
-                            )
-                            Slider(
-                                value = (bandLevelsMb.getOrNull(effectiveBand) ?: 0)
-                                    .toFloat().coerceIn(minMb.toFloat(), maxMb.toFloat()),
-                                onValueChange = { level ->
-                                    bandLevelsMb = bandLevelsMb.toMutableList().apply {
-                                        while (size < bandCount) add(0)
-                                        this[effectiveBand] = level.toInt().coerceIn(minMb, maxMb)
-                                    }
-                                },
-                                onValueChangeFinished = {
-                                    setSelectedProfileId("manual")
-                                    setBandLevelsRaw(encodeBandLevelsMb(bandLevelsMb))
-                                },
-                                valueRange = minMb.toFloat()..maxMb.toFloat(),
-                                modifier = Modifier.weight(1f),
-                                colors = SliderDefaults.colors(),
-                            )
-                            Text(
-                                text = formatDb((bandLevelsMb.getOrNull(effectiveBand) ?: 0) / 100f),
-                                style = MaterialTheme.typography.labelLarge,
-                                modifier = Modifier.width(74.dp),
-                                textAlign = TextAlign.End,
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.height(12.dp))
-
-                    // One audio studio: equalizer curve above, tempo + pitch
-                    // immediately below, followed by advanced effects.
-                    TempoPitchSection()
-
-                    Spacer(Modifier.height(12.dp))
-
-                    EqSection(title = stringResource(R.string.eq_output_gain)) {
-                        EqToggleSliderRow(
-                            enabled = outputGainEnabled,
-                            onEnabledChange = {
-                                setSelectedProfileId("manual")
-                                setOutputGainEnabled(it)
-                            },
-                            value = outputGainLocal,
-                            onValueChange = { outputGainLocal = it },
-                            valueRange = -1500..1500,
-                            formatValue = { formatDb(it / 100f) },
-                            modifier = Modifier.padding(horizontal = 8.dp),
-                            onValueChangeFinished = {
-                                setSelectedProfileId("manual")
-                                setOutputGainMb(outputGainLocal)
-                            },
+                            graphHeight = graphHeight,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                         )
                     }
 
                     Spacer(Modifier.height(12.dp))
-
-                    EqSection(title = stringResource(R.string.eq_bass_boost)) {
-                        EqToggleSliderRow(
-                            enabled = bassBoostEnabled,
-                            onEnabledChange = {
-                                setSelectedProfileId("manual")
-                                setBassBoostEnabled(it)
+                    EqSection(title = stringResource(R.string.eq_effects_title)) {
+                        CapsuleEffectRow(
+                            title = stringResource(R.string.eq_bass_boost),
+                            checked = bassBoostEnabled,
+                            onCheckedChange = { enabled ->
+                                if (enabled && bassBoostStrengthLocal == 0) {
+                                    bassBoostStrengthLocal = 350
+                                    setBassBoostStrength(350)
+                                }
+                                setBassBoostEnabled(enabled)
                             },
                             value = bassBoostStrengthLocal,
-                            onValueChange = { bassBoostStrengthLocal = it },
                             valueRange = 0..1000,
-                            formatValue = { "${it / 10}%" },
-                            modifier = Modifier.padding(horizontal = 8.dp),
+                            valueLabel = "${bassBoostStrengthLocal / 10}%",
+                            onValueChange = { bassBoostStrengthLocal = it },
                             onValueChangeFinished = {
-                                setSelectedProfileId("manual")
                                 setBassBoostStrength(bassBoostStrengthLocal)
                             },
                         )
-                    }
-
-                    Spacer(Modifier.height(12.dp))
-
-                    EqSection(title = stringResource(R.string.eq_virtualizer)) {
-                        EqToggleSliderRow(
-                            enabled = virtualizerEnabled,
-                            onEnabledChange = {
-                                setSelectedProfileId("manual")
-                                setVirtualizerEnabled(it)
+                        HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                        CapsuleEffectRow(
+                            title = stringResource(R.string.eq_effect_spatial),
+                            checked = virtualizerEnabled,
+                            onCheckedChange = { enabled ->
+                                if (enabled && virtualizerStrengthLocal == 0) {
+                                    virtualizerStrengthLocal = 350
+                                    setVirtualizerStrength(350)
+                                }
+                                setVirtualizerEnabled(enabled)
                             },
                             value = virtualizerStrengthLocal,
-                            onValueChange = { virtualizerStrengthLocal = it },
                             valueRange = 0..1000,
-                            formatValue = { "${it / 10}%" },
-                            modifier = Modifier.padding(horizontal = 8.dp),
+                            valueLabel = "${virtualizerStrengthLocal / 10}%",
+                            onValueChange = { virtualizerStrengthLocal = it },
                             onValueChangeFinished = {
-                                setSelectedProfileId("manual")
                                 setVirtualizerStrength(virtualizerStrengthLocal)
                             },
                         )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                        CapsuleEffectRow(
+                            title = stringResource(R.string.eq_output_gain),
+                            checked = outputGainEnabled,
+                            onCheckedChange = setOutputGainEnabled,
+                            value = outputGainLocal,
+                            valueRange = -1500..1500,
+                            valueLabel = formatDb(outputGainLocal / 100f),
+                            onValueChange = { outputGainLocal = it },
+                            onValueChangeFinished = { setOutputGainMb(outputGainLocal) },
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+
+                        var pitch by remember {
+                            mutableFloatStateOf(
+                                playerConnection.player.playbackParameters.pitch
+                                    .safeCoerceIn(PitchMin, PitchMax, 1f)
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(stringResource(R.string.pitch),
+                                style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.weight(1f))
+                            Text("×${formatMultiplier(pitch)}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.width(10.dp))
+                            TextButton(onClick = {
+                                pitch = 1f
+                                playerConnection.player.playbackParameters =
+                                    PlaybackParameters(speed, 1f)
+                            }) { Text(stringResource(R.string.reset)) }
+                        }
+                        Slider(
+                            value = multiplierToSlider(pitch),
+                            onValueChange = { position ->
+                                val newPitch = sliderToMultiplier(position).quantize(0.01f)
+                                pitch = newPitch
+                                playerConnection.player.playbackParameters =
+                                    PlaybackParameters(speed, pitch)
+                            },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+                            valueRange = 0f..1f,
+                        )
                     }
+
+                    Spacer(Modifier.height(12.dp))
+                    EqSection(title = stringResource(R.string.eq_profiles)) {
+                        val current = when {
+                            selectedProfileId == "flat" -> stringResource(R.string.eq_flat)
+                            selectedProfileId.startsWith("system:") ->
+                                caps.systemPresets.getOrNull(
+                                    selectedProfileId.removePrefix("system:").toIntOrNull() ?: -1
+                                ) ?: stringResource(R.string.eq_system_preset)
+                            activeProfile != null -> activeProfile.name
+                            else -> stringResource(R.string.eq_manual)
+                        }
+                        Text(current, style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                        ) {
+                            TextButton(onClick = { showSaveProfileDialog = true }) {
+                                Text(stringResource(R.string.eq_save))
+                            }
+                            TextButton(onClick = { showManageProfilesDialog = true }) {
+                                Text(stringResource(R.string.eq_manage))
+                            }
+                            TextButton(onClick = { showImportProfilesDialog = true }) {
+                                Text(stringResource(R.string.eq_import))
+                            }
+                        }
+                    }
+
                 }
             }
         }
