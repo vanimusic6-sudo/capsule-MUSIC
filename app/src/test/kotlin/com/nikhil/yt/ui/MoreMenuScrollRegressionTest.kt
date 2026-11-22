@@ -47,6 +47,26 @@ class MoreMenuScrollRegressionTest {
         assertFalse(menu.contains("rememberDraggableState("))
         assertTrue(menu.contains("RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)"))
     }
+    @Test fun lyricsMoreHasVisibleBoundedModalInsteadOfOnlyTheScrim() {
+        val host = source("com/nikhil/yt/ui/component/BottomSheetMenu.kt")
+        val lyrics = source("com/nikhil/yt/ui/player/LyricsScreen.kt")
+        // The former partial Material3 sheet could render only its dim window
+        // on top of fullscreen Lyrics. Compact More must have an explicit
+        // bottom-aligned modal surface with constrained positive height.
+        assertTrue(lyrics.contains("MenuPresentation.LYRICS_COMPACT"))
+        assertTrue(host.contains("if (state.presentation == MenuPresentation.LYRICS_COMPACT)"))
+        assertTrue(host.contains("CompactLyricsMoreDialog(state, background)"))
+        assertTrue(host.contains("Dialog("))
+        assertTrue(host.contains("heightIn("))
+        assertTrue(host.contains("min = 180.dp"))
+        assertTrue(host.contains("state.content(this@Column)"))
+        assertTrue(host.contains("contentAlignment = Alignment.BottomCenter"))
+        assertTrue(host.contains("state.completeAnimatedDismiss(generation)"))
+        // The ordinary More menus retain the native, draggable sheet.
+        assertTrue(host.contains("rememberModalBottomSheetState(skipPartiallyExpanded = false)"))
+        assertTrue(host.contains("ModalBottomSheet("))
+    }
+
     @Test fun allMoreMenusScrollInPortraitLikePlayer() {
         val variants = listOf(
             "AlbumMenu", "ArtistMenu", "PlaylistMenu", "SelectionSongsMenu",
