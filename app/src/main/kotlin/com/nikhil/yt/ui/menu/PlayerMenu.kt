@@ -1437,6 +1437,52 @@ fun EqualizerDialog(
     }
 }
 
+/** Compact effect controls share one surface instead of stacking nested cards. */
+@Composable
+private fun CapsuleEffectRow(
+    title: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    value: Int,
+    valueRange: IntRange,
+    valueLabel: String,
+    onValueChange: (Int) -> Unit,
+    onValueChangeFinished: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(title, modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleSmall)
+            if (checked) {
+                Text(valueLabel,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.width(12.dp))
+            }
+            Switch(checked = checked, onCheckedChange = onCheckedChange)
+        }
+        if (checked) {
+            Slider(
+                value = value.toFloat().coerceIn(
+                    valueRange.first.toFloat(), valueRange.last.toFloat(),
+                ),
+                onValueChange = { next ->
+                    onValueChange(next.toInt().coerceIn(valueRange.first, valueRange.last))
+                },
+                onValueChangeFinished = onValueChangeFinished,
+                valueRange = valueRange.first.toFloat()..valueRange.last.toFloat(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
 @Composable
 private fun EqSection(
     title: String,
