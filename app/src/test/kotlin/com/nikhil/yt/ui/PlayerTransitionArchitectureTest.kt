@@ -28,7 +28,14 @@ class PlayerTransitionArchitectureTest {
         assertTrue(menu.contains("state.completeAnimatedDismiss(generation)"))
         assertTrue(menu.contains("observedGeneration != generation"))
         assertTrue(menu.contains("progress.collect { }"))
-        assertFalse(menu.contains("\n    Dialog("))
+        // The normal More variants must stay native sheets. Fullscreen
+        // Lyrics gets one bounded Dialog because its former compact sheet
+        // displayed only the scrim on some OEM builds.
+        val nativeMenu = menu.substringBefore("private fun CompactLyricsMoreDialog(")
+        val lyricsDialog = menu.substringAfter("private fun CompactLyricsMoreDialog(")
+        assertFalse(nativeMenu.contains("\n    Dialog("))
+        assertTrue(lyricsDialog.contains("\n    Dialog("))
+        assertTrue(lyricsDialog.contains("state.content(this@Column)"))
         assertFalse(menu.contains("rememberDraggableState"))
     }
 
