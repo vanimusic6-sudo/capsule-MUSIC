@@ -477,14 +477,6 @@ if (mediaMetadata.album != null) {
                         modifier = Modifier.clickable { showEqualizerDialog = true },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     )
-                    ListItem(
-                        headlineContent = { Text(stringResource(R.string.tempo_and_pitch)) },
-                        leadingContent = {
-                            Icon(painterResource(R.drawable.speed), contentDescription = null)
-                        },
-                        modifier = Modifier.clickable { showEqualizerDialog = true },
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                    )
                 }
             }
         }
@@ -708,10 +700,10 @@ private fun TempoPitchSection() {
             }) { Text(stringResource(R.string.reset)) }
         },
     ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.tempo), modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.labelLarge)
+                    style = MaterialTheme.typography.titleSmall)
                 Text("×${formatMultiplier(tempo)}", style = MaterialTheme.typography.titleSmall)
             }
             Slider(
@@ -738,10 +730,10 @@ private fun TempoPitchSection() {
                     )
                 }
             }
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(16.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.pitch), modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.labelLarge)
+                    style = MaterialTheme.typography.titleSmall)
                 FilterChip(
                     selected = pitchMode == PitchMode.Semitones,
                     onClick = { pitchMode = PitchMode.Semitones },
@@ -1102,7 +1094,7 @@ fun EqualizerDialog(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 TopAppBar(
-                    title = { Text(text = stringResource(R.string.equalizer) + " · " + stringResource(R.string.tempo_and_pitch)) },
+                    title = { Text(text = stringResource(R.string.equalizer)) },
                     navigationIcon = {
                         IconButton(onClick = onDismiss) {
                             Icon(
@@ -1147,9 +1139,6 @@ fun EqualizerDialog(
                 ) {
                     Spacer(Modifier.height(12.dp))
 
-                    TempoPitchSection()
-                    Spacer(Modifier.height(12.dp))
-
                     if (caps == null || bandCount <= 0) {
                         Surface(
                             color = com.nikhil.yt.ui.component.CapsuleMenuBlack,
@@ -1174,7 +1163,10 @@ fun EqualizerDialog(
                                 }
                             }
                         }
-                        Spacer(Modifier.height(24.dp))
+                        Spacer(Modifier.height(12.dp))
+                        // Tempo and pitch remain available while the current
+                        // audio device does not expose equalizer bands.
+                        TempoPitchSection()
                         return@Column
                     }
 
@@ -1363,6 +1355,12 @@ fun EqualizerDialog(
                             )
                         }
                     }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // One audio studio: equalizer curve above, tempo + pitch
+                    // immediately below, followed by advanced effects.
+                    TempoPitchSection()
 
                     Spacer(Modifier.height(12.dp))
 

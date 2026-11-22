@@ -381,6 +381,38 @@ fun YouTubePlaylistMenu(
                             )
                         )
                     }
+                    // Canonical priority actions: playlist left, link right.
+                    add(
+                        NewAction(
+                            icon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.capsule_soft_playlist_add),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(24.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            },
+                            text = stringResource(R.string.add_to_playlist),
+                            onClick = { showChoosePlaylistDialog = true },
+                        )
+                    )
+                    add(
+                        NewAction(
+                            icon = {
+                                Icon(
+                                    painter = painterResource(R.drawable.capsule_soft_link),
+                                    contentDescription = null,
+                                    modifier = Modifier.size(24.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            },
+                            text = stringResource(R.string.copy_link),
+                            enabled = !playlist.shareLink.isNullOrBlank(),
+                            onClick = {
+                                if (copyCapsuleMenuLink(context, playlist.shareLink)) onDismiss()
+                            },
+                        )
+                    )
                 },
                 modifier = Modifier
             )
@@ -442,21 +474,6 @@ fun YouTubePlaylistMenu(
                     }
                     onDismiss()
                 }
-            )
-        }
-        item {
-            ListItem(
-                headlineContent = { Text(text = stringResource(R.string.add_to_playlist)) },
-                leadingContent = {
-                    Icon(
-                        painter = painterResource(R.drawable.capsule_soft_playlist_add),
-                        contentDescription = null,
-                    )
-                },
-                modifier = Modifier.clickable {
-                    showChoosePlaylistDialog = true
-                },
-                highlightBorder = true,
             )
         }
         item {
@@ -604,26 +621,6 @@ fun YouTubePlaylistMenu(
                         playlist.id, context, downloadUtil.downloadManager, collectionIds,
                     )
                 },
-            )
-        }
-        item {
-            ListItem(
-                headlineContent = { Text(text = stringResource(R.string.share)) },
-                leadingContent = {
-                    Icon(
-                        painter = painterResource(R.drawable.capsule_soft_share),
-                        contentDescription = null,
-                    )
-                },
-                modifier = Modifier.clickable {
-                    val intent = Intent().apply {
-                        action = Intent.ACTION_SEND
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_TEXT, playlist.shareLink)
-                    }
-                    context.startActivity(Intent.createChooser(intent, null))
-                    onDismiss()
-                }
             )
         }
         if (canSelect) {

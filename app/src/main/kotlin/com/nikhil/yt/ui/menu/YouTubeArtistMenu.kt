@@ -141,21 +141,15 @@ fun YouTubeArtistMenu(
                         NewAction(
                             icon = {
                                 Icon(
-                                    painter = painterResource(R.drawable.capsule_soft_share),
+                                    painter = painterResource(R.drawable.capsule_soft_link),
                                     contentDescription = null,
                                     modifier = Modifier.size(24.dp),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             },
-                            text = stringResource(R.string.share),
+                            text = stringResource(R.string.copy_link),
                             onClick = {
-                                val intent = Intent().apply {
-                                    action = Intent.ACTION_SEND
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_TEXT, artist.shareLink)
-                                }
-                                context.startActivity(Intent.createChooser(intent, null))
-                                onDismiss()
+                                if (copyCapsuleMenuLink(context, artist.shareLink)) onDismiss()
                             }
                         )
                     )

@@ -300,21 +300,20 @@ fun PlaylistMenu(
                     NewAction(
                         icon = {
                             Icon(
-                                painter = painterResource(R.drawable.capsule_soft_share),
+                                painter = painterResource(R.drawable.capsule_soft_link),
                                 contentDescription = null,
                                 modifier = Modifier.size(24.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
-                        text = stringResource(R.string.share),
+                        text = stringResource(R.string.copy_link),
+                        enabled = !playlist.playlist.shareLink.isNullOrBlank() ||
+                            !playlist.playlist.browseId.isNullOrBlank(),
                         onClick = {
-                            onDismiss()
-                            val intent = Intent().apply {
-                                action = Intent.ACTION_SEND
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, "https://music.youtube.com/playlist?list=${dbPlaylist?.playlist?.browseId}")
-                            }
-                            context.startActivity(Intent.createChooser(intent, null))
+                            val url = playlist.playlist.shareLink
+                                ?: playlist.playlist.browseId?.takeIf { it.isNotBlank() }
+                                    ?.let { "https://music.youtube.com/playlist?list=$it" }
+                            if (copyCapsuleMenuLink(context, url)) onDismiss()
                         }
                     )
                 ),
@@ -459,28 +458,6 @@ fun PlaylistMenu(
                     },
                     modifier = Modifier.clickable {
                         showDeletePlaylistDialog = true
-                    }
-                )
-            }
-        }
-        playlist.playlist.shareLink?.let { shareLink ->
-            item {
-                ListItem(
-                    headlineContent = { Text(text = stringResource(R.string.share)) },
-                    leadingContent = {
-                        Icon(
-                            painter = painterResource(R.drawable.capsule_soft_share),
-                            contentDescription = null,
-                        )
-                    },
-                    modifier = Modifier.clickable {
-                        val intent = Intent().apply {
-                            action = Intent.ACTION_SEND
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, shareLink)
-                        }
-                        context.startActivity(Intent.createChooser(intent, null))
-                        onDismiss()
                     }
                 )
             }

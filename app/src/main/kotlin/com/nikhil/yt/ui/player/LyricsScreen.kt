@@ -103,7 +103,7 @@ fun LyricsScreen(
         durationMs = duration,
         onClose = onBackClick,
         onMenuClick = {
-            menuState.show(presentation = MenuPresentation.CAPSULE_PLAYER) {
+            menuState.show(presentation = MenuPresentation.LYRICS_COMPACT) {
                 LyricsMenu(
                     lyricsProvider = { currentLyrics },
                     mediaMetadataProvider = { mediaMetadata },

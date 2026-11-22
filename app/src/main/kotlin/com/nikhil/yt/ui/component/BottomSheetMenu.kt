@@ -67,7 +67,7 @@ internal fun capsuleMenuOpaqueSurface(
 ): Color = (if (requested == themeSurface) themeSurfaceHigh else requested).copy(alpha = 1f)
 
 /** Preserve the original Material3 sheet's appearance and THREE swipe anchors. */
-enum class MenuPresentation { STANDARD, CAPSULE_PLAYER }
+enum class MenuPresentation { STANDARD, CAPSULE_PLAYER, LYRICS_COMPACT }
 
 /** All menu action tiles use the same press isolation as the player. */
 val LocalCapsuleMenuPressGuard = compositionLocalOf { false }
@@ -177,7 +177,8 @@ fun BottomSheetMenu(
         // drag, partialExpand/expand/hide and the LazyColumn nested scroll.
         // Our previous bespoke Dialog accidentally deleted and broke them.
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
-        val playerAppearance = state.presentation == MenuPresentation.CAPSULE_PLAYER
+        val compactLyrics = state.presentation == MenuPresentation.LYRICS_COMPACT
+        val playerAppearance = state.presentation != MenuPresentation.STANDARD
         val dismissPull = remember { Animatable(0f) }
         val sheetColor = capsuleMenuOpaqueSurface(
             requested = background,
@@ -230,8 +231,8 @@ fun BottomSheetMenu(
                 focusManager.clearFocus()
                 state.dismiss()
             },
-            // Only 4% translucency; no dynamic blur or backdrop readback.
-            containerColor = sheetColor.copy(alpha = 0.96f),
+            // Only 1% translucency; no blur, live shimmer or backdrop readback.
+            containerColor = sheetColor.copy(alpha = 0.99f),
             // Same 16dp softness as the VIDEO window; the previous 28dp
             // sheet curvature looked ragged during vertical travel.
             shape = if (playerAppearance) {
@@ -263,7 +264,11 @@ fun BottomSheetMenu(
             // Apple-style committed dismissal: a small, reversible zoom-out
             // attached to the SAME native slide-down. Never runs while
             // dragging or holding Back; no extra layout animation.
-            modifier = modifier.fillMaxHeight().graphicsLayer {
+            modifier = modifier.then(
+                // Lyrics More wraps its compact controls: no tall expandable
+                // sheet. The bounded inner Column scrolls on small displays.
+                if (compactLyrics) Modifier.fillMaxWidth() else Modifier.fillMaxHeight()
+            ).graphicsLayer {
                 transformOrigin = TransformOrigin(0.5f, 0.75f)
                 val scale = capsuleMenuDismissScale(dismissPull.value)
                 scaleX = scale

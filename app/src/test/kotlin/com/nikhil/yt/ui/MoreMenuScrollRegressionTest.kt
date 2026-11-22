@@ -23,7 +23,9 @@ class MoreMenuScrollRegressionTest {
         assertTrue("Quick actions must begin scrolling directly after volume",
             player.indexOf("item(key = \"quick-actions\"") > list)
         assertTrue(player.contains("contentType = \"menu-section\""))
-        assertTrue(lyrics.contains("key = \"lyrics-actions\""))
+        assertTrue(lyrics.contains("NewActionGrid("))
+        assertTrue(lyrics.contains(".verticalScroll(rememberScrollState())"))
+        assertTrue(lyrics.contains(".heightIn(max ="))
         assertFalse(lyrics.contains("userScrollEnabled = !isPortrait"))
     }
 

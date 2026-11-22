@@ -51,7 +51,7 @@ class CapsuleMenuMotionTest {
         ).first(java.io.File::isFile).readText()
         assertTrue(sheet.contains("capsuleMenuGrain"))
         assertTrue(sheet.contains(".drawWithCache"))
-        assertTrue(sheet.contains("containerColor = sheetColor.copy(alpha = 0.96f),"))
+        assertTrue(sheet.contains("containerColor = sheetColor.copy(alpha = 0.99f),"))
         assertFalse(sheet.contains("pageWash"))
         assertFalse(sheet.contains("lipSheen"))
         assertFalse(sheet.contains("topGlow"))
@@ -256,8 +256,9 @@ class CapsuleMenuMotionTest {
         val lyrics = listOf(java.io.File("src/main/kotlin/$path"),
             java.io.File("app/src/main/kotlin/$path"))
             .first(java.io.File::isFile).readText()
-        assertTrue(lyrics.indexOf("item(key = \"lyrics-actions\"") <
-            lyrics.indexOf("item(key = \"lyrics-tuning\""))
+        assertTrue(lyrics.indexOf("NewActionGrid(") < lyrics.indexOf("LyricsTuning()"))
+        assertTrue(lyrics.contains("heightIn(max ="))
+        assertFalse(lyrics.contains("item(key = \"lyrics-actions\""))
         assertFalse(tuning.contains("text = stringResource(R.string.lyrics_sync_offset),"))
     }
 

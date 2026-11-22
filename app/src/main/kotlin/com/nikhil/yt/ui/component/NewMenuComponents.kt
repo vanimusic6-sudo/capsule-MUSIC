@@ -405,6 +405,27 @@ internal fun capsuleActionGridColumns(
     else -> requested
 }
 
+/**
+ * Shared position contract for every More menu. The two top positions are
+ * independent of the original action list's order or optional actions.
+ * All remaining commands keep their original relative order.
+ */
+internal fun capsuleCanonicalMenuActions(
+    actions: List<NewAction>,
+    playlistLabel: String,
+    linkLabel: String,
+    shareLabel: String,
+): List<NewAction> {
+    if (actions.size < 2) return actions
+    val right = actions.indexOfFirst { it.text == linkLabel || it.text == shareLabel }
+    if (right < 0) return actions
+    val playlist = actions.indexOfFirst { it.text == playlistLabel }
+    val left = if (playlist >= 0 && playlist != right) playlist
+        else actions.indices.first { it != right }
+    return listOf(actions[left], actions[right]) +
+        actions.filterIndexed { index, _ -> index != left && index != right }
+}
+
 // Enhanced Action Grid - Material 3 Expressive Design
 @Composable
 fun NewActionGrid(
@@ -417,19 +438,28 @@ fun NewActionGrid(
     val safeColumns = remember(actions, columns, widthDp, compact) {
         capsuleActionGridColumns(columns, widthDp, actions.map { it.text }, compact)
     }
+    // Identify actions by their localized semantic labels, never by array
+    // index. Different menus can omit actions without shifting Copy Link away
+    // from the right-hand priority tile.
+    val laidOutActions = if (compact) capsuleCanonicalMenuActions(
+        actions = actions,
+        playlistLabel = androidx.compose.ui.res.stringResource(com.nikhil.yt.R.string.add_to_playlist),
+        linkLabel = androidx.compose.ui.res.stringResource(com.nikhil.yt.R.string.copy_link),
+        shareLabel = androidx.compose.ui.res.stringResource(com.nikhil.yt.R.string.share),
+    ) else actions
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(CapsuleMenuTileGap),
     ) {
         if (compact) {
-            // Only the first TWO priority actions are small top tiles.
-            // The rest are full-width rows: no huge square action walls.
-            if (actions.size >= 2) {
+            // Exactly two consistent priority tiles. A copyable link is
+            // always on the right; other actions remain full-width.
+            if (laidOutActions.size >= 2) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(CapsuleMenuTileGap),
                 ) {
-                    actions.take(2).forEach { action ->
+                    laidOutActions.take(2).forEach { action ->
                         CapsuleCompactMenuAction(
                             action = action,
                             modifier = Modifier.weight(1f),
@@ -437,7 +467,7 @@ fun NewActionGrid(
                     }
                 }
             }
-            actions.drop(if (actions.size >= 2) 2 else 0).forEach { action ->
+            laidOutActions.drop(if (laidOutActions.size >= 2) 2 else 0).forEach { action ->
                 CapsuleMenuActionRow(action = action, modifier = Modifier.fillMaxWidth())
             }
         } else {

@@ -344,21 +344,28 @@ fun AlbumMenu(
                     NewAction(
                         icon = {
                             Icon(
-                                painter = painterResource(R.drawable.capsule_soft_share),
+                                painter = painterResource(R.drawable.capsule_soft_playlist_add),
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
+                        text = stringResource(R.string.add_to_playlist),
+                        onClick = { showChoosePlaylistDialog = true },
+                    ),
+                    NewAction(
+                        icon = {
+                            Icon(
+                                painter = painterResource(R.drawable.capsule_soft_link),
                                 contentDescription = null,
                                 modifier = Modifier.size(24.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         },
-                        text = stringResource(R.string.share),
+                        text = stringResource(R.string.copy_link),
+                        enabled = !album.album.playlistId.isNullOrBlank(),
                         onClick = {
-                            onDismiss()
-                            val intent = Intent().apply {
-                                action = Intent.ACTION_SEND
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, "https://music.youtube.com/playlist?list=${album.album.playlistId}")
-                            }
-                            context.startActivity(Intent.createChooser(intent, null))
+                            if (copyCapsuleMenuLink(context, album.album.playlistId?.takeIf { it.isNotBlank() }?.let { "https://music.youtube.com/playlist?list=$it" })) onDismiss()
                         }
                     )
                 ),
@@ -393,21 +400,6 @@ fun AlbumMenu(
                     onDismiss()
                     playerConnection.addToQueue(songs.map { it.toMediaItem() })
                 }
-            )
-        }
-        item {
-            CapsuleMenuListItem(
-                headlineContent = { Text(text = stringResource(R.string.add_to_playlist)) },
-                leadingContent = {
-                    Icon(
-                        painter = painterResource(R.drawable.capsule_soft_playlist_add),
-                        contentDescription = null,
-                    )
-                },
-                modifier = Modifier.clickable {
-                    showChoosePlaylistDialog = true
-                },
-                highlightBorder = true,
             )
         }
         item {

@@ -171,24 +171,17 @@ fun ArtistMenu(
                             NewAction(
                                 icon = {
                                     Icon(
-                                        painter = painterResource(R.drawable.capsule_soft_share),
+                                        painter = painterResource(R.drawable.capsule_soft_link),
                                         contentDescription = null,
                                         modifier = Modifier.size(24.dp),
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 },
-                                text = stringResource(R.string.share),
+                                text = stringResource(R.string.copy_link),
                                 onClick = {
-                                    onDismiss()
-                                    val intent = Intent().apply {
-                                        action = Intent.ACTION_SEND
-                                        type = "text/plain"
-                                        putExtra(
-                                            Intent.EXTRA_TEXT,
-                                            "https://music.youtube.com/channel/${artist.id}"
-                                        )
-                                    }
-                                    context.startActivity(Intent.createChooser(intent, null))
+                                    if (copyCapsuleMenuLink(
+                                        context, "https://music.youtube.com/channel/${artist.id}",
+                                    )) onDismiss()
                                 }
                             )
                         )

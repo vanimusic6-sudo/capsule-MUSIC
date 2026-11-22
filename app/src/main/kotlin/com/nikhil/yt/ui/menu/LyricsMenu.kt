@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
@@ -324,22 +325,15 @@ fun LyricsMenu(
 
     Spacer(modifier = Modifier.height(8.dp))
 
-    // Previously portrait explicitly disabled the actual LazyColumn scroll.
-    // The gesture then fell straight through to the modal sheet, producing
-    // an apparent 3fps/stuttering scroll as the *whole panel* changed anchors.
-    // Let nested scrolling consume the content first on every orientation.
-    LazyColumn(
-            flingBehavior = rememberCapsuleFlingBehavior(),
-            overscrollEffect = null,
-        state = androidx.compose.foundation.lazy.rememberLazyListState(),
-        contentPadding = PaddingValues(
-            start = 0.dp,
-            top = 0.dp,
-            end = 0.dp,
-            bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding(),
-        ),
+    // Fixed-size More menu: there is no second full-screen expansion anchor.
+    // On small phones, only the CONTENT scrolls inside this compact space.
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = (LocalConfiguration.current.screenHeightDp * 0.52f).dp)
+            .verticalScroll(rememberScrollState())
+            .padding(bottom = 8.dp + WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()),
     ) {
-        item(key = "lyrics-actions", contentType = "actions") {
             // Enhanced Action Grid using NewMenuComponents
             NewActionGrid(
                 actions = listOf(
@@ -387,14 +381,8 @@ fun LyricsMenu(
                 columns = 3,
                 compact = false,
             )
-        }
-
-        item(key = "lyrics-tuning", contentType = "controls") {
-            // Position and sync live here because you find out a file is early while it is playing.
-            LyricsTuning()
-            Spacer(Modifier.height(8.dp))
-        }
-
-
+        Spacer(modifier = Modifier.height(8.dp))
+        LyricsTuning()
+        Spacer(modifier = Modifier.height(8.dp))
     }
 }
