@@ -50,6 +50,7 @@ import androidx.media3.common.Tracks
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.HttpDataSource
+import com.nikhil.yt.utils.httpFailureStatus
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.Cache
 import androidx.media3.datasource.cache.CacheDataSource
@@ -5977,14 +5978,10 @@ class MusicService :
             }
     }
 
-    private fun PlaybackException.httpStatusCodeOrNull(): Int? {
-        var t: Throwable? = cause
-        while (t != null) {
-            if (t is HttpDataSource.InvalidResponseCodeException) return t.responseCode
-            t = t.cause
-        }
-        return null
-    }
+    private fun PlaybackException.httpStatusCodeOrNull(): Int? =
+        // Media3 and the extraction layer use different HTTP exception types.
+        // Recognize nested Ktor 403/410 too, rather than treating those as generic failures.
+        httpFailureStatus()
 
     private fun PlaybackException.isTransientNetworkFailure(): Boolean {
         // A closed TLS handshake (often wrapped in OkHttp/Guava ExecutionException)
