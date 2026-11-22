@@ -4571,7 +4571,7 @@ class MusicService :
 
         val currentMediaId = player.currentMediaItem?.mediaId
         val httpStatusCode = error.httpStatusCodeOrNull()
-        if (currentMediaId != null && httpStatusCode in setOf(403, 410)) {
+        if (currentMediaId != null && httpStatusCode in setOf(401, 403, 410)) {
             // A CDN 403/410 may still recover on this song. But if all same-song
             // recovery fails, never advance into the next queued song.
             queueSkipBlockedForMediaId = currentMediaId
@@ -4673,6 +4673,9 @@ class MusicService :
                 PlaybackFailureClassifier.classify(error, isSignedIntoYouTube()) ==
                     PlaybackFailureKind.AUTH_REQUIRED
             if (authRequired) {
+                // An account wall is a terminal result for this selection, not
+                // permission to test three unrelated queue items.
+                queueSkipBlockedForMediaId = currentMediaId
                 val routeWide = authWallDetector.recordAuthRequired(currentMediaId)
                 Timber.tag(CAPSULE_RESOLVE_TAG).w(
                     "Needs an account id=%s routeWide=%s; not asking the same way again",
