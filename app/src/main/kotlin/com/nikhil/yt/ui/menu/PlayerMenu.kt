@@ -1083,6 +1083,7 @@ fun EqualizerDialog(
                                 modifier = Modifier.weight(1f),
                                 valueRange = 0f..1f,
                                 onValueChangeFinished = { setStudioSpeed(speed) },
+                                enabled = eqEnabled,
                             )
                             Text("2×", color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.labelSmall)
@@ -1129,6 +1130,7 @@ fun EqualizerDialog(
                                             setBandLevelsRaw(encodeBandLevelsMb(levels))
                                         },
                                         modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                                        enabled = eqEnabled,
                                         label = {
                                             Text(
                                                 preset.name,
@@ -1220,6 +1222,7 @@ fun EqualizerDialog(
                             onValueChange = { intensityLocal = it.toInt().coerceIn(100, 200) },
                             onValueChangeFinished = { setCurveIntensity(intensityLocal) },
                             valueRange = 100f..200f,
+                            enabled = eqEnabled,
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                         )
 
@@ -1229,7 +1232,8 @@ fun EqualizerDialog(
                     EqSection(title = stringResource(R.string.eq_effects_title)) {
                         CapsuleEffectRow(
                             title = stringResource(R.string.eq_bass_boost),
-                            checked = bassBoostEnabled,
+                            checked = eqEnabled && bassBoostEnabled,
+                            enabled = eqEnabled,
                             onCheckedChange = { enabled ->
                                 if (enabled && bassBoostStrengthLocal == 0) {
                                     bassBoostStrengthLocal = 350
@@ -1248,7 +1252,8 @@ fun EqualizerDialog(
                         HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                         CapsuleEffectRow(
                             title = stringResource(R.string.eq_effect_spatial),
-                            checked = virtualizerEnabled,
+                            checked = eqEnabled && virtualizerEnabled,
+                            enabled = eqEnabled,
                             onCheckedChange = { enabled ->
                                 if (enabled && virtualizerStrengthLocal == 0) {
                                     virtualizerStrengthLocal = 350
@@ -1267,7 +1272,8 @@ fun EqualizerDialog(
                         HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                         CapsuleEffectRow(
                             title = stringResource(R.string.eq_output_gain),
-                            checked = outputGainEnabled,
+                            checked = eqEnabled && outputGainEnabled,
+                            enabled = eqEnabled,
                             onCheckedChange = setOutputGainEnabled,
                             value = outputGainLocal,
                             valueRange = -1500..CAPSULE_MAX_OUTPUT_GAIN_MB,
@@ -1315,6 +1321,7 @@ fun EqualizerDialog(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
                             valueRange = 0f..1f,
                             onValueChangeFinished = { setStudioPitch(pitch) },
+                            enabled = eqEnabled,
                         )
                     }
 
@@ -1395,6 +1402,7 @@ private fun CapsuleStudioSlider(
 private fun CapsuleEffectRow(
     title: String,
     checked: Boolean,
+    enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit,
     value: Int,
     valueRange: IntRange,
@@ -1418,7 +1426,7 @@ private fun CapsuleEffectRow(
                 )
                 Spacer(Modifier.width(12.dp))
             }
-            Switch(checked = checked, onCheckedChange = onCheckedChange)
+            Switch(checked = checked, enabled = enabled, onCheckedChange = onCheckedChange)
         }
         if (checked) {
             CapsuleStudioSlider(
@@ -1430,6 +1438,7 @@ private fun CapsuleEffectRow(
                 },
                 onValueChangeFinished = onValueChangeFinished,
                 valueRange = valueRange.first.toFloat()..valueRange.last.toFloat(),
+                enabled = enabled,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
