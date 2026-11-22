@@ -119,16 +119,16 @@ internal fun protectedEqLevels(
 }
 
 /**
- * Conservative static headroom BEFORE Android's audio session effects.
+ * Moderate static headroom before the session effects.
  *
- * The former -4 dB ceiling could not cover a +6.5 dB EQ boost, let alone
- * BassBoost and LoudnessEnhancer together. Reserve their *combined* boost
- * (rather than a fraction of the largest individual boost).
+ * Do not add worst-case theoretical gains from independent effects: that
+ * dropped some music by 17+ dB even when the output was clean. Reserve most
+ * of the strongest likely overlapping boost and leave peak transients to the
+ * optional DynamicsProcessing limiter on compatible devices.
  *
- * BassBoost and Virtualizer strengths do not specify a portable dB gain on
- * Android, so their allowance is conservative but not a mathematical bound.
- * A supported session limiter provides a second line of defense; neither
- * mechanism can measure speaker excursion, voice-coil heat or acoustic SPL.
+ * This is a loudness/quality tradeoff, NOT a guaranteed true-peak ceiling.
+ * OEM effect gains/ordering and speaker excursion are not measurable here.
+ * Low-bass boosts remain capped separately to reduce driver stress.
  */
 internal fun protectedEqAudioFactor(
     settings: EqSettings,
@@ -164,20 +164,29 @@ internal fun protectedEqAudioFactor(
     val gainBoostDb = if (settings.outputGainEnabled) {
         settings.outputGainMb.coerceIn(0, CAPSULE_MAX_OUTPUT_GAIN_MB) / 100.0
     } else 0.0
-    val combinedBoostDb = eqBoostDb + bassAllowanceDb +
-        virtualizerAllowanceDb + gainBoostDb
-    if (combinedBoostDb <= 0.0) return 1f
+    if (eqBoostDb <= 0.0 && bassAllowanceDb <= 0.0 &&
+        virtualizerAllowanceDb <= 0.0 && gainBoostDb <= 0.0
+    ) return 1f
 
-    // 1 dB additional margin for inter-sample peaks and filter interaction.
-    // Never make the source louder; there is no floor that defeats protection.
-    val reserveDb = combinedBoostDb + 1.0
-    return Math.pow(10.0, -reserveDb / 20.0).toFloat().coerceIn(0f, 1f)
+    // A fixed, conservative *moderate* reserve: avoid turning normal music
+    // into a whisper just because several controls are enabled together.
+    // These effects typically occupy different spectral regions; they must
+    // not be treated as identical full-band +dB amplifiers.
+    val mainReserveDb = maxOf(
+        eqBoostDb * 0.45,
+        bassAllowanceDb * 0.35,
+        gainBoostDb,
+    )
+    val sharedLowEndDb = minOf(eqBoostDb, bassAllowanceDb) * 0.12
+    val reserveDb = (mainReserveDb + sharedLowEndDb +
+        virtualizerAllowanceDb * 0.10).coerceIn(0.0, 4.0)
+    return Math.pow(10.0, -reserveDb / 20.0).toFloat().coerceIn(0.63f, 1f)
 }
 
 /**
- * Normalize the final player volume without giving normalization permission
- * to eat into the EQ headroom. This calculation is cheap and runs only when
- * the relevant flows change, not in the audio render loop.
+ * Preserve half the useful loudness-normalization boost while EQ is active.
+ * The previous version discarded all positive normalization and made quiet
+ * tracks disproportionately quiet. This is NOT a true-peak safety stage.
  */
 internal fun protectedEqPlaybackVolume(
     baseVolume: Float,
@@ -189,10 +198,13 @@ internal fun protectedEqPlaybackVolume(
     if (!baseVolume.isFinite() || !normalizationFactor.isFinite() ||
         !safetyFactor.isFinite() || !transitionFactor.isFinite()
     ) return 0f
-    val normalizationBoost = if (eqEnabled) normalizationFactor.coerceAtLeast(1f)
-        else 1f
+    // The base already includes normalization. Keep half its dB increase
+    // rather than removing it entirely or granting its full +3 dB boost.
+    val normalizationCompensation = if (eqEnabled) {
+        kotlin.math.sqrt(normalizationFactor.coerceAtLeast(1f))
+    } else 1f
     return (baseVolume.coerceAtLeast(0f) * safetyFactor.coerceIn(0f, 1f) *
-        transitionFactor.coerceIn(0f, 1f) / normalizationBoost)
+        transitionFactor.coerceIn(0f, 1f) / normalizationCompensation)
         .coerceIn(0f, 1f)
 }
 
