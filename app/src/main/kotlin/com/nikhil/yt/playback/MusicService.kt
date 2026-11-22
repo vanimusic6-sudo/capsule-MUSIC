@@ -2358,9 +2358,20 @@ class MusicService :
         )
 
         dataStore.data
-            .map(::readEqSettingsFromPrefs)
+            .map { prefs ->
+                Triple(
+                    readEqSettingsFromPrefs(prefs),
+                    (prefs[SoundStudioSpeedKey] ?: 1f).coerceIn(0.25f, 2f),
+                    (prefs[SoundStudioPitchKey] ?: 1f).coerceIn(0.25f, 2f),
+                )
+            }
             .distinctUntilChanged()
-            .collect(scope) { settings ->
+            .collect(scope) { (settings, speed, pitch) ->
+                val playbackParams = if (settings.enabled) PlaybackParameters(speed, pitch)
+                    else PlaybackParameters(1f, 1f)
+                val currentParams = player.playbackParameters
+                val paramChange = currentParams.speed != playbackParams.speed ||
+                    currentParams.pitch != playbackParams.pitch
                 val previous = previousSoundStudioSettings
                 // Short duck avoids an audible edge on legacy OEM mixer
                 // transitions or a large EQ-curve change. No delayed threads
@@ -2374,7 +2385,8 @@ class MusicService :
                         previous.intensityPercent != settings.intensityPercent ||
                         previous.bassBoostStrength != settings.bassBoostStrength ||
                         previous.virtualizerStrength != settings.virtualizerStrength ||
-                        previous.outputGainMb != settings.outputGainMb)
+                        previous.outputGainMb != settings.outputGainMb ||
+                        paramChange)
                 try {
                     if (sensitive) {
                         for (fade in listOf(0.82f, 0.54f, 0.26f)) {
@@ -2388,37 +2400,25 @@ class MusicService :
                     soundStudioSafetyFactor.value = minOf(
                         soundStudioSafetyFactor.value, targetSafety)
                     audioEffectsController.applySettings(settings)
+                    if (paramChange) player.playbackParameters = playbackParams
                     previousSoundStudioSettings = settings
-                    soundStudioSafetyFactor.value = targetSafety
                     if (sensitive) {
-                        for (fade in listOf(0.42f, 0.60f, 0.78f, 0.91f, 1f)) {
+                        val beforeRestore = soundStudioSafetyFactor.value
+                        val steps = listOf(0.42f, 0.60f, 0.78f, 0.91f, 1f)
+                        for ((index, fade) in steps.withIndex()) {
+                            // Bypass removes headroom; restore it gradually,
+                            // never in a sudden +dB leap while the mixer changes.
+                            val progress = (index + 1).toFloat() / steps.size
+                            soundStudioSafetyFactor.value =
+                                beforeRestore + (targetSafety - beforeRestore) * progress
                             soundStudioTransitionFactor.value = fade
                             delay(18L)
                         }
+                    } else {
+                        soundStudioSafetyFactor.value = targetSafety
                     }
                 } finally {
                     soundStudioTransitionFactor.value = 1f
-                }
-            }
-
-        // Every parameter in the combined sound studio obeys the same master
-        // switch. Keep the preferred speed/pitch while off, restoring them when
-        // turned on instead of permanently erasing the user's adjustments.
-        dataStore.data
-            .map { prefs ->
-                Triple(
-                    prefs[EqualizerEnabledKey] ?: false,
-                    (prefs[SoundStudioSpeedKey] ?: 1f).coerceIn(0.25f, 2f),
-                    (prefs[SoundStudioPitchKey] ?: 1f).coerceIn(0.25f, 2f),
-                )
-            }
-            .distinctUntilChanged()
-            .collect(scope) { (enabled, speed, pitch) ->
-                val target = if (enabled) PlaybackParameters(speed, pitch)
-                    else PlaybackParameters(1f, 1f)
-                val current = player.playbackParameters
-                if (current.speed != target.speed || current.pitch != target.pitch) {
-                    player.playbackParameters = target
                 }
             }
 
