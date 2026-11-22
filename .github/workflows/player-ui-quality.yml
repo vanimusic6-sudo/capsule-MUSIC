@@ -100,6 +100,8 @@ jobs:
           --tests 'com.nikhil.yt.ui.component.PlayerFinalPolishTest'
           --tests 'com.nikhil.yt.ui.component.PlayerWindowAccessibilityTest'
           --tests 'com.nikhil.yt.ui.CapsuleMenuMotionTest'
+          --tests 'com.nikhil.yt.ui.menu.SimpleEqualizerTest'
+          --tests 'com.nikhil.yt.playback.QueueAutoSkipPolicyTest'
           --tests 'com.nikhil.yt.ui.MoreMenuScrollRegressionTest'
           --tests 'com.nikhil.yt.ui.PlayerMenuGestureTest'
           --tests 'com.nikhil.yt.ui.PlayerTransitionGestureTest'
