@@ -67,6 +67,7 @@ class PlaybackAudioEffectsControllerTest {
             protectedEqLevels(base, 5, -1500, 1500))
         assertEquals(listOf(0, 0, 0, 0, 0),
             protectedEqLevels(base.copy(enabled = false), 5, -1500, 1500))
+        assertEquals(List(5) { 0 }, protectedEqLevels(base, 5, 100, -100))
         assertEquals(1f, protectedEqAudioFactor(base.copy(enabled = false)), 0.000001f)
     }
 
@@ -88,6 +89,24 @@ class PlaybackAudioEffectsControllerTest {
         assertEquals(emptyList<Int>(), protectedEqLevels(base, 0, -1500, 1500))
         org.junit.Assert.assertTrue(
             protectedEqLevels(base, 5, -1000, 400).all { it in -1000..400 })
+    }
+
+    @Test
+    fun serviceProtectsMusicButNotTheSeparateVideoAudioSession() {
+        val service = listOf(
+            java.io.File("src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"),
+            java.io.File("app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"),
+        ).first(java.io.File::isFile).readText()
+        org.junit.Assert.assertTrue(service.contains("protectedEqAudioFactor(settings)"))
+        org.junit.Assert.assertTrue(service.contains("soundStudioTransitionFactor.value = fade"))
+        org.junit.Assert.assertTrue(service.contains(
+            "videoCompanion?.setVolume(base)"))
+        org.junit.Assert.assertTrue(service.contains(
+            "if (enabled) PlaybackParameters(speed, pitch)"))
+        org.junit.Assert.assertTrue(service.contains(
+            "else PlaybackParameters(1f, 1f)"))
+        org.junit.Assert.assertFalse(service.contains(
+            "audioEffectsController.applySettings(settings)\\n            }"))
     }
 
     @Test
