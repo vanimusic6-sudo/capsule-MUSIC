@@ -234,8 +234,10 @@ fun BottomSheetMenu(
                 focusManager.clearFocus()
                 state.dismiss()
             },
-            // Only 1% translucency; no blur, live shimmer or backdrop readback.
-            containerColor = Color.Transparent,
+            // Let Material3 paint/clip the sheet to its *real anchored bounds*.
+            // Painting the whole Modifier drew the acrylic over the exposed player
+            // when the sheet was only half expanded (including the mini-player).
+            containerColor = sheetColor.copy(alpha = 0.99f),
             // Same 16dp softness as the VIDEO window; the previous 28dp
             // sheet curvature looked ragged during vertical travel.
             shape = sheetShape,
@@ -246,12 +248,21 @@ fun BottomSheetMenu(
             dragHandle = {
                 Box(
                     modifier = Modifier
-                        .padding(vertical = 12.dp)
-                        .size(width = 40.dp, height = 4.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)),
-                )
-
+                        .fillMaxWidth()
+                        .drawWithCache {
+                            // Texture behind the native handle only, not the whole window.
+                            onDrawBehind { drawRect(capsuleMenuGrain) }
+                        }
+                        .padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 40.dp, height = 4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)),
+                    )
+                }
             },
             // Material3's default predictive-back scales the entire sheet
             // immediately on BACK-down/gesture-hold. Releasing then hands it
@@ -275,12 +286,6 @@ fun BottomSheetMenu(
                 scaleX = scale
                 scaleY = scale
                 alpha = 1f - 0.10f * dismissPull.value
-            }.clip(sheetShape).drawWithCache {
-                // One cached acrylic canvas; covers the drag handle and bottom inset too.
-                onDrawBehind {
-                    drawRect(sheetColor.copy(alpha = 0.99f))
-                    drawRect(capsuleMenuGrain)
-                }
             },
         ) {
             PredictiveBackHandler(enabled = !state.dismissRequested) { progress ->
@@ -300,7 +305,11 @@ fun BottomSheetMenu(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            // Texture is painted once by the entire sheet, not by this list.
+                            // Grain is constrained to native sheet content. It never
+                            // draws behind the visible player above a partial sheet.
+                            .drawWithCache {
+                                onDrawBehind { drawRect(capsuleMenuGrain) }
+                            }
                             .padding(horizontal = 16.dp),
                 ) {
                     state.content(this)
