@@ -1272,12 +1272,20 @@ fun EqualizerDialog(
                             Text("×${formatMultiplier(pitch)}",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(Modifier.width(10.dp))
-                            TextButton(onClick = {
-                                pitch = 1f
-                                playerConnection.player.playbackParameters =
-                                    PlaybackParameters(speed, 1f)
-                            }) { Text(stringResource(R.string.reset)) }
+                            IconButton(
+                                modifier = Modifier.size(38.dp),
+                                onClick = {
+                                    pitch = 1f
+                                    playerConnection.player.playbackParameters =
+                                        PlaybackParameters(speed, 1f)
+                                },
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.restore),
+                                    contentDescription = stringResource(R.string.reset),
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
                         }
                         CapsuleStudioSlider(
                             value = multiplierToSlider(pitch),
