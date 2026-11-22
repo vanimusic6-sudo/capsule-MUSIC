@@ -72,5 +72,9 @@ class PlaybackAudioEffectsControllerTest {
         org.junit.Assert.assertTrue(source.contains("equalizer?.let { eq ->"))
         org.junit.Assert.assertFalse(source.contains("val eq = equalizer ?: return"))
         org.junit.Assert.assertTrue(source.contains("if (appliedGainEnabled != settings.outputGainEnabled)"))
+        org.junit.Assert.assertTrue(source.contains(
+            "appliedBassEnabled = bassBoost?.let { runCatching { it.enabled }.getOrNull() }"))
+        org.junit.Assert.assertTrue(source.contains(
+            "appliedEnabled = equalizer?.let { runCatching { it.enabled }.getOrNull() }"))
     }
 }
