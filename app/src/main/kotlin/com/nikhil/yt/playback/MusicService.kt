@@ -3868,7 +3868,10 @@ class MusicService :
         isAudioEffectSessionOpened = false
         val sessionId = openedAudioSessionId ?: player.audioSessionId
         openedAudioSessionId = null
-        audioEffectsController.release()
+        // Don't destroy the per-player native EQ on every pause/focus loss.
+        // That rebuilt BassBoost/Virtualizer mid-session and made the controls
+        // disappear until music started again. Ownership is released on session
+        // replacement or in onDestroy, never attached to system session 0.
         if (sessionId <= 0) return
         sendBroadcast(
             Intent(AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION).apply {
