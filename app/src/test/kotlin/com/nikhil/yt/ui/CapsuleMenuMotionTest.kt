@@ -220,7 +220,8 @@ class CapsuleMenuMotionTest {
             java.io.File("app/src/main/kotlin/com/nikhil/yt/ui/component/NewMenuComponents.kt"),
         ).first(java.io.File::isFile).readText()
         assertTrue(source.contains("repeat(safeColumns - row.size)"))
-        assertTrue(source.contains("actions.take(2)"))
+        assertTrue(source.contains("laidOutActions.take(2).forEach { action ->"))
+        assertTrue(source.contains("laidOutActions.drop(if (laidOutActions.size >= 2) 2 else 0).forEach { action ->"))
         assertTrue(source.contains("CapsuleMenuActionRow(action = action"))
         assertTrue(source.contains("highlightBorderColor: Color"))
         assertFalse(source.contains("repeat(if (compact) 0"))
