@@ -54,31 +54,58 @@ class PlaybackAudioEffectsControllerTest {
     }
 
     @Test
-    fun enabledEffectsOnlyReceiveNativeWritesOnChanges() {
-        val source = listOf(
+    fun disablingWholeStudioGivesFlatCurveAndUnityGain() {
+        val base = EqSettings(
+            enabled = true,
+            bandLevelsMb = listOf(1400, 800, -200, -500, 900),
+            outputGainEnabled = true, outputGainMb = 1500,
+            bassBoostEnabled = true, bassBoostStrength = 1000,
+            virtualizerEnabled = true, virtualizerStrength = 1000,
+            intensityPercent = 200,
+        )
+        assertEquals(listOf(650, 650, -400, -1000, 650),
+            protectedEqLevels(base, 5, -1500, 1500))
+        assertEquals(listOf(0, 0, 0, 0, 0),
+            protectedEqLevels(base.copy(enabled = false), 5, -1500, 1500))
+        assertEquals(1f, protectedEqAudioFactor(base.copy(enabled = false)), 0.000001f)
+    }
+
+    @Test
+    fun combinedHeadroomAttenuatesPowerfulPresetsWithoutAmplifyingTheSource() {
+        val base = EqSettings(
+            enabled = true, bandLevelsMb = listOf(1400, 800, -200, 0, 900),
+            outputGainEnabled = true, outputGainMb = 1500,
+            bassBoostEnabled = true, bassBoostStrength = 1000,
+            virtualizerEnabled = true, virtualizerStrength = 1000,
+            intensityPercent = 200,
+        )
+        val factor = protectedEqAudioFactor(base)
+        org.junit.Assert.assertTrue("Strong EQ must reserve headroom", factor in 0.1f..0.5f)
+        assertEquals(1f, protectedEqAudioFactor(base.copy(
+            bandLevelsMb = List(5) { 0 }, outputGainEnabled = false,
+            bassBoostEnabled = false, virtualizerEnabled = false,
+        )), 0.000001f)
+        assertEquals(emptyList<Int>(), protectedEqLevels(base, 0, -1500, 1500))
+        org.junit.Assert.assertTrue(
+            protectedEqLevels(base, 5, -1000, 400).all { it in -1000..400 })
+    }
+
+    @Test
+    fun nativeMixerIsBypassedWithoutDisconnectingEffectGraph() {
+        val file = listOf(
             java.io.File("src/main/kotlin/com/nikhil/yt/playback/PlaybackAudioEffectsController.kt"),
             java.io.File("app/src/main/kotlin/com/nikhil/yt/playback/PlaybackAudioEffectsController.kt"),
-        ).first(java.io.File::isFile).readText()
-        org.junit.Assert.assertTrue(source.contains(
-            "settings.bassBoostEnabled && appliedBassStrength != desiredStrength"))
-        org.junit.Assert.assertTrue(source.contains(
-            "settings.virtualizerEnabled && appliedVirtualizerStrength != desiredStrength"))
-        org.junit.Assert.assertTrue(source.contains(
-            "appliedBassEnabled != settings.bassBoostEnabled"))
-        org.junit.Assert.assertTrue(source.contains(
-            "appliedVirtualizerEnabled != settings.virtualizerEnabled"))
-        org.junit.Assert.assertFalse(source.contains(
-            "effect.setStrength(settings.bassBoostStrength.toShort())"))
-        org.junit.Assert.assertTrue(source.contains("equalizer?.let { eq ->"))
-        // A native preset legitimately needs an EQ. Only ordinary effect
-        // updates must continue when the native equalizer is unavailable.
-        val settingsPath = source.substringAfter(
-            "private fun applySettingsToEffects(settings: EqSettings)")
-        org.junit.Assert.assertFalse(settingsPath.contains("val eq = equalizer ?: return"))
-        org.junit.Assert.assertTrue(source.contains("if (appliedGainEnabled != settings.outputGainEnabled)"))
-        org.junit.Assert.assertTrue(source.contains(
-            "appliedBassEnabled = bassBoost?.let { runCatching { it.enabled }.getOrNull() }"))
-        org.junit.Assert.assertTrue(source.contains(
-            "appliedEnabled = equalizer?.let { runCatching { it.enabled }.getOrNull() }"))
+        ).first(java.io.File::isFile)
+        val source = file.readText()
+        val apply = source.substringAfter("private fun applySettingsToEffects(settings: EqSettings)")
+            .substringBefore("companion object")
+        org.junit.Assert.assertTrue(apply.contains("protectedEqLevels(settings"))
+        org.junit.Assert.assertTrue(apply.contains("appliedEnabled == true"))
+        org.junit.Assert.assertFalse(apply.contains("eq.enabled = false"))
+        org.junit.Assert.assertTrue(apply.contains("effect.setStrength(target.toShort())"))
+        org.junit.Assert.assertTrue(apply.contains("effect.setTargetGain(targetMb)"))
+        org.junit.Assert.assertFalse(apply.contains("effect.enabled = settings.bassBoostEnabled"))
+        org.junit.Assert.assertFalse(apply.contains("effect.enabled = settings.virtualizerEnabled"))
+        org.junit.Assert.assertTrue(source.contains("if (audioEffectsSessionId == sessionId) return"))
     }
 }
