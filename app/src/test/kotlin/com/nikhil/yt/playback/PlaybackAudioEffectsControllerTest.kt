@@ -102,7 +102,7 @@ class PlaybackAudioEffectsControllerTest {
         org.junit.Assert.assertTrue(service.contains(
             "videoCompanion?.setVolume(base)"))
         org.junit.Assert.assertTrue(service.contains(
-            "if (enabled) PlaybackParameters(speed, pitch)"))
+            "if (settings.enabled) PlaybackParameters(speed, pitch)"))
         org.junit.Assert.assertTrue(service.contains(
             "else PlaybackParameters(1f, 1f)"))
         org.junit.Assert.assertFalse(service.contains(
