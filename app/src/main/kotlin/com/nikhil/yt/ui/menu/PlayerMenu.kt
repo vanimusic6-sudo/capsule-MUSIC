@@ -333,6 +333,7 @@ fun PlayerMenu(
         Spacer(modifier = Modifier.height(8.dp))
 
         PlayerVolumeCard(playerConnection = playerConnection)
+        Spacer(modifier = Modifier.height(16.dp))
     }
 
     LazyColumn(
@@ -352,8 +353,6 @@ fun PlayerMenu(
             // One measured root per LazyColumn item: no phantom gaps or
             // independently measured spacer nodes during fast flings.
             Column(modifier = Modifier.fillMaxWidth()) {
-            Spacer(modifier = Modifier.height(8.dp))
-    
             // Quick actions are the FIRST lazy item after volume, so scrolls
             // begin under the slider instead of after Capsule Together.
             // Priority actions: exactly two small, outlined playlist / copy tiles.
