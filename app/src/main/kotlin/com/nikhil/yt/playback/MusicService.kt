@@ -2369,7 +2369,12 @@ class MusicService :
                     (previous.enabled != settings.enabled ||
                         previous.bassBoostEnabled != settings.bassBoostEnabled ||
                         previous.virtualizerEnabled != settings.virtualizerEnabled ||
-                        previous.outputGainEnabled != settings.outputGainEnabled)
+                        previous.outputGainEnabled != settings.outputGainEnabled ||
+                        previous.bandLevelsMb != settings.bandLevelsMb ||
+                        previous.intensityPercent != settings.intensityPercent ||
+                        previous.bassBoostStrength != settings.bassBoostStrength ||
+                        previous.virtualizerStrength != settings.virtualizerStrength ||
+                        previous.outputGainMb != settings.outputGainMb)
                 try {
                     if (sensitive) {
                         for (fade in listOf(0.82f, 0.54f, 0.26f)) {
