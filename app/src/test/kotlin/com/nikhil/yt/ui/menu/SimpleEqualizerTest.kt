@@ -67,8 +67,8 @@ class SimpleEqualizerTest {
             .substringBefore("@Composable\\nprivate fun CapsuleEffectRow(")
         assertTrue(dialog.contains("SoundStudioSpeedKey"))
         assertTrue(dialog.contains("SoundStudioPitchKey"))
-        assertTrue(dialog.contains("if (enabled) PlaybackParameters(speed, pitch)"))
-        assertTrue(dialog.contains("else PlaybackParameters(1f, 1f)"))
+        assertTrue(dialog.contains("setEqEnabled(enabled)"))
+        assertTrue(dialog.contains("enabled = eqEnabled"))
         assertTrue(dialog.contains("if (eqEnabled) playerConnection.player.playbackParameters"))
         assertFalse(dialog.contains("setEqEnabled(true)"))
     }
