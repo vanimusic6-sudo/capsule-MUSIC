@@ -890,7 +890,6 @@ fun EqualizerDialog(
     val (customProfilesJson, setCustomProfilesJson) = rememberPreference(EqualizerCustomProfilesJsonKey, defaultValue = "")
 
     var showAdvancedEqualizer by rememberSaveable { mutableStateOf(false) }
-    var simplePresetId by rememberSaveable { mutableStateOf(selectedProfileId.takeIf { it == "flat" } ?: "custom") }
 
     val caps = eqCapabilities
     val bandCount = caps?.bandCount ?: 0
@@ -1173,106 +1172,181 @@ fun EqualizerDialog(
                     }
 
                     if (!showAdvancedEqualizer) {
-                        // Accessible, no-scroll-by-default editor. Every control affects the REAL
-                        // Android audio-effect bands; the longer studio remains opt-in.
-                        EqSection(title = stringResource(R.string.eq_simple_title)) {
-                            val presetRows = listOf(
-                                listOf("flat" to R.string.eq_simple_natural,
-                                    "bass" to R.string.eq_simple_bass,
-                                    "clear" to R.string.eq_simple_clear),
-                                listOf("voice" to R.string.eq_simple_voice,
-                                    "soft" to R.string.eq_simple_soft,
-                                    "energy" to R.string.eq_simple_energy),
-                            )
-                            presetRows.forEach { row ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                ) {
-                                    row.forEach { (id, label) ->
-                                        FilterChip(
-                                            modifier = Modifier.weight(1f),
-                                            selected = simplePresetId == id,
-                                            onClick = {
-                                                setEqEnabled(true)
-                                                val next = simpleEqPresetLevels(
-                                                    caps.centerFreqHz, bandCount,
-                                                    minMb, maxMb, id,
-                                                )
-                                                bandLevelsMb = next
-                                                setBandLevelsRaw(encodeBandLevelsMb(next))
-                                                setSelectedProfileId("manual")
-                                                simplePresetId = id
-                                            },
-                                            label = {
-                                                Text(stringResource(label), maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis,
-                                                    style = MaterialTheme.typography.labelSmall)
-                                            },
-                                            border = null,
-                                        )
-                                    }
+                        // Compact Capsule layout: quick versions, presets, then the
+                        // actual touch-controlled hardware EQ curve. No nested
+                        // scroll carousels and no stack of technical sliders.
+                        var selectedVersion by remember {
+                            mutableStateOf(
+                                when (playerConnection.player.playbackParameters.speed) {
+                                    1.25f -> "fast"
+                                    0.85f -> "slow"
+                                    else -> "original"
                                 }
+                            )
+                        }
+                        LaunchedEffect(showAdvancedEqualizer) {
+                            val params = playerConnection.player.playbackParameters
+                            selectedVersion = when {
+                                kotlin.math.abs(params.speed - 1.25f) < 0.02f -> "fast"
+                                kotlin.math.abs(params.speed - 0.85f) < 0.02f -> "slow"
+                                kotlin.math.abs(params.speed - 1f) < 0.02f &&
+                                    kotlin.math.abs(params.pitch - 1f) < 0.02f -> "original"
+                                else -> "custom"
                             }
                         }
 
-                        Spacer(Modifier.height(8.dp))
-                        EqSection(
-                            title = stringResource(R.string.eq_simple_custom),
-                            trailing = {
-                                TextButton(onClick = {
-                                    val flat = List(bandCount) { 0 }
-                                    bandLevelsMb = flat
-                                    setBandLevelsRaw(encodeBandLevelsMb(flat))
-                                    setSelectedProfileId("manual")
-                                    simplePresetId = "flat"
-                                }) { Text(stringResource(R.string.reset)) }
-                            },
+                        Text(
+                            text = stringResource(R.string.eq_versions_title),
+                            style = MaterialTheme.typography.titleLarge,
+                            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            val names = listOf(
-                                R.string.eq_simple_low, R.string.eq_simple_mid,
-                                R.string.eq_simple_high,
-                            )
-                            names.forEachIndexed { group, label ->
-                                val groupBands = simpleEqBandIndices(caps.centerFreqHz, bandCount, group)
-                                if (groupBands.isNotEmpty()) {
-                                    val groupLevel = groupBands.map { bandLevelsMb.getOrElse(it) { 0 } }
-                                        .average().toFloat().coerceIn(minMb.toFloat(), maxMb.toFloat())
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Text(stringResource(label), modifier = Modifier.width(84.dp),
+                            listOf(
+                                Triple("original", R.string.eq_version_original, 1f),
+                                Triple("fast", R.string.eq_version_fast, 1.25f),
+                                Triple("slow", R.string.eq_version_slow, 0.85f),
+                            ).forEach { (id, label, speed) ->
+                                FilterChip(
+                                    modifier = Modifier.weight(1f),
+                                    selected = selectedVersion == id,
+                                    onClick = {
+                                        // Versions are speed presets. Pitch stays natural;
+                                        // exact pitch and tempo remain in advanced sound.
+                                        playerConnection.player.playbackParameters =
+                                            PlaybackParameters(speed, 1f)
+                                        selectedVersion = id
+                                    },
+                                    label = {
+                                        Text(
+                                            text = stringResource(label),
+                                            maxLines = 1,
                                             style = MaterialTheme.typography.labelMedium,
-                                            maxLines = 1)
-                                        Slider(
-                                            value = groupLevel,
-                                            onValueChange = { target ->
-                                                bandLevelsMb = simpleEqShiftBandGroup(
-                                                    bandLevelsMb, bandCount, caps.centerFreqHz,
-                                                    group, target.toInt(), minMb, maxMb,
-                                                )
-                                                simplePresetId = "custom"
-                                            },
-                                            onValueChangeFinished = {
-                                                setEqEnabled(true)
-                                                setSelectedProfileId("manual")
-                                                setBandLevelsRaw(encodeBandLevelsMb(bandLevelsMb))
-                                            },
-                                            valueRange = minMb.toFloat()..maxMb.toFloat(),
-                                            modifier = Modifier.weight(1f),
+                                            overflow = TextOverflow.Ellipsis,
                                         )
-                                        Text(formatDb(groupLevel / 100f),
-                                            modifier = Modifier.width(56.dp),
-                                            textAlign = TextAlign.End,
-                                            style = MaterialTheme.typography.labelSmall)
-                                    }
+                                    },
+                                    border = null,
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        containerColor = com.nikhil.yt.ui.component.CapsuleMenuBlack,
+                                    ),
+                                )
+                            }
+                        }
+
+                        Spacer(Modifier.height(20.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(start = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                stringResource(R.string.equalizer),
+                                style = MaterialTheme.typography.titleLarge,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = {
+                                val flat = List(bandCount) { 0 }
+                                bandLevelsMb = flat
+                                setEqEnabled(true)
+                                setBandLevelsRaw(encodeBandLevelsMb(flat))
+                                setSelectedProfileId("flat")
+                            }) { Text(stringResource(R.string.reset)) }
+                        }
+
+                        val presetOptions = listOf(
+                            listOf(
+                                "flat" to R.string.eq_simple_natural,
+                                "bass" to R.string.eq_simple_bass,
+                                "clear" to R.string.eq_simple_clear,
+                            ),
+                            listOf(
+                                "voice" to R.string.eq_simple_voice,
+                                "soft" to R.string.eq_simple_soft,
+                                "energy" to R.string.eq_simple_energy,
+                            ),
+                        )
+                        // Derive the highlight from actual EQ data so switching out
+                        // of advanced mode or reopening never shows a stale preset.
+                        val selectedPreset = presetOptions.flatten().firstOrNull { (id, _) ->
+                            simpleEqPresetLevels(caps.centerFreqHz, bandCount, minMb, maxMb, id) ==
+                                bandLevelsMb
+                        }?.first
+                        presetOptions.forEach { row ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                row.forEach { (id, label) ->
+                                    FilterChip(
+                                        modifier = Modifier.weight(1f),
+                                        selected = selectedPreset == id,
+                                        onClick = {
+                                            val next = simpleEqPresetLevels(
+                                                caps.centerFreqHz, bandCount, minMb, maxMb, id,
+                                            )
+                                            bandLevelsMb = next
+                                            setEqEnabled(true)
+                                            setBandLevelsRaw(encodeBandLevelsMb(next))
+                                            setSelectedProfileId(if (id == "flat") "flat" else "manual")
+                                        },
+                                        label = {
+                                            Text(
+                                                text = stringResource(label),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                style = MaterialTheme.typography.labelSmall,
+                                            )
+                                        },
+                                        border = null,
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            containerColor = com.nikhil.yt.ui.component.CapsuleMenuBlack,
+                                        ),
+                                    )
                                 }
                             }
                         }
 
-                        Spacer(Modifier.height(8.dp))
-                        CompactTempoPitchSection()
+                        Spacer(Modifier.height(10.dp))
+                        val heightDp = LocalConfiguration.current.screenHeightDp
+                        val graphHeight = when {
+                            heightDp < 690 -> 168.dp
+                            heightDp < 800 -> 218.dp
+                            else -> 254.dp
+                        }
+                        var selectedBand by remember { mutableIntStateOf(0) }
+                        CapsuleEqualizerGraph(
+                            frequenciesHz = caps.centerFreqHz,
+                            levelsMb = bandLevelsMb,
+                            minMb = minMb,
+                            maxMb = maxMb,
+                            selectedBand = selectedBand.coerceIn(0, bandCount - 1),
+                            onBandSelected = { selectedBand = it },
+                            onLevelChanged = { band, level ->
+                                if (band in 0 until bandCount) {
+                                    bandLevelsMb = bandLevelsMb.toMutableList().apply {
+                                        while (size < bandCount) add(0)
+                                        this[band] = level
+                                    }
+                                }
+                            },
+                            onFinished = { band, level ->
+                                if (band in 0 until bandCount) {
+                                    val levels = bandLevelsMb.toMutableList().apply {
+                                        while (size < bandCount) add(0)
+                                        this[band] = level
+                                    }
+                                    bandLevelsMb = levels
+                                    setEqEnabled(true)
+                                    setSelectedProfileId("manual")
+                                    setBandLevelsRaw(encodeBandLevelsMb(levels))
+                                }
+                            },
+                            graphHeight = graphHeight,
+                            modifier = Modifier.padding(horizontal = 2.dp),
+                        )
+
+                        Spacer(Modifier.height(6.dp))
                         TextButton(
                             onClick = { showAdvancedEqualizer = true },
                             modifier = Modifier.fillMaxWidth(),
