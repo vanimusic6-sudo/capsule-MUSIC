@@ -187,7 +187,12 @@ class PlaybackAudioEffectsControllerTest {
         ).first(java.io.File::isFile).readText()
         org.junit.Assert.assertTrue(service.contains("protectedEqAudioFactor(settings, eqCapabilities.value)"))
         org.junit.Assert.assertTrue(service.contains("protectedEqPlaybackVolume("))
-        org.junit.Assert.assertTrue(service.contains("soundStudioEnabledForVolume.value = settings.enabled"))
+        org.junit.Assert.assertTrue(
+            service.contains("if (settings.enabled) soundStudioEnabledForVolume.value = true")
+        )
+        val nativeApply = service.indexOf("audioEffectsController.applySettings(settings)")
+        val removeBoost = service.indexOf("soundStudioEnabledForVolume.value = false")
+        org.junit.Assert.assertTrue(nativeApply >= 0 && removeBoost > nativeApply)
         org.junit.Assert.assertTrue(service.contains("soundStudioTransitionFactor.value = fade"))
         org.junit.Assert.assertTrue(service.contains(
             "videoCompanion?.setVolume(base)"))
