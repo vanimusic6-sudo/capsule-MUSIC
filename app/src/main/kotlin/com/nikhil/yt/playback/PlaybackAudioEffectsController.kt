@@ -136,7 +136,10 @@ internal class PlaybackAudioEffectsController(
     }
 
     private fun applySettingsToEffects(settings: EqSettings) {
-        val eq = equalizer ?: return
+        // Bass, spatializer and loudness can exist on devices whose native
+        // Equalizer instance is unavailable. They must not be disabled by an
+        // early return from an unrelated processor.
+        equalizer?.let { eq ->
         val caps = capabilities.value
         val bandCount = caps?.bandCount ?: eq.numberOfBands.toInt()
         val minMb =
@@ -170,6 +173,7 @@ internal class PlaybackAudioEffectsController(
                 appliedBandLevels[band] = levelMb
             }
         }
+        } // end native EQ configuration
 
         bassBoost?.let { effect ->
             val desiredStrength = settings.bassBoostStrength.coerceIn(0, 1000)
