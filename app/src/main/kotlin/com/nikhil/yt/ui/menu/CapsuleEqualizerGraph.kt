@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
@@ -67,6 +68,7 @@ internal fun CapsuleEqualizerGraph(
     onLevelChanged: (Int, Int) -> Unit,
     onFinished: (Int, Int) -> Unit,
     modifier: Modifier = Modifier,
+    graphHeight: Dp = 214.dp,
 ) {
     val count = minOf(frequenciesHz.size, levelsMb.size)
     if (count <= 0) return
@@ -83,7 +85,7 @@ internal fun CapsuleEqualizerGraph(
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(214.dp)
+                .height(graphHeight)
                 .pointerInput(count, minMb, maxMb) {
                     val inset = pad.toPx()
                     detectTapGestures { point ->
