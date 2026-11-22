@@ -101,7 +101,11 @@ class CapsuleUnifiedDynamicsProcessorTest {
         ).first(java.io.File::isFile).readText()
         assertTrue(src.contains("unifiedDynamics?.let { engine ->"))
         assertTrue(src.contains("engine.apply(settings)"))
-        assertTrue(src.contains("return\n            } catch"))
+        // The unified branch must exit before the legacy native processors.
+        val unifiedPath = src.substringAfter("unifiedDynamics?.let { engine ->")
+            .substringBefore("// On API 26-27")
+        assertTrue(unifiedPath.contains("return"))
+        assertTrue(unifiedPath.contains("catch (failure: Exception)"))
         val service = listOf(
             java.io.File("src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"),
             java.io.File("app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"),
