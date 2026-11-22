@@ -889,6 +889,9 @@ fun EqualizerDialog(
 
     val (customProfilesJson, setCustomProfilesJson) = rememberPreference(EqualizerCustomProfilesJsonKey, defaultValue = "")
 
+    var showAdvancedEqualizer by rememberSaveable { mutableStateOf(false) }
+    var simplePresetId by rememberSaveable { mutableStateOf(selectedProfileId.takeIf { it == "flat" } ?: "custom") }
+
     val caps = eqCapabilities
     val bandCount = caps?.bandCount ?: 0
     val minMb = caps?.minBandLevelMb ?: -1500
@@ -1167,6 +1170,118 @@ fun EqualizerDialog(
                         // audio device does not expose equalizer bands.
                         TempoPitchSection()
                         return@Column
+                    }
+
+                    if (!showAdvancedEqualizer) {
+                        // Accessible, no-scroll-by-default editor. Every control affects the REAL
+                        // Android audio-effect bands; the longer studio remains opt-in.
+                        EqSection(title = stringResource(R.string.eq_simple_title)) {
+                            val presetRows = listOf(
+                                listOf("flat" to R.string.eq_simple_natural,
+                                    "bass" to R.string.eq_simple_bass,
+                                    "clear" to R.string.eq_simple_clear),
+                                listOf("voice" to R.string.eq_simple_voice,
+                                    "soft" to R.string.eq_simple_soft,
+                                    "energy" to R.string.eq_simple_energy),
+                            )
+                            presetRows.forEach { row ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    row.forEach { (id, label) ->
+                                        FilterChip(
+                                            modifier = Modifier.weight(1f),
+                                            selected = simplePresetId == id,
+                                            onClick = {
+                                                setEqEnabled(true)
+                                                val next = simpleEqPresetLevels(
+                                                    caps.centerFreqHz, bandCount,
+                                                    minMb, maxMb, id,
+                                                )
+                                                bandLevelsMb = next
+                                                setBandLevelsRaw(encodeBandLevelsMb(next))
+                                                setSelectedProfileId("manual")
+                                                simplePresetId = id
+                                            },
+                                            label = {
+                                                Text(stringResource(label), maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    style = MaterialTheme.typography.labelSmall)
+                                            },
+                                            border = null,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+                        EqSection(
+                            title = stringResource(R.string.eq_simple_custom),
+                            trailing = {
+                                TextButton(onClick = {
+                                    val flat = List(bandCount) { 0 }
+                                    bandLevelsMb = flat
+                                    setBandLevelsRaw(encodeBandLevelsMb(flat))
+                                    setSelectedProfileId("manual")
+                                    simplePresetId = "flat"
+                                }) { Text(stringResource(R.string.reset)) }
+                            },
+                        ) {
+                            val names = listOf(
+                                R.string.eq_simple_low, R.string.eq_simple_mid,
+                                R.string.eq_simple_high,
+                            )
+                            names.forEachIndexed { group, label ->
+                                val groupBands = simpleEqBandIndices(caps.centerFreqHz, bandCount, group)
+                                if (groupBands.isNotEmpty()) {
+                                    val groupLevel = groupBands.map { bandLevelsMb.getOrElse(it) { 0 } }
+                                        .average().toFloat().coerceIn(minMb.toFloat(), maxMb.toFloat())
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(stringResource(label), modifier = Modifier.width(84.dp),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            maxLines = 1)
+                                        Slider(
+                                            value = groupLevel,
+                                            onValueChange = { target ->
+                                                bandLevelsMb = simpleEqShiftBandGroup(
+                                                    bandLevelsMb, bandCount, caps.centerFreqHz,
+                                                    group, target.toInt(), minMb, maxMb,
+                                                )
+                                                simplePresetId = "custom"
+                                            },
+                                            onValueChangeFinished = {
+                                                setEqEnabled(true)
+                                                setSelectedProfileId("manual")
+                                                setBandLevelsRaw(encodeBandLevelsMb(bandLevelsMb))
+                                            },
+                                            valueRange = minMb.toFloat()..maxMb.toFloat(),
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        Text(formatDb(groupLevel / 100f),
+                                            modifier = Modifier.width(56.dp),
+                                            textAlign = TextAlign.End,
+                                            style = MaterialTheme.typography.labelSmall)
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(8.dp))
+                        CompactTempoPitchSection()
+                        TextButton(
+                            onClick = { showAdvancedEqualizer = true },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(stringResource(R.string.eq_simple_advanced)) }
+                        return@Column
+                    }
+
+                    TextButton(onClick = { showAdvancedEqualizer = false }) {
+                        Text(stringResource(R.string.eq_simple_back))
                     }
 
                     EqSection(
@@ -1508,6 +1623,109 @@ private fun EqToggleSliderRow(
             textAlign = TextAlign.End,
             modifier = Modifier.width(72.dp),
         )
+    }
+}
+
+
+/** Map variable hardware bands into three understandable tone controls. */
+internal fun simpleEqBandIndices(freqHz: List<Int>, bandCount: Int, group: Int): List<Int> =
+    (0 until bandCount.coerceAtLeast(0)).filter { i ->
+        val freq = freqHz.getOrNull(i) ?: 0
+        val bucket = if (freq > 0) when {
+            freq < 320 -> 0
+            freq < 4_500 -> 1
+            else -> 2
+        } else (i * 3 / bandCount.coerceAtLeast(1)).coerceIn(0, 2)
+        bucket == group
+    }
+
+internal fun simpleEqShiftBandGroup(
+    levels: List<Int>, count: Int, freqs: List<Int>, group: Int,
+    targetMb: Int, minMb: Int, maxMb: Int,
+): List<Int> {
+    if (count <= 0 || maxMb <= minMb) return emptyList()
+    val indices = simpleEqBandIndices(freqs, count, group)
+    if (indices.isEmpty()) return List(count) { levels.getOrElse(it) { 0 }.coerceIn(minMb, maxMb) }
+    val current = indices.map { levels.getOrElse(it) { 0 }.coerceIn(minMb, maxMb) }
+        .average().toInt()
+    val delta = targetMb.coerceIn(minMb, maxMb) - current
+    return List(count) { i ->
+        val old = levels.getOrElse(i) { 0 }
+        (if (i in indices) old + delta else old).coerceIn(minMb, maxMb)
+    }
+}
+
+internal fun simpleEqPresetLevels(
+    freqs: List<Int>, count: Int, minMb: Int, maxMb: Int, id: String,
+): List<Int> {
+    if (count <= 0) return emptyList()
+    return List(count) { i ->
+        val frequency = freqs.getOrNull(i)?.takeIf { it > 0 } ?: when {
+            i * 3 < count -> 120
+            i * 3 < count * 2 -> 1_000
+            else -> 8_000
+        }
+        val value = when (id) {
+            "bass" -> if (frequency < 320) 400 else if (frequency < 1_200) 130 else 0
+            "clear" -> if (frequency > 3_000) 300 else if (frequency >= 600) 120 else 0
+            "voice" -> if (frequency in 320..4_500) 320 else -80
+            "soft" -> if (frequency > 3_500) -220 else if (frequency < 320) 100 else 0
+            "energy" -> if (frequency < 320) 270 else if (frequency > 3_500) 220 else 50
+            else -> 0
+        }
+        value.coerceIn(minMb, maxMb)
+    }
+}
+
+@Composable
+private fun CompactTempoPitchSection() {
+    val connection = LocalPlayerConnection.current ?: return
+    var speed by remember { mutableFloatStateOf(
+        connection.player.playbackParameters.speed.safeCoerceIn(TempoMin, TempoMax, 1f)
+    ) }
+    var pitch by remember { mutableFloatStateOf(
+        connection.player.playbackParameters.pitch.safeCoerceIn(PitchMin, PitchMax, 1f)
+    ) }
+    val apply: (Float, Float) -> Unit = { s, p ->
+        connection.player.playbackParameters = PlaybackParameters(
+            s.coerceIn(TempoMin, TempoMax), p.coerceIn(PitchMin, PitchMax)
+        )
+    }
+    EqSection(
+        title = stringResource(R.string.tempo_and_pitch),
+        trailing = {
+            TextButton(onClick = {
+                speed = 1f
+                pitch = 1f
+                apply(1f, 1f)
+            }) { Text(stringResource(R.string.reset)) }
+        },
+    ) {
+        listOf(R.string.tempo, R.string.pitch).forEachIndexed { index, title ->
+            val value = if (index == 0) speed else pitch
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(stringResource(title), modifier = Modifier.width(70.dp),
+                    style = MaterialTheme.typography.labelMedium)
+                Slider(
+                    value = multiplierToSlider(value),
+                    onValueChange = {
+                        val next = sliderToMultiplier(it).quantize(0.01f)
+                        if (index == 0) speed = next else pitch = next
+                        apply(speed, pitch)
+                    },
+                    valueRange = 0f..1f,
+                    modifier = Modifier.weight(1f),
+                )
+                Text("×${formatMultiplier(value)}",
+                    modifier = Modifier.width(64.dp),
+                    textAlign = TextAlign.End,
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+        }
     }
 }
 
