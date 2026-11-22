@@ -130,7 +130,7 @@ internal fun protectedEqAudioFactor(settings: EqSettings): Float {
     } else 0.0
     val totalDb = eqBoostDb + bassReserveDb + surroundReserveDb +
         gainReserveDb + if (eqBoostDb + bassReserveDb + gainReserveDb > 0.0) 1.0 else 0.0
-    return kotlin.math.pow(10.0, -totalDb / 20.0).toFloat().coerceIn(0.1f, 1f)
+    return Math.pow(10.0, -totalDb / 20.0).toFloat().coerceIn(0.1f, 1f)
 }
 
 internal object EqualizerJson {
