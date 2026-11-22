@@ -25,6 +25,12 @@ internal class PlaybackAudioEffectsController(
     private var peakLimiter: DynamicsProcessing? = null
     private var attemptedPeakLimiter = false
     private var activeLimiterCurve: Boolean? = null
+    private var unifiedDynamics: CapsuleUnifiedDynamicsProcessor? = null
+    private var attemptedUnifiedDynamics = false
+
+    /** True only when native EQ/Bass/Gain are replaced by the ordered DPE chain. */
+    val isUnifiedDynamicsActive: Boolean
+        get() = unifiedDynamics != null
     // Avoid rewriting identical hardware parameters on unrelated preference
     // updates. Invalidated whenever the audio session or preset changes.
     private var appliedBandLevels: IntArray = intArrayOf()
@@ -101,6 +107,7 @@ internal class PlaybackAudioEffectsController(
         releaseEffect("release virtualizer") { virtualizer?.release() }
         releaseEffect("release loudness enhancer") { loudnessEnhancer?.release() }
         releaseEffect("release peak limiter") { peakLimiter?.release() }
+        releaseEffect("release unified dynamics") { unifiedDynamics?.release() }
         equalizer = null
         appliedBandLevels = intArrayOf()
         appliedEnabled = null
@@ -116,6 +123,8 @@ internal class PlaybackAudioEffectsController(
         peakLimiter = null
         attemptedPeakLimiter = false
         activeLimiterCurve = null
+        unifiedDynamics = null
+        attemptedUnifiedDynamics = false
         // Retain the last native frequency map while paused. No effects remain
         // attached, but the UI can edit a profile for the next valid session.
     }
@@ -157,10 +166,49 @@ internal class PlaybackAudioEffectsController(
     }
 
     private fun applySettingsToEffects(settings: EqSettings) {
-        // A native enabled=false/true transition can rebuild the OEM output
-        // mixer and glitch playback. Once a processor is enabled, bypass it by
-        // sending a *neutral curve/strength/gain* instead of disconnecting it.
-        // Effect instances are actually released when the audio session ends.
+        // On Android 9+ prefer ONE ordered EQ -> MBC -> limiter engine.
+        // Keep legacy instances disabled for preset metadata / safe fallback.
+        // Do not change engines mid-session once legacy effects have engaged.
+        if (unifiedDynamics == null && !attemptedUnifiedDynamics &&
+            settings.enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+        ) {
+            attemptedUnifiedDynamics = true
+            val caps = capabilities.value
+            val session = audioEffectsSessionId
+            if (caps != null && caps.bandCount in 1..32 && session != null &&
+                appliedEnabled != true && appliedBassEnabled != true &&
+                appliedGainEnabled != true && appliedVirtualizerEnabled != true
+            ) {
+                var candidate: CapsuleUnifiedDynamicsProcessor? = null
+                try {
+                    candidate = CapsuleUnifiedDynamicsProcessor(session, caps)
+                    candidate.apply(settings)
+                    unifiedDynamics = candidate
+                } catch (failure: Exception) {
+                    onRecoverableError("initialize unified dynamics", failure)
+                    runCatching { candidate?.release() }
+                }
+            }
+        }
+
+        unifiedDynamics?.let { engine ->
+            try {
+                engine.apply(settings)
+                // Android has no virtualizer stage inside DynamicsProcessing.
+                // Spatial widening remains optional and separately constrained.
+                applyUnifiedVirtualizer(settings)
+                return
+            } catch (failure: Exception) {
+                onRecoverableError("update unified dynamics", failure)
+                runCatching { engine.release() }
+                unifiedDynamics = null
+                // Fall back to the legacy session processors on this device.
+            }
+        }
+
+        // On API 26-27, unsupported OEMs, or a failed unified engine:
+        // retain legacy processing with conservative static headroom.
+        // Once active, neutralize rather than disconnect it to avoid OEM pops.
         equalizer?.let { eq ->
             val caps = capabilities.value
             val bandCount = caps?.bandCount ?: runCatching {
@@ -273,6 +321,27 @@ internal class PlaybackAudioEffectsController(
      * effects is not guaranteed, so it supplements rather than replaces the
      * static attenuation above. Created once per session, never per slider.
      */
+    private fun applyUnifiedVirtualizer(settings: EqSettings) {
+        val effect = virtualizer ?: return
+        val target = if (settings.enabled && settings.virtualizerEnabled) {
+            settings.virtualizerStrength.coerceIn(0, CAPSULE_MAX_VIRTUALIZER_STRENGTH)
+        } else 0
+        if (!runCatching { effect.strengthSupported }.getOrDefault(false)) return
+        if (target > 0 && appliedVirtualizerEnabled != true) {
+            if (runCatching { effect.setStrength(target.toShort()) }.isSuccess) {
+                appliedVirtualizerStrength = target
+            }
+            if (runCatching { effect.enabled = true }.isSuccess) {
+                appliedVirtualizerEnabled = true
+            }
+        }
+        if (appliedVirtualizerEnabled == true && appliedVirtualizerStrength != target) {
+            if (runCatching { effect.setStrength(target.toShort()) }.isSuccess) {
+                appliedVirtualizerStrength = target
+            }
+        }
+    }
+
     private fun updatePeakLimiter(settings: EqSettings) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
         val needsLimiter = settings.enabled && (
