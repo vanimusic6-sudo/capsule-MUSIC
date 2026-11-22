@@ -208,7 +208,9 @@ class PlaybackAudioEffectsControllerTest {
         org.junit.Assert.assertTrue(nativeApply >= 0 && removeBoost > nativeApply)
         org.junit.Assert.assertTrue(service.contains("soundStudioTransitionFactor.value = fade"))
         org.junit.Assert.assertTrue(service.contains(
-            "videoCompanion?.setVolume(base)"))
+            "videoCompanion?.setVolume(hearingCareOutputVolume(base, ceiling))"))
+        org.junit.Assert.assertTrue(service.contains(
+            "hearingCareOutputVolume(protected, ceiling)"))
         org.junit.Assert.assertTrue(service.contains(
             "if (settings.enabled) PlaybackParameters(speed, pitch)"))
         org.junit.Assert.assertTrue(service.contains(
