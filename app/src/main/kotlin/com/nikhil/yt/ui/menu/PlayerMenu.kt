@@ -24,6 +24,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -113,6 +114,7 @@ import com.nikhil.yt.LocalPlayerConnection
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.ArtistSeparatorsKey
 import com.nikhil.yt.constants.EqualizerBandLevelsMbKey
+import com.nikhil.yt.constants.EqualizerCurveIntensityPercentKey
 import com.nikhil.yt.constants.EqualizerBassBoostEnabledKey
 import com.nikhil.yt.constants.EqualizerBassBoostStrengthKey
 import com.nikhil.yt.constants.EqualizerCustomProfilesJsonKey
@@ -129,6 +131,8 @@ import com.nikhil.yt.discovery.ExperimentalDownload
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.models.sanitizedArtistCredits
 import com.nikhil.yt.playback.EqCapabilities
+import com.nikhil.yt.playback.scaleEqBandLevels
+import com.nikhil.yt.playback.inverseScaledEqLevel
 import com.nikhil.yt.playback.EqProfile
 import com.nikhil.yt.playback.EqProfilesPayload
 import com.nikhil.yt.playback.EqualizerJson
@@ -731,6 +735,10 @@ fun EqualizerDialog(
     val (eqEnabled, setEqEnabled) = rememberPreference(EqualizerEnabledKey, defaultValue = false)
     val (selectedProfileId, setSelectedProfileId) = rememberPreference(EqualizerSelectedProfileIdKey, defaultValue = "flat")
     val (bandLevelsRaw, setBandLevelsRaw) = rememberPreference(EqualizerBandLevelsMbKey, defaultValue = "")
+    val (curveIntensity, setCurveIntensity) =
+        rememberPreference(EqualizerCurveIntensityPercentKey, defaultValue = 100)
+    var intensityLocal by rememberSaveable { mutableIntStateOf(curveIntensity.coerceIn(100, 200)) }
+    LaunchedEffect(curveIntensity) { intensityLocal = curveIntensity.coerceIn(100, 200) }
 
     val (outputGainEnabled, setOutputGainEnabled) = rememberPreference(EqualizerOutputGainEnabledKey, defaultValue = false)
     val (outputGainMb, setOutputGainMb) = rememberPreference(EqualizerOutputGainMbKey, defaultValue = 0)
@@ -743,10 +751,18 @@ fun EqualizerDialog(
 
     val (customProfilesJson, setCustomProfilesJson) = rememberPreference(EqualizerCustomProfilesJsonKey, defaultValue = "")
 
-    val caps = eqCapabilities
-    val bandCount = caps?.bandCount ?: 0
-    val minMb = caps?.minBandLevelMb ?: -1500
-    val maxMb = caps?.maxBandLevelMb ?: 1500
+    // The real Android effect is session-bound. An offline profile remains
+    // editable and is resampled onto the device's actual bands when playback begins.
+    val caps = eqCapabilities ?: EqCapabilities(
+        bandCount = 5,
+        minBandLevelMb = -1500,
+        maxBandLevelMb = 1500,
+        centerFreqHz = listOf(60, 230, 910, 3600, 14000),
+        systemPresets = emptyList(),
+    )
+    val bandCount = caps.bandCount
+    val minMb = caps.minBandLevelMb
+    val maxMb = caps.maxBandLevelMb
 
     var outputGainLocal by rememberSaveable { mutableIntStateOf(outputGainMb) }
     LaunchedEffect(outputGainMb) { outputGainLocal = outputGainMb }
@@ -1046,22 +1062,15 @@ fun EqualizerDialog(
                     }
                     Spacer(Modifier.height(12.dp))
 
-                    if (caps == null || bandCount <= 0) {
-                        EqSection(title = stringResource(R.string.equalizer)) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.fillMaxWidth().padding(18.dp),
-                            ) {
-                                Text(stringResource(R.string.eq_waiting_for_audio_session),
-                                    textAlign = TextAlign.Center,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Spacer(Modifier.height(8.dp))
-                                TextButton(onClick = openSystemEqualizer) {
-                                    Text(stringResource(R.string.eq_open_system_equalizer))
-                                }
-                            }
-                        }
-                        return@Column
+                    if (eqCapabilities == null) {
+                        Text(
+                            text = stringResource(R.string.eq_offline_edit_hint),
+                            modifier = Modifier.fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.labelMedium,
+                            textAlign = TextAlign.Center,
+                        )
                     }
 
                     EqSection(
