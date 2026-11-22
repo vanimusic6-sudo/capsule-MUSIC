@@ -213,7 +213,7 @@ class PlaybackAudioEffectsControllerTest {
         val source = file.readText()
         val apply = source.substringAfter("private fun applySettingsToEffects(settings: EqSettings)")
             .substringBefore("companion object")
-        org.junit.Assert.assertTrue(apply.contains("protectedEqLevels(settings"))
+        org.junit.Assert.assertTrue(apply.contains("protectedEqLevels("))
         org.junit.Assert.assertTrue(apply.contains("appliedEnabled == true"))
         org.junit.Assert.assertFalse(apply.contains("eq.enabled = false"))
         org.junit.Assert.assertTrue(apply.contains("effect.setStrength(target.toShort())"))

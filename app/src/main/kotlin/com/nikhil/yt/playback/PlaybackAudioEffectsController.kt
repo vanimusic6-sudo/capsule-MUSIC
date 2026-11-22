@@ -316,6 +316,7 @@ internal class PlaybackAudioEffectsController(
         }
     }
 
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.P)
     private fun nativeLimiter(active: Boolean): DynamicsProcessing.Limiter =
         DynamicsProcessing.Limiter(
             true, true, 0, 0.5f, 120f,
