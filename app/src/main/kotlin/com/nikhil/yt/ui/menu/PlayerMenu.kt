@@ -999,10 +999,8 @@ fun EqualizerDialog(
                         Switch(
                             checked = eqEnabled,
                             onCheckedChange = { enabled ->
-                                // Apply to every sound parameter, not just native EQ.
-                                playerConnection.player.playbackParameters =
-                                    if (enabled) PlaybackParameters(speed, pitch)
-                                    else PlaybackParameters(1f, 1f)
+                                // Service atomically neutralizes DSP and restores
+                                // speed/pitch under a short volume ramp.
                                 setEqEnabled(enabled)
                                 if (enabled && selectedProfileId.isBlank()) {
                                     setSelectedProfileId("manual")
