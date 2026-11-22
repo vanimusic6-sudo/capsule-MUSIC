@@ -158,12 +158,36 @@ class PlaybackAudioEffectsControllerTest {
     }
 
     @Test
+    fun normalizationCannotUndoNativeEqHeadroom() {
+        // Normalization may amplify by +3 dB. With EQ active, that gain is
+        // not allowed to override the EQ's input safety margin.
+        assertEquals(
+            0.5f, protectedEqPlaybackVolume(1.414f, 1.414f, 0.5f, 1f, true),
+            0.001f,
+        )
+        assertEquals(
+            0.5f, protectedEqPlaybackVolume(0.5f, 0.5f, 1f, 1f, true),
+            0.001f,
+        )
+        assertEquals(
+            0.8f, protectedEqPlaybackVolume(0.8f, 2f, 1f, 1f, false),
+            0.001f,
+        )
+        assertEquals(
+            0f, protectedEqPlaybackVolume(Float.NaN, 1f, 1f, 1f, true),
+            0.001f,
+        )
+    }
+
+    @Test
     fun serviceProtectsMusicButNotTheSeparateVideoAudioSession() {
         val service = listOf(
             java.io.File("src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"),
             java.io.File("app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"),
         ).first(java.io.File::isFile).readText()
         org.junit.Assert.assertTrue(service.contains("protectedEqAudioFactor(settings, eqCapabilities.value)"))
+        org.junit.Assert.assertTrue(service.contains("protectedEqPlaybackVolume("))
+        org.junit.Assert.assertTrue(service.contains("soundStudioEnabledForVolume.value = settings.enabled"))
         org.junit.Assert.assertTrue(service.contains("soundStudioTransitionFactor.value = fade"))
         org.junit.Assert.assertTrue(service.contains(
             "videoCompanion?.setVolume(base)"))

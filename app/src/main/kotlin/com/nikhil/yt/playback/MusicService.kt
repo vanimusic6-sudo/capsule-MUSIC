@@ -1090,6 +1090,7 @@ class MusicService :
     // stack into full-scale source peaks. Video has a separate audio session.
     private val soundStudioSafetyFactor = MutableStateFlow(1f)
     private val soundStudioTransitionFactor = MutableStateFlow(1f)
+    private val soundStudioEnabledForVolume = MutableStateFlow(false)
     private var previousSoundStudioSettings: EqSettings? = null
     private var videoRequestedAtMs = 0L
     val videoRenderPlayer: Player?
@@ -2238,8 +2239,11 @@ class MusicService :
         }
         combine(
             baseVolumeFlow, soundStudioSafetyFactor, soundStudioTransitionFactor,
-        ) { base, safety, transition ->
-            base to (base * safety * transition).coerceAtLeast(0f)
+            normalizeFactor, soundStudioEnabledForVolume,
+        ) { base, safety, transition, normalization, eqEnabled ->
+            base to protectedEqPlaybackVolume(
+                base, normalization, safety, transition, eqEnabled,
+            )
         }.collectLatest(scope) { (base, protectedVolume) ->
             effectiveAudioVolume = protectedVolume
             player.volume = if (videoAudioOwned || videoReturnGapActive) 0f else protectedVolume
@@ -2367,6 +2371,9 @@ class MusicService :
             }
             .distinctUntilChanged()
             .collect(scope) { (settings, speed, pitch) ->
+                // An optional loudness boost (up to +3 dB) must never undo
+                // the gain reserve required by native EQ/BassBoost.
+                soundStudioEnabledForVolume.value = settings.enabled
                 val playbackParams = if (settings.enabled) PlaybackParameters(speed, pitch)
                     else PlaybackParameters(1f, 1f)
                 val currentParams = player.playbackParameters

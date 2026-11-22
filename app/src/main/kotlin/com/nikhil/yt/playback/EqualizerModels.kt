@@ -174,6 +174,28 @@ internal fun protectedEqAudioFactor(
     return Math.pow(10.0, -reserveDb / 20.0).toFloat().coerceIn(0f, 1f)
 }
 
+/**
+ * Normalize the final player volume without giving normalization permission
+ * to eat into the EQ headroom. This calculation is cheap and runs only when
+ * the relevant flows change, not in the audio render loop.
+ */
+internal fun protectedEqPlaybackVolume(
+    baseVolume: Float,
+    normalizationFactor: Float,
+    safetyFactor: Float,
+    transitionFactor: Float,
+    eqEnabled: Boolean,
+): Float {
+    if (!baseVolume.isFinite() || !normalizationFactor.isFinite() ||
+        !safetyFactor.isFinite() || !transitionFactor.isFinite()
+    ) return 0f
+    val normalizationBoost = if (eqEnabled) normalizationFactor.coerceAtLeast(1f)
+        else 1f
+    return (baseVolume.coerceAtLeast(0f) * safetyFactor.coerceIn(0f, 1f) *
+        transitionFactor.coerceIn(0f, 1f) / normalizationBoost)
+        .coerceIn(0f, 1f)
+}
+
 internal object EqualizerJson {
     val json: Json =
         Json {
