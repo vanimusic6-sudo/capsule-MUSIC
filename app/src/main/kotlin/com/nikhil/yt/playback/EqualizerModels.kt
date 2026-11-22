@@ -95,7 +95,7 @@ internal fun protectedEqLevels(
     maxMb: Int,
 ): List<Int> {
     if (bandCount <= 0) return emptyList()
-    if (!settings.enabled) return List(bandCount) { 0 }
+    if (!settings.enabled || minMb > maxMb) return List(bandCount) { 0 }
     val boundedMax = maxMb.coerceAtMost(CAPSULE_MAX_EQ_BOOST_MB).coerceAtLeast(minMb)
     return scaleEqBandLevels(
         resampleEqLevelsByIndex(settings.bandLevelsMb, bandCount),
