@@ -1420,6 +1420,12 @@ class MusicService :
         )
     }
     private var streamRetryJob: Job? = null
+    // Queue traversal is independent from same-track CDN / extractor recovery.
+    // A rejected signed stream must never trigger a three-song auto-skip chain.
+    private var queueSkipBlockedForMediaId: String? = null
+    // The explicit "Try again" button authorizes THIS selected queue item only.
+    // It must not re-arm automatic traversal if this manual attempt fails.
+    private var manuallyRetriedSelection: Pair<String, Int>? = null
     /** Prevent an obsolete Media3 cancellation from re-preparing the same selection in a loop. */
     private var cancelledLoadRecoveredId: String? = null
     private var cancelledLoadRecoveredGeneration: Long = -1L
@@ -2631,14 +2637,21 @@ class MusicService :
         autoSkipAfterCdnExhaustion: Boolean = false,
     ) {
         val mediaId = player.currentMediaItem?.mediaId
-        val decision =
-            playbackRecoveryCoordinator.recordTerminalFailure(
-                mediaId = mediaId,
-                autoSkipEnabled =
-                    (autoSkipAfterCdnExhaustion && isNetworkConnected.value &&
-                        player.playWhenReady) ||
-                        dataStore.get(AutoSkipNextOnErrorKey, ReleasePlaybackDefaults.autoSkipOnError),
-            )
+        val manualRetry = manuallyRetriedSelection ==
+            (mediaId to player.currentMediaItemIndex)
+        val autoSkipRequested =
+            (autoSkipAfterCdnExhaustion && isNetworkConnected.value && player.playWhenReady) ||
+                dataStore.get(AutoSkipNextOnErrorKey, ReleasePlaybackDefaults.autoSkipOnError)
+        val queueSkipAllowed = mayAutoSkipAfterTerminalFailure(
+            autoSkipRequested = autoSkipRequested,
+            rejectedStream = mediaId != null && queueSkipBlockedForMediaId == mediaId,
+            manualRetry = manualRetry,
+        )
+        val decision = playbackRecoveryCoordinator.recordTerminalFailure(
+            mediaId = mediaId,
+            autoSkipEnabled = queueSkipAllowed,
+        )
+        if (manualRetry) manuallyRetriedSelection = null
 
         if (decision.circuitOpenedNow) {
             Timber.tag("MusicService").e(
@@ -3869,6 +3882,12 @@ class MusicService :
 
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         super.onMediaItemTransition(mediaItem, reason)
+        if (mediaItem?.mediaId != queueSkipBlockedForMediaId) {
+            queueSkipBlockedForMediaId = null
+        }
+        if (manuallyRetriedSelection != (mediaItem?.mediaId to player.currentMediaItemIndex)) {
+            manuallyRetriedSelection = null
+        }
         // A same-ID source refresh also starts a new preparation. Its old
         // watchdog must never charge a stale buffer sample to this selection.
         audioBufferStallWatchJob?.cancel()
@@ -4551,6 +4570,11 @@ class MusicService :
 
         val currentMediaId = player.currentMediaItem?.mediaId
         val httpStatusCode = error.httpStatusCodeOrNull()
+        if (currentMediaId != null && httpStatusCode in setOf(403, 410)) {
+            // A CDN 403/410 may still recover on this song. But if all same-song
+            // recovery fails, never advance into the next queued song.
+            queueSkipBlockedForMediaId = currentMediaId
+        }
 
         // A cancelled obsolete resolve is not a failed CDN request or a rejected
         // extraction client. Media3 can still surface it as Source error when a
@@ -5817,6 +5841,7 @@ class MusicService :
 
     fun retryCurrentFromFreshStream() {
         val mediaId = player.currentMediaItem?.mediaId ?: return
+        manuallyRetriedSelection = mediaId to player.currentMediaItemIndex
         streamRetryJob?.cancel()
         streamRetryJob = null
         playbackRecoveryCoordinator.resetRetry(mediaId)
