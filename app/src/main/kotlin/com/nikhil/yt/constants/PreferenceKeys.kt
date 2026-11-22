@@ -131,6 +131,7 @@ val ShowTagsInLibraryKey = booleanPreferencesKey("showTagsInLibrary")
 
 val EqualizerEnabledKey = booleanPreferencesKey("equalizerEnabled")
 val EqualizerBandLevelsMbKey = stringPreferencesKey("equalizerBandLevelsMb")
+val EqualizerCurveIntensityPercentKey = intPreferencesKey("equalizerCurveIntensityPercent")
 val EqualizerOutputGainEnabledKey = booleanPreferencesKey("equalizerOutputGainEnabled")
 val EqualizerOutputGainMbKey = intPreferencesKey("equalizerOutputGainMb")
 val EqualizerBassBoostEnabledKey = booleanPreferencesKey("equalizerBassBoostEnabled")
