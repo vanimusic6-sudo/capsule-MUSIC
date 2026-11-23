@@ -238,7 +238,8 @@ private fun CapsuleLyricsSourcePicker(
         horizontalAlignment = Alignment.Start,
         contentScrollable = true,
         buttons = {
-            TextButton(onClick = onDismiss) { Text("Отмена") }
+            val close = LocalCapsuleModalClose.current
+            TextButton(onClick = { close(onDismiss) }) { Text("Отмена") }
             Spacer(Modifier.width(8.dp))
             Button(onClick = { close { onSelected(draft) } }, shape = RoundedCornerShape(18.dp)) {
                 Text("Применить")
