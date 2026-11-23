@@ -107,8 +107,9 @@ internal class PlaybackAudioEffectsController(
             }
             unifiedDynamics = null
             attemptedUnifiedDynamics = false
-            if (appliedEnabled == true) {
-                runCatching { eq.enabled = false }
+            val native = equalizer
+            if (appliedEnabled == true && native != null) {
+                runCatching { native.enabled = false }
                     .onSuccess {
                         appliedEnabled = false
                         appliedBandLevels = intArrayOf()
