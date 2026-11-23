@@ -1639,7 +1639,7 @@ private fun EqSection(
 
 private fun decodeBandLevelsMb(raw: String?): List<Int> {
     if (raw.isNullOrBlank()) return emptyList()
-    return runCatching { EqualizerJson.json.decodeFromString<List<Int>>(raw) }.getOrNull() ?: emptyList()
+    return com.nikhil.yt.playback.decodeEqBandLevels(raw)
 }
 
 private fun encodeBandLevelsMb(levelsMb: List<Int>): String {
@@ -1648,7 +1648,20 @@ private fun encodeBandLevelsMb(levelsMb: List<Int>): String {
 
 private fun decodeProfilesPayload(raw: String?): EqProfilesPayload {
     if (raw.isNullOrBlank()) return EqProfilesPayload()
-    return runCatching { EqualizerJson.json.decodeFromString<EqProfilesPayload>(raw) }.getOrNull() ?: EqProfilesPayload()
+    if (raw.length > 65536) return EqProfilesPayload()
+    val parsed = runCatching { EqualizerJson.json.decodeFromString<EqProfilesPayload>(raw) }
+        .getOrNull() ?: return EqProfilesPayload()
+    return parsed.copy(profiles = parsed.profiles.take(24).map { profile ->
+        profile.copy(
+            id = profile.id.take(80),
+            name = profile.name.take(80),
+            bandCenterFreqHz = profile.bandCenterFreqHz.take(64),
+            bandLevelsMb = profile.bandLevelsMb.take(64).map { it.coerceIn(-1500, 1500) },
+            outputGainMb = profile.outputGainMb.coerceIn(-1500, 0),
+            bassBoostStrength = profile.bassBoostStrength.coerceIn(0, CAPSULE_MAX_BASS_STRENGTH),
+            virtualizerStrength = 0,
+        )
+    })
 }
 
 private fun encodeProfilesPayload(payload: EqProfilesPayload): String {
@@ -1659,7 +1672,7 @@ private fun resampleLevelsByIndex(levelsMb: List<Int>, targetCount: Int): List<I
     if (targetCount <= 0) return emptyList()
     if (levelsMb.isEmpty()) return List(targetCount) { 0 }
     if (levelsMb.size == targetCount) return levelsMb
-    if (targetCount == 1) return listOf(levelsMb.sum() / levelsMb.size)
+    if (targetCount == 1) return listOf((levelsMb.sumOf { it.toLong() } / levelsMb.size).toInt())
 
     val lastIndex = levelsMb.lastIndex.toFloat().coerceAtLeast(1f)
     return List(targetCount) { i ->
@@ -1669,7 +1682,7 @@ private fun resampleLevelsByIndex(levelsMb: List<Int>, targetCount: Int): List<I
         val t = (pos - lo.toFloat()).coerceIn(0f, 1f)
         val a = levelsMb[lo]
         val b = levelsMb[hi]
-        (a + ((b - a) * t)).toInt()
+        (a.toDouble() + (b.toDouble() - a.toDouble()) * t).toInt()
     }
 }
 

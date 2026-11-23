@@ -3954,7 +3954,7 @@ class MusicService :
 
     private fun decodeBandLevelsMb(raw: String?): List<Int> {
         if (raw.isNullOrBlank()) return emptyList()
-        return runCatching { EqualizerJson.json.decodeFromString<List<Int>>(raw) }.getOrNull() ?: emptyList()
+        return decodeEqBandLevels(raw)
     }
 
     private fun encodeBandLevelsMb(levelsMb: List<Int>): String {
@@ -3973,7 +3973,7 @@ class MusicService :
             virtualizerEnabled = false, // Old presets cannot enable a second audio effect.
             virtualizerStrength = 0,
             intensityPercent = (prefs[EqualizerCurveIntensityPercentKey] ?: 100).coerceIn(100, 200),
-            musicalBalanceEnabled = prefs[EqualizerMusicalBalanceKey] ?: true,
+            musicalBalanceEnabled = true, // Old unsafe 'off' preference is ignored.
         )
     }
 

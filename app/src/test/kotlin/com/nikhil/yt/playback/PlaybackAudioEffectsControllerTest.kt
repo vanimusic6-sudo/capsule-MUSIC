@@ -35,6 +35,17 @@ class PlaybackAudioEffectsControllerTest {
         assertEquals(emptyList<Int>(),protectedEqLevels(eq,0,-1500,1500))
     }
 
+    @Test fun malformedImportOrInterpolationCannotOverflowOrAllocateUnboundedCurves() {
+        assertEquals(emptyList<Int>(), decodeEqBandLevels("[" + "1,".repeat(9000) + "0]"))
+        assertEquals(listOf(1500,-1500), decodeEqBandLevels("[2147483647,-2147483648]"))
+        assertEquals(64, decodeEqBandLevels("[" + List(256) { "100" }.joinToString(",") + "]").size)
+        assertEquals(listOf(0), resampleEqLevelsByIndex(listOf(Int.MIN_VALUE, Int.MAX_VALUE),1))
+        val interpolated = resampleEqLevelsByIndex(listOf(Int.MIN_VALUE, Int.MAX_VALUE),3)
+        assertEquals(3, interpolated.size)
+        assertTrue(interpolated[1] in -10..10)
+        assertEquals(32, resampleEqLevelsByIndex(listOf(1,2),1024).size)
+    }
+
     @Test fun aNativeFallbackNeverActivatesAnExtraLoudnessEngine() {
         val source=File("src/main/kotlin/com/nikhil/yt/playback/PlaybackAudioEffectsController.kt").readText()
         assertFalse(source.contains("LoudnessEnhancer("))

@@ -162,18 +162,18 @@ internal fun resampleEqLevelsByIndex(
     targetCount: Int,
 ): List<Int> {
     if (targetCount <= 0) return emptyList()
-    if (levelsMb.isEmpty()) return List(targetCount) { 0 }
-    if (levelsMb.size == targetCount) return levelsMb
-    if (targetCount == 1) return listOf(levelsMb.sum() / levelsMb.size)
+    if (levelsMb.isEmpty()) return List(targetCount.coerceAtMost(32)) { 0 }
+    if (levelsMb.size == targetCount && targetCount <= 32) return levelsMb
+    if (targetCount == 1) return listOf((levelsMb.sumOf { it.toLong() } / levelsMb.size).toInt())
 
     val lastIndex = levelsMb.lastIndex.toFloat().coerceAtLeast(1f)
-    return List(targetCount) { index ->
-        val position = index.toFloat() * lastIndex / (targetCount - 1).toFloat()
+    return List(targetCount.coerceAtMost(32)) { index ->
+        val position = index.toFloat() * lastIndex / (targetCount.coerceAtMost(32) - 1).toFloat()
         val lower = kotlin.math.floor(position).toInt().coerceIn(0, levelsMb.lastIndex)
         val upper = kotlin.math.ceil(position).toInt().coerceIn(0, levelsMb.lastIndex)
         val fraction = (position - lower.toFloat()).coerceIn(0f, 1f)
         val start = levelsMb[lower]
         val end = levelsMb[upper]
-        (start + ((end - start) * fraction)).toInt()
+        (start.toDouble() + (end.toDouble() - start.toDouble()) * fraction).toInt()
     }
 }

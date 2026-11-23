@@ -191,6 +191,13 @@ internal fun protectedEqPlaybackVolume(
         .coerceIn(0f, 1f)
 }
 
+/** Import/profile parsing is untrusted input: bound it before it reaches DSP state. */
+internal fun decodeEqBandLevels(raw: String?): List<Int> {
+    if (raw.isNullOrBlank() || raw.length > 8192) return emptyList()
+    return runCatching { EqualizerJson.json.decodeFromString<List<Int>>(raw) }
+        .getOrNull()?.take(64)?.map { it.coerceIn(-1500, 1500) } ?: emptyList()
+}
+
 internal object EqualizerJson {
     val json: Json =
         Json {
