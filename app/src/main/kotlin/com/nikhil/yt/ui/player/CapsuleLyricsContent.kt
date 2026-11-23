@@ -214,27 +214,50 @@ internal fun CapsuleLyricsBackdropLayer(
                         // Unlike the old one-color vertical brush, this keeps
                         // the artwork's real left/right colours and soft joins.
                         val field = tone.colorField?.takeIf { tone.ready }
-                        var preparedBackground by remember(mediaMetadata.id, field, artworkAspectRatio) {
-                            mutableStateOf<ImageBitmap?>(null)
-                        }
+                        var retainedBackground by remember { mutableStateOf<ImageBitmap?>(null) }
+                        var incomingBackground by remember { mutableStateOf<ImageBitmap?>(null) }
+                        val fieldBlend = remember { Animatable(1f) }
+                        // Never reset the visible bitmap on media changes: keep it on-screen
+                        // until the next CPU-rendered gradient has actually finished.
                         LaunchedEffect(mediaMetadata.id, field, artworkAspectRatio) {
-                            preparedBackground = field?.let {
-                                withContext(Dispatchers.Default) {
-                                    capsuleImmersiveImageBackdropBitmap(it, 0.52f)
+                            incomingBackground = null
+                            if (field != null) {
+                                val prepared = withContext(Dispatchers.Default) {
+                                    capsuleImmersiveImageBackdropBitmap(field, 0.52f)
+                                }
+                                if (retainedBackground == null) {
+                                    retainedBackground = prepared
+                                    fieldBlend.snapTo(1f)
+                                } else {
+                                    incomingBackground = prepared
+                                    fieldBlend.snapTo(0f)
+                                    fieldBlend.animateTo(1f, tween(540, easing = CapsuleStandardEasing))
+                                    retainedBackground = prepared
+                                    incomingBackground = null
                                 }
                             }
                         }
-                        if (preparedBackground == null) {
-                            ImmersiveLyricsColoring(if (tone.ready) tone.edge else IMMERSIVE_NEUTRAL_COLOR)
+                        if (retainedBackground == null) {
+                            ImmersiveLyricsColoring(
+                                if (tone.ready) tone.edge else IMMERSIVE_NEUTRAL_COLOR,
+                            )
                         } else {
-                            // Don't animate the obsolete single-colour gradient
-                            // beneath an entirely opaque prepared spatial field.
                             Image(
-                                bitmap = requireNotNull(preparedBackground),
+                                bitmap = requireNotNull(retainedBackground),
                                 contentDescription = null,
                                 contentScale = ContentScale.FillBounds,
                                 modifier = Modifier.fillMaxSize(),
                             )
+                            incomingBackground?.let { incoming ->
+                                Image(
+                                    bitmap = incoming,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.FillBounds,
+                                    modifier = Modifier.fillMaxSize().graphicsLayer {
+                                        alpha = fieldBlend.value
+                                    },
+                                )
+                            }
                         }
                     }
                     is CapsuleLyricsBackdrop.PlayerTheme -> PlayerBackground(
@@ -248,7 +271,9 @@ internal fun CapsuleLyricsBackdropLayer(
                 }
             }
         }
-        if (instantBackdrop) {
+        // Retained immersive image already has its own transition, so avoid
+        // blending two entire fullscreen backgrounds on song handover.
+        if (instantBackdrop || lyricsBackdrop == CapsuleLyricsBackdrop.ImmersiveColoring) {
             renderBackdrop(lyricsBackdrop)
         } else {
             Crossfade(
