@@ -978,4 +978,8 @@
     <string name="hearing_care_override_active">Временное исключение активно. Нажмите, чтобы вернуть защиту раньше.</string>
     <string name="eq_clean_headroom">Чистый звук · автозапас перед EQ: %1$s</string>
     <string name="eq_clean_headroom_description">Частотная коррекция остаётся сильной. Запас снижает цифровой хрип, но не измеряет нагрузку на динамик.</string>
+    <string name="eq_engine_unified">DSP активен: DynamicsProcessing · чистое предусиление и лимитер</string>
+    <string name="eq_engine_native">DSP: запасной эквалайзер устройства · запас громкости включён</string>
+    <string name="eq_engine_unavailable">Эквалайзер недоступен в этой аудиосессии. Лишнее снижение громкости отключено.</string>
+    <string name="eq_engine_waiting">DSP: ожидает активную аудиосессию</string>
 </resources>
