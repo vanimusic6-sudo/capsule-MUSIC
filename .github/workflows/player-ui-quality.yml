@@ -26,6 +26,9 @@ on:
       - 'app/src/main/kotlin/com/nikhil/yt/lyrics/**'
       - 'app/src/main/kotlin/com/nikhil/yt/viewmodels/LyricsMenuViewModel.kt'
       - 'app/src/main/kotlin/com/nikhil/yt/constants/LyricsProviderOrder.kt'
+      - 'app/src/main/kotlin/com/nikhil/yt/ui/component/BottomSheetMenu.kt'
+      - 'app/src/main/kotlin/com/nikhil/yt/ui/screens/settings/ContentSettings.kt'
+      - 'app/src/test/kotlin/com/nikhil/yt/constants/LyricsProviderOrderTest.kt'
       - 'app/src/main/kotlin/com/nikhil/yt/lyrics/LyricsPreloadManager.kt'
       - '.github/workflows/player-ui-quality.yml'
   pull_request:
@@ -90,6 +93,7 @@ jobs:
           --tests 'com.nikhil.yt.ui.player.CapsuleLyricsThemeTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleLyricsPaletteRecoveryTest'
           --tests 'com.nikhil.yt.ui.LyricsProviderOrderTest'
+          --tests 'com.nikhil.yt.constants.LyricsProviderOrderTest'
           --tests 'com.nikhil.yt.lyrics.SimpMusicSourceRegressionTest'
           --tests 'com.nikhil.yt.lyrics.SimpMusicApiContractTest'
           --tests 'com.nikhil.yt.lyrics.LyricsPlusResponseContractTest'
