@@ -132,90 +132,54 @@ fun LyricsMenu(
         }
 
     val isNetworkAvailable by viewModel.isNetworkAvailable.collectAsState()
+    var searchSourceId by rememberSaveable { mutableStateOf<String?>(null) }
+    var synchronizedOnly by rememberSaveable { mutableStateOf(false) }
 
     if (showSearchDialog) {
-        DefaultDialog(
-            modifier = Modifier.verticalScroll(rememberScrollState(),
-            flingBehavior = rememberCapsuleFlingBehavior(),
-            overscrollEffect = null),
+        CapsuleLyricsSearchDialog(
+            titleField = titleField,
+            onTitleChange = onTitleFieldChange,
+            artistField = artistField,
+            onArtistChange = onArtistFieldChange,
+            sourceId = searchSourceId,
+            onSourceChange = { searchSourceId = it },
+            syncedOnly = synchronizedOnly,
+            onSyncedOnlyChange = { synchronizedOnly = it },
             onDismiss = { showSearchDialog = false },
-            icon = {
-                Icon(
-                    painter = painterResource(R.drawable.search),
-                    contentDescription = null
+            onSearch = {
+                // Dismiss search BEFORE displaying the results; avoid stacked
+                // full-window scrims and stale keyboard/focus owners.
+                showSearchDialog = false
+                viewModel.search(
+                    searchMediaMetadata.id,
+                    titleField.text.trim(),
+                    artistField.text.trim(),
+                    searchMediaMetadata.duration,
+                    providerId = searchSourceId,
+                    synchronizedOnly = synchronizedOnly,
                 )
-            },
-            title = { Text(stringResource(R.string.search_lyrics)) },
-            buttons = {
-                TextButton(
-                    onClick = { showSearchDialog = false },
-                ) {
-                    Text(stringResource(android.R.string.cancel))
+                showSearchResultDialog = true
+                if (!isNetworkAvailable) {
+                    Toast.makeText(context, resources.getString(R.string.error_no_internet), Toast.LENGTH_SHORT).show()
                 }
-
-                Spacer(Modifier.width(8.dp))
-
-                TextButton(
-                    onClick = {
-                        showSearchDialog = false
-                        onDismiss()
-                        try {
-                            context.startActivity(
-                                Intent(Intent.ACTION_WEB_SEARCH).apply {
-                                    putExtra(
-                                        SearchManager.QUERY,
-                                        "${artistField.text} ${titleField.text} lyrics"
-                                    )
-                                },
+            },
+            onWebSearch = {
+                showSearchDialog = false
+                onDismiss()
+                try {
+                    context.startActivity(
+                        Intent(Intent.ACTION_WEB_SEARCH).apply {
+                            putExtra(
+                                SearchManager.QUERY,
+                                "${artistField.text} ${titleField.text} lyrics"
                             )
-                        } catch (error: Exception) {
-                            reportRecoverableException("LyricsMenu", "open web lyrics search", error)
-                        }
-                    },
-                ) {
-                    Text(stringResource(R.string.search_online))
-                }
-
-                Spacer(Modifier.width(8.dp))
-
-                TextButton(
-                    onClick = {
-                        // Try search regardless of network status indicator
-                        // as it might be a false negative
-                        viewModel.search(
-                            searchMediaMetadata.id,
-                            titleField.text,
-                            artistField.text,
-                            searchMediaMetadata.duration
-                        )
-                        showSearchResultDialog = true
-                        
-                        // Show warning only if network is definitely unavailable
-                        if (!isNetworkAvailable) {
-                            Toast.makeText(context, resources.getString(R.string.error_no_internet), Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                ) {
-                    Text(stringResource(android.R.string.ok))
+                        },
+                    )
+                } catch (error: Exception) {
+                    reportRecoverableException("LyricsMenu", "open web lyrics search", error)
                 }
             },
-        ) {
-            OutlinedTextField(
-                value = titleField,
-                onValueChange = onTitleFieldChange,
-                singleLine = true,
-                label = { Text(stringResource(R.string.song_title)) },
-            )
-
-            Spacer(Modifier.height(12.dp))
-
-            OutlinedTextField(
-                value = artistField,
-                onValueChange = onArtistFieldChange,
-                singleLine = true,
-                label = { Text(stringResource(R.string.song_artists)) },
-            )
-        }
+        )
     }
 
     if (showSearchResultDialog) {
@@ -227,7 +191,10 @@ fun LyricsMenu(
         }
 
         ListDialog(
-            onDismiss = { showSearchResultDialog = false },
+            onDismiss = {
+                showSearchResultDialog = false
+                viewModel.cancelSearch()
+            },
         ) {
             itemsIndexed(results) { index, result ->
                 Row(

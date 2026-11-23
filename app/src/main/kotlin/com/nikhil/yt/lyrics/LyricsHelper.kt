@@ -161,6 +161,8 @@ constructor(
         songArtists: String,
         songAlbum: String?,
         duration: Int,
+        providerId: String? = null,
+        synchronizedOnly: Boolean = false,
         callback: (LyricsResult) -> Unit,
     ) {
         currentLyricsJob?.cancel()
@@ -173,7 +175,11 @@ constructor(
                 return
             }
 
-            val providers = orderedProviders()
+            // Filter BEFORE starting requests: choosing one provider must not
+            // initiate hidden calls to other remote services.
+            val providers = orderedProviders().filter { candidate ->
+                providerId == null || providersById[providerId] === candidate
+            }
             val results = mutableListOf<LyricsResult>()
             supervisorScope {
                 providers.map { provider ->
@@ -190,7 +196,9 @@ constructor(
                                 provider.getAllLyrics(
                                     mediaId, songTitle, songArtists, songAlbum, duration,
                                 ) lyricsCallback@{ lyrics ->
-                                    if (!isMeaningfulLyrics(lyrics)) return@lyricsCallback
+                                    if (!isMeaningfulLyrics(lyrics) ||
+                                        (synchronizedOnly && lyricsSyncQuality(lyrics) == LyricsSyncQuality.PLAIN)
+                                    ) return@lyricsCallback
                                     val item = LyricsResult(provider.name, lyrics)
                                     synchronized(results) {
                                         if (results.none {

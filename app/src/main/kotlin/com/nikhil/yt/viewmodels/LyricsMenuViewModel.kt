@@ -65,6 +65,8 @@ constructor(
         title: String,
         artist: String,
         duration: Int,
+        providerId: String? = null,
+        synchronizedOnly: Boolean = false,
     ) {
         job?.cancel()
         val generation = ++searchGeneration
@@ -72,7 +74,11 @@ constructor(
         isLoading.value = true
         job = viewModelScope.launch(Dispatchers.IO) {
             try {
-                lyricsHelper.getAllLyrics(mediaId, title, artist, null, duration) { result ->
+                lyricsHelper.getAllLyrics(
+                    mediaId, title, artist, null, duration,
+                    providerId = providerId,
+                    synchronizedOnly = synchronizedOnly,
+                ) { result ->
                     // Discard an old, late source result if a new track/search is active.
                     if (generation == searchGeneration) {
                         results.update { current ->
