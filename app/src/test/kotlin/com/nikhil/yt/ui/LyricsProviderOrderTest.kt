@@ -25,10 +25,10 @@ class LyricsProviderOrderTest {
 
     @Test fun oldFiveAndSevenSourceSettingsMigrate() {
         val five = "BETTER_LYRICS_PORTATO,SIMPMUSIC,LYRICS_PLUS,LRCLIB,YOUTUBE"
-        val seven = "SIMPMUSIC,PAXSENIX_APPLE_MUSIC,BETTER_LYRICS_PORTATO," +
+        val oldSeven = "SIMPMUSIC,PAXSENIX_APPLE_MUSIC,BETTER_LYRICS_PORTATO," +
             "LYRICS_PLUS,LRCLIB,KUGOU,YOUTUBE"
         assertEquals(seven, LyricsProviderOrder.resolve(five))
-        assertEquals(seven, LyricsProviderOrder.resolve(seven))
+        assertEquals(seven, LyricsProviderOrder.resolve(oldSeven))
     }
 
     @Test fun retiredSourcesAreAbsentAndPlainYoutubeStaysLast() {

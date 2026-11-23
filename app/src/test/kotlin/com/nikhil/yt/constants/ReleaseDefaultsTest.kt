@@ -39,18 +39,13 @@ class ReleaseDefaultsTest {
         assertTrue(ReleasePlaybackDefaults.pauseOnMute)
         assertFalse("Never claim hardware support without an actual format and audio route",
             ReleasePlaybackDefaults.audioOffloadUntilVerified)
-        assertEquals(
-            listOf(
-                AudioClientOrder.WEB_REMIX,
-                AudioClientOrder.VISIONOS,
-                AudioClientOrder.VISIONOS_0_1,
-                AudioClientOrder.TVHTML5_SIMPLY,
-                AudioClientOrder.WEB_EMBEDDED,
-                AudioClientOrder.WEB_CREATOR,
-            ),
-            AudioClientOrder.resolve(null, AudioStreamPolicy.VISIONOS),
-        )
-        assertEquals(6, AudioClientOrder.resolve(null, AudioStreamPolicy.VISIONOS).distinct().size)
+        val resolved = AudioClientOrder.resolve(null, AudioStreamPolicy.VISIONOS)
+        // First use the four fast profiles, but retain every compatible
+        // fallback client in the runtime order.
+        assertEquals(AudioClientOrder.releaseDefaultOrder,
+            resolved.take(AudioClientOrder.releaseDefaultOrder.size))
+        assertEquals(AudioClientOrder.supportedProfiles.toSet(), resolved.toSet())
+        assertEquals(6, resolved.distinct().size)
         assertEquals(CapsuleVideoQuality.AUTO, CapsuleVideoQuality.valueOf("AUTO"))
     }
 
@@ -121,8 +116,10 @@ class ReleaseDefaultsTest {
     @Test fun manualClientAndProviderReordersRoundTripWithoutReset() {
         val audio = AudioClientOrder.releaseDefaultOrder.reversed()
         val lyrics = LyricsProviderOrder.supportedProviders.reversed()
-        assertEquals(audio, AudioClientOrder.resolve(
-            AudioClientOrder.encode(audio), AudioStreamPolicy.VISIONOS))
+        val actualAudio = AudioClientOrder.resolve(
+            AudioClientOrder.encode(audio), AudioStreamPolicy.VISIONOS)
+        assertEquals(audio, actualAudio.take(audio.size))
+        assertEquals(AudioClientOrder.supportedProfiles.toSet(), actualAudio.toSet())
         assertEquals(lyrics, LyricsProviderOrder.resolve(LyricsProviderOrder.encode(lyrics)))
     }
 }

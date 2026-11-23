@@ -131,7 +131,12 @@ class PlayerTransitionArchitectureTest {
         assertTrue(player.contains("instantBackdrop = true"))
         assertFalse(player.contains("lipShade"))
         val backdrop = source("com/nikhil/yt/ui/player/CapsuleLyricsContent.kt")
-        assertTrue(backdrop.contains("if (instantBackdrop)"))
+        // Immersion must paint one stable image while the next artwork
+        // prepares; running an outer fullscreen crossfade flashes neutrals.
+        assertTrue(backdrop.contains(
+            "if (instantBackdrop || lyricsBackdrop == CapsuleLyricsBackdrop.ImmersiveColoring)"))
+        assertTrue(backdrop.contains("var retainedBackground by remember"))
+        assertTrue(backdrop.contains("fieldBlend.snapTo(0f)"))
         assertTrue(backdrop.contains("renderBackdrop(lyricsBackdrop)"))
         assertFalse(player.contains("val recoil = if (showLyrics)"))
         assertFalse(player.contains("capsuleLyricsRetreat("))
