@@ -43,16 +43,23 @@ internal fun capsuleUnifiedEqLevels(
     settings: EqSettings,
     capabilities: EqCapabilities,
 ): List<Int> {
+    // Integrate the extra BassBoost contribution BEFORE the musical guard.
+    // Otherwise BassBoost added AFTER smoothing could recreate a harsh
+    // low-band vs low-mid contrast even with Musical Balance enabled.
+    val addBass = settings.enabled && settings.bassBoostEnabled &&
+        settings.bassBoostStrength > 0
+    val rawSettings = if (addBass && settings.musicalBalanceEnabled)
+        settings.copy(musicalBalanceEnabled = false) else settings
     val levels = protectedEqLevels(
-        settings, capabilities.bandCount,
+        rawSettings, capabilities.bandCount,
         capabilities.minBandLevelMb, capabilities.maxBandLevelMb,
         capabilities.centerFreqHz,
     )
-    if (!settings.enabled || !settings.bassBoostEnabled) return levels
+    if (!addBass) return levels
     val bassBoostMb = (settings.bassBoostStrength
         .coerceIn(0, CAPSULE_MAX_BASS_STRENGTH) * 250 /
         CAPSULE_MAX_BASS_STRENGTH)
-    return levels.mapIndexed { index, original ->
+    val withBass = levels.mapIndexed { index, original ->
         val freq = capabilities.centerFreqHz.getOrNull(index) ?: 0
         val isBass = if (freq <= 0) index == 0 else freq <= 120
         if (isBass) (original + bassBoostMb).coerceAtMost(
@@ -60,6 +67,9 @@ internal fun capsuleUnifiedEqLevels(
         )
         else original
     }
+    return if (settings.musicalBalanceEnabled)
+        capsuleMusicalEqLevels(withBass, capabilities.centerFreqHz)
+    else withBass
 }
 
 internal fun capsuleNeedsBassDynamics(
