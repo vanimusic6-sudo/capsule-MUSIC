@@ -117,6 +117,7 @@ internal fun CapsuleEqualizerGraph(
     onFinished: (Int, Int) -> Unit,
     modifier: Modifier = Modifier,
     graphHeight: Dp = 214.dp,
+    editable: Boolean = true,
 ) {
     val count = minOf(frequenciesHz.size, levelsMb.size)
     if (count <= 0) return
@@ -135,7 +136,7 @@ internal fun CapsuleEqualizerGraph(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(graphHeight)
-                .pointerInput(count, minMb, maxMb, bandMaxLevelsMb) {
+                .then(if (editable) Modifier.pointerInput(count, minMb, maxMb, bandMaxLevelsMb) {
                     val inset = pad.toPx()
                     // Claim the gesture immediately on the graph. Waiting for
                     // drag touch-slop let the parent verticalScroll steal it,
@@ -171,7 +172,7 @@ internal fun CapsuleEqualizerGraph(
                         }
                         finish(band, level)
                     }
-                }
+                } else Modifier)
         ) {
             val inset = pad.toPx()
             val innerW = (size.width - inset * 2f).coerceAtLeast(1f)

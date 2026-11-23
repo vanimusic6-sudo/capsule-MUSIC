@@ -4010,6 +4010,7 @@ class MusicService :
         if (preset == null && !manual && !neutral) return
         ioScope.launch {
             dataStore.edit { prefs ->
+                val previousId = prefs[EqualizerSelectedProfileIdKey]
                 prefs[EqualizerSelectedProfileIdKey] = id
                 prefs[EqualizerEnabledKey] = (preset != null || manual)
                 if (manual) {
@@ -4021,8 +4022,11 @@ class MusicService :
                 // independent boost, virtualizer or makeup-gain preferences.
                 prefs[EqualizerBassBoostEnabledKey] = false
                 prefs[EqualizerOutputGainEnabledKey] = false
-                // An old 200% curve must never jump in intensity after migration.
-                prefs[EqualizerCurveIntensityPercentKey] = 100
+                // Never import legacy 200% strength on a newly selected mode.
+                // But preserve the user's strength while editing the same curve.
+                if (id != previousId) {
+                    prefs[EqualizerCurveIntensityPercentKey] = 100
+                }
             }
         }
     }

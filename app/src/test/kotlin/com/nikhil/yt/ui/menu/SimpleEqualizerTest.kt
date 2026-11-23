@@ -22,6 +22,8 @@ class SimpleEqualizerTest {
         assertTrue(dialog.contains("Switch("))
         assertTrue(dialog.contains("eq_curve_intensity"))
         assertTrue(dialog.contains("eq_clean_headroom"))
+        assertTrue(dialog.contains("editable = eqEnabled && caps != null"))
+        assertTrue(dialog.contains("inverseScaledEqLevel("))
         assertTrue(dialog.indexOf("CapsuleEqualizerGraph(") <
             dialog.indexOf("CapsuleEqPresets.all.chunked(3)"))
         assertFalse(dialog.contains("setVirtualizerEnabled("))

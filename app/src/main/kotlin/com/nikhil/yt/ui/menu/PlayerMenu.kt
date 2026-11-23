@@ -809,8 +809,15 @@ fun EqualizerDialog(
         }
         minOf(maxMb, ceiling)
     }
-    val corrected = requested.size == applied.size &&
-        requested.zip(applied).any { (a,b) -> abs(a-b) >= 25 }
+    // Render the intensity-scaled request, not an unscaled profile.
+    // The dashed line shows what the Android DSP actually receives.
+    val shown = scaleEqBandLevels(
+        requested, intensity, preview.minBandLevelMb, preview.maxBandLevelMb,
+    ).mapIndexed { i, gain ->
+        gain.coerceIn(minMb, ceilings[i])
+    }
+    val corrected = shown.size == applied.size &&
+        shown.zip(applied).any { (a,b) -> abs(a-b) >= 25 }
 
     fun choose(id: String) {
         draft = null
@@ -910,7 +917,7 @@ fun EqualizerDialog(
                         }
                         CapsuleEqualizerGraph(
                             frequenciesHz = preview.centerFreqHz,
-                            levelsMb = requested,
+                            levelsMb = shown,
                             minMb = minMb,
                             maxMb = maxMb,
                             bandMaxLevelsMb = ceilings,
@@ -920,19 +927,26 @@ fun EqualizerDialog(
                             onLevelChanged = { band, gain ->
                                 if (band in 0 until n && caps != null) {
                                     val next = (draft ?: requested).toMutableList()
-                                    next[band] = gain
+                                    next[band] = inverseScaledEqLevel(
+                                        gain, intensity,
+                                        preview.minBandLevelMb, preview.maxBandLevelMb,
+                                    ).coerceIn(-1500,1500)
                                     draft = next
                                 }
                             },
                             onFinished = { band, gain ->
                                 if (band in 0 until n && caps != null) {
                                     val next = (draft ?: requested).toMutableList()
-                                    next[band] = gain
+                                    next[band] = inverseScaledEqLevel(
+                                        gain, intensity,
+                                        preview.minBandLevelMb, preview.maxBandLevelMb,
+                                    ).coerceIn(-1500,1500)
                                     draft = next
                                     service.selectSoundVersion("adaptive:manual", next)
                                 }
                             },
                             graphHeight = graphHeight,
+                            editable = eqEnabled && caps != null,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp),
                         )
                         if (caps == null) {
