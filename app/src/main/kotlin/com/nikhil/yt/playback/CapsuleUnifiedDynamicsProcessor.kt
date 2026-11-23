@@ -1,9 +1,8 @@
 /*
- * Capsule MUSIC — Android 9+ unified, session-local dynamics path.
- * Original implementation for this GPL-3.0 project.
- *
- * This is a sample-peak limiter, NOT an oversampled true-peak limiter.
- * It cannot measure the temperature or physical excursion of speakers.
+ * Capsule MUSIC — a single ordered tone processor, GPL-3.0.
+ * Signal: input trim -> pre-EQ -> Android sample-peak limiter.
+ * No automatic multiband compression; no separate boost effect.
+ * Digital headroom is not equivalent to acoustic hearing safety.
  */
 package com.nikhil.yt.playback
 
@@ -13,189 +12,118 @@ import androidx.annotation.RequiresApi
 import kotlin.math.max
 import kotlin.math.sqrt
 
-/** Keep DPE cutoff frequencies strictly increasing and within the audible band. */
 internal fun capsuleDspCutoffsHz(centersHz: List<Int>, count: Int): List<Float> {
     if (count <= 0) return emptyList()
-    val countSafe = count.coerceAtMost(32)
-    val fallback = List(countSafe) { band ->
-        60.0 * Math.pow(14000.0 / 60.0, band.toDouble() / (countSafe - 1).coerceAtLeast(1))
+    val n = count.coerceAtMost(32)
+    val centers = List(n) { i ->
+        val fallback = 60.0 * Math.pow(14000.0 / 60.0,
+            i.toDouble() / (n - 1).coerceAtLeast(1))
+        (centersHz.getOrNull(i)?.takeIf { it in 20..20000 }?.toDouble()
+            ?: fallback).coerceIn(30.0, 18000.0)
     }
-    val centers = List(countSafe) { band ->
-        (centersHz.getOrNull(band)?.takeIf { it > 0 }?.toDouble()
-            ?: fallback[band]).coerceIn(30.0, 18000.0)
-    }
-    val result = mutableListOf<Float>()
     var previous = 25.0
-    for (band in 0 until countSafe) {
-        val proposed = if (band == countSafe - 1) 20000.0 else
-            sqrt(centers[band] * centers[band + 1])
+    return List(n) { i ->
+        val proposed = if (i == n - 1) 20000.0 else sqrt(centers[i] * centers[i+1])
         val cutoff = max(previous + 1.0, proposed).coerceAtMost(
-            20000.0 - (countSafe - band - 1)
-        )
-        result.add(cutoff.toFloat())
+            20000.0 - (n - i - 1))
         previous = cutoff
+        cutoff.toFloat()
     }
-    return result
 }
 
-/** BassBoost becomes controlled low-band EQ boost, not a second audio effect. */
+/** Bass is part of the EQ contour; never apply a second amplifier. */
 internal fun capsuleUnifiedEqLevels(
-    settings: EqSettings,
-    capabilities: EqCapabilities,
+    settings: EqSettings, capabilities: EqCapabilities,
 ): List<Int> {
-    // Integrate the extra BassBoost contribution BEFORE the musical guard.
-    // Otherwise BassBoost added AFTER smoothing could recreate a harsh
-    // low-band vs low-mid contrast even with Musical Balance enabled.
-    val addBass = settings.enabled && settings.bassBoostEnabled &&
-        settings.bassBoostStrength > 0
-    val rawSettings = if (addBass && settings.musicalBalanceEnabled)
-        settings.copy(musicalBalanceEnabled = false) else settings
+    if (!settings.enabled) return List(capabilities.bandCount.coerceAtLeast(0)) { 0 }
     val levels = protectedEqLevels(
-        rawSettings, capabilities.bandCount,
-        capabilities.minBandLevelMb, capabilities.maxBandLevelMb,
-        capabilities.centerFreqHz,
+        settings, capabilities.bandCount, capabilities.minBandLevelMb,
+        capabilities.maxBandLevelMb, capabilities.centerFreqHz,
     )
-    if (!addBass) return levels
-    val bassBoostMb = (settings.bassBoostStrength
-        .coerceIn(0, CAPSULE_MAX_BASS_STRENGTH) * 250 /
-        CAPSULE_MAX_BASS_STRENGTH)
-    val withBass = levels.mapIndexed { index, original ->
-        val freq = capabilities.centerFreqHz.getOrNull(index) ?: 0
-        val isBass = if (freq <= 0) index == 0 else freq <= 120
-        if (isBass) (original + bassBoostMb).coerceAtMost(
-            CAPSULE_MAX_LOW_BASS_BOOST_MB + 50,
-        )
-        else original
+    if (!settings.bassBoostEnabled || settings.bassBoostStrength <= 0) return levels
+    val bass = settings.bassBoostStrength.coerceIn(0, CAPSULE_MAX_BASS_STRENGTH)
+        * 150 / CAPSULE_MAX_BASS_STRENGTH
+    val updated = levels.mapIndexed { index, value ->
+        val hz = capabilities.centerFreqHz.getOrNull(index)?.takeIf { it > 0 }
+            ?: if (index == 0) 60 else 1000
+        when {
+            hz <= 120 -> (value + bass).coerceAtMost(CAPSULE_MAX_LOW_BASS_BOOST_MB)
+            hz <= 250 -> (value + bass / 2).coerceAtMost(CAPSULE_MAX_EQ_BOOST_MB)
+            else -> value
+        }
     }
-    return if (settings.musicalBalanceEnabled)
-        capsuleMusicalEqLevels(withBass, capabilities.centerFreqHz)
-    else withBass
+    return capsuleMusicalEqLevels(updated, capabilities.centerFreqHz).map {
+        it.coerceIn(capabilities.minBandLevelMb, capabilities.maxBandLevelMb)
+    }
 }
 
+/** Compression changes the envelope of the song, so this stage is retired. */
 internal fun capsuleNeedsBassDynamics(
-    settings: EqSettings,
-    capabilities: EqCapabilities,
-): Boolean {
-    // A plain EQ curve is not an invitation to compress every bass note:
-    // compression was negating the tonal change and causing pumping.
-    // Multi-band compression is only for explicitly enabled BassBoost.
-    return capabilities.bandCount > 0 && settings.enabled &&
-        settings.bassBoostEnabled && settings.bassBoostStrength > 0
-}
+    settings: EqSettings, capabilities: EqCapabilities,
+): Boolean = false
 
-/**
- * One platform chain: PreEQ -> 2-band compressor -> limiter.
- * The native EQ is still used only for device band metadata and OS presets
- * in the controller; it must never be enabled concurrently with this chain.
- */
 @RequiresApi(Build.VERSION_CODES.P)
 internal class CapsuleUnifiedDynamicsProcessor(
-    sessionId: Int,
-    private val capabilities: EqCapabilities,
+    sessionId: Int, private val capabilities: EqCapabilities,
 ) {
     private val cutoffs = capsuleDspCutoffsHz(
         capabilities.centerFreqHz, capabilities.bandCount,
     )
     private val appliedLevels = IntArray(cutoffs.size) { Int.MIN_VALUE }
-    private var appliedBassDynamics: Boolean? = null
     private var appliedInputGain: Int? = null
-    // The initial platform graph is already limited before it processes a sample.
-    private var appliedLimiter: Boolean? = true
-    private val processor: DynamicsProcessing
+    private val effect: DynamicsProcessing
 
     init {
-        require(sessionId > 0)
-        require(cutoffs.isNotEmpty())
+        require(sessionId > 0 && cutoffs.isNotEmpty())
         val eq = DynamicsProcessing.Eq(true, true, cutoffs.size)
         cutoffs.forEachIndexed { band, cutoff ->
-            // Enabled=false on an EqBand can SILENCE its band, not bypass it.
             eq.setBand(band, DynamicsProcessing.EqBand(true, cutoff, 0f))
         }
-        val mbc = DynamicsProcessing.Mbc(true, true, 2)
-        mbc.setBand(0, nativeBassBand(false))
-        mbc.setBand(1, nativeTrebleBand())
         val config = DynamicsProcessing.Config.Builder(
             DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
-            2, true, cutoffs.size, true, 2, false, 0, true,
+            2, true, cutoffs.size, false, 0, false, 0, true,
         ).setPreEqAllChannelsTo(eq)
-            .setMbcAllChannelsTo(mbc)
-            .setLimiterAllChannelsTo(nativeLimiter(true))
+            .setLimiterAllChannelsTo(nativeLimiter())
             .build()
-        val effect = DynamicsProcessing(0, sessionId, config)
+        val newEffect = DynamicsProcessing(0, sessionId, config)
         try {
-            effect.enabled = true
-            check(effect.enabled) { "Unified DynamicsProcessing did not activate" }
-            processor = effect
+            newEffect.enabled = true
+            check(newEffect.enabled) { "Android rejected the tonal processor" }
+            effect = newEffect
         } catch (failure: Exception) {
-            effect.release()
+            newEffect.release()
             throw failure
         }
     }
 
     fun apply(settings: EqSettings) {
-        // Activate the final limiter BEFORE any EQ/input gain increases.
-        // When bypassing, the curve/gain are neutralized BEFORE limiter removal.
-        if (settings.enabled && appliedLimiter != true) {
-            processor.setLimiterAllChannelsTo(nativeLimiter(true))
-            appliedLimiter = true
+        val curve = capsuleUnifiedEqLevels(settings, capabilities)
+        require(curve.size == cutoffs.size)
+        val preamp = capsuleSafeEqInputGainMb(settings, curve)
+        // Reduce input BEFORE increasing any EQ band; restore only after
+        // the potentially boosted band has been reduced.
+        if (appliedInputGain == null || preamp < appliedInputGain!!) {
+            effect.setInputGainAllChannelsTo(preamp / 100f)
+            appliedInputGain = preamp
         }
-        val levels = capsuleUnifiedEqLevels(settings, capabilities)
-        require(levels.size == cutoffs.size)
-        val inputGain = capsuleSafeEqInputGainMb(settings, levels)
-
-        // Input gain is BEFORE PreEQ in Android DynamicsProcessing.
-        // Lower it BEFORE increasing a filter. On return toward flat, neutralise
-        // EQ before raising input gain. This prevents mid-update overdrives.
-        if (appliedInputGain == null || inputGain < appliedInputGain!!) {
-            processor.setInputGainAllChannelsTo(inputGain / 100f)
-            appliedInputGain = inputGain
+        curve.forEachIndexed { band, gain ->
+            if (appliedLevels[band] != gain) {
+                effect.setPreEqBandAllChannelsTo(
+                    band, DynamicsProcessing.EqBand(true, cutoffs[band], gain / 100f),
+                )
+                appliedLevels[band] = gain
+            }
         }
-
-        for (band in levels.indices) {
-            if (appliedLevels[band] == levels[band]) continue
-            processor.setPreEqBandAllChannelsTo(
-                band, DynamicsProcessing.EqBand(
-                    true, cutoffs[band], levels[band] / 100f,
-                ),
-            )
-            appliedLevels[band] = levels[band]
+        if (appliedInputGain != preamp) {
+            effect.setInputGainAllChannelsTo(preamp / 100f)
+            appliedInputGain = preamp
         }
-        val bassDynamics = capsuleNeedsBassDynamics(settings, capabilities)
-        if (appliedBassDynamics != bassDynamics) {
-            processor.setMbcBandAllChannelsTo(0, nativeBassBand(bassDynamics))
-            appliedBassDynamics = bassDynamics
-        }
-        // A less negative input trim is safe only AFTER the old EQ boost
-        // has been removed. Always leave the limiter as the last stage.
-        if (appliedInputGain != inputGain) {
-            processor.setInputGainAllChannelsTo(inputGain / 100f)
-            appliedInputGain = inputGain
-        }
-        if (!settings.enabled && appliedLimiter != false) {
-            processor.setLimiterAllChannelsTo(nativeLimiter(false))
-            appliedLimiter = false
-        }
+        // Limiter remains connected until release: OEM effect toggles can pop.
     }
 
-    fun release() = processor.release()
+    fun release() = effect.release()
 
-    private fun nativeBassBand(enabled: Boolean) = DynamicsProcessing.MbcBand(
-        true, 160f, 8f, 190f,
-        // Lightly constrain only loud bass peaks; the old -9 dB / 2.5:1
-        // settings compressed away most of a normal EQ bass adjustment.
-        if (enabled) 1.55f else 1f,
-        if (enabled) -3.0f else 0f,
-        3f, -80f, 1f, 0f, 0f,
-    )
-
-    private fun nativeTrebleBand() = DynamicsProcessing.MbcBand(
-        true, 20000f, 8f, 190f,
-        1f, 0f, 0f, -80f, 1f, 0f, 0f,
-    )
-
-    private fun nativeLimiter(enabled: Boolean) = DynamicsProcessing.Limiter(
-        true, true, 0, 0.9f, 150f,
-        if (enabled) 20f else 1f,
-        if (enabled) -2.0f else 0f, 0f,
+    private fun nativeLimiter() = DynamicsProcessing.Limiter(
+        true, true, 0, 0.8f, 160f, 20f, -2f, 0f,
     )
 }
