@@ -14,6 +14,10 @@ import org.w3c.dom.NodeList
 import javax.xml.parsers.DocumentBuilderFactory
 
 object TTMLParser {
+    private const val MAX_TTML_CHARS = 1_048_576
+    private val FORBIDDEN_DECLARATION =
+        Regex("""<!\s*(?:DOCTYPE|ENTITY)\b""", RegexOption.IGNORE_CASE)
+
     
     data class ParsedLine(
         val text: String,
@@ -54,12 +58,30 @@ object TTMLParser {
     }
     
     fun parseTTML(ttml: String): List<ParsedLine> {
+        // Any downloaded lyrics may be hostile XML. Never resolve user-controlled
+        // DTDs, external entities or oversized trees; retain Android parser
+        // compatibility where individual hardening features are unavailable.
+        if (ttml.length > MAX_TTML_CHARS || FORBIDDEN_DECLARATION.containsMatchIn(ttml)) {
+            return emptyList()
+        }
         val lines = mutableListOf<ParsedLine>()
-        
+
         try {
             val factory = DocumentBuilderFactory.newInstance()
             factory.isNamespaceAware = true
+            factory.isExpandEntityReferences = false
+            runCatching { factory.isXIncludeAware = false }
+            runCatching { factory.setFeature(javax.xml.XMLConstants.FEATURE_SECURE_PROCESSING, true) }
+            runCatching { factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
+            runCatching { factory.setFeature("http://xml.org/sax/features/external-general-entities", false) }
+            runCatching { factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false) }
+            runCatching { factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false) }
+            runCatching { factory.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_DTD, "") }
+            runCatching { factory.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_SCHEMA, "") }
             val builder = factory.newDocumentBuilder()
+            builder.setEntityResolver { _, _ ->
+                throw org.xml.sax.SAXException("External entities are forbidden in lyrics")
+            }
             val doc = builder.parse(ttml.byteInputStream())
             val timingContext = readTimingContext(doc.documentElement)
             
