@@ -91,6 +91,16 @@ internal fun capsuleMusicalEqLevels(
             }
         }
     }
+    // A very broad shelving request can obey every *local* slope yet still
+    // produce an extreme bass-to-treble contrast. Intervene only above 7 dB.
+    val minimum = result.minOrNull() ?: 0
+    val maximum = result.maxOrNull() ?: 0
+    if (maximum.toLong() - minimum.toLong() > CAPSULE_MUSICAL_MAX_SPREAD_MB) {
+        val centre = (minimum + maximum) / 2
+        val low = centre - CAPSULE_MUSICAL_MAX_SPREAD_MB / 2
+        val high = low + CAPSULE_MUSICAL_MAX_SPREAD_MB
+        for (i in result.indices) result[i] = bound(i, result[i].coerceIn(low, high))
+    }
     return result.toList()
 }
 

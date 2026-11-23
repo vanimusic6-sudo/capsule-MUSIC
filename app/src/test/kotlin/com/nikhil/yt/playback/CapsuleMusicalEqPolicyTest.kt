@@ -87,6 +87,15 @@ class CapsuleMusicalEqPolicyTest {
         assertTrue(capsuleEqCurveSpreadMb(shaped) <= CAPSULE_MUSICAL_MAX_SPREAD_MB)
     }
 
+    @Test fun extremeBroadShelfCannotBypassGlobalContrast() {
+        val bassToTreble=List(32) { index -> if(index < 16) -1500 else 1500 }
+        val shaped=capsuleMusicalEqLevels(bassToTreble)
+        assertTrue(capsuleEqCurveSpreadMb(shaped) <= CAPSULE_MUSICAL_MAX_SPREAD_MB)
+        assertTrue(shaped.zipWithNext().all { (a,b) ->
+            kotlin.math.abs(a-b) <= CAPSULE_MUSICAL_MAX_NEIGHBOR_MB
+        })
+    }
+
     @Test fun playerEnforcesTheNewGuardEvenForMigratedPreferences() {
         val service = File("src/main/kotlin/com/nikhil/yt/playback/MusicService.kt").readText()
         assertTrue(service.contains("musicalBalanceEnabled = true"))
