@@ -69,13 +69,8 @@ internal fun capsuleNeedsBassDynamics(
     // A plain EQ curve is not an invitation to compress every bass note:
     // compression was negating the tonal change and causing pumping.
     // Multi-band compression is only for explicitly enabled BassBoost.
-    return settings.enabled && settings.bassBoostEnabled &&
-        settings.bassBoostStrength > 0
-}
-
-private inline fun <T> List<T>.anyIndexed(predicate: (Int, T) -> Boolean): Boolean {
-    for (index in indices) if (predicate(index, get(index))) return true
-    return false
+    return capabilities.bandCount > 0 && settings.enabled &&
+        settings.bassBoostEnabled && settings.bassBoostStrength > 0
 }
 
 /**
