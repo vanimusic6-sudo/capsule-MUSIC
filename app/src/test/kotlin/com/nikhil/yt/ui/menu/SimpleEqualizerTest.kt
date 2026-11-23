@@ -8,7 +8,7 @@ class SimpleEqualizerTest {
     private fun source(name:String):String =
         File("src/main/kotlin/com/nikhil/yt/ui/menu/${name}.kt").readText()
 
-    @Test fun versionDialogDoesNotProvideUnrestrictedManualEq() {
+    @Test fun versionDialogKeepsCuratedChoicesAndAddsAdaptiveShaping() {
         val dialog=source("PlayerMenu")
             .substringAfter("fun EqualizerDialog(")
             .substringBefore("@Composable\nprivate fun CapsuleStudioSlider(")
@@ -18,7 +18,11 @@ class SimpleEqualizerTest {
         assertTrue(dialog.contains("version:slowed"))
         assertTrue(dialog.contains("setEqEnabled(false)"))
         assertTrue(dialog.contains("setEqEnabled(true)"))
-        assertFalse(dialog.contains("CapsuleEqualizerGraph("))
+        assertTrue(dialog.contains("CapsuleEqualizerGraph("))
+        assertTrue(dialog.contains("CAPSULE_ADAPTIVE_REFERENCE_HZ"))
+        assertTrue(dialog.contains("CAPSULE_ADAPTIVE_MANUAL_VERSION"))
+        assertTrue(dialog.contains("capsuleMusicalEqLevels(manualPoints"))
+        assertTrue(dialog.contains("onFinished = { _, _ ->"))
         assertFalse(dialog.contains("setBassBoostEnabled("))
         assertFalse(dialog.contains("setOutputGainMb("))
         assertFalse(dialog.contains("showSaveProfileDialog"))
@@ -26,12 +30,14 @@ class SimpleEqualizerTest {
 
     @Test fun versionPickerNeverReEnablesLegacyUnsafeEqProfile() {
         val src=File("src/main/kotlin/com/nikhil/yt/playback/MusicService.kt").readText()
-        assertTrue(src.contains("&& preset != null"))
+        assertTrue(src.contains("&& (preset != null || manual)"))
         assertTrue(src.contains("version:speed_up"))
         assertTrue(src.contains("version:slowed"))
-        assertTrue(src.contains("versionId = preset?.id"))
-        assertFalse(src.substringAfter("private fun readEqSettingsFromPrefs")
-            .substringBefore("fun applyEqFlatPreset").contains("decodeBandLevelsMb("))
+        assertTrue(src.contains("versionId = if (manual) CAPSULE_ADAPTIVE_MANUAL_VERSION"))
+        val restored=src.substringAfter("private fun readEqSettingsFromPrefs")
+            .substringBefore("fun applyEqFlatPreset")
+        assertTrue(restored.contains("val raw = if (manual)"))
+        assertFalse(restored.contains("decodeBandLevelsMb("))
     }
 
     @Test fun mathHelpersStillAvailableForFutureTests() {

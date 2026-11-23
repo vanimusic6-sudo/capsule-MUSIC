@@ -64,6 +64,29 @@ class CapsuleMusicalEqPolicyTest {
         })
     }
 
+    @Test fun broadMusicalBassKeepsItsCharacterAndSharpVacuumIsCorrected() {
+        val hz=CAPSULE_ADAPTIVE_REFERENCE_HZ
+        val smooth=listOf(70, 160, 195, 175, 110, 30, -20)
+        val adjusted=capsuleMusicalEqLevels(smooth, hz)
+        assertTrue("Wide bass contour should remain prominent",adjusted[2] > 100)
+        assertTrue("Keep high end below bass character",adjusted[2] > adjusted.last())
+        val notch=listOf(160,180,160,-350,150,135,100)
+        val protected=capsuleMusicalEqLevels(notch, hz)
+        assertTrue("Narrow 1 kHz vacuum must be softened",protected[3] > -250)
+        assertTrue("Do not flatten neighbour profiles",protected[1] > protected[3])
+        assertTrue(protected.zipWithNext().all { (a,b) ->
+            kotlin.math.abs(a-b) <= CAPSULE_MUSICAL_MAX_NEIGHBOR_MB
+        })
+    }
+
+    @Test fun floatingAndBrokenFrequencyMetadataCannotBreakTheContour() {
+        val irregular=listOf(500,500,-500,500,-500,500,-500)
+        val shaped=capsuleMusicalEqLevels(irregular,listOf(0,0,Int.MAX_VALUE,-2,500,500,500))
+        assertEquals(irregular.size,shaped.size)
+        assertTrue(shaped.all { it in -420..350 })
+        assertTrue(capsuleEqCurveSpreadMb(shaped) <= CAPSULE_MUSICAL_MAX_SPREAD_MB)
+    }
+
     @Test fun playerEnforcesTheNewGuardEvenForMigratedPreferences() {
         val service = File("src/main/kotlin/com/nikhil/yt/playback/MusicService.kt").readText()
         assertTrue(service.contains("musicalBalanceEnabled = true"))
@@ -71,7 +94,7 @@ class CapsuleMusicalEqPolicyTest {
         val menu = File("src/main/kotlin/com/nikhil/yt/ui/menu/PlayerMenu.kt").readText()
         assertTrue(menu.contains("CapsuleEqPresets.all.chunked(2)"))
         assertFalse(menu.contains("setMusicalBalance"))
-        assertFalse(menu.substringAfter("fun EqualizerDialog(")
+        assertTrue(menu.substringAfter("fun EqualizerDialog(")
             .substringBefore("@Composable\\nprivate fun CapsuleStudioSlider(")
             .contains("CapsuleEqualizerGraph("))
     }
