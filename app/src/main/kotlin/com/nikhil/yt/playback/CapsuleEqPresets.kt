@@ -27,7 +27,7 @@ internal object CapsuleEqPresets {
         CapsuleEqPreset("warm_v2", "Warm",
             listOf(135, 225, 160, 40, -65, -125, -160)),
         CapsuleEqPreset("vocal_v2", "Vocals",
-            listOf(-110, -85, 25, 190, 195, 60, -50)),
+            listOf(-110, -85, 35, 180, 190, 60, -50)),
         CapsuleEqPreset("air_v2", "Air",
             listOf(-85, -60, -25, 40, 110, 170, 200)),
         CapsuleEqPreset("live_v2", "Live",
