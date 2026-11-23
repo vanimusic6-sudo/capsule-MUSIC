@@ -18,12 +18,15 @@ internal object CapsuleEqPresets {
     private val referenceHz = listOf(60, 230, 910, 3_600, 14_000)
 
     val all = listOf(
-        CapsuleEqPreset("deep_bass", "Deep Bass", listOf(1400, 800, -200, -500, -200)),
-        CapsuleEqPreset("punch", "Punch", listOf(900, 500, 0, 250, 350)),
-        CapsuleEqPreset("vocal", "Vocal", listOf(-300, -100, 700, 500, 150)),
-        CapsuleEqPreset("clarity", "Crystal", listOf(-400, 0, 250, 900, 700)),
-        CapsuleEqPreset("warm", "Warm", listOf(500, 350, 150, -250, -150)),
-        CapsuleEqPreset("v_shape", "V-Shape", listOf(1100, 250, -500, 450, 900)),
+        // Each preset is a distinct *balanced* signature. Former presets had
+        // +14 dB bass and +9 dB presence, saturating the graph and producing
+        // needless pressure/harshness before any manual user adjustments.
+        CapsuleEqPreset("deep_bass", "Deep Bass", listOf(380, 450, 40, -150, -100)),
+        CapsuleEqPreset("punch", "Punch", listOf(270, 480, -90, 220, 100)),
+        CapsuleEqPreset("vocal", "Vocal", listOf(-140, -90, 430, 290, 140)),
+        CapsuleEqPreset("clarity", "Crystal", listOf(-200, -20, 150, 430, 250)),
+        CapsuleEqPreset("warm", "Warm", listOf(270, 320, 120, -130, -170)),
+        CapsuleEqPreset("v_shape", "V-Shape", listOf(320, 120, -300, 250, 320)),
     )
 
     fun byId(id: String): CapsuleEqPreset? = all.firstOrNull { it.id == id }
