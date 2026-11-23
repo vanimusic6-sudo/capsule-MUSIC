@@ -55,6 +55,10 @@ internal fun capsuleUnifiedEqLevels(
         capabilities.bandCount, capabilities.minBandLevelMb,
         capabilities.maxBandLevelMb, capabilities.centerFreqHz,
     )
+    // The bass control belongs to the curve itself. Never stack a second
+    // independent low-frequency boost over an already processed contour.
+    return levels
+    /*
     if (preset != null || !settings.bassBoostEnabled || settings.bassBoostStrength <= 0) return levels
     val bass = (settings.bassBoostStrength.coerceIn(0, CAPSULE_MAX_BASS_STRENGTH)
         * 150) / CAPSULE_MAX_BASS_STRENGTH
@@ -70,6 +74,7 @@ internal fun capsuleUnifiedEqLevels(
     return capsuleMusicalEqLevels(updated, capabilities.centerFreqHz).map {
         it.coerceIn(capabilities.minBandLevelMb, capabilities.maxBandLevelMb)
     }
+    */
 }
 
 /** Compression changes the envelope of the song, so this stage is retired. */

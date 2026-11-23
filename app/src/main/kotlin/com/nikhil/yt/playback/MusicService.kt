@@ -3970,13 +3970,19 @@ class MusicService :
     }
 
     private fun readEqSettingsFromPrefs(prefs: Preferences): EqSettings {
-        val selected = prefs[EqualizerSelectedProfileIdKey]?.removePrefix("capsule:")
-        val preset = selected?.let(CapsuleEqPresets::byId)
-        // Old manual curves / presets deliberately never auto-activate.
-        // This guards existing installs even when EqualizerEnabledKey=true.
+        val selectedId = prefs[EqualizerSelectedProfileIdKey]
+        val preset = selectedId?.removePrefix("capsule:")?.let(CapsuleEqPresets::byId)
+        // An explicit new adaptive:manual selection is required: legacy manual
+        // settings stay saved, but cannot turn on without user action.
+        val manualSelected = selectedId == "adaptive:manual"
+        val storedLevels = if (manualSelected) {
+            decodeBandLevelsMb(prefs[EqualizerBandLevelsMbKey])
+        } else emptyList()
+        val manualEnabled = manualSelected && storedLevels.isNotEmpty()
         return EqSettings(
-            enabled = (prefs[EqualizerEnabledKey] ?: false) && preset != null,
-            bandLevelsMb = preset?.referenceLevelsMb ?: emptyList(),
+            enabled = (prefs[EqualizerEnabledKey] ?: false) &&
+                (preset != null || manualEnabled),
+            bandLevelsMb = preset?.referenceLevelsMb ?: storedLevels,
             outputGainEnabled = false,
             outputGainMb = 0,
             bassBoostEnabled = false,
