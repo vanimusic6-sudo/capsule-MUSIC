@@ -46,6 +46,17 @@ class PlaybackAudioEffectsControllerTest {
         assertEquals(32, resampleEqLevelsByIndex(listOf(1,2),1024).size)
     }
 
+    @Test fun frequencyEnvelopeIsStillCheckedAfterStrengthScaling() {
+        val raw=List(32){ if(it%2==0) Int.MAX_VALUE else Int.MIN_VALUE }
+        val s=EqSettings(true,raw,false,0,false,0,false,0,200)
+        val centers=List(32){ i -> 80+(i*350) }
+        val eq=EqCapabilities(32,-1500,1500,centers,emptyList())
+        val effective=capsuleUnifiedEqLevels(s,eq)
+        assertEquals(32,effective.size)
+        assertTrue(effective.all{ it in -460..CAPSULE_MAX_EQ_BOOST_MB })
+        assertTrue(capsuleEqCurveSpreadMb(effective)<=CAPSULE_MUSICAL_MAX_SPREAD_MB)
+    }
+
     @Test fun aNativeFallbackNeverActivatesAnExtraLoudnessEngine() {
         val source=File("src/main/kotlin/com/nikhil/yt/playback/PlaybackAudioEffectsController.kt").readText()
         assertFalse(source.contains("LoudnessEnhancer("))

@@ -38,6 +38,30 @@ class CapsuleEqHeadroomPolicyTest {
         assertTrue(trim+levels.max()<=-CAPSULE_EQ_HEADROOM_MARGIN_MB)
     }
 
+    @Test fun twoNeighboringBoostsReserveExtraDigitalHeadroom() {
+        val s = settings(listOf(0, 250, 250, 20, -80))
+        val actual = capsuleUnifiedEqLevels(s,caps)
+        val top = actual.sortedDescending()
+        val base = top.first().coerceAtLeast(0)
+        val extra = ((top.getOrNull(1) ?: 0).coerceAtLeast(0)*0.25f)
+            .toInt().coerceIn(0,80)
+        val input = capsuleSafeEqInputGainMb(s,actual)
+        assertEquals(-(base+extra+CAPSULE_EQ_HEADROOM_MARGIN_MB),input)
+        assertTrue("Never allow positive makeup",input<=0)
+    }
+
+    @Test fun strengthChangeStaysBoundedWithActualDeviceCurves() {
+        val s=settings(listOf(200,300,180,40,-120))
+            .copy(intensityPercent=145)
+        val actual = capsuleUnifiedEqLevels(s,caps)
+        assertTrue(actual.all { it <= CAPSULE_MAX_EQ_BOOST_MB })
+        assertTrue(actual[0] <= CAPSULE_MAX_LOW_BASS_BOOST_MB)
+        val input = capsuleSafeEqInputGainMb(s,actual)
+        assertTrue(input+actual.max()<=-CAPSULE_EQ_HEADROOM_MARGIN_MB)
+        val excessive = s.copy(intensityPercent=200)
+        assertEquals(actual,capsuleUnifiedEqLevels(excessive,caps))
+    }
+
     @Test fun positiveOutputGainIsNeverRecoveredFromTheLimiterReserve() {
         val eq = settings(listOf(0,1500,0,0,0),outputGain=300,gainOn=true)
         val levels = capsuleUnifiedEqLevels(eq,caps)

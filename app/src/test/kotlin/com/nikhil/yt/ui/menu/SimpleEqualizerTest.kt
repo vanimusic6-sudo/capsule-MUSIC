@@ -11,13 +11,20 @@ class SimpleEqualizerTest {
     @Test fun adaptiveGraphAndCuratedVersionsCoexist() {
         val dialog=file("PlayerMenu").substringAfter("fun EqualizerDialog(")
             .substringBefore("@Composable\nprivate fun CapsuleStudioSlider(")
-        assertTrue(dialog.contains("CapsuleEqPresets.all.chunked(2)"))
+        assertTrue(dialog.contains("CapsuleEqPresets.all.chunked(3)"))
         assertTrue(dialog.contains("CapsuleEqualizerGraph("))
         assertTrue(dialog.contains("appliedLevelsMb = applied"))
-        assertTrue(dialog.contains("manualSelected"))
+        assertTrue(dialog.contains("val manual = eqEnabled"))
         assertTrue(dialog.contains("eq_adaptive_corrected"))
         assertTrue(dialog.contains("version:speed_up"))
         assertTrue(dialog.contains("version:slowed"))
+        assertTrue(dialog.contains("EqSection("))
+        assertTrue(dialog.contains("Switch("))
+        assertTrue(dialog.contains("eq_curve_intensity"))
+        assertTrue(dialog.contains("eq_clean_headroom"))
+        assertTrue(dialog.indexOf("CapsuleEqualizerGraph(") <
+            dialog.indexOf("CapsuleEqPresets.all.chunked(3)"))
+        assertFalse(dialog.contains("setVirtualizerEnabled("))
         assertFalse(dialog.contains("setBassBoostEnabled("))
         assertFalse(dialog.contains("setOutputGainMb("))
     }

@@ -46,13 +46,24 @@ class CapsuleMusicalEqPolicyTest {
         val bad=List(32){ if(it%2==0) Int.MAX_VALUE else Int.MIN_VALUE }
         val adjusted=capsuleMusicalEqLevels(bad,listOf(0,-1,Int.MAX_VALUE))
         assertEquals(32,adjusted.size)
-        assertTrue(adjusted.all{it in -650..450})
+        assertTrue(adjusted.all{it in -460..320})
         assertTrue(capsuleEqCurveSpreadMb(adjusted)<=CAPSULE_MUSICAL_MAX_SPREAD_MB)
         assertTrue(adjusted.zipWithNext().all{(a,b)->
             abs(a-b)<=CAPSULE_MUSICAL_MAX_NEIGHBOR_MB})
         val two=capsuleMusicalEqLevels(listOf(10000,-10000),listOf(70,2000))
         assertEquals(2,two.size)
         assertTrue(capsuleEqCurveSpreadMb(two)<=CAPSULE_MUSICAL_MAX_SPREAD_MB)
+    }
+
+    @Test fun strongerBroadProfilesStayDistinctAndAvoidDeepVocalNotches() {
+        val frequencies = listOf(80,200,500,1300,3400,8000,14000)
+        val bass = CapsuleEqPresets.byId("soft_bass_v2")!!
+        val raw = CapsuleEqPresets.levelsFor(bass, frequencies, -1500, 1500)
+        assertTrue("Audible low-mid warmth", raw[1] >= 250)
+        val out = capsuleMusicalEqLevels(raw, frequencies)
+        assertTrue(out[1] > out[4] + 180)
+        assertTrue(out[3] > -200)
+        assertTrue(capsuleEqCurveSpreadMb(out) <= CAPSULE_MUSICAL_MAX_SPREAD_MB)
     }
 
     @Test fun restoredManualCurvesStillCannotBypassDSPGuard() {
