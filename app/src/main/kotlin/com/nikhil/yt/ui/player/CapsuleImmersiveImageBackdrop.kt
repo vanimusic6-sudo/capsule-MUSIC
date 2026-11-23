@@ -55,9 +55,9 @@ internal fun Bitmap.capsuleImmersiveVisibleField(aspect: Float, landscape: Boole
         }
         if (count == 0) IMMERSIVE_NEUTRAL_COLOR else Color(r / count, g / count, b / count)
     }
-    return capsuleImmersiveKeepTrueDarkBackground(
-        capsuleImmersiveRejectSmallMarks(CapsuleColorField(COVER_COLUMNS, COVER_ROWS, cells)),
-    )
+    // Keep the actual bright foreground in the sampled photo. The *lower
+    // continuation* gets its own solid-background colour during preparation.
+    return capsuleImmersiveRejectSmallMarks(CapsuleColorField(COVER_COLUMNS, COVER_ROWS, cells))
 }
 
 /**
@@ -70,29 +70,26 @@ internal fun Bitmap.capsuleImmersiveVisibleField(aspect: Float, landscape: Boole
  * a fire-filled photograph with a dark coat must remain vividly coloured.
  * Full-resolution cover artwork is not touched. This runs only on decode.
  */
-internal fun capsuleImmersiveKeepTrueDarkBackground(field: CapsuleColorField): CapsuleColorField {
-    if (field.width < 2 || field.height < 2 || field.cells.isEmpty()) return field
-    fun dark(c: Color) = maxOf(c.red, c.green, c.blue) < 0.12f
-    val darkPixels = field.cells.filter(::dark)
-    if (darkPixels.size < field.cells.size * 0.55f) return field
+internal fun capsuleImmersiveSolidDarkCanvas(field: CapsuleColorField): Color? {
+    if (field.width < 2 || field.height < 2 || field.cells.isEmpty()) return null
+    fun isDark(c: Color) = maxOf(c.red, c.green, c.blue) < 0.12f
+    val dark = field.cells.filter(::isDark)
+    if (dark.size < field.cells.size * 0.55f) return null
     val edge = field.cells.filterIndexed { index, _ ->
         val x = index % field.width
         val y = index / field.width
-        x < (field.width / 7).coerceAtLeast(1) ||
-            x >= field.width - (field.width / 7).coerceAtLeast(1) ||
-            y >= field.height * 3 / 4
+        val border = (field.width / 7).coerceAtLeast(1)
+        x < border || x >= field.width - border || y >= field.height * 3 / 4
     }
-    if (edge.isEmpty() || edge.count(::dark) < edge.size * 0.72f) return field
-    val darkMedian = darkPixels.map { maxOf(it.red, it.green, it.blue) }
-        .sorted()[darkPixels.size / 2].coerceIn(0f, 0.07f)
-    val canvas = Color(darkMedian, darkMedian, darkMedian)
-    return field.copy(cells = field.cells.mapIndexed { index, original ->
-        val y = index / field.width
-        // A faint echo of the foreground stays around the cover, but cannot
-        // light up the whole lower page or tint black backgrounds purple.
-        val remaining = 0.24f - 0.13f * y / (field.height - 1).toFloat()
-        androidx.compose.ui.graphics.lerp(canvas, original, remaining)
-    })
+    if (edge.isEmpty() || edge.count(::isDark) < edge.size * 0.72f) return null
+    val middle = dark.size / 2
+    // Sample ONLY real dark background pixels. RGB medians preserve genuinely
+    // neutral black without inventing an unrelated red/brown wallpaper.
+    return Color(
+        dark.map { it.red }.sorted()[middle].coerceIn(0f, 0.075f),
+        dark.map { it.green }.sorted()[middle].coerceIn(0f, 0.075f),
+        dark.map { it.blue }.sorted()[middle].coerceIn(0f, 0.075f),
+    )
 }
 
 /** Reject isolated pale labels, but retain broad white paper and saturated real lights. */
@@ -256,6 +253,7 @@ internal fun capsuleImmersiveBackdropSourceY(
 /** Full photographic continuation, baked once on a worker. No progressive blur strip. */
 internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stageFraction: Float): ImageBitmap {
     val stage = stageFraction.coerceIn(0.35f, 0.75f)
+    val realDarkCanvas = capsuleImmersiveSolidDarkCanvas(field)
     val raw = FloatArray(PAGE_COLUMNS * PAGE_ROWS * 3)
     fun sample(x: Float, y: Float): Color {
         val px = (x * field.width - 0.5f).coerceIn(0f, field.width - 1f)
@@ -269,7 +267,14 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
         val pageY = (y + 0.5f) / PAGE_ROWS; val pageX = (x + 0.5f) / PAGE_COLUMNS
         val sourceX = capsuleImmersiveBackdropSourceX(pageX, pageY, stage)
         val visibleY = capsuleImmersiveBackdropSourceY(pageX, pageY, stage)
-        val color = sample(sourceX, visibleY / IMMERSIVE_VISIBLE_SAMPLE_END)
+        val sampled = sample(sourceX, visibleY / IMMERSIVE_VISIBLE_SAMPLE_END)
+        // The same foreground pixel may be visible in the sharp photo yet
+        // unsuitable for the extended black background. Blend the *sampled
+        // background colour*, not the artwork or its drawing geometry.
+        val below = ((pageY - stage) / (1f - stage)).coerceIn(0f, 1f)
+        val settle = below * below * (3f - 2f * below)
+        val color = if (realDarkCanvas == null) sampled else
+            androidx.compose.ui.graphics.lerp(sampled, realDarkCanvas, settle)
         val i = (y * PAGE_COLUMNS + x) * 3
         raw[i] = color.red; raw[i + 1] = color.green; raw[i + 2] = color.blue
     }

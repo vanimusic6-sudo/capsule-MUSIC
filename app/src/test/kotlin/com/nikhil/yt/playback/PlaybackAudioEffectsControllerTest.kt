@@ -52,7 +52,7 @@ class PlaybackAudioEffectsControllerTest {
         assertFalse(source.contains("BassBoost("))
         assertFalse(source.contains("Virtualizer("))
         assertFalse(source.contains("eq.usePreset("))
-        assertTrue("Original bypasses the native DSP",source.contains("eq.enabled = false"))
+        assertTrue("Original bypasses the native DSP",source.contains("native.enabled = false"))
         assertTrue("Original releases the lingering limiter",
             source.contains("bypass unified EQ"))
         assertTrue(source.contains("engineMode.value = CapsuleEqEngineMode.OFF"))
