@@ -53,7 +53,14 @@ internal fun capsuleMusicalEqLevels(
     for (i in 1 until count - 1) {
         val nearby = (original[i-1] + original[i+1]) / 2
         val excess = original[i] - nearby
-        if (abs(excess) > 220) {
+        val leftDifference = original[i] - original[i-1]
+        val rightDifference = original[i] - original[i+1]
+        // A broad bass shelf next to a deep 910Hz notch is NOT itself a
+        // narrow peak. Protect the isolated notch without flattening bass.
+        val isolated = leftDifference.toLong()*rightDifference.toLong() > 0L &&
+            minOf(abs(leftDifference),abs(rightDifference)) > 180 &&
+            abs(original[i-1]-original[i+1]) < 300
+        if (isolated && abs(excess) > 220) {
             val soft = 220 + ((abs(excess) - 220) * 0.25f).roundToInt()
             val limited = nearby + (if (excess > 0) soft else -soft)
             shaped[i] = bound(i, limited)

@@ -46,8 +46,10 @@ class CapsuleMusicalEqPolicyTest {
         val output=capsuleMusicalEqLevels(harsh,hz)
         assertTrue("Midrange should not collapse after adjusting bass",
             output[2]>-150)
-        assertTrue("Bass character remains strong",
-            output[1]>output[4])
+        assertTrue("Bass shelf must not be flattened when correcting a notch",
+            output[1] >= 260)
+        assertTrue("Bass character remains stronger than upper treble",
+            output[1] > output[4])
         assertTrue("Should not simply reset the whole EQ",
             output.any{it>80})
         assertEquals(harsh, listOf(180,300,-1300,280,200))
