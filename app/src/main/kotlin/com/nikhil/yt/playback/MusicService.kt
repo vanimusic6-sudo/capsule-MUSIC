@@ -2475,8 +2475,13 @@ class MusicService :
                         audioEffectsController.isUnifiedDynamicsActive -> 0.94f
                         else -> legacySafety
                     }
-                    // Restore normalization gain only after native EQ is flat.
-                    if (!settings.enabled) soundStudioEnabledForVolume.value = false
+                    // No usable native EQ means there is nothing to protect.
+                    // Restore regular loudness normalization as well as player
+                    // volume; otherwise the "EQ unavailable" state sounds weak.
+                    // On bypass, normalize only AFTER DSP has been neutralized.
+                    if (!settings.enabled || audioEffectsController.engineMode.value ==
+                        CapsuleEqEngineMode.UNAVAILABLE
+                    ) soundStudioEnabledForVolume.value = false
                     // Session effects can be skipped by compressed audio offload.
                     // Permit hardware offload again only when EQ is bypassed.
                     if (previous?.enabled != settings.enabled) {
