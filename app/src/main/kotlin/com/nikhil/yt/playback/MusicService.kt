@@ -2448,6 +2448,10 @@ class MusicService :
                         previous.bassBoostEnabled != settings.bassBoostEnabled ||
                         previous.virtualizerEnabled != settings.virtualizerEnabled ||
                         previous.outputGainEnabled != settings.outputGainEnabled ||
+                        // Switching the perceptual curve changes several filter
+                        // bands at once: reuse the short low-energy transition
+                        // instead of letting all bands jump during a loud note.
+                        previous.musicalBalanceEnabled != settings.musicalBalanceEnabled ||
                         paramChange)
                 try {
                     if (sensitive) {
