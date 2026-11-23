@@ -49,6 +49,9 @@ data class EqSettings(
     // 100% = original hardware curve. 200% expands the curve until the
     // device-reported band limits, without pretending to exceed native DSP.
     val intensityPercent: Int = 100,
+    // The service and UI default this ON; false preserves explicit precision
+    // and backward-compatible pure model fixtures.
+    val musicalBalanceEnabled: Boolean = false,
 )
 
 /** Amplifies EQ *shape*, not master output volume; prevents out-of-range native calls. */
@@ -100,7 +103,7 @@ internal fun protectedEqLevels(
     if (bandCount <= 0) return emptyList()
     if (!settings.enabled || minMb > maxMb) return List(bandCount) { 0 }
     val boundedMax = maxMb.coerceAtMost(CAPSULE_MAX_EQ_BOOST_MB).coerceAtLeast(minMb)
-    return scaleEqBandLevels(
+    val nativeLevels = scaleEqBandLevels(
         resampleEqLevelsByIndex(settings.bandLevelsMb, bandCount),
         settings.intensityPercent,
         minMb,
@@ -116,6 +119,11 @@ internal fun protectedEqLevels(
         } else boundedMax
         level.coerceIn(minMb, upper.coerceAtLeast(minMb))
     }
+    return if (settings.musicalBalanceEnabled) {
+        // The user edits RAW points. Only the DSP receives the gentler shape.
+        capsuleMusicalEqLevels(nativeLevels, centerFreqHz)
+            .map { it.coerceIn(minMb, maxMb) }
+    } else nativeLevels
 }
 
 /**
