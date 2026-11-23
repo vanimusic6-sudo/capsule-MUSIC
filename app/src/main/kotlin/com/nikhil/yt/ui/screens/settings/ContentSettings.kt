@@ -81,14 +81,16 @@ fun ContentSettings(
     val (proxyType, onProxyTypeChange) = rememberEnumPreference(key = ProxyTypeKey, defaultValue = Proxy.Type.HTTP)
     val (proxyUrl, onProxyUrlChange) = rememberPreference(key = ProxyUrlKey, defaultValue = "host:port")
     val (streamBypassProxy, onStreamBypassProxyChange) = rememberPreference(key = StreamBypassProxyKey, defaultValue = false)
-    val (enableSimpMusic, onEnableSimpMusicChange) =
-        rememberPreference(key = EnableSimpMusicKey, defaultValue = true)
     val (enablePortato, onEnablePortatoChange) =
         rememberPreference(key = EnableBetterLyricsPortatoKey, defaultValue = true)
+    val (enableBetterLyrics, onEnableBetterLyricsChange) =
+        rememberPreference(key = EnableBetterLyricsKey, defaultValue = true)
     val (enableLrcLib, onEnableLrcLibChange) =
         rememberPreference(key = EnableLrcLibKey, defaultValue = true)
-    val (enableLyricsPlus, onEnableLyricsPlusChange) =
-        rememberPreference(key = EnableLyricsPlusKey, defaultValue = true)
+    val (enableYoutubeSynced, onEnableYoutubeSyncedChange) =
+        rememberPreference(key = EnableYouTubeSyncedLyricsKey, defaultValue = true)
+    val (enableYoutubePlain, onEnableYoutubePlainChange) =
+        rememberPreference(key = EnableYouTubePlainLyricsKey, defaultValue = true)
     val (rawLyricsProviderOrder, onLyricsProviderOrderChange) =
         rememberPreference(key = LyricsProviderOrderKey, defaultValue = "")
     val (legacyPreferredProvider, _) =
@@ -269,18 +271,11 @@ fun ContentSettings(
                 onCheckedChange = onEnablePortatoChange,
             )
             SwitchPreference(
-                title = { Text("SimpMusic") },
-                description = stringResource(R.string.lyrics_provider_simp_music_description),
+                title = { Text("Better Lyrics (TTML)") },
+                description = "Синхронизация по слогам; для новых текстов API может требовать ключ.",
                 icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                checked = enableSimpMusic,
-                onCheckedChange = onEnableSimpMusicChange,
-            )
-            SwitchPreference(
-                title = { Text(stringResource(R.string.enable_lyricsplus)) },
-                description = stringResource(R.string.enable_lyricsplus_description),
-                icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                checked = enableLyricsPlus,
-                onCheckedChange = onEnableLyricsPlusChange,
+                checked = enableBetterLyrics,
+                onCheckedChange = onEnableBetterLyricsChange,
             )
             SwitchPreference(
                 title = { Text("LRCLIB") },
@@ -288,6 +283,26 @@ fun ContentSettings(
                 icon = { Icon(painterResource(R.drawable.lyrics), null) },
                 checked = enableLrcLib,
                 onCheckedChange = onEnableLrcLibChange,
+            )
+            SwitchPreference(
+                title = { Text("YouTube · с синхронизацией") },
+                description = "Только настоящие временные метки YouTube Music.",
+                icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                checked = enableYoutubeSynced,
+                onCheckedChange = onEnableYoutubeSyncedChange,
+            )
+            PreferenceEntry(
+                title = { Text("Lyprio") },
+                description = "Не подключён: сервис требует авторизованный API.",
+                icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                onClick = { },
+            )
+            SwitchPreference(
+                title = { Text("YouTube · без синхронизации") },
+                description = "Текст из панели YouTube Music; затем субтитры.",
+                icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                checked = enableYoutubePlain,
+                onCheckedChange = onEnableYoutubePlainChange,
             )
             PreferenceEntry(
                 title = { Text(stringResource(R.string.lyrics_provider_priority_title)) },
