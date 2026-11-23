@@ -151,7 +151,10 @@ internal fun capsuleSafeEqInputGainMb(
         settings.outputGainMb.coerceIn(-1500, CAPSULE_MAX_OUTPUT_GAIN_MB)
     } else 0
     val maxPositiveBoost = effectiveLevelsMb.maxOfOrNull { it.coerceAtLeast(0) } ?: 0
-    if (maxPositiveBoost == 0) return requestedGain
+    // A positive output-gain slider must NOT turn a flat EQ into an
+    // unprotected digital amplifier. With no positive EQ filters there is no
+    // curve headroom to "spend": preserve only requested attenuation.
+    if (maxPositiveBoost == 0) return requestedGain.coerceAtMost(0)
 
     // Positive manual gain is intentionally allowed to spend only HALF the
     // extra 1.8 dB reserve. Large makeup would force limiter distortion.
