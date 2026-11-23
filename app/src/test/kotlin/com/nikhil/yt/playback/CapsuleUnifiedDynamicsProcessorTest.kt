@@ -59,15 +59,15 @@ class CapsuleUnifiedDynamicsProcessorTest {
             capsuleUnifiedEqLevels(settings(enabled = false, bass = 250), caps))
     }
 
-    @Test fun bassDynamicsEngagesOnlyForBoostedLowFrequency() {
+    @Test fun bassCompressorIsOnlyForExplicitBassBoost() {
         assertTrue(capsuleNeedsBassDynamics(settings(bass = 250), caps))
-        assertTrue(capsuleNeedsBassDynamics(
+        // A strong EQ curve on its own must not unexpectedly trigger MBC.
+        assertTrue(!capsuleNeedsBassDynamics(
             settings(levels = listOf(400, 0, 0, 0, 0)), caps))
-        // Small tonal adjustments must not activate an unnecessary compressor.
         assertTrue(!capsuleNeedsBassDynamics(
             settings(levels = listOf(200, 0, 0, 0, 0)), caps))
         assertTrue(!capsuleNeedsBassDynamics(
-            settings(levels = listOf(0, 0, 0, 0, 650)), caps))
+            settings(levels = listOf(0, 0, 0, 0, 900)), caps))
         assertTrue(!capsuleNeedsBassDynamics(
             settings(enabled = false, bass = 250), caps))
     }
@@ -92,8 +92,11 @@ class CapsuleUnifiedDynamicsProcessorTest {
         val enable = apply.indexOf("if (settings.enabled && appliedLimiter != true)")
         val boost = apply.indexOf("val levels = capsuleUnifiedEqLevels")
         val gain = apply.indexOf("processor.setInputGainAllChannelsTo")
+        val firstEqBand = apply.indexOf("processor.setPreEqBandAllChannelsTo")
         val disable = apply.indexOf("if (!settings.enabled && appliedLimiter != false)")
-        assertTrue(enable >= 0 && enable < boost && boost < gain && gain < disable)
+        assertTrue(enable >= 0 && enable < boost && boost < gain &&
+            gain < firstEqBand && firstEqBand < disable)
+        assertTrue(apply.contains("inputGain < appliedInputGain!!"))
         assertTrue(file.contains(".setLimiterAllChannelsTo(nativeLimiter(true))"))
     }
 

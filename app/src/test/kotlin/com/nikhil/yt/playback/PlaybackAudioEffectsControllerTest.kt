@@ -72,7 +72,7 @@ class PlaybackAudioEffectsControllerTest {
     }
 
     @Test
-    fun combinedHeadroomAttenuatesPowerfulPresetsWithoutAmplifyingTheSource() {
+    fun legacyPathReservesBoostHeadroomBeforeOEMEffects() {
         val base = EqSettings(
             enabled = true, bandLevelsMb = listOf(1400, 800, -200, 0, 900),
             outputGainEnabled = true, outputGainMb = 1500,
@@ -82,20 +82,20 @@ class PlaybackAudioEffectsControllerTest {
         )
         val factor = protectedEqAudioFactor(base)
         org.junit.Assert.assertTrue(
-            "Strong presets must not make all music whisper",
-            factor in 0.62f..0.70f,
+            "Combined boosts require a large reserve on legacy output",
+            factor in 0.13f..0.16f,
         )
         // Tonal EQ boost alone should retain most of the original loudness.
         val eqOnly = base.copy(
             bassBoostEnabled = false, virtualizerEnabled = false,
             outputGainEnabled = false,
         )
-        org.junit.Assert.assertTrue(protectedEqAudioFactor(eqOnly) in 0.70f..0.80f)
+        org.junit.Assert.assertTrue(protectedEqAudioFactor(eqOnly) in 0.27f..0.31f)
         val bassOnly = base.copy(
             bandLevelsMb = List(5) { 0 },
             virtualizerEnabled = false, outputGainEnabled = false,
         )
-        org.junit.Assert.assertTrue(protectedEqAudioFactor(bassOnly) in 0.80f..0.90f)
+        org.junit.Assert.assertTrue(protectedEqAudioFactor(bassOnly) in 0.43f..0.49f)
         assertEquals(1f, protectedEqAudioFactor(base.copy(
             bandLevelsMb = List(5) { 0 }, outputGainEnabled = false,
             bassBoostEnabled = false, virtualizerEnabled = false,
@@ -134,7 +134,7 @@ class PlaybackAudioEffectsControllerTest {
         assertEquals(CAPSULE_MAX_LOW_BASS_BOOST_MB, 
             protectedEqLevels(values, 3, -1500, 1500, listOf(40, 70, 120))[0])
         val caps = EqCapabilities(3, -1500, 1500, listOf(60, 230, 1000), emptyList())
-        org.junit.Assert.assertTrue(protectedEqAudioFactor(values, caps) in 0.70f..0.80f)
+        org.junit.Assert.assertTrue(protectedEqAudioFactor(values, caps) in 0.27f..0.31f)
     }
 
     @Test
@@ -146,11 +146,11 @@ class PlaybackAudioEffectsControllerTest {
             virtualizerEnabled = true, virtualizerStrength = 0,
         )
         assertEquals(1f, protectedEqAudioFactor(base), 0.000001f)
-        // The first band might NOT be low bass until the OEM reports its
-        // center frequency; missing capabilities must not under-attenuate.
+        // The first band is treated as sub-bass when the frequency is unknown;
+        // its maximum is +4 dB rather than the wide-band +9 dB allowance.
         val unknownFirstBand = base.copy(bandLevelsMb = listOf(1500))
         org.junit.Assert.assertTrue(
-            protectedEqAudioFactor(unknownFirstBand) in 0.70f..0.80f
+            protectedEqAudioFactor(unknownFirstBand) in 0.48f..0.54f
         )
         assertEquals(1f, protectedEqAudioFactor(base.copy(enabled = false)), 0.000001f)
         val boost = base.copy(
@@ -163,9 +163,10 @@ class PlaybackAudioEffectsControllerTest {
         org.junit.Assert.assertTrue(withGain in 0f..1f)
         org.junit.Assert.assertTrue(withGain < withoutGain)
         // Regression: a combination of effects must never attenuate by
-        // 15–18 dB as the previous build did.
-        org.junit.Assert.assertTrue(withGain >= 0.63f)
-        org.junit.Assert.assertTrue(withGain < 0.80f)
+        // Legacy OEM processing has no guaranteed unified preamp/limiter
+        // ordering. Clean output now takes precedence over max loudness.
+        org.junit.Assert.assertTrue(withGain in 0.13f..0.16f)
+        org.junit.Assert.assertTrue(withoutGain in 0.19f..0.22f)
     }
 
     @Test
