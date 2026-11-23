@@ -295,7 +295,7 @@ fun ContentSettings(
                 title = { Text("Lyprio") },
                 description = "Не подключён: сервис требует авторизованный API.",
                 icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                onClick = { },
+                isEnabled = false,
             )
             SwitchPreference(
                 title = { Text("YouTube · без синхронизации") },
