@@ -88,9 +88,14 @@ internal fun capsuleImmersiveKeepTrueDarkBackground(field: CapsuleColorField): C
     val canvas = Color(darkMedian, darkMedian, darkMedian)
     return field.copy(cells = field.cells.mapIndexed { index, original ->
         val y = index / field.width
-        // A faint echo of the foreground stays around the cover, but cannot
-        // light up the whole lower page or tint black backgrounds purple.
-        val remaining = 0.24f - 0.13f * y / (field.height - 1).toFloat()
+        // Keep the bright upper artwork details visible. Only the AMBIENT
+        // field progressively adopts its genuine black background toward
+        // the lower artwork, which the renderer reuses for the floor.
+        // This alters colour extraction, never the existing warp/blur geometry.
+        val fraction = y.toFloat() / (field.height - 1)
+        val fade = ((fraction - 0.33f) / 0.23f).coerceIn(0f, 1f)
+        val ease = fade * fade * (3f - 2f * fade)
+        val remaining = 0.65f - 0.57f * ease
         androidx.compose.ui.graphics.lerp(canvas, original, remaining)
     })
 }

@@ -242,11 +242,14 @@ class CapsuleMenuMotionTest {
         assertTrue(source.contains("painterResource(R.drawable.graphic_eq)"))
         assertTrue(source.contains("showEqualizerDialog = true"))
         assertTrue(source.contains("CapsuleEqualizerGraph("))
-        assertTrue(source.contains("multiplierToSlider(speed)"))
-        assertTrue(source.contains("CapsuleEqPresets.all.chunked(3)"))
-        assertTrue(source.contains("CapsuleEqPresets.levelsFor("))
+        // Speed Up / Slowed are now explicit versions. A touch graph and
+        // independent, bounded manual curve replace the legacy master slider.
+        assertTrue(source.contains("version:speed_up"))
+        assertTrue(source.contains("version:slowed"))
+        assertTrue(source.contains("CapsuleEqPresets.all.chunked(2)"))
+        assertTrue(source.contains("selectSoundVersion("))
+        assertTrue(source.contains("appliedLevelsMb = applied"))
         assertFalse(source.contains("caps.systemPresets.mapIndexed"))
-        assertTrue(source.contains("CapsuleEffectRow("))
         assertFalse(source.contains("showAdvancedEqualizer"))
         assertFalse(source.contains("showPitchTempoDialog"))
         assertTrue(source.contains("heightIn(min = 88.dp)"))
