@@ -10,6 +10,9 @@ on:
       - 'perf/**'
     paths:
       - 'app/src/main/kotlin/com/nikhil/yt/ui/menu/PlayerMenu.kt'
+      - 'app/src/main/kotlin/com/nikhil/yt/ui/menu/LyricsMenu.kt'
+      - 'app/src/main/kotlin/com/nikhil/yt/ui/menu/CapsuleLyricsSearchDialog.kt'
+      - 'app/src/main/kotlin/com/nikhil/yt/ui/component/Lyrics.kt'
       - 'app/src/main/kotlin/com/nikhil/yt/ui/menu/CapsuleEqualizerGraph.kt'
       - 'app/src/main/kotlin/com/nikhil/yt/playback/PlaybackAudioEffectsController.kt'
       - 'app/src/main/kotlin/com/nikhil/yt/playback/SafeListeningGuard.kt'
