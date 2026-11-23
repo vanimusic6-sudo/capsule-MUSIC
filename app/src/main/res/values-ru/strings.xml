@@ -982,4 +982,10 @@
     <string name="eq_engine_native">DSP: запасной эквалайзер устройства · запас громкости включён</string>
     <string name="eq_engine_unavailable">Эквалайзер недоступен в этой аудиосессии. Лишнее снижение громкости отключено.</string>
     <string name="eq_engine_waiting">DSP: ожидает активную аудиосессию</string>
+    <string name="eq_musical_balance">Музыкальный баланс</string>
+    <string name="eq_musical_balance_description">Смягчает резкие пики и провалы, не меняя твои ползунки. Особенно полезно для наушников.</string>
+    <string name="eq_musical_balance_contrast">Контраст частот: %1$s → %2$s</string>
+    <string name="eq_musical_balance_warning">Сильный контраст утомляет слух. Снизь громкость или включи музыкальный баланс.</string>
+    <string name="eq_curve_requested">Задано</string>
+    <string name="eq_curve_applied">Применяется</string>
 </resources>
