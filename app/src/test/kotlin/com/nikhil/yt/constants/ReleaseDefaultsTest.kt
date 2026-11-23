@@ -58,18 +58,23 @@ class ReleaseDefaultsTest {
         assertEquals(
             listOf(
                 LyricsProviderOrder.BETTER_LYRICS_PORTATO,
-                LyricsProviderOrder.SIMPMUSIC,
-                LyricsProviderOrder.LYRICS_PLUS,
+                LyricsProviderOrder.BETTER_LYRICS,
                 LyricsProviderOrder.LRCLIB,
+                LyricsProviderOrder.YOUTUBE_SYNCED,
+                LyricsProviderOrder.KUGOU,
+                LyricsProviderOrder.BINIMUM,
                 LyricsProviderOrder.YOUTUBE,
             ),
             LyricsProviderOrder.resolve(null),
         )
         val fresh = emptyPreferences()
         assertTrue(fresh[EnableBetterLyricsPortatoKey] ?: true)
-        assertTrue(fresh[EnableSimpMusicKey] ?: true)
-        assertTrue(fresh[EnableLyricsPlusKey] ?: true)
+        assertTrue(fresh[EnableBetterLyricsKey] ?: true)
         assertTrue(fresh[EnableLrcLibKey] ?: true)
+        assertTrue(fresh[EnableYouTubeSyncedLyricsKey] ?: true)
+        assertTrue(fresh[EnableKuGouLyricsKey] ?: true)
+        assertTrue(fresh[EnableBinimumLyricsKey] ?: true)
+        assertTrue(fresh[EnableYouTubePlainLyricsKey] ?: true)
     }
 
     @Test fun previouslyStoredValuesIncludingFalseWinOverNewDefaults() {
@@ -78,7 +83,7 @@ class ReleaseDefaultsTest {
         stored[DarkModeKey] = DarkMode.OFF.name
         stored[AudioQualityKey] = AudioQuality.LOW.name
         stored[AudioOffload] = false
-        stored[EnableLyricsPlusKey] = false
+        stored[EnableLrcLibKey] = false
         stored[AudioClientOrderKey] = "WEB_CREATOR,WEB_REMIX"
         stored[LyricsProviderOrderKey] = "YOUTUBE,NETEASE"
 
@@ -86,10 +91,11 @@ class ReleaseDefaultsTest {
         assertEquals(DarkMode.OFF.name, stored[DarkModeKey] ?: DarkMode.ON.name)
         assertEquals(AudioQuality.LOW.name, stored[AudioQualityKey] ?: ReleasePlaybackDefaults.audioQuality.name)
         assertFalse(stored[AudioOffload] ?: ReleasePlaybackDefaults.audioOffloadUntilVerified)
-        assertFalse(stored[EnableLyricsPlusKey] ?: true)
+        assertFalse(stored[EnableLrcLibKey] ?: true)
         assertEquals(AudioClientOrder.WEB_CREATOR,
             AudioClientOrder.resolve(stored[AudioClientOrderKey], AudioStreamPolicy.VISIONOS).first())
-        assertEquals(LyricsProviderOrder.YOUTUBE,
+        // The retired NETEASE list migrates to the supported defaults.
+        assertEquals(LyricsProviderOrder.BETTER_LYRICS_PORTATO,
             LyricsProviderOrder.resolve(stored[LyricsProviderOrderKey]).first())
 
         // Closing and reopening is another read of the same persisted state.
