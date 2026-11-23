@@ -85,12 +85,12 @@ internal fun inverseScaledEqLevel(
  * These protect against excessive combined boost but cannot measure speaker
  * temperature, acoustic excursion, or guarantee physical speaker safety.
  */
-internal const val CAPSULE_MAX_EQ_BOOST_MB = 900      // +9 dB; limiter remains active on Android 9+
+internal const val CAPSULE_MAX_EQ_BOOST_MB = 350      // +9 dB; limiter remains active on Android 9+
 // Sub-bass needs a much stricter ceiling: small phone speakers can over-excurse.
-internal const val CAPSULE_MAX_LOW_BASS_BOOST_MB = 400 // +4 dB below 120 Hz
-internal const val CAPSULE_MAX_BASS_STRENGTH = 250     // native scale 0..1000
+internal const val CAPSULE_MAX_LOW_BASS_BOOST_MB = 220 // +4 dB below 120 Hz
+internal const val CAPSULE_MAX_BASS_STRENGTH = 200     // native scale 0..1000
 internal const val CAPSULE_MAX_VIRTUALIZER_STRENGTH = 350
-internal const val CAPSULE_MAX_OUTPUT_GAIN_MB = 300   // +3 dB
+internal const val CAPSULE_MAX_OUTPUT_GAIN_MB = 0   // +3 dB
 
 /** Hardware-mapped effective EQ curve, or flat when the studio is bypassed. */
 internal fun protectedEqLevels(
@@ -119,11 +119,9 @@ internal fun protectedEqLevels(
         } else boundedMax
         level.coerceIn(minMb, upper.coerceAtLeast(minMb))
     }
-    return if (settings.musicalBalanceEnabled) {
-        // The user edits RAW points. Only the DSP receives the gentler shape.
-        capsuleMusicalEqLevels(nativeLevels, centerFreqHz)
-            .map { it.coerceIn(minMb, maxMb) }
-    } else nativeLevels
+    // The obsolete saved bypass flag must never disable the live contour guard.
+    return capsuleMusicalEqLevels(nativeLevels, centerFreqHz)
+        .map { it.coerceIn(minMb, maxMb) }
 }
 
 /**
@@ -135,7 +133,7 @@ internal fun protectedEqLevels(
  * true-peak output safety. Reserve an extra margin for filter overlap and
  * intersample overs; do not claim this protects speaker mechanics or hearing.
  */
-internal const val CAPSULE_EQ_HEADROOM_MARGIN_MB = 180 // 1.8 dB
+internal const val CAPSULE_EQ_HEADROOM_MARGIN_MB = 190 // 1.8 dB
 
 /**
  * Per-session clean input trim, in millibels, before the actual EQ.
@@ -143,27 +141,14 @@ internal const val CAPSULE_EQ_HEADROOM_MARGIN_MB = 180 // 1.8 dB
  * to restore every lost dB by input makeup would recreate the same clipping.
  */
 internal fun capsuleSafeEqInputGainMb(
-    settings: EqSettings,
-    effectiveLevelsMb: List<Int>,
+    settings: EqSettings, effectiveLevelsMb: List<Int>,
 ): Int {
     if (!settings.enabled) return 0
-    val requestedGain = if (settings.outputGainEnabled) {
-        settings.outputGainMb.coerceIn(-1500, CAPSULE_MAX_OUTPUT_GAIN_MB)
-    } else 0
-    val maxPositiveBoost = effectiveLevelsMb.maxOfOrNull { it.coerceAtLeast(0) } ?: 0
-    // A positive output-gain slider must NOT turn a flat EQ into an
-    // unprotected digital amplifier. With no positive EQ filters there is no
-    // curve headroom to "spend": preserve only requested attenuation.
-    if (maxPositiveBoost == 0) return requestedGain.coerceAtMost(0)
-
-    // Positive manual gain is intentionally allowed to spend only HALF the
-    // extra 1.8 dB reserve. Large makeup would force limiter distortion.
-    // Negative output trim remains fully supported.
-    val safeMakeup = requestedGain.coerceAtLeast(0)
-        .coerceAtMost(CAPSULE_EQ_HEADROOM_MARGIN_MB / 2)
-    return (requestedGain.coerceAtMost(0) + safeMakeup -
-        maxPositiveBoost - CAPSULE_EQ_HEADROOM_MARGIN_MB)
-        .coerceIn(-3000, -CAPSULE_EQ_HEADROOM_MARGIN_MB / 2)
+    val attenuation = if (settings.outputGainEnabled)
+        settings.outputGainMb.coerceIn(-1500, 0) else 0
+    val peak = (effectiveLevelsMb.maxOrNull() ?: 0).coerceAtLeast(0)
+    val reserve = if (peak > 0) peak + CAPSULE_EQ_HEADROOM_MARGIN_MB else 0
+    return (attenuation - reserve).coerceIn(-3000, 0)
 }
 
 /**
@@ -177,37 +162,16 @@ internal fun capsuleSafeEqInputGainMb(
  * overlap, so allocate additional reserve where appropriate.
  */
 internal fun protectedEqAudioFactor(
-    settings: EqSettings,
-    capabilities: EqCapabilities? = null,
+    settings: EqSettings, capabilities: EqCapabilities? = null,
 ): Float {
     if (!settings.enabled) return 1f
-    val levels = protectedEqLevels(
-        settings = settings,
-        bandCount = capabilities?.bandCount ?: settings.bandLevelsMb.size,
-        minMb = capabilities?.minBandLevelMb ?: -1500,
-        maxMb = capabilities?.maxBandLevelMb ?: CAPSULE_MAX_EQ_BOOST_MB,
-        centerFreqHz = capabilities?.centerFreqHz.orEmpty(),
+    val caps = capabilities ?: EqCapabilities(
+        settings.bandLevelsMb.size, -1500, CAPSULE_MAX_EQ_BOOST_MB,
+        emptyList(), emptyList(),
     )
-    val eqBoostDb = (levels.maxOfOrNull { it.coerceAtLeast(0) } ?: 0) / 100.0
-    val bassBoostDb = if (settings.bassBoostEnabled) {
-        settings.bassBoostStrength.coerceIn(0, CAPSULE_MAX_BASS_STRENGTH) *
-            (5.0 / CAPSULE_MAX_BASS_STRENGTH)
-    } else 0.0
-    val virtualizerDb = if (settings.virtualizerEnabled &&
-        settings.virtualizerStrength > 0) 1.0 else 0.0
-    val positiveGainDb = if (settings.outputGainEnabled) {
-        settings.outputGainMb.coerceIn(0, CAPSULE_MAX_OUTPUT_GAIN_MB) / 100.0
-    } else 0.0
-
-    if (eqBoostDb <= 0.0 && bassBoostDb <= 0.0 &&
-        virtualizerDb <= 0.0 && positiveGainDb <= 0.0) return 1f
-
-    val overlapReserveDb = minOf(eqBoostDb, bassBoostDb) * 0.55
-    val maximumIndependentBoostDb = maxOf(eqBoostDb, bassBoostDb)
-    val reserveDb = (maximumIndependentBoostDb + overlapReserveDb +
-        positiveGainDb + virtualizerDb * 0.4 +
-        CAPSULE_EQ_HEADROOM_MARGIN_MB / 100.0).coerceIn(0.0, 19.0)
-    return Math.pow(10.0, -reserveDb / 20.0).toFloat().coerceIn(0.11f, 1f)
+    val levels = capsuleUnifiedEqLevels(settings, caps)
+    val trim = capsuleSafeEqInputGainMb(settings, levels)
+    return Math.pow(10.0, trim / 2000.0).toFloat().coerceIn(0f, 1f)
 }
 
 /**
@@ -216,22 +180,14 @@ internal fun protectedEqAudioFactor(
  * tracks disproportionately quiet. This is NOT a true-peak safety stage.
  */
 internal fun protectedEqPlaybackVolume(
-    baseVolume: Float,
-    normalizationFactor: Float,
-    safetyFactor: Float,
-    transitionFactor: Float,
-    eqEnabled: Boolean,
+    baseVolume: Float, normalizationFactor: Float, safetyFactor: Float,
+    transitionFactor: Float, eqEnabled: Boolean,
 ): Float {
     if (!baseVolume.isFinite() || !normalizationFactor.isFinite() ||
-        !safetyFactor.isFinite() || !transitionFactor.isFinite()
-    ) return 0f
-    // The base already includes normalization. Keep half its dB increase
-    // rather than removing it entirely or granting its full +3 dB boost.
-    val normalizationCompensation = if (eqEnabled) {
-        kotlin.math.sqrt(normalizationFactor.coerceAtLeast(1f))
-    } else 1f
-    return (baseVolume.coerceAtLeast(0f) * safetyFactor.coerceIn(0f, 1f) *
-        transitionFactor.coerceIn(0f, 1f) / normalizationCompensation)
+        !safetyFactor.isFinite() || !transitionFactor.isFinite()) return 0f
+    // Normalization already contributes to baseVolume. Do not divide twice.
+    return (baseVolume.coerceAtLeast(0f) *
+        safetyFactor.coerceIn(0f, 1f) * transitionFactor.coerceIn(0f, 1f))
         .coerceIn(0f, 1f)
 }
 

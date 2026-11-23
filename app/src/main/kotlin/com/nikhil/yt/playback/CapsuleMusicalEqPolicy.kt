@@ -1,120 +1,83 @@
 /*
- * Capsule MUSIC — ear-friendly graphic EQ policy, GPL-3.0.
- *
- * Raw user-selected gains are never modified or written back. This function
- * shapes ONLY effective gains supplied to native or unified DSP.
- *
- * A reasonable relative spectrum reduces harshness; it is NOT a headphone
- * sound-pressure meter and cannot guarantee safe listening levels.
+ * Capsule MUSIC — conservative musical contour, GPL-3.0.
+ * Not an acoustic sound-pressure meter or a speaker excursion model.
+ * Operates on band gains only; no audio-frame allocations.
  */
 package com.nikhil.yt.playback
 
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-internal const val CAPSULE_MUSICAL_MAX_SPREAD_MB = 850     // 8.5 dB between extremes
-internal const val CAPSULE_MUSICAL_MAX_NEIGHBOR_MB = 500   // 5 dB across adjacent bands
-private const val MUSICAL_SOFT_KNEE_MB = 250
+internal const val CAPSULE_MUSICAL_MAX_SPREAD_MB = 700
+internal const val CAPSULE_MUSICAL_MAX_NEIGHBOR_MB = 375
 
-/** Softly bend extreme EQ profiles back toward a musical tonal balance. */
 internal fun capsuleMusicalEqLevels(
-    rawLevelsMb: List<Int>,
-    centerFreqHz: List<Int> = emptyList(),
+    rawLevelsMb: List<Int>, centerFreqHz: List<Int> = emptyList(),
 ): List<Int> {
-    if (rawLevelsMb.isEmpty()) return emptyList()
-    if (rawLevelsMb.all { it == 0 }) return rawLevelsMb
-
+    if (rawLevelsMb.isEmpty() || rawLevelsMb.all { it == 0 }) return rawLevelsMb
     val count = rawLevelsMb.size
-    // A uniform boost is mostly extra volume, not better tonality. Removing a
-    // small common offset leaves actual relative EQ adjustments intact.
     val sorted = rawLevelsMb.sorted()
-    val median = sorted[count / 2].coerceAtLeast(0)
-    val commonPositiveMb = (median * 0.40f).roundToInt().coerceAtMost(250)
+    val span = sorted.last().toLong() - sorted.first().toLong()
+    val median = sorted[count / 2].toLong()
+    // Broadband gain adds loudness, not tonal character.
+    val common = if (span <= 50L) median else median.coerceAtLeast(0L) * 40L / 100L
 
-    val highs = IntArray(count) { index ->
-        val hz = centerFreqHz.getOrNull(index)?.takeIf { it > 0 }
-            ?: if (index == 0) 60 else if (count == 1) 910 else
-                (60.0 * Math.pow(14000.0 / 60.0,
-                    index.toDouble() / (count - 1))).roundToInt()
-        when {
-            hz <= 120 -> 350
-            hz <= 700 -> 650
-            hz <= 2_400 -> 600
-            hz <= 7_000 -> 550
-            else -> 450
-        }
+    fun frequency(i: Int): Int =
+        centerFreqHz.getOrNull(i)?.takeIf { it in 20..20_000 }
+            ?: if (count == 1) 900 else (60.0 * Math.pow(14_000.0 / 60.0,
+                i.toDouble() / (count - 1))).roundToInt()
+    fun bounds(i: Int): IntRange = when (frequency(i)) {
+        in 20..120 -> -340..220
+        in 121..650 -> -400..350
+        in 651..4500 -> -420..320
+        in 4501..8000 -> -350..300
+        else -> -350..260
     }
-    val lows = IntArray(count) { index ->
-        val hz = centerFreqHz.getOrNull(index)?.takeIf { it > 0 } ?: 910
-        if (hz in 700..4_500) -520 else -650
+    fun clamp(i: Int, value: Int): Int {
+        val range = bounds(i)
+        return value.coerceIn(range.first, range.last)
     }
-    fun bound(index: Int, gainMb: Int): Int =
-        gainMb.coerceIn(lows[index], highs[index])
-
-    fun softKnee(gainMb: Int): Int {
-        val magnitude = abs(gainMb.toLong()).coerceAtMost(10_000L).toInt()
-        if (magnitude <= MUSICAL_SOFT_KNEE_MB) return gainMb
-        val slope = if (gainMb < 0) 0.68f else 0.86f
-        val softened = MUSICAL_SOFT_KNEE_MB +
-            ((magnitude - MUSICAL_SOFT_KNEE_MB) * slope).roundToInt()
-        return if (gainMb < 0) -softened else softened
-    }
-    val safe = IntArray(count) { index ->
-        // Imported JSON and malformed legacy presets may contain Int.MIN_VALUE;
-        // subtracting the common offset as Int would wrap into a giant BOOST.
-        val shifted = (rawLevelsMb[index].toLong() - commonPositiveMb.toLong())
+    val bounded = IntArray(count) { i ->
+        val difference = (rawLevelsMb[i].toLong() - common)
             .coerceIn(-10_000L, 10_000L).toInt()
-        bound(index, softKnee(bound(index, shifted)))
+        val gain = difference.coerceIn(-1200, 1200)
+        val softened = if (abs(gain) <= 160) gain else {
+            val magnitude = 160 + ((abs(gain) - 160) * 0.84f).roundToInt()
+            if (gain < 0) -magnitude else magnitude
+        }
+        clamp(i, softened)
     }
-    if (count == 1) return safe.toList()
-
-    // One low-cost nearest-neighbour pass avoids abrupt, over-resonant notches.
-    // Preserve the user's tonal character while softly feathering narrow bends.
-    val smoothed = IntArray(count) { index ->
-        val left = safe[(index - 1).coerceAtLeast(0)]
-        val right = safe[(index + 1).coerceAtMost(count - 1)]
-        bound(index, (safe[index] * 0.84f + (left + right) * 0.08f).roundToInt())
+    if (count == 1) return bounded.toList()
+    val result = IntArray(count) { i ->
+        val left = bounded[(i - 1).coerceAtLeast(0)]
+        val right = bounded[(i + 1).coerceAtMost(count - 1)]
+        clamp(i, (bounded[i] * 0.86f + (left + right) * 0.07f).roundToInt())
     }
-    // A full-spectrum contrast limit prevents exaggerated V/notch profiles
-    // even when two peaks are NOT next to each other.
-    val minimum = smoothed.minOrNull() ?: 0
-    val maximum = smoothed.maxOrNull() ?: 0
+    val minimum = result.minOrNull() ?: 0
+    val maximum = result.maxOrNull() ?: 0
     if (maximum - minimum > CAPSULE_MUSICAL_MAX_SPREAD_MB) {
-        val center = (maximum.toLong() + minimum.toLong()) / 2L
-        val lower = (center - CAPSULE_MUSICAL_MAX_SPREAD_MB / 2).toInt()
-        val upper = lower + CAPSULE_MUSICAL_MAX_SPREAD_MB
-        for (i in smoothed.indices) {
-            smoothed[i] = bound(i, smoothed[i].coerceIn(lower, upper))
-        }
+        val mid = (minimum + maximum) / 2
+        val lower = mid - CAPSULE_MUSICAL_MAX_SPREAD_MB / 2
+        for (i in result.indices) result[i] =
+            clamp(i, result[i].coerceIn(lower, lower + CAPSULE_MUSICAL_MAX_SPREAD_MB))
     }
-    // Projection on adjacent differences. No DSP allocation or per-frame work:
-    // the policy is run only when audio preferences / actual hardware change.
-    repeat(6) {
-        for (i in 0 until count - 1) {
-            val difference = smoothed[i + 1] - smoothed[i]
-            if (abs(difference) > CAPSULE_MUSICAL_MAX_NEIGHBOR_MB) {
-                val correction = ((abs(difference) - CAPSULE_MUSICAL_MAX_NEIGHBOR_MB)
-                    / 2f).roundToInt()
-                val direction = if (difference > 0) 1 else -1
-                smoothed[i] = bound(i, smoothed[i] + correction * direction)
-                smoothed[i + 1] = bound(i + 1, smoothed[i + 1] - correction * direction)
-            }
-        }
-        for (i in count - 2 downTo 0) {
-            val difference = smoothed[i + 1] - smoothed[i]
-            if (abs(difference) > CAPSULE_MUSICAL_MAX_NEIGHBOR_MB) {
-                val correction = ((abs(difference) - CAPSULE_MUSICAL_MAX_NEIGHBOR_MB)
-                    / 2f).roundToInt()
-                val direction = if (difference > 0) 1 else -1
-                smoothed[i] = bound(i, smoothed[i] + correction * direction)
-                smoothed[i + 1] = bound(i + 1, smoothed[i + 1] - correction * direction)
+    repeat(8) {
+        for (direction in 0..1) {
+            val indices = if (direction == 0) (0 until count - 1)
+                else (count - 2 downTo 0)
+            for (i in indices) {
+                val diff = result[i + 1] - result[i]
+                if (abs(diff) <= CAPSULE_MUSICAL_MAX_NEIGHBOR_MB) continue
+                val correction = (abs(diff) - CAPSULE_MUSICAL_MAX_NEIGHBOR_MB + 1) / 2
+                val directionSign = if (diff > 0) 1 else -1
+                result[i] = clamp(i, result[i] + correction * directionSign)
+                result[i + 1] = clamp(i + 1, result[i + 1] - correction * directionSign)
             }
         }
     }
-    return smoothed.toList()
+    return result.toList()
 }
 
-/** This measures relative curve shape, not electrical/acoustic loudness. */
 internal fun capsuleEqCurveSpreadMb(levels: List<Int>): Int =
     if (levels.isEmpty()) 0
     else (levels.maxOrNull()!!.toLong() - levels.minOrNull()!!.toLong())

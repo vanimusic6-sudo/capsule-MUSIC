@@ -115,6 +115,7 @@ import com.nikhil.yt.R
 import com.nikhil.yt.constants.ArtistSeparatorsKey
 import com.nikhil.yt.constants.EqualizerBandLevelsMbKey
 import com.nikhil.yt.constants.EqualizerCurveIntensityPercentKey
+import com.nikhil.yt.constants.EqualizerMusicalBalanceKey
 import com.nikhil.yt.constants.EqualizerBassBoostEnabledKey
 import com.nikhil.yt.constants.EqualizerBassBoostStrengthKey
 import com.nikhil.yt.constants.EqualizerCustomProfilesJsonKey
@@ -758,8 +759,10 @@ fun EqualizerDialog(
     val (bandLevelsRaw, setBandLevelsRaw) = rememberPreference(EqualizerBandLevelsMbKey, defaultValue = "")
     val (curveIntensity, setCurveIntensity) =
         rememberPreference(EqualizerCurveIntensityPercentKey, defaultValue = 100)
-    // Always-on tonal contour guard; the whole studio can still be switched off.
-    val musicalBalance = true
+    // Live playback defaults to this protective shape, including migrated EQ
+    // profiles. Users can inspect both curves before choosing precision mode.
+    val (musicalBalance, setMusicalBalance) =
+        rememberPreference(EqualizerMusicalBalanceKey, defaultValue = true)
     var intensityLocal by rememberSaveable { mutableIntStateOf(curveIntensity.coerceIn(100, 200)) }
     LaunchedEffect(curveIntensity) { intensityLocal = curveIntensity.coerceIn(100, 200) }
 
@@ -1271,8 +1274,8 @@ fun EqualizerDialog(
                         Surface(
                             modifier = Modifier.fillMaxWidth()
                                 .padding(horizontal = 12.dp, vertical = 5.dp),
-                            shape = RoundedCornerShape(18.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.52f),
+                            shape = RoundedCornerShape(22.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.76f),
                             border = BorderStroke(
                                 1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.09f),
                             ),
@@ -1292,11 +1295,10 @@ fun EqualizerDialog(
                                         )
                                     }
                                     Spacer(Modifier.width(12.dp))
-                                    Icon(
-                                        painter = painterResource(R.drawable.check),
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(22.dp),
+                                    Switch(
+                                        checked = musicalBalance,
+                                        enabled = eqEnabled,
+                                        onCheckedChange = setMusicalBalance,
                                     )
                                 }
                                 if (eqEnabled) {
@@ -1314,7 +1316,14 @@ fun EqualizerDialog(
                                         else MaterialTheme.colorScheme.onSurfaceVariant,
                                         style = MaterialTheme.typography.labelSmall,
                                     )
-
+                                    if (!musicalBalance && originalContrast > 1100) {
+                                        Text(
+                                            stringResource(R.string.eq_musical_balance_warning),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.padding(top = 5.dp),
+                                        )
+                                    }
                                 }
                             }
                         }

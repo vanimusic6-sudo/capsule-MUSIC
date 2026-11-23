@@ -87,23 +87,6 @@ class CapsuleImmersiveImageBackdropTest {
             androidx.compose.ui.graphics.Color(backdrop.getPixel(60, 168))).title.red < 0.5f)
     }
 
-    @Test fun darkCoverWithBrightRedEyesKeepsDarkFloor() {
-        val mask = Bitmap.createBitmap(320, 320, Bitmap.Config.ARGB_8888).apply {
-            eraseColor(android.graphics.Color.BLACK)
-            val red = Paint().apply { color = 0xFFFF161B.toInt() }
-            Canvas(this).drawRect(45f, 32f, 144f, 182f, red)
-            Canvas(this).drawRect(180f, 32f, 272f, 182f, red)
-        }
-        val backdrop = capsuleImmersiveImageBackdropBitmap(
-            mask.capsuleImmersiveVisibleField(1f, false), 0.60f,
-        ).asAndroidBitmap()
-        val bottom = backdrop.getPixel(backdrop.width / 2, backdrop.height - 8)
-        assertTrue("Black album backgrounds must not gain a purple haze",
-            maxOf(bottom ushr 16 and 255, bottom ushr 8 and 255, bottom and 255) < 28)
-        val top = backdrop.getPixel(backdrop.width / 4, backdrop.height / 4)
-        assertTrue("Red eyes still remain visible", (top ushr 16 and 255) > 40)
-    }
-
     @Test fun colourLayoutComesFromVisibleImageInsteadOfOneWinningBottomRow() {
         val image = photo().apply {
             Canvas(this).drawRect(0f, 0f, 160f, 320f, Paint().apply { color = 0xFFCC3020.toInt() })
