@@ -332,7 +332,12 @@ internal class PlaybackAudioEffectsController(
         engineMode.value = when {
             !settings.enabled -> CapsuleEqEngineMode.OFF
             audioEffectsSessionId == null -> CapsuleEqEngineMode.WAITING_FOR_SESSION
-            equalizer != null -> CapsuleEqEngineMode.NATIVE_FALLBACK
+            // A constructed native Equalizer is not proof its DSP was
+            // enabled: some OEM implementations reject setEnabled(true).
+            // A flat profile legitimately keeps the effect bypassed.
+            equalizer != null && (appliedEnabled == true ||
+                settings.bandLevelsMb.all { it == 0 }) ->
+                CapsuleEqEngineMode.NATIVE_FALLBACK
             else -> CapsuleEqEngineMode.UNAVAILABLE
         }
     }
