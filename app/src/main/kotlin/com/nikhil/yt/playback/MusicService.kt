@@ -1751,6 +1751,7 @@ class MusicService :
             reportRecoverableException("MusicService", operation, error)
         }
     val eqCapabilities = audioEffectsController.capabilities
+    internal val eqEngineMode = audioEffectsController.engineMode
 
     private val scrobbleCoordinator by lazy(LazyThreadSafetyMode.NONE) {
         ScrobbleCoordinator(
@@ -2465,6 +2466,10 @@ class MusicService :
                     audioEffectsController.applySettings(settings)
                     val targetSafety = when {
                         !settings.enabled -> 1f
+                        // No active native EQ must not silently make music
+                        // quieter merely because a curve is configured.
+                        audioEffectsController.engineMode.value ==
+                            CapsuleEqEngineMode.UNAVAILABLE -> 1f
                         audioEffectsController.isUnifiedDynamicsActive &&
                             settings.virtualizerEnabled -> 0.84f
                         audioEffectsController.isUnifiedDynamicsActive -> 0.94f
@@ -4015,6 +4020,8 @@ class MusicService :
         val settings = previousSoundStudioSettings ?: return
         val safety = when {
             !settings.enabled -> 1f
+            audioEffectsController.engineMode.value ==
+                CapsuleEqEngineMode.UNAVAILABLE -> 1f
             audioEffectsController.isUnifiedDynamicsActive &&
                 settings.virtualizerEnabled -> 0.84f
             audioEffectsController.isUnifiedDynamicsActive -> 0.94f
