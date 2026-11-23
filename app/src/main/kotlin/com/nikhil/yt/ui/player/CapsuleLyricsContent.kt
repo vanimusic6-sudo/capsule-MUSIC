@@ -229,8 +229,10 @@ internal fun CapsuleLyricsBackdropLayer(
                                     retainedBackground = prepared
                                     fieldBlend.snapTo(1f)
                                 } else {
-                                    incomingBackground = prepared
+                                    // Reset alpha before exposing the next image.
+                                    // Otherwise a one-frame fully opaque new field can flash.
                                     fieldBlend.snapTo(0f)
+                                    incomingBackground = prepared
                                     fieldBlend.animateTo(1f, tween(540, easing = CapsuleStandardEasing))
                                     retainedBackground = prepared
                                     incomingBackground = null
