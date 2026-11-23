@@ -683,25 +683,35 @@ fun Lyrics(
         if (darkTheme == DarkMode.AUTO) isSystemInDarkTheme else darkTheme == DarkMode.ON
     }
 
-    val lines = remember(lyrics, mediaMetadata?.id, mediaMetadata?.duration) {
+    // Avoid mistaking a plain YouTube caption beginning with "[music]" for LRC.
+    val hasTimedLrc = remember(lyrics) {
+        lyrics?.let {
+            Regex("""(?m)^\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?]""")
+                .containsMatchIn(it)
+        } ?: false
+    }
+    val lines = remember(lyrics, hasTimedLrc, mediaMetadata?.id, mediaMetadata?.duration) {
         when {
             lyrics == null || lyrics == LYRICS_NOT_FOUND -> emptyList()
-            lyrics.startsWith("[") || isTtml(lyrics) -> {
-                val parsed = if (lyrics.startsWith("[")) parseLyrics(lyrics) else parseTtml(lyrics, mediaMetadata?.duration)
+            hasTimedLrc || isTtml(lyrics) -> {
+                val parsed = if (hasTimedLrc) parseLyrics(lyrics) else parseTtml(lyrics, mediaMetadata?.duration)
                 listOf(LyricsEntry.HEAD_LYRICS_ENTRY) + withInstrumentalBreaks(
                     parsed, songDurationMs = (mediaMetadata?.duration?.toLong() ?: 0L) * 1000L,
                 )
             }
-            else -> lyrics.lines().mapIndexed { index, line -> LyricsEntry(index * 100L, line) }
+            else -> lyrics.lines().mapIndexed { index, line ->
+                // Untimed YouTube subtitles may contain only a music cue.
+                val note = com.nikhil.yt.lyrics.isInstrumentalCue(line)
+                LyricsEntry(index * 100L, if (note) "" else line, isInstrumental = note)
+            }
         }
     }
-    val isSynced =
-        remember(lyrics) {
-            !lyrics.isNullOrEmpty() && (lyrics.startsWith("[") || isTtml(lyrics))
-        }
+    val isSynced = remember(lyrics, hasTimedLrc) {
+        !lyrics.isNullOrEmpty() && (hasTimedLrc || isTtml(lyrics))
+    }
     val hasDisplayableLyrics = remember(lyrics, lines) {
         !lyrics.isNullOrBlank() && lyrics != LYRICS_NOT_FOUND &&
-            lines.any { it.text.isNotBlank() }
+            lines.any { it.text.isNotBlank() || it.isInstrumental }
     }
 
     val lyricsUsesDarkSurface =
@@ -1898,7 +1908,7 @@ fun Lyrics(
                             alpha = animatedAlphaState.value
                         }
 
-                    if (item.isInstrumental && isSynced) {
+                    if (item.isInstrumental) {
                         Column(
                             modifier = itemModifier,
                             horizontalAlignment = when (lyricsTextPosition) {
@@ -1907,15 +1917,29 @@ fun Lyrics(
                                 LyricsPosition.RIGHT -> Alignment.End
                             },
                         ) {
-                            InstrumentalLyricNote(
-                                startMs = item.time,
-                                durationMs = item.durationMs,
-                                playbackPosition = playbackPositionState,
-                                // The note starts at the actual pause, without the vocal lead-in.
-                                clockOffsetMs = userOffsetMs - wordSyncLeadMs,
-                                textColor = lyricsBaseColor,
-                                phase = requireNotNull(notePhase),
-                            )
+                            if (isSynced) {
+                                InstrumentalLyricNote(
+                                    startMs = item.time,
+                                    durationMs = item.durationMs,
+                                    playbackPosition = playbackPositionState,
+                                    clockOffsetMs = userOffsetMs - wordSyncLeadMs,
+                                    textColor = lyricsBaseColor,
+                                    phase = requireNotNull(notePhase),
+                                )
+                            } else {
+                                // A plain transcript has no clock: show the same note
+                                // glyph with a one-time fade when playback changes.
+                                val noteFill = animateFloatAsState(
+                                    targetValue = if (isPlaying) 1f else 0.45f,
+                                    animationSpec = tween(460, easing = CapsuleStandardEasing),
+                                    label = "plainYoutubeMusicNote",
+                                )
+                                InstrumentalNoteGlyph(
+                                    fill = { noteFill.value },
+                                    textColor = lyricsBaseColor,
+                                    modifier = Modifier.size(40.dp),
+                                )
+                            }
                         }
                         return@itemsIndexed
                     }
@@ -3107,14 +3131,35 @@ fun Lyrics(
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 16.dp)
             ) {
+                val glassShape = RoundedCornerShape(26.dp)
+                val pressInteraction = remember { MutableInteractionSource() }
+                val isPressed by pressInteraction.collectIsPressedAsState()
+                val pressScale by animateFloatAsState(
+                    targetValue = if (isPressed) 0.976f else 1f,
+                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                    label = "matteAutoscrollPress",
+                )
                 Row(
                     modifier = Modifier
+                        .graphicsLayer {
+                            scaleX = pressScale
+                            scaleY = pressScale
+                        }
+                        .clip(glassShape)
+                        .background(Color(0xFF27252A).copy(alpha = 0.88f), glassShape)
                         .background(
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            shape = RoundedCornerShape(24.dp)
+                            Brush.verticalGradient(
+                                listOf(
+                                    Color.White.copy(alpha = 0.10f),
+                                    Color.White.copy(alpha = 0.025f),
+                                    Color.Black.copy(alpha = 0.11f),
+                                )
+                            ),
+                            glassShape,
                         )
+                        .border(1.dp, Color.White.copy(alpha = 0.20f), glassShape)
                         .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
+                            interactionSource = pressInteraction,
                             indication = null,
                         ) {
                             if (
@@ -3131,19 +3176,19 @@ fun Lyrics(
                                 isReturningToSync = true
                             }
                         }
-                        .padding(horizontal = 20.dp, vertical = 10.dp),
+                        .padding(horizontal = 22.dp, vertical = 13.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Icon(
-                        painter = painterResource(id = R.drawable.play),
+                        painter = painterResource(id = R.drawable.capsule_soft_sync),
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        tint = Color.White.copy(alpha = 0.94f),
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
                         text = stringResource(R.string.resume_autoscroll),
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        color = Color.White.copy(alpha = 0.94f),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium
                     )
