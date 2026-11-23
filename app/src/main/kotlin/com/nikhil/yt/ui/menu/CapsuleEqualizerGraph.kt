@@ -46,6 +46,44 @@ internal fun capsuleEqualizerLevelAt(
         .div(50).times(50).coerceIn(minMb, maxMb)
 }
 
+/** A shared zero line even when bass and treble have different positive ceilings. */
+internal fun capsuleGraphZeroY(height: Float, minMb: Int, maxMb: Int, inset: Float): Float {
+    val range = (maxMb - minMb).toFloat()
+    if (height <= 2f * inset || range <= 0f) return height / 2f
+    return inset + (height - 2f * inset) * (maxMb / range).coerceIn(0f, 1f)
+}
+
+/** The top of each band reaches its *actual* gain ceiling, not an imaginary higher dB. */
+internal fun capsuleBandLevelAt(
+    y: Float, height: Float, minMb: Int, maxMb: Int, bandMaxMb: Int, inset: Float,
+): Int {
+    if (!y.isFinite() || height <= 2f * inset || minMb >= 0 || maxMb <= 0) {
+        return capsuleEqualizerLevelAt(y, height, minMb, maxMb, inset)
+            .coerceAtMost(bandMaxMb.coerceAtLeast(minMb))
+    }
+    val zero = capsuleGraphZeroY(height, minMb, maxMb, inset)
+    val cap = bandMaxMb.coerceIn(0, maxMb)
+    val value = if (y <= zero) {
+        cap * ((zero - y) / (zero - inset).coerceAtLeast(1f))
+    } else {
+        minMb * ((y - zero) / (height - inset - zero).coerceAtLeast(1f))
+    }
+    return ((value / 50f).roundToInt() * 50).coerceIn(minMb, cap)
+}
+
+internal fun capsuleBandGraphY(
+    levelMb: Int, height: Float, minMb: Int, maxMb: Int, bandMaxMb: Int, inset: Float,
+): Float {
+    val zero = capsuleGraphZeroY(height, minMb, maxMb, inset)
+    val cap = bandMaxMb.coerceIn(1, maxMb.coerceAtLeast(1))
+    val bottom = height - inset
+    return (if (levelMb > 0) {
+        zero - (zero - inset) * levelMb.toFloat() / cap
+    } else {
+        zero + (bottom - zero) * levelMb.toFloat() / minMb.coerceAtMost(-1)
+    }).coerceIn(inset, bottom)
+}
+
 /** Display original Android frequency centers in Hz/kHz, not awkward shorthand. */
 internal fun capsuleGraphHz(hz: Int): String = when {
     hz <= 0 -> "—"
@@ -69,6 +107,7 @@ internal fun CapsuleEqualizerGraph(
     levelsMb: List<Int>,
     minMb: Int,
     maxMb: Int,
+    bandMaxLevelsMb: List<Int> = emptyList(),
     selectedBand: Int,
     onBandSelected: (Int) -> Unit,
     onLevelChanged: (Int, Int) -> Unit,
@@ -92,7 +131,7 @@ internal fun CapsuleEqualizerGraph(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(graphHeight)
-                .pointerInput(count, minMb, maxMb) {
+                .pointerInput(count, minMb, maxMb, bandMaxLevelsMb) {
                     val inset = pad.toPx()
                     // Claim the gesture immediately on the graph. Waiting for
                     // drag touch-slop let the parent verticalScroll steal it,
@@ -103,8 +142,9 @@ internal fun CapsuleEqualizerGraph(
                             down.position.x, size.width.toFloat(), count, inset,
                         )
                         updateSelected(band)
-                        var level = capsuleEqualizerLevelAt(
-                            down.position.y, size.height.toFloat(), minMb, maxMb, inset,
+                        var level = capsuleBandLevelAt(
+                            down.position.y, size.height.toFloat(), minMb, maxMb,
+                            bandMaxLevelsMb.getOrNull(band) ?: maxMb, inset,
                         )
                         updateLevel(band, level)
                         down.consume()
@@ -115,9 +155,9 @@ internal fun CapsuleEqualizerGraph(
                                 change.consume()
                                 break
                             }
-                            val next = capsuleEqualizerLevelAt(
-                                change.position.y, size.height.toFloat(),
-                                minMb, maxMb, inset,
+                            val next = capsuleBandLevelAt(
+                                change.position.y, size.height.toFloat(), minMb, maxMb,
+                                bandMaxLevelsMb.getOrNull(band) ?: maxMb, inset,
                             )
                             if (next != level) {
                                 level = next
@@ -132,14 +172,15 @@ internal fun CapsuleEqualizerGraph(
             val inset = pad.toPx()
             val innerW = (size.width - inset * 2f).coerceAtLeast(1f)
             val innerH = (size.height - inset * 2f).coerceAtLeast(1f)
-            val span = (maxMb - minMb).coerceAtLeast(1).toFloat()
             fun point(index: Int): Offset {
                 val x = inset + innerW * if (count == 1) 0.5f else index.toFloat() / (count - 1)
-                val y = inset + innerH * (1f - (normalized[index] - minMb) / span)
-                return Offset(x, y.coerceIn(inset, size.height - inset))
+                val y = capsuleBandGraphY(
+                    normalized[index], size.height, minMb, maxMb,
+                    bandMaxLevelsMb.getOrNull(index) ?: maxMb, inset,
+                )
+                return Offset(x, y)
             }
-            val baseline = (inset + innerH * (1f - (0 - minMb) / span))
-                .coerceIn(inset, size.height - inset)
+            val baseline = capsuleGraphZeroY(size.height, minMb, maxMb, inset)
             // Two subtle helpers, not a harsh table/grid behind every drag.
             for (fraction in listOf(0.25f, 0.75f)) {
                 val y = inset + innerH * fraction
