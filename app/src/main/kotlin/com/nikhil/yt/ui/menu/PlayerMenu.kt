@@ -133,6 +133,9 @@ import com.nikhil.yt.discovery.ExperimentalDownload
 import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.models.sanitizedArtistCredits
 import com.nikhil.yt.playback.EqCapabilities
+import com.nikhil.yt.playback.EqSettings
+import com.nikhil.yt.playback.capsuleSafeEqInputGainMb
+import com.nikhil.yt.playback.capsuleUnifiedEqLevels
 import com.nikhil.yt.playback.CAPSULE_MAX_BASS_STRENGTH
 import com.nikhil.yt.playback.CAPSULE_MAX_VIRTUALIZER_STRENGTH
 import com.nikhil.yt.playback.CAPSULE_MAX_OUTPUT_GAIN_MB
@@ -1236,6 +1239,44 @@ fun EqualizerDialog(
                             enabled = eqEnabled,
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                         )
+                        // Show the *actual* planned input headroom. An audible
+                        // reduction in overall level is deliberate; the tonal
+                        // differences remain intact without saturating the DSP.
+                        val headroomPreviewSettings = EqSettings(
+                            enabled = eqEnabled,
+                            bandLevelsMb = bandLevelsMb,
+                            outputGainEnabled = outputGainEnabled,
+                            outputGainMb = outputGainLocal,
+                            bassBoostEnabled = bassBoostEnabled,
+                            bassBoostStrength = bassBoostStrengthLocal,
+                            virtualizerEnabled = virtualizerEnabled,
+                            virtualizerStrength = virtualizerStrengthLocal,
+                            intensityPercent = intensityLocal,
+                        )
+                        val previewEffectiveLevels = capsuleUnifiedEqLevels(
+                            headroomPreviewSettings, caps,
+                        )
+                        val safeInputGainMb = capsuleSafeEqInputGainMb(
+                            headroomPreviewSettings, previewEffectiveLevels,
+                        )
+                        if (eqEnabled && safeInputGainMb < 0) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = stringResource(
+                                    R.string.eq_clean_headroom,
+                                    formatDb(safeInputGainMb / 100f),
+                                ),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 18.dp),
+                            )
+                            Text(
+                                text = stringResource(R.string.eq_clean_headroom_description),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 3.dp),
+                            )
+                        }
 
                     }
 
