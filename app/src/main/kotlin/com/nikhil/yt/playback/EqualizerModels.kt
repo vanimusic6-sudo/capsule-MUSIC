@@ -119,16 +119,51 @@ internal fun protectedEqLevels(
 }
 
 /**
- * Moderate static headroom before the session effects.
+ * Android's DynamicsProcessing runs its input gain BEFORE PreEQ. A positive
+ * frequency curve without negative preamp can overload an internal stage
+ * before the last limiter catches the transient.
  *
- * Do not add worst-case theoretical gains from independent effects: that
- * dropped some music by 17+ dB even when the output was clean. Reserve most
- * of the strongest likely overlapping boost and leave peak transients to the
- * optional DynamicsProcessing limiter on compatible devices.
+ * Sample-peak and Android OEM implementations do not provide guaranteed
+ * true-peak output safety. Reserve an extra margin for filter overlap and
+ * intersample overs; do not claim this protects speaker mechanics or hearing.
+ */
+internal const val CAPSULE_EQ_HEADROOM_MARGIN_MB = 180 // 1.8 dB
+
+/**
+ * Per-session clean input trim, in millibels, before the actual EQ.
+ * Strong EQ remains strong *relative* to unaffected frequencies; attempting
+ * to restore every lost dB by input makeup would recreate the same clipping.
+ */
+internal fun capsuleSafeEqInputGainMb(
+    settings: EqSettings,
+    effectiveLevelsMb: List<Int>,
+): Int {
+    if (!settings.enabled) return 0
+    val requestedGain = if (settings.outputGainEnabled) {
+        settings.outputGainMb.coerceIn(-1500, CAPSULE_MAX_OUTPUT_GAIN_MB)
+    } else 0
+    val maxPositiveBoost = effectiveLevelsMb.maxOfOrNull { it.coerceAtLeast(0) } ?: 0
+    if (maxPositiveBoost == 0) return requestedGain
+
+    // Positive manual gain is intentionally allowed to spend only HALF the
+    // extra 1.8 dB reserve. Large makeup would force limiter distortion.
+    // Negative output trim remains fully supported.
+    val safeMakeup = requestedGain.coerceAtLeast(0)
+        .coerceAtMost(CAPSULE_EQ_HEADROOM_MARGIN_MB / 2)
+    return (requestedGain.coerceAtMost(0) + safeMakeup -
+        maxPositiveBoost - CAPSULE_EQ_HEADROOM_MARGIN_MB)
+        .coerceIn(-3000, -CAPSULE_EQ_HEADROOM_MARGIN_MB / 2)
+}
+
+/**
+ * Fallback for devices without a functioning unified DynamicsProcessing.
  *
- * This is a loudness/quality tradeoff, NOT a guaranteed true-peak ceiling.
- * OEM effect gains/ordering and speaker excursion are not measurable here.
- * Low-bass boosts remain capped separately to reduce driver stress.
+ * Playback volume precedes native EQ. Reserve the ACTUAL potential positive
+ * bands instead of the old fixed -4 dB ceiling: a +9 dB curve with only -4 dB
+ * reserve can saturate the internal device mixer before a final limiter.
+ *
+ * Native BassBoost and Virtualizer are separate on this legacy path and may
+ * overlap, so allocate additional reserve where appropriate.
  */
 internal fun protectedEqAudioFactor(
     settings: EqSettings,
@@ -142,46 +177,26 @@ internal fun protectedEqAudioFactor(
         maxMb = capabilities?.maxBandLevelMb ?: CAPSULE_MAX_EQ_BOOST_MB,
         centerFreqHz = capabilities?.centerFreqHz.orEmpty(),
     )
-    val eqBoostDb = if (capabilities == null) {
-        // Until the OEM band map is known, assume even band zero can be a
-        // mid/high band. Never use the sub-bass cap to UNDERestimate headroom.
-        val requestedMaxMb = settings.bandLevelsMb.maxOfOrNull {
-            it.coerceAtLeast(0)
-        } ?: 0
-        (requestedMaxMb.toDouble() * settings.intensityPercent.coerceIn(100, 200) /
-            10_000.0).coerceIn(0.0, CAPSULE_MAX_EQ_BOOST_MB / 100.0)
-    } else {
-        (levels.maxOfOrNull { it.coerceAtLeast(0) } ?: 0) / 100.0
-    }
-    val bassAllowanceDb = if (settings.bassBoostEnabled) {
+    val eqBoostDb = (levels.maxOfOrNull { it.coerceAtLeast(0) } ?: 0) / 100.0
+    val bassBoostDb = if (settings.bassBoostEnabled) {
         settings.bassBoostStrength.coerceIn(0, CAPSULE_MAX_BASS_STRENGTH) *
             (5.0 / CAPSULE_MAX_BASS_STRENGTH)
     } else 0.0
-    val virtualizerAllowanceDb = if (settings.virtualizerEnabled) {
-        settings.virtualizerStrength.coerceIn(0, CAPSULE_MAX_VIRTUALIZER_STRENGTH) *
-            (2.0 / CAPSULE_MAX_VIRTUALIZER_STRENGTH)
-    } else 0.0
-    val gainBoostDb = if (settings.outputGainEnabled) {
+    val virtualizerDb = if (settings.virtualizerEnabled &&
+        settings.virtualizerStrength > 0) 1.0 else 0.0
+    val positiveGainDb = if (settings.outputGainEnabled) {
         settings.outputGainMb.coerceIn(0, CAPSULE_MAX_OUTPUT_GAIN_MB) / 100.0
     } else 0.0
-    if (eqBoostDb <= 0.0 && bassAllowanceDb <= 0.0 &&
-        virtualizerAllowanceDb <= 0.0 && gainBoostDb <= 0.0
-    ) return 1f
 
-    // A fixed, conservative *moderate* reserve: avoid turning normal music
-    // into a whisper just because several controls are enabled together.
-    // These effects typically occupy different spectral regions; they must
-    // not be treated as identical full-band +dB amplifiers.
-    val mainReserveDb = maxOf(
-        eqBoostDb * 0.33,
-        bassAllowanceDb * 0.35,
-    )
-    val sharedLowEndDb = minOf(eqBoostDb, bassAllowanceDb) * 0.10
-    // Avoid cancelling the tonal boost with excess global attenuation.
-    // Still reserve additional headroom when explicit master gain is enabled.
-    val reserveDb = (mainReserveDb + sharedLowEndDb +
-        gainBoostDb * 0.25 + virtualizerAllowanceDb * 0.10).coerceIn(0.0, 4.0)
-    return Math.pow(10.0, -reserveDb / 20.0).toFloat().coerceIn(0.63f, 1f)
+    if (eqBoostDb <= 0.0 && bassBoostDb <= 0.0 &&
+        virtualizerDb <= 0.0 && positiveGainDb <= 0.0) return 1f
+
+    val overlapReserveDb = minOf(eqBoostDb, bassBoostDb) * 0.55
+    val maximumIndependentBoostDb = maxOf(eqBoostDb, bassBoostDb)
+    val reserveDb = (maximumIndependentBoostDb + overlapReserveDb +
+        positiveGainDb + virtualizerDb * 0.4 +
+        CAPSULE_EQ_HEADROOM_MARGIN_MB / 100.0).coerceIn(0.0, 19.0)
+    return Math.pow(10.0, -reserveDb / 20.0).toFloat().coerceIn(0.11f, 1f)
 }
 
 /**
