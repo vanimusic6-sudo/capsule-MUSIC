@@ -61,7 +61,7 @@ internal fun capsuleMusicalEqLevels(
         clamp(i, (rawLevelsMb[i].toLong()-common.toLong())
             .coerceIn(-2500L,2500L).toInt())
     }
-    if (n <= 2) return result.toList()
+    if (n == 1) return result.toList()
 
     // In contrast with old blanket 0.84x smoothing, don't touch a natural
     // broad contour. Only a *narrow* local deviation from its neighbours

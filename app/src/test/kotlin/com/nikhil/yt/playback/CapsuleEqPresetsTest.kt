@@ -5,50 +5,51 @@ import org.junit.Test
 import java.io.File
 
 class CapsuleEqPresetsTest {
-    private val centers = listOf(60, 230, 910, 3_600, 14_000)
+    private val centers=listOf(80,200,500,1300,3400,8000,14000)
 
-    @Test fun fiveLowContrastVersionsWithNoSevere910HzNotch() {
-        val presets = CapsuleEqPresets.all
-        assertEquals(5, presets.size)
-        assertEquals(5, presets.map { it.id }.distinct().size)
-        assertEquals(5, presets.map { it.referenceLevelsMb }.distinct().size)
+    @Test fun fiveBroadSevenPointVersionsNoNamed910HzNotches() {
+        val p=CapsuleEqPresets.all
+        assertEquals(5,p.size)
+        assertEquals(5,p.map{it.id}.distinct().size)
+        assertEquals(5,p.map{it.referenceLevelsMb}.distinct().size)
         assertNull(CapsuleEqPresets.byId("deep_bass"))
         assertNull(CapsuleEqPresets.byId("v_shape"))
-        presets.forEach { preset ->
-            assertEquals(5, preset.referenceLevelsMb.size)
-            assertTrue("Never use sharp +/- dB bands: ${preset.id}",
-                preset.referenceLevelsMb.all { it in -120..120 })
-            assertTrue("Avoid the previous deep 910 Hz vacuum",
-                preset.referenceLevelsMb[2] in -100..100)
-            assertTrue("Tonal range should be subtle",
-                preset.referenceLevelsMb.max() - preset.referenceLevelsMb.min() <= 200)
+        p.forEach{
+            assertEquals(7,it.referenceLevelsMb.size)
+            assertTrue(it.referenceLevelsMb.all { mb -> mb in -160..190 })
+            assertTrue(it.referenceLevelsMb.zipWithNext().all { (a,b) ->
+                kotlin.math.abs(a-b)<=150
+            })
         }
     }
 
-    @Test fun eachFiveBandVersionHasExactAuthoredCurve() {
-        CapsuleEqPresets.all.forEach { preset ->
-            assertEquals(preset.referenceLevelsMb,
-                CapsuleEqPresets.levelsFor(preset, centers, -1500, 1500))
+    @Test fun referenceAnchorsStayFaithfulAndDeviceBandsInterpolateByFrequency() {
+        CapsuleEqPresets.all.forEach{p->
+            assertEquals(p.referenceLevelsMb,
+                CapsuleEqPresets.levelsFor(p,centers,-1500,1500))
         }
-    }
-
-    @Test fun hardwareMappingInterpolatesByFrequencyNotBandIndex() {
-        val softBass = CapsuleEqPresets.byId("soft_bass_v2")!!
-        assertEquals(listOf(80,20,-35),
-            CapsuleEqPresets.levelsFor(softBass, listOf(60,910,14000),-1500,1500))
-        assertEquals(10,CapsuleEqPresets.levelsFor(softBass,
-            listOf(30,60,100,230,400,910,1800,3600,7000,18000),
+        val bass=CapsuleEqPresets.byId("soft_bass_v2")!!
+        val three=CapsuleEqPresets.levelsFor(
+            bass,listOf(80,1300,14000),-1500,1500)
+        assertEquals(listOf(150,50,-65),three)
+        assertEquals(10,CapsuleEqPresets.levelsFor(
+            bass,listOf(30,60,110,220,450,910,1800,3500,7000,18000),
             -1500,1500).size)
-        assertEquals(emptyList<Int>(),CapsuleEqPresets.levelsFor(
-            softBass, emptyList(),-1500,1500))
-        assertEquals(List(5){0},CapsuleEqPresets.levelsFor(
-            softBass, centers,100,-100))
     }
 
-    @Test fun noIndependentNativeBoostsOrHighGainImported() {
-        val src=File("src/main/kotlin/com/nikhil/yt/playback/CapsuleEqPresets.kt").readText()
-        assertFalse(src.contains("BassBoost("))
-        assertFalse(src.contains("Virtualizer("))
-        assertFalse(src.contains("LoudnessEnhancer("))
+    @Test fun malformedFrequencyDataCannotCrashOrExceedDeviceGainRange() {
+        val preset=CapsuleEqPresets.all.first()
+        assertEquals(emptyList<Int>(),CapsuleEqPresets.levelsFor(preset,emptyList(),-100,100))
+        assertEquals(List(7){0},CapsuleEqPresets.levelsFor(preset,centers,100,-100))
+        assertTrue(CapsuleEqPresets.levelsFor(preset,List(7){0},-100,100)
+            .all{it in -100..100})
+        assertEquals(1,CapsuleEqPresets.levelsFor(preset,listOf(0),-100,100).size)
+    }
+
+    @Test fun noExternalEffectsOrAudioSessionBoostsInPresetDefinitions() {
+        val s=File("src/main/kotlin/com/nikhil/yt/playback/CapsuleEqPresets.kt").readText()
+        assertFalse(s.contains("BassBoost("))
+        assertFalse(s.contains("Virtualizer("))
+        assertFalse(s.contains("LoudnessEnhancer("))
     }
 }

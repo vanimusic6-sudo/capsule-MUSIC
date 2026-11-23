@@ -9,6 +9,7 @@ on:
       - 'refactor/**'
       - 'perf/**'
       - 'fix/**'
+      - 'feat/**'
     paths:
       - 'app/src/main/kotlin/com/nikhil/yt/ui/menu/PlayerMenu.kt'
       - 'app/src/main/kotlin/com/nikhil/yt/ui/menu/LyricsMenu.kt'

@@ -9,6 +9,7 @@ on:
       - 'dev/**'
       - 'fix/**'
       - 'feature/**'
+      - 'feat/**'
       - 'polish/**'
       - 'next/**'
       - 'perf/**'

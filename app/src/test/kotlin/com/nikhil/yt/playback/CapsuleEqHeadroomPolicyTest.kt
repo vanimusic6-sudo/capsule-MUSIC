@@ -27,14 +27,15 @@ class CapsuleEqHeadroomPolicyTest {
         assertTrue(10.0.pow((trim+positive)/2000.0) < 1.0)
     }
 
-    @Test fun bassIsAShapedContourAndNeverIndependentCompression() {
-        val bass = settings(boost=200)
-        val levels = capsuleUnifiedEqLevels(bass,caps)
-        assertTrue(levels.first() in 1..CAPSULE_MAX_LOW_BASS_BOOST_MB)
-        assertTrue(levels.drop(2).all { it <= 50 })
-        assertFalse(capsuleNeedsBassDynamics(bass,caps))
-        val trim = capsuleSafeEqInputGainMb(bass,levels)
-        assertTrue(trim + levels.max() <= -CAPSULE_EQ_HEADROOM_MARGIN_MB)
+    @Test fun independentBassBoostCannotSilentlyStackWithManualContour() {
+        val oldBoost = settings(boost=200)
+        assertEquals(List(5){0},capsuleUnifiedEqLevels(oldBoost,caps))
+        assertFalse(capsuleNeedsBassDynamics(oldBoost,caps))
+        val manualBass = settings(listOf(150,230,50,-40,-80))
+        val levels=capsuleUnifiedEqLevels(manualBass,caps)
+        assertTrue(levels.first()>0)
+        val trim=capsuleSafeEqInputGainMb(manualBass,levels)
+        assertTrue(trim+levels.max()<=-CAPSULE_EQ_HEADROOM_MARGIN_MB)
     }
 
     @Test fun positiveOutputGainIsNeverRecoveredFromTheLimiterReserve() {

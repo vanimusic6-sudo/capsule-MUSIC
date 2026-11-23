@@ -5,38 +5,41 @@ import org.junit.Test
 import java.io.File
 
 class SimpleEqualizerTest {
-    private fun source(name:String):String =
+    private fun file(name:String)=
         File("src/main/kotlin/com/nikhil/yt/ui/menu/${name}.kt").readText()
 
-    @Test fun versionDialogDoesNotProvideUnrestrictedManualEq() {
-        val dialog=source("PlayerMenu")
-            .substringAfter("fun EqualizerDialog(")
+    @Test fun adaptiveGraphAndCuratedVersionsCoexist() {
+        val dialog=file("PlayerMenu").substringAfter("fun EqualizerDialog(")
             .substringBefore("@Composable\nprivate fun CapsuleStudioSlider(")
         assertTrue(dialog.contains("CapsuleEqPresets.all.chunked(2)"))
-        assertTrue(dialog.contains("eq_version_original"))
+        assertTrue(dialog.contains("CapsuleEqualizerGraph("))
+        assertTrue(dialog.contains("appliedLevelsMb = applied"))
+        assertTrue(dialog.contains("manualSelected"))
+        assertTrue(dialog.contains("eq_adaptive_corrected"))
         assertTrue(dialog.contains("version:speed_up"))
         assertTrue(dialog.contains("version:slowed"))
-        assertTrue(dialog.contains("setEqEnabled(false)"))
-        assertTrue(dialog.contains("setEqEnabled(true)"))
-        assertFalse(dialog.contains("CapsuleEqualizerGraph("))
         assertFalse(dialog.contains("setBassBoostEnabled("))
         assertFalse(dialog.contains("setOutputGainMb("))
-        assertFalse(dialog.contains("showSaveProfileDialog"))
     }
 
-    @Test fun versionPickerNeverReEnablesLegacyUnsafeEqProfile() {
-        val src=File("src/main/kotlin/com/nikhil/yt/playback/MusicService.kt").readText()
-        assertTrue(src.contains("&& preset != null"))
-        assertTrue(src.contains("version:speed_up"))
-        assertTrue(src.contains("version:slowed"))
-        assertTrue(src.contains("versionId = preset?.id"))
-        assertFalse(src.substringAfter("private fun readEqSettingsFromPrefs")
-            .substringBefore("fun applyEqFlatPreset").contains("decodeBandLevelsMb("))
+    @Test fun manualAndPresetSelectionsAreAtomicAndValidated() {
+        val service=File("src/main/kotlin/com/nikhil/yt/playback/MusicService.kt").readText()
+        val handler=service.substringAfter("fun selectSoundVersion(")
+            .substringBefore("fun applyEqFlatPreset()")
+        assertTrue(handler.contains("dataStore.edit"))
+        assertTrue(handler.contains("prefs[EqualizerBandLevelsMbKey]"))
+        assertTrue(handler.contains("manual = id == \"adaptive:manual\""))
+        assertTrue(handler.contains("preset == null && !manual && !neutral"))
+        assertTrue(handler.contains("EqualizerEnabledKey"))
+        assertTrue(handler.contains("requestedLevelsMb.size <= 32"))
+        assertFalse(handler.contains("BassBoost(true)"))
     }
 
-    @Test fun mathHelpersStillAvailableForFutureTests() {
+    @Test fun hardwareAwareGraphStillHandlesTouchAndLabels() {
+        val graph=file("CapsuleEqualizerGraph")
+        assertTrue(graph.contains("awaitEachGesture"))
+        assertTrue(graph.contains("change.consume()"))
         assertEquals(2,capsuleEqualizerBandAt(150f,300f,5,18f))
-        assertEquals(0,capsuleEqualizerLevelAt(110f,220f,-1500,1500,18f))
         assertEquals("910 Hz",capsuleGraphHz(910))
     }
 }

@@ -37,13 +37,13 @@ class CapsuleUnifiedDynamicsProcessorTest {
         assertTrue(down>=0 && down<pre && pre<eq)
     }
 
-    @Test fun bassIsBoundedAndNoMbcCanBeActivated() {
+    @Test fun bassIsBoundedByUnifiedCurveAndNoMbcCanBeActivated() {
         val s=settings(listOf(1500,1500,0,0,0),200)
         val shaped=capsuleUnifiedEqLevels(s,caps)
         assertEquals(5,shaped.size)
-        assertTrue(shaped.first() <= 220)
-        assertTrue(shaped.all{it<=350})
-        assertTrue(capsuleEqCurveSpreadMb(shaped) <= 700)
+        assertTrue(shaped.first()<=CAPSULE_MAX_LOW_BASS_BOOST_MB)
+        assertTrue(shaped.all{it<=CAPSULE_MAX_EQ_BOOST_MB})
+        assertTrue(capsuleEqCurveSpreadMb(shaped)<=CAPSULE_MUSICAL_MAX_SPREAD_MB)
         assertFalse(capsuleNeedsBassDynamics(s,caps))
         assertEquals(List(5){0},capsuleUnifiedEqLevels(s.copy(enabled=false),caps))
     }
