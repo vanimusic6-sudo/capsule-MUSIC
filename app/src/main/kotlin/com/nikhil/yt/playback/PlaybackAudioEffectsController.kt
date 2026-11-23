@@ -8,11 +8,17 @@ import android.media.audiofx.LoudnessEnhancer
 import android.media.audiofx.Virtualizer
 import kotlinx.coroutines.flow.MutableStateFlow
 
+/** Which effect path actually accepted the current stream session. */
+internal enum class CapsuleEqEngineMode {
+    OFF, WAITING_FOR_SESSION, UNIFIED, NATIVE_FALLBACK, UNAVAILABLE,
+}
+
 /** Owns Android audio-effect instances for the active ExoPlayer audio session. */
 internal class PlaybackAudioEffectsController(
     private val onRecoverableError: (operation: String, error: Throwable) -> Unit,
 ) {
     val capabilities = MutableStateFlow<EqCapabilities?>(null)
+    val engineMode = MutableStateFlow(CapsuleEqEngineMode.OFF)
 
     private var desiredSettings = DEFAULT_SETTINGS
     private var audioEffectsSessionId: Int? = null
@@ -129,6 +135,8 @@ internal class PlaybackAudioEffectsController(
         activeLimiterCurve = null
         unifiedDynamics = null
         attemptedUnifiedDynamics = false
+        engineMode.value = if (desiredSettings.enabled)
+            CapsuleEqEngineMode.WAITING_FOR_SESSION else CapsuleEqEngineMode.OFF
         // Retain the last native frequency map while paused. No effects remain
         // attached, but the UI can edit a profile for the next valid session.
     }
@@ -202,6 +210,8 @@ internal class PlaybackAudioEffectsController(
                     // Android has no virtualizer stage inside DynamicsProcessing.
                     // Spatial widening remains optional and separately constrained.
                     applyUnifiedVirtualizer(settings)
+                    engineMode.value = if (settings.enabled) CapsuleEqEngineMode.UNIFIED
+                        else CapsuleEqEngineMode.OFF
                     return
                 } catch (failure: Exception) {
                     onRecoverableError("update unified dynamics", failure)
@@ -319,6 +329,12 @@ internal class PlaybackAudioEffectsController(
             }
         }
         updatePeakLimiter(settings)
+        engineMode.value = when {
+            !settings.enabled -> CapsuleEqEngineMode.OFF
+            audioEffectsSessionId == null -> CapsuleEqEngineMode.WAITING_FOR_SESSION
+            equalizer != null -> CapsuleEqEngineMode.NATIVE_FALLBACK
+            else -> CapsuleEqEngineMode.UNAVAILABLE
+        }
     }
 
     /**
