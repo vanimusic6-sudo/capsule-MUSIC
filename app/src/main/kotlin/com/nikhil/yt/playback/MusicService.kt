@@ -107,6 +107,7 @@ import com.nikhil.yt.constants.DiscordTokenKey
 import com.nikhil.yt.constants.EnableDiscordRPCKey
 import com.nikhil.yt.constants.EqualizerBandLevelsMbKey
 import com.nikhil.yt.constants.EqualizerCurveIntensityPercentKey
+import com.nikhil.yt.constants.EqualizerMusicalBalanceKey
 import com.nikhil.yt.constants.EqualizerBassBoostEnabledKey
 import com.nikhil.yt.constants.EqualizerBassBoostStrengthKey
 import com.nikhil.yt.constants.EqualizerEnabledKey
@@ -3970,6 +3971,7 @@ class MusicService :
             virtualizerEnabled = prefs[EqualizerVirtualizerEnabledKey] ?: false,
             virtualizerStrength = (prefs[EqualizerVirtualizerStrengthKey] ?: 0).coerceIn(0, 1000),
             intensityPercent = (prefs[EqualizerCurveIntensityPercentKey] ?: 100).coerceIn(100, 200),
+            musicalBalanceEnabled = prefs[EqualizerMusicalBalanceKey] ?: true,
         )
     }
 
