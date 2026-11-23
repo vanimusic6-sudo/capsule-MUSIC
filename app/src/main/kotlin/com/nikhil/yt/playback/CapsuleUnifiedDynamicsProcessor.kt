@@ -41,8 +41,8 @@ internal fun capsuleUnifiedEqLevels(
         capabilities.maxBandLevelMb, capabilities.centerFreqHz,
     )
     if (!settings.bassBoostEnabled || settings.bassBoostStrength <= 0) return levels
-    val bass = settings.bassBoostStrength.coerceIn(0, CAPSULE_MAX_BASS_STRENGTH)
-        * 150 / CAPSULE_MAX_BASS_STRENGTH
+    val bass = (settings.bassBoostStrength.coerceIn(0, CAPSULE_MAX_BASS_STRENGTH)
+        * 150) / CAPSULE_MAX_BASS_STRENGTH
     val updated = levels.mapIndexed { index, value ->
         val hz = capabilities.centerFreqHz.getOrNull(index)?.takeIf { it > 0 }
             ?: if (index == 0) 60 else 1000
