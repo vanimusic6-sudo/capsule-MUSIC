@@ -48,7 +48,8 @@ constructor(
             LyricsProviderOrder.BETTER_LYRICS to BetterLyricsProvider,
             LyricsProviderOrder.LRCLIB to LrcLibLyricsProvider,
             LyricsProviderOrder.YOUTUBE_SYNCED to YouTubeSyncedLyricsProvider,
-            LyricsProviderOrder.LYPRIO to LyprioLyricsProvider,
+            LyricsProviderOrder.KUGOU to KugouLyricsProvider,
+            LyricsProviderOrder.BINIMUM to BinimumLyricsProvider,
             LyricsProviderOrder.YOUTUBE to YouTubeLyricsProvider,
         )
 

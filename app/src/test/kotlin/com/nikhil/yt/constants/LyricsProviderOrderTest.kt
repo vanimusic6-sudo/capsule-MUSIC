@@ -5,10 +5,10 @@ import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class LyricsProviderOrderTest {
-    @Test fun sixProvidersUseRequestedOrder() {
+    @Test fun sevenProvidersUseRequestedOrder() {
         assertEquals(
             listOf("BETTER_LYRICS_PORTATO", "BETTER_LYRICS", "LRCLIB",
-                "YOUTUBE_SYNCED", "LYPRIO", "YOUTUBE"),
+                "YOUTUBE_SYNCED", "KUGOU", "BINIMUM", "YOUTUBE"),
             LyricsProviderOrder.resolve(null),
         )
     }

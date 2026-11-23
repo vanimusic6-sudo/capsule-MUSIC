@@ -38,7 +38,8 @@ private fun lyricsProviderTitle(providerId: String): String =
         LyricsProviderOrder.BETTER_LYRICS -> "BL · Better Lyrics"
         LyricsProviderOrder.LRCLIB -> "LRCLIB"
         LyricsProviderOrder.YOUTUBE_SYNCED -> "YouTube · с синхронизацией"
-        LyricsProviderOrder.LYPRIO -> "Lyprio"
+        LyricsProviderOrder.KUGOU -> "KuGou · LRC"
+        LyricsProviderOrder.BINIMUM -> "BiniLyrics · TTML"
         LyricsProviderOrder.YOUTUBE -> "YouTube · без синхронизации"
         else -> providerId
     }
@@ -50,7 +51,8 @@ private fun lyricsProviderDescription(providerId: String): String =
         LyricsProviderOrder.BETTER_LYRICS -> "TTML · послоговая разметка"
         LyricsProviderOrder.LRCLIB -> stringResource(R.string.lyrics_provider_lrclib_description)
         LyricsProviderOrder.YOUTUBE_SYNCED -> "Настоящие временные метки YouTube Music"
-        LyricsProviderOrder.LYPRIO -> "Требует авторизованный API · пока недоступен"
+        LyricsProviderOrder.KUGOU -> "Независимая база KuGou, синхронизация по строкам"
+        LyricsProviderOrder.BINIMUM -> "Дополнительный каталог TTML, проверка длительности"
         LyricsProviderOrder.YOUTUBE -> "Обычный текст YouTube Music и субтитров"
         else -> providerId
     }

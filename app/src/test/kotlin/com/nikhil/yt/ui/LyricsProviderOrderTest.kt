@@ -6,42 +6,43 @@ import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class LyricsProviderOrderTest {
-    private val six = listOf(
+    private val seven = listOf(
         LyricsProviderOrder.BETTER_LYRICS_PORTATO,
         LyricsProviderOrder.BETTER_LYRICS,
         LyricsProviderOrder.LRCLIB,
         LyricsProviderOrder.YOUTUBE_SYNCED,
-        LyricsProviderOrder.LYPRIO,
+        LyricsProviderOrder.KUGOU,
+        LyricsProviderOrder.BINIMUM,
         LyricsProviderOrder.YOUTUBE,
     )
 
-    @Test fun exactlySixProvidersInRequestedPriority() {
-        assertEquals(six, LyricsProviderOrder.supportedProviders)
-        assertEquals(six, LyricsProviderOrder.resolve(null))
-        assertEquals(six, LyricsProviderOrder.resolve(""))
-        assertEquals(6, six.distinct().size)
+    @Test fun exactlySevenProvidersInRequestedPriority() {
+        assertEquals(seven, LyricsProviderOrder.supportedProviders)
+        assertEquals(seven, LyricsProviderOrder.resolve(null))
+        assertEquals(seven, LyricsProviderOrder.resolve(""))
+        assertEquals(7, seven.distinct().size)
     }
 
     @Test fun oldFiveAndSevenSourceSettingsMigrate() {
         val five = "BETTER_LYRICS_PORTATO,SIMPMUSIC,LYRICS_PLUS,LRCLIB,YOUTUBE"
         val seven = "SIMPMUSIC,PAXSENIX_APPLE_MUSIC,BETTER_LYRICS_PORTATO," +
             "LYRICS_PLUS,LRCLIB,KUGOU,YOUTUBE"
-        assertEquals(six, LyricsProviderOrder.resolve(five))
-        assertEquals(six, LyricsProviderOrder.resolve(seven))
+        assertEquals(seven, LyricsProviderOrder.resolve(five))
+        assertEquals(seven, LyricsProviderOrder.resolve(seven))
     }
 
     @Test fun retiredSourcesAreAbsentAndPlainYoutubeStaysLast() {
-        assertFalse(six.any { it in setOf("SIMPMUSIC", "LYRICS_PLUS", "NETEASE", "KUGOU") })
-        assertEquals(LyricsProviderOrder.YOUTUBE, six.last())
+        assertFalse(seven.any { it in setOf("SIMPMUSIC", "LYRICS_PLUS", "NETEASE", "LYPRIO") })
+        assertEquals(LyricsProviderOrder.YOUTUBE, seven.last())
     }
 
     @Test fun customSixSourceOrderSurvivesSerialization() {
-        val custom = six.reversed()
+        val custom = seven.reversed()
         assertEquals(custom, LyricsProviderOrder.resolve(LyricsProviderOrder.encode(custom)))
     }
 
     @Test fun implicitOldLrcLibDoesNotOverrideTheNewDefaults() {
-        assertEquals(six, LyricsProviderOrder.resolve(null, "LRCLIB"))
-        assertEquals(six, LyricsProviderOrder.resolve(null, "PAXSENIX_APPLE_MUSIC"))
+        assertEquals(seven, LyricsProviderOrder.resolve(null, "LRCLIB"))
+        assertEquals(seven, LyricsProviderOrder.resolve(null, "PAXSENIX_APPLE_MUSIC"))
     }
 }

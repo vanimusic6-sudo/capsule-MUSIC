@@ -91,6 +91,10 @@ fun ContentSettings(
         rememberPreference(key = EnableYouTubeSyncedLyricsKey, defaultValue = true)
     val (enableYoutubePlain, onEnableYoutubePlainChange) =
         rememberPreference(key = EnableYouTubePlainLyricsKey, defaultValue = true)
+    val (enableKugou, onEnableKugouChange) =
+        rememberPreference(key = EnableKuGouLyricsKey, defaultValue = true)
+    val (enableBinimum, onEnableBinimumChange) =
+        rememberPreference(key = EnableBinimumLyricsKey, defaultValue = true)
     val (rawLyricsProviderOrder, onLyricsProviderOrderChange) =
         rememberPreference(key = LyricsProviderOrderKey, defaultValue = "")
     val (legacyPreferredProvider, _) =
@@ -291,11 +295,19 @@ fun ContentSettings(
                 checked = enableYoutubeSynced,
                 onCheckedChange = onEnableYoutubeSyncedChange,
             )
-            PreferenceEntry(
-                title = { Text("Lyprio") },
-                description = "Не подключён: сервис требует авторизованный API.",
+            SwitchPreference(
+                title = { Text("KuGou · LRC") },
+                description = "Независимый каталог с построчной синхронизацией.",
                 icon = { Icon(painterResource(R.drawable.lyrics), null) },
-                isEnabled = false,
+                checked = enableKugou,
+                onCheckedChange = onEnableKugouChange,
+            )
+            SwitchPreference(
+                title = { Text("BiniLyrics · TTML") },
+                description = "Дополнительная база TTML, с проверкой длительности.",
+                icon = { Icon(painterResource(R.drawable.lyrics), null) },
+                checked = enableBinimum,
+                onCheckedChange = onEnableBinimumChange,
             )
             SwitchPreference(
                 title = { Text("YouTube · без синхронизации") },
