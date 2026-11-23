@@ -64,7 +64,7 @@ internal fun scaleEqBandLevels(
     deviceMaxMb: Int,
 ): List<Int> {
     if (deviceMaxMb < deviceMinMb) return levels
-    val p = percent.coerceIn(100, 200)
+    val p = percent.coerceIn(100, 145)
     return levels.map { level ->
         ((level.toLong() * p + if (level >= 0) 50L else -50L) / 100L)
             .coerceIn(deviceMinMb.toLong(), deviceMaxMb.toLong()).toInt()
@@ -77,7 +77,7 @@ internal fun inverseScaledEqLevel(
     deviceMinMb: Int,
     deviceMaxMb: Int,
 ): Int {
-    val p = percent.coerceIn(100, 200)
+    val p = percent.coerceIn(100, 145)
     return ((effectiveMb.toLong() * 100L) / p.toLong())
         .coerceIn(deviceMinMb.toLong(), deviceMaxMb.toLong()).toInt()
 }
@@ -87,9 +87,9 @@ internal fun inverseScaledEqLevel(
  * These protect against excessive combined boost but cannot measure speaker
  * temperature, acoustic excursion, or guarantee physical speaker safety.
  */
-internal const val CAPSULE_MAX_EQ_BOOST_MB = 450  // +4.5 dB digital band ceiling; not dBA
+internal const val CAPSULE_MAX_EQ_BOOST_MB = 320  // +3.2 dB, independent of master output volume
 // Sub-bass needs a much stricter ceiling: small phone speakers can over-excurse.
-internal const val CAPSULE_MAX_LOW_BASS_BOOST_MB = 260 // +2.6 dB below 120 Hz
+internal const val CAPSULE_MAX_LOW_BASS_BOOST_MB = 220 // +2.2 dB below 120 Hz
 internal const val CAPSULE_MAX_BASS_STRENGTH = 200     // native scale 0..1000
 internal const val CAPSULE_MAX_VIRTUALIZER_STRENGTH = 350
 internal const val CAPSULE_MAX_OUTPUT_GAIN_MB = 0 // No positive output makeup gain
@@ -136,7 +136,7 @@ internal fun protectedEqLevels(
  * true-peak output safety. Reserve an extra margin for filter overlap and
  * intersample overs; do not claim this protects speaker mechanics or hearing.
  */
-internal const val CAPSULE_EQ_HEADROOM_MARGIN_MB = 190 // 1.9 dB
+internal const val CAPSULE_EQ_HEADROOM_MARGIN_MB = 160 // 1.6 dB plus overlapping-band allowance
 
 /**
  * Per-session clean input trim, in millibels, before the actual EQ.
@@ -149,8 +149,13 @@ internal fun capsuleSafeEqInputGainMb(
     if (!settings.enabled) return 0
     val attenuation = if (settings.outputGainEnabled)
         settings.outputGainMb.coerceIn(-1500, 0) else 0
-    val peak = (effectiveLevelsMb.maxOrNull() ?: 0).coerceAtLeast(0)
-    val reserve = if (peak > 0) peak + CAPSULE_EQ_HEADROOM_MARGIN_MB else 0
+    val positive = effectiveLevelsMb.filter { it > 0 }.sortedDescending()
+    val peak = positive.firstOrNull() ?: 0
+    // Adjacent filters overlap. Reserve a small extra margin for two simultaneous
+    // positive bands instead of pretending the highest band is the only gain.
+    val overlap = ((positive.getOrNull(1) ?: 0) * 0.25f)
+        .toInt().coerceIn(0, 80)
+    val reserve = if (peak > 0) peak + overlap + CAPSULE_EQ_HEADROOM_MARGIN_MB else 0
     return (attenuation - reserve).coerceIn(-3000, 0)
 }
 

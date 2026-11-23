@@ -18,18 +18,20 @@ internal data class CapsuleEqPreset(
 internal object CapsuleEqPresets {
     private val referenceHz = listOf(80, 200, 500, 1_300, 3_400, 8_000, 14_000)
 
-    // Mild, broad signatures. 100 millibels = 1 dB; no hard 910 Hz notch.
+    // Broader signatures are more noticeable than the previous versions,
+    // without narrow midrange holes or aggressive extreme-treble boosts.
+    // All authored points remain below 3 dB; hardware mapping is logarithmic.
     val all = listOf(
         CapsuleEqPreset("soft_bass_v2", "Soft Bass",
-            listOf(150, 190, 130, 50, 0, -40, -65)),
+            listOf(190, 270, 175, 25, -55, -100, -130)),
         CapsuleEqPreset("warm_v2", "Warm",
-            listOf(90, 150, 130, 60, -20, -80, -100)),
+            listOf(135, 225, 160, 40, -65, -125, -160)),
         CapsuleEqPreset("vocal_v2", "Vocals",
-            listOf(-70, -40, 0, 130, 140, 50, -10)),
+            listOf(-110, -85, 25, 190, 195, 60, -50)),
         CapsuleEqPreset("air_v2", "Air",
-            listOf(-60, -40, -20, 30, 80, 130, 150)),
+            listOf(-85, -60, -25, 40, 110, 170, 200)),
         CapsuleEqPreset("live_v2", "Live",
-            listOf(50, 80, 40, 80, 90, 80, 40)),
+            listOf(85, 130, 55, 145, 160, 80, -15)),
     )
 
     fun byId(id: String): CapsuleEqPreset? = all.firstOrNull { it.id == id }

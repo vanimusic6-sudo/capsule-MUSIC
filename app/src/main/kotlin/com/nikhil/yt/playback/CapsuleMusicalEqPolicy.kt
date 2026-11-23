@@ -11,9 +11,9 @@ import kotlin.math.abs
 import kotlin.math.ln
 import kotlin.math.roundToInt
 
-internal const val CAPSULE_MUSICAL_MAX_SPREAD_MB = 950
-internal const val CAPSULE_MUSICAL_MAX_NEIGHBOR_MB = 550
-private const val CAPSULE_ADAPTIVE_MIN_GAP_MB = 300
+internal const val CAPSULE_MUSICAL_MAX_SPREAD_MB = 680
+internal const val CAPSULE_MUSICAL_MAX_NEIGHBOR_MB = 380
+private const val CAPSULE_ADAPTIVE_MIN_GAP_MB = 160
 
 /** A gentle curve is left alone. Only excessive peaks, narrow pits and
  *  large inter-band differences trigger progressively stronger adaptation. */
@@ -34,24 +34,22 @@ internal fun capsuleMusicalEqLevels(
         else -> 0
     }
 
-    fun frequency(i: Int): Double {
-        val deviceHz = centerFreqHz.getOrNull(i)?.toDouble() ?: 0.0
-        if (deviceHz in 20.0..20_000.0 &&
-            (i == 0 || centerFreqHz.getOrNull(i - 1)?.let {
-                it < deviceHz
-            } == true)
-        ) return deviceHz
-        // An absent, repeated or out-of-order OEM map falls back to log spacing.
-        return if (n == 1) 1000.0 else
-            80.0 * Math.pow(14_000.0 / 80.0, i.toDouble() / (n-1))
+    // If OEM frequencies are missing, duplicated or scrambled, use a complete
+    // monotonic logarithmic fallback; never mix unrelated coordinate systems.
+    val validMap = centerFreqHz.size == n &&
+        centerFreqHz.all { it in 20..20_000 } &&
+        centerFreqHz.zipWithNext().all { (a, b) -> a < b }
+    val hz = DoubleArray(n) { index ->
+        if (validMap) centerFreqHz[index].toDouble()
+        else if (n == 1) 1_000.0 else
+            80.0 * Math.pow(14_000.0 / 80.0, index.toDouble() / (n - 1))
     }
-    val hz = DoubleArray(n) { frequency(it) }
     fun limit(i: Int): IntRange = when {
-        hz[i] <= 120.0 -> -500..260     // avoid large low-bass boosts
-        hz[i] <= 650.0 -> -600..450
-        hz[i] <= 4500.0 -> -650..450
-        hz[i] <= 8000.0 -> -550..380
-        else -> -500..320
+        hz[i] <= 120.0 -> -340..220    // cautious with small speaker excursion
+        hz[i] <= 650.0 -> -460..320
+        hz[i] <= 4500.0 -> -430..300
+        hz[i] <= 8000.0 -> -380..260
+        else -> -330..200
     }
     fun clamp(i: Int, value: Int): Int {
         val bounds=limit(i)
@@ -66,7 +64,7 @@ internal fun capsuleMusicalEqLevels(
     // In contrast with old blanket 0.84x smoothing, don't touch a natural
     // broad contour. Only a *narrow* local deviation from its neighbours
     // is pulled toward log-frequency interpolation.
-    repeat(4) {
+    repeat(6) {
         for (i in 1 until n-1) {
             val leftX=ln(hz[i-1])
             val centreX=ln(hz[i])
@@ -78,9 +76,13 @@ internal fun capsuleMusicalEqLevels(
             val deviation=(result[i].toLong()-expectation).coerceIn(-3000,3000).toInt()
             // Upper mids are particularly revealing of a "vacuum" caused by
             // a sharp dip. Limits operate on contour shape, not named 910 Hz.
-            val allowed=if (hz[i] in 550.0..5000.0) 340 else 430
+            val allowed=if (hz[i] in 500.0..5000.0) 210 else 280
             if (abs(deviation)>allowed) {
-                result[i]=clamp(i,expectation+if (deviation>0) allowed else -allowed)
+                // Retain the first ~2 dB of musical curvature; reduce only
+                // extreme localized spikes/pits, with a gentle soft knee.
+                val excess=abs(deviation)-allowed
+                val knee=allowed+(excess*0.15f).roundToInt()
+                result[i]=clamp(i,expectation+if (deviation>0) knee else -knee)
             }
         }
         // Neighbour continuity adapts to device frequency density: 10-band
@@ -90,7 +92,7 @@ internal fun capsuleMusicalEqLevels(
             for(i in steps) {
                 val octaveDistance=if(hz[i+1]>hz[i])
                     ln(hz[i+1]/hz[i])/ln(2.0) else 1.0
-                val allowed=(240+octaveDistance*120).roundToInt()
+                val allowed=(175+octaveDistance*92).roundToInt()
                     .coerceIn(CAPSULE_ADAPTIVE_MIN_GAP_MB,CAPSULE_MUSICAL_MAX_NEIGHBOR_MB)
                 val diff=result[i+1]-result[i]
                 if(abs(diff)>allowed) {

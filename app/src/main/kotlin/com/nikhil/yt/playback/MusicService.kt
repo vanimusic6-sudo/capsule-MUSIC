@@ -3989,7 +3989,8 @@ class MusicService :
             bassBoostStrength = 0,
             virtualizerEnabled = false,
             virtualizerStrength = 0,
-            intensityPercent = 100,
+            intensityPercent =
+                (prefs[EqualizerCurveIntensityPercentKey] ?: 100).coerceIn(100, 145),
             musicalBalanceEnabled = true,
             versionId = preset?.id,
         )
@@ -4020,6 +4021,8 @@ class MusicService :
                 // independent boost, virtualizer or makeup-gain preferences.
                 prefs[EqualizerBassBoostEnabledKey] = false
                 prefs[EqualizerOutputGainEnabledKey] = false
+                // An old 200% curve must never jump in intensity after migration.
+                prefs[EqualizerCurveIntensityPercentKey] = 100
             }
         }
     }

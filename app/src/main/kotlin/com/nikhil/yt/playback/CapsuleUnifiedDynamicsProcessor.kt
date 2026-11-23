@@ -48,15 +48,16 @@ internal fun capsuleUnifiedEqLevels(
     } else settings.bandLevelsMb
     val levels = protectedEqLevels(
         settings.copy(
-            bandLevelsMb = raw, intensityPercent = 100,
+            bandLevelsMb = raw, intensityPercent = settings.intensityPercent.coerceIn(100, 145),
             bassBoostEnabled = false, bassBoostStrength = 0,
             outputGainEnabled = false, outputGainMb = 0,
         ),
         capabilities.bandCount, capabilities.minBandLevelMb,
         capabilities.maxBandLevelMb, capabilities.centerFreqHz,
     )
-    // Bass flavour is already part of the requested curve, with one unified
-    // gain planner. No independent BassBoost or MBC processor is ever stacked.
+    // The low-frequency flavour control is a small additional *shelf* inside
+    // this same shape, never a second OEM BassBoost effect or compressor.
+    // Apply it BEFORE the global notch/spread and headroom policy.
     return levels
 }
 
