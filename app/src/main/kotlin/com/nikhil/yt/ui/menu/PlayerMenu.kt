@@ -134,6 +134,8 @@ import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.models.sanitizedArtistCredits
 import com.nikhil.yt.playback.EqCapabilities
 import com.nikhil.yt.playback.EqSettings
+import com.nikhil.yt.playback.CapsuleEqEngineMode
+import com.nikhil.yt.playback.protectedEqAudioFactor
 import com.nikhil.yt.playback.capsuleSafeEqInputGainMb
 import com.nikhil.yt.playback.capsuleUnifiedEqLevels
 import com.nikhil.yt.playback.CAPSULE_MAX_BASS_STRENGTH
@@ -742,6 +744,7 @@ fun EqualizerDialog(
     val resources = LocalResources.current
     val playerConnection = LocalPlayerConnection.current ?: return
     val eqCapabilities by playerConnection.service.eqCapabilities.collectAsState()
+    val eqEngineMode by playerConnection.service.eqEngineMode.collectAsState()
 
     val (eqEnabled, setEqEnabled) = rememberPreference(EqualizerEnabledKey, defaultValue = false)
     val (studioSpeed, setStudioSpeed) = rememberPreference(SoundStudioSpeedKey, defaultValue = 1f)
@@ -1259,12 +1262,20 @@ fun EqualizerDialog(
                         val safeInputGainMb = capsuleSafeEqInputGainMb(
                             headroomPreviewSettings, previewEffectiveLevels,
                         )
-                        if (eqEnabled && safeInputGainMb < 0) {
+                        val actualPreviewTrimMb = when (eqEngineMode) {
+                            CapsuleEqEngineMode.NATIVE_FALLBACK -> {
+                                val factor = protectedEqAudioFactor(headroomPreviewSettings, caps)
+                                (2000.0 * Math.log10(factor.toDouble())).toInt()
+                            }
+                            CapsuleEqEngineMode.UNAVAILABLE -> 0
+                            else -> safeInputGainMb
+                        }
+                        if (eqEnabled && actualPreviewTrimMb < 0) {
                             Spacer(Modifier.height(8.dp))
                             Text(
                                 text = stringResource(
                                     R.string.eq_clean_headroom,
-                                    formatDb(safeInputGainMb / 100f),
+                                    formatDb(actualPreviewTrimMb / 100f),
                                 ),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary,
@@ -1275,6 +1286,20 @@ fun EqualizerDialog(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(horizontal = 18.dp, vertical = 3.dp),
+                            )
+                        }
+                        if (eqEnabled) {
+                            val activeEngineLabel = when (eqEngineMode) {
+                                CapsuleEqEngineMode.UNIFIED -> R.string.eq_engine_unified
+                                CapsuleEqEngineMode.NATIVE_FALLBACK -> R.string.eq_engine_native
+                                CapsuleEqEngineMode.UNAVAILABLE -> R.string.eq_engine_unavailable
+                                else -> R.string.eq_engine_waiting
+                            }
+                            Text(
+                                text = stringResource(activeEngineLabel),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 7.dp),
                             )
                         }
 
