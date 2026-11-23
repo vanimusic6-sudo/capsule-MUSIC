@@ -69,7 +69,10 @@ class CapsuleMusicalEqPolicyTest {
         assertTrue(service.contains("musicalBalanceEnabled = true"))
         assertFalse(service.contains("musicalBalanceEnabled = prefs[EqualizerMusicalBalanceKey]"))
         val menu = File("src/main/kotlin/com/nikhil/yt/ui/menu/PlayerMenu.kt").readText()
-        assertTrue(menu.contains("val musicalBalance = true"))
+        assertTrue(menu.contains("CapsuleEqPresets.all.chunked(2)"))
         assertFalse(menu.contains("setMusicalBalance"))
+        assertFalse(menu.substringAfter("fun EqualizerDialog(")
+            .substringBefore("@Composable\\nprivate fun CapsuleStudioSlider(")
+            .contains("CapsuleEqualizerGraph("))
     }
 }
