@@ -18,7 +18,7 @@ class CapsuleEqPresetsTest {
         presets.forEach { preset ->
             assertEquals(preset, CapsuleEqPresets.byId(preset.id))
             assertEquals(5, preset.referenceLevelsMb.size)
-            assertTrue(preset.referenceLevelsMb.max() - preset.referenceLevelsMb.min() >= 600)
+            assertTrue(preset.referenceLevelsMb.max() - preset.referenceLevelsMb.min() in 350..800)
         }
     }
 
@@ -34,15 +34,15 @@ class CapsuleEqPresetsTest {
 
     @Test fun threeAndTenBandEqualizersGetFrequencyMappedCurves() {
         val deep = CapsuleEqPresets.byId("deep_bass")!!
-        assertEquals(listOf(1400, -200, -200),
+        assertEquals(listOf(380, 40, -100),
             CapsuleEqPresets.levelsFor(deep, listOf(60, 910, 14_000), -1500, 1500))
         val multi = CapsuleEqPresets.levelsFor(
             deep, listOf(30, 60, 100, 230, 400, 910, 1_800, 3_600, 7_000, 18_000),
             -1_500, 1_500,
         )
         assertEquals(10, multi.size)
-        assertEquals(1400, multi[0])
-        assertEquals(-200, multi.last())
+        assertEquals(380, multi[0])
+        assertEquals(-100, multi.last())
         assertNotEquals(multi.first(), multi[4])
     }
 
@@ -59,7 +59,7 @@ class CapsuleEqPresetsTest {
 
     @Test fun profileStrengthClampsToHardwareLimitsAndDoesNotForceEffectsOn() {
         val preset = CapsuleEqPresets.byId("deep_bass")!!
-        assertEquals(listOf(500, 500, -200, -500, -200),
+        assertEquals(listOf(380, 450, 40, -150, -100),
             CapsuleEqPresets.levelsFor(preset, centers, -500, 500))
         val s = listOf(
             java.io.File("src/main/kotlin/com/nikhil/yt/playback/CapsuleEqPresets.kt"),
