@@ -1055,4 +1055,6 @@ Capsule will only extract your token, and everything else is stored locally.</st
     <string name="hearing_care_cancel">Cancel</string>
     <string name="hearing_care_resume">Restore hearing protection now</string>
     <string name="hearing_care_override_active">Temporary exception is active. Tap to restore protection early.</string>
+    <string name="eq_clean_headroom">Clean audio · automatic pre-EQ trim: %1$s</string>
+    <string name="eq_clean_headroom_description">Frequency shaping stays strong. This reduces digital clipping, but cannot measure or guarantee speaker safety.</string>
 </resources>
