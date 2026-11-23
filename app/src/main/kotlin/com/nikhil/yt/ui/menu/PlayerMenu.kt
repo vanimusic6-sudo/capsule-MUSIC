@@ -115,7 +115,6 @@ import com.nikhil.yt.R
 import com.nikhil.yt.constants.ArtistSeparatorsKey
 import com.nikhil.yt.constants.EqualizerBandLevelsMbKey
 import com.nikhil.yt.constants.EqualizerCurveIntensityPercentKey
-import com.nikhil.yt.constants.EqualizerMusicalBalanceKey
 import com.nikhil.yt.constants.EqualizerBassBoostEnabledKey
 import com.nikhil.yt.constants.EqualizerBassBoostStrengthKey
 import com.nikhil.yt.constants.EqualizerCustomProfilesJsonKey
@@ -125,8 +124,6 @@ import com.nikhil.yt.constants.SoundStudioPitchKey
 import com.nikhil.yt.constants.EqualizerOutputGainEnabledKey
 import com.nikhil.yt.constants.EqualizerOutputGainMbKey
 import com.nikhil.yt.constants.EqualizerSelectedProfileIdKey
-import com.nikhil.yt.constants.EqualizerVirtualizerEnabledKey
-import com.nikhil.yt.constants.EqualizerVirtualizerStrengthKey
 import com.nikhil.yt.constants.ListItemHeight
 import com.nikhil.yt.discovery.ExperimentalArtistRoute
 import com.nikhil.yt.discovery.ExperimentalCatalog
@@ -759,10 +756,8 @@ fun EqualizerDialog(
     val (bandLevelsRaw, setBandLevelsRaw) = rememberPreference(EqualizerBandLevelsMbKey, defaultValue = "")
     val (curveIntensity, setCurveIntensity) =
         rememberPreference(EqualizerCurveIntensityPercentKey, defaultValue = 100)
-    // Live playback defaults to this protective shape, including migrated EQ
-    // profiles. Users can inspect both curves before choosing precision mode.
-    val (musicalBalance, setMusicalBalance) =
-        rememberPreference(EqualizerMusicalBalanceKey, defaultValue = true)
+    // Mandatory, non-bypassable frequency-contour protection.
+    val musicalBalance = true
     var intensityLocal by rememberSaveable { mutableIntStateOf(curveIntensity.coerceIn(100, 200)) }
     LaunchedEffect(curveIntensity) { intensityLocal = curveIntensity.coerceIn(100, 200) }
 
@@ -772,8 +767,6 @@ fun EqualizerDialog(
     val (bassBoostEnabled, setBassBoostEnabled) = rememberPreference(EqualizerBassBoostEnabledKey, defaultValue = false)
     val (bassBoostStrength, setBassBoostStrength) = rememberPreference(EqualizerBassBoostStrengthKey, defaultValue = 0)
 
-    val (virtualizerEnabled, setVirtualizerEnabled) = rememberPreference(EqualizerVirtualizerEnabledKey, defaultValue = false)
-    val (virtualizerStrength, setVirtualizerStrength) = rememberPreference(EqualizerVirtualizerStrengthKey, defaultValue = 0)
 
     val (customProfilesJson, setCustomProfilesJson) = rememberPreference(EqualizerCustomProfilesJsonKey, defaultValue = "")
 
@@ -813,13 +806,7 @@ fun EqualizerDialog(
         bassBoostStrengthLocal = bassBoostStrength.coerceIn(0, CAPSULE_MAX_BASS_STRENGTH)
     }
 
-    var virtualizerStrengthLocal by rememberSaveable {
-        mutableIntStateOf(virtualizerStrength.coerceIn(0, CAPSULE_MAX_VIRTUALIZER_STRENGTH))
-    }
-    LaunchedEffect(virtualizerStrength) {
-        virtualizerStrengthLocal =
-            virtualizerStrength.coerceIn(0, CAPSULE_MAX_VIRTUALIZER_STRENGTH)
-    }
+
 
     var bandLevelsMb by remember { mutableStateOf<List<Int>>(emptyList()) }
     LaunchedEffect(bandLevelsRaw, bandCount) {
@@ -847,7 +834,7 @@ fun EqualizerDialog(
                             bandLevelsMb = bandLevelsMb,
                             outputGainMb = outputGainMb,
                             bassBoostStrength = bassBoostStrength,
-                            virtualizerStrength = virtualizerStrength,
+                            virtualizerStrength = 0,
                         )
 
                     val updatedPayload =
@@ -954,8 +941,7 @@ fun EqualizerDialog(
                                 setOutputGainEnabled(profile.outputGainMb != 0)
                                 setBassBoostStrength(profile.bassBoostStrength)
                                 setBassBoostEnabled(profile.bassBoostStrength != 0)
-                                setVirtualizerStrength(profile.virtualizerStrength)
-                                setVirtualizerEnabled(profile.virtualizerStrength != 0)
+
                                 setSelectedProfileId("profile:${profile.id}")
                                 showManageProfilesDialog = false
                             }.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -1195,8 +1181,8 @@ fun EqualizerDialog(
                             outputGainMb = outputGainLocal,
                             bassBoostEnabled = bassBoostEnabled,
                             bassBoostStrength = bassBoostStrengthLocal,
-                            virtualizerEnabled = virtualizerEnabled,
-                            virtualizerStrength = virtualizerStrengthLocal,
+                            virtualizerEnabled = false,
+                            virtualizerStrength = 0,
                             intensityPercent = intensityLocal,
                             musicalBalanceEnabled = musicalBalance,
                         )
@@ -1274,8 +1260,8 @@ fun EqualizerDialog(
                         Surface(
                             modifier = Modifier.fillMaxWidth()
                                 .padding(horizontal = 12.dp, vertical = 5.dp),
-                            shape = RoundedCornerShape(22.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.76f),
+                            shape = RoundedCornerShape(18.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.52f),
                             border = BorderStroke(
                                 1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.09f),
                             ),
@@ -1295,10 +1281,11 @@ fun EqualizerDialog(
                                         )
                                     }
                                     Spacer(Modifier.width(12.dp))
-                                    Switch(
-                                        checked = musicalBalance,
-                                        enabled = eqEnabled,
-                                        onCheckedChange = setMusicalBalance,
+                                    Icon(
+                                        painter = painterResource(R.drawable.check),
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(22.dp),
                                     )
                                 }
                                 if (eqEnabled) {
@@ -1316,14 +1303,7 @@ fun EqualizerDialog(
                                         else MaterialTheme.colorScheme.onSurfaceVariant,
                                         style = MaterialTheme.typography.labelSmall,
                                     )
-                                    if (!musicalBalance && originalContrast > 1100) {
-                                        Text(
-                                            stringResource(R.string.eq_musical_balance_warning),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.error,
-                                            modifier = Modifier.padding(top = 5.dp),
-                                        )
-                                    }
+
                                 }
                             }
                         }
