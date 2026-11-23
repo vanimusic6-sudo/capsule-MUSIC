@@ -23,7 +23,7 @@ class CapsuleMusicalEqPolicyTest {
         val actual = capsuleMusicalEqLevels(original, hz)
         assertEquals(copy, original)
         assertEquals(5, actual.size)
-        assertTrue("raw 24 dB contrast must be reduced", capsuleEqCurveSpreadMb(actual) <= 850)
+        assertTrue("raw 24 dB contrast must be reduced", capsuleEqCurveSpreadMb(actual) <= 750)
         assertTrue(actual.zipWithNext().all { (a, b) ->
             kotlin.math.abs(a - b) <= CAPSULE_MUSICAL_MAX_NEIGHBOR_MB
         })
@@ -45,7 +45,7 @@ class CapsuleMusicalEqPolicyTest {
         assertEquals(first, capsuleMusicalEqLevels(broad, hz))
         assertTrue(first[1] > first[4])
         assertTrue(first[1] > 80)
-        assertTrue(first.all { it in -750..650 })
+        assertTrue(first.all { it in -650..620 })
     }
 
     @Test fun balancingIsEnabledOnlyWhenSettingRequestsIt() {
@@ -56,7 +56,7 @@ class CapsuleMusicalEqPolicyTest {
             settings(raw, balance = true), 5, -1500, 1500, hz)
         assertEquals(raw, precise)
         assertFalse(raw == musical)
-        assertTrue(capsuleEqCurveSpreadMb(musical) <= 850)
+        assertTrue(capsuleEqCurveSpreadMb(musical) <= 750)
         assertTrue(capsuleSafeEqInputGainMb(settings(raw, true), musical) >
             capsuleSafeEqInputGainMb(settings(raw, false), precise))
     }
@@ -65,7 +65,7 @@ class CapsuleMusicalEqPolicyTest {
         val raw = List(32) { index -> if (index % 2 == 0) Int.MAX_VALUE else Int.MIN_VALUE }
         val actual = capsuleMusicalEqLevels(raw, listOf(0, -3, 99))
         assertEquals(32, actual.size)
-        assertTrue(actual.all { it in -750..650 })
+        assertTrue(actual.all { it in -650..620 })
         assertTrue(capsuleEqCurveSpreadMb(actual) <= CAPSULE_MUSICAL_MAX_SPREAD_MB)
         assertTrue(actual.zipWithNext().all { (a, b) ->
             kotlin.math.abs(a - b) <= CAPSULE_MUSICAL_MAX_NEIGHBOR_MB
@@ -77,12 +77,15 @@ class CapsuleMusicalEqPolicyTest {
             java.io.File("src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"),
             java.io.File("app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"),
         ).first(java.io.File::isFile).readText()
-        assertTrue(service.contains("musicalBalanceEnabled = prefs[EqualizerMusicalBalanceKey] ?: true"))
+        assertTrue(service.contains("musicalBalanceEnabled = true"))
+        assertFalse(service.contains("musicalBalanceEnabled = prefs[EqualizerMusicalBalanceKey]"))
         val menu = sequenceOf(
             java.io.File("src/main/kotlin/com/nikhil/yt/ui/menu/PlayerMenu.kt"),
             java.io.File("app/src/main/kotlin/com/nikhil/yt/ui/menu/PlayerMenu.kt"),
         ).first(java.io.File::isFile).readText()
+        assertTrue(menu.contains("val musicalBalance = true"))
         assertTrue(menu.contains("musicalBalanceEnabled = musicalBalance"))
+        assertFalse(menu.contains("onCheckedChange = setMusicalBalance"))
         assertTrue(menu.contains("appliedLevelsMb = if (eqEnabled && musicalBalance)"))
     }
 }

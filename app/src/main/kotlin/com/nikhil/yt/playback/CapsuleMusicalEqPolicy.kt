@@ -12,9 +12,9 @@ package com.nikhil.yt.playback
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-internal const val CAPSULE_MUSICAL_MAX_SPREAD_MB = 850     // 8.5 dB between extremes
-internal const val CAPSULE_MUSICAL_MAX_NEIGHBOR_MB = 500   // 5 dB across adjacent bands
-private const val MUSICAL_SOFT_KNEE_MB = 250
+internal const val CAPSULE_MUSICAL_MAX_SPREAD_MB = 750     // 8.5 dB between extremes
+internal const val CAPSULE_MUSICAL_MAX_NEIGHBOR_MB = 410   // 5 dB across adjacent bands
+private const val MUSICAL_SOFT_KNEE_MB = 240
 
 /** Softly bend extreme EQ profiles back toward a musical tonal balance. */
 internal fun capsuleMusicalEqLevels(
@@ -38,15 +38,15 @@ internal fun capsuleMusicalEqLevels(
                     index.toDouble() / (count - 1))).roundToInt()
         when {
             hz <= 120 -> 350
-            hz <= 700 -> 650
-            hz <= 2_400 -> 600
-            hz <= 7_000 -> 550
-            else -> 450
+            hz <= 700 -> 620
+            hz <= 2_400 -> 540
+            hz <= 7_000 -> 500
+            else -> 410
         }
     }
     val lows = IntArray(count) { index ->
         val hz = centerFreqHz.getOrNull(index)?.takeIf { it > 0 } ?: 910
-        if (hz in 700..4_500) -650 else -750
+        if (hz in 700..4_500) -480 else -650
     }
     fun bound(index: Int, gainMb: Int): Int =
         gainMb.coerceIn(lows[index], highs[index])
@@ -55,7 +55,7 @@ internal fun capsuleMusicalEqLevels(
         val magnitude = abs(gainMb.toLong()).coerceAtMost(10_000L).toInt()
         if (magnitude <= MUSICAL_SOFT_KNEE_MB) return gainMb
         val softened = MUSICAL_SOFT_KNEE_MB +
-            ((magnitude - MUSICAL_SOFT_KNEE_MB) * 0.76f).roundToInt()
+            ((magnitude - MUSICAL_SOFT_KNEE_MB) * 0.83f).roundToInt()
         return if (gainMb < 0) -softened else softened
     }
     val safe = IntArray(count) { index ->
@@ -68,12 +68,12 @@ internal fun capsuleMusicalEqLevels(
     if (count == 1) return safe.toList()
 
     // One low-cost nearest-neighbour pass avoids abrupt, over-resonant notches.
-    // Hold each band at 76% of its own request, distributing the remainder to
+    // Hold each band at 82% of its own request, distributing the remainder to
     // adjacent regions, preserving the difference between their controls.
     val smoothed = IntArray(count) { index ->
         val left = safe[(index - 1).coerceAtLeast(0)]
         val right = safe[(index + 1).coerceAtMost(count - 1)]
-        bound(index, (safe[index] * 0.76f + (left + right) * 0.12f).roundToInt())
+        bound(index, (safe[index] * 0.82f + (left + right) * 0.09f).roundToInt())
     }
     // A full-spectrum contrast limit prevents exaggerated V/notch profiles
     // even when two peaks are NOT next to each other.
