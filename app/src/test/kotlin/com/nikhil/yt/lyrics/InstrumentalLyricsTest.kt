@@ -11,6 +11,34 @@ class InstrumentalLyricsTest {
         withInstrumentalBreaks(entries, duration).filter { it.isInstrumental }
 
     @Test
+    fun youtubeNotesAndMusicCaptionsAreRecognizedWithoutFalseMatches() {
+        for (cue in listOf("🎵", "🎶", "♫", "[music]", "[MUSIC]", "🎵 [music]", "[музыка]")) {
+            assertTrue("Unrecognized $cue", isInstrumentalCue(cue))
+        }
+        for (lyric in listOf("I love 🎵", "music is life", "[music] and lyrics", "")) {
+            assertFalse("False positive $lyric", isInstrumentalCue(lyric))
+        }
+    }
+
+    @Test
+    fun youtubeTimedMusicCaptionBecomesOneNoteUntilNextVocal() {
+        val rows = withInstrumentalBreaks(listOf(
+            LyricsEntry(1_000, "First voice", durationMs = 1_500),
+            LyricsEntry(5_000, "[music]"),
+            LyricsEntry(13_000, "Next voice"),
+        ), 20_000L)
+        val note = rows.single { it.isInstrumental }
+        assertEquals(5_000L, note.time)
+        assertEquals(8_000L, note.durationMs)
+        assertFalse(rows.any { it.text == "[music]" })
+    }
+
+    @Test
+    fun lastMusicCaptionUsesBoundedFallbackWhenDurationUnknown() {
+        assertEquals(5_000L, breaks(listOf(LyricsEntry(2_000, "🎵"))).single().durationMs)
+    }
+
+    @Test
     fun `intro uses archive tune timing and a five second minimum`() {
         assertTrue(breaks(listOf(LyricsEntry(5_999, "First"))).isEmpty())
         val note = breaks(listOf(LyricsEntry(6_000, "First"))).single()

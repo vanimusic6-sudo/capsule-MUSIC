@@ -10,6 +10,27 @@ private const val INTRO_START_MS = 1_000L
 private const val UNTYPED_VOCAL_TAIL_MS = 2_500L
 
 /**
+ * A caption consisting entirely of YouTube's music cue (or music-note emoji)
+ * represents an instrumental segment, not a sung lyric. Never treat an emoji
+ * inside normal words as a cue, and never rewrite the stored lyrics.
+ */
+internal fun isInstrumentalCue(raw: String): Boolean {
+    val compact = raw.trim().lowercase(java.util.Locale.ROOT)
+        .replace(Regex("""[\s\uFE0F]+"""), "")
+    if (compact.isEmpty()) return false
+    return compact
+        .replace("[music]", "")
+        .replace("(music)", "")
+        .replace("[музыка]", "")
+        .replace("[instrumental]", "")
+        .replace("🎵", "")
+        .replace("🎶", "")
+        .replace("♪", "")
+        .replace("♫", "")
+        .isEmpty()
+}
+
+/**
  * Display-only rows; the stored lyrics and provider results remain untouched.
  * A long line-start interval alone is not proof that the singer has stopped. Middle breaks
  * require an actual word/TTML end or a timestamped empty LRC line, so sustained vocals do
@@ -19,9 +40,28 @@ internal fun withInstrumentalBreaks(
     entries: List<LyricsEntry>,
     songDurationMs: Long = 0L,
 ): List<LyricsEntry> {
-    val vocals = entries.filter { it.time >= 0L && it.text.isNotBlank() && !it.isInstrumental }
+    val cues = entries.filter { it.time >= 0L && isInstrumentalCue(it.text) }
         .sortedBy { it.time }
-    if (vocals.isEmpty()) return entries
+    val vocals = entries.filter {
+        it.time >= 0L && it.text.isNotBlank() &&
+            !it.isInstrumental && !isInstrumentalCue(it.text)
+    }.sortedBy { it.time }
+    val cueNotes = cues.map { cue ->
+        val nextVocal = vocals.firstOrNull { it.time > cue.time }?.time
+        val nextCue = cues.firstOrNull { it.time > cue.time }?.time
+        val explicitEnd = cue.durationMs.takeIf { it > 0L }?.let { cue.time + it }
+        val ending = listOfNotNull(
+            nextVocal, nextCue, explicitEnd,
+            songDurationMs.takeIf { it > cue.time },
+        ).minOrNull() ?: (cue.time + MIN_INSTRUMENTAL_MS)
+        cue.copy(
+            text = "",
+            words = null,
+            isInstrumental = true,
+            durationMs = (ending - cue.time).coerceAtLeast(1L),
+        )
+    }
+    if (vocals.isEmpty()) return cueNotes
     val emptyMarkers = entries.filter { it.time >= 0L && it.text.isBlank() && !it.isInstrumental }
         .sortedBy { it.time }
     val breaks = mutableListOf<LyricsEntry>()
@@ -53,7 +93,14 @@ internal fun withInstrumentalBreaks(
         }
     }
     // Empty timestamps are boundaries, not visible blank lyric rows.
-    return (vocals + breaks).sortedBy { it.time }
+    // Explicit YouTube music captions own their interval. Do not render a
+    // duplicate automatic gap note over the same instrumental segment.
+    return (vocals + cueNotes + breaks.filterNot { generated ->
+        cueNotes.any { explicit ->
+            generated.time < explicit.time + explicit.durationMs &&
+                explicit.time < generated.time + generated.durationMs
+        }
+    }).sortedBy { it.time }
 }
 
 private fun LyricsEntry.knownVocalEndMs(): Long? {
