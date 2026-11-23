@@ -143,6 +143,12 @@ import com.nikhil.yt.playback.CAPSULE_MAX_OUTPUT_GAIN_MB
 import com.nikhil.yt.playback.CAPSULE_MAX_EQ_BOOST_MB
 import com.nikhil.yt.playback.CAPSULE_MAX_LOW_BASS_BOOST_MB
 import com.nikhil.yt.playback.CapsuleEqPresets
+import com.nikhil.yt.playback.CAPSULE_ADAPTIVE_REFERENCE_HZ
+import com.nikhil.yt.playback.CAPSULE_ADAPTIVE_MANUAL_MIN_MB
+import com.nikhil.yt.playback.CAPSULE_ADAPTIVE_MANUAL_MAX_MB
+import com.nikhil.yt.playback.CAPSULE_ADAPTIVE_MANUAL_VERSION
+import com.nikhil.yt.playback.capsuleMusicalEqLevels
+import com.nikhil.yt.playback.decodeEqBandLevels
 import com.nikhil.yt.playback.scaleEqBandLevels
 import com.nikhil.yt.playback.inverseScaledEqLevel
 import com.nikhil.yt.playback.EqProfile
@@ -747,11 +753,28 @@ fun EqualizerDialog(
     val (eqEnabled, setEqEnabled) = rememberPreference(EqualizerEnabledKey, defaultValue = false)
     val (selectedId, setSelectedId) =
         rememberPreference(EqualizerSelectedProfileIdKey, defaultValue = "flat")
-    val (_, setBandLevelsRaw) = rememberPreference(EqualizerBandLevelsMbKey, defaultValue = "")
+    val (manualRaw, setBandLevelsRaw) =
+        rememberPreference(EqualizerBandLevelsMbKey, defaultValue = "")
+    var manualPoints by remember(manualRaw, selectedId) {
+        mutableStateOf(
+            if (selectedId == CAPSULE_ADAPTIVE_MANUAL_VERSION)
+                decodeEqBandLevels(manualRaw)
+                    .takeIf { it.size == CAPSULE_ADAPTIVE_REFERENCE_HZ.size }
+                    ?.map { it.coerceIn(CAPSULE_ADAPTIVE_MANUAL_MIN_MB,
+                        CAPSULE_ADAPTIVE_MANUAL_MAX_MB) }
+                    ?: List(CAPSULE_ADAPTIVE_REFERENCE_HZ.size) { 0 }
+            else List(CAPSULE_ADAPTIVE_REFERENCE_HZ.size) { 0 },
+        )
+    }
+    var activeManualBand by remember { mutableIntStateOf(3) }
+    val adaptivePreview = remember(manualPoints) {
+        capsuleMusicalEqLevels(manualPoints, CAPSULE_ADAPTIVE_REFERENCE_HZ)
+    }
+    val manualActive = selectedId == CAPSULE_ADAPTIVE_MANUAL_VERSION && eqEnabled
 
     val selectedTone = selectedId.removePrefix("capsule:")
         .let(CapsuleEqPresets::byId)?.takeIf { eqEnabled }
-    val original = selectedTone == null &&
+    val original = selectedTone == null && !manualActive &&
         selectedId != "version:speed_up" && selectedId != "version:slowed"
 
     fun selectVersion(id: String) {
@@ -882,7 +905,57 @@ fun EqualizerDialog(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    if (selectedTone != null && engineMode == CapsuleEqEngineMode.UNAVAILABLE) {
+                    Text(
+                        stringResource(R.string.eq_adaptive_title),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        stringResource(R.string.eq_adaptive_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.70f),
+                        shape = RoundedCornerShape(20.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            CapsuleEqualizerGraph(
+                                frequenciesHz = CAPSULE_ADAPTIVE_REFERENCE_HZ,
+                                levelsMb = manualPoints,
+                                minMb = CAPSULE_ADAPTIVE_MANUAL_MIN_MB,
+                                maxMb = CAPSULE_ADAPTIVE_MANUAL_MAX_MB,
+                                appliedLevelsMb = adaptivePreview,
+                                selectedBand = activeManualBand,
+                                onBandSelected = { activeManualBand = it },
+                                onLevelChanged = { band, level ->
+                                    if (band in manualPoints.indices) {
+                                        manualPoints = manualPoints.toMutableList().apply {
+                                            this[band] = level
+                                        }
+                                    }
+                                },
+                                onFinished = { _, _ ->
+                                    // At most one persisted write per gesture;
+                                    // the live DSP applies the bounded curve.
+                                    setBandLevelsRaw(encodeBandLevelsMb(manualPoints))
+                                    setSelectedId(CAPSULE_ADAPTIVE_MANUAL_VERSION)
+                                    setEqEnabled(true)
+                                },
+                                graphHeight = 185.dp,
+                            )
+                            Text(
+                                stringResource(R.string.eq_adaptive_preview_note),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    if ((selectedTone != null || manualActive) &&
+                        engineMode == CapsuleEqEngineMode.UNAVAILABLE) {
                         Text(
                             stringResource(R.string.eq_engine_unavailable),
                             color = MaterialTheme.colorScheme.error,

@@ -996,4 +996,7 @@
     <string name="eq_tonal_versions">Характер звучания</string>
     <string name="eq_tonal_versions_description">Мягкие фиксированные профили. Они не измеряют громкость в дБА и не гарантируют защиту слуха или динамиков. Начинай с небольшой громкости.</string>
     <string name="eq_open_system_panel">Открыть системные звуковые эффекты</string>
+    <string name="eq_adaptive_title">Adaptive EQ · твой звук</string>
+    <string name="eq_adaptive_description">Меняй вкус музыки свободно. Плавные кривые сохраняются, а резкие пики и провалы смягчаются автоматически. Громкость в дБА не измеряется.</string>
+    <string name="eq_adaptive_preview_note">Сплошная линия — твоя кривая, пунктир — пример обработки. Реальные частоты зависят от устройства.</string>
 </resources>

@@ -3970,22 +3970,25 @@ class MusicService :
     }
 
     private fun readEqSettingsFromPrefs(prefs: Preferences): EqSettings {
-        val selected = prefs[EqualizerSelectedProfileIdKey]?.removePrefix("capsule:")
-        val preset = selected?.let(CapsuleEqPresets::byId)
-        // Old manual curves / presets deliberately never auto-activate.
-        // This guards existing installs even when EqualizerEnabledKey=true.
+        val selected = prefs[EqualizerSelectedProfileIdKey]
+        val preset = selected?.removePrefix("capsule:")?.let(CapsuleEqPresets::byId)
+        val manual = selected == CAPSULE_ADAPTIVE_MANUAL_VERSION
+        // Never revive old aggressive manually saved EQ settings. Only an
+        // explicit visit to the new adaptive editor can enable custom curves.
+        val raw = if (manual) {
+            decodeEqBandLevels(prefs[EqualizerBandLevelsMbKey])
+                .takeIf { it.size == CAPSULE_ADAPTIVE_REFERENCE_HZ.size }
+                ?.map { it.coerceIn(CAPSULE_ADAPTIVE_MANUAL_MIN_MB, CAPSULE_ADAPTIVE_MANUAL_MAX_MB) }
+                ?: List(CAPSULE_ADAPTIVE_REFERENCE_HZ.size) { 0 }
+        } else emptyList()
         return EqSettings(
-            enabled = (prefs[EqualizerEnabledKey] ?: false) && preset != null,
-            bandLevelsMb = preset?.referenceLevelsMb ?: emptyList(),
-            outputGainEnabled = false,
-            outputGainMb = 0,
-            bassBoostEnabled = false,
-            bassBoostStrength = 0,
-            virtualizerEnabled = false,
-            virtualizerStrength = 0,
-            intensityPercent = 100,
-            musicalBalanceEnabled = true,
-            versionId = preset?.id,
+            enabled = (prefs[EqualizerEnabledKey] ?: false) && (preset != null || manual),
+            bandLevelsMb = if (manual) raw else preset?.referenceLevelsMb ?: emptyList(),
+            outputGainEnabled = false, outputGainMb = 0,
+            bassBoostEnabled = false, bassBoostStrength = 0,
+            virtualizerEnabled = false, virtualizerStrength = 0,
+            intensityPercent = 100, musicalBalanceEnabled = true,
+            versionId = if (manual) CAPSULE_ADAPTIVE_MANUAL_VERSION else preset?.id,
         )
     }
 

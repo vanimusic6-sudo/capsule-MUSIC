@@ -1075,4 +1075,7 @@ Capsule will only extract your token, and everything else is stored locally.</st
     <string name="eq_tonal_versions">Sound character</string>
     <string name="eq_tonal_versions_description">Gentle, fixed sound profiles. These do not measure acoustic loudness and cannot guarantee hearing or speaker safety. Start at low volume.</string>
     <string name="eq_open_system_panel">Open device sound effects</string>
+    <string name="eq_adaptive_title">Adaptive EQ · your sound</string>
+    <string name="eq_adaptive_description">Shape the tone freely. Broad curves are preserved; narrow peaks and deep dips are softened automatically. This does not measure acoustic loudness.</string>
+    <string name="eq_adaptive_preview_note">Solid: your shape · dashed: approximate adjusted curve. Frequency centres depend on your phone.</string>
 </resources>

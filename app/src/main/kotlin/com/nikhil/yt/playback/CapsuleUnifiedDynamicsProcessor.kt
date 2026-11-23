@@ -39,13 +39,22 @@ internal fun capsuleUnifiedEqLevels(
     val preset = settings.versionId?.let(CapsuleEqPresets::byId)
     // Require an explicitly recognized version, map by device Hz (NOT band
     // index), then use the same protective contour as the former custom EQ.
-    val raw = if (preset != null) {
-        CapsuleEqPresets.levelsFor(
-            preset,
-            (0 until capabilities.bandCount).map { capabilities.centerFreqHz.getOrNull(it) ?: 0 },
-            capabilities.minBandLevelMb, capabilities.maxBandLevelMb,
+    val deviceCenters = (0 until capabilities.bandCount).map {
+        capabilities.centerFreqHz.getOrNull(it) ?: 0
+    }
+    val raw = when {
+        preset != null -> CapsuleEqPresets.levelsFor(
+            preset, deviceCenters, capabilities.minBandLevelMb, capabilities.maxBandLevelMb,
         )
-    } else settings.bandLevelsMb
+        settings.versionId == CAPSULE_ADAPTIVE_MANUAL_VERSION ->
+            capsuleAdaptiveLevelsFor(
+                settings.bandLevelsMb.map {
+                    it.coerceIn(CAPSULE_ADAPTIVE_MANUAL_MIN_MB, CAPSULE_ADAPTIVE_MANUAL_MAX_MB)
+                },
+                deviceCenters, capabilities.minBandLevelMb, capabilities.maxBandLevelMb,
+            )
+        else -> settings.bandLevelsMb
+    }
     val levels = protectedEqLevels(
         settings.copy(
             bandLevelsMb = raw, intensityPercent = 100,
@@ -55,7 +64,8 @@ internal fun capsuleUnifiedEqLevels(
         capabilities.bandCount, capabilities.minBandLevelMb,
         capabilities.maxBandLevelMb, capabilities.centerFreqHz,
     )
-    if (preset != null || !settings.bassBoostEnabled || settings.bassBoostStrength <= 0) return levels
+    if (preset != null || settings.versionId == CAPSULE_ADAPTIVE_MANUAL_VERSION ||
+        !settings.bassBoostEnabled || settings.bassBoostStrength <= 0) return levels
     val bass = (settings.bassBoostStrength.coerceIn(0, CAPSULE_MAX_BASS_STRENGTH)
         * 150) / CAPSULE_MAX_BASS_STRENGTH
     val updated = levels.mapIndexed { index, value ->
