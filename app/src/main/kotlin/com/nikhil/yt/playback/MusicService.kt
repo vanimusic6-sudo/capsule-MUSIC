@@ -2428,8 +2428,8 @@ class MusicService :
             }
             .distinctUntilChanged()
             .collect(scope) { (settings, speed, pitch) ->
-                // An optional loudness boost (up to +3 dB) must never undo
-                // the gain reserve required by native EQ/BassBoost.
+                // Tone only: positive makeup gain and independent OEM boost
+                // effects are retired. The common safety reserve is mandatory.
                 if (settings.enabled) soundStudioEnabledForVolume.value = true
                 val playbackParams = if (settings.enabled) PlaybackParameters(speed, pitch)
                     else PlaybackParameters(1f, 1f)
@@ -2462,8 +2462,8 @@ class MusicService :
                     }
                     val legacySafety = protectedEqAudioFactor(settings, eqCapabilities.value)
                     // Before a legacy DSP switch, retain pre-attenuation.
-                    // On the unified DPE path, its own final limiter handles
-                    // continuous EQ changes without global volume pumping.
+                    // On the unified DPE path, input trim precedes PreEQ and
+                    // the sample-peak limiter; avoid global volume pumping.
                     if (sensitive || !audioEffectsController.isUnifiedDynamicsActive) {
                         soundStudioSafetyFactor.value = minOf(
                             soundStudioSafetyFactor.value, legacySafety)
@@ -2475,9 +2475,7 @@ class MusicService :
                         // quieter merely because a curve is configured.
                         audioEffectsController.engineMode.value ==
                             CapsuleEqEngineMode.UNAVAILABLE -> 1f
-                        audioEffectsController.isUnifiedDynamicsActive &&
-                            settings.virtualizerEnabled -> 0.84f
-                        audioEffectsController.isUnifiedDynamicsActive -> 0.94f
+                        audioEffectsController.isUnifiedDynamicsActive -> 1f
                         else -> legacySafety
                     }
                     // No usable native EQ means there is nothing to protect.
@@ -3969,11 +3967,11 @@ class MusicService :
             enabled = prefs[EqualizerEnabledKey] ?: false,
             bandLevelsMb = levels,
             outputGainEnabled = prefs[EqualizerOutputGainEnabledKey] ?: false,
-            outputGainMb = prefs[EqualizerOutputGainMbKey] ?: 0,
+            outputGainMb = (prefs[EqualizerOutputGainMbKey] ?: 0).coerceIn(-1500, 0),
             bassBoostEnabled = prefs[EqualizerBassBoostEnabledKey] ?: false,
             bassBoostStrength = (prefs[EqualizerBassBoostStrengthKey] ?: 0).coerceIn(0, 1000),
-            virtualizerEnabled = prefs[EqualizerVirtualizerEnabledKey] ?: false,
-            virtualizerStrength = (prefs[EqualizerVirtualizerStrengthKey] ?: 0).coerceIn(0, 1000),
+            virtualizerEnabled = false, // Old presets cannot enable a second audio effect.
+            virtualizerStrength = 0,
             intensityPercent = (prefs[EqualizerCurveIntensityPercentKey] ?: 100).coerceIn(100, 200),
             musicalBalanceEnabled = prefs[EqualizerMusicalBalanceKey] ?: true,
         )
@@ -4033,9 +4031,7 @@ class MusicService :
             !settings.enabled -> 1f
             audioEffectsController.engineMode.value ==
                 CapsuleEqEngineMode.UNAVAILABLE -> 1f
-            audioEffectsController.isUnifiedDynamicsActive &&
-                settings.virtualizerEnabled -> 0.84f
-            audioEffectsController.isUnifiedDynamicsActive -> 0.94f
+            audioEffectsController.isUnifiedDynamicsActive -> 1f
             else -> protectedEqAudioFactor(settings, eqCapabilities.value)
         }
         soundStudioSafetyFactor.value = safety

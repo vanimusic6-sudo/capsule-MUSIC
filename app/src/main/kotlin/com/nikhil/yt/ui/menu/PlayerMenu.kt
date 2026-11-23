@@ -1430,35 +1430,11 @@ fun EqualizerDialog(
                             },
                         )
                         HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                        CapsuleEffectRow(
-                            title = stringResource(R.string.eq_effect_spatial),
-                            checked = eqEnabled && virtualizerEnabled,
-                            enabled = eqEnabled,
-                            onCheckedChange = { enabled ->
-                                if (enabled && virtualizerStrengthLocal == 0) {
-                                    virtualizerStrengthLocal = 350
-                                    setVirtualizerStrength(350)
-                                }
-                                setVirtualizerEnabled(enabled)
-                            },
-                            value = (virtualizerStrengthLocal * 100 +
-                                CAPSULE_MAX_VIRTUALIZER_STRENGTH / 2) /
-                                CAPSULE_MAX_VIRTUALIZER_STRENGTH,
-                            valueRange = 0..100,
-                            valueLabel = "${(virtualizerStrengthLocal * 100 +
-                                CAPSULE_MAX_VIRTUALIZER_STRENGTH / 2) /
-                                CAPSULE_MAX_VIRTUALIZER_STRENGTH}%",
-                            onValueChange = { percent ->
-                                virtualizerStrengthLocal =
-                                    percent * CAPSULE_MAX_VIRTUALIZER_STRENGTH / 100
-                            },
-                            onValueChangeFinished = {
-                                setVirtualizerStrength(virtualizerStrengthLocal)
-                            },
-                        )
+                        // No independent spatial widening: this was an OEM
+                        // effect whose gain and routing cannot be controlled.
                         HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                         CapsuleEffectRow(
-                            title = stringResource(R.string.eq_output_gain),
+                            title = stringResource(R.string.eq_output_attenuation),
                             checked = eqEnabled && outputGainEnabled,
                             enabled = eqEnabled,
                             onCheckedChange = setOutputGainEnabled,

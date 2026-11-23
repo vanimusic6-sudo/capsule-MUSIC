@@ -39,7 +39,8 @@ internal fun safeListeningAppVolumeCeiling(
     if (!enabled || !headphoneRoute ||
         safeListeningOverrideActive(overrideUntilMs, nowMs)
     ) return 1f
-    if (!deviceOutputAmplitude.isFinite() || deviceOutputAmplitude <= 0f) return 1f
+    if (!deviceOutputAmplitude.isFinite() || deviceOutputAmplitude <= 0f)
+        return SAFE_LISTENING_RELATIVE_CEILING
     return (SAFE_LISTENING_RELATIVE_CEILING /
         deviceOutputAmplitude.coerceIn(0.001f, 1f)).coerceIn(0f, 1f)
 }
