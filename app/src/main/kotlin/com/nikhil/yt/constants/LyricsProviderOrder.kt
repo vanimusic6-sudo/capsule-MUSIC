@@ -1,49 +1,36 @@
 /**
- * Capsule MUSIC — five stable, non-overlapping lyrics catalogs.
+ * Capsule MUSIC — six independent, user-ordered lyrics sources.
  * Licensed under GPL-3.0.
  */
 package com.nikhil.yt.constants
 
 object LyricsProviderOrder {
     const val BETTER_LYRICS_PORTATO = "BETTER_LYRICS_PORTATO"
-    const val SIMPMUSIC = "SIMPMUSIC"
-    const val LYRICS_PLUS = "LYRICS_PLUS"
+    const val BETTER_LYRICS = "BETTER_LYRICS"
     const val LRCLIB = "LRCLIB"
+    const val YOUTUBE_SYNCED = "YOUTUBE_SYNCED"
+    const val LYPRIO = "LYPRIO"
     const val YOUTUBE = "YOUTUBE"
 
-    /** Official fallback is last, unless the user explicitly reorders it. */
-    val supportedProviders: List<String> = listOf(
-        BETTER_LYRICS_PORTATO,
-        SIMPMUSIC,
-        LYRICS_PLUS,
-        LRCLIB,
-        YOUTUBE,
+    val supportedProviders = listOf(
+        BETTER_LYRICS_PORTATO, BETTER_LYRICS, LRCLIB,
+        YOUTUBE_SYNCED, LYPRIO, YOUTUBE,
     )
     private val supportedSet = supportedProviders.toSet()
-
-    /** Previously shipped automatic defaults, including retired catalogs. */
-    private val oldDefaults = listOf(
-        listOf("PAXSENIX_APPLE_MUSIC", "BETTER_LYRICS", "NETEASE", "LYRICS_PLUS", "YOUTUBE"),
-        listOf("SIMPMUSIC", "PAXSENIX_APPLE_MUSIC", "BETTER_LYRICS_PORTATO",
-            "BETTER_LYRICS", "LYRICS_PLUS", "NETEASE", "YOUTUBE"),
-        listOf("SIMPMUSIC", "PAXSENIX_APPLE_MUSIC", "BETTER_LYRICS_PORTATO",
-            "LYRICS_PLUS", "LRCLIB", "KUGOU", "YOUTUBE"),
+    private val retired = setOf(
+        "PAXSENIX_APPLE_MUSIC", "SIMPMUSIC", "LYRICS_PLUS", "NETEASE", "KUGOU",
     )
 
-    /** Retire removed IDs without reinstating their network clients.
-     *  Preserve deliberate custom ordering for the remaining five providers.
-     */
+    /** Retired saved lists migrate to the requested six-provider default. */
     fun resolve(raw: String?, legacyPreferred: String? = null): List<String> {
         val stored = raw.orEmpty().split(',')
-            .map { it.trim().uppercase() }
+            .map { it.trim().uppercase(java.util.Locale.US) }
             .filter(String::isNotBlank)
             .distinct()
-        if (stored in oldDefaults) return supportedProviders
+        if (stored.isEmpty() || stored.any { it in retired }) return supportedProviders
         val parsed = stored.filter { it in supportedSet }
         val seed = parsed.ifEmpty {
-            // Velune used LRCLIB as the implicit legacy preference. An
-            // untouched setting must not override the new stable ordering.
-            listOfNotNull(legacyPreferred?.trim()?.uppercase()
+            listOfNotNull(legacyPreferred?.trim()?.uppercase(java.util.Locale.US)
                 ?.takeIf { it in supportedSet && it != LRCLIB })
         }
         return (seed + supportedProviders).distinct()
