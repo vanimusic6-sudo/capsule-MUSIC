@@ -48,6 +48,16 @@ class CapsuleUnifiedDynamicsProcessorTest {
         assertEquals(List(5){0},capsuleUnifiedEqLevels(s.copy(enabled=false),caps))
     }
 
+    @Test fun originalBypassesTheLimiterAndDoesNotModifyDynamics() {
+        val s=File("src/main/kotlin/com/nikhil/yt/playback/CapsuleUnifiedDynamicsProcessor.kt").readText()
+        val bypass=s.substringAfter("fun apply(settings: EqSettings) {")
+            .substringBefore("val curve =")
+        assertTrue(bypass.contains("if (!settings.enabled)"))
+        assertTrue(bypass.contains("effect.enabled = false"))
+        assertTrue(s.contains("if (!effect.enabled) {"))
+        assertTrue(s.contains("effect.enabled = true"))
+    }
+
     @Test fun controllerNeverStacksIndependentBoostsOrEnablesGlobalSession() {
         val s=File("src/main/kotlin/com/nikhil/yt/playback/PlaybackAudioEffectsController.kt").readText()
         assertTrue(s.contains("unifiedDynamics?.let { engine ->"))

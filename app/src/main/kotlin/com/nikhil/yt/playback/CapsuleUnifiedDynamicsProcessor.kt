@@ -100,6 +100,15 @@ internal class CapsuleUnifiedDynamicsProcessor(
     }
 
     fun apply(settings: EqSettings) {
+        if (!settings.enabled) {
+            // Original really is bypass: a flat PreEQ with an enabled -2 dB
+            // limiter still changes transients. Short volume ducking during
+            // the transition is handled by MusicService.
+            effect.enabled = false
+            appliedLevels.fill(Int.MIN_VALUE)
+            appliedInputGain = null
+            return
+        }
         val curve = capsuleUnifiedEqLevels(settings, capabilities)
         require(curve.size == cutoffs.size)
         val preamp = capsuleSafeEqInputGainMb(settings, curve)
@@ -121,7 +130,12 @@ internal class CapsuleUnifiedDynamicsProcessor(
             effect.setInputGainAllChannelsTo(preamp / 100f)
             appliedInputGain = preamp
         }
-        // Limiter remains connected until release: OEM effect toggles can pop.
+        // Stage new gains while disabled, then enable once the input reserve
+        // and all bands are ready. On an active session, no per-frame toggles.
+        if (!effect.enabled) {
+            effect.enabled = true
+            check(effect.enabled) { "Android did not enable the configured DSP" }
+        }
     }
 
     fun release() = effect.release()
