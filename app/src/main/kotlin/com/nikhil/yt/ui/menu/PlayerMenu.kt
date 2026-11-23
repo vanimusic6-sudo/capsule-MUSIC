@@ -137,6 +137,7 @@ import com.nikhil.yt.playback.CAPSULE_MAX_BASS_STRENGTH
 import com.nikhil.yt.playback.CAPSULE_MAX_VIRTUALIZER_STRENGTH
 import com.nikhil.yt.playback.CAPSULE_MAX_OUTPUT_GAIN_MB
 import com.nikhil.yt.playback.CAPSULE_MAX_EQ_BOOST_MB
+import com.nikhil.yt.playback.CAPSULE_MAX_LOW_BASS_BOOST_MB
 import com.nikhil.yt.playback.CapsuleEqPresets
 import com.nikhil.yt.playback.scaleEqBandLevels
 import com.nikhil.yt.playback.inverseScaledEqLevel
@@ -779,6 +780,12 @@ fun EqualizerDialog(
     // The graph uses the current safe DSP ceiling, not the obsolete
     // hardware-wide maximum. Thus a safe maximum reaches its TOP edge.
     val graphMaxMb = minOf(maxMb, CAPSULE_MAX_EQ_BOOST_MB).coerceAtLeast(minMb)
+    val bandMaxLevelsMb = (0 until bandCount).map { index ->
+        val hz = caps.centerFreqHz.getOrNull(index) ?: 0
+        val lowBass = if (hz <= 0) index == 0 else hz <= 120
+        minOf(graphMaxMb, if (lowBass) CAPSULE_MAX_LOW_BASS_BOOST_MB
+            else CAPSULE_MAX_EQ_BOOST_MB).coerceAtLeast(minMb)
+    }
 
     var outputGainLocal by rememberSaveable {
         mutableIntStateOf(outputGainMb.coerceIn(-1500, CAPSULE_MAX_OUTPUT_GAIN_MB))
@@ -1166,12 +1173,15 @@ fun EqualizerDialog(
                         var selectedBand by remember { mutableIntStateOf(0) }
                         val displayedLevels = scaleEqBandLevels(
                             bandLevelsMb, intensityLocal, minMb, maxMb,
-                        ).map { it.coerceAtMost(graphMaxMb) }
+                        ).mapIndexed { index, level ->
+                            level.coerceIn(minMb, bandMaxLevelsMb.getOrElse(index) { graphMaxMb })
+                        }
                         CapsuleEqualizerGraph(
                             frequenciesHz = caps.centerFreqHz,
                             levelsMb = displayedLevels,
                             minMb = minMb,
                             maxMb = graphMaxMb,
+                            bandMaxLevelsMb = bandMaxLevelsMb,
                             selectedBand = selectedBand.coerceIn(0, bandCount - 1),
                             onBandSelected = { selectedBand = it },
                             onLevelChanged = { band, level ->
@@ -1237,8 +1247,8 @@ fun EqualizerDialog(
                             enabled = eqEnabled,
                             onCheckedChange = { enabled ->
                                 if (enabled && bassBoostStrengthLocal == 0) {
-                                    bassBoostStrengthLocal = 350
-                                    setBassBoostStrength(350)
+                                    bassBoostStrengthLocal = CAPSULE_MAX_BASS_STRENGTH * 65 / 100
+                                    setBassBoostStrength(bassBoostStrengthLocal)
                                 }
                                 setBassBoostEnabled(enabled)
                             },
