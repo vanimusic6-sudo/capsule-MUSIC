@@ -17,7 +17,8 @@ object YouTubeSyncedLyricsProvider : LyricsProvider {
     override suspend fun getLyrics(
         id: String, title: String, artist: String, album: String?, duration: Int,
     ): Result<String> = try {
-        val timed = YouTube.synchronizedLyrics(id).getOrThrow()
+        val timed: String = YouTube.synchronizedLyrics(id).getOrThrow()
+            ?: return Result.failure(NoLyricsFromProvider("YouTube Music has no timed lyrics"))
         if (timed.isNotBlank() &&
             Regex("""\[[0-9]{1,2}:[0-9]{2}[.:][0-9]{2,3}]""").containsMatchIn(timed)
         ) Result.success(timed)
