@@ -1062,7 +1062,8 @@ Capsule will only extract your token, and everything else is stored locally.</st
     <string name="eq_engine_unavailable">EQ is unavailable for this audio session. No unnecessary volume reduction applied.</string>
     <string name="eq_engine_waiting">DSP: waiting for an active audio session</string>
     <string name="eq_musical_balance">Musical balance</string>
-    <string name="eq_musical_balance_description">Softens sharp peaks and deep notches without changing your saved sliders. Recommended for headphones.</string>
+    <string name="eq_musical_balance_description">Gently shapes the sound without changing your saved curve. Always on during EQ playback.</string>
+    <string name="eq_musical_balance_protected">ON</string>
     <string name="eq_musical_balance_contrast">Frequency contrast: %1$s → %2$s</string>
     <string name="eq_musical_balance_warning">Extreme contrast can sound harsh or tiring. Reduce volume or enable Musical balance.</string>
     <string name="eq_curve_requested">Your curve</string>
