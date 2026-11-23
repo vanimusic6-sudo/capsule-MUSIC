@@ -243,6 +243,10 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
         val weight = backdropVerticalWeights[y * PAGE_ROWS + sy]
         for (c in 0..2) blurred[(y * PAGE_COLUMNS + x) * 3 + c] += horizontal[(sy * PAGE_COLUMNS + x) * 3 + c] * weight
     }
+    // 192 cached samples from the actual lower crop, prepared off-main.
+    val bottomEdge = Array(PAINT_WIDTH) { x ->
+        sample((x + 0.5f) / PAINT_WIDTH, 0.95f)
+    }
     val pixels = IntArray(PAINT_WIDTH * PAINT_HEIGHT)
     for (y in 0 until PAINT_HEIGHT) {
         val pageY = (y + 0.5f) / PAINT_HEIGHT
@@ -252,7 +256,11 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
             pageY < 0.68f -> 0.03f + (pageY - 0.38f) / 0.30f * 0.11f
             else -> 0.14f + (pageY - 0.68f) / 0.32f * 0.26f
         }
+        val continuation = ((pageY - stage) / (1f - stage)).coerceIn(0f, 1f)
+        // Smoothstep joins with zero slope at both edges.
+        val settle = continuation * continuation * (3f - 2f * continuation)
         for (x in 0 until PAINT_WIDTH) {
+            val edge = bottomEdge[x]
             var pixel = -0x1000000
             for (c in 0..2) {
                 var value = 0f
@@ -262,6 +270,13 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
                     value += blurred[(sy * PAGE_COLUMNS + sx) * 3 + c] *
                         backdropSplineX.weights[x * 4 + dx] * backdropSplineY.weights[y * 4 + dy]
                 }
+                val anchor = when (c) {
+                    0 -> edge.red
+                    1 -> edge.green
+                    else -> edge.blue
+                }
+                // Foreground lights should not turn black artwork into a purple floor.
+                value = value * (1f - settle) + anchor * settle
                 pixel = pixel or ((value * (1f - scrim) * 255f + 0.5f).toInt().coerceIn(0, 255) shl (16 - c * 8))
             }
             pixels[y * PAINT_WIDTH + x] = pixel
