@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -353,10 +355,18 @@ private fun CompactLyricsMoreDialog(
     )
     val shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp)
 
-    // A Lyrics-only close is immediate, so there is never a scrim window
-    // stranded after pressing Back or after opening an edit/search dialog.
+    // The lyrics player uses a fullscreen graphics layer; native partial sheet
+    // anchors can be hidden behind it on some devices. Keep this dedicated
+    // Dialog, but give it the same bottom-entry and soft retreat as other More.
+    val reveal = remember(state) { Animatable(0f) }
+    var measuredHeightPx by remember { mutableIntStateOf(0) }
     LaunchedEffect(state.dismissRequested, generation) {
-        if (state.dismissRequested) state.completeAnimatedDismiss(generation)
+        if (state.dismissRequested) {
+            reveal.animateTo(0f, tween(durationMillis = 230))
+            state.completeAnimatedDismiss(generation)
+        } else {
+            reveal.animateTo(1f, tween(durationMillis = 300))
+        }
     }
 
     Dialog(
@@ -380,7 +390,16 @@ private fun CompactLyricsMoreDialog(
                     .heightIn(
                         min = 180.dp,
                         max = (configuration.screenHeightDp * 0.76f).dp,
-                    ),
+                    )
+                    .onSizeChanged { measuredHeightPx = it.height }
+                    .graphicsLayer {
+                        val visible = reveal.value.coerceIn(0f, 1f)
+                        transformOrigin = TransformOrigin(0.5f, 0.75f)
+                        translationY = measuredHeightPx.toFloat() * (1f - visible)
+                        val scale = capsuleMenuDismissScale(1f - visible)
+                        scaleX = scale
+                        scaleY = scale
+                    },
                 shape = shape,
                 color = sheetColor,
                 contentColor = MaterialTheme.colorScheme.onSurface,
