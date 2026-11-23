@@ -93,6 +93,8 @@ jobs:
           --tests 'com.nikhil.yt.ui.player.CapsuleLyricsThemeTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleLyricsPaletteRecoveryTest'
           --tests 'com.nikhil.yt.ui.LyricsProviderOrderTest'
+          --tests 'com.nikhil.yt.constants.ReleaseDefaultsTest'
+          --tests 'com.nikhil.yt.ui.menu.CapsuleLyricsSearchSourceTest'
           --tests 'com.nikhil.yt.constants.LyricsProviderOrderTest'
           --tests 'com.nikhil.yt.lyrics.SimpMusicSourceRegressionTest'
           --tests 'com.nikhil.yt.lyrics.SimpMusicApiContractTest'
