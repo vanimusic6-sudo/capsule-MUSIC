@@ -1,95 +1,82 @@
 package com.nikhil.yt.playback
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
+import org.junit.Assert.*
 import org.junit.Test
-import kotlin.math.log10
+import java.io.File
+import kotlin.math.pow
 
-/**
- * Pure model tests: hardware-specific true-peak and speaker protection cannot
- * be certified from JVM, so these assert conservative numerical invariants.
- */
+/** Headroom arithmetic is not calibrated true-peak or SPL certification. */
 class CapsuleEqHeadroomPolicyTest {
-    private fun settings(
-        levels: List<Int> = listOf(0, 0, 0, 0, 0),
-        enabled: Boolean = true,
-        gain: Int = 0,
-        gainEnabled: Boolean = false,
-    ) = EqSettings(
-        enabled = enabled, bandLevelsMb = levels, outputGainEnabled = gainEnabled,
-        outputGainMb = gain, bassBoostEnabled = false, bassBoostStrength = 0,
-        virtualizerEnabled = false, virtualizerStrength = 0,
+    private val hz = listOf(60,230,910,3600,14000)
+    private val caps = EqCapabilities(5,-1500,1500,hz,emptyList())
+    private fun settings(levels: List<Int> = List(5) {0},
+        boost: Int=0, outputGain: Int=0, gainOn: Boolean=false,
+        enabled:Boolean=true) = EqSettings(
+        enabled=enabled,bandLevelsMb=levels,outputGainEnabled=gainOn,
+        outputGainMb=outputGain,bassBoostEnabled=boost>0,
+        bassBoostStrength=boost,virtualizerEnabled=false,virtualizerStrength=0,
     )
 
-    private val caps = EqCapabilities(
-        bandCount = 5, minBandLevelMb = -1500, maxBandLevelMb = 1500,
-        centerFreqHz = listOf(60, 230, 910, 3600, 14000),
-        systemPresets = emptyList(),
-    )
-
-    @Test fun boostedProfileReservesMoreThanTheLargestPositiveBand() {
-        val eq = settings(listOf(0, 900, -1500, 0, 900))
-        val levels = capsuleUnifiedEqLevels(eq, caps)
-        assertEquals(900, levels.max())
-        assertEquals(-1080, capsuleSafeEqInputGainMb(eq, levels))
-        // A full-scale sample with +9 dB tonal boost stays below -1.8 dBFS
-        // under a simplified single-band linear-gain model.
-        val estimatedPeakDb = levels.max() / 100.0 +
-            capsuleSafeEqInputGainMb(eq, levels) / 100.0
-        assertTrue(estimatedPeakDb <= -1.8 + 0.00001)
-        val estimatedLinearPeak = Math.pow(10.0, estimatedPeakDb / 20.0)
-        assertTrue(estimatedLinearPeak < 1.0)
+    @Test fun tonalPeakAlwaysHasCleanNegativeInputHeadroom() {
+        val eq = settings(listOf(1500,1500,-1500,1200,1500))
+        val levels = capsuleUnifiedEqLevels(eq,caps)
+        val trim = capsuleSafeEqInputGainMb(eq,levels)
+        val positive = levels.max().coerceAtLeast(0)
+        assertTrue(positive <= CAPSULE_MAX_EQ_BOOST_MB)
+        assertTrue(trim+positive <= -CAPSULE_EQ_HEADROOM_MARGIN_MB)
+        assertTrue(10.0.pow((trim+positive)/2000.0) < 1.0)
     }
 
-    @Test fun bassBoostHasHeadroomToo() {
-        val bass = eqSettingsWithBass()
-        val levels = capsuleUnifiedEqLevels(bass, caps)
-        assertEquals(250, levels.first())
-        assertEquals(-430, capsuleSafeEqInputGainMb(bass, levels))
+    @Test fun bassIsAShapedContourAndNeverIndependentCompression() {
+        val bass = settings(boost=200)
+        val levels = capsuleUnifiedEqLevels(bass,caps)
+        assertTrue(levels.first() in 1..CAPSULE_MAX_LOW_BASS_BOOST_MB)
+        assertTrue(levels.drop(2).all { it <= 50 })
+        assertFalse(capsuleNeedsBassDynamics(bass,caps))
+        val trim = capsuleSafeEqInputGainMb(bass,levels)
+        assertTrue(trim + levels.max() <= -CAPSULE_EQ_HEADROOM_MARGIN_MB)
     }
 
-    private fun eqSettingsWithBass() =
-        settings().copy(bassBoostEnabled = true, bassBoostStrength = 250)
+    @Test fun positiveOutputGainIsNeverRecoveredFromTheLimiterReserve() {
+        val eq = settings(listOf(0,1500,0,0,0),outputGain=300,gainOn=true)
+        val levels = capsuleUnifiedEqLevels(eq,caps)
+        val requested = capsuleSafeEqInputGainMb(eq,levels)
+        assertEquals(capsuleSafeEqInputGainMb(eq.copy(outputGainEnabled=false),levels),requested)
+        assertTrue(requested+levels.max() <= -CAPSULE_EQ_HEADROOM_MARGIN_MB)
+    }
 
-    @Test fun flatAndBypassedStatesDoNotDropMusicVolume() {
+    @Test fun reductionOnlyWorksWithoutLoudnessOrFlatCurveSurprises() {
         val flat = settings()
-        assertEquals(0, capsuleSafeEqInputGainMb(flat, List(5) { 0 }))
-        assertEquals(0, capsuleSafeEqInputGainMb(
-            settings(enabled = false, levels = List(5) { 900 }),
-            List(5) { 900 },
-        ))
-        assertEquals(1f, protectedEqAudioFactor(flat), 0.00001f)
+        assertEquals(0,capsuleSafeEqInputGainMb(flat,List(5){0}))
+        assertEquals(1f,protectedEqAudioFactor(flat,caps),0.000001f)
+        val lower = flat.copy(outputGainEnabled=true,outputGainMb=-500)
+        assertEquals(-500,capsuleSafeEqInputGainMb(lower,List(5){0}))
+        assertEquals(0,capsuleSafeEqInputGainMb(flat.copy(enabled=false),List(5){300}))
     }
 
-    @Test fun flatEqPositiveOutputGainCannotClipBeforeTheLimiter() {
-        val positive = settings(levels = List(5) { 0 }, gainEnabled = true, gain = 300)
-        assertEquals(0, capsuleSafeEqInputGainMb(positive, List(5) { 0 }))
-        val negative = positive.copy(outputGainMb = -500)
-        assertEquals(-500, capsuleSafeEqInputGainMb(negative, List(5) { 0 }))
+    @Test fun nativeFallbackAppliesTheExactPreampWithNoMakeupBoost() {
+        val eq=settings(listOf(0,500,-1000,200,500))
+        val shaped=capsuleUnifiedEqLevels(eq,caps)
+        val db=capsuleSafeEqInputGainMb(eq,shaped)
+        val expected=10.0.pow(db/2000.0).toFloat()
+        assertEquals(expected,protectedEqAudioFactor(eq,caps),0.000001f)
+        assertTrue(expected in 0f..1f)
     }
 
-    @Test fun negativeManualGainKeepsItsFullAdditionalAttenuation() {
-        val eq = settings(listOf(0, 900, 0, 0, 0), gainEnabled = true, gain = -500)
-        assertEquals(-1580, capsuleSafeEqInputGainMb(eq, listOf(0, 900, 0, 0, 0)))
+    @Test fun normalizationIsNotRepeatedOrUsedToDefeatHeadroom() {
+        assertEquals(0.75f,protectedEqPlaybackVolume(1f,2f,.75f,1f,true),0.000001f)
+        assertEquals(.5f,protectedEqPlaybackVolume(.5f,.5f,1f,1f,true),0.000001f)
+        assertEquals(0f,protectedEqPlaybackVolume(Float.NaN,1f,1f,1f,true),0.000001f)
+        assertEquals(0f,protectedEqPlaybackVolume(1f,Float.POSITIVE_INFINITY,1f,1f,true),0.000001f)
+        assertEquals(1f,protectedEqPlaybackVolume(4f,1f,1f,1f,false),0.000001f)
     }
 
-    @Test fun positiveMakeupCannotBypassTheEntireClippingReserve() {
-        val eq = settings(listOf(0, 900, 0, 0, 0), gainEnabled = true, gain = 300)
-        val input = capsuleSafeEqInputGainMb(eq, listOf(0, 900, 0, 0, 0))
-        assertEquals(-990, input) // -9 -1.8 +0.9 dB; remains below full scale.
-        assertTrue(input + 900 < 0)
-    }
-
-    @Test fun legacyFallbackReservesActualStrongBandBoost() {
-        val high = settings(listOf(0, 1500, 900, 0, 0), enabled = true)
-        val attenuation = protectedEqAudioFactor(high, caps)
-        assertTrue(attenuation > 0.26f && attenuation < 0.31f)
-        assertTrue(attenuation < protectedEqAudioFactor(settings(listOf(0, 400, 0, 0, 0)), caps))
-    }
-
-    @Test fun negativeOnlyEqNeedsNoUnnecessaryAttenuation() {
-        val settings = settings(listOf(-400, -900, -200, 0, -500))
-        assertEquals(0, capsuleSafeEqInputGainMb(settings, settings.bandLevelsMb))
-        assertEquals(1f, protectedEqAudioFactor(settings, caps), 0.000001f)
+    @Test fun serviceRoutesVolumeThroughHearingGuardAndPerEngineHeadroom() {
+        val service=File("src/main/kotlin/com/nikhil/yt/playback/MusicService.kt").readText()
+        assertTrue(service.contains("protectedEqAudioFactor(settings, eqCapabilities.value)"))
+        assertTrue(service.contains("protectedEqPlaybackVolume("))
+        assertTrue(service.contains("hearingCareOutputVolume(protected, ceiling)"))
+        assertTrue(service.contains("audioEffectsController.isUnifiedDynamicsActive -> 1f"))
+        assertTrue(service.contains("videoCompanion?.setVolume(hearingCareOutputVolume(base, ceiling))"))
     }
 }

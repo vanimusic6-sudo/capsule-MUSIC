@@ -42,9 +42,9 @@ class SafeListeningGuardTest {
     }
 
     @Test fun invalidHardwareDataCannotProduceLoudGain() {
-        assertEquals(1f, cap(hardware = Float.NaN), 0.001f)
-        assertEquals(1f, cap(hardware = Float.POSITIVE_INFINITY), 0.001f)
-        assertEquals(1f, cap(hardware = -4f), 0.001f)
+        assertEquals(SAFE_LISTENING_RELATIVE_CEILING, cap(hardware = Float.NaN), 0.001f)
+        assertEquals(SAFE_LISTENING_RELATIVE_CEILING, cap(hardware = Float.POSITIVE_INFINITY), 0.001f)
+        assertEquals(SAFE_LISTENING_RELATIVE_CEILING, cap(hardware = -4f), 0.001f)
         assertTrue(cap(hardware = 1.4f) <= 1f)
         assertEquals(1f, hearingCareOutputVolume(9f, 1f), 0.001f)
     }

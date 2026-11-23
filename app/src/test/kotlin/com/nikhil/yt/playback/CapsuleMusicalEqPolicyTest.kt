@@ -1,15 +1,12 @@
 package com.nikhil.yt.playback
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
+import org.junit.Assert.*
 import org.junit.Test
+import java.io.File
 
-/** The guard shapes tones only; it does not estimate headphone SPL. */
 class CapsuleMusicalEqPolicyTest {
-    private val hz = listOf(60, 230, 910, 3600, 14000)
-
-    private fun settings(levels: List<Int>, balance: Boolean) = EqSettings(
+    private val hz = listOf(60,230,910,3600,14000)
+    private fun settings(levels: List<Int>, balance: Boolean = false) = EqSettings(
         enabled = true, bandLevelsMb = levels,
         outputGainEnabled = false, outputGainMb = 0,
         bassBoostEnabled = false, bassBoostStrength = 0,
@@ -17,72 +14,62 @@ class CapsuleMusicalEqPolicyTest {
         musicalBalanceEnabled = balance,
     )
 
-    @Test fun extremeNotchAndBoostAreReducedWithoutRewritingUserInput() {
-        val original = listOf(400, 900, -1500, 900, 900)
-        val copy = original.toList()
-        val actual = capsuleMusicalEqLevels(original, hz)
-        assertEquals(copy, original)
-        assertEquals(5, actual.size)
-        assertTrue("raw 24 dB contrast must be reduced", capsuleEqCurveSpreadMb(actual) <= 850)
-        assertTrue(actual.zipWithNext().all { (a, b) ->
-            kotlin.math.abs(a - b) <= CAPSULE_MUSICAL_MAX_NEIGHBOR_MB
-        })
-        assertTrue(actual[2] > -1000) // 910 Hz cannot turn into a deep vacuum
-        assertTrue(actual[4] <= 450)   // overly bright air-band is restrained
-        assertTrue(actual[0] <= 350)   // limited excursion at sub-bass
-    }
-
-    @Test fun neutralCurveIsStrictlyTransparent() {
-        assertEquals(listOf(0, 0, 0, 0, 0),
-            capsuleMusicalEqLevels(listOf(0, 0, 0, 0, 0), hz))
+    @Test fun cleanFlatCurveIsTransparentAndUniformBoostIsNotVolumeGain() {
+        assertEquals(List(5) { 0 }, capsuleMusicalEqLevels(List(5) { 0 }, hz))
+        assertEquals(List(5) { 0 }, capsuleMusicalEqLevels(List(5) { 600 }, hz))
         assertEquals(emptyList<Int>(), capsuleMusicalEqLevels(emptyList()))
-        assertEquals(0, capsuleEqCurveSpreadMb(emptyList()))
     }
 
-    @Test fun broadGentleCorrectionRemainsAudibleAndDeterministic() {
-        val broad = listOf(180, 250, 140, -80, -120)
-        val first = capsuleMusicalEqLevels(broad, hz)
-        assertEquals(first, capsuleMusicalEqLevels(broad, hz))
-        assertTrue(first[1] > first[4])
-        assertTrue(first[1] > 80)
-        assertTrue(first.all { it in -750..650 })
-    }
-
-    @Test fun balancingIsEnabledOnlyWhenSettingRequestsIt() {
-        val raw = listOf(400, 900, -1500, 900, 900)
-        val precise = protectedEqLevels(
-            settings(raw, balance = false), 5, -1500, 1500, hz)
-        val musical = protectedEqLevels(
-            settings(raw, balance = true), 5, -1500, 1500, hz)
-        assertEquals(raw, precise)
-        assertFalse(raw == musical)
-        assertTrue(capsuleEqCurveSpreadMb(musical) <= 850)
-        assertTrue(capsuleSafeEqInputGainMb(settings(raw, true), musical) >
-            capsuleSafeEqInputGainMb(settings(raw, false), precise))
-    }
-
-    @Test fun manyBandsRemainConstrainedOnBadHardwareFrequencyMaps() {
-        val raw = List(32) { index -> if (index % 2 == 0) Int.MAX_VALUE else Int.MIN_VALUE }
-        val actual = capsuleMusicalEqLevels(raw, listOf(0, -3, 99))
-        assertEquals(32, actual.size)
-        assertTrue(actual.all { it in -750..650 })
-        assertTrue(capsuleEqCurveSpreadMb(actual) <= CAPSULE_MUSICAL_MAX_SPREAD_MB)
-        assertTrue(actual.zipWithNext().all { (a, b) ->
-            kotlin.math.abs(a - b) <= CAPSULE_MUSICAL_MAX_NEIGHBOR_MB
+    @Test fun extremeNotchesAndHarshHighsCannotReachTheEngine() {
+        val raw = listOf(400,900,-1500,900,900)
+        val copy = raw.toList()
+        val shaped = capsuleMusicalEqLevels(raw,hz)
+        assertEquals(copy,raw)
+        assertTrue(shaped[2] >= -420)
+        assertTrue(shaped.first() <= 220)
+        assertTrue(shaped.last() <= 260)
+        assertTrue(capsuleEqCurveSpreadMb(shaped) <= CAPSULE_MUSICAL_MAX_SPREAD_MB)
+        assertTrue(shaped.zipWithNext().all { (a,b) ->
+            kotlin.math.abs(a-b) <= CAPSULE_MUSICAL_MAX_NEIGHBOR_MB
         })
     }
 
-    @Test fun flagIsConsumedByRealAudioServiceAndCurveUI() {
-        val service = sequenceOf(
-            java.io.File("src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"),
-            java.io.File("app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"),
-        ).first(java.io.File::isFile).readText()
-        assertTrue(service.contains("musicalBalanceEnabled = prefs[EqualizerMusicalBalanceKey] ?: true"))
-        val menu = sequenceOf(
-            java.io.File("src/main/kotlin/com/nikhil/yt/ui/menu/PlayerMenu.kt"),
-            java.io.File("app/src/main/kotlin/com/nikhil/yt/ui/menu/PlayerMenu.kt"),
-        ).first(java.io.File::isFile).readText()
-        assertTrue(menu.contains("musicalBalanceEnabled = musicalBalance"))
-        assertTrue(menu.contains("appliedLevelsMb = if (eqEnabled && musicalBalance)"))
+    @Test fun distinctMusicalCharacterSurvivesWithoutExcessGain() {
+        val shaped = capsuleMusicalEqLevels(listOf(180,250,140,-80,-120),hz)
+        assertTrue(shaped[1] > 80)
+        assertTrue(shaped[1] > shaped[4])
+        assertTrue(shaped[4] < 0)
+        assertEquals(shaped,capsuleMusicalEqLevels(listOf(180,250,140,-80,-120),hz))
+    }
+
+    @Test fun oldBalanceOffFlagCannotBypassSafetyOnAnyDSPPath() {
+        val raw = listOf(2000, 2000, -1500, 2000, 2000)
+        val off = protectedEqLevels(settings(raw,false),5,-1500,1500,hz)
+        val on = protectedEqLevels(settings(raw,true),5,-1500,1500,hz)
+        assertEquals(on,off)
+        assertTrue(off.first() <= CAPSULE_MAX_LOW_BASS_BOOST_MB)
+        assertTrue(off.all { it <= CAPSULE_MAX_EQ_BOOST_MB })
+    }
+
+    @Test fun invalidHardwareFrequenciesAndExtremeInputsAreBounded() {
+        val levels = capsuleMusicalEqLevels(
+            List(32) { i -> if(i%2==0) Int.MAX_VALUE else Int.MIN_VALUE },
+            listOf(0,-1,Int.MAX_VALUE),
+        )
+        assertEquals(32,levels.size)
+        assertTrue(levels.all { it in -420..350 })
+        assertTrue(capsuleEqCurveSpreadMb(levels) <= CAPSULE_MUSICAL_MAX_SPREAD_MB)
+        assertTrue(levels.zipWithNext().all { (a,b) ->
+            kotlin.math.abs(a-b) <= CAPSULE_MUSICAL_MAX_NEIGHBOR_MB
+        })
+    }
+
+    @Test fun playerEnforcesTheNewGuardEvenForMigratedPreferences() {
+        val service = File("src/main/kotlin/com/nikhil/yt/playback/MusicService.kt").readText()
+        assertTrue(service.contains("musicalBalanceEnabled = true"))
+        assertFalse(service.contains("musicalBalanceEnabled = prefs[EqualizerMusicalBalanceKey]"))
+        val menu = File("src/main/kotlin/com/nikhil/yt/ui/menu/PlayerMenu.kt").readText()
+        assertTrue(menu.contains("val musicalBalance = true"))
+        assertFalse(menu.contains("setMusicalBalance"))
     }
 }
