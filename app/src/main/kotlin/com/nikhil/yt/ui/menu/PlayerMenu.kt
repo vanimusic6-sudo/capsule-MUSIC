@@ -939,8 +939,16 @@ fun EqualizerDialog(
                                     }
                                 }
                             },
-                            onFinished = { _, _ ->
-                                setBandLevelsRaw(encodeBandLevelsMb(manualLevels))
+                            onFinished = { index, finalLevel ->
+                                // A very fast tap can finish before the Compose redraw:
+                                // commit the actual final gesture value, not a stale
+                                // capture of the previous six-band state.
+                                val updated = manualLevels.toMutableList()
+                                if (index in updated.indices) {
+                                    updated[index] = finalLevel.coerceIn(-350,350)
+                                    manualLevels = updated
+                                    setBandLevelsRaw(encodeBandLevelsMb(updated))
+                                }
                             },
                             graphHeight = 214.dp,
                             modifier = Modifier.fillMaxWidth(),
