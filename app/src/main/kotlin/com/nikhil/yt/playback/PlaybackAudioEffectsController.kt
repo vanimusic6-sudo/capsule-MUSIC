@@ -47,8 +47,12 @@ internal class PlaybackAudioEffectsController(
 
     fun release() {
         sessionId = null
-        runCatching { unifiedDynamics?.release() }
-            .onFailure { onRecoverableError("release unified EQ", it) }
+        // DynamicsProcessing exists only on API 28+; release must be guarded
+        // too, even when the nullable engine was never created on API 26-27.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            runCatching { unifiedDynamics?.release() }
+                .onFailure { onRecoverableError("release unified EQ", it) }
+        }
         runCatching { equalizer?.release() }
             .onFailure { onRecoverableError("release native EQ", it) }
         unifiedDynamics = null
