@@ -61,6 +61,13 @@ class CapsuleEqHeadroomPolicyTest {
         assertEquals(1f, protectedEqAudioFactor(flat), 0.00001f)
     }
 
+    @Test fun flatEqPositiveOutputGainCannotClipBeforeTheLimiter() {
+        val positive = settings(levels = List(5) { 0 }, gainEnabled = true, gain = 300)
+        assertEquals(0, capsuleSafeEqInputGainMb(positive, List(5) { 0 }))
+        val negative = positive.copy(outputGainMb = -500)
+        assertEquals(-500, capsuleSafeEqInputGainMb(negative, List(5) { 0 }))
+    }
+
     @Test fun negativeManualGainKeepsItsFullAdditionalAttenuation() {
         val eq = settings(listOf(0, 900, 0, 0, 0), gainEnabled = true, gain = -500)
         assertEquals(-1580, capsuleSafeEqInputGainMb(eq, listOf(0, 900, 0, 0, 0)))
