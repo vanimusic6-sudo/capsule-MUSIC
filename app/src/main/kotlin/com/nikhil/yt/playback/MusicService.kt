@@ -3972,11 +3972,16 @@ class MusicService :
     private fun readEqSettingsFromPrefs(prefs: Preferences): EqSettings {
         val selected = prefs[EqualizerSelectedProfileIdKey]?.removePrefix("capsule:")
         val preset = selected?.let(CapsuleEqPresets::byId)
-        // Old manual curves / presets deliberately never auto-activate.
-        // This guards existing installs even when EqualizerEnabledKey=true.
+        val isCustom = selected == CapsuleEqPresets.CUSTOM_ID
+        // Saved old graphs never auto-activate. The new custom graph contains
+        // precisely six virtual bands bounded independently of OEM limits.
+        val custom = decodeEqBandLevels(prefs[EqualizerBandLevelsMbKey])
+            .takeIf { it.size == CapsuleEqPresets.referenceHz.size }
+            ?.map { it.coerceIn(-350,350) } ?: List(6) { 0 }
         return EqSettings(
-            enabled = (prefs[EqualizerEnabledKey] ?: false) && preset != null,
-            bandLevelsMb = preset?.referenceLevelsMb ?: emptyList(),
+            enabled = (prefs[EqualizerEnabledKey] ?: false) &&
+                (preset != null || isCustom),
+            bandLevelsMb = if (isCustom) custom else preset?.referenceLevelsMb ?: emptyList(),
             outputGainEnabled = false,
             outputGainMb = 0,
             bassBoostEnabled = false,
@@ -3985,7 +3990,7 @@ class MusicService :
             virtualizerStrength = 0,
             intensityPercent = 100,
             musicalBalanceEnabled = true,
-            versionId = preset?.id,
+            versionId = if (isCustom) CapsuleEqPresets.CUSTOM_ID else preset?.id,
         )
     }
 

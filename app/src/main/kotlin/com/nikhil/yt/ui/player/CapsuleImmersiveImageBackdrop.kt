@@ -90,7 +90,14 @@ internal fun capsuleImmersiveKeepTrueDarkBackground(field: CapsuleColorField): C
         val y = index / field.width
         // A faint echo of the foreground stays around the cover, but cannot
         // light up the whole lower page or tint black backgrounds purple.
-        val remaining = 0.24f - 0.13f * y / (field.height - 1).toFloat()
+        val vertical = y.toFloat()/(field.height - 1).toFloat()
+        // Keep actual bright artwork around the upper mask; only the ambient
+        // lower continuation should settle into the measured black canvas.
+        val remaining = when {
+            vertical < 0.35f -> 1f
+            vertical < 0.65f -> 1f-(vertical-0.35f)/0.30f*0.72f
+            else -> 0.28f-(vertical-0.65f)/0.35f*0.17f
+        }.coerceIn(0.11f,1f)
         androidx.compose.ui.graphics.lerp(canvas, original, remaining)
     })
 }

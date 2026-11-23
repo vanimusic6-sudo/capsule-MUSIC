@@ -87,12 +87,12 @@ internal fun inverseScaledEqLevel(
  * These protect against excessive combined boost but cannot measure speaker
  * temperature, acoustic excursion, or guarantee physical speaker safety.
  */
-internal const val CAPSULE_MAX_EQ_BOOST_MB = 350      // +9 dB; limiter remains active on Android 9+
+internal const val CAPSULE_MAX_EQ_BOOST_MB = 350      // +3.5 dB, before headroom
 // Sub-bass needs a much stricter ceiling: small phone speakers can over-excurse.
-internal const val CAPSULE_MAX_LOW_BASS_BOOST_MB = 220 // +4 dB below 120 Hz
+internal const val CAPSULE_MAX_LOW_BASS_BOOST_MB = 220 // +2.2 dB below 120 Hz
 internal const val CAPSULE_MAX_BASS_STRENGTH = 200     // native scale 0..1000
 internal const val CAPSULE_MAX_VIRTUALIZER_STRENGTH = 350
-internal const val CAPSULE_MAX_OUTPUT_GAIN_MB = 0   // +3 dB
+internal const val CAPSULE_MAX_OUTPUT_GAIN_MB = 0   // no positive makeup gain
 
 /** Hardware-mapped effective EQ curve, or flat when the studio is bypassed. */
 internal fun protectedEqLevels(
@@ -135,7 +135,7 @@ internal fun protectedEqLevels(
  * true-peak output safety. Reserve an extra margin for filter overlap and
  * intersample overs; do not claim this protects speaker mechanics or hearing.
  */
-internal const val CAPSULE_EQ_HEADROOM_MARGIN_MB = 190 // 1.8 dB
+internal const val CAPSULE_EQ_HEADROOM_MARGIN_MB = 190 // max extra 1.9 dB
 
 /**
  * Per-session clean input trim, in millibels, before the actual EQ.
@@ -149,7 +149,8 @@ internal fun capsuleSafeEqInputGainMb(
     val attenuation = if (settings.outputGainEnabled)
         settings.outputGainMb.coerceIn(-1500, 0) else 0
     val peak = (effectiveLevelsMb.maxOrNull() ?: 0).coerceAtLeast(0)
-    val reserve = if (peak > 0) peak + CAPSULE_EQ_HEADROOM_MARGIN_MB else 0
+    val reserve = if (peak > 0)
+        peak + capsuleAdaptiveEqHeadroomMarginMb(effectiveLevelsMb) else 0
     return (attenuation - reserve).coerceIn(-3000, 0)
 }
 
