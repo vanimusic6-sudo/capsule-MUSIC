@@ -989,9 +989,7 @@
     <string name="eq_musical_balance_warning">Сильный контраст утомляет слух. Снизь громкость или включи музыкальный баланс.</string>
     <string name="eq_curve_requested">Задано</string>
     <string name="eq_curve_applied">Применяется</string>
-    <string name="eq_versions_title">Версии</string>
     <string name="eq_versions_intro">Выбирай характер музыки вместо резких провалов и усилений отдельных частот. В этих версиях коррекции небольшие и фиксированные.</string>
-    <string name="eq_version_original">Оригинал</string>
     <string name="eq_version_original_description">Без эквалайзера и изменения темпа</string>
     <string name="eq_tempo_versions">Темп и тон</string>
     <string name="eq_tempo_versions_description">Speed Up и Slowed меняют скорость и высоту звучания, а не частоты эквалайзера.</string>

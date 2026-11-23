@@ -1068,9 +1068,7 @@ Capsule will only extract your token, and everything else is stored locally.</st
     <string name="eq_musical_balance_warning">Extreme contrast can sound harsh or tiring. Reduce volume or enable Musical balance.</string>
     <string name="eq_curve_requested">Your curve</string>
     <string name="eq_curve_applied">Applied curve</string>
-    <string name="eq_versions_title">Versions</string>
     <string name="eq_versions_intro">Choose a musical character instead of pushing individual frequencies. All tonal versions use small, fixed adjustments.</string>
-    <string name="eq_version_original">Original</string>
     <string name="eq_version_original_description">No Capsule EQ or tempo changes</string>
     <string name="eq_tempo_versions">Tempo and pitch</string>
     <string name="eq_tempo_versions_description">Speed Up and Slowed change playback speed and pitch, not EQ frequencies.</string>
