@@ -34,21 +34,23 @@ internal fun LyricsProviderPriorityDialog(
 @Composable
 private fun lyricsProviderTitle(providerId: String): String =
     when (providerId) {
-        LyricsProviderOrder.LYRICS_PLUS -> "YouLy+ · LyricsPlus"
-        LyricsProviderOrder.BETTER_LYRICS_PORTATO -> "Better Lyrics · Portato (QQ)"
-        LyricsProviderOrder.SIMPMUSIC -> "SimpMusic"
+        LyricsProviderOrder.BETTER_LYRICS_PORTATO -> "BL Portato · QQ"
+        LyricsProviderOrder.BETTER_LYRICS -> "BL · Better Lyrics"
         LyricsProviderOrder.LRCLIB -> "LRCLIB"
-        LyricsProviderOrder.YOUTUBE -> stringResource(R.string.lyrics_provider_youtube)
+        LyricsProviderOrder.YOUTUBE_SYNCED -> "YouTube · с синхронизацией"
+        LyricsProviderOrder.LYPRIO -> "Lyprio"
+        LyricsProviderOrder.YOUTUBE -> "YouTube · без синхронизации"
         else -> providerId
     }
 
 @Composable
 private fun lyricsProviderDescription(providerId: String): String =
     when (providerId) {
-        LyricsProviderOrder.LYRICS_PLUS -> stringResource(R.string.lyrics_provider_lyricsplus_description)
         LyricsProviderOrder.BETTER_LYRICS_PORTATO -> stringResource(R.string.lyrics_provider_portato_description)
-        LyricsProviderOrder.SIMPMUSIC -> stringResource(R.string.lyrics_provider_simp_music_description)
+        LyricsProviderOrder.BETTER_LYRICS -> "TTML · послоговая разметка"
         LyricsProviderOrder.LRCLIB -> stringResource(R.string.lyrics_provider_lrclib_description)
-        LyricsProviderOrder.YOUTUBE -> stringResource(R.string.lyrics_provider_youtube_description)
+        LyricsProviderOrder.YOUTUBE_SYNCED -> "Настоящие временные метки YouTube Music"
+        LyricsProviderOrder.LYPRIO -> "Требует авторизованный API · пока недоступен"
+        LyricsProviderOrder.YOUTUBE -> "Обычный текст YouTube Music и субтитров"
         else -> providerId
     }
