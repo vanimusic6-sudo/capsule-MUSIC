@@ -66,15 +66,11 @@ internal fun capsuleNeedsBassDynamics(
     settings: EqSettings,
     capabilities: EqCapabilities,
 ): Boolean {
-    if (!settings.enabled) return false
-    if (settings.bassBoostEnabled && settings.bassBoostStrength > 0) return true
-    return protectedEqLevels(
-        settings, capabilities.bandCount, capabilities.minBandLevelMb,
-        capabilities.maxBandLevelMb, capabilities.centerFreqHz,
-    ).anyIndexed { index, level ->
-        val hz = capabilities.centerFreqHz.getOrNull(index) ?: 0
-        (if (hz <= 0) index == 0 else hz <= 120) && level > 300
-    }
+    // A plain EQ curve is not an invitation to compress every bass note:
+    // compression was negating the tonal change and causing pumping.
+    // Multi-band compression is only for explicitly enabled BassBoost.
+    return settings.enabled && settings.bassBoostEnabled &&
+        settings.bassBoostStrength > 0
 }
 
 private inline fun <T> List<T>.anyIndexed(predicate: (Int, T) -> Boolean): Boolean {
@@ -140,6 +136,16 @@ internal class CapsuleUnifiedDynamicsProcessor(
         }
         val levels = capsuleUnifiedEqLevels(settings, capabilities)
         require(levels.size == cutoffs.size)
+        val inputGain = capsuleSafeEqInputGainMb(settings, levels)
+
+        // Input gain is BEFORE PreEQ in Android DynamicsProcessing.
+        // Lower it BEFORE increasing a filter. On return toward flat, neutralise
+        // EQ before raising input gain. This prevents mid-update overdrives.
+        if (appliedInputGain == null || inputGain < appliedInputGain!!) {
+            processor.setInputGainAllChannelsTo(inputGain / 100f)
+            appliedInputGain = inputGain
+        }
+
         for (band in levels.indices) {
             if (appliedLevels[band] == levels[band]) continue
             processor.setPreEqBandAllChannelsTo(
@@ -154,8 +160,8 @@ internal class CapsuleUnifiedDynamicsProcessor(
             processor.setMbcBandAllChannelsTo(0, nativeBassBand(bassDynamics))
             appliedBassDynamics = bassDynamics
         }
-        val inputGain = if (settings.enabled && settings.outputGainEnabled)
-            settings.outputGainMb.coerceIn(-1500, CAPSULE_MAX_OUTPUT_GAIN_MB) else 0
+        // A less negative input trim is safe only AFTER the old EQ boost
+        // has been removed. Always leave the limiter as the last stage.
         if (appliedInputGain != inputGain) {
             processor.setInputGainAllChannelsTo(inputGain / 100f)
             appliedInputGain = inputGain
@@ -172,8 +178,8 @@ internal class CapsuleUnifiedDynamicsProcessor(
         true, 160f, 8f, 190f,
         // Lightly constrain only loud bass peaks; the old -9 dB / 2.5:1
         // settings compressed away most of a normal EQ bass adjustment.
-        if (enabled) 1.8f else 1f,
-        if (enabled) -4f else 0f,
+        if (enabled) 1.55f else 1f,
+        if (enabled) -3.0f else 0f,
         3f, -80f, 1f, 0f, 0f,
     )
 
@@ -183,8 +189,8 @@ internal class CapsuleUnifiedDynamicsProcessor(
     )
 
     private fun nativeLimiter(enabled: Boolean) = DynamicsProcessing.Limiter(
-        true, true, 0, 1.5f, 140f,
+        true, true, 0, 0.9f, 150f,
         if (enabled) 20f else 1f,
-        if (enabled) -1.5f else 0f, 0f,
+        if (enabled) -2.0f else 0f, 0f,
     )
 }
