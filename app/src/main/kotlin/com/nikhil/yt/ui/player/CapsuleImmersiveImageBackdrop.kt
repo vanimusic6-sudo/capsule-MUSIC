@@ -14,6 +14,7 @@ import android.graphics.Bitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import kotlin.math.exp
 import kotlin.math.floor
 import kotlin.math.sin
@@ -213,6 +214,77 @@ internal fun capsuleImmersiveBackdropSourceY(
         .coerceIn(0f, IMMERSIVE_VISIBLE_SAMPLE_END)
 }
 
+/**
+ * Small regional colour histogram, inspired by Metrolist's preference for
+ * colours that occupy real artwork area rather than one arbitrary edge pixel.
+ * Unlike a global primary swatch, a separate x-column anchor preserves
+ * left/right colour composition and never invents hue on neutral covers.
+ *
+ * Work happens once on the worker that prepares the bitmap, not per frame.
+ */
+internal fun capsuleImmersiveArtworkAccentColumns(field: CapsuleColorField): List<Color?> {
+    if (field.width <= 0 || field.height <= 0) return emptyList()
+    val columns = ArrayList<Color?>(field.width)
+    for (x in 0 until field.width) {
+        val sumsR = FloatArray(18)
+        val sumsG = FloatArray(18)
+        val sumsB = FloatArray(18)
+        val scores = FloatArray(18)
+        var eligible = 0
+        var total = 0
+        var nearWhite = 0
+        val range = (x - 2).coerceAtLeast(0)..(x + 2).coerceAtMost(field.width - 1)
+        val hsv = FloatArray(3)
+        for (y in 0 until field.height) for (sx in range) {
+            val c = field.cell(sx, y)
+            val bright = maxOf(c.red, c.green, c.blue)
+            val dark = minOf(c.red, c.green, c.blue)
+            total++
+            if (bright > 0.80f && bright - dark < 0.12f) nearWhite++
+            if (bright < 0.17f || bright - dark < 0.075f) continue
+            android.graphics.Color.colorToHSV(c.toArgb(), hsv)
+            val saturation = hsv[1]
+            if (saturation < 0.24f) continue
+            eligible++
+            val hueBin = (hsv[0] / 20f).toInt().coerceIn(0, 17)
+            // Dominant population, not a tiny saturated logo.
+            val weight = 0.8f + 0.2f * saturation
+            scores[hueBin] += weight
+            sumsR[hueBin] += c.red * weight
+            sumsG[hueBin] += c.green * weight
+            sumsB[hueBin] += c.blue * weight
+        }
+        val selected = scores.indices.maxByOrNull { scores[it] } ?: 0
+        val share = eligible.toFloat() / total.coerceAtLeast(1)
+        val whiteShare = nearWhite.toFloat() / total.coerceAtLeast(1)
+        val winnerShare = scores[selected] / eligible.coerceAtLeast(1)
+        if (share < 0.24f || whiteShare > 0.40f || winnerShare < 0.42f) {
+            columns += null
+        } else {
+            val n = scores[selected].coerceAtLeast(0.001f)
+            val source = Color(sumsR[selected] / n, sumsG[selected] / n, sumsB[selected] / n)
+            // A dark tint of the album's OWN hue provides a readable controls
+            // floor; RGB ratios remain intact and neutral artwork stays neutral.
+            val brightest = maxOf(source.red, source.green, source.blue).coerceAtLeast(0.01f)
+            val scale = 0.29f / brightest
+            columns += Color(
+                (source.red * scale).coerceIn(0f, 1f),
+                (source.green * scale).coerceIn(0f, 1f),
+                (source.blue * scale).coerceIn(0f, 1f),
+            )
+        }
+    }
+    return columns
+}
+
+/** Extra tone only BELOW the artwork seam; smooth endpoints prevent a band. */
+internal fun capsuleImmersiveAccentEnvelope(pageY: Float, stage: Float): Float {
+    val start = (stage + 0.12f).coerceAtMost(0.87f)
+    val end = (start + 0.23f).coerceAtMost(1f)
+    val t = ((pageY - start) / (end - start).coerceAtLeast(0.01f)).coerceIn(0f, 1f)
+    return t * t * (3f - 2f * t)
+}
+
 /** Full photographic continuation, baked once on a worker. No progressive blur strip. */
 internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stageFraction: Float): ImageBitmap {
     val stage = stageFraction.coerceIn(0.35f, 0.75f)
@@ -243,6 +315,7 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
         val weight = backdropVerticalWeights[y * PAGE_ROWS + sy]
         for (c in 0..2) blurred[(y * PAGE_COLUMNS + x) * 3 + c] += horizontal[(sy * PAGE_COLUMNS + x) * 3 + c] * weight
     }
+    val accents = capsuleImmersiveArtworkAccentColumns(field)
     val pixels = IntArray(PAINT_WIDTH * PAINT_HEIGHT)
     for (y in 0 until PAINT_HEIGHT) {
         val pageY = (y + 0.5f) / PAINT_HEIGHT
@@ -252,8 +325,12 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
             pageY < 0.68f -> 0.03f + (pageY - 0.38f) / 0.30f * 0.11f
             else -> 0.14f + (pageY - 0.68f) / 0.32f * 0.26f
         }
+        val envelope = capsuleImmersiveAccentEnvelope(pageY, stage)
         for (x in 0 until PAINT_WIDTH) {
             var pixel = -0x1000000
+            val accentX = ((x + 0.5f) / PAINT_WIDTH * accents.size)
+                .toInt().coerceIn(0, (accents.size - 1).coerceAtLeast(0))
+            val accent = accents.getOrNull(accentX)
             for (c in 0..2) {
                 var value = 0f
                 for (dy in 0..3) for (dx in 0..3) {
@@ -262,6 +339,17 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
                     value += blurred[(sy * PAGE_COLUMNS + sx) * 3 + c] *
                         backdropSplineX.weights[x * 4 + dx] * backdropSplineY.weights[y * 4 + dy]
                 }
+                // Only dark continuation regions receive a gentle cue from
+                // the actual artwork's dominant hue. Coloured areas, split
+                // colour layouts and the photo join stay unchanged.
+                val lift = if (accent == null) 0f else
+                    envelope * 0.72f * ((0.23f - value) / 0.23f).coerceIn(0f, 1f)
+                val tint = if (accent == null) 0f else when (c) {
+                    0 -> accent.red
+                    1 -> accent.green
+                    else -> accent.blue
+                }
+                value = value * (1f - lift) + tint * lift
                 pixel = pixel or ((value * (1f - scrim) * 255f + 0.5f).toInt().coerceIn(0, 255) shl (16 - c * 8))
             }
             pixels[y * PAINT_WIDTH + x] = pixel
