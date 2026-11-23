@@ -87,6 +87,27 @@ class CapsuleImmersiveImageBackdropTest {
             androidx.compose.ui.graphics.Color(backdrop.getPixel(60, 168))).title.red < 0.5f)
     }
 
+    @Test fun pureBlackArtworkKeepsNeutralPaletteWithoutChangingBrightPhoto() {
+        val mask = Bitmap.createBitmap(320,320,Bitmap.Config.ARGB_8888).apply {
+            eraseColor(android.graphics.Color.BLACK)
+            val red = Paint().apply { color = 0xFFFF161B.toInt() }
+            Canvas(this).drawRect(45f,32f,144f,182f,red)
+            Canvas(this).drawRect(180f,32f,272f,182f,red)
+        }
+        val clean = mask.capsuleImmersiveVisibleField(1f,false)
+        val darkest = clean.cells.filter { maxOf(it.red,it.green,it.blue) < 0.12f }
+        assertTrue("The dark background must dominate the ambient palette",
+            darkest.size > clean.cells.size * 0.55f)
+        val fire = Bitmap.createBitmap(320,320,Bitmap.Config.ARGB_8888).apply {
+            eraseColor(0xFFEA5710.toInt())
+            Canvas(this).drawRect(110f,50f,215f,320f,
+                Paint().apply { color = 0xFF241A37.toInt() })
+        }
+        val fireField = fire.capsuleImmersiveVisibleField(1f,false)
+        assertTrue("A photo with a dark person must keep its orange background",
+            capsuleImmersiveVisibleMean(fireField).red > 0.45f)
+    }
+
     @Test fun darkCoverWithBrightRedEyesKeepsDarkFloor() {
         val mask = Bitmap.createBitmap(320, 320, Bitmap.Config.ARGB_8888).apply {
             eraseColor(android.graphics.Color.BLACK)

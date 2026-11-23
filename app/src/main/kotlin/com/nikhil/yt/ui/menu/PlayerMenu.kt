@@ -739,764 +739,166 @@ fun EqualizerDialog(
     onDismiss: () -> Unit,
     openSystemEqualizer: () -> Unit,
 ) {
-    val context = LocalContext.current
-    val resources = LocalResources.current
+    // A curated version selector, NOT an unrestricted EQ.
+    // Existing custom profiles and legacy 200%-intensity settings are never
+    // applied by the playback service after migration.
     val playerConnection = LocalPlayerConnection.current ?: return
-    val eqCapabilities by playerConnection.service.eqCapabilities.collectAsState()
-    val eqEngineMode by playerConnection.service.eqEngineMode.collectAsState()
-
+    val engineMode by playerConnection.service.eqEngineMode.collectAsState()
     val (eqEnabled, setEqEnabled) = rememberPreference(EqualizerEnabledKey, defaultValue = false)
-    val (studioSpeed, setStudioSpeed) = rememberPreference(SoundStudioSpeedKey, defaultValue = 1f)
-    val (studioPitch, setStudioPitch) = rememberPreference(SoundStudioPitchKey, defaultValue = 1f)
-    var speed by rememberSaveable { mutableFloatStateOf(studioSpeed.coerceIn(0.25f, 2f)) }
-    var pitch by rememberSaveable { mutableFloatStateOf(studioPitch.coerceIn(0.25f, 2f)) }
-    LaunchedEffect(studioSpeed) { speed = studioSpeed.coerceIn(0.25f, 2f) }
-    LaunchedEffect(studioPitch) { pitch = studioPitch.coerceIn(0.25f, 2f) }
-    val (selectedProfileId, setSelectedProfileId) = rememberPreference(EqualizerSelectedProfileIdKey, defaultValue = "flat")
-    val (bandLevelsRaw, setBandLevelsRaw) = rememberPreference(EqualizerBandLevelsMbKey, defaultValue = "")
-    val (curveIntensity, setCurveIntensity) =
-        rememberPreference(EqualizerCurveIntensityPercentKey, defaultValue = 100)
-    // Mandatory, non-bypassable frequency-contour protection.
-    val musicalBalance = true
-    var intensityLocal by rememberSaveable { mutableIntStateOf(curveIntensity.coerceIn(100, 200)) }
-    LaunchedEffect(curveIntensity) { intensityLocal = curveIntensity.coerceIn(100, 200) }
+    val (selectedId, setSelectedId) =
+        rememberPreference(EqualizerSelectedProfileIdKey, defaultValue = "flat")
+    val (_, setBandLevelsRaw) = rememberPreference(EqualizerBandLevelsMbKey, defaultValue = "")
 
-    val (outputGainEnabled, setOutputGainEnabled) = rememberPreference(EqualizerOutputGainEnabledKey, defaultValue = false)
-    val (outputGainMb, setOutputGainMb) = rememberPreference(EqualizerOutputGainMbKey, defaultValue = 0)
+    val selectedTone = selectedId.removePrefix("capsule:")
+        .let(CapsuleEqPresets::byId)?.takeIf { eqEnabled }
+    val original = selectedTone == null &&
+        selectedId != "version:speed_up" && selectedId != "version:slowed"
 
-    val (bassBoostEnabled, setBassBoostEnabled) = rememberPreference(EqualizerBassBoostEnabledKey, defaultValue = false)
-    val (bassBoostStrength, setBassBoostStrength) = rememberPreference(EqualizerBassBoostStrengthKey, defaultValue = 0)
-
-
-    val (customProfilesJson, setCustomProfilesJson) = rememberPreference(EqualizerCustomProfilesJsonKey, defaultValue = "")
-
-    // The real Android effect is session-bound. An offline profile remains
-    // editable and is resampled onto the device's actual bands when playback begins.
-    val caps = eqCapabilities ?: EqCapabilities(
-        bandCount = 5,
-        minBandLevelMb = -1500,
-        maxBandLevelMb = 1500,
-        centerFreqHz = listOf(60, 230, 910, 3600, 14000),
-        systemPresets = emptyList(),
-    )
-    val bandCount = caps.bandCount
-    val minMb = caps.minBandLevelMb
-    val maxMb = caps.maxBandLevelMb
-    // The graph uses the current safe DSP ceiling, not the obsolete
-    // hardware-wide maximum. Thus a safe maximum reaches its TOP edge.
-    val graphMaxMb = minOf(maxMb, CAPSULE_MAX_EQ_BOOST_MB).coerceAtLeast(minMb)
-    val bandMaxLevelsMb = (0 until bandCount).map { index ->
-        val hz = caps.centerFreqHz.getOrNull(index) ?: 0
-        val lowBass = if (hz <= 0) index == 0 else hz <= 120
-        minOf(graphMaxMb, if (lowBass) CAPSULE_MAX_LOW_BASS_BOOST_MB
-            else CAPSULE_MAX_EQ_BOOST_MB).coerceAtLeast(minMb)
-    }
-
-    var outputGainLocal by rememberSaveable {
-        mutableIntStateOf(outputGainMb.coerceIn(-1500, CAPSULE_MAX_OUTPUT_GAIN_MB))
-    }
-    LaunchedEffect(outputGainMb) {
-        outputGainLocal = outputGainMb.coerceIn(-1500, CAPSULE_MAX_OUTPUT_GAIN_MB)
-    }
-
-    var bassBoostStrengthLocal by rememberSaveable {
-        mutableIntStateOf(bassBoostStrength.coerceIn(0, CAPSULE_MAX_BASS_STRENGTH))
-    }
-    LaunchedEffect(bassBoostStrength) {
-        bassBoostStrengthLocal = bassBoostStrength.coerceIn(0, CAPSULE_MAX_BASS_STRENGTH)
-    }
-
-
-
-    var bandLevelsMb by remember { mutableStateOf<List<Int>>(emptyList()) }
-    LaunchedEffect(bandLevelsRaw, bandCount) {
-        bandLevelsMb = resampleLevelsByIndex(decodeBandLevelsMb(bandLevelsRaw), bandCount)
-    }
-
-    val profiles = remember(customProfilesJson) { decodeProfilesPayload(customProfilesJson).profiles }
-
-    var showSaveProfileDialog by rememberSaveable { mutableStateOf(false) }
-    var showManageProfilesDialog by rememberSaveable { mutableStateOf(false) }
-    var showImportProfilesDialog by rememberSaveable { mutableStateOf(false) }
-
-    if (showSaveProfileDialog) {
-        TextFieldDialog(
-            title = { Text(text = stringResource(R.string.eq_save_profile)) },
-            placeholder = { Text(text = stringResource(R.string.eq_profile_name)) },
-            onDone = { name ->
-                val trimmed = name.trim()
-                if (trimmed.isNotBlank()) {
-                    val newProfile =
-                        EqProfile(
-                            id = UUID.randomUUID().toString(),
-                            name = trimmed,
-                            bandCenterFreqHz = caps?.centerFreqHz.orEmpty(),
-                            bandLevelsMb = bandLevelsMb,
-                            outputGainMb = outputGainMb,
-                            bassBoostStrength = bassBoostStrength,
-                            virtualizerStrength = 0,
-                        )
-
-                    val updatedPayload =
-                        EqProfilesPayload(
-                            profiles =
-                                (profiles + newProfile)
-                                    .distinctBy { it.id }
-                                    .sortedBy { it.name.lowercase() },
-                        )
-
-                    setCustomProfilesJson(encodeProfilesPayload(updatedPayload))
-                    setSelectedProfileId("profile:${newProfile.id}")
-                }
-            },
-            onDismiss = { showSaveProfileDialog = false },
-        )
-    }
-
-    if (showImportProfilesDialog) {
-        TextFieldDialog(
-            title = { Text(text = stringResource(R.string.eq_import_profiles)) },
-            placeholder = { Text(text = stringResource(R.string.eq_import_profiles_placeholder)) },
-            singleLine = false,
-            maxLines = 10,
-            isInputValid = { it.trim().isNotBlank() },
-            onDone = { raw ->
-                val trimmed = raw.trim()
-                val payload =
-                    decodeProfilesPayload(trimmed).takeIf { it.profiles.isNotEmpty() }
-                        ?: runCatching {
-                            EqProfilesPayload(EqualizerJson.json.decodeFromString<List<EqProfile>>(trimmed))
-                        }.getOrNull()
-                        ?: EqProfilesPayload()
-
-                if (payload.profiles.isEmpty()) {
-                    Toast
-                        .makeText(context, resources.getString(R.string.eq_import_failed), Toast.LENGTH_SHORT)
-                        .show()
-                    return@TextFieldDialog
-                }
-
-                val existingIds = profiles.map { it.id }.toMutableSet()
-                val normalizedImported =
-                    payload.profiles
-                        .map { p ->
-                            val baseName = p.name.trim().ifBlank { resources.getString(R.string.eq_imported_profile) }
-                            val incomingId = p.id.trim()
-                            val finalId =
-                                if (incomingId.isBlank() || !existingIds.add(incomingId)) {
-                                    generateSequence { UUID.randomUUID().toString() }
-                                        .first { existingIds.add(it) }
-                                } else {
-                                    incomingId
-                                }
-
-                            p.copy(
-                                id = finalId,
-                                name = baseName,
-                            )
-                        }
-
-                val updatedPayload =
-                    EqProfilesPayload(
-                        profiles =
-                            (profiles + normalizedImported)
-                                .distinctBy { it.id }
-                                .sortedBy { it.name.lowercase() },
-                    )
-
-                setCustomProfilesJson(encodeProfilesPayload(updatedPayload))
-                val firstImportedId = normalizedImported.firstOrNull()?.id
-                if (firstImportedId != null) {
-                    setSelectedProfileId("profile:$firstImportedId")
-                }
-
-                Toast
-                    .makeText(
-                        context,
-                        resources.getString(R.string.eq_import_success, normalizedImported.size),
-                        Toast.LENGTH_SHORT,
-                    ).show()
-            },
-            onDismiss = { showImportProfilesDialog = false },
-        )
-    }
-
-    if (showManageProfilesDialog) {
-        ListDialog(
-            onDismiss = { showManageProfilesDialog = false },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            items(
-                items = profiles,
-                key = { it.id },
-            ) { profile ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                setBandLevelsRaw(encodeBandLevelsMb(profile.bandLevelsMb))
-                                setOutputGainMb(profile.outputGainMb)
-                                setOutputGainEnabled(profile.outputGainMb != 0)
-                                setBassBoostStrength(profile.bassBoostStrength)
-                                setBassBoostEnabled(profile.bassBoostStrength != 0)
-
-                                setSelectedProfileId("profile:${profile.id}")
-                                showManageProfilesDialog = false
-                            }.padding(horizontal = 16.dp, vertical = 12.dp),
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = profile.name,
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            text = stringResource(R.string.eq_custom_profile),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-
-                    IconButton(
-                        onClick = {
-                            val updatedPayload =
-                                EqProfilesPayload(
-                                    profiles = profiles.filterNot { it.id == profile.id },
-                                )
-                            setCustomProfilesJson(encodeProfilesPayload(updatedPayload))
-                            if (selectedProfileId == "profile:${profile.id}") {
-                                setSelectedProfileId("manual")
-                            }
-                        },
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.capsule_soft_delete),
-                            contentDescription = null,
-                        )
-                    }
-                }
+    fun selectVersion(id: String) {
+        when (id) {
+            "flat", "version:speed_up", "version:slowed" -> {
+                // Tempo modes are independent of EQ and never enable DSP.
+                setEqEnabled(false)
+                setSelectedId(id)
+            }
+            else -> {
+                val preset = CapsuleEqPresets.byId(id) ?: return
+                // Persist only for compatibility with older offline profile
+                // displays. Live audio always uses the signed, built-in curve.
+                setBandLevelsRaw(encodeBandLevelsMb(preset.referenceLevelsMb))
+                setSelectedId("capsule:${preset.id}")
+                setEqEnabled(true)
             }
         }
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.surface,
-        ) {
-            Column(
-                modifier = Modifier.fillMaxSize(),
-            ) {
+    Dialog(onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.fillMaxSize()) {
                 TopAppBar(
-                    title = { Text(text = stringResource(R.string.eq_audio_studio)) },
+                    title = { Text(stringResource(R.string.eq_versions_title)) },
                     navigationIcon = {
                         IconButton(onClick = onDismiss) {
-                            Icon(
-                                painter = painterResource(R.drawable.close),
-                                contentDescription = null,
-                            )
+                            Icon(painterResource(R.drawable.close), contentDescription = null)
                         }
                     },
-                    actions = {
-                        Switch(
-                            checked = eqEnabled,
-                            onCheckedChange = { enabled ->
-                                // Service atomically neutralizes DSP and restores
-                                // speed/pitch under a short volume ramp.
-                                setEqEnabled(enabled)
-                                if (enabled && selectedProfileId.isBlank()) {
-                                    setSelectedProfileId("manual")
-                                }
-                            },
-                            thumbContent = {
-                                Icon(
-                                    painter = painterResource(id = if (eqEnabled) R.drawable.check else R.drawable.close),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(SwitchDefaults.IconSize),
-                                )
-                            },
-                        )
-                        Spacer(Modifier.width(8.dp))
-                    },
-                    colors =
-                        TopAppBarDefaults.topAppBarColors(
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                        ),
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface),
                 )
-
                 Column(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState(),
-            flingBehavior = rememberCapsuleFlingBehavior(),
-            overscrollEffect = null)
-                            .padding(horizontal = 16.dp)
-                            .padding(bottom = 24.dp),
+                    modifier = Modifier.fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    Spacer(Modifier.height(6.dp))
-
-                    // Tempo and pitch share the EQ master switch.
-                    EqSection(
-                        title = stringResource(R.string.tempo),
-                        trailing = {
-                            Text(
-                                text = "×${formatMultiplier(speed)}",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            IconButton(
-                                modifier = Modifier.size(38.dp),
-                                onClick = {
-                                    speed = 1f
-                                    setStudioSpeed(1f)
-                                    if (eqEnabled) playerConnection.player.playbackParameters =
-                                        PlaybackParameters(1f, pitch)
-                                },
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.restore),
-                                    contentDescription = stringResource(R.string.reset),
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
-                        },
+                    Text(
+                        stringResource(R.string.eq_versions_intro),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Surface(
+                        onClick = { selectVersion("flat") },
+                        color = if (original) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surfaceContainerHigh,
+                        shape = RoundedCornerShape(18.dp),
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 2.dp),
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 17.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            Text("0.25×", color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                style = MaterialTheme.typography.labelSmall)
-                            CapsuleStudioSlider(
-                                value = multiplierToSlider(speed),
-                                onValueChange = { position ->
-                                    val newSpeed = sliderToMultiplier(position).quantize(0.01f)
-                                    if (abs(newSpeed - speed) >= 0.005f) {
-                                        speed = newSpeed
-                                        if (eqEnabled) playerConnection.player.playbackParameters =
-                                            PlaybackParameters(speed, pitch)
-                                    }
-                                },
-                                modifier = Modifier.weight(1f),
-                                valueRange = 0f..1f,
-                                onValueChangeFinished = { setStudioSpeed(speed) },
-                                enabled = eqEnabled,
-                            )
-                            Text("2×", color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                    Spacer(Modifier.height(10.dp))
-
-                    EqSection(
-                        title = stringResource(R.string.equalizer),
-                        trailing = {
-                            IconButton(
-                                modifier = Modifier.size(38.dp),
-                                onClick = {
-                                    val flat = List(bandCount) { 0 }
-                                    bandLevelsMb = flat
-                                    setSelectedProfileId("flat")
-                                    setBandLevelsRaw(encodeBandLevelsMb(flat))
-                                },
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.restore),
-                                    contentDescription = stringResource(R.string.reset),
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
-                        },
-                    ) {
-                        // Exactly six recognizable Capsule signatures; frequencies and
-                        // strength are mapped to the active Android EQ hardware.
-                        CapsuleEqPresets.all.chunked(3).forEachIndexed { rowIndex, row ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                row.forEach { preset ->
-                                    FilterChip(
-                                        selected = selectedProfileId == "capsule:${preset.id}",
-                                        onClick = {
-                                            val levels = CapsuleEqPresets.levelsFor(
-                                                preset, caps.centerFreqHz, minMb, maxMb,
-                                            )
-                                            bandLevelsMb = levels
-                                            setSelectedProfileId("capsule:${preset.id}")
-                                            setBandLevelsRaw(encodeBandLevelsMb(levels))
-                                        },
-                                        modifier = Modifier.weight(1f).heightIn(min = 44.dp),
-                                        enabled = eqEnabled,
-                                        label = {
-                                            Text(
-                                                preset.name,
-                                                modifier = Modifier.fillMaxWidth(),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                                textAlign = TextAlign.Center,
-                                                style = MaterialTheme.typography.labelMedium,
-                                            )
-                                        },
-                                        border = null,
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                            labelColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.86f),
-                                            selectedContainerColor =
-                                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.18f),
-                                            selectedLabelColor = MaterialTheme.colorScheme.onSurface,
-                                        ),
-                                    )
-                                }
-                            }
-                            if (rowIndex == 0) Spacer(Modifier.height(6.dp))
-                        }
-
-                        Spacer(Modifier.height(6.dp))
-                        val heightDp = LocalConfiguration.current.screenHeightDp
-                        val graphHeight = when {
-                            heightDp < 690 -> 158.dp
-                            heightDp < 800 -> 180.dp
-                            else -> 202.dp
-                        }
-                        var selectedBand by remember { mutableIntStateOf(0) }
-                        val displayedLevels = scaleEqBandLevels(
-                            bandLevelsMb, intensityLocal, minMb, maxMb,
-                        ).mapIndexed { index, level ->
-                            level.coerceIn(minMb, bandMaxLevelsMb.getOrElse(index) { graphMaxMb })
-                        }
-                        val visualEqSettings = EqSettings(
-                            enabled = eqEnabled,
-                            bandLevelsMb = bandLevelsMb,
-                            outputGainEnabled = outputGainEnabled,
-                            outputGainMb = outputGainLocal,
-                            bassBoostEnabled = bassBoostEnabled,
-                            bassBoostStrength = bassBoostStrengthLocal,
-                            virtualizerEnabled = false,
-                            virtualizerStrength = 0,
-                            intensityPercent = intensityLocal,
-                            musicalBalanceEnabled = musicalBalance,
-                        )
-                        val actualBandsMb = capsuleUnifiedEqLevels(visualEqSettings, caps)
-                        CapsuleEqualizerGraph(
-                            frequenciesHz = caps.centerFreqHz,
-                            levelsMb = displayedLevels,
-                            minMb = minMb,
-                            maxMb = graphMaxMb,
-                            bandMaxLevelsMb = bandMaxLevelsMb,
-                            appliedLevelsMb = if (eqEnabled && musicalBalance) actualBandsMb
-                                else emptyList(),
-                            selectedBand = selectedBand.coerceIn(0, bandCount - 1),
-                            onBandSelected = { selectedBand = it },
-                            onLevelChanged = { band, level ->
-                                if (band in 0 until bandCount) {
-                                    bandLevelsMb = bandLevelsMb.toMutableList().apply {
-                                        while (size < bandCount) add(0)
-                                        this[band] = inverseScaledEqLevel(
-                                            level.coerceAtMost(graphMaxMb),
-                                            intensityLocal, minMb, maxMb,
-                                        )
-                                    }
-                                }
-                            },
-                            onFinished = { band, level ->
-                                if (band in 0 until bandCount) {
-                                    val updated = bandLevelsMb.toMutableList().apply {
-                                        while (size < bandCount) add(0)
-                                        this[band] = inverseScaledEqLevel(
-                                            level.coerceAtMost(graphMaxMb),
-                                            intensityLocal, minMb, maxMb,
-                                        )
-                                    }
-                                    bandLevelsMb = updated
-                                    setSelectedProfileId("manual")
-                                    setBandLevelsRaw(encodeBandLevelsMb(updated))
-                                }
-                            },
-                            graphHeight = graphHeight,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        )
-                        // An honest two-layer frequency view: filled accent
-                        // is the requested curve, dashed light is the DSP output.
-                        if (eqEnabled && musicalBalance) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth()
-                                    .padding(start = 18.dp, end = 18.dp, top = 6.dp, bottom = 10.dp),
-                                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Box(
-                                    Modifier.size(8.dp).background(
-                                        MaterialTheme.colorScheme.primary, CircleShape,
-                                    )
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    stringResource(R.string.eq_version_original),
+                                    style = MaterialTheme.typography.titleMedium,
                                 )
                                 Text(
-                                    stringResource(R.string.eq_curve_requested),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Box(
-                                    Modifier.size(8.dp).background(
-                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.86f),
-                                        CircleShape,
-                                    )
-                                )
-                                Text(
-                                    stringResource(R.string.eq_curve_applied),
-                                    style = MaterialTheme.typography.labelSmall,
+                                    stringResource(R.string.eq_version_original_description),
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
-                        }
-                        Surface(
-                            modifier = Modifier.fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 5.dp),
-                            shape = RoundedCornerShape(18.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.52f),
-                            border = BorderStroke(
-                                1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.09f),
-                            ),
-                        ) {
-                            Column(Modifier.padding(horizontal = 16.dp, vertical = 13.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(
-                                            stringResource(R.string.eq_musical_balance),
-                                            style = MaterialTheme.typography.titleSmall,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                        )
-                                        Text(
-                                            stringResource(R.string.eq_musical_balance_description),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
-                                    Spacer(Modifier.width(12.dp))
-                                    Icon(
-                                        painter = painterResource(R.drawable.check),
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(22.dp),
-                                    )
-                                }
-                                if (eqEnabled) {
-                                    val originalContrast = capsuleEqCurveSpreadMb(displayedLevels)
-                                    val appliedContrast = capsuleEqCurveSpreadMb(actualBandsMb)
-                                    Spacer(Modifier.height(7.dp))
-                                    Text(
-                                        stringResource(
-                                            R.string.eq_musical_balance_contrast,
-                                            formatDb(originalContrast / 100f),
-                                            formatDb(appliedContrast / 100f),
-                                        ),
-                                        color = if (originalContrast > 1100)
-                                            MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        style = MaterialTheme.typography.labelSmall,
-                                    )
-
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                stringResource(R.string.eq_curve_intensity),
-                                style = MaterialTheme.typography.titleSmall,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Text(
-                                "${intensityLocal}%",
-                                color = MaterialTheme.colorScheme.primary,
-                                style = MaterialTheme.typography.labelLarge,
+                            if (original) Icon(
+                                painter = painterResource(R.drawable.check),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
                             )
                         }
-                        CapsuleStudioSlider(
-                            value = intensityLocal.toFloat(),
-                            onValueChange = { intensityLocal = it.toInt().coerceIn(100, 200) },
-                            onValueChangeFinished = { setCurveIntensity(intensityLocal) },
-                            valueRange = 100f..200f,
-                            enabled = eqEnabled,
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        )
-                        // Show the *actual* planned input headroom. An audible
-                        // reduction in overall level is deliberate; the tonal
-                        // differences remain intact without saturating the DSP.
-                        val headroomPreviewSettings = visualEqSettings
-                        val previewEffectiveLevels = capsuleUnifiedEqLevels(
-                            headroomPreviewSettings, caps,
-                        )
-                        val safeInputGainMb = capsuleSafeEqInputGainMb(
-                            headroomPreviewSettings, previewEffectiveLevels,
-                        )
-                        val actualPreviewTrimMb = when (eqEngineMode) {
-                            CapsuleEqEngineMode.NATIVE_FALLBACK -> {
-                                val factor = protectedEqAudioFactor(headroomPreviewSettings, caps)
-                                (2000.0 * Math.log10(factor.toDouble())).toInt()
-                            }
-                            CapsuleEqEngineMode.UNAVAILABLE -> 0
-                            else -> safeInputGainMb
-                        }
-                        if (eqEnabled && actualPreviewTrimMb < 0) {
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                text = stringResource(
-                                    R.string.eq_clean_headroom,
-                                    formatDb(actualPreviewTrimMb / 100f),
-                                ),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 18.dp),
-                            )
-                            Text(
-                                text = stringResource(R.string.eq_clean_headroom_description),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 3.dp),
-                            )
-                        }
-                        if (eqEnabled) {
-                            val activeEngineLabel = when (eqEngineMode) {
-                                CapsuleEqEngineMode.UNIFIED -> R.string.eq_engine_unified
-                                CapsuleEqEngineMode.NATIVE_FALLBACK -> R.string.eq_engine_native
-                                CapsuleEqEngineMode.UNAVAILABLE -> R.string.eq_engine_unavailable
-                                else -> R.string.eq_engine_waiting
-                            }
-                            Text(
-                                text = stringResource(activeEngineLabel),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 7.dp),
-                            )
-                        }
-
                     }
 
-                    Spacer(Modifier.height(12.dp))
-                    EqSection(title = stringResource(R.string.eq_effects_title)) {
-                        CapsuleEffectRow(
-                            title = stringResource(R.string.eq_bass_boost),
-                            checked = eqEnabled && bassBoostEnabled,
-                            enabled = eqEnabled,
-                            onCheckedChange = { enabled ->
-                                if (enabled && bassBoostStrengthLocal == 0) {
-                                    bassBoostStrengthLocal = CAPSULE_MAX_BASS_STRENGTH * 65 / 100
-                                    setBassBoostStrength(bassBoostStrengthLocal)
-                                }
-                                setBassBoostEnabled(enabled)
-                            },
-                            value = (bassBoostStrengthLocal * 100 + CAPSULE_MAX_BASS_STRENGTH / 2) /
-                                CAPSULE_MAX_BASS_STRENGTH,
-                            valueRange = 0..100,
-                            valueLabel = "${(bassBoostStrengthLocal * 100 + CAPSULE_MAX_BASS_STRENGTH / 2) /
-                                CAPSULE_MAX_BASS_STRENGTH}%",
-                            onValueChange = { percent ->
-                                bassBoostStrengthLocal = percent * CAPSULE_MAX_BASS_STRENGTH / 100
-                            },
-                            onValueChangeFinished = {
-                                setBassBoostStrength(bassBoostStrengthLocal)
-                            },
-                        )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                        // No independent spatial widening: this was an OEM
-                        // effect whose gain and routing cannot be controlled.
-                        HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                        CapsuleEffectRow(
-                            title = stringResource(R.string.eq_output_attenuation),
-                            checked = eqEnabled && outputGainEnabled,
-                            enabled = eqEnabled,
-                            onCheckedChange = setOutputGainEnabled,
-                            value = outputGainLocal,
-                            valueRange = -1500..CAPSULE_MAX_OUTPUT_GAIN_MB,
-                            valueLabel = formatDb(outputGainLocal / 100f),
-                            onValueChange = { outputGainLocal = it },
-                            onValueChangeFinished = { setOutputGainMb(outputGainLocal) },
-                        )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(stringResource(R.string.pitch),
-                                style = MaterialTheme.typography.titleSmall,
-                                modifier = Modifier.weight(1f))
-                            Text("×${formatMultiplier(pitch)}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            IconButton(
-                                modifier = Modifier.size(38.dp),
-                                onClick = {
-                                    pitch = 1f
-                                    setStudioPitch(1f)
-                                    if (eqEnabled) playerConnection.player.playbackParameters =
-                                        PlaybackParameters(speed, 1f)
+                    Text(
+                        stringResource(R.string.eq_tempo_versions),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        listOf(
+                            "version:speed_up" to "Speed Up",
+                            "version:slowed" to "Slowed",
+                        ).forEach { (id, title) ->
+                            FilterChip(
+                                selected = selectedId == id,
+                                onClick = { selectVersion(id) },
+                                label = {
+                                    Text(title, modifier = Modifier.fillMaxWidth(),
+                                        textAlign = TextAlign.Center)
                                 },
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.restore),
-                                    contentDescription = stringResource(R.string.reset),
-                                    modifier = Modifier.size(18.dp),
+                                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                            )
+                        }
+                    }
+                    Text(
+                        stringResource(R.string.eq_tempo_versions_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+
+                    Text(
+                        stringResource(R.string.eq_tonal_versions),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    CapsuleEqPresets.all.chunked(2).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            row.forEach { preset ->
+                                FilterChip(
+                                    selected = selectedTone?.id == preset.id,
+                                    onClick = { selectVersion(preset.id) },
+                                    label = {
+                                        Text(
+                                            preset.name,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            textAlign = TextAlign.Center,
+                                            maxLines = 1,
+                                        )
+                                    },
+                                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                                 )
                             }
+                            if (row.size == 1) Spacer(Modifier.weight(1f))
                         }
-                        CapsuleStudioSlider(
-                            value = multiplierToSlider(pitch),
-                            onValueChange = { position ->
-                                val newPitch = sliderToMultiplier(position).quantize(0.01f)
-                                pitch = newPitch
-                                if (eqEnabled) playerConnection.player.playbackParameters =
-                                    PlaybackParameters(speed, pitch)
-                            },
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
-                            valueRange = 0f..1f,
-                            onValueChangeFinished = { setStudioPitch(pitch) },
-                            enabled = eqEnabled,
+                    }
+                    Text(
+                        stringResource(R.string.eq_tonal_versions_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (selectedTone != null && engineMode == CapsuleEqEngineMode.UNAVAILABLE) {
+                        Text(
+                            stringResource(R.string.eq_engine_unavailable),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
                         )
                     }
-
-                    Spacer(Modifier.height(12.dp))
-                    EqSection(title = stringResource(R.string.eq_profiles)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                        ) {
-                            TextButton(onClick = { showSaveProfileDialog = true }) {
-                                Text(stringResource(R.string.eq_save))
-                            }
-                            TextButton(onClick = { showManageProfilesDialog = true }) {
-                                Text(stringResource(R.string.eq_manage))
-                            }
-                            TextButton(onClick = { showImportProfilesDialog = true }) {
-                                Text(stringResource(R.string.eq_import))
-                            }
-                        }
+                    TextButton(onClick = openSystemEqualizer,
+                        modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.eq_open_system_panel))
                     }
-
                 }
             }
         }
     }
 }
 
-/**
- * Capsule pill slider: large invisible Material touch target and accessibility,
- * but a narrow matte track and a soft capsule thumb. No manual pointer handling.
- */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CapsuleStudioSlider(
     value: Float,
