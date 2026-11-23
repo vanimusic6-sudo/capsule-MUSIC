@@ -52,7 +52,8 @@ class PlaybackAudioEffectsControllerTest {
         assertFalse(source.contains("BassBoost("))
         assertFalse(source.contains("Virtualizer("))
         assertFalse(source.contains("eq.usePreset("))
-        assertFalse(source.contains("eq.enabled = false"))
+        assertTrue(source.contains("eq.enabled = false"))
+        assertTrue(source.contains("onRecoverableError(\"bypass native EQ\", it)"))
         assertTrue(source.contains("appliedEnabled == true"))
     }
 }

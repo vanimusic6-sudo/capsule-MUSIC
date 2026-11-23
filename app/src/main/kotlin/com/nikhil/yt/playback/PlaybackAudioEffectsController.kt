@@ -127,13 +127,28 @@ internal class PlaybackAudioEffectsController(
         }
 
         val eq = equalizer ?: return
+        if (!settings.enabled) {
+            // Original is a real bypass. Leaving an OEM EQ enabled with a
+            // "flat" curve can still alter the signal and waste power.
+            // MusicService ducks the transition before reaching this path.
+            if (appliedEnabled == true) {
+                runCatching { eq.enabled = false }
+                    .onSuccess {
+                        appliedEnabled = false
+                        appliedBandLevels = intArrayOf()
+                    }
+                    .onFailure { onRecoverableError("bypass native EQ", it) }
+            }
+            engineMode.value = CapsuleEqEngineMode.OFF
+            return
+        }
         val levels = capsuleUnifiedEqLevels(settings, caps)
         val nonFlat = settings.enabled && levels.any { it != 0 }
         if (nonFlat && appliedEnabled != true &&
             runCatching { eq.enabled = true }.isSuccess
         ) appliedEnabled = true
-        // Never disconnect an active native effect on a toggle: write flat 0 dB
-        // instead. Avoid repeating writes that cause OEM mixer underruns.
+        // Only write changed bands while native EQ is active. On bypass,
+        // the effect is fully disconnected after MusicService's short duck.
         if (appliedEnabled == true) {
             if (appliedBandLevels.size != caps.bandCount)
                 appliedBandLevels = IntArray(caps.bandCount) { Int.MIN_VALUE }
