@@ -59,7 +59,11 @@ internal fun capsuleMusicalEqLevels(
         return if (gainMb < 0) -softened else softened
     }
     val safe = IntArray(count) { index ->
-        bound(index, softKnee(bound(index, rawLevelsMb[index] - commonPositiveMb)))
+        // Imported JSON and malformed legacy presets may contain Int.MIN_VALUE;
+        // subtracting the common offset as Int would wrap into a giant BOOST.
+        val shifted = (rawLevelsMb[index].toLong() - commonPositiveMb.toLong())
+            .coerceIn(-10_000L, 10_000L).toInt()
+        bound(index, softKnee(bound(index, shifted)))
     }
     if (count == 1) return safe.toList()
 
