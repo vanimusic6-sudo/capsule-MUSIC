@@ -53,7 +53,8 @@ constructor(
             LyricsProviderOrder.YOUTUBE to YouTubeLyricsProvider,
         )
 
-    private val cache = LruCache<String, List<LyricsResult>>(MAX_CACHE_SIZE)
+    private data class CachedLyrics(val fingerprint: String, val lyrics: String, val expiresAtMs: Long)
+    private val cache = LruCache<String, CachedLyrics>(MAX_CACHE_SIZE)
     @Volatile
     private var currentLyricsJob: Job? = null
 
@@ -65,11 +66,21 @@ constructor(
         // A playback lookup must never cancel the manual "choose lyrics source"
         // screen. That screen owns its own cancellable job.
         if (forceRefresh) cache.remove(mediaMetadata.id)
-        val ordered = orderedProviders()
-        val cached = cache.get(mediaMetadata.id)?.firstOrNull()
-        val topEnabled = ordered.firstOrNull { it.isEnabled(context) }?.name
-        if (!forceRefresh && cached != null && cached.providerName == topEnabled) {
-            GlobalLog.append(Log.DEBUG, "LyricsHelper", "Found priority-matching lyrics in cache for ${mediaMetadata.title}")
+        val enabled = orderedProviders().filter { it.isEnabled(context) }
+        // Unlike the old top-provider-only cache, reuse a healthy fallback
+        // while the source order and track metadata have NOT changed.
+        val providers = if (preferredProviderOnly) enabled.take(1) else enabled
+        val fingerprint = lyricsCacheFingerprint(
+            listOf(mediaMetadata.title, mediaMetadata.artists.joinToString { it.name },
+                mediaMetadata.album?.title.orEmpty(), mediaMetadata.duration.toString(),
+                preferredProviderOnly.toString()) + providers.map { it.name },
+        )
+        val cached = cache.get(mediaMetadata.id)
+        val nowMs = android.os.SystemClock.elapsedRealtime()
+        if (!forceRefresh && cached != null && cached.fingerprint == fingerprint &&
+            nowMs < cached.expiresAtMs
+        ) {
+            GlobalLog.append(Log.DEBUG, "LyricsHelper", "Reusing source-policy-matching lyrics")
             return cached.lyrics
         }
         
@@ -86,8 +97,6 @@ constructor(
             return LYRICS_NOT_FOUND
         }
 
-        val providers = if (preferredProviderOnly) ordered.take(1) else ordered
-
         /*
          * Provider order is the contract: the first enabled source that returns actual readable
          * lyrics wins immediately. Do not wait for slower providers merely to compare sync grades.
@@ -98,10 +107,8 @@ constructor(
          */
         for (provider in providers) {
             currentCoroutineContext().ensureActive()
-            if (!provider.isEnabled(context)) continue
-
             try {
-                val result =
+                val result = withTimeoutOrNull(AUTO_PROVIDER_TIMEOUT_MS) {
                     provider.getLyrics(
                         mediaMetadata.id,
                         mediaMetadata.title,
@@ -109,16 +116,23 @@ constructor(
                         mediaMetadata.album?.title,
                         mediaMetadata.duration,
                     )
+                }
                 currentCoroutineContext().ensureActive()
+                if (result == null) {
+                    GlobalLog.append(Log.DEBUG, "LyricsHelper", "Provider timed out: " + provider.name)
+                    continue
+                }
                 val lyrics = result.getOrNull()
                 if (lyrics != null && isMeaningfulLyrics(lyrics)) {
-                    val chosen = LyricsResult(provider.name, lyrics)
                     GlobalLog.append(
                         Log.DEBUG,
                         "LyricsHelper",
                         "Using first meaningful lyrics from ${provider.name} for ${mediaMetadata.title}",
                     )
-                    cache.put(mediaMetadata.id, listOf(chosen))
+                    cache.put(mediaMetadata.id, CachedLyrics(
+                        fingerprint, lyrics,
+                        android.os.SystemClock.elapsedRealtime() + CACHE_TTL_MS,
+                    ))
                     return lyrics
                 } else {
                     result.exceptionOrNull()?.let { reportProviderFailure(provider, it) }
@@ -312,6 +326,8 @@ constructor(
 
     companion object {
         private const val MAX_CACHE_SIZE = 3
+        private const val CACHE_TTL_MS = 20 * 60 * 1_000L
+        private const val AUTO_PROVIDER_TIMEOUT_MS = 7_500L
         // Manual searches stream independently; allow slow public mirrors
         // to finish a bounded request without blocking other results.
         // This does not block faster sources in the picker.
@@ -319,6 +335,16 @@ constructor(
         private val TIMESTAMP_REGEX = Regex("""\[[0-9]{1,2}:[0-9]{2}(?:\.[0-9]{1,3})?]""")
         private val LINE_TIMESTAMP_REGEX = Regex("""\[[0-9]{1,2}:[0-9]{2}[.:][0-9]{2,3}]""")
         private val INVISIBLE_CHARS_REGEX = Regex("""[\u200B\u200C\u200D\u2060\u00AD]""")
+    }
+}
+
+/**
+ * Length-prefixed fields prevent collisions between track metadata and provider order.
+ * A user's changed source priority or on/off state immediately invalidates the cache.
+ */
+internal fun lyricsCacheFingerprint(fields: List<String>): String = buildString {
+    for (field in fields) {
+        append(field.length).append(':').append(field)
     }
 }
 
