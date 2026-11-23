@@ -82,9 +82,9 @@ internal fun inverseScaledEqLevel(
  * These protect against excessive combined boost but cannot measure speaker
  * temperature, acoustic excursion, or guarantee physical speaker safety.
  */
-internal const val CAPSULE_MAX_EQ_BOOST_MB = 650      // +6.5 dB per EQ band
-// Extra protection for sub-bass: excursion is most demanding on small speakers.
-internal const val CAPSULE_MAX_LOW_BASS_BOOST_MB = 300 // +3 dB below 120 Hz
+internal const val CAPSULE_MAX_EQ_BOOST_MB = 900      // +9 dB; limiter remains active on Android 9+
+// Sub-bass needs a much stricter ceiling: small phone speakers can over-excurse.
+internal const val CAPSULE_MAX_LOW_BASS_BOOST_MB = 400 // +4 dB below 120 Hz
 internal const val CAPSULE_MAX_BASS_STRENGTH = 250     // native scale 0..1000
 internal const val CAPSULE_MAX_VIRTUALIZER_STRENGTH = 350
 internal const val CAPSULE_MAX_OUTPUT_GAIN_MB = 300   // +3 dB
@@ -173,13 +173,14 @@ internal fun protectedEqAudioFactor(
     // These effects typically occupy different spectral regions; they must
     // not be treated as identical full-band +dB amplifiers.
     val mainReserveDb = maxOf(
-        eqBoostDb * 0.45,
+        eqBoostDb * 0.33,
         bassAllowanceDb * 0.35,
-        gainBoostDb,
     )
-    val sharedLowEndDb = minOf(eqBoostDb, bassAllowanceDb) * 0.12
+    val sharedLowEndDb = minOf(eqBoostDb, bassAllowanceDb) * 0.10
+    // Avoid cancelling the tonal boost with excess global attenuation.
+    // Still reserve additional headroom when explicit master gain is enabled.
     val reserveDb = (mainReserveDb + sharedLowEndDb +
-        virtualizerAllowanceDb * 0.10).coerceIn(0.0, 4.0)
+        gainBoostDb * 0.25 + virtualizerAllowanceDb * 0.10).coerceIn(0.0, 4.0)
     return Math.pow(10.0, -reserveDb / 20.0).toFloat().coerceIn(0.63f, 1f)
 }
 

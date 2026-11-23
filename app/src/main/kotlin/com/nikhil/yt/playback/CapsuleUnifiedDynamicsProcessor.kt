@@ -55,7 +55,9 @@ internal fun capsuleUnifiedEqLevels(
     return levels.mapIndexed { index, original ->
         val freq = capabilities.centerFreqHz.getOrNull(index) ?: 0
         val isBass = if (freq <= 0) index == 0 else freq <= 120
-        if (isBass) (original + bassBoostMb).coerceAtMost(350)
+        if (isBass) (original + bassBoostMb).coerceAtMost(
+            CAPSULE_MAX_LOW_BASS_BOOST_MB + 50,
+        )
         else original
     }
 }
@@ -71,7 +73,7 @@ internal fun capsuleNeedsBassDynamics(
         capabilities.maxBandLevelMb, capabilities.centerFreqHz,
     ).anyIndexed { index, level ->
         val hz = capabilities.centerFreqHz.getOrNull(index) ?: 0
-        (if (hz <= 0) index == 0 else hz <= 120) && level > 100
+        (if (hz <= 0) index == 0 else hz <= 120) && level > 300
     }
 }
 
@@ -168,8 +170,10 @@ internal class CapsuleUnifiedDynamicsProcessor(
 
     private fun nativeBassBand(enabled: Boolean) = DynamicsProcessing.MbcBand(
         true, 160f, 8f, 190f,
-        if (enabled) 2.5f else 1f,
-        if (enabled) -9f else 0f,
+        // Lightly constrain only loud bass peaks; the old -9 dB / 2.5:1
+        // settings compressed away most of a normal EQ bass adjustment.
+        if (enabled) 1.8f else 1f,
+        if (enabled) -4f else 0f,
         3f, -80f, 1f, 0f, 0f,
     )
 

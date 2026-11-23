@@ -63,7 +63,7 @@ class PlaybackAudioEffectsControllerTest {
             virtualizerEnabled = true, virtualizerStrength = 1000,
             intensityPercent = 200,
         )
-        assertEquals(listOf(300, 650, -400, -1000, 650),
+        assertEquals(listOf(400, 900, -400, -1000, 900),
             protectedEqLevels(base, 5, -1500, 1500))
         assertEquals(listOf(0, 0, 0, 0, 0),
             protectedEqLevels(base.copy(enabled = false), 5, -1500, 1500))
@@ -115,18 +115,24 @@ class PlaybackAudioEffectsControllerTest {
             intensityPercent = 200,
         )
         assertEquals(
-            listOf(300, 650, 650),
+            listOf(400, 900, 900),
             protectedEqLevels(values, 3, -1500, 1500, listOf(60, 230, 1_000)),
         )
         assertEquals(
-            listOf(650, 300, 650),
+            listOf(900, 400, 900),
             protectedEqLevels(values, 3, -1500, 1500, listOf(1_000, 90, 5_000)),
         )
         // Some OEM effects report 0 on a failed center-frequency query.
         assertEquals(
-            listOf(300, 650, 650),
+            listOf(400, 900, 900),
             protectedEqLevels(values, 3, -1500, 1500, listOf(0, 230, 1_000)),
         )
+        // Low frequencies must NEVER receive the full +9 dB,
+        // even on a device advertising +15 dB native gain.
+        assertEquals(CAPSULE_MAX_EQ_BOOST_MB, 
+            protectedEqLevels(values, 3, -1500, 1500, listOf(1_000, 1_000, 1_000))[0])
+        assertEquals(CAPSULE_MAX_LOW_BASS_BOOST_MB, 
+            protectedEqLevels(values, 3, -1500, 1500, listOf(40, 70, 120))[0])
         val caps = EqCapabilities(3, -1500, 1500, listOf(60, 230, 1000), emptyList())
         org.junit.Assert.assertTrue(protectedEqAudioFactor(values, caps) in 0.70f..0.80f)
     }

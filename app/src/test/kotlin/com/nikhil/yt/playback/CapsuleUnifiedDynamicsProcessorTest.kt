@@ -54,7 +54,7 @@ class CapsuleUnifiedDynamicsProcessorTest {
             levels = listOf(1500, 1500, 0, 0, 0),
             bass = 250,
         ), caps)
-        assertEquals(listOf(350, 650, 0, 0, 0), result)
+        assertEquals(listOf(450, 900, 0, 0, 0), result)
         assertEquals(listOf(0, 0, 0, 0, 0),
             capsuleUnifiedEqLevels(settings(enabled = false, bass = 250), caps))
     }
@@ -62,6 +62,9 @@ class CapsuleUnifiedDynamicsProcessorTest {
     @Test fun bassDynamicsEngagesOnlyForBoostedLowFrequency() {
         assertTrue(capsuleNeedsBassDynamics(settings(bass = 250), caps))
         assertTrue(capsuleNeedsBassDynamics(
+            settings(levels = listOf(400, 0, 0, 0, 0)), caps))
+        // Small tonal adjustments must not activate an unnecessary compressor.
+        assertTrue(!capsuleNeedsBassDynamics(
             settings(levels = listOf(200, 0, 0, 0, 0)), caps))
         assertTrue(!capsuleNeedsBassDynamics(
             settings(levels = listOf(0, 0, 0, 0, 650)), caps))
@@ -75,8 +78,8 @@ class CapsuleUnifiedDynamicsProcessorTest {
             levels = listOf(1500, 1500, 1500, 1500, 1500),
             bass = 250,
         ), unknown)
-        assertEquals(350, values.first())
-        assertTrue(values.drop(1).all { it <= 650 })
+        assertEquals(450, values.first())
+        assertTrue(values.drop(1).all { it <= 900 })
     }
 
     @Test fun limiterMustEngageBeforeAnyEqBoostAndLeaveAfterNeutralization() {
