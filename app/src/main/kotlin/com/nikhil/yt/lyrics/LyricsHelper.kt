@@ -45,9 +45,10 @@ constructor(
     private val providersById: Map<String, LyricsProvider> =
         mapOf(
             LyricsProviderOrder.BETTER_LYRICS_PORTATO to BetterLyricsPortatoProvider,
-            LyricsProviderOrder.SIMPMUSIC to SimpMusicLyricsProvider,
-            LyricsProviderOrder.LYRICS_PLUS to LyricsPlusLyricsProvider,
+            LyricsProviderOrder.BETTER_LYRICS to BetterLyricsProvider,
             LyricsProviderOrder.LRCLIB to LrcLibLyricsProvider,
+            LyricsProviderOrder.YOUTUBE_SYNCED to YouTubeSyncedLyricsProvider,
+            LyricsProviderOrder.LYPRIO to LyprioLyricsProvider,
             LyricsProviderOrder.YOUTUBE to YouTubeLyricsProvider,
         )
 
