@@ -99,6 +99,9 @@ jobs:
           --tests 'com.nikhil.yt.lyrics.LyricsPlusResponseContractTest'
           --tests 'com.nikhil.yt.ui.LyricsPlusOutageTest'
           --tests 'com.nikhil.yt.lyrics.QrcToEnhancedLrcTest'
+          --tests 'com.nikhil.yt.lyrics.AdditionalLyricsSourcesTest'
+          --tests 'com.nikhil.yt.lyrics.LyricsCacheFingerprintTest'
+          --tests 'com.nikhil.yt.lyrics.LrcLibRequestGuardTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleLyricsVolumeSliderTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleInlineLyricsDemandAndPaletteTest'
           --tests 'com.nikhil.yt.ui.player.CapsuleImmersiveFieldTest'
@@ -149,6 +152,12 @@ jobs:
           --tests 'com.nikhil.yt.playback.LikeTapGateTest'
           --tests 'com.nikhil.yt.playback.SongLikeMutationFenceTest'
           --tests 'com.nikhil.yt.utils.SyncLikedSongsOrderingTest'
+          --stacktrace --no-daemon --max-workers=2
+      - name: Validate BL cache-miss policy and hostile XML rejection
+        run: >-
+          gradle :betterlyrics:test
+          --tests 'com.nikhil.yt.betterlyrics.BetterLyricsTest'
+          --tests 'com.nikhil.yt.betterlyrics.TtmlXmlSecurityTest'
           --stacktrace --no-daemon --max-workers=2
       - name: Upload player graphics and CPU preparation report
         if: ${{ !cancelled() }}
