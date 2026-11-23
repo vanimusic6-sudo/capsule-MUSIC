@@ -55,7 +55,44 @@ internal fun Bitmap.capsuleImmersiveVisibleField(aspect: Float, landscape: Boole
         }
         if (count == 0) IMMERSIVE_NEUTRAL_COLOR else Color(r / count, g / count, b / count)
     }
-    return capsuleImmersiveRejectSmallMarks(CapsuleColorField(COVER_COLUMNS, COVER_ROWS, cells))
+    return capsuleImmersiveKeepTrueDarkBackground(
+        capsuleImmersiveRejectSmallMarks(CapsuleColorField(COVER_COLUMNS, COVER_ROWS, cells)),
+    )
+}
+
+/**
+ * Correct the low-resolution ambient colour *extraction*, not the renderer.
+ * Some sleeves have a broad solid black background and very bright foreground
+ * subjects. Blurring that foreground into the lower screen invents a muddy
+ * colour which was never in the background.
+ *
+ * Require both whole-image and border evidence before modifying the palette:
+ * a fire-filled photograph with a dark coat must remain vividly coloured.
+ * Full-resolution cover artwork is not touched. This runs only on decode.
+ */
+internal fun capsuleImmersiveKeepTrueDarkBackground(field: CapsuleColorField): CapsuleColorField {
+    if (field.width < 2 || field.height < 2 || field.cells.isEmpty()) return field
+    fun dark(c: Color) = maxOf(c.red, c.green, c.blue) < 0.12f
+    val darkPixels = field.cells.filter(::dark)
+    if (darkPixels.size < field.cells.size * 0.55f) return field
+    val edge = field.cells.filterIndexed { index, _ ->
+        val x = index % field.width
+        val y = index / field.width
+        x < (field.width / 7).coerceAtLeast(1) ||
+            x >= field.width - (field.width / 7).coerceAtLeast(1) ||
+            y >= field.height * 3 / 4
+    }
+    if (edge.isEmpty() || edge.count(::dark) < edge.size * 0.72f) return field
+    val darkMedian = darkPixels.map { maxOf(it.red, it.green, it.blue) }
+        .sorted()[darkPixels.size / 2].coerceIn(0f, 0.07f)
+    val canvas = Color(darkMedian, darkMedian, darkMedian)
+    return field.copy(cells = field.cells.mapIndexed { index, original ->
+        val y = index / field.width
+        // A faint echo of the foreground stays around the cover, but cannot
+        // light up the whole lower page or tint black backgrounds purple.
+        val remaining = 0.24f - 0.13f * y / (field.height - 1).toFloat()
+        androidx.compose.ui.graphics.lerp(canvas, original, remaining)
+    })
 }
 
 /** Reject isolated pale labels, but retain broad white paper and saturated real lights. */
@@ -67,15 +104,10 @@ private fun capsuleImmersiveRejectSmallMarks(field: CapsuleColorField): CapsuleC
             maxOf(it.red, it.green, it.blue) - minOf(it.red, it.green, it.blue) < 0.15f
     }.toFloat() / field.cells.size
     if (whiteArea >= 0.20f || median >= 0.65f) return field
-    // A small white label contaminates its boundary cells only partially:
-    // those averages can be ~0.37-0.50 on a dark cover and escaped the old
-    // 0.55 threshold, blooming to a 24/255 false highlight after blur.
-    // Use a local brightness contrast instead; broad white paper bypasses
-    // the filter above, and colourful artwork remains because of chroma.
-    val markThreshold = maxOf(0.35f, median + 0.04f)
+    val markThreshold = maxOf(0.55f, median + 0.20f)
     val marks = field.cells.map { c ->
         val high = maxOf(c.red, c.green, c.blue)
-        high > markThreshold && high - minOf(c.red, c.green, c.blue) < 0.22f
+        high > markThreshold && high - minOf(c.red, c.green, c.blue) < 0.20f
     }
     val material = field.cells.filterIndexed { index, _ -> !marks[index] }
     if (material.isEmpty()) return field
@@ -248,10 +280,6 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
         val weight = backdropVerticalWeights[y * PAGE_ROWS + sy]
         for (c in 0..2) blurred[(y * PAGE_COLUMNS + x) * 3 + c] += horizontal[(sy * PAGE_COLUMNS + x) * 3 + c] * weight
     }
-    // 192 cached samples from the actual lower crop, prepared off-main.
-    val bottomEdge = Array(PAINT_WIDTH) { x ->
-        sample((x + 0.5f) / PAINT_WIDTH, 0.95f)
-    }
     val pixels = IntArray(PAINT_WIDTH * PAINT_HEIGHT)
     for (y in 0 until PAINT_HEIGHT) {
         val pageY = (y + 0.5f) / PAINT_HEIGHT
@@ -261,11 +289,7 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
             pageY < 0.68f -> 0.03f + (pageY - 0.38f) / 0.30f * 0.11f
             else -> 0.14f + (pageY - 0.68f) / 0.32f * 0.26f
         }
-        val continuation = ((pageY - stage) / (1f - stage)).coerceIn(0f, 1f)
-        // Smoothstep joins with zero slope at both edges.
-        val settle = continuation * continuation * (3f - 2f * continuation)
         for (x in 0 until PAINT_WIDTH) {
-            val edge = bottomEdge[x]
             var pixel = -0x1000000
             for (c in 0..2) {
                 var value = 0f
@@ -275,13 +299,6 @@ internal fun capsuleImmersiveImageBackdropBitmap(field: CapsuleColorField, stage
                     value += blurred[(sy * PAGE_COLUMNS + sx) * 3 + c] *
                         backdropSplineX.weights[x * 4 + dx] * backdropSplineY.weights[y * 4 + dy]
                 }
-                val anchor = when (c) {
-                    0 -> edge.red
-                    1 -> edge.green
-                    else -> edge.blue
-                }
-                // Foreground lights should not turn black artwork into a purple floor.
-                value = value * (1f - settle) + anchor * settle
                 pixel = pixel or ((value * (1f - scrim) * 255f + 0.5f).toInt().coerceIn(0, 255) shl (16 - c * 8))
             }
             pixels[y * PAINT_WIDTH + x] = pixel

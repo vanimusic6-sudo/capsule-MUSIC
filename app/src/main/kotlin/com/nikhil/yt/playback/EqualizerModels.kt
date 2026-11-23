@@ -52,6 +52,8 @@ data class EqSettings(
     // The service and UI default this ON; false preserves explicit precision
     // and backward-compatible pure model fixtures.
     val musicalBalanceEnabled: Boolean = false,
+    // Only identified fixed versions are allowed in the new live DSP path.
+    val versionId: String? = null,
 )
 
 /** Amplifies EQ *shape*, not master output volume; prevents out-of-range native calls. */

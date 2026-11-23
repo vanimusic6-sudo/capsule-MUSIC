@@ -36,11 +36,26 @@ internal fun capsuleUnifiedEqLevels(
     settings: EqSettings, capabilities: EqCapabilities,
 ): List<Int> {
     if (!settings.enabled) return List(capabilities.bandCount.coerceAtLeast(0)) { 0 }
+    val preset = settings.versionId?.let(CapsuleEqPresets::byId)
+    // Require an explicitly recognized version, map by device Hz (NOT band
+    // index), then use the same protective contour as the former custom EQ.
+    val raw = if (preset != null) {
+        CapsuleEqPresets.levelsFor(
+            preset,
+            (0 until capabilities.bandCount).map { capabilities.centerFreqHz.getOrNull(it) ?: 0 },
+            capabilities.minBandLevelMb, capabilities.maxBandLevelMb,
+        )
+    } else settings.bandLevelsMb
     val levels = protectedEqLevels(
-        settings, capabilities.bandCount, capabilities.minBandLevelMb,
+        settings.copy(
+            bandLevelsMb = raw, intensityPercent = 100,
+            bassBoostEnabled = false, bassBoostStrength = 0,
+            outputGainEnabled = false, outputGainMb = 0,
+        ),
+        capabilities.bandCount, capabilities.minBandLevelMb,
         capabilities.maxBandLevelMb, capabilities.centerFreqHz,
     )
-    if (!settings.bassBoostEnabled || settings.bassBoostStrength <= 0) return levels
+    if (preset != null || !settings.bassBoostEnabled || settings.bassBoostStrength <= 0) return levels
     val bass = (settings.bassBoostStrength.coerceIn(0, CAPSULE_MAX_BASS_STRENGTH)
         * 150) / CAPSULE_MAX_BASS_STRENGTH
     val updated = levels.mapIndexed { index, value ->

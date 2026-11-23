@@ -17,16 +17,15 @@ internal data class CapsuleEqPreset(
 internal object CapsuleEqPresets {
     private val referenceHz = listOf(60, 230, 910, 3_600, 14_000)
 
+    // Manually reviewed for modest tonal contrast, not certified SPL safety.
+    // These are deliberately NOT the old aggressive 4-9 dB presets.
+    // All values are millibels: 100 mB = 1 dB, centres are 60/230/910/3600/14000 Hz.
     val all = listOf(
-        // Each preset is a distinct *balanced* signature. Former presets had
-        // +14 dB bass and +9 dB presence, saturating the graph and producing
-        // needless pressure/harshness before any manual user adjustments.
-        CapsuleEqPreset("deep_bass", "Deep Bass", listOf(380, 450, 40, -150, -100)),
-        CapsuleEqPreset("punch", "Punch", listOf(270, 480, -90, 220, 100)),
-        CapsuleEqPreset("vocal", "Vocal", listOf(-140, -90, 430, 290, 140)),
-        CapsuleEqPreset("clarity", "Crystal", listOf(-200, -20, 150, 430, 250)),
-        CapsuleEqPreset("warm", "Warm", listOf(270, 320, 120, -130, -170)),
-        CapsuleEqPreset("v_shape", "V-Shape", listOf(320, 120, -300, 250, 320)),
+        CapsuleEqPreset("soft_bass_v2", "Soft Bass", listOf(80, 120, 20, -20, -35)),
+        CapsuleEqPreset("warm_v2", "Warm", listOf(40, 95, 55, -35, -75)),
+        CapsuleEqPreset("vocal_v2", "Vocals", listOf(-30, -20, 90, 65, 15)),
+        CapsuleEqPreset("air_v2", "Air", listOf(-35, -20, 10, 70, 110)),
+        CapsuleEqPreset("live_v2", "Live", listOf(35, 50, 15, 50, 50)),
     )
 
     fun byId(id: String): CapsuleEqPreset? = all.firstOrNull { it.id == id }

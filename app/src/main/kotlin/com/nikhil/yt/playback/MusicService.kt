@@ -2422,8 +2422,16 @@ class MusicService :
             .map { prefs ->
                 Triple(
                     readEqSettingsFromPrefs(prefs),
-                    (prefs[SoundStudioSpeedKey] ?: 1f).coerceIn(0.25f, 2f),
-                    (prefs[SoundStudioPitchKey] ?: 1f).coerceIn(0.25f, 2f),
+                    when (prefs[EqualizerSelectedProfileIdKey]) {
+                        "version:speed_up" -> 1.15f
+                        "version:slowed" -> 0.85f
+                        else -> 1f
+                    },
+                    when (prefs[EqualizerSelectedProfileIdKey]) {
+                        "version:speed_up" -> 1.08f
+                        "version:slowed" -> 0.93f
+                        else -> 1f
+                    },
                 )
             }
             .distinctUntilChanged()
@@ -2431,8 +2439,8 @@ class MusicService :
                 // Tone only: positive makeup gain and independent OEM boost
                 // effects are retired. The common safety reserve is mandatory.
                 if (settings.enabled) soundStudioEnabledForVolume.value = true
-                val playbackParams = if (settings.enabled) PlaybackParameters(speed, pitch)
-                    else PlaybackParameters(1f, 1f)
+                // Tempo versions do not require enabling any EQ filters.
+                val playbackParams = PlaybackParameters(speed, pitch)
                 val currentParams = player.playbackParameters
                 val paramChange = currentParams.speed != playbackParams.speed ||
                     currentParams.pitch != playbackParams.pitch
@@ -3962,18 +3970,22 @@ class MusicService :
     }
 
     private fun readEqSettingsFromPrefs(prefs: Preferences): EqSettings {
-        val levels = decodeBandLevelsMb(prefs[EqualizerBandLevelsMbKey])
+        val selected = prefs[EqualizerSelectedProfileIdKey]?.removePrefix("capsule:")
+        val preset = selected?.let(CapsuleEqPresets::byId)
+        // Old manual curves / presets deliberately never auto-activate.
+        // This guards existing installs even when EqualizerEnabledKey=true.
         return EqSettings(
-            enabled = prefs[EqualizerEnabledKey] ?: false,
-            bandLevelsMb = levels,
-            outputGainEnabled = prefs[EqualizerOutputGainEnabledKey] ?: false,
-            outputGainMb = (prefs[EqualizerOutputGainMbKey] ?: 0).coerceIn(-1500, 0),
-            bassBoostEnabled = prefs[EqualizerBassBoostEnabledKey] ?: false,
-            bassBoostStrength = (prefs[EqualizerBassBoostStrengthKey] ?: 0).coerceIn(0, 1000),
-            virtualizerEnabled = false, // Old presets cannot enable a second audio effect.
+            enabled = (prefs[EqualizerEnabledKey] ?: false) && preset != null,
+            bandLevelsMb = preset?.referenceLevelsMb ?: emptyList(),
+            outputGainEnabled = false,
+            outputGainMb = 0,
+            bassBoostEnabled = false,
+            bassBoostStrength = 0,
+            virtualizerEnabled = false,
             virtualizerStrength = 0,
-            intensityPercent = (prefs[EqualizerCurveIntensityPercentKey] ?: 100).coerceIn(100, 200),
-            musicalBalanceEnabled = true, // Old unsafe 'off' preference is ignored.
+            intensityPercent = 100,
+            musicalBalanceEnabled = true,
+            versionId = preset?.id,
         )
     }
 
