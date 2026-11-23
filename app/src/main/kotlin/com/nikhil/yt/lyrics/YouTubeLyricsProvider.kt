@@ -9,14 +9,18 @@
 package com.nikhil.yt.lyrics
 
 import com.nikhil.yt.utils.runCatchingCancellable
+import com.nikhil.yt.constants.EnableYouTubePlainLyricsKey
+import com.nikhil.yt.utils.dataStore
+import com.nikhil.yt.utils.get
 import android.content.Context
 import com.nikhil.yt.innertube.YouTube
 import com.nikhil.yt.innertube.models.WatchEndpoint
 
 object YouTubeLyricsProvider : LyricsProvider {
-    override val name = "YouTube Music"
+    override val name = "YouTube · без синхронизации"
 
-    override fun isEnabled(context: Context) = true
+    override fun isEnabled(context: Context) =
+        context.dataStore[EnableYouTubePlainLyricsKey] ?: true
 
     override suspend fun getLyrics(
         id: String,
@@ -25,12 +29,7 @@ object YouTubeLyricsProvider : LyricsProvider {
         album: String?,
         duration: Int,
     ): Result<String> {
-        // Metrolist's Android Music browse route provides real line timestamps.
-        // Prefer it over unsynced text; a missing/blocked timed response must
-        // not suppress the existing plain-panel and transcript fallbacks.
-        val timed = YouTube.synchronizedLyrics(id)
-        timed.getOrNull()?.takeIf { it.isNotBlank() }?.let { return Result.success(it) }
-
+        // Timed lyrics belong exclusively to YouTubeSyncedLyricsProvider.
         // The official YouTube Music lyrics panel is missing for many videos,
         // even though the video itself has human captions. This is the FINAL
         // (lowest-priority) source; avoid trying a redundant transcript until
@@ -43,7 +42,7 @@ object YouTubeLyricsProvider : LyricsProvider {
             ).getOrThrow() ?: throw NoLyricsFromProvider("YouTube Music panel was empty")
         }
         val text = officialPanel.getOrNull()
-        if (!text.isNullOrBlank()) return Result.success(text)
+        if (!text.isNullOrBlank()) return Result.success(stripTiming(text))
 
         // Existing Innertube transcript client; no new API, cookie, or service.
         // A transcript may still be unavailable for music videos. Reject
@@ -54,9 +53,14 @@ object YouTubeLyricsProvider : LyricsProvider {
                 clean.equals("[Music]", ignoreCase = true) ||
                 clean.equals("♪", ignoreCase = true)
             ) throw NoLyricsFromProvider("YouTube has no readable lyrics or captions")
-            clean
+            stripTiming(clean)
         }
     }
+
+    private fun stripTiming(raw: String): String =
+        if (Regex("""\[[0-9]{1,2}:[0-9]{2}[.:][0-9]{2,3}]""").containsMatchIn(raw)) {
+            LyricsUtils.parseLyrics(raw).joinToString("\n") { it.text }.ifBlank { raw }
+        } else raw
 
     override suspend fun getAllLyrics(
         id: String,
