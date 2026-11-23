@@ -30,7 +30,7 @@ internal fun extractKugouLrc(body: String): String? {
     val lyrics = (root["lyrics"] as? JsonPrimitive)?.contentOrNull?.trim()
         ?.takeIf { it.isNotBlank() && it.length <= 200_000 } ?: return null
     // Reject a misleading success response containing only metadata, not timed LRC.
-    if (!Regex("""(?m)^\\[\\d{1,3}:\\d{2}(?:[.:]\\d{1,3})?]""").containsMatchIn(lyrics)) return null
+    if (!Regex("""(?m)^\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?]""").containsMatchIn(lyrics)) return null
     return lyrics
 }
 

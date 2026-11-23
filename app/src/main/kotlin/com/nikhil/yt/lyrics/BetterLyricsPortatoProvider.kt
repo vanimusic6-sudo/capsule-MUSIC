@@ -33,6 +33,7 @@ object BetterLyricsPortatoProvider : LyricsProvider {
                 socketTimeoutMillis = 5_500
             }
             expectSuccess = false
+            followRedirects = false
         }
     }
 
@@ -46,7 +47,7 @@ object BetterLyricsPortatoProvider : LyricsProvider {
         album: String?,
         duration: Int,
     ): Result<String> = try {
-        if (title.isBlank() || artist.isBlank()) {
+        if (title.isBlank() || artist.isBlank() || !BetterLyricsPublicLimit.mayRequest()) {
             Result.failure(NoLyricsFromProvider("QQ lyrics need a title and artist"))
         } else {
             val response = client.get("https://api.betterlyrics.org/qq/getLyrics") {
@@ -55,10 +56,13 @@ object BetterLyricsPortatoProvider : LyricsProvider {
                 parameter("al", album.orEmpty())
                 parameter("d", duration.coerceAtLeast(0))
             }
+            BetterLyricsPublicLimit.noteResponse(response.status.value, response.headers["Retry-After"])
             if (!response.status.isSuccess()) {
                 Result.failure(NoLyricsFromProvider("QQ lyrics status: " + response.status.value))
             } else {
-                val root = Json.parseToJsonElement(response.bodyAsText()) as? JsonObject
+                val body = response.bodyAsText()
+                if (body.length > 512_000) return Result.failure(NoLyricsFromProvider("QQ response too large"))
+                val root = Json.parseToJsonElement(body) as? JsonObject
                 val qrc = (root?.get("lyrics") as? JsonPrimitive)?.contentOrNull.orEmpty()
                 val lyrics = QrcToEnhancedLrc.convert(qrc, title, artist)
                 if (!lyrics.isNullOrBlank()) Result.success(lyrics)

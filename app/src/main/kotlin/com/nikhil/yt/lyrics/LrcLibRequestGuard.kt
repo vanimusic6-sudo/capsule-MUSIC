@@ -43,7 +43,7 @@ internal class LrcLibRequestGuard(
             failure.failureChain().filterIsInstance<CancellationException>().firstOrNull()?.let { throw it }
             currentCoroutineContext().ensureActive()
             val networkFailure = failure.networkFailureKind()
-            val overloaded = failure.httpFailureStatus() == 503
+            val overloaded = failure.httpFailureStatus() in setOf(429, 503)
             if (!overloaded && networkFailure == null) throw failure
 
             val failedAt = nowMs()
@@ -52,7 +52,7 @@ internal class LrcLibRequestGuard(
                 providerBlockedUntil = failedAt + PROVIDER_COOLDOWN_MS
             }
             // A suppressed repeat returns above and cannot log another stack trace.
-            onTransientFailure(if (overloaded) "HTTP 503; LRCLIB cooling down" else "${networkFailure?.name}; LRCLIB cooling down")
+            onTransientFailure(if (overloaded) "HTTP 429/503; LRCLIB cooling down" else "${networkFailure?.name}; LRCLIB cooling down")
             return@withLock null
         }
         if (result == null) block(key, nowMs() + UNAVAILABLE_TTL_MS)

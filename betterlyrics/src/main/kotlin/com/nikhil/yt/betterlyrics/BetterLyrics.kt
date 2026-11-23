@@ -77,7 +77,7 @@ object BetterLyrics {
             listOf(cleanArtist.lowercase(), cleanTitle.lowercase(), cleanAlbum.lowercase(), durationSeconds)
                 .joinToString("\u0000")
         session.cachedLyrics[queryKey]?.let { return it }
-        if (session.apiKeyRequired) return null
+        if (session.isBlocked(queryKey)) return null
 
         logger?.invoke(
             buildString {
@@ -117,13 +117,17 @@ object BetterLyrics {
                     response.status.value == 401 &&
                     responseText.contains("API key required", ignoreCase = true)
                 ) {
-                    session.apiKeyRequired = true
-                    logger?.invoke("BetterLyrics requires an API key; network queries disabled for this session")
+                    session.rememberAuthMiss(queryKey)
+                    logger?.invoke("BetterLyrics TTML cache miss requires an API key for this track")
+                }
+                if (response.status.value == 429) {
+                    session.rememberRateLimit(response.headers["Retry-After"])
                 }
                 logger?.invoke("Request failed with status: ${response.status}")
                 return null
             }
 
+            if (responseText.length > 512_000) return null
             val ttmlResponse = try {
                 jsonFormat.decodeFromString<TTMLResponse>(responseText)
             } catch (e: Exception) {
@@ -200,9 +204,38 @@ object BetterLyrics {
 /** An expected miss, including songs the API will only serve with a key. */
 class LyricsUnavailableException : IllegalStateException("Lyrics unavailable")
 
-internal class BetterLyricsSession {
+internal class BetterLyricsSession(
+    private val nowMs: () -> Long = { System.nanoTime() / 1_000_000L },
+) {
     val requestMutex = Mutex()
-    var apiKeyRequired = false
+    private val authMissing = LinkedHashMap<String, Long>(64, 0.75f, true)
+    private var rateLimitedUntilMs = 0L
+
+    // A 401 means THIS song is not cached. It must not blacklist cached lyrics
+    // from other tracks or permanently silence the entire provider.
+    fun isBlocked(key: String): Boolean {
+        val now = nowMs()
+        if (now < rateLimitedUntilMs) return true
+        val until = authMissing[key] ?: return false
+        if (now < until) return true
+        authMissing.remove(key)
+        return false
+    }
+
+    fun rememberAuthMiss(key: String) {
+        authMissing[key] = nowMs() + AUTH_MISS_TTL_MS
+        while (authMissing.size > 128) authMissing.remove(authMissing.keys.first())
+    }
+
+    fun rememberRateLimit(retryAfter: String?) {
+        val seconds = retryAfter?.trim()?.toLongOrNull()?.coerceIn(1L, 120L) ?: 60L
+        rateLimitedUntilMs = maxOf(rateLimitedUntilMs, nowMs() + seconds * 1_000L)
+    }
+
+    companion object {
+        const val AUTH_MISS_TTL_MS = 10 * 60 * 1_000L
+    }
+
     val cachedLyrics = object : LinkedHashMap<String, String>(32, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean = size > 32
     }

@@ -86,6 +86,24 @@ class LrcLibRequestGuardTest {
         } finally { client.close() }
     }
 
+    @Test fun http429OpensProviderCooldownAndProtectsOtherQueries() = runTest {
+        val guard = LrcLibRequestGuard({ testScheduler.currentTime })
+        var requests = 0
+        val client = HttpClient(MockEngine {
+            requests++
+            respond("Rate limited", HttpStatusCode.TooManyRequests)
+        }) { expectSuccess = true }
+        try {
+            assertNull(guard.request<String>("one", "artist", 180) {
+                client.get("https://lrclib.test/api/search").bodyAsText()
+            })
+            assertNull(guard.request<String>("two", "artist", 180) {
+                client.get("https://lrclib.test/api/search").bodyAsText()
+            })
+            assertEquals(1, requests)
+        } finally { client.close() }
+    }
+
     @Test fun concurrentQueriesCannotStormAnOverloadedProvider() = runTest {
         var requests = 0
         val logs = mutableListOf<String>()
