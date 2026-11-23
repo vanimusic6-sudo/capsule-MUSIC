@@ -104,10 +104,13 @@ private fun capsuleImmersiveRejectSmallMarks(field: CapsuleColorField): CapsuleC
             maxOf(it.red, it.green, it.blue) - minOf(it.red, it.green, it.blue) < 0.15f
     }.toFloat() / field.cells.size
     if (whiteArea >= 0.20f || median >= 0.65f) return field
-    val markThreshold = maxOf(0.55f, median + 0.20f)
+    // Preserve the proven pale-label detector from the previous renderer.
+    // Boundary pixels of white text on dark art are often < 0.55f after
+    // sampling, and should not bloom into ambient highlights.
+    val markThreshold = maxOf(0.35f, median + 0.04f)
     val marks = field.cells.map { c ->
         val high = maxOf(c.red, c.green, c.blue)
-        high > markThreshold && high - minOf(c.red, c.green, c.blue) < 0.20f
+        high > markThreshold && high - minOf(c.red, c.green, c.blue) < 0.22f
     }
     val material = field.cells.filterIndexed { index, _ -> !marks[index] }
     if (material.isEmpty()) return field
