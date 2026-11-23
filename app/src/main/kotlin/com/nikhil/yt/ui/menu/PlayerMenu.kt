@@ -115,6 +115,7 @@ import com.nikhil.yt.R
 import com.nikhil.yt.constants.ArtistSeparatorsKey
 import com.nikhil.yt.constants.EqualizerBandLevelsMbKey
 import com.nikhil.yt.constants.EqualizerCurveIntensityPercentKey
+import com.nikhil.yt.constants.EqualizerMusicalBalanceKey
 import com.nikhil.yt.constants.EqualizerBassBoostEnabledKey
 import com.nikhil.yt.constants.EqualizerBassBoostStrengthKey
 import com.nikhil.yt.constants.EqualizerCustomProfilesJsonKey
@@ -138,6 +139,7 @@ import com.nikhil.yt.playback.CapsuleEqEngineMode
 import com.nikhil.yt.playback.protectedEqAudioFactor
 import com.nikhil.yt.playback.capsuleSafeEqInputGainMb
 import com.nikhil.yt.playback.capsuleUnifiedEqLevels
+import com.nikhil.yt.playback.capsuleEqCurveSpreadMb
 import com.nikhil.yt.playback.CAPSULE_MAX_BASS_STRENGTH
 import com.nikhil.yt.playback.CAPSULE_MAX_VIRTUALIZER_STRENGTH
 import com.nikhil.yt.playback.CAPSULE_MAX_OUTPUT_GAIN_MB
@@ -757,6 +759,10 @@ fun EqualizerDialog(
     val (bandLevelsRaw, setBandLevelsRaw) = rememberPreference(EqualizerBandLevelsMbKey, defaultValue = "")
     val (curveIntensity, setCurveIntensity) =
         rememberPreference(EqualizerCurveIntensityPercentKey, defaultValue = 100)
+    // Live playback defaults to this protective shape, including migrated EQ
+    // profiles. Users can inspect both curves before choosing precision mode.
+    val (musicalBalance, setMusicalBalance) =
+        rememberPreference(EqualizerMusicalBalanceKey, defaultValue = true)
     var intensityLocal by rememberSaveable { mutableIntStateOf(curveIntensity.coerceIn(100, 200)) }
     LaunchedEffect(curveIntensity) { intensityLocal = curveIntensity.coerceIn(100, 200) }
 
@@ -1182,12 +1188,27 @@ fun EqualizerDialog(
                         ).mapIndexed { index, level ->
                             level.coerceIn(minMb, bandMaxLevelsMb.getOrElse(index) { graphMaxMb })
                         }
+                        val visualEqSettings = EqSettings(
+                            enabled = eqEnabled,
+                            bandLevelsMb = bandLevelsMb,
+                            outputGainEnabled = outputGainEnabled,
+                            outputGainMb = outputGainLocal,
+                            bassBoostEnabled = bassBoostEnabled,
+                            bassBoostStrength = bassBoostStrengthLocal,
+                            virtualizerEnabled = virtualizerEnabled,
+                            virtualizerStrength = virtualizerStrengthLocal,
+                            intensityPercent = intensityLocal,
+                            musicalBalanceEnabled = musicalBalance,
+                        )
+                        val actualBandsMb = capsuleUnifiedEqLevels(visualEqSettings, caps)
                         CapsuleEqualizerGraph(
                             frequenciesHz = caps.centerFreqHz,
                             levelsMb = displayedLevels,
                             minMb = minMb,
                             maxMb = graphMaxMb,
                             bandMaxLevelsMb = bandMaxLevelsMb,
+                            appliedLevelsMb = if (eqEnabled && musicalBalance) actualBandsMb
+                                else emptyList(),
                             selectedBand = selectedBand.coerceIn(0, bandCount - 1),
                             onBandSelected = { selectedBand = it },
                             onLevelChanged = { band, level ->
@@ -1218,6 +1239,94 @@ fun EqualizerDialog(
                             graphHeight = graphHeight,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                         )
+                        // An honest two-layer frequency view: filled accent
+                        // is the requested curve, dashed light is the DSP output.
+                        if (eqEnabled && musicalBalance) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth()
+                                    .padding(start = 18.dp, end = 18.dp, top = 6.dp, bottom = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Box(
+                                    Modifier.size(8.dp).background(
+                                        MaterialTheme.colorScheme.primary, CircleShape,
+                                    )
+                                )
+                                Text(
+                                    stringResource(R.string.eq_curve_requested),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Box(
+                                    Modifier.size(8.dp).background(
+                                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.86f),
+                                        CircleShape,
+                                    )
+                                )
+                                Text(
+                                    stringResource(R.string.eq_curve_applied),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        Surface(
+                            modifier = Modifier.fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 5.dp),
+                            shape = RoundedCornerShape(22.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.76f),
+                            border = BorderStroke(
+                                1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.09f),
+                            ),
+                        ) {
+                            Column(Modifier.padding(horizontal = 16.dp, vertical = 13.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            stringResource(R.string.eq_musical_balance),
+                                            style = MaterialTheme.typography.titleSmall,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                        )
+                                        Text(
+                                            stringResource(R.string.eq_musical_balance_description),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    Spacer(Modifier.width(12.dp))
+                                    Switch(
+                                        checked = musicalBalance,
+                                        enabled = eqEnabled,
+                                        onCheckedChange = setMusicalBalance,
+                                    )
+                                }
+                                if (eqEnabled) {
+                                    val originalContrast = capsuleEqCurveSpreadMb(displayedLevels)
+                                    val appliedContrast = capsuleEqCurveSpreadMb(actualBandsMb)
+                                    Spacer(Modifier.height(7.dp))
+                                    Text(
+                                        stringResource(
+                                            R.string.eq_musical_balance_contrast,
+                                            formatDb(originalContrast / 100f),
+                                            formatDb(appliedContrast / 100f),
+                                        ),
+                                        color = if (originalContrast > 1100)
+                                            MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                    if (!musicalBalance && originalContrast > 1100) {
+                                        Text(
+                                            stringResource(R.string.eq_musical_balance_warning),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.padding(top = 5.dp),
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         Spacer(Modifier.height(12.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -1245,17 +1354,7 @@ fun EqualizerDialog(
                         // Show the *actual* planned input headroom. An audible
                         // reduction in overall level is deliberate; the tonal
                         // differences remain intact without saturating the DSP.
-                        val headroomPreviewSettings = EqSettings(
-                            enabled = eqEnabled,
-                            bandLevelsMb = bandLevelsMb,
-                            outputGainEnabled = outputGainEnabled,
-                            outputGainMb = outputGainLocal,
-                            bassBoostEnabled = bassBoostEnabled,
-                            bassBoostStrength = bassBoostStrengthLocal,
-                            virtualizerEnabled = virtualizerEnabled,
-                            virtualizerStrength = virtualizerStrengthLocal,
-                            intensityPercent = intensityLocal,
-                        )
+                        val headroomPreviewSettings = visualEqSettings
                         val previewEffectiveLevels = capsuleUnifiedEqLevels(
                             headroomPreviewSettings, caps,
                         )
