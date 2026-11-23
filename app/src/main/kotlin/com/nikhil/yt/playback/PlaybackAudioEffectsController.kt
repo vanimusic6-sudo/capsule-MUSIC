@@ -97,6 +97,28 @@ internal class PlaybackAudioEffectsController(
             return
         }
 
+        // "Original" must actually bypass the DSP. Keeping the DPE limiter
+        // attached at -2 dB even with flat EQ changes the untreated signal.
+        // MusicService performs a short attenuation ramp before this transition.
+        if (!settings.enabled) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                runCatching { unifiedDynamics?.release() }
+                    .onFailure { onRecoverableError("bypass unified EQ", it) }
+            }
+            unifiedDynamics = null
+            attemptedUnifiedDynamics = false
+            if (appliedEnabled == true) {
+                runCatching { eq.enabled = false }
+                    .onSuccess {
+                        appliedEnabled = false
+                        appliedBandLevels = intArrayOf()
+                    }
+                    .onFailure { onRecoverableError("bypass native EQ", it) }
+            }
+            engineMode.value = CapsuleEqEngineMode.OFF
+            return
+        }
+
         if (settings.enabled && unifiedDynamics == null && !attemptedUnifiedDynamics &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && appliedEnabled != true
         ) {
