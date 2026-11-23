@@ -178,7 +178,8 @@ internal fun rememberImmersiveEdgeColor(
                 ImmersiveArtworkTone(
                     // Base/loading colours only; the page itself uses visibleField.
                     edge = visibleMean,
-                    accent = Color(visibleMean.red * 0.35f, visibleMean.green * 0.35f, visibleMean.blue * 0.35f),
+                    // Use the true lower image background instead of brightly colored foreground pixels.
+                    accent = capsuleCleanImmersiveFloor(visibleField),
                     bottomTexture = 0f,
                     edgeBands = emptyList(),
                     colorField = visibleField,

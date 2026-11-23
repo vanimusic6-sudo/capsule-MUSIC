@@ -46,7 +46,7 @@ internal fun capsuleMusicalEqLevels(
     }
     val lows = IntArray(count) { index ->
         val hz = centerFreqHz.getOrNull(index)?.takeIf { it > 0 } ?: 910
-        if (hz in 700..4_500) -650 else -750
+        if (hz in 700..4_500) -520 else -650
     }
     fun bound(index: Int, gainMb: Int): Int =
         gainMb.coerceIn(lows[index], highs[index])
@@ -54,8 +54,9 @@ internal fun capsuleMusicalEqLevels(
     fun softKnee(gainMb: Int): Int {
         val magnitude = abs(gainMb.toLong()).coerceAtMost(10_000L).toInt()
         if (magnitude <= MUSICAL_SOFT_KNEE_MB) return gainMb
+        val slope = if (gainMb < 0) 0.68f else 0.86f
         val softened = MUSICAL_SOFT_KNEE_MB +
-            ((magnitude - MUSICAL_SOFT_KNEE_MB) * 0.76f).roundToInt()
+            ((magnitude - MUSICAL_SOFT_KNEE_MB) * slope).roundToInt()
         return if (gainMb < 0) -softened else softened
     }
     val safe = IntArray(count) { index ->
@@ -68,12 +69,11 @@ internal fun capsuleMusicalEqLevels(
     if (count == 1) return safe.toList()
 
     // One low-cost nearest-neighbour pass avoids abrupt, over-resonant notches.
-    // Hold each band at 76% of its own request, distributing the remainder to
-    // adjacent regions, preserving the difference between their controls.
+    // Preserve the user's tonal character while softly feathering narrow bends.
     val smoothed = IntArray(count) { index ->
         val left = safe[(index - 1).coerceAtLeast(0)]
         val right = safe[(index + 1).coerceAtMost(count - 1)]
-        bound(index, (safe[index] * 0.76f + (left + right) * 0.12f).roundToInt())
+        bound(index, (safe[index] * 0.84f + (left + right) * 0.08f).roundToInt())
     }
     // A full-spectrum contrast limit prevents exaggerated V/notch profiles
     // even when two peaks are NOT next to each other.

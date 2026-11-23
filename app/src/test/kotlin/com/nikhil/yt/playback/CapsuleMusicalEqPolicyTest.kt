@@ -32,6 +32,13 @@ class CapsuleMusicalEqPolicyTest {
         assertTrue(actual[0] <= 350)   // limited excursion at sub-bass
     }
 
+    @Test fun midrangeVacuumIsReducedWithoutFlatteningTheProfile() {
+        val levels = capsuleMusicalEqLevels(listOf(300, 600, -1400, 500, 400), hz)
+        assertTrue("Deep 910 Hz notches must soften", levels[2] >= -520)
+        assertTrue("Distinct tonal flavor must remain", levels[1] > levels[4])
+        assertTrue(capsuleEqCurveSpreadMb(levels) <= CAPSULE_MUSICAL_MAX_SPREAD_MB)
+    }
+
     @Test fun neutralCurveIsStrictlyTransparent() {
         assertEquals(listOf(0, 0, 0, 0, 0),
             capsuleMusicalEqLevels(listOf(0, 0, 0, 0, 0), hz))
@@ -77,11 +84,14 @@ class CapsuleMusicalEqPolicyTest {
             java.io.File("src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"),
             java.io.File("app/src/main/kotlin/com/nikhil/yt/playback/MusicService.kt"),
         ).first(java.io.File::isFile).readText()
-        assertTrue(service.contains("musicalBalanceEnabled = prefs[EqualizerMusicalBalanceKey] ?: true"))
+        assertTrue(service.contains("musicalBalanceEnabled = true"))
+        assertFalse(service.contains("musicalBalanceEnabled = prefs[EqualizerMusicalBalanceKey]"))
         val menu = sequenceOf(
             java.io.File("src/main/kotlin/com/nikhil/yt/ui/menu/PlayerMenu.kt"),
             java.io.File("app/src/main/kotlin/com/nikhil/yt/ui/menu/PlayerMenu.kt"),
         ).first(java.io.File::isFile).readText()
+        assertTrue(menu.contains("val musicalBalance = true"))
+        assertFalse(menu.contains("setMusicalBalance"))
         assertTrue(menu.contains("musicalBalanceEnabled = musicalBalance"))
         assertTrue(menu.contains("appliedLevelsMb = if (eqEnabled && musicalBalance)"))
     }
