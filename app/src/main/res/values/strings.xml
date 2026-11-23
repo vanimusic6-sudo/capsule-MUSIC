@@ -1057,4 +1057,8 @@ Capsule will only extract your token, and everything else is stored locally.</st
     <string name="hearing_care_override_active">Temporary exception is active. Tap to restore protection early.</string>
     <string name="eq_clean_headroom">Clean audio · automatic pre-EQ trim: %1$s</string>
     <string name="eq_clean_headroom_description">Frequency shaping stays strong. This reduces digital clipping, but cannot measure or guarantee speaker safety.</string>
+    <string name="eq_engine_unified">DSP active: Android DynamicsProcessing · clean pre-EQ trim + limiter</string>
+    <string name="eq_engine_native">DSP: device EQ fallback · source headroom active</string>
+    <string name="eq_engine_unavailable">EQ is unavailable for this audio session. No unnecessary volume reduction applied.</string>
+    <string name="eq_engine_waiting">DSP: waiting for an active audio session</string>
 </resources>
