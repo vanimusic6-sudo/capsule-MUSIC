@@ -59,6 +59,21 @@ class CapsuleUnifiedDynamicsProcessorTest {
             capsuleUnifiedEqLevels(settings(enabled = false, bass = 250), caps))
     }
 
+    @Test fun musicalGuardRunsAfterBassBoostSoEffectsDoNotFightEachOther() {
+        val exaggerated = settings(
+            levels = listOf(400, -1000, 900, 900, 900),
+            bass = 250,
+        ).copy(musicalBalanceEnabled = true)
+        val effective = capsuleUnifiedEqLevels(exaggerated, caps)
+        assertEquals(5, effective.size)
+        assertTrue(capsuleEqCurveSpreadMb(effective) <= CAPSULE_MUSICAL_MAX_SPREAD_MB)
+        assertTrue(effective.zipWithNext().all { (a, b) ->
+            kotlin.math.abs(a - b) <= CAPSULE_MUSICAL_MAX_NEIGHBOR_MB
+        })
+        assertTrue(effective.first() <= 350)
+        assertTrue(effective[4] <= 450)
+    }
+
     @Test fun bassCompressorIsOnlyForExplicitBassBoost() {
         assertTrue(capsuleNeedsBassDynamics(settings(bass = 250), caps))
         // A strong EQ curve on its own must not unexpectedly trigger MBC.
