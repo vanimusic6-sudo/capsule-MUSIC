@@ -23,7 +23,7 @@ class CapsuleEqHeadroomPolicyTest {
         val trim = capsuleSafeEqInputGainMb(eq,levels)
         val positive = levels.max().coerceAtLeast(0)
         assertTrue(positive <= CAPSULE_MAX_EQ_BOOST_MB)
-        assertTrue(trim+positive <= -CAPSULE_EQ_HEADROOM_MARGIN_MB)
+        assertTrue(trim+positive <= -capsuleAdaptiveEqHeadroomMarginMb(levels))
         assertTrue(10.0.pow((trim+positive)/2000.0) < 1.0)
     }
 
@@ -34,7 +34,7 @@ class CapsuleEqHeadroomPolicyTest {
         assertTrue(levels.drop(2).all { it <= 50 })
         assertFalse(capsuleNeedsBassDynamics(bass,caps))
         val trim = capsuleSafeEqInputGainMb(bass,levels)
-        assertTrue(trim + levels.max() <= -CAPSULE_EQ_HEADROOM_MARGIN_MB)
+        assertTrue(trim + levels.max() <= -capsuleAdaptiveEqHeadroomMarginMb(levels))
     }
 
     @Test fun positiveOutputGainIsNeverRecoveredFromTheLimiterReserve() {
@@ -42,7 +42,20 @@ class CapsuleEqHeadroomPolicyTest {
         val levels = capsuleUnifiedEqLevels(eq,caps)
         val requested = capsuleSafeEqInputGainMb(eq,levels)
         assertEquals(capsuleSafeEqInputGainMb(eq.copy(outputGainEnabled=false),levels),requested)
-        assertTrue(requested+levels.max() <= -CAPSULE_EQ_HEADROOM_MARGIN_MB)
+        assertTrue(requested+levels.max() <= -capsuleAdaptiveEqHeadroomMarginMb(levels))
+    }
+
+    @Test fun gentleToneNeedsLessExtraHeadroomThanSharpBoost() {
+        val gentle=listOf(0,60,80,20,0)
+        val extreme=listOf(100,350,-350,280,200)
+        val small=capsuleAdaptiveEqHeadroomMarginMb(gentle)
+        val big=capsuleAdaptiveEqHeadroomMarginMb(extreme)
+        assertTrue(small in 35 until CAPSULE_EQ_HEADROOM_MARGIN_MB)
+        assertTrue(big>small)
+        assertTrue(big<=CAPSULE_EQ_HEADROOM_MARGIN_MB)
+        assertEquals(0,capsuleAdaptiveEqHeadroomMarginMb(List(5){0}))
+        assertTrue(capsuleSafeEqInputGainMb(settings(gentle),gentle) >
+            capsuleSafeEqInputGainMb(settings(extreme),extreme))
     }
 
     @Test fun reductionOnlyWorksWithoutLoudnessOrFlatCurveSurprises() {

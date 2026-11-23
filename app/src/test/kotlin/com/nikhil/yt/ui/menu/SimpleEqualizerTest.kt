@@ -18,7 +18,10 @@ class SimpleEqualizerTest {
         assertTrue(dialog.contains("version:slowed"))
         assertTrue(dialog.contains("setEqEnabled(false)"))
         assertTrue(dialog.contains("setEqEnabled(true)"))
-        assertFalse(dialog.contains("CapsuleEqualizerGraph("))
+        assertTrue(dialog.contains("CapsuleEqualizerGraph("))
+        assertTrue(dialog.contains("CapsuleEqPresets.CUSTOM_ID"))
+        assertTrue(dialog.contains("manualLevels"))
+        assertTrue(dialog.contains("capsuleMusicalEqLevels("))
         assertFalse(dialog.contains("setBassBoostEnabled("))
         assertFalse(dialog.contains("setOutputGainMb("))
         assertFalse(dialog.contains("showSaveProfileDialog"))
@@ -26,12 +29,12 @@ class SimpleEqualizerTest {
 
     @Test fun versionPickerNeverReEnablesLegacyUnsafeEqProfile() {
         val src=File("src/main/kotlin/com/nikhil/yt/playback/MusicService.kt").readText()
-        assertTrue(src.contains("&& preset != null"))
+        assertTrue(src.contains("(preset != null || isCustom)"))
         assertTrue(src.contains("version:speed_up"))
         assertTrue(src.contains("version:slowed"))
-        assertTrue(src.contains("versionId = preset?.id"))
-        assertFalse(src.substringAfter("private fun readEqSettingsFromPrefs")
-            .substringBefore("fun applyEqFlatPreset").contains("decodeBandLevelsMb("))
+        assertTrue(src.contains("CapsuleEqPresets.CUSTOM_ID else preset?.id"))
+        assertTrue(src.substringAfter("private fun readEqSettingsFromPrefs")
+            .substringBefore("fun applyEqFlatPreset").contains("decodeEqBandLevels("))
     }
 
     @Test fun mathHelpersStillAvailableForFutureTests() {

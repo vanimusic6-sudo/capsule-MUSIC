@@ -34,6 +34,25 @@ class CapsuleMusicalEqPolicyTest {
         })
     }
 
+    @Test fun calmManualCurveIsNotNeedlesslyAttenuatedOrFlattened() {
+        val authored=listOf(80,120,10,-20,-35)
+        assertEquals(authored,capsuleMusicalEqLevels(authored,hz))
+        val positive=listOf(30,70,90,40,-10)
+        assertEquals(positive,capsuleMusicalEqLevels(positive,hz))
+    }
+
+    @Test fun deepIsolated910HzNotchIsSoftenedLocally() {
+        val harsh=listOf(180,300,-1300,280,200)
+        val output=capsuleMusicalEqLevels(harsh,hz)
+        assertTrue("Midrange should not collapse after adjusting bass",
+            output[2]>-150)
+        assertTrue("Bass character remains strong",
+            output[1]>output[4])
+        assertTrue("Should not simply reset the whole EQ",
+            output.any{it>80})
+        assertEquals(harsh, listOf(180,300,-1300,280,200))
+    }
+
     @Test fun distinctMusicalCharacterSurvivesWithoutExcessGain() {
         val shaped = capsuleMusicalEqLevels(listOf(180,250,140,-80,-120),hz)
         assertTrue(shaped[1] > 80)
@@ -71,8 +90,7 @@ class CapsuleMusicalEqPolicyTest {
         val menu = File("src/main/kotlin/com/nikhil/yt/ui/menu/PlayerMenu.kt").readText()
         assertTrue(menu.contains("CapsuleEqPresets.all.chunked(2)"))
         assertFalse(menu.contains("setMusicalBalance"))
-        assertFalse(menu.substringAfter("fun EqualizerDialog(")
-            .substringBefore("@Composable\\nprivate fun CapsuleStudioSlider(")
-            .contains("CapsuleEqualizerGraph("))
+        assertTrue(menu.contains("CapsuleEqualizerGraph("))
+        assertTrue(menu.contains("capsuleMusicalEqLevels("))
     }
 }
