@@ -143,6 +143,7 @@ import com.nikhil.yt.playback.CAPSULE_MAX_OUTPUT_GAIN_MB
 import com.nikhil.yt.playback.CAPSULE_MAX_EQ_BOOST_MB
 import com.nikhil.yt.playback.CAPSULE_MAX_LOW_BASS_BOOST_MB
 import com.nikhil.yt.playback.CapsuleEqPresets
+import com.nikhil.yt.playback.capsuleMusicalEqLevels
 import com.nikhil.yt.playback.scaleEqBandLevels
 import com.nikhil.yt.playback.inverseScaledEqLevel
 import com.nikhil.yt.playback.EqProfile
@@ -747,11 +748,22 @@ fun EqualizerDialog(
     val (eqEnabled, setEqEnabled) = rememberPreference(EqualizerEnabledKey, defaultValue = false)
     val (selectedId, setSelectedId) =
         rememberPreference(EqualizerSelectedProfileIdKey, defaultValue = "flat")
-    val (_, setBandLevelsRaw) = rememberPreference(EqualizerBandLevelsMbKey, defaultValue = "")
+    val (storedLevels, setBandLevelsRaw) =
+        rememberPreference(EqualizerBandLevelsMbKey, defaultValue = "")
+    var manualLevels by rememberSaveable { mutableStateOf(List(6) { 0 }) }
+    var selectedBand by rememberSaveable { mutableIntStateOf(0) }
+    val customSelected = selectedId == "capsule:${CapsuleEqPresets.CUSTOM_ID}" && eqEnabled
+    LaunchedEffect(storedLevels, selectedId) {
+        if (selectedId == "capsule:${CapsuleEqPresets.CUSTOM_ID}") {
+            val decoded = decodeBandLevelsMb(storedLevels)
+            manualLevels = if (decoded.size == CapsuleEqPresets.referenceHz.size)
+                decoded.map { it.coerceIn(-350, 350) } else List(6) { 0 }
+        }
+    }
 
     val selectedTone = selectedId.removePrefix("capsule:")
         .let(CapsuleEqPresets::byId)?.takeIf { eqEnabled }
-    val original = selectedTone == null &&
+    val original = selectedTone == null && !customSelected &&
         selectedId != "version:speed_up" && selectedId != "version:slowed"
 
     fun selectVersion(id: String) {
@@ -760,6 +772,14 @@ fun EqualizerDialog(
                 // Tempo modes are independent of EQ and never enable DSP.
                 setEqEnabled(false)
                 setSelectedId(id)
+            }
+            CapsuleEqPresets.CUSTOM_ID -> {
+                // Do not revive a stored legacy graphic EQ curve when first
+                // switching to custom: initialize a neutral six-point field.
+                manualLevels = List(6) { 0 }
+                setBandLevelsRaw(encodeBandLevelsMb(manualLevels))
+                setSelectedId("capsule:${CapsuleEqPresets.CUSTOM_ID}")
+                setEqEnabled(true)
             }
             else -> {
                 val preset = CapsuleEqPresets.byId(id) ?: return
@@ -882,7 +902,57 @@ fun EqualizerDialog(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    if (selectedTone != null && engineMode == CapsuleEqEngineMode.UNAVAILABLE) {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                    )
+                    FilterChip(
+                        selected = customSelected,
+                        onClick = { selectVersion(CapsuleEqPresets.CUSTOM_ID) },
+                        label = {
+                            Text(stringResource(R.string.eq_adaptive_custom_title),
+                                modifier = Modifier.fillMaxWidth(),
+                                textAlign = TextAlign.Center)
+                        },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    )
+                    if (customSelected) {
+                        Text(
+                            stringResource(R.string.eq_adaptive_custom_explanation),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        CapsuleEqualizerGraph(
+                            frequenciesHz = CapsuleEqPresets.referenceHz,
+                            levelsMb = manualLevels,
+                            minMb = -350,
+                            maxMb = 350,
+                            bandMaxLevelsMb = listOf(220, 350, 350, 320, 300, 260),
+                            appliedLevelsMb = capsuleMusicalEqLevels(
+                                manualLevels, CapsuleEqPresets.referenceHz,
+                            ),
+                            selectedBand = selectedBand.coerceIn(0,5),
+                            onBandSelected = { selectedBand = it },
+                            onLevelChanged = { index, level ->
+                                if (index in manualLevels.indices) {
+                                    manualLevels = manualLevels.toMutableList().apply {
+                                        this[index] = level.coerceIn(-350,350)
+                                    }
+                                }
+                            },
+                            onFinished = { _, _ ->
+                                setBandLevelsRaw(encodeBandLevelsMb(manualLevels))
+                            },
+                            graphHeight = 214.dp,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text(
+                            stringResource(R.string.eq_adaptive_custom_footer),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if ((selectedTone != null || customSelected) &&
+                        engineMode == CapsuleEqEngineMode.UNAVAILABLE) {
                         Text(
                             stringResource(R.string.eq_engine_unavailable),
                             color = MaterialTheme.colorScheme.error,

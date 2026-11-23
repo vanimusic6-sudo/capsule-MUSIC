@@ -1075,4 +1075,7 @@ Capsule will only extract your token, and everything else is stored locally.</st
     <string name="eq_tonal_versions">Sound character</string>
     <string name="eq_tonal_versions_description">Gentle, fixed sound profiles. These do not measure acoustic loudness and cannot guarantee hearing or speaker safety. Start at low volume.</string>
     <string name="eq_open_system_panel">Open device sound effects</string>
+    <string name="eq_adaptive_custom_title">My sound · adaptive EQ</string>
+    <string name="eq_adaptive_custom_explanation">Shape the tone across six musical regions. Gentle settings are preserved; steep isolated dips or peaks are smoothed only when needed.</string>
+    <string name="eq_adaptive_custom_footer">Points are virtual tone bands mapped to your Android audio hardware. The dashed line previews contour protection. Digital headroom adapts to the resulting boost; this is not an acoustic safety guarantee.</string>
 </resources>

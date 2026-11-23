@@ -996,4 +996,7 @@
     <string name="eq_tonal_versions">Характер звучания</string>
     <string name="eq_tonal_versions_description">Мягкие фиксированные профили. Они не измеряют громкость в дБА и не гарантируют защиту слуха или динамиков. Начинай с небольшой громкости.</string>
     <string name="eq_open_system_panel">Открыть системные звуковые эффекты</string>
+    <string name="eq_adaptive_custom_title">Мой звук · умный EQ</string>
+    <string name="eq_adaptive_custom_explanation">Меняй характер музыки в шести музыкальных областях. Мягкую кривую сохраняем, а слишком резкие одиночные провалы и пики сглаживаем.</string>
+    <string name="eq_adaptive_custom_footer">Это виртуальные полосы, которые сопоставляются с частотами Android. Пунктир показывает защитную коррекцию. Запас громкости зависит от усиления, но не гарантирует акустическую безопасность.</string>
 </resources>
