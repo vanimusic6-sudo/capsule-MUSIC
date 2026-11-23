@@ -1075,4 +1075,10 @@ Capsule will only extract your token, and everything else is stored locally.</st
     <string name="eq_tonal_versions">Sound character</string>
     <string name="eq_tonal_versions_description">Gentle, fixed sound profiles. These do not measure acoustic loudness and cannot guarantee hearing or speaker safety. Start at low volume.</string>
     <string name="eq_open_system_panel">Open device sound effects</string>
+    <string name="eq_adaptive_title">Adaptive EQ</string>
+    <string name="eq_adaptive_description">Shape the music with real Android bands. A dotted curve shows the sound actually applied: gentle curves stay intact, while sharp peaks and dips are automatically softened. This does not measure sound pressure or guarantee hearing safety.</string>
+    <string name="eq_adaptive_corrected">Adaptive contour is smoothing excessive changes</string>
+    <string name="eq_adaptive_original">Requested contour stays unchanged</string>
+    <string name="eq_adaptive_activate">Use my curve</string>
+    <string name="eq_adaptive_needs_playback">Start playback to detect the real frequency bands supported by this device.</string>
 </resources>

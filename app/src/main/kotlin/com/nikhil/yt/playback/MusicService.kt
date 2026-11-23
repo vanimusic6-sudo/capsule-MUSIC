@@ -3995,6 +3995,35 @@ class MusicService :
         )
     }
 
+    /**
+     * Persist selected profile, EQ state and raw curve in ONE transaction.
+     * Avoid transiently applying the last track's aggressive EQ when a preset
+     * is changed. Legacy stored "manual" profiles remain dormant until the
+     * user explicitly opts into adaptive:manual.
+     */
+    fun selectSoundVersion(id: String, requestedLevelsMb: List<Int> = emptyList()) {
+        val preset = id.removePrefix("capsule:").let(CapsuleEqPresets::byId)
+        val manual = id == "adaptive:manual" &&
+            requestedLevelsMb.isNotEmpty() && requestedLevelsMb.size <= 32
+        val neutral = id == "flat" || id == "version:speed_up" || id == "version:slowed"
+        if (preset == null && !manual && !neutral) return
+        ioScope.launch {
+            dataStore.edit { prefs ->
+                prefs[EqualizerSelectedProfileIdKey] = id
+                prefs[EqualizerEnabledKey] = (preset != null || manual)
+                if (manual) {
+                    prefs[EqualizerBandLevelsMbKey] = encodeBandLevelsMb(
+                        requestedLevelsMb.map { it.coerceIn(-1500,1500) },
+                    )
+                }
+                // Neither a preset nor the manual graph can enable old
+                // independent boost, virtualizer or makeup-gain preferences.
+                prefs[EqualizerBassBoostEnabledKey] = false
+                prefs[EqualizerOutputGainEnabledKey] = false
+            }
+        }
+    }
+
     fun applyEqFlatPreset() {
         ioScope.launch {
             // Preserve an editable five-band flat profile even before the

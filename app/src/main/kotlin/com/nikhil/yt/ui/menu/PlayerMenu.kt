@@ -739,37 +739,53 @@ fun EqualizerDialog(
     onDismiss: () -> Unit,
     openSystemEqualizer: () -> Unit,
 ) {
-    // A curated version selector, NOT an unrestricted EQ.
-    // Existing custom profiles and legacy 200%-intensity settings are never
-    // applied by the playback service after migration.
     val playerConnection = LocalPlayerConnection.current ?: return
+    val caps by playerConnection.service.eqCapabilities.collectAsState()
     val engineMode by playerConnection.service.eqEngineMode.collectAsState()
-    val (eqEnabled, setEqEnabled) = rememberPreference(EqualizerEnabledKey, defaultValue = false)
-    val (selectedId, setSelectedId) =
-        rememberPreference(EqualizerSelectedProfileIdKey, defaultValue = "flat")
-    val (_, setBandLevelsRaw) = rememberPreference(EqualizerBandLevelsMbKey, defaultValue = "")
-
+    val (eqEnabled, _) = rememberPreference(EqualizerEnabledKey, defaultValue = false)
+    val (selectedId, _) = rememberPreference(
+        EqualizerSelectedProfileIdKey, defaultValue = "flat",
+    )
+    val (storedLevels, _) = rememberPreference(EqualizerBandLevelsMbKey, defaultValue = "")
     val selectedTone = selectedId.removePrefix("capsule:")
         .let(CapsuleEqPresets::byId)?.takeIf { eqEnabled }
-    val original = selectedTone == null &&
+    val manualSelected = eqEnabled && selectedId == "adaptive:manual"
+    val original = !eqEnabled &&
         selectedId != "version:speed_up" && selectedId != "version:slowed"
 
+    // Native Android frequencies can differ by OEM; no fictitious fixed
+    // frequency labels or editable bands are shown before a session is ready.
+    val availableCaps = caps?.takeIf { it.bandCount in 1..32 &&
+        it.centerFreqHz.size >= it.bandCount &&
+        it.minBandLevelMb < 0 && it.maxBandLevelMb > 0
+    }
+    val bandCount = availableCaps?.bandCount ?: 0
+    var edited by remember(storedLevels, bandCount) {
+        mutableStateOf(
+            com.nikhil.yt.playback.resampleEqLevelsByIndex(
+                com.nikhil.yt.playback.decodeEqBandLevels(storedLevels), bandCount,
+            ),
+        )
+    }
+    var selectedBand by rememberSaveable { mutableIntStateOf(0) }
+    val manualSettings = EqSettings(
+        enabled = true, bandLevelsMb = edited,
+        outputGainEnabled = false, outputGainMb = 0,
+        bassBoostEnabled = false, bassBoostStrength = 0,
+        virtualizerEnabled = false, virtualizerStrength = 0,
+        musicalBalanceEnabled = true,
+    )
+    val applied = availableCaps?.let {
+        capsuleUnifiedEqLevels(manualSettings, it)
+    } ?: emptyList()
+    val correctionActive = edited.size == applied.size &&
+        edited.zip(applied).any { (requested, real) -> kotlin.math.abs(requested-real) >= 25 }
+
     fun selectVersion(id: String) {
-        when (id) {
-            "flat", "version:speed_up", "version:slowed" -> {
-                // Tempo modes are independent of EQ and never enable DSP.
-                setEqEnabled(false)
-                setSelectedId(id)
-            }
-            else -> {
-                val preset = CapsuleEqPresets.byId(id) ?: return
-                // Persist only for compatibility with older offline profile
-                // displays. Live audio always uses the signed, built-in curve.
-                setBandLevelsRaw(encodeBandLevelsMb(preset.referenceLevelsMb))
-                setSelectedId("capsule:${preset.id}")
-                setEqEnabled(true)
-            }
-        }
+        playerConnection.service.selectSoundVersion(
+            if (id in setOf("flat","version:speed_up","version:slowed")) id
+            else "capsule:${id}",
+        )
     }
 
     Dialog(onDismissRequest = onDismiss,
@@ -887,6 +903,103 @@ fun EqualizerDialog(
                             stringResource(R.string.eq_engine_unavailable),
                             color = MaterialTheme.colorScheme.error,
                             style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Text(
+                        stringResource(R.string.eq_adaptive_title),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        stringResource(R.string.eq_adaptive_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (availableCaps != null) {
+                        val minMb = maxOf(-700, availableCaps.minBandLevelMb)
+                            .coerceAtMost(-100)
+                        val maxMb = minOf(
+                            CAPSULE_MAX_EQ_BOOST_MB, availableCaps.maxBandLevelMb,
+                        ).coerceAtLeast(100)
+                        val bandCaps = availableCaps.centerFreqHz.mapIndexed { index, freq ->
+                            val ceiling = when {
+                                freq <= 120 -> CAPSULE_MAX_LOW_BASS_BOOST_MB
+                                freq > 8000 -> 320
+                                freq > 4500 -> 380
+                                else -> CAPSULE_MAX_EQ_BOOST_MB
+                            }
+                            minOf(ceiling, maxMb)
+                        }
+                        CapsuleEqualizerGraph(
+                            frequenciesHz = availableCaps.centerFreqHz,
+                            levelsMb = edited,
+                            minMb = minMb,
+                            maxMb = maxMb,
+                            bandMaxLevelsMb = bandCaps,
+                            appliedLevelsMb = applied,
+                            selectedBand = selectedBand.coerceIn(0, bandCount-1),
+                            onBandSelected = { selectedBand = it },
+                            onLevelChanged = { band, level ->
+                                if (band in edited.indices) {
+                                    edited = edited.toMutableList().apply {
+                                        this[band] = level
+                                    }
+                                }
+                            },
+                            onFinished = { band, level ->
+                                if (band in edited.indices) {
+                                    val next = edited.toMutableList().apply {
+                                        this[band] = level
+                                    }
+                                    edited = next
+                                    playerConnection.service.selectSoundVersion(
+                                        "adaptive:manual", next,
+                                    )
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            graphHeight = 214.dp,
+                        )
+                        Text(
+                            stringResource(
+                                if (correctionActive) R.string.eq_adaptive_corrected
+                                else R.string.eq_adaptive_original,
+                            ),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (correctionActive) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            FilterChip(
+                                selected = manualSelected,
+                                onClick = {
+                                    playerConnection.service.selectSoundVersion(
+                                        "adaptive:manual", edited,
+                                    )
+                                },
+                                label = { Text(stringResource(R.string.eq_adaptive_activate)) },
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            TextButton(onClick = {
+                                edited = List(bandCount){0}
+                                playerConnection.service.selectSoundVersion(
+                                    "adaptive:manual", edited,
+                                )
+                            }) {
+                                Text(stringResource(R.string.reset))
+                            }
+                        }
+                    } else {
+                        Text(
+                            stringResource(R.string.eq_adaptive_needs_playback),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (eqEnabled && engineMode == CapsuleEqEngineMode.UNAVAILABLE) {
+                        Text(
+                            stringResource(R.string.eq_engine_unavailable),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
                         )
                     }
                     TextButton(onClick = openSystemEqualizer,
