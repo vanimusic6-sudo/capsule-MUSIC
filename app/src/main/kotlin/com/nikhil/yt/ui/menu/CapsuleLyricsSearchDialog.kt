@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import com.nikhil.yt.R
 import com.nikhil.yt.constants.LyricsProviderOrder
 import com.nikhil.yt.ui.component.DefaultDialog
+import com.nikhil.yt.ui.motion.LocalCapsuleModalClose
 
 internal fun lyricsSearchSourceTitle(id: String?): String = when (id) {
     null -> "Все источники"
@@ -111,12 +112,13 @@ internal fun CapsuleLyricsSearchDialog(
         contentScrollable = true,
         horizontalAlignment = Alignment.Start,
         buttons = {
-            TextButton(onClick = onDismiss) { Text("Отмена") }
+            val close = LocalCapsuleModalClose.current
+            TextButton(onClick = { close(onDismiss) }) { Text("Отмена") }
             Spacer(Modifier.width(8.dp))
             Button(
                 enabled = titleField.text.isNotBlank() && artistField.text.isNotBlank(),
                 shape = RoundedCornerShape(18.dp),
-                onClick = onSearch,
+                onClick = { close(onSearch) },
             ) {
                 Icon(painterResource(R.drawable.search), null, Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
@@ -216,7 +218,8 @@ internal fun CapsuleLyricsSearchDialog(
             }
             Switch(checked = syncedOnly, onCheckedChange = onSyncedOnlyChange)
         }
-        TextButton(onClick = onWebSearch) {
+        val close = LocalCapsuleModalClose.current
+        TextButton(onClick = { close(onWebSearch) }) {
             Text("Найти в браузере", style = MaterialTheme.typography.labelMedium)
         }
     }
@@ -237,7 +240,7 @@ private fun CapsuleLyricsSourcePicker(
         buttons = {
             TextButton(onClick = onDismiss) { Text("Отмена") }
             Spacer(Modifier.width(8.dp))
-            Button(onClick = { onSelected(draft) }, shape = RoundedCornerShape(18.dp)) {
+            Button(onClick = { close { onSelected(draft) } }, shape = RoundedCornerShape(18.dp)) {
                 Text("Применить")
             }
         },
