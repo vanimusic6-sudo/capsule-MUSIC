@@ -164,6 +164,51 @@ class CapsuleImmersiveImageBackdropTest {
         }
     }
 
+    @Test fun darkArtworkEdgeUsesDominantVisibleCoverHueWithoutFakeColour() {
+        val photo = Bitmap.createBitmap(320, 320, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(0xFFA22638.toInt())
+            // A common album layout: expressive red artwork with a nearly
+            // black lower margin. Previously the page became black all over.
+            Canvas(this).drawRect(0f, 196f, 320f, 320f,
+                Paint().apply { color = 0xFF050505.toInt() })
+        }
+        val field = photo.capsuleImmersiveVisibleField(1f, false)
+        val accents = capsuleImmersiveArtworkAccentColumns(field)
+        assertTrue("Red is a genuine large artwork region", accents.any {
+            it != null && it.red > it.blue * 1.8f
+        })
+        val backdrop = capsuleImmersiveImageBackdropBitmap(field, 0.52f).asAndroidBitmap()
+        val bottom = backdrop.getPixel(backdrop.width / 2, backdrop.height - 2)
+        val r = bottom ushr 16 and 255
+        val b = bottom and 255
+        assertTrue("Lower backdrop must reflect album's red, not only black: $r/$b", r > b + 14)
+    }
+
+    @Test fun neutralBlackAndWhiteCoversDoNotAcquireFabricatedSaturatedHue() {
+        for (color in listOf(0xFF050505.toInt(), 0xFFFDFDFD.toInt())) {
+            val image = Bitmap.createBitmap(260, 260, Bitmap.Config.ARGB_8888).apply {
+                eraseColor(color)
+            }
+            val field = image.capsuleImmersiveVisibleField(1f, false)
+            assertTrue(capsuleImmersiveArtworkAccentColumns(field).all { it == null })
+        }
+    }
+
+    @Test fun artworkAccentRemainsHiddenAcrossPhotoSeamAndEasesSmoothly() {
+        for (stage in listOf(0.40f, 0.52f, 0.70f)) {
+            assertEquals(0f, capsuleImmersiveAccentEnvelope(stage, stage), 0f)
+            assertEquals(0f, capsuleImmersiveAccentEnvelope(stage + 0.10f, stage), 0f)
+            var last = 0f
+            for (index in 1..1000) {
+                val y = stage + 0.10f + (1f - stage - 0.10f) * index / 1000f
+                val current = capsuleImmersiveAccentEnvelope(y, stage)
+                assertTrue(current >= last - 0.00001f)
+                assertTrue(current - last <= 0.014f)
+                last = current
+            }
+        }
+    }
+
     private fun preview(bitmap: Bitmap, name: String) {
         val path = File("build/video-morph-preview/$name.png")
         path.parentFile.mkdirs()
