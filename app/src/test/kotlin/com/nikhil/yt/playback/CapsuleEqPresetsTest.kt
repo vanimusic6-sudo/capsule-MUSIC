@@ -5,9 +5,9 @@ import org.junit.Test
 import java.io.File
 
 class CapsuleEqPresetsTest {
-    private val centers=listOf(80,200,500,1300,3400,8000,14000)
+    private val centers=CAPSULE_STUDIO_FREQUENCIES_HZ
 
-    @Test fun fiveBroadSevenPointVersionsNoNamed910HzNotches() {
+    @Test fun fiveBroadTenPointVersionsNoNamed910HzNotches() {
         val p=CapsuleEqPresets.all
         assertEquals(5,p.size)
         assertEquals(5,p.map{it.id}.distinct().size)
@@ -15,7 +15,7 @@ class CapsuleEqPresetsTest {
         assertNull(CapsuleEqPresets.byId("deep_bass"))
         assertNull(CapsuleEqPresets.byId("v_shape"))
         p.forEach{
-            assertEquals(7,it.referenceLevelsMb.size)
+            assertEquals(10,it.referenceLevelsMb.size)
             assertTrue(it.referenceLevelsMb.all { mb -> mb in -160..270 })
             assertTrue(it.referenceLevelsMb.zipWithNext().all { (a,b) ->
                 kotlin.math.abs(a-b)<=155
@@ -30,18 +30,18 @@ class CapsuleEqPresetsTest {
         }
         val bass=CapsuleEqPresets.byId("soft_bass_v2")!!
         val three=CapsuleEqPresets.levelsFor(
-            bass,listOf(80,1300,14000),-1500,1500)
-        assertEquals(listOf(190,25,-130),three)
+            bass,listOf(40,1250,16000),-1500,1500)
+        assertEquals(listOf(70,25,-140),three)
         assertEquals(10,CapsuleEqPresets.levelsFor(
-            bass,listOf(30,60,110,220,450,910,1800,3500,7000,18000),
+            bass,CAPSULE_STUDIO_FREQUENCIES_HZ,
             -1500,1500).size)
     }
 
     @Test fun malformedFrequencyDataCannotCrashOrExceedDeviceGainRange() {
         val preset=CapsuleEqPresets.all.first()
         assertEquals(emptyList<Int>(),CapsuleEqPresets.levelsFor(preset,emptyList(),-100,100))
-        assertEquals(List(7){0},CapsuleEqPresets.levelsFor(preset,centers,100,-100))
-        assertTrue(CapsuleEqPresets.levelsFor(preset,List(7){0},-100,100)
+        assertEquals(List(10){0},CapsuleEqPresets.levelsFor(preset,centers,100,-100))
+        assertTrue(CapsuleEqPresets.levelsFor(preset,List(10){0},-100,100)
             .all{it in -100..100})
         assertEquals(1,CapsuleEqPresets.levelsFor(preset,listOf(0),-100,100).size)
     }

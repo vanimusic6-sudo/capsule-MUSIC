@@ -11,21 +11,21 @@ class SimpleEqualizerTest {
     @Test fun adaptiveGraphAndCuratedVersionsCoexist() {
         val dialog=file("PlayerMenu").substringAfter("fun EqualizerDialog(")
             .substringBefore("@Composable\nprivate fun CapsuleStudioSlider(")
-        assertTrue(dialog.contains("CapsuleEqPresets.all.chunked(3)"))
+        assertTrue(dialog.contains("CapsuleEqPresets.all.chunked(2)"))
         assertTrue(dialog.contains("CapsuleEqualizerGraph("))
-        assertTrue(dialog.contains("appliedLevelsMb = applied"))
+        assertTrue(dialog.contains("appliedLevelsMb = if (eqEnabled) applied"))
         assertTrue(dialog.contains("val manual = eqEnabled"))
-        assertTrue(dialog.contains("eq_adaptive_corrected"))
+        assertTrue(dialog.contains("eq_ten_band_title"))
         assertTrue(dialog.contains("version:speed_up"))
         assertTrue(dialog.contains("version:slowed"))
         assertTrue(dialog.contains("EqSection("))
         assertTrue(dialog.contains("Switch("))
-        assertTrue(dialog.contains("eq_curve_intensity"))
-        assertTrue(dialog.contains("eq_clean_headroom"))
-        assertTrue(dialog.contains("editable = eqEnabled && caps != null"))
-        assertTrue(dialog.contains("inverseScaledEqLevel("))
+        assertFalse(dialog.contains("eq_curve_intensity"))
+        assertFalse(dialog.contains("eq_clean_headroom"))
+        assertTrue(dialog.contains("editable = eqEnabled"))
+        assertTrue(dialog.contains("selectTempoVariant(id)"))
         assertTrue(dialog.indexOf("CapsuleEqualizerGraph(") <
-            dialog.indexOf("CapsuleEqPresets.all.chunked(3)"))
+            dialog.indexOf("CapsuleEqPresets.all.chunked(2)"))
         assertFalse(dialog.contains("setVirtualizerEnabled("))
         assertFalse(dialog.contains("setBassBoostEnabled("))
         assertFalse(dialog.contains("setOutputGainMb("))
@@ -42,6 +42,19 @@ class SimpleEqualizerTest {
         assertTrue(handler.contains("EqualizerEnabledKey"))
         assertTrue(handler.contains("requestedLevelsMb.size <= 32"))
         assertFalse(handler.contains("BassBoost(true)"))
+    }
+
+    @Test fun independentTempoDoesNotOverwriteEqProfile() {
+        val source=File("src/main/kotlin/com/nikhil/yt/playback/MusicService.kt").readText()
+        val selector=source.substringAfter("fun selectTempoVariant(id: String)")
+            .substringBefore("fun applyEqFlatPreset()")
+        assertTrue(selector.contains("SoundStudioTempoVariantKey"))
+        assertFalse(selector.contains("prefs[EqualizerBandLevelsMbKey] ="))
+        val observe=source.substringAfter("dataStore.data\n            .map { prefs ->")
+            .substringBefore(".distinctUntilChanged()")
+        assertTrue(observe.contains("SoundStudioTempoVariantKey"))
+        assertTrue(observe.contains("\"version:speed_up\" -> 1.18f"))
+        assertTrue(observe.contains("\"version:slowed\" -> 0.84f"))
     }
 
     @Test fun hardwareAwareGraphStillHandlesTouchAndLabels() {

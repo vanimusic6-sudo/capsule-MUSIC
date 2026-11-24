@@ -56,12 +56,12 @@ class CapsuleMusicalEqPolicyTest {
     }
 
     @Test fun strongerBroadProfilesStayDistinctAndAvoidDeepVocalNotches() {
-        val frequencies = listOf(80,200,500,1300,3400,8000,14000)
+        val frequencies = CAPSULE_STUDIO_FREQUENCIES_HZ
         val bass = CapsuleEqPresets.byId("soft_bass_v2")!!
         val raw = CapsuleEqPresets.levelsFor(bass, frequencies, -1500, 1500)
-        assertTrue("Audible low-mid warmth", raw[1] >= 250)
+        assertTrue("Audible low-mid warmth", raw[3] >= 220)
         val out = capsuleMusicalEqLevels(raw, frequencies)
-        assertTrue(out[1] > out[4] + 180)
+        assertTrue(out[3] > out[7] + 180)
         assertTrue(out[3] > -200)
         assertTrue(capsuleEqCurveSpreadMb(out) <= CAPSULE_MUSICAL_MAX_SPREAD_MB)
     }

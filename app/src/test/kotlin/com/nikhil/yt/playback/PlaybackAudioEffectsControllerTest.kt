@@ -18,8 +18,8 @@ class PlaybackAudioEffectsControllerTest {
     @Test fun malformedUserIntensityCannotBypassDeviceBounds() {
         assertEquals(listOf(-1500,0,1500),
             scaleEqBandLevels(listOf(-1200,0,1200),200,-1500,1500))
-        assertEquals(250,inverseScaledEqLevel(500,200,-1500,1500))
-        assertEquals(-250,inverseScaledEqLevel(-500,200,-1500,1500))
+        assertEquals(344,inverseScaledEqLevel(500,200,-1500,1500))
+        assertEquals(-344,inverseScaledEqLevel(-500,200,-1500,1500))
     }
 
     @Test fun oldProfilesAreClampedByThePermanentToneGuard() {

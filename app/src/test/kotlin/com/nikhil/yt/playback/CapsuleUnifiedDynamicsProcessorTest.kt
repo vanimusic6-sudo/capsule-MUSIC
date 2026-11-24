@@ -22,6 +22,18 @@ class CapsuleUnifiedDynamicsProcessorTest {
         assertEquals(emptyList<Float>(),capsuleDspCutoffsHz(emptyList(),0))
     }
 
+    @Test fun tenBandStudioDoesNotCopyOemEqualizerBandCount() {
+        assertEquals(10, CAPSULE_STUDIO_CAPABILITIES.bandCount)
+        assertEquals(CAPSULE_STUDIO_FREQUENCIES_HZ, CAPSULE_STUDIO_CAPABILITIES.centerFreqHz)
+        val cutoffs = capsuleDspCutoffsHz(CAPSULE_STUDIO_FREQUENCIES_HZ,10)
+        assertEquals(10,cutoffs.size)
+        assertTrue(cutoffs.zipWithNext().all { (a,b) -> b > a })
+        val controller=File("src/main/kotlin/com/nikhil/yt/playback/PlaybackAudioEffectsController.kt").readText()
+        assertTrue(controller.contains(
+            "CapsuleUnifiedDynamicsProcessor(session, CAPSULE_STUDIO_CAPABILITIES)"))
+        assertTrue(controller.contains("val caps = nativeCapabilities"))
+    }
+
     @Test fun engineContainsOnlyPreEqAndFinalLimiter() {
         val s=File("src/main/kotlin/com/nikhil/yt/playback/CapsuleUnifiedDynamicsProcessor.kt").readText()
         assertTrue(s.contains(".setPreEqAllChannelsTo(eq)"))

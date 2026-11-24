@@ -246,7 +246,7 @@ class CapsuleMenuMotionTest {
         // independent, bounded manual curve replace the legacy master slider.
         assertTrue(source.contains("version:speed_up"))
         assertTrue(source.contains("version:slowed"))
-        assertTrue(source.contains("CapsuleEqPresets.all.chunked(3)"))
+        assertTrue(source.contains("CapsuleEqPresets.all.chunked(2)"))
         assertTrue(source.contains("selectSoundVersion("))
         assertTrue(source.contains("appliedLevelsMb = applied"))
         assertFalse(source.contains("caps.systemPresets.mapIndexed"))
