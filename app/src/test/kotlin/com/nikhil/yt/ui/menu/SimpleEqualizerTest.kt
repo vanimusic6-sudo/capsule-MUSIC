@@ -41,6 +41,7 @@ class SimpleEqualizerTest {
         assertTrue(handler.contains("preset == null && !manual && !neutral"))
         assertTrue(handler.contains("EqualizerEnabledKey"))
         assertTrue(handler.contains("requestedLevelsMb.size <= 32"))
+        assertTrue(handler.contains("prefs[SoundStudioTempoVariantKey] = previousId!!"))
         assertFalse(handler.contains("BassBoost(true)"))
     }
 

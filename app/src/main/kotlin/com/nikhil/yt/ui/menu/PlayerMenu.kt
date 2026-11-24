@@ -803,8 +803,13 @@ fun EqualizerDialog(
         draft = null
         service.selectSoundVersion(id)
     }
-    val activeTempo = if (tempo in listOf("flat", "version:speed_up", "version:slowed"))
-        tempo else "flat"
+    val activeTempo = when {
+        // A legacy installation has not yet migrated the separate tempo key.
+        tempo == "flat" && selectedId in
+            setOf("version:speed_up", "version:slowed") -> selectedId
+        tempo in listOf("flat", "version:speed_up", "version:slowed") -> tempo
+        else -> "flat"
+    }
 
     Dialog(
         onDismissRequest = onDismiss,

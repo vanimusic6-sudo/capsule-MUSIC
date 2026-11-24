@@ -4020,6 +4020,13 @@ class MusicService :
         ioScope.launch {
             dataStore.edit { prefs ->
                 val previousId = prefs[EqualizerSelectedProfileIdKey]
+                // Old versions stored Speed Up / Slowed in the same key as EQ.
+                // Migrate that choice BEFORE replacing the tone selection so
+                // selecting a custom curve never unexpectedly resets tempo.
+                if (prefs[SoundStudioTempoVariantKey] == null &&
+                    previousId in setOf("version:speed_up", "version:slowed")) {
+                    prefs[SoundStudioTempoVariantKey] = previousId!!
+                }
                 prefs[EqualizerSelectedProfileIdKey] = id
                 prefs[EqualizerEnabledKey] = (preset != null || manual)
                 if (manual) {
