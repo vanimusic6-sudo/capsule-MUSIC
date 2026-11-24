@@ -113,6 +113,8 @@ import com.nikhil.yt.constants.EqualizerBassBoostStrengthKey
 import com.nikhil.yt.constants.EqualizerEnabledKey
 import com.nikhil.yt.constants.SoundStudioSpeedKey
 import com.nikhil.yt.constants.SoundStudioPitchKey
+import com.nikhil.yt.constants.SoundStudioTempoModeKey
+import com.nikhil.yt.constants.SoundStudioTempoDepthKey
 import com.nikhil.yt.constants.EqualizerOutputGainEnabledKey
 import com.nikhil.yt.constants.EqualizerOutputGainMbKey
 import com.nikhil.yt.constants.EqualizerSelectedProfileIdKey
@@ -2422,16 +2424,26 @@ class MusicService :
             .map { prefs ->
                 Triple(
                     readEqSettingsFromPrefs(prefs),
-                    when (prefs[EqualizerSelectedProfileIdKey]) {
-                        "version:speed_up" -> 1.15f
-                        "version:slowed" -> 0.85f
-                        else -> 1f
-                    },
-                    when (prefs[EqualizerSelectedProfileIdKey]) {
-                        "version:speed_up" -> 1.08f
-                        "version:slowed" -> 0.93f
-                        else -> 1f
-                    },
+                    capsuleTempoParams(
+                        prefs[SoundStudioTempoModeKey] ?: when (
+                            prefs[EqualizerSelectedProfileIdKey]
+                        ) {
+                            "version:speed_up" -> CAPSULE_TEMPO_SPEED_UP
+                            "version:slowed" -> CAPSULE_TEMPO_SLOWED
+                            else -> CAPSULE_TEMPO_NORMAL
+                        },
+                        prefs[SoundStudioTempoDepthKey] ?: 50,
+                    ).speed,
+                    capsuleTempoParams(
+                        prefs[SoundStudioTempoModeKey] ?: when (
+                            prefs[EqualizerSelectedProfileIdKey]
+                        ) {
+                            "version:speed_up" -> CAPSULE_TEMPO_SPEED_UP
+                            "version:slowed" -> CAPSULE_TEMPO_SLOWED
+                            else -> CAPSULE_TEMPO_NORMAL
+                        },
+                        prefs[SoundStudioTempoDepthKey] ?: 50,
+                    ).pitch,
                 )
             }
             .distinctUntilChanged()
@@ -4031,11 +4043,30 @@ class MusicService :
         }
     }
 
+    /** Tempo changes do not touch EqualizerSelectedProfileIdKey or EQ gain. */
+    fun selectTempoVersion(mode: String) {
+        if (mode != CAPSULE_TEMPO_NORMAL && mode != CAPSULE_TEMPO_SPEED_UP &&
+            mode != CAPSULE_TEMPO_SLOWED
+        ) return
+        ioScope.launch {
+            dataStore.edit { prefs ->
+                prefs[SoundStudioTempoModeKey] = mode
+            }
+        }
+    }
+
+    fun setTempoVersionDepth(percent: Int) {
+        ioScope.launch {
+            dataStore.edit { prefs ->
+                prefs[SoundStudioTempoDepthKey] = percent.coerceIn(0, 100)
+            }
+        }
+    }
+
     fun applyEqFlatPreset() {
         ioScope.launch {
-            // Preserve an editable five-band flat profile even before the
-            // first AudioTrack session exists. Resampled when playback starts.
-            val bandCount = audioEffectsController.currentBandCount().takeIf { it > 0 } ?: 5
+            // Flat logical ten-band profile, independent of OEM hardware.
+            val bandCount = CAPSULE_TEN_BAND_HZ.size
             val encoded = encodeBandLevelsMb(List(bandCount) { 0 })
             dataStore.edit { prefs ->
                 prefs[EqualizerEnabledKey] = true
