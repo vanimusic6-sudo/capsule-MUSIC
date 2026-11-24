@@ -55,12 +55,14 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -108,6 +110,7 @@ import com.nikhil.yt.playback.decodeEqBandLevels
 import com.nikhil.yt.playback.resampleEqLevelsByIndex
 import com.nikhil.yt.playback.ExoDownloadService
 import com.nikhil.yt.ui.component.BottomSheetState
+import com.nikhil.yt.ui.component.CapsuleMenuListItem as ListItem
 import com.nikhil.yt.ui.component.ListDialog
 import com.nikhil.yt.ui.component.MenuSurfaceSection
 import com.nikhil.yt.ui.component.CapsuleMenuMediaHeader
