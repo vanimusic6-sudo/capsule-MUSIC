@@ -79,7 +79,7 @@ internal class CapsuleStudioEqProcessor(
         val tone = if (setting.adaptive) plan?.levelsMb.orEmpty() else setting.levelsMb
         equalizer.setCurve(tone, smooth = setting.adaptive)
         equalizer.setMixer(setting.mixer)
-        equalizer.setTempoGuard(setting.tempo != SoundStudioTempoVariant.NORMAL)
+        equalizer.setProcessingGuard(setting.adaptive || setting.tempo != SoundStudioTempoVariant.NORMAL)
         val output = replaceOutputBuffer(inputBuffer.remaining())
         equalizer.process(inputBuffer, output)
         output.flip()
@@ -102,8 +102,8 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
     private var peakGain = 1.0
     private var edgeRisk = 0.0
     private var sustainedPower = 0.0
-    private var tempoGuard = false
-    private var tempoGuardMix = 0.0
+    private var processingGuard = false
+    private var processingGuardMix = 0.0
     private var started = false
     private val frame = DoubleArray(channels)
     private val previousFrame = DoubleArray(channels)
@@ -111,9 +111,9 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
     private val peakMonitor = CapsuleReconstructedPeak(channels)
 
     fun setMixer(setting: CapsuleMixerSetting) = mixer.set(setting)
-    fun setTempoGuard(enabled: Boolean) {
-        tempoGuard = enabled
-        if (!started) tempoGuardMix = if (enabled) 1.0 else 0.0
+    fun setProcessingGuard(enabled: Boolean) {
+        processingGuard = enabled
+        if (enabled || !started) processingGuardMix = if (enabled) 1.0 else 0.0
     }
 
     fun setCurve(curve: List<Int>, smooth: Boolean = false) {
@@ -138,7 +138,7 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
         if (!input.hasRemaining()) return
         started = true
         if (current == null && remaining == 0 && peakGain == 1.0 && !mixer.active &&
-            !tempoGuard && tempoGuardMix == 0.0
+            !processingGuard && processingGuardMix == 0.0
         ) {
             output.put(input)
             return
@@ -170,10 +170,8 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
                 val newCeiling = if (incoming == null) 1.0 else CAPSULE_EQ_PEAK_AMPLITUDE
                 oldCeiling + (newCeiling - oldCeiling) * mix
             }
-            val tempoTarget = if (tempoGuard) 1.0 else 0.0
-            val guardRamp = 1.0 / fastTransitionFrames
-            tempoGuardMix += (tempoTarget - tempoGuardMix).coerceIn(-guardRamp, guardRamp)
-            val protectionMix = max(mixer.ceilingFraction, tempoGuardMix)
+            if (!processingGuard) processingGuardMix = (processingGuardMix - 1.0 / fastTransitionFrames).coerceAtLeast(0.0)
+            val protectionMix = max(mixer.ceilingFraction, processingGuardMix)
             val ceiling = minOf(eqCeiling, 1.0 - (1.0 - CAPSULE_EQ_PEAK_AMPLITUDE) * protectionMix)
             // Fast changes near full scale need room for peaks between PCM samples.
             // Keep a shared reserve across channels and release it gradually.
@@ -201,7 +199,7 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
             }
             if (remaining != 0 && --remaining == 0) current = incoming
             if (current == null && remaining == 0 && peakGain >= 0.9999 && !mixer.active &&
-                !tempoGuard && tempoGuardMix == 0.0
+                !processingGuard && processingGuardMix == 0.0
             ) {
                 peakGain = 1.0
                 edgeRisk = 0.0

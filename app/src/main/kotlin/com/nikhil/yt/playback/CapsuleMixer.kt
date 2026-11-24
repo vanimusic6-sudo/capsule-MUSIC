@@ -68,6 +68,8 @@ internal class CapsuleMixerStage(private val rate: Int, private val channels: In
 
     fun set(setting: CapsuleMixerSetting) {
         target = if (setting.enabled) setting else CapsuleMixerSetting()
+        // Arm the output ceiling before starting the audible effect ramp.
+        if (target.enabled) ceilingFraction = 1.0
     }
 
     fun process(frame: DoubleArray, peak: Double) {

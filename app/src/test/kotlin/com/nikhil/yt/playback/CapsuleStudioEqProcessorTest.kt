@@ -218,10 +218,20 @@ class CapsuleStudioEqProcessorTest {
         val eq = CapsuleStudioEqFilter(rate, 1)
         val input = ShortArray(rate) { if (it % 4 < 2) Short.MAX_VALUE else (-32767).toShort() }
         assertTrue(render(eq, input).contentEquals(input))
-        eq.setTempoGuard(true)
+        eq.setProcessingGuard(true)
         val output = render(eq, input)
         val settled = output.copyOfRange(rate / 2, rate)
         assertTrue(sqrt(2.0) * settled.maxOf { abs(it.toInt()) } / 32768.0 < 0.85)
+    }
+
+    @Test fun mixerAloneLimitsPeaksBeforeItsEffectRampsUp() {
+        val fullScale = ShortArray(600) { if (it % 4 < 2) Short.MAX_VALUE else Short.MIN_VALUE }
+        for (effect in CapsuleMixerEffect.entries.filter { it != CapsuleMixerEffect.OFF }) {
+            val eq = CapsuleStudioEqFilter(48_000, 1)
+            eq.setMixer(CapsuleMixerSetting(effect, 100))
+            val output = render(eq, fullScale)
+            assertTrue(output.all { abs(it.toInt()) <= (CAPSULE_EQ_PEAK_AMPLITUDE * 32768).roundToInt() })
+        }
     }
 
     @Test fun bypassAndFlatCurveAreBitExactAndLowSampleRatesSkipUltrasonicBands() {

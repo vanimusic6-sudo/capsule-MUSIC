@@ -225,9 +225,9 @@ internal class CrossfadeAudio(
         overlap.clearMediaItems()
         overlap.setMediaItem(nextItem)
         overlap.playbackParameters = overlapTempo(nextMediaId)
+        overlap.volume = 0f
         overlap.prepare()
         overlap.playWhenReady = true
-        overlap.volume = 0f
 
         overlapNormalizeFactor = fetchNormalizeFactorForMediaId(nextMediaId)
         overlapPrimedIndex = nextIndex
