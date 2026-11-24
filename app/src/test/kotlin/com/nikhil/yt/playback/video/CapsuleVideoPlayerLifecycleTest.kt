@@ -5,6 +5,7 @@ import android.app.Application
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import com.nikhil.yt.playback.CapsuleEqPresets
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
@@ -31,7 +32,7 @@ class CapsuleVideoPlayerLifecycleTest {
                 context = context,
                 factory = DefaultMediaSourceFactory(context),
                 audio = music,
-                readEqCurve = { List(10) { band -> if (band == 2) 300 else 0 } },
+                readStudioSound = { CapsuleEqPresets.AUTO.sound },
                 scope = backgroundScope,
                 onSoundOwned = {}, onReady = {}, onFailure = { _, error -> throw error },
                 onEnded = {}, onFrameUnavailable = {}, onBufferingChanged = { _, _ -> },

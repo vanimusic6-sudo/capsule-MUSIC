@@ -1080,6 +1080,15 @@ Capsule will only extract your token, and everything else is stored locally.</st
     <string name="eq_adaptive_original">Requested contour stays unchanged</string>
     <string name="eq_adaptive_needs_playback">Start playback to detect the real frequency bands supported by this device.</string>
     <string name="eq_classic_safety_explanation">The audio engine uses one bounded EQ curve, gentle notch correction and input headroom. The former independent BassBoost, spatializer and volume amplifier stay disabled. This does not measure headphone sound pressure or guarantee hearing safety.</string>
-    <string name="eq_ten_band_title">10-band equalizer</string>
+    <string name="eq_ten_band_title">Fine tuning</string>
     <string name="eq_tempo_normal">Normal</string>
+    <string name="eq_studio_character">Tone</string>
+    <string name="eq_studio_auto">Auto</string>
+    <string name="eq_studio_warm">Warm</string>
+    <string name="eq_studio_tape">Tape</string>
+    <string name="eq_studio_clear">Clarity</string>
+    <string name="eq_studio_auto_hint">Picks a tone from the track’s frequency balance.</string>
+    <string name="eq_studio_tape_hint">Smooths sharp attacks and softens the top end.</string>
+    <string name="eq_studio_show_bands">Show</string>
+    <string name="eq_studio_hide_bands">Hide</string>
 </resources>

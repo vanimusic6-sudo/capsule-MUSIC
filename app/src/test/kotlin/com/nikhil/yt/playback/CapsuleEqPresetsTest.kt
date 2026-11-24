@@ -1,24 +1,28 @@
 package com.nikhil.yt.playback
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CapsuleEqPresetsTest {
-    @Test fun fiveDistinctPresetsStayWithinLimitsAndKeepTheirSavedIds() {
-        val presets = CapsuleEqPresets.all
-        assertEquals(5, presets.size)
-        assertEquals(5, presets.map { it.id }.distinct().size)
-        assertEquals(5, presets.map { it.referenceLevelsMb }.distinct().size)
-        assertNull(CapsuleEqPresets.byId("deep_bass"))
-        for (preset in presets) {
-            val curve = preset.referenceLevelsMb
+    @Test fun soundModesAreBoundedAndResolveOldIds() {
+        val modes = CapsuleEqPresets.entries
+        assertEquals(4, modes.size)
+        assertEquals(4, modes.map { it.sound }.distinct().size)
+        assertEquals(CapsuleEqPresets.WARM, CapsuleEqPresets.byId("capsule:soft_bass_v2"))
+        assertEquals(CapsuleEqPresets.CLEAR, CapsuleEqPresets.byId("vocal_v2"))
+        assertNull(CapsuleEqPresets.byId("unknown"))
+        assertTrue(CapsuleEqPresets.AUTO.sound.adaptive)
+        assertTrue(CapsuleEqPresets.TAPE.sound.tape)
+        assertFalse(CapsuleEqPresets.WARM.sound.tape)
+        for (mode in modes) {
+            val curve = mode.sound.levelsMb
             assertEquals(10, curve.size)
-            assertEquals(preset, CapsuleEqPresets.byId("capsule:${preset.id}"))
+            assertEquals(mode, CapsuleEqPresets.byId("capsule:${mode.id}"))
             assertTrue(curve.indices.all { i -> curve[i] in capsuleStudioBandLimit(CAPSULE_STUDIO_FREQUENCIES_HZ[i]) })
-            assertTrue(curve.max() - curve.min() >= 450)
-            assertTrue(curve.zipWithNext().all { (a, b) -> kotlin.math.abs(a - b) <= 400 })
+            assertTrue(curve.max() - curve.min() in 130..250)
         }
     }
 }

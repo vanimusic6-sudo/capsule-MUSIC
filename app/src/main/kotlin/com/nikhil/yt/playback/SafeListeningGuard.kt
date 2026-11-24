@@ -45,9 +45,9 @@ internal fun safeListeningAppVolumeCeiling(
         deviceOutputAmplitude.coerceIn(0.001f, 1f)).coerceIn(0f, 1f)
 }
 
-internal fun hearingCareOutputVolume(requested: Float, ceiling: Float): Float =
-    if (!requested.isFinite() || !ceiling.isFinite()) 0f
-    else requested.coerceIn(0f, 1f).coerceAtMost(ceiling.coerceIn(0f, 1f))
+internal fun hearingCareOutputVolume(requested: Float, ceiling: Float, fade: Float = 1f): Float =
+    if (!requested.isFinite() || !ceiling.isFinite() || !fade.isFinite()) 0f
+    else requested.coerceIn(0f, 1f).coerceAtMost(ceiling.coerceIn(0f, 1f)) * fade.coerceIn(0f, 1f)
 
 /** Routing lookup is best-effort. Unknown output must never be called "safe". */
 internal object CapsuleHeadphoneRouting {

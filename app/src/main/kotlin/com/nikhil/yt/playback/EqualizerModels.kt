@@ -6,6 +6,8 @@ import androidx.datastore.preferences.core.Preferences
 import com.nikhil.yt.constants.EqualizerSelectedProfileIdKey
 import com.nikhil.yt.constants.SoundStudioTempoVariantKey
 import kotlinx.serialization.json.Json
+import kotlin.math.ln
+import kotlin.math.roundToInt
 
 internal enum class SoundStudioTempoVariant(val id: String, val rate: Float) {
     NORMAL("flat", 1f),
@@ -33,11 +35,34 @@ internal fun MutablePreferences.preserveLegacySoundStudioTempo() {
     }
 }
 
-internal const val CAPSULE_STUDIO_MANUAL_ID = "adaptive:manual"
-internal const val CAPSULE_STUDIO_DEFAULT_ID = "capsule:soft_bass_v2"
+internal const val CAPSULE_STUDIO_MANUAL_ID = "studio:manual"
+private const val LEGACY_STUDIO_MANUAL_ID = "adaptive:manual"
+internal const val CAPSULE_STUDIO_DEFAULT_ID = "capsule:studio_auto"
 
 internal val CAPSULE_STUDIO_FREQUENCIES_HZ =
+    listOf(48, 95, 180, 340, 620, 1_100, 2_100, 3_800, 6_800, 12_000)
+
+private val legacyStudioFrequenciesHz =
     listOf(40, 80, 160, 315, 630, 1_250, 2_500, 5_000, 10_000, 16_000)
+
+internal fun readStudioManualCurve(id: String?, raw: String?): List<Int> {
+    if (id != CAPSULE_STUDIO_MANUAL_ID && id != LEGACY_STUDIO_MANUAL_ID) return emptyList()
+    val saved = decodeEqBandLevels(raw)
+    if (saved.isEmpty()) return emptyList()
+    if (id == CAPSULE_STUDIO_MANUAL_ID) {
+        return resampleEqLevelsByIndex(saved, CAPSULE_STUDIO_FREQUENCIES_HZ.size)
+    }
+    val old = resampleEqLevelsByIndex(saved, legacyStudioFrequenciesHz.size)
+    return CAPSULE_STUDIO_FREQUENCIES_HZ.map { hz ->
+        val hi = legacyStudioFrequenciesHz.indexOfFirst { it >= hz }
+        if (hi <= 0) old[if (hi < 0) old.lastIndex else 0]
+        else {
+            val left = legacyStudioFrequenciesHz[hi - 1].toDouble()
+            val mix = ln(hz / left) / ln(legacyStudioFrequenciesHz[hi] / left)
+            (old[hi - 1] + (old[hi] - old[hi - 1]) * mix).roundToInt()
+        }
+    }
+}
 
 internal fun resampleEqLevelsByIndex(
     levelsMb: List<Int>,

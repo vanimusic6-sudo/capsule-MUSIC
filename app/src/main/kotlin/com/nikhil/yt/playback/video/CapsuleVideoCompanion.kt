@@ -13,6 +13,7 @@ import com.nikhil.yt.innertube.video.CapsuleVideoDelivery
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.DefaultLoadControl
 import com.nikhil.yt.playback.CapsuleAudioRenderersFactory
+import com.nikhil.yt.playback.CapsuleStudioSound
 import com.nikhil.yt.playback.CapsuleOpusCodecSelector
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
@@ -165,20 +166,20 @@ internal fun capsuleVideoInitialPosition(
 
 internal class CapsuleVideoCompanion(
     context: Context, factory: MediaSource.Factory, audio: ExoPlayer,
-    readEqCurve: () -> List<Int>,
+    readStudioSound: () -> CapsuleStudioSound,
     private val scope: CoroutineScope, onSoundOwned: (Boolean) -> Unit,
     onReady: (String) -> Unit, onFailure: (String, Throwable) -> Unit,
     onEnded: (String) -> Unit, onFrameUnavailable: (String) -> Unit,
     onBufferingChanged: (String, Boolean) -> Unit,
 ) {
     private var idleExpiry: Job? = null
+    private val renderers = CapsuleAudioRenderersFactory(context, readStudioSound, useMusicBuffer = false)
     val player: ExoPlayer = ExoPlayer.Builder(context)
         // The video soundtrack can create a SECOND Opus decoder while MUSIC is
         // still audible. Use the same Android 17 native in-process preference
         // to reduce media codec IPC on supported devices, without touching
         // the default VP9/AV1/H.264 video decoder ordering.
-        .setRenderersFactory(CapsuleAudioRenderersFactory(context, readEqCurve, useMusicBuffer = false)
-            .setMediaCodecSelector(CapsuleOpusCodecSelector)
+        .setRenderersFactory(renderers.setMediaCodecSelector(CapsuleOpusCodecSelector)
             .setEnableDecoderFallback(true))
         // AUDIO downloads must not make HLS assume the VIDEO host is fast.
         .setBandwidthMeter(DefaultBandwidthMeter.Builder(context).build())
@@ -196,7 +197,7 @@ internal class CapsuleVideoCompanion(
             .setTargetBufferBytes(CAPSULE_VIDEO_TARGET_BUFFER_BYTES)
             .setPrioritizeTimeOverSizeThresholds(true).build())
         .setWakeMode(C.WAKE_MODE_LOCAL)
-        .build()
+        .build().apply { addListener(renderers) }
     internal val frameRetention = CapsuleVideoFrameRetention(player, scope)
     private val session = CapsuleVideoSession(
         audio, player, scope, onSoundOwned, onReady, onFailure, onEnded, onFrameUnavailable, onBufferingChanged,

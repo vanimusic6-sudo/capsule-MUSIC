@@ -5,18 +5,18 @@ import kotlin.math.abs
 import kotlin.math.ln
 import kotlin.math.roundToInt
 
-internal const val CAPSULE_EQ_MIN_MB = -700
-internal const val CAPSULE_EQ_MAX_MB = 520
-internal const val CAPSULE_EQ_MAX_CONTRAST_MB = 1050
-internal const val CAPSULE_EQ_MAX_STEP_MB = 500
+internal const val CAPSULE_EQ_MIN_MB = -500
+internal const val CAPSULE_EQ_MAX_MB = 360
+internal const val CAPSULE_EQ_MAX_CONTRAST_MB = 750
+internal const val CAPSULE_EQ_MAX_STEP_MB = 375
 
 internal fun capsuleStudioBandLimit(hz: Int): IntRange = when {
-    hz < 60 -> -570..240     // Do not build the bass character around sub-bass.
-    hz < 120 -> -620..360
-    hz <= 630 -> CAPSULE_EQ_MIN_MB..CAPSULE_EQ_MAX_MB
-    hz <= 2_500 -> -610..450
-    hz <= 5_000 -> -570..360
-    else -> -500..260
+    hz < 70 -> -320..115
+    hz < 130 -> -420..240
+    hz <= 620 -> CAPSULE_EQ_MIN_MB..CAPSULE_EQ_MAX_MB
+    hz <= 2_100 -> -425..340
+    hz <= 3_800 -> -400..280
+    else -> -320..200
 }
 
 /** Preserve broad changes and soften sharp holes. The PCM stage reserves actual filter headroom. */
@@ -33,7 +33,7 @@ internal fun capsuleMusicalEqLevels(rawLevelsMb: List<Int>): List<Int> {
         val expected = curve[i - 1] + (curve[i + 1] - curve[i - 1]) * fraction
         // Keep meaningful narrow boosts and prevent a deep hole between two boosts.
         val delta = curve[i] - expected
-        val knee = delta.coerceIn(-300.0, 420.0)
+        val knee = delta.coerceIn(-240.0, 295.0)
         curve[i] = (expected + knee + (delta - knee) * 0.18).roundToInt().coerceIn(limits[i])
     }
     fun limitStep(i: Int) {

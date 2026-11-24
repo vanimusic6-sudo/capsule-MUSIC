@@ -20,7 +20,7 @@ class SimpleEqualizerTest {
     @Test fun adaptiveGraphAndCuratedVersionsCoexist() {
         val dialog=file("PlayerMenu").substringAfter("fun EqualizerDialog(")
             .substringBefore("@Composable\nprivate fun RowScope.StudioChoice(")
-        assertTrue(dialog.contains("CapsuleEqPresets.all.chunked(3)"))
+        assertTrue(dialog.contains("CapsuleEqPresets.entries.chunked(2)"))
         assertTrue(dialog.contains("CapsuleEqualizerGraph("))
         assertTrue(dialog.contains("eq_ten_band_title"))
         assertTrue(dialog.contains("SoundStudioTempoVariant.SPEED_UP"))
@@ -34,8 +34,9 @@ class SimpleEqualizerTest {
         assertFalse(dialog.contains("eq_version_original"))
         assertFalse(dialog.contains("eq_adaptive_activate"))
         assertTrue(dialog.contains("selectTempoVariant(variant)"))
-        assertTrue(dialog.indexOf("CapsuleEqualizerGraph(") <
-            dialog.indexOf("CapsuleEqPresets.all.chunked(3)"))
+        assertTrue(dialog.indexOf("CapsuleEqPresets.entries.chunked(2)") <
+            dialog.indexOf("CapsuleEqualizerGraph("))
+        assertTrue(dialog.contains("if (showBands)"))
         assertFalse(dialog.contains("setVirtualizerEnabled("))
         assertFalse(dialog.contains("setBassBoostEnabled("))
         assertFalse(dialog.contains("setOutputGainMb("))

@@ -1,26 +1,27 @@
-/* Capsule MUSIC — sound studio presets. GPL-3.0. */
+/* Capsule MUSIC — sound studio voicings. GPL-3.0. */
 package com.nikhil.yt.playback
 
-internal data class CapsuleEqPreset(
-    val id: String,
-    val name: String,
-    val referenceLevelsMb: List<Int>,
-)
+internal data class CapsuleStudioSound(
+    val levelsMb: List<Int> = emptyList(),
+    val tape: Boolean = false,
+    val adaptive: Boolean = false,
+) {
+    val enabled: Boolean get() = levelsMb.isNotEmpty() || tape || adaptive
+}
 
-internal object CapsuleEqPresets {
-    // Wide contours create audible contrast without a narrow midrange hole.
-    val all = listOf(
-        CapsuleEqPreset("soft_bass_v2", "Soft Bass",
-            listOf(140, 330, 500, 410, 180, -50, -170, -240, -230, -200)),
-        CapsuleEqPreset("warm_v2", "Warm",
-            listOf(70, 180, 320, 460, 390, 125, -100, -290, -310, -250)),
-        CapsuleEqPreset("vocal_v2", "Vocals",
-            listOf(-330, -310, -235, -130, 70, 290, 410, 285, 20, -135)),
-        CapsuleEqPreset("air_v2", "Air",
-            listOf(-270, -250, -210, -160, -120, -60, 80, 315, 255, 220)),
-        CapsuleEqPreset("live_v2", "Live",
-            listOf(110, 290, 340, 185, -90, -130, 230, 320, 170, 40)),
-    )
+internal enum class CapsuleEqPresets(val id: String, levels: List<Int>) {
+    AUTO("studio_auto", listOf(0, 30, 105, 170, 110, 40, 0, -35, -20, 0)),
+    WARM("studio_warm", listOf(0, 30, 105, 170, 110, 40, 0, -35, -20, 0)),
+    TAPE("studio_tape", listOf(0, 10, 65, 135, 110, 50, -15, -75, -105, -80)),
+    CLEAR("studio_clear", listOf(-35, -90, -55, 25, 65, 105, 115, 65, 25, 0));
 
-    fun byId(id: String): CapsuleEqPreset? = all.firstOrNull { it.id == id.removePrefix("capsule:") }
+    val sound = CapsuleStudioSound(capsuleMusicalEqLevels(levels), tape = id == "studio_tape", adaptive = id == "studio_auto")
+
+    companion object {
+        fun byId(id: String): CapsuleEqPresets? = when (val key = id.removePrefix("capsule:")) {
+            "soft_bass_v2", "warm_v2" -> WARM
+            "vocal_v2", "air_v2", "live_v2" -> CLEAR
+            else -> entries.firstOrNull { it.id == key }
+        }
+    }
 }

@@ -20,9 +20,14 @@ internal const val CAPSULE_EQ_PEAK_AMPLITUDE = 0.7943282347 // -2 dBFS sample pe
 
 /** One processor per sink. The curve supplier publishes immutable snapshots across threads. */
 internal class CapsuleStudioEqProcessor(
-    private val readCurve: () -> List<Int>,
+    private val readSound: () -> CapsuleStudioSound,
+    private val readTrack: () -> String?,
 ) : BaseAudioProcessor() {
     private var filter: CapsuleStudioEqFilter? = null
+    private var analysis: CapsuleStudioAnalysis? = null
+    private var selectedTone: CapsuleEqPresets? = null
+    private var analyzedTrack: String? = null
+    private var analyzing = false
 
     override fun onConfigure(inputAudioFormat: AudioFormat): AudioFormat =
         if (inputAudioFormat.encoding == C.ENCODING_PCM_16BIT &&
@@ -32,15 +37,37 @@ internal class CapsuleStudioEqProcessor(
     override fun onFlush(streamMetadata: StreamMetadata) {
         filter = if (outputAudioFormat == AudioFormat.NOT_SET) null
             else CapsuleStudioEqFilter(inputAudioFormat.sampleRate, inputAudioFormat.channelCount)
+        analysis = null
     }
 
     override fun onReset() {
         filter = null
+        analysis = null
+        selectedTone = null
+        analyzedTrack = null
+        analyzing = false
     }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
         val equalizer = checkNotNull(filter)
-        equalizer.setCurve(readCurve())
+        val setting = readSound()
+        val track = readTrack()
+        if (analyzing != setting.adaptive || track != analyzedTrack) {
+            analyzing = setting.adaptive
+            analyzedTrack = track
+            analysis = null
+            selectedTone = null
+        }
+        // Each player publishes its own item ID across threads.
+        // Keep a completed choice across a seek or PCM-format flush on that item.
+        if (analyzing && selectedTone == null) {
+            val detector = analysis ?: CapsuleStudioAnalysis(inputAudioFormat.sampleRate, inputAudioFormat.channelCount)
+                .also { analysis = it }
+            selectedTone = detector.observe(inputBuffer)
+            if (selectedTone != null) analysis = null
+        }
+        val sound = if (setting.adaptive) (selectedTone ?: CapsuleEqPresets.WARM).sound else setting
+        equalizer.setSound(sound, smooth = setting.adaptive)
         val output = replaceOutputBuffer(inputBuffer.remaining())
         equalizer.process(inputBuffer, output)
         output.flip()
@@ -50,29 +77,33 @@ internal class CapsuleStudioEqProcessor(
 /** A ten-band peaking EQ with a static input trim and a linked stereo peak guard. */
 internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int) {
     private val rate = sampleRate
-    private val transitionFrames = (sampleRate * 24 / 1000).coerceAtLeast(1)
+    private val fastTransitionFrames = (sampleRate * 24 / 1000).coerceAtLeast(1)
+    private val slowTransitionFrames = (sampleRate * 180 / 1000).coerceAtLeast(1)
+    private var transitionFrames = fastTransitionFrames
     private val peakRelease = 1.0 - exp(-1.0 / (sampleRate * 0.045))
     private var current: StudioEqCascade? = null
     private var incoming: StudioEqCascade? = null
-    private var targetCurve: List<Int> = emptyList()
+    private var targetSound = CapsuleStudioSound()
     private var remaining = 0
     private var peakGain = 1.0
     private var started = false
     private val frame = DoubleArray(channels)
 
-    fun setCurve(curve: List<Int>) {
-        // Complete the current short ramp before acting on a newer snapshot.
-        if (remaining != 0 || curve == targetCurve) return
-        targetCurve = curve
+    fun setSound(sound: CapsuleStudioSound, smooth: Boolean = false) {
+        // Complete the current ramp before acting on a newer snapshot.
+        if (remaining != 0 || sound == targetSound) return
+        targetSound = sound
+        val curve = sound.levelsMb
         val bands = CAPSULE_STUDIO_FREQUENCIES_HZ.mapIndexedNotNull { i, frequency ->
             val gain = curve.getOrElse(i) { 0 }.coerceIn(capsuleStudioBandLimit(frequency))
             if (gain == 0 || frequency >= rate * 0.47) null
             else StudioEqBiquad.create(frequency, rate, gain, channels)
         }.toTypedArray()
-        incoming = if (bands.isEmpty()) null else StudioEqCascade(bands, rate)
+        incoming = if (bands.isEmpty() && !sound.tape) null else StudioEqCascade(bands, rate, channels, sound.tape)
         if (!started) {
             current = incoming
         } else if (current != null || incoming != null) {
+            transitionFrames = if (smooth) slowTransitionFrames else fastTransitionFrames
             remaining = transitionFrames
         }
     }
@@ -119,7 +150,11 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
     }
 }
 
-private class StudioEqCascade(private val bands: Array<StudioEqBiquad>, sampleRate: Int) {
+private class StudioEqCascade(
+    private val bands: Array<StudioEqBiquad>, sampleRate: Int, channels: Int, tape: Boolean,
+) {
+    private val tapeDrive = if (tape) DoubleArray(channels) else null
+    private val tapeStep = if (tape) 1.0 - exp(-2.0 * PI * minOf(1_900.0, sampleRate / 8.0) / sampleRate) else 0.0
     private val trim = run {
         // Estimate the maximum of the *combined* filter response at the
         // centers and across the spectrum. A fixed margin covers grid gaps.
@@ -145,7 +180,11 @@ private class StudioEqCascade(private val bands: Array<StudioEqBiquad>, sampleRa
     fun process(sample: Double, channel: Int): Double {
         var value = sample * trim
         for (band in bands) value = band.process(value, channel)
-        return value
+        // Drive the saturation from the body of the signal. High frequencies
+        // alone should not create strong folded harmonics at lower PCM rates.
+        val drive = tapeDrive ?: return value
+        drive[channel] += tapeStep * (value - drive[channel])
+        return value * capsuleTapeGain(drive[channel])
     }
 }
 

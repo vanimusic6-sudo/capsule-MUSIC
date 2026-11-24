@@ -4,6 +4,8 @@ package com.nikhil.yt.playback
 
 import android.content.Context
 import android.os.Build
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
@@ -60,9 +62,15 @@ internal const val CAPSULE_PCM_AUDIO_TRACK_BUFFER_DURATION_US = 1_500_000
 
 internal class CapsuleAudioRenderersFactory(
     context: Context,
-    private val readEqCurve: () -> List<Int>,
+    private val readStudioSound: () -> CapsuleStudioSound,
     private val useMusicBuffer: Boolean = true,
-) : DefaultRenderersFactory(context) {
+) : DefaultRenderersFactory(context), Player.Listener {
+    @Volatile private var studioTrackId: String? = null
+
+    override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+        studioTrackId = mediaItem?.mediaId
+    }
+
     init {
         // The Oct 25 codec A/B capture recorded 31 starvation events with
         // c2.android.inproc.opus.decoder (despite >1 minute of AUDIO buffered),
@@ -88,7 +96,7 @@ internal class CapsuleAudioRenderersFactory(
         val processorChain = object : DefaultAudioSink.DefaultAudioProcessorChain() {
             // Keep Media3's own time/silence accounting. EQ sees the final
             // sample frequencies and catches peaks after pitch resampling.
-            private val processors = super.getAudioProcessors() + CapsuleStudioEqProcessor(readEqCurve)
+            private val processors = super.getAudioProcessors() + CapsuleStudioEqProcessor(readStudioSound) { studioTrackId }
             override fun getAudioProcessors(): Array<AudioProcessor> = processors
         }
         return DefaultAudioSink.Builder(context)

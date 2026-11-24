@@ -106,8 +106,7 @@ import com.nikhil.yt.playback.CAPSULE_STUDIO_MANUAL_ID
 import com.nikhil.yt.playback.CapsuleEqPresets
 import com.nikhil.yt.playback.SoundStudioTempoVariant
 import com.nikhil.yt.playback.capsuleStudioBandLimit
-import com.nikhil.yt.playback.decodeEqBandLevels
-import com.nikhil.yt.playback.resampleEqLevelsByIndex
+import com.nikhil.yt.playback.readStudioManualCurve
 import com.nikhil.yt.playback.ExoDownloadService
 import com.nikhil.yt.ui.component.BottomSheetState
 import com.nikhil.yt.ui.component.CapsuleMenuListItem as ListItem
@@ -634,19 +633,18 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
     val frequencies = CAPSULE_STUDIO_FREQUENCIES_HZ
     val bandCount = frequencies.size
     val limits = remember { frequencies.map(::capsuleStudioBandLimit) }
-    val stored = remember(storedRaw) {
-        resampleEqLevelsByIndex(decodeEqBandLevels(storedRaw), bandCount)
-    }
+    val stored = remember(selectedId, storedRaw) { readStudioManualCurve(selectedId, storedRaw) }
     val preset = CapsuleEqPresets.byId(selectedId)?.takeIf { eqEnabled }
     val initial = when {
-        preset != null -> preset.referenceLevelsMb
-        eqEnabled && selectedId == CAPSULE_STUDIO_MANUAL_ID -> stored
+        preset != null -> preset.sound.levelsMb
+        eqEnabled && stored.isNotEmpty() -> stored
         else -> List(bandCount) { 0 }
     }
     var draft by remember { mutableStateOf<List<Int>?>(null) }
     LaunchedEffect(eqEnabled, selectedId, storedRaw) { draft = null }
     val levels = draft ?: initial
     val displayed = levels.mapIndexed { i, gain -> gain.coerceIn(limits[i]) }
+    var showBands by rememberSaveable { mutableStateOf(stored.isNotEmpty()) }
     var selectedBand by rememberSaveable { mutableIntStateOf(3) }
     val band = selectedBand.coerceIn(0, bandCount - 1)
 
@@ -700,79 +698,22 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    EqSection(
-                        title = stringResource(R.string.eq_ten_band_title),
-                        trailing = {
-                            TextButton(onClick = {
-                                if (eqEnabled) {
-                                    draft = null
-                                    service.selectSoundVersion(CAPSULE_STUDIO_MANUAL_ID, List(bandCount) { 0 })
-                                }
-                            }, enabled = eqEnabled) {
-                                Text(stringResource(R.string.reset))
-                            }
-                        },
-                    ) {
-                        CapsuleEqualizerGraph(
-                            frequenciesHz = frequencies,
-                            levelsMb = displayed,
-                            minMb = CAPSULE_EQ_MIN_MB,
-                            maxMb = CAPSULE_EQ_MAX_MB,
-                            bandLimitsMb = limits,
-                            selectedBand = band,
-                            onBandSelected = { selectedBand = it },
-                            onLevelChanged = { band, gain ->
-                                if (eqEnabled && band in 0 until bandCount) {
-                                    draft = levels.toMutableList().apply {
-                                        this[band] = gain.coerceIn(limits[band])
-                                    }
-                                }
-                            },
-                            onFinished = { band, gain ->
-                                if (eqEnabled && band in 0 until bandCount) {
-                                    val next = levels.toMutableList().apply {
-                                        this[band] = gain.coerceIn(limits[band])
-                                    }
-                                    draft = next
-                                    service.selectSoundVersion(CAPSULE_STUDIO_MANUAL_ID, next)
-                                }
-                            },
-                            graphHeight = when {
-                                LocalConfiguration.current.screenHeightDp < 690 -> 175.dp
-                                else -> 222.dp
-                            },
-                            editable = eqEnabled,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth()
-                                .padding(horizontal = 18.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                capsuleGraphHz(frequencies[band]),
-                                style = MaterialTheme.typography.titleSmall,
-                            )
-                            Text(
-                                formatDb(displayed[band] / 100f),
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                    }
-
-                    EqSection(title = stringResource(R.string.eq_profiles)) {
+                    EqSection(title = stringResource(R.string.eq_studio_character)) {
                         Column(
                             modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            CapsuleEqPresets.all.chunked(3).forEach { row ->
+                            CapsuleEqPresets.entries.chunked(2).forEach { row ->
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     for (version in row) {
                                         StudioChoice(
-                                            label = version.name,
-                                            selected = preset?.id == version.id,
+                                            label = stringResource(when (version) {
+                                                CapsuleEqPresets.AUTO -> R.string.eq_studio_auto
+                                                CapsuleEqPresets.WARM -> R.string.eq_studio_warm
+                                                CapsuleEqPresets.TAPE -> R.string.eq_studio_tape
+                                                CapsuleEqPresets.CLEAR -> R.string.eq_studio_clear
+                                            }),
+                                            selected = preset == version,
                                             onClick = {
                                                 draft = null
                                                 service.selectSoundVersion("capsule:${version.id}")
@@ -780,6 +721,78 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                                         )
                                     }
                                 }
+                            }
+                            if (preset == CapsuleEqPresets.AUTO || preset == CapsuleEqPresets.TAPE) {
+                                Text(
+                                    stringResource(if (preset == CapsuleEqPresets.AUTO)
+                                        R.string.eq_studio_auto_hint else R.string.eq_studio_tape_hint),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 4.dp),
+                                )
+                            }
+                        }
+                    }
+
+                    EqSection(
+                        title = stringResource(R.string.eq_ten_band_title),
+                        trailing = {
+                            TextButton(onClick = { showBands = !showBands }) {
+                                Text(stringResource(if (showBands) R.string.eq_studio_hide_bands else R.string.eq_studio_show_bands))
+                            }
+                        },
+                    ) {
+                        if (showBands) {
+                            CapsuleEqualizerGraph(
+                                frequenciesHz = frequencies,
+                                levelsMb = displayed,
+                                minMb = CAPSULE_EQ_MIN_MB,
+                                maxMb = CAPSULE_EQ_MAX_MB,
+                                bandLimitsMb = limits,
+                                selectedBand = band,
+                                onBandSelected = { selectedBand = it },
+                                onLevelChanged = { band, gain ->
+                                    if (eqEnabled && band in 0 until bandCount) {
+                                        draft = levels.toMutableList().apply {
+                                            this[band] = gain.coerceIn(limits[band])
+                                        }
+                                    }
+                                },
+                                onFinished = { band, gain ->
+                                    if (eqEnabled && band in 0 until bandCount) {
+                                        val next = levels.toMutableList().apply {
+                                            this[band] = gain.coerceIn(limits[band])
+                                        }
+                                        draft = next
+                                        service.selectSoundVersion(CAPSULE_STUDIO_MANUAL_ID, next)
+                                    }
+                                },
+                                graphHeight = when {
+                                    LocalConfiguration.current.screenHeightDp < 690 -> 175.dp
+                                    else -> 222.dp
+                                },
+                                editable = eqEnabled,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth()
+                                    .padding(horizontal = 18.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    capsuleGraphHz(frequencies[band]),
+                                    style = MaterialTheme.typography.titleSmall,
+                                )
+                                Text(
+                                    formatDb(displayed[band] / 100f),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                TextButton(enabled = eqEnabled, onClick = {
+                                    draft = null
+                                    service.selectSoundVersion(CAPSULE_STUDIO_MANUAL_ID, List(bandCount) { 0 })
+                                }) { Text(stringResource(R.string.reset)) }
                             }
                         }
                     }

@@ -14,7 +14,7 @@ class CapsuleMusicalEqPolicyTest {
     }
 
     @Test fun gradualWidespreadBoostAndCutsAreRetained() {
-        val raw = listOf(140, 250, 460, 470, 300, 80, -150, -320, -390, -430)
+        val raw = listOf(70, 130, 250, 280, 180, 30, -70, -160, -210, -250)
         assertEquals(raw, capsuleMusicalEqLevels(raw))
     }
 

@@ -1080,7 +1080,7 @@ class MusicService :
     private var videoModeSwitchGeneration = 0L
     private var lastVideoExitElapsedMs = 0L
     private var effectiveAudioVolume = 1f
-    @Volatile private var soundStudioCurve: List<Int> = emptyList()
+    @Volatile private var studioSound = CapsuleStudioSound()
     private val soundStudioTransitionFactor = MutableStateFlow(1f)
     private var soundStudioNeedsPcm = false
     // This is a relative SOFTWARE player-volume ceiling, never measured dBA.
@@ -1107,7 +1107,7 @@ class MusicService :
                 findResolved = YouTubeVideoResolver::peekResolved,
             ),
             audio = player,
-            readEqCurve = { soundStudioCurve },
+            readStudioSound = { studioSound },
             scope = scope,
             onSoundOwned = { ownsVideoAudio ->
                 videoReturnGapJob?.cancel()
@@ -1957,12 +1957,13 @@ class MusicService :
         }
 
         // Media3 owns the notification once playback begins; idle binds remain quiet.
+        val musicRenderers = createRenderersFactory()
         player =
             ExoPlayer
                 .Builder(this)
                 .setMediaSourceFactory(createMediaSourceFactory())
                 .setLoadControl(createCapsuleLoadControl())
-                .setRenderersFactory(createRenderersFactory())
+                .setRenderersFactory(musicRenderers)
                 .setHandleAudioBecomingNoisy(true)
                 .setWakeMode(C.WAKE_MODE_LOCAL)
                 .setAudioAttributes(
@@ -1978,6 +1979,7 @@ class MusicService :
                 .build()
                 .apply {
                     addListener(this@MusicService)
+                    addListener(musicRenderers)
                     sleepTimer = SleepTimer(scope, this, this@MusicService::pauseFromSleepTimer)
                     addListener(sleepTimer)
                     addAnalyticsListener(PlaybackStatsListener(false, this@MusicService))
@@ -2264,13 +2266,13 @@ class MusicService :
             }
         }
 
-        val baseVolumeFlow = combine(
-            playerVolume, normalizeFactor, audioFocusVolumeFactor, playbackFadeFactor,
-        ) { playerVolume, normalizeFactor, focus, fade ->
-            playerVolume * normalizeFactor * focus * fade
+        val baseVolumeFlow = combine(playerVolume, normalizeFactor, audioFocusVolumeFactor) { level, gain, focus ->
+            level * gain * focus
         }
-        combine(baseVolumeFlow, hearingCareMaxAppVolume, soundStudioTransitionFactor) { base, ceiling, transition ->
-            hearingCareOutputVolume(base * transition, ceiling)
+        combine(baseVolumeFlow, hearingCareMaxAppVolume, soundStudioTransitionFactor, playbackFadeFactor) {
+            base, ceiling, transition, fade ->
+            // The two players cap their levels before applying complementary fades.
+            hearingCareOutputVolume(base * transition, ceiling, fade)
         }.collectLatest(scope) { protectedVolume ->
             effectiveAudioVolume = protectedVolume
             player.volume = if (videoAudioOwned || videoReturnGapActive) 0f else protectedVolume
@@ -2362,11 +2364,12 @@ class MusicService :
                 audioNormalizationEnabled = audioNormalizationEnabled,
                 maxSafeGainFactor = maxSafeGainFactor,
                 overlapPlayerFactory = {
+                    val overlapRenderers = createRenderersFactory()
                     ExoPlayer
                         .Builder(this)
                         .setMediaSourceFactory(createMediaSourceFactory())
                         .setLoadControl(createCapsuleLoadControl())
-                        .setRenderersFactory(createRenderersFactory())
+                        .setRenderersFactory(overlapRenderers)
                         .setHandleAudioBecomingNoisy(false)
                         .setWakeMode(C.WAKE_MODE_LOCAL)
                         .setAudioAttributes(
@@ -2378,7 +2381,7 @@ class MusicService :
                             false,
                         ).setSeekBackIncrementMs(10000)
                         .setSeekForwardIncrementMs(10000)
-                        .build()
+                        .build().apply { addListener(overlapRenderers) }
                 },
             ).also { it.start(scope) }
 
@@ -2389,12 +2392,12 @@ class MusicService :
         )
 
         dataStore.data
-            .map { prefs -> readSoundStudioCurve(prefs) to prefs.readSoundStudioTempoVariant() }
+            .map { prefs -> readSoundStudio(prefs) to prefs.readSoundStudioTempoVariant() }
             .distinctUntilChanged()
-            .collect(scope) { (curve, tempoVariant) ->
+            .collect(scope) { (sound, tempoVariant) ->
                 val playbackParams = PlaybackParameters(tempoVariant.rate, tempoVariant.rate)
                 val paramChange = player.playbackParameters != playbackParams
-                val needsPcm = curve.isNotEmpty() || tempoVariant != SoundStudioTempoVariant.NORMAL
+                val needsPcm = sound.enabled || tempoVariant != SoundStudioTempoVariant.NORMAL
                 val pcmChanged = soundStudioNeedsPcm != needsPcm
                 soundStudioNeedsPcm = needsPcm
                 val fadeTempo = paramChange && player.isPlaying
@@ -2406,7 +2409,7 @@ class MusicService :
                         }
                     }
                     // The PCM processor ramps changes itself in the sample domain.
-                    soundStudioCurve = curve
+                    studioSound = sound
                     if (paramChange && !needsPcm) player.playbackParameters = playbackParams
                     if (pcmChanged || paramChange) updateAudioOffload(dataStore.get(AudioOffload, false))
                     if (paramChange && needsPcm) player.playbackParameters = playbackParams
@@ -3861,24 +3864,16 @@ class MusicService :
         startRadioSeamlessly()
     }
 
-    private fun decodeBandLevelsMb(raw: String?): List<Int> {
-        if (raw.isNullOrBlank()) return emptyList()
-        return decodeEqBandLevels(raw)
-    }
-
     private fun encodeBandLevelsMb(levelsMb: List<Int>): String {
         return runCatching { EqualizerJson.json.encodeToString(levelsMb) }.getOrNull().orEmpty()
     }
 
-    private fun readSoundStudioCurve(prefs: Preferences): List<Int> {
-        if (prefs[EqualizerEnabledKey] != true) return emptyList()
-        val selectedId = prefs[EqualizerSelectedProfileIdKey] ?: return emptyList()
-        val levels = if (selectedId == CAPSULE_STUDIO_MANUAL_ID) {
-            decodeBandLevelsMb(prefs[EqualizerBandLevelsMbKey])
-        } else {
-            CapsuleEqPresets.byId(selectedId)?.referenceLevelsMb.orEmpty()
-        }
-        return if (levels.isEmpty()) emptyList() else capsuleMusicalEqLevels(levels)
+    private fun readSoundStudio(prefs: Preferences): CapsuleStudioSound {
+        if (prefs[EqualizerEnabledKey] != true) return CapsuleStudioSound()
+        val selectedId = prefs[EqualizerSelectedProfileIdKey] ?: return CapsuleStudioSound()
+        CapsuleEqPresets.byId(selectedId)?.let { return it.sound }
+        val manual = readStudioManualCurve(selectedId, prefs[EqualizerBandLevelsMbKey])
+        return if (manual.isEmpty()) CapsuleStudioSound() else CapsuleStudioSound(capsuleMusicalEqLevels(manual))
     }
 
     /** Persist a complete, validated curve and its selection in one transaction. */
@@ -3910,8 +3905,7 @@ class MusicService :
                 if (enabled) {
                     val id = prefs[EqualizerSelectedProfileIdKey]
                     val preset = id?.let(CapsuleEqPresets::byId)
-                    val hasManualCurve = id == CAPSULE_STUDIO_MANUAL_ID &&
-                        decodeBandLevelsMb(prefs[EqualizerBandLevelsMbKey]).isNotEmpty()
+                    val hasManualCurve = readStudioManualCurve(id, prefs[EqualizerBandLevelsMbKey]).isNotEmpty()
                     if (preset == null && !hasManualCurve) {
                         prefs.preserveLegacySoundStudioTempo()
                         prefs[EqualizerSelectedProfileIdKey] = CAPSULE_STUDIO_DEFAULT_ID
@@ -6216,7 +6210,7 @@ class MusicService :
         )
     }
 
-    private fun createRenderersFactory() = CapsuleAudioRenderersFactory(this, { soundStudioCurve })
+    private fun createRenderersFactory() = CapsuleAudioRenderersFactory(this, { studioSound })
 
     override fun onPlaybackStatsReady(
         eventTime: AnalyticsListener.EventTime,

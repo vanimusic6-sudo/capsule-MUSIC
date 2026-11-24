@@ -18,4 +18,10 @@ class EqualizerModelsTest {
         assertEquals(listOf(1500, -1500), decodeEqBandLevels("[2147483647,-2147483648]"))
         assertEquals(64, decodeEqBandLevels("[" + List(256) { "100" }.joinToString(",") + "]").size)
     }
+    @Test fun savedManualPointsAreReprojectedInFrequencySpace() {
+        val raw = "[0,0,100,200,300,400,500,600,700,800]"
+        assertEquals(117, readStudioManualCurve("adaptive:manual", raw)[2])
+        assertEquals(100, readStudioManualCurve(CAPSULE_STUDIO_MANUAL_ID, raw)[2])
+        assertEquals(emptyList<Int>(), readStudioManualCurve("flat", raw))
+    }
 }

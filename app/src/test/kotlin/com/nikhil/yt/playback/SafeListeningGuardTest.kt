@@ -48,4 +48,13 @@ class SafeListeningGuardTest {
         assertTrue(cap(hardware = 1.4f) <= 1f)
         assertEquals(1f, hearingCareOutputVolume(9f, 1f), 0.001f)
     }
+    @Test fun crossfadeSharesTheHeadphoneCeiling() {
+        val ceiling = cap()
+        for (step in 0..100) {
+            val t = step / 100f
+            val main = hearingCareOutputVolume(1.4f, ceiling, 1f - t)
+            val overlap = hearingCareOutputVolume(1.4f, ceiling, t)
+            assertEquals(ceiling, main + overlap, 0.000001f)
+        }
+    }
 }
