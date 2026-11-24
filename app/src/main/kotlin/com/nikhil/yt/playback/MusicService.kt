@@ -106,16 +106,9 @@ import com.nikhil.yt.constants.AutoStartOnBluetoothKey
 import com.nikhil.yt.constants.DiscordTokenKey
 import com.nikhil.yt.constants.EnableDiscordRPCKey
 import com.nikhil.yt.constants.EqualizerBandLevelsMbKey
-import com.nikhil.yt.constants.EqualizerCurveIntensityPercentKey
 import com.nikhil.yt.constants.EqualizerMusicalBalanceKey
-import com.nikhil.yt.constants.EqualizerBassBoostEnabledKey
-import com.nikhil.yt.constants.EqualizerBassBoostStrengthKey
 import com.nikhil.yt.constants.EqualizerEnabledKey
-import com.nikhil.yt.constants.EqualizerOutputGainEnabledKey
-import com.nikhil.yt.constants.EqualizerOutputGainMbKey
 import com.nikhil.yt.constants.EqualizerSelectedProfileIdKey
-import com.nikhil.yt.constants.EqualizerVirtualizerEnabledKey
-import com.nikhil.yt.constants.EqualizerVirtualizerStrengthKey
 import com.nikhil.yt.constants.HideExplicitKey
 import com.nikhil.yt.constants.HistoryDuration
 import com.nikhil.yt.constants.InnerTubeCookieKey
@@ -1087,16 +1080,12 @@ class MusicService :
     private var videoModeSwitchGeneration = 0L
     private var lastVideoExitElapsedMs = 0L
     private var effectiveAudioVolume = 1f
-    // Reserve peak headroom before native DSP so boosted EQ/Bass/Gain do not
-    // stack into full-scale source peaks. Video has a separate audio session.
-    private val soundStudioSafetyFactor = MutableStateFlow(1f)
+    @Volatile private var soundStudioCurve: List<Int> = emptyList()
     private val soundStudioTransitionFactor = MutableStateFlow(1f)
-    private val soundStudioEnabledForVolume = MutableStateFlow(false)
+    private var soundStudioNeedsPcm = false
     // This is a relative SOFTWARE player-volume ceiling, never measured dBA.
     private val hearingCareMaxAppVolume = MutableStateFlow(1f)
     private val hearingCarePreference = MutableStateFlow(true to 0L)
-    private var previousSoundStudioSettings: EqSettings? = null
-    private var soundStudioTempoNeedsPcm = false
     private var videoRequestedAtMs = 0L
     val videoRenderPlayer: Player?
         get() = videoCompanion?.player
@@ -1118,6 +1107,7 @@ class MusicService :
                 findResolved = YouTubeVideoResolver::peekResolved,
             ),
             audio = player,
+            readEqCurve = { soundStudioCurve },
             scope = scope,
             onSoundOwned = { ownsVideoAudio ->
                 videoReturnGapJob?.cancel()
@@ -1746,13 +1736,6 @@ class MusicService :
 
     private var isAudioEffectSessionOpened = false
     private var openedAudioSessionId: Int? = null
-    private val audioEffectsController =
-        PlaybackAudioEffectsController { operation, error ->
-            reportRecoverableException("MusicService", operation, error)
-        }
-    val eqCapabilities = audioEffectsController.capabilities
-    internal val eqEngineMode = audioEffectsController.engineMode
-
     private val scrobbleCoordinator by lazy(LazyThreadSafetyMode.NONE) {
         ScrobbleCoordinator(
             context = this,
@@ -2042,7 +2025,8 @@ class MusicService :
                             )
                         }
                     })
-                    setOffloadEnabled(dataStore.get(AudioOffload, false))
+                    setOffloadEnabled(dataStore.get(AudioOffload, false) &&
+                        !dataStore.get(EqualizerEnabledKey, false))
                 }
 
         offlinePlaybackQueue = OfflinePlaybackQueue(player, scope) { items ->
@@ -2285,25 +2269,12 @@ class MusicService :
         ) { playerVolume, normalizeFactor, focus, fade ->
             playerVolume * normalizeFactor * focus * fade
         }
-        val hearingCareBaseVolumeFlow = combine(
-            baseVolumeFlow, hearingCareMaxAppVolume,
-        ) { base, ceiling -> base to ceiling }
-        combine(
-            hearingCareBaseVolumeFlow, soundStudioSafetyFactor,
-            soundStudioTransitionFactor, normalizeFactor,
-            soundStudioEnabledForVolume,
-        ) { (base, ceiling), safety, transition, normalization, eqEnabled ->
-            val protected = protectedEqPlaybackVolume(
-                base, normalization, safety, transition, eqEnabled,
-            )
-            base to (ceiling to hearingCareOutputVolume(protected, ceiling))
-        }.collectLatest(scope) { (base, protected) ->
-            val (ceiling, protectedVolume) = protected
+        combine(baseVolumeFlow, hearingCareMaxAppVolume, soundStudioTransitionFactor) { base, ceiling, transition ->
+            hearingCareOutputVolume(base * transition, ceiling)
+        }.collectLatest(scope) { protectedVolume ->
             effectiveAudioVolume = protectedVolume
-            player.volume = if (videoAudioOwned || videoReturnGapActive) 0f
-                else protectedVolume
-            // VIDEO has a different audio session: apply the same output cap.
-            videoCompanion?.setVolume(hearingCareOutputVolume(base, ceiling))
+            player.volume = if (videoAudioOwned || videoReturnGapActive) 0f else protectedVolume
+            videoCompanion?.setVolume(protectedVolume)
         }
 
         playerVolume.debounce(1000).collect(ioScope) { volume ->
@@ -2418,95 +2389,32 @@ class MusicService :
         )
 
         dataStore.data
-            .map { prefs -> readEqSettingsFromPrefs(prefs) to prefs.readSoundStudioTempoVariant() }
+            .map { prefs -> readSoundStudioCurve(prefs) to prefs.readSoundStudioTempoVariant() }
             .distinctUntilChanged()
-            .collect(scope) { (settings, tempoVariant) ->
-                // Tone only: positive makeup gain and independent OEM boost
-                // effects are retired. The common safety reserve is mandatory.
-                if (settings.enabled) soundStudioEnabledForVolume.value = true
-                // Resampling changes both tempo and pitch for Speed Up / Slowed.
+            .collect(scope) { (curve, tempoVariant) ->
                 val playbackParams = PlaybackParameters(tempoVariant.rate, tempoVariant.rate)
-                val currentParams = player.playbackParameters
-                val paramChange = currentParams.speed != playbackParams.speed ||
-                    currentParams.pitch != playbackParams.pitch
-                val previous = previousSoundStudioSettings
-                // Pitch-shifted versions need the software audio pipeline.
-                // OEM compressed offload can bypass Sonic / reject pitch.
-                soundStudioTempoNeedsPcm = tempoVariant != SoundStudioTempoVariant.NORMAL
-                // Short duck avoids an audible edge on legacy OEM mixer
-                // transitions or a large EQ-curve change. No delayed threads
-                // keep running after the scope is cancelled.
-                // OEM graph switching or playback-rate changes need ducking.
-                // Continuous band/strength edits do NOT: that caused the
-                // previous app to briefly whisper on every curve movement.
-                val sensitive = previous != null && player.isPlaying &&
-                    (previous.enabled != settings.enabled ||
-                        previous.bassBoostEnabled != settings.bassBoostEnabled ||
-                        previous.virtualizerEnabled != settings.virtualizerEnabled ||
-                        previous.outputGainEnabled != settings.outputGainEnabled ||
-                        // Switching the perceptual curve changes several filter
-                        // bands at once: reuse the short low-energy transition
-                        // instead of letting all bands jump during a loud note.
-                        previous.musicalBalanceEnabled != settings.musicalBalanceEnabled ||
-                        paramChange)
+                val paramChange = player.playbackParameters != playbackParams
+                val needsPcm = curve.isNotEmpty() || tempoVariant != SoundStudioTempoVariant.NORMAL
+                val pcmChanged = soundStudioNeedsPcm != needsPcm
+                soundStudioNeedsPcm = needsPcm
+                val fadeTempo = paramChange && player.isPlaying
                 try {
-                    if (sensitive) {
-                        for (fade in listOf(0.82f, 0.54f, 0.26f)) {
-                            soundStudioTransitionFactor.value = fade
+                    if (fadeTempo) {
+                        for (factor in listOf(0.82f, 0.54f, 0.26f)) {
+                            soundStudioTransitionFactor.value = factor
                             delay(12L)
                         }
                     }
-                    val legacySafety = protectedEqAudioFactor(settings, eqCapabilities.value)
-                    // Before a legacy DSP switch, retain pre-attenuation.
-                    // On the unified DPE path, input trim precedes PreEQ and
-                    // the sample-peak limiter; avoid global volume pumping.
-                    if (sensitive || !audioEffectsController.isUnifiedDynamicsActive) {
-                        soundStudioSafetyFactor.value = minOf(
-                            soundStudioSafetyFactor.value, legacySafety)
-                    }
-                    audioEffectsController.applySettings(settings)
-                    val targetSafety = when {
-                        !settings.enabled -> 1f
-                        // No active native EQ must not silently make music
-                        // quieter merely because a curve is configured.
-                        audioEffectsController.engineMode.value ==
-                            CapsuleEqEngineMode.UNAVAILABLE -> 1f
-                        audioEffectsController.isUnifiedDynamicsActive -> 1f
-                        else -> protectedEqAudioFactor(settings, eqCapabilities.value)
-                    }
-                    // No usable native EQ means there is nothing to protect.
-                    // Restore regular loudness normalization as well as player
-                    // volume; otherwise the "EQ unavailable" state sounds weak.
-                    // On bypass, normalize only AFTER DSP has been neutralized.
-                    if (!settings.enabled || audioEffectsController.engineMode.value ==
-                        CapsuleEqEngineMode.UNAVAILABLE
-                    ) soundStudioEnabledForVolume.value = false
-                    // Session effects can be skipped by compressed audio offload.
-                    // Permit hardware offload again only when EQ is bypassed.
-                    if (paramChange && !soundStudioTempoNeedsPcm) {
-                        player.playbackParameters = playbackParams
-                    }
-                    if (previous?.enabled != settings.enabled || paramChange) {
-                        updateAudioOffload(dataStore.get(AudioOffload, false))
-                    }
-                    if (paramChange && soundStudioTempoNeedsPcm) {
-                        player.playbackParameters = playbackParams
-                    }
-                    previousSoundStudioSettings = settings
-                    if (sensitive) {
-                        val beforeRestore = soundStudioSafetyFactor.value
-                        val steps = listOf(0.42f, 0.60f, 0.78f, 0.91f, 1f)
-                        for ((index, fade) in steps.withIndex()) {
-                            // Bypass removes headroom; restore it gradually,
-                            // never in a sudden +dB leap while the mixer changes.
-                            val progress = (index + 1).toFloat() / steps.size
-                            soundStudioSafetyFactor.value =
-                                beforeRestore + (targetSafety - beforeRestore) * progress
-                            soundStudioTransitionFactor.value = fade
+                    // The PCM processor ramps changes itself in the sample domain.
+                    soundStudioCurve = curve
+                    if (paramChange && !needsPcm) player.playbackParameters = playbackParams
+                    if (pcmChanged || paramChange) updateAudioOffload(dataStore.get(AudioOffload, false))
+                    if (paramChange && needsPcm) player.playbackParameters = playbackParams
+                    if (fadeTempo) {
+                        for (factor in listOf(0.42f, 0.60f, 0.78f, 0.91f, 1f)) {
+                            soundStudioTransitionFactor.value = factor
                             delay(18L)
                         }
-                    } else {
-                        soundStudioSafetyFactor.value = targetSafety
                     }
                 } finally {
                     soundStudioTransitionFactor.value = 1f
@@ -3962,155 +3870,56 @@ class MusicService :
         return runCatching { EqualizerJson.json.encodeToString(levelsMb) }.getOrNull().orEmpty()
     }
 
-    private fun readEqSettingsFromPrefs(prefs: Preferences): EqSettings {
-        val selectedId = prefs[EqualizerSelectedProfileIdKey]
-        val preset = selectedId?.removePrefix("capsule:")?.let(CapsuleEqPresets::byId)
-        // An explicit new adaptive:manual selection is required: legacy manual
-        // settings stay saved, but cannot turn on without user action.
-        val manualSelected = selectedId == "adaptive:manual"
-        val storedLevels = if (manualSelected) {
+    private fun readSoundStudioCurve(prefs: Preferences): List<Int> {
+        if (prefs[EqualizerEnabledKey] != true) return emptyList()
+        val selectedId = prefs[EqualizerSelectedProfileIdKey] ?: return emptyList()
+        val levels = if (selectedId == CAPSULE_STUDIO_MANUAL_ID) {
             decodeBandLevelsMb(prefs[EqualizerBandLevelsMbKey])
-        } else emptyList()
-        val manualEnabled = manualSelected && storedLevels.isNotEmpty()
-        return EqSettings(
-            enabled = (prefs[EqualizerEnabledKey] ?: false) &&
-                (preset != null || manualEnabled),
-            bandLevelsMb = preset?.referenceLevelsMb ?: storedLevels,
-            outputGainEnabled = false,
-            outputGainMb = 0,
-            bassBoostEnabled = false,
-            bassBoostStrength = 0,
-            virtualizerEnabled = false,
-            virtualizerStrength = 0,
-            intensityPercent = 100, // obsolete external intensity amplifier retired
-            musicalBalanceEnabled = true,
-            versionId = preset?.id,
-        )
+        } else {
+            CapsuleEqPresets.byId(selectedId)?.referenceLevelsMb.orEmpty()
+        }
+        return if (levels.isEmpty()) emptyList() else capsuleMusicalEqLevels(levels)
     }
 
-    /**
-     * Persist selected profile, EQ state and raw curve in ONE transaction.
-     * Avoid transiently applying the last track's aggressive EQ when a preset
-     * is changed. Legacy stored "manual" profiles remain dormant until the
-     * user explicitly opts into adaptive:manual.
-     */
-    fun selectSoundVersion(id: String, requestedLevelsMb: List<Int> = emptyList()) {
-        val preset = id.removePrefix("capsule:").let(CapsuleEqPresets::byId)
-        val manual = id == "adaptive:manual" &&
-            requestedLevelsMb.isNotEmpty() && requestedLevelsMb.size <= 32
-        val neutral = id == "flat"
-        val tempoVariant = SoundStudioTempoVariant.resolve(id, null)
-        if (tempoVariant != SoundStudioTempoVariant.NORMAL) {
-            selectTempoVariant(tempoVariant)
-            return
-        }
-        if (preset == null && !manual && !neutral) return
-        ioScope.launch {
+    /** Persist a complete, validated curve and its selection in one transaction. */
+    internal fun selectSoundVersion(id: String, requestedLevelsMb: List<Int> = emptyList()) {
+        val preset = CapsuleEqPresets.byId(id)
+        val manual = id == CAPSULE_STUDIO_MANUAL_ID &&
+            requestedLevelsMb.size == CAPSULE_STUDIO_FREQUENCIES_HZ.size
+        if (preset == null && !manual) return
+        val encoded = if (manual) encodeBandLevelsMb(requestedLevelsMb.map { it.coerceIn(-1500, 1500) }) else null
+        scope.launch {
             dataStore.edit { prefs ->
-                val previousId = prefs[EqualizerSelectedProfileIdKey]
                 prefs.preserveLegacySoundStudioTempo()
                 prefs[EqualizerSelectedProfileIdKey] = id
-                prefs[EqualizerEnabledKey] = (preset != null || manual)
-                if (manual) {
-                    prefs[EqualizerBandLevelsMbKey] = encodeBandLevelsMb(
-                        requestedLevelsMb.map { it.coerceIn(-1500,1500) },
-                    )
-                }
-                // Neither a preset nor the manual graph can enable old
-                // independent boost, virtualizer or makeup-gain preferences.
-                prefs[EqualizerBassBoostEnabledKey] = false
-                prefs[EqualizerOutputGainEnabledKey] = false
-                // Never import legacy 200% strength on a newly selected mode.
-                // But preserve the user's strength while editing the same curve.
-                if (id != previousId) {
-                    prefs[EqualizerCurveIntensityPercentKey] = 100
-                }
+                prefs[EqualizerEnabledKey] = true
+                if (encoded != null) prefs[EqualizerBandLevelsMbKey] = encoded
             }
         }
     }
 
     internal fun selectTempoVariant(variant: SoundStudioTempoVariant) {
-        ioScope.launch {
+        scope.launch {
             dataStore.edit { it.setSoundStudioTempoVariant(variant) }
         }
     }
 
     internal fun setSoundStudioEqEnabled(enabled: Boolean) {
-        ioScope.launch {
+        scope.launch {
             dataStore.edit { prefs ->
                 if (enabled) {
                     val id = prefs[EqualizerSelectedProfileIdKey]
-                    val preset = id?.removePrefix("capsule:")?.let(CapsuleEqPresets::byId)
-                    val hasManualCurve = id == "adaptive:manual" &&
+                    val preset = id?.let(CapsuleEqPresets::byId)
+                    val hasManualCurve = id == CAPSULE_STUDIO_MANUAL_ID &&
                         decodeBandLevelsMb(prefs[EqualizerBandLevelsMbKey]).isNotEmpty()
                     if (preset == null && !hasManualCurve) {
                         prefs.preserveLegacySoundStudioTempo()
-                        prefs[EqualizerSelectedProfileIdKey] = "capsule:soft_bass_v2"
+                        prefs[EqualizerSelectedProfileIdKey] = CAPSULE_STUDIO_DEFAULT_ID
                     }
                 }
                 prefs[EqualizerEnabledKey] = enabled
             }
         }
-    }
-
-    fun applyEqFlatPreset() {
-        ioScope.launch {
-            // Preserve an editable five-band flat profile even before the
-            // first AudioTrack session exists. Resampled when playback starts.
-            val bandCount = CAPSULE_STUDIO_FREQUENCIES_HZ.size
-            val encoded = encodeBandLevelsMb(List(bandCount) { 0 })
-            dataStore.edit { prefs ->
-                prefs[EqualizerEnabledKey] = true
-                prefs[EqualizerBandLevelsMbKey] = encoded
-                prefs[EqualizerSelectedProfileIdKey] = "flat"
-            }
-        }
-    }
-
-    fun applySystemEqPreset(presetIndex: Int) {
-        scope.launch {
-            // An OEM preset writes directly into the native mixer, before
-            // DataStore notifies our static headroom calculation. Duck FIRST,
-            // then let the regular effect observer restore the correct gain.
-            val previousSafety = soundStudioSafetyFactor.value
-            soundStudioSafetyFactor.value = minOf(previousSafety, 0.1f)
-            val levels =
-                audioEffectsController.applySystemPreset(
-                    sessionId = player.audioSessionId,
-                    presetIndex = presetIndex,
-                )
-            if (levels == null) {
-                soundStudioSafetyFactor.value = previousSafety
-                return@launch
-            }
-
-            val encoded = encodeBandLevelsMb(levels)
-            if (encoded.isBlank()) {
-                soundStudioSafetyFactor.value = previousSafety
-                return@launch
-            }
-
-            ioScope.launch {
-                dataStore.edit { prefs ->
-                    prefs[EqualizerEnabledKey] = true
-                    prefs[EqualizerBandLevelsMbKey] = encoded
-                    prefs[EqualizerSelectedProfileIdKey] = "system:$presetIndex"
-                }
-            }
-        }
-    }
-
-    /** Reconcile output headroom when Android creates or replaces AudioTrack. */
-    private fun restoreSoundStudioSafetyAfterSessionChange() {
-        val settings = previousSoundStudioSettings ?: return
-        val safety = when {
-            !settings.enabled -> 1f
-            audioEffectsController.engineMode.value ==
-                CapsuleEqEngineMode.UNAVAILABLE -> 1f
-            audioEffectsController.isUnifiedDynamicsActive -> 1f
-            else -> protectedEqAudioFactor(settings, eqCapabilities.value)
-        }
-        soundStudioSafetyFactor.value = safety
     }
 
     private fun openAudioEffectSession() {
@@ -4119,8 +3928,6 @@ class MusicService :
         if (sessionId <= 0) return
         isAudioEffectSessionOpened = true
         openedAudioSessionId = sessionId
-        audioEffectsController.ensure(sessionId)
-        restoreSoundStudioSafetyAfterSessionChange()
         sendBroadcast(
             Intent(AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION).apply {
                 putExtra(AudioEffect.EXTRA_AUDIO_SESSION, sessionId)
@@ -4135,10 +3942,6 @@ class MusicService :
         isAudioEffectSessionOpened = false
         val sessionId = openedAudioSessionId ?: player.audioSessionId
         openedAudioSessionId = null
-        // Don't destroy the per-player native EQ on every pause/focus loss.
-        // That rebuilt BassBoost/Virtualizer mid-session and made the controls
-        // disappear until music started again. Ownership is released on session
-        // replacement or in onDestroy, never attached to system session 0.
         if (sessionId <= 0) return
         sendBroadcast(
             Intent(AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION).apply {
@@ -4676,8 +4479,6 @@ class MusicService :
                 },
             )
             openedAudioSessionId = newSessionId
-            audioEffectsController.ensure(newSessionId)
-            restoreSoundStudioSafetyAfterSessionChange()
             sendBroadcast(
                 Intent(AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION).apply {
                     putExtra(AudioEffect.EXTRA_AUDIO_SESSION, newSessionId)
@@ -6409,14 +6210,13 @@ class MusicService :
     private fun updateAudioOffload(enabled: Boolean) {
         player.setOffloadEnabled(
             shouldEnableAudioOffload(
-                requested = enabled && !soundStudioEnabledForVolume.value &&
-                    !soundStudioTempoNeedsPcm,
+                requested = enabled && !soundStudioNeedsPcm,
                 crossfadeDurationMs = crossfadeDurationMs.value,
             ),
         )
     }
 
-    private fun createRenderersFactory() = CapsuleAudioRenderersFactory(this)
+    private fun createRenderersFactory() = CapsuleAudioRenderersFactory(this, { soundStudioCurve })
 
     override fun onPlaybackStatsReady(
         eventTime: AnalyticsListener.EventTime,
@@ -6680,11 +6480,6 @@ class MusicService :
             reportRecoverableException("MusicService", "unregister connectivity observer", error)
         }
         playbackFocusController.abandonFocus()
-        try {
-            audioEffectsController.release()
-        } catch (error: Exception) {
-            reportRecoverableException("MusicService", "release audio effects during destroy", error)
-        }
         /*
          * onDestroy runs on the main thread. Never fsync the queue here.
          * Task-removal shutdown waits for its IO flush before stopSelf;

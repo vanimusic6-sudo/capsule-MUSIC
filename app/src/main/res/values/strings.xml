@@ -1059,7 +1059,6 @@ Capsule will only extract your token, and everything else is stored locally.</st
     <string name="eq_clean_headroom_description">Frequency shaping stays strong. This reduces digital clipping, but cannot measure or guarantee speaker safety.</string>
     <string name="eq_engine_unified">DSP active: Android DynamicsProcessing · clean pre-EQ trim + limiter</string>
     <string name="eq_engine_native">DSP: device EQ fallback · source headroom active</string>
-    <string name="eq_engine_unavailable">EQ is unavailable for this audio session. No unnecessary volume reduction applied.</string>
     <string name="eq_engine_waiting">DSP: waiting for an active audio session</string>
     <string name="eq_musical_balance">Musical balance</string>
     <string name="eq_musical_balance_description">Always on · smoother frequency contour, tonal character preserved. This does not measure headphone sound pressure.</string>
@@ -1079,10 +1078,8 @@ Capsule will only extract your token, and everything else is stored locally.</st
     <string name="eq_adaptive_description">Shape the music with real Android bands. A dotted curve shows the sound actually applied: gentle curves stay intact, while sharp peaks and dips are automatically softened. This does not measure sound pressure or guarantee hearing safety.</string>
     <string name="eq_adaptive_corrected">Adaptive contour is smoothing excessive changes</string>
     <string name="eq_adaptive_original">Requested contour stays unchanged</string>
-    <string name="eq_adaptive_activate">Use my curve</string>
     <string name="eq_adaptive_needs_playback">Start playback to detect the real frequency bands supported by this device.</string>
     <string name="eq_classic_safety_explanation">The audio engine uses one bounded EQ curve, gentle notch correction and input headroom. The former independent BassBoost, spatializer and volume amplifier stay disabled. This does not measure headphone sound pressure or guarantee hearing safety.</string>
     <string name="eq_ten_band_title">10-band equalizer</string>
     <string name="eq_tempo_normal">Normal</string>
-    <string name="eq_ten_band_fallback">This device uses its native EQ bands. The 10-band curve is approximated.</string>
 </resources>

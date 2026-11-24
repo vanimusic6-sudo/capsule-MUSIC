@@ -12,7 +12,7 @@ import androidx.media3.common.Tracks
 import com.nikhil.yt.innertube.video.CapsuleVideoDelivery
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.DefaultLoadControl
-import androidx.media3.exoplayer.DefaultRenderersFactory
+import com.nikhil.yt.playback.CapsuleAudioRenderersFactory
 import com.nikhil.yt.playback.CapsuleOpusCodecSelector
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
@@ -165,6 +165,7 @@ internal fun capsuleVideoInitialPosition(
 
 internal class CapsuleVideoCompanion(
     context: Context, factory: MediaSource.Factory, audio: ExoPlayer,
+    readEqCurve: () -> List<Int>,
     private val scope: CoroutineScope, onSoundOwned: (Boolean) -> Unit,
     onReady: (String) -> Unit, onFailure: (String, Throwable) -> Unit,
     onEnded: (String) -> Unit, onFrameUnavailable: (String) -> Unit,
@@ -176,7 +177,7 @@ internal class CapsuleVideoCompanion(
         // still audible. Use the same Android 17 native in-process preference
         // to reduce media codec IPC on supported devices, without touching
         // the default VP9/AV1/H.264 video decoder ordering.
-        .setRenderersFactory(DefaultRenderersFactory(context)
+        .setRenderersFactory(CapsuleAudioRenderersFactory(context, readEqCurve, useMusicBuffer = false)
             .setMediaCodecSelector(CapsuleOpusCodecSelector)
             .setEnableDecoderFallback(true))
         // AUDIO downloads must not make HLS assume the VIDEO host is fast.

@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="eq_versions_title">Версии</string>
-    <string name="eq_version_original">Оригинал</string>
     <string name="eq_version_fast">Быстрее</string>
     <string name="eq_version_slow">Медленнее</string>
     <string name="eq_simple_title">Быстрый звук</string>

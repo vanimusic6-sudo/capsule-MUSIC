@@ -25,6 +25,8 @@ class CapsuleEqualizerGraphTest {
     @Test fun physicalBassAndTrebleMaximaBothReachTheTop() {
         val zero = capsuleGraphZeroY(214f, -1500, 900, 18f)
         assertEquals(400, capsuleBandLevelAt(18f, 214f, -1500, 900, 400, 18f))
+        assertEquals(520, capsuleBandLevelAt(18f, 214f, -700, 520, 520, 18f, -570))
+        assertEquals(-570, capsuleBandLevelAt(196f, 214f, -700, 520, 520, 18f, -570))
         assertEquals(900, capsuleBandLevelAt(18f, 214f, -1500, 900, 900, 18f))
         assertEquals(0, capsuleBandLevelAt(zero, 214f, -1500, 900, 400, 18f))
         assertEquals(-1500, capsuleBandLevelAt(214f, 214f, -1500, 900, 400, 18f))
@@ -44,7 +46,7 @@ class CapsuleEqualizerGraphTest {
         assertTrue(src.contains("awaitFirstDown"))
         assertTrue(src.contains("down.consume()"))
         assertTrue(src.contains("change.consume()"))
-        assertTrue(src.contains("bandMaxLevelsMb"))
+        assertTrue(src.contains("bandLimitsMb"))
         assertTrue(src.contains("onFinished: (Int, Int) -> Unit"))
     }
 }
