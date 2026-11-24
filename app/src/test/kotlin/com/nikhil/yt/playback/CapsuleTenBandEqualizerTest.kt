@@ -31,6 +31,21 @@ class CapsuleTenBandEqualizerTest {
         assertTrue(mapped[1]>mapped[4])
     }
 
+    @Test fun tenBandVendorFrequenciesDoNotDoubleInterpolateCuratedPresets() {
+        val vendor10=listOf(60,110,220,400,800,1600,3200,5000,9500,17000)
+        val preset=CapsuleEqPresets.byId("soft_bass_v2")!!
+        val settings=EqSettings(true,emptyList(),false,0,false,0,false,0,
+            versionId=preset.id)
+        val native=EqCapabilities(10,-1500,1500,vendor10,emptyList())
+        val expected=protectedEqLevels(settings.copy(
+            bandLevelsMb=preset.referenceLevelsMb, versionId=null),
+            10,-1500,1500,vendor10)
+        assertEquals(expected,capsuleUnifiedEqLevels(settings,native))
+        val source=File("src/main/kotlin/com/nikhil/yt/playback/CapsuleUnifiedDynamicsProcessor.kt")
+            .readText()
+        assertTrue(source.contains("preset?.referenceLevelsMb"))
+    }
+
     @Test fun malformedFrequencyMetadataAndBigGainsRemainFiniteAndClamped() {
         val output=capsuleProjectEqLevelsByFrequency(
             List(10) { i -> if (i%2==0) Int.MAX_VALUE else Int.MIN_VALUE },

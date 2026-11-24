@@ -37,15 +37,11 @@ internal fun capsuleUnifiedEqLevels(
 ): List<Int> {
     if (!settings.enabled) return List(capabilities.bandCount.coerceAtLeast(0)) { 0 }
     val preset = settings.versionId?.let(CapsuleEqPresets::byId)
-    // Require an explicitly recognized version, map by device Hz (NOT band
-    // index), then use the same protective contour as the former custom EQ.
-    val raw = if (preset != null) {
-        CapsuleEqPresets.levelsFor(
-            preset,
-            (0 until capabilities.bandCount).map { capabilities.centerFreqHz.getOrNull(it) ?: 0 },
-            capabilities.minBandLevelMb, capabilities.maxBandLevelMb,
-        )
-    } else settings.bandLevelsMb
+    // Keep a ten-point reference contour here. protectedEqLevels projects
+    // it by Hz EXACTLY ONCE onto the active engine (10-band or OEM 3/5/10).
+    // Mapping the preset first, then mapping again when the OEM also reports
+    // ten different bands, subtly shifts the entire frequency response.
+    val raw = preset?.referenceLevelsMb ?: settings.bandLevelsMb
     val levels = protectedEqLevels(
         settings.copy(
             bandLevelsMb = raw, intensityPercent = settings.intensityPercent.coerceIn(100, 145),
@@ -55,9 +51,7 @@ internal fun capsuleUnifiedEqLevels(
         capabilities.bandCount, capabilities.minBandLevelMb,
         capabilities.maxBandLevelMb, capabilities.centerFreqHz,
     )
-    // The low-frequency flavour control is a small additional *shelf* inside
-    // this same shape, never a second OEM BassBoost effect or compressor.
-    // Apply it BEFORE the global notch/spread and headroom policy.
+    // There is one contour and one preamp. No additional BassBoost or MBC.
     return levels
 }
 

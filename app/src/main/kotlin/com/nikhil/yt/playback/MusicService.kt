@@ -4061,7 +4061,7 @@ class MusicService :
             dataStore.edit { prefs ->
                 prefs[EqualizerEnabledKey] = true
                 prefs[EqualizerBandLevelsMbKey] = encoded
-                prefs[EqualizerSelectedProfileIdKey] = "flat"
+                prefs[EqualizerSelectedProfileIdKey] = "adaptive:manual"
             }
         }
     }
