@@ -121,6 +121,8 @@ import com.nikhil.yt.constants.EqualizerCustomProfilesJsonKey
 import com.nikhil.yt.constants.EqualizerEnabledKey
 import com.nikhil.yt.constants.SoundStudioSpeedKey
 import com.nikhil.yt.constants.SoundStudioPitchKey
+import com.nikhil.yt.constants.SoundStudioTempoModeKey
+import com.nikhil.yt.constants.SoundStudioTempoDepthKey
 import com.nikhil.yt.constants.EqualizerOutputGainEnabledKey
 import com.nikhil.yt.constants.EqualizerOutputGainMbKey
 import com.nikhil.yt.constants.EqualizerSelectedProfileIdKey
@@ -143,6 +145,13 @@ import com.nikhil.yt.playback.CAPSULE_MAX_OUTPUT_GAIN_MB
 import com.nikhil.yt.playback.CAPSULE_MAX_EQ_BOOST_MB
 import com.nikhil.yt.playback.CAPSULE_MAX_LOW_BASS_BOOST_MB
 import com.nikhil.yt.playback.CapsuleEqPresets
+import com.nikhil.yt.playback.CAPSULE_TEN_BAND_HZ
+import com.nikhil.yt.playback.capsuleTenBandCapabilities
+import com.nikhil.yt.playback.capsuleProjectEqLevelsByFrequency
+import com.nikhil.yt.playback.capsuleTempoParams
+import com.nikhil.yt.playback.CAPSULE_TEMPO_NORMAL
+import com.nikhil.yt.playback.CAPSULE_TEMPO_SPEED_UP
+import com.nikhil.yt.playback.CAPSULE_TEMPO_SLOWED
 import com.nikhil.yt.playback.scaleEqBandLevels
 import com.nikhil.yt.playback.inverseScaledEqLevel
 import com.nikhil.yt.playback.EqProfile
@@ -744,101 +753,113 @@ fun EqualizerDialog(
     val hardware by service.eqCapabilities.collectAsState()
     val engine by service.eqEngineMode.collectAsState()
     val (eqEnabled, _) = rememberPreference(EqualizerEnabledKey, defaultValue = false)
-    val (selectedId, _) = rememberPreference(
-        EqualizerSelectedProfileIdKey, defaultValue = "flat",
-    )
+    val (selectedId, _) = rememberPreference(EqualizerSelectedProfileIdKey, defaultValue = "flat")
     val (storedRaw, _) = rememberPreference(EqualizerBandLevelsMbKey, defaultValue = "")
     val (savedIntensity, setIntensity) = rememberPreference(
         EqualizerCurveIntensityPercentKey, defaultValue = 100,
     )
-    var intensity by rememberSaveable { mutableIntStateOf(savedIntensity.coerceIn(100,145)) }
-    LaunchedEffect(savedIntensity) {
-        intensity = savedIntensity.coerceIn(100,145)
-    }
-    val caps = hardware?.takeIf {
-        it.bandCount in 1..32 && it.centerFreqHz.size >= it.bandCount &&
-            it.minBandLevelMb < 0 && it.maxBandLevelMb > 0
-    }
-    // The old EQ graph remains visible even without an AudioTrack session,
-    // but cannot apply guessed frequency bands to an unknown sound device.
-    val preview = caps ?: EqCapabilities(
-        7, -1500, 1500, listOf(80,200,500,1300,3400,8000,14000), emptyList(),
+    val (storedTempoMode, _) = rememberPreference(
+        SoundStudioTempoModeKey, defaultValue = "",
     )
-    val n = preview.bandCount
-    val preset = selectedId.removePrefix("capsule:").let(CapsuleEqPresets::byId)
-        ?.takeIf { eqEnabled }
+    val (savedTempoDepth, _) = rememberPreference(
+        SoundStudioTempoDepthKey, defaultValue = 50,
+    )
+    var intensity by rememberSaveable {
+        mutableIntStateOf(savedIntensity.coerceIn(100, 145))
+    }
+    LaunchedEffect(savedIntensity) { intensity = savedIntensity.coerceIn(100, 145) }
+    var tempoDepth by rememberSaveable {
+        mutableIntStateOf(savedTempoDepth.coerceIn(0, 100))
+    }
+    LaunchedEffect(savedTempoDepth) { tempoDepth = savedTempoDepth.coerceIn(0, 100) }
+
+    // Honour a legacy installation whose previous Sound Studio selection was
+    // a tempo-only version. Once migrated, tempo and EQ are independent.
+    val tempoMode = when (storedTempoMode) {
+        CAPSULE_TEMPO_NORMAL, CAPSULE_TEMPO_SPEED_UP, CAPSULE_TEMPO_SLOWED ->
+            storedTempoMode
+        else -> when (selectedId) {
+            "version:speed_up" -> CAPSULE_TEMPO_SPEED_UP
+            "version:slowed" -> CAPSULE_TEMPO_SLOWED
+            else -> CAPSULE_TEMPO_NORMAL
+        }
+    }
+    LaunchedEffect(selectedId, storedTempoMode) {
+        if (storedTempoMode.isBlank() && selectedId in
+            listOf("version:speed_up", "version:slowed")
+        ) service.selectTempoVersion(tempoMode)
+    }
+
+    // User-facing controls are always the SAME ten fixed bands. On Android 9+
+    // DynamicsProcessing owns them; older devices map to physical OEM bands.
+    val preview = remember { capsuleTenBandCapabilities() }
+    val n = CAPSULE_TEN_BAND_HZ.size
+    val preset = selectedId.removePrefix("capsule:")
+        .let(CapsuleEqPresets::byId)?.takeIf { eqEnabled }
     val manual = eqEnabled && selectedId == "adaptive:manual"
-    val savedCurve = remember(storedRaw, n) {
-        com.nikhil.yt.playback.resampleEqLevelsByIndex(
-            com.nikhil.yt.playback.decodeEqBandLevels(storedRaw), n,
+    val savedCurve = remember(storedRaw) {
+        capsuleProjectEqLevelsByFrequency(
+            com.nikhil.yt.playback.decodeEqBandLevels(storedRaw),
+            CAPSULE_TEN_BAND_HZ,
         )
     }
     val referenceCurve = when {
         preset != null -> CapsuleEqPresets.levelsFor(
-            preset, preview.centerFreqHz,
-            preview.minBandLevelMb, preview.maxBandLevelMb,
+            preset, CAPSULE_TEN_BAND_HZ, -1500, 1500,
         )
         manual -> savedCurve
         else -> List(n) { 0 }
     }
-    // Local drag state wins until DataStore commits a full atomic selection.
-    // Prevent an asynchronous preference update from snapping a point mid-drag.
+    // A local draft prevents DataStore writes from snapping graph handles
+    // while the finger is still touching the editor.
     var draft by remember { mutableStateOf<List<Int>?>(null) }
-    LaunchedEffect(selectedId, storedRaw, n) { draft = null }
+    LaunchedEffect(selectedId, storedRaw) { draft = null }
     val requested = draft ?: referenceCurve
     var selectedBand by rememberSaveable { mutableIntStateOf(0) }
-
     val graphSettings = EqSettings(
         enabled = true, bandLevelsMb = requested,
         outputGainEnabled = false, outputGainMb = 0,
         bassBoostEnabled = false, bassBoostStrength = 0,
         virtualizerEnabled = false, virtualizerStrength = 0,
-        intensityPercent = intensity, musicalBalanceEnabled = true,
+        intensityPercent = intensity,
+        musicalBalanceEnabled = true,
     )
     val applied = capsuleUnifiedEqLevels(graphSettings, preview)
-    val minMb = maxOf(-650, preview.minBandLevelMb)
-    val maxMb = minOf(CAPSULE_MAX_EQ_BOOST_MB, preview.maxBandLevelMb)
-        .coerceAtLeast(100)
-    val ceilings = (0 until n).map { band ->
-        val hz = preview.centerFreqHz.getOrNull(band) ?: 0
-        val ceiling = when {
+    val minMb = -520
+    val maxMb = CAPSULE_MAX_EQ_BOOST_MB
+    val ceilings = CAPSULE_TEN_BAND_HZ.map { hz ->
+        when {
             hz <= 120 -> CAPSULE_MAX_LOW_BASS_BOOST_MB
-            hz > 8000 -> 200
-            hz > 4500 -> 260
-            else -> CAPSULE_MAX_EQ_BOOST_MB
+            hz <= 650 -> CAPSULE_MAX_EQ_BOOST_MB
+            hz <= 4_500 -> 300
+            hz <= 8_000 -> 260
+            else -> 200
         }
-        minOf(maxMb, ceiling)
     }
-    // Render the intensity-scaled request, not an unscaled profile.
-    // The dashed line shows what the Android DSP actually receives.
-    val shown = scaleEqBandLevels(
-        requested, intensity, preview.minBandLevelMb, preview.maxBandLevelMb,
-    ).mapIndexed { i, gain ->
-        gain.coerceIn(minMb, ceilings[i])
-    }
-    val corrected = shown.size == applied.size &&
-        shown.zip(applied).any { (a,b) -> abs(a-b) >= 25 }
+    val shown = scaleEqBandLevels(requested, intensity, -1500, 1500)
+        .mapIndexed { i, value -> value.coerceIn(minMb, ceilings[i]) }
 
-    fun choose(id: String) {
-        draft = null
-        service.selectSoundVersion(
-            when (id) {
-                "flat", "version:speed_up", "version:slowed" -> id
-                else -> "capsule:${id}"
-            },
-        )
-    }
-    // Off means true bypass; switching back on never resumes an unknown old
-    // "manual" curve from a previous app version.
-    var lastKnownVersion by rememberSaveable {
+    var lastEqVersion by rememberSaveable {
         mutableStateOf("capsule:soft_bass_v2")
     }
     LaunchedEffect(selectedId) {
         if (selectedId == "adaptive:manual" ||
-            CapsuleEqPresets.byId(selectedId.removePrefix("capsule:")) != null) {
-            lastKnownVersion = selectedId
-        }
+            CapsuleEqPresets.byId(selectedId.removePrefix("capsule:")) != null
+        ) lastEqVersion = selectedId
     }
+    fun chooseEq(id: String) {
+        draft = null
+        service.selectSoundVersion(if (id == "flat") id else "capsule:${id}")
+    }
+    fun commitBand(band: Int, value: Int) {
+        if (!eqEnabled || band !in 0 until n) return
+        val next = (draft ?: requested).toMutableList()
+        next[band] = inverseScaledEqLevel(
+            value, intensity, -1500, 1500,
+        ).coerceIn(-1500, 1500)
+        draft = next
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -849,7 +870,12 @@ fun EqualizerDialog(
         ) {
             Column(Modifier.fillMaxSize()) {
                 TopAppBar(
-                    title = { Text(stringResource(R.string.eq_audio_studio)) },
+                    title = {
+                        Text(
+                            stringResource(R.string.eq_audio_studio),
+                            style = MaterialTheme.typography.titleLarge,
+                        )
+                    },
                     navigationIcon = {
                         IconButton(onClick = onDismiss) {
                             Icon(painterResource(R.drawable.close), contentDescription = null)
@@ -859,19 +885,20 @@ fun EqualizerDialog(
                         Switch(
                             checked = eqEnabled,
                             onCheckedChange = { enabled ->
-                                if (enabled) {
-                                    if (lastKnownVersion == "adaptive:manual" &&
-                                        savedCurve.isNotEmpty() && savedCurve.any { it != 0 }) {
-                                        service.selectSoundVersion("adaptive:manual", savedCurve)
-                                    } else {
-                                        service.selectSoundVersion(
-                                            if (CapsuleEqPresets.byId(lastKnownVersion.removePrefix(
+                                if (!enabled) {
+                                    service.selectSoundVersion("flat")
+                                } else if (lastEqVersion == "adaptive:manual" &&
+                                    savedCurve.any { it != 0 }
+                                ) {
+                                    service.selectSoundVersion("adaptive:manual", savedCurve)
+                                } else {
+                                    service.selectSoundVersion(
+                                        if (CapsuleEqPresets.byId(lastEqVersion.removePrefix(
                                                 "capsule:",
-                                            )) != null) lastKnownVersion
-                                            else "capsule:soft_bass_v2",
-                                        )
-                                    }
-                                } else service.selectSoundVersion("flat")
+                                            )) != null
+                                        ) lastEqVersion else "capsule:soft_bass_v2",
+                                    )
+                                }
                             },
                             thumbContent = {
                                 Icon(
@@ -883,258 +910,268 @@ fun EqualizerDialog(
                                 )
                             },
                         )
-                        Spacer(Modifier.width(8.dp))
+                        Spacer(Modifier.width(12.dp))
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.surface,
                     ),
                 )
                 Column(
-                    modifier = Modifier.fillMaxSize()
-                        .verticalScroll(rememberScrollState())
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(
+                            rememberScrollState(),
+                            flingBehavior = rememberCapsuleFlingBehavior(),
+                            overscrollEffect = null,
+                        )
                         .padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    // The old full-width frequency editor stays FIRST,
-                    // before versions and other audio options.
-                    EqSection(
-                        title = stringResource(R.string.equalizer),
-                        trailing = {
-                            IconButton(onClick = { choose("flat") }) {
-                                Icon(
-                                    painterResource(R.drawable.restore),
-                                    contentDescription = stringResource(R.string.reset),
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
-                        },
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(24.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
                     ) {
-                        Spacer(Modifier.height(12.dp))
-                        val graphHeight = when {
-                            LocalConfiguration.current.screenHeightDp < 690 -> 158.dp
-                            LocalConfiguration.current.screenHeightDp < 800 -> 180.dp
-                            else -> 202.dp
-                        }
-                        CapsuleEqualizerGraph(
-                            frequenciesHz = preview.centerFreqHz,
-                            levelsMb = shown,
-                            minMb = minMb,
-                            maxMb = maxMb,
-                            bandMaxLevelsMb = ceilings,
-                            appliedLevelsMb = if (eqEnabled) applied else emptyList(),
-                            selectedBand = selectedBand.coerceIn(0,n-1),
-                            onBandSelected = { selectedBand = it },
-                            onLevelChanged = { band, gain ->
-                                if (band in 0 until n && caps != null) {
-                                    val next = (draft ?: requested).toMutableList()
-                                    next[band] = inverseScaledEqLevel(
-                                        gain, intensity,
-                                        preview.minBandLevelMb, preview.maxBandLevelMb,
-                                    ).coerceIn(-1500,1500)
-                                    draft = next
-                                }
-                            },
-                            onFinished = { band, gain ->
-                                if (band in 0 until n && caps != null) {
-                                    val next = (draft ?: requested).toMutableList()
-                                    next[band] = inverseScaledEqLevel(
-                                        gain, intensity,
-                                        preview.minBandLevelMb, preview.maxBandLevelMb,
-                                    ).coerceIn(-1500,1500)
-                                    draft = next
-                                    service.selectSoundVersion("adaptive:manual", next)
-                                }
-                            },
-                            graphHeight = graphHeight,
-                            editable = eqEnabled && caps != null,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp),
-                        )
-                        if (caps == null) {
-                            Text(
-                                stringResource(R.string.eq_adaptive_needs_playback),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp),
-                            )
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth()
-                                .padding(horizontal = 18.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Text(
-                                stringResource(R.string.eq_curve_requested),
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                            Text("·", color = MaterialTheme.colorScheme.primary)
-                            Text(
-                                stringResource(R.string.eq_curve_applied),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Text(
-                            stringResource(
-                                if (corrected && eqEnabled) R.string.eq_adaptive_corrected
-                                else R.string.eq_adaptive_original,
-                            ),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (corrected && eqEnabled)
-                                MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth()
-                                .padding(start = 16.dp, end = 16.dp, top = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                stringResource(R.string.eq_curve_intensity),
-                                style = MaterialTheme.typography.titleSmall,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Text(
-                                "${intensity}%",
-                                color = MaterialTheme.colorScheme.primary,
-                                style = MaterialTheme.typography.labelMedium,
-                            )
-                        }
-                        CapsuleStudioSlider(
-                            value = intensity.toFloat(),
-                            onValueChange = { intensity = it.toInt().coerceIn(100,145) },
-                            onValueChangeFinished = { setIntensity(intensity) },
-                            valueRange = 100f..145f,
-                            enabled = eqEnabled,
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        )
-                        val digitalTrim = capsuleSafeEqInputGainMb(graphSettings,applied)
-                        Text(
-                            stringResource(
-                                R.string.eq_clean_headroom,
-                                formatDb(digitalTrim / 100f),
-                            ),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 5.dp),
-                        )
-                    }
-
-                    EqSection(title = stringResource(R.string.eq_profiles)) {
-                        Spacer(Modifier.height(7.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            FilterChip(
-                                selected = !eqEnabled,
-                                onClick = { choose("flat") },
-                                label = { Text(stringResource(R.string.eq_version_original)) },
-                            )
-                            FilterChip(
-                                selected = manual,
-                                onClick = {
-                                    if (caps != null) {
-                                        service.selectSoundVersion("adaptive:manual",requested)
-                                    }
-                                },
-                                enabled = caps != null,
-                                label = { Text(stringResource(R.string.eq_adaptive_activate)) },
-                            )
-                        }
-                        CapsuleEqPresets.all.chunked(3).forEach { row ->
+                        Column(Modifier.padding(vertical = 16.dp)) {
                             Row(
-                                modifier = Modifier.fillMaxWidth()
-                                    .padding(horizontal = 12.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 18.dp),
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                row.forEach { version ->
-                                    FilterChip(
-                                        selected = preset?.id == version.id,
-                                        onClick = { choose(version.id) },
-                                        modifier = Modifier.weight(1f).heightIn(min = 44.dp),
-                                        label = {
-                                            Text(
-                                                version.name,
-                                                maxLines = 1,
-                                                textAlign = TextAlign.Center,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                modifier = Modifier.fillMaxWidth(),
-                                            )
-                                        },
-                                        border = null,
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            containerColor =
-                                                MaterialTheme.colorScheme.surfaceContainerHigh,
-                                        ),
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        stringResource(R.string.equalizer),
+                                        style = MaterialTheme.typography.titleLarge,
+                                    )
+                                    Text(
+                                        stringResource(R.string.eq_ten_band_label),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
-                                repeat(3-row.size) { Spacer(Modifier.weight(1f)) }
-                            }
-                        }
-                        Spacer(Modifier.height(7.dp))
-                    }
-
-                    EqSection(title = stringResource(R.string.tempo)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            listOf(
-                                "flat" to stringResource(R.string.eq_version_original),
-                                "version:speed_up" to "Speed Up",
-                                "version:slowed" to "Slowed",
-                            ).forEach { (id,label) ->
-                                FilterChip(
-                                    selected = selectedId == id,
-                                    onClick = { choose(id) },
-                                    modifier = Modifier.weight(1f).heightIn(min = 42.dp),
-                                    label = {
-                                        Text(label, modifier = Modifier.fillMaxWidth(),
-                                            textAlign = TextAlign.Center, maxLines = 1)
+                                IconButton(
+                                    onClick = {
+                                        if (eqEnabled) {
+                                            draft = List(n) { 0 }
+                                            service.selectSoundVersion(
+                                                "adaptive:manual", List(n) { 0 },
+                                            )
+                                        }
                                     },
+                                    enabled = eqEnabled,
+                                ) {
+                                    Icon(
+                                        painterResource(R.drawable.restore),
+                                        contentDescription = stringResource(R.string.reset),
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(14.dp))
+                            CapsuleEqualizerGraph(
+                                frequenciesHz = CAPSULE_TEN_BAND_HZ,
+                                levelsMb = shown,
+                                minMb = minMb,
+                                maxMb = maxMb,
+                                bandMaxLevelsMb = ceilings,
+                                appliedLevelsMb = if (eqEnabled) applied else emptyList(),
+                                selectedBand = selectedBand.coerceIn(0, n - 1),
+                                onBandSelected = { selectedBand = it },
+                                onLevelChanged = { band, level -> commitBand(band, level) },
+                                onFinished = { band, level ->
+                                    if (eqEnabled && band in 0 until n) {
+                                        commitBand(band, level)
+                                        val next = draft ?: requested
+                                        service.selectSoundVersion("adaptive:manual", next)
+                                    }
+                                },
+                                graphHeight = if (LocalConfiguration.current.screenHeightDp < 720)
+                                    185.dp else 210.dp,
+                                editable = eqEnabled,
+                                modifier = Modifier.padding(horizontal = 8.dp),
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth()
+                                    .padding(horizontal = 18.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    stringResource(R.string.eq_tone_character),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Text(
+                                    "${intensity}%",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            CapsuleStudioSlider(
+                                value = intensity.toFloat(),
+                                onValueChange = {
+                                    intensity = it.toInt().coerceIn(100, 145)
+                                },
+                                onValueChangeFinished = { setIntensity(intensity) },
+                                valueRange = 100f..145f,
+                                enabled = eqEnabled,
+                                modifier = Modifier.fillMaxWidth()
+                                    .padding(horizontal = 18.dp),
+                            )
+                            Spacer(Modifier.height(13.dp))
+                            Text(
+                                stringResource(R.string.eq_tone_presets),
+                                style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.padding(horizontal = 18.dp),
+                            )
+                            Spacer(Modifier.height(9.dp))
+                            CapsuleEqPresets.all.chunked(3).forEach { row ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 3.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    row.forEach { p ->
+                                        CapsuleSoundPill(
+                                            title = p.name,
+                                            selected = preset?.id == p.id,
+                                            enabled = true,
+                                            onClick = { chooseEq(p.id) },
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                    }
+                                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                                }
+                            }
+                            if (manual) {
+                                Text(
+                                    stringResource(R.string.eq_manual_curve_active),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(
+                                        horizontal = 18.dp, vertical = 6.dp,
+                                    ),
                                 )
                             }
                         }
-                        Text(
-                            stringResource(R.string.eq_tempo_versions_description),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 5.dp),
-                        )
                     }
 
-                    EqSection(title = stringResource(R.string.eq_effects_title)) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(24.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                    ) {
+                        Column(Modifier.padding(18.dp)) {
+                            Text(
+                                stringResource(R.string.eq_tempo_versions),
+                                style = MaterialTheme.typography.titleLarge,
+                            )
+                            Spacer(Modifier.height(13.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                listOf(
+                                    CAPSULE_TEMPO_NORMAL to
+                                        stringResource(R.string.eq_version_original),
+                                    CAPSULE_TEMPO_SPEED_UP to "Speed Up",
+                                    CAPSULE_TEMPO_SLOWED to "Slowed",
+                                ).forEach { (mode, title) ->
+                                    CapsuleSoundPill(
+                                        title = title,
+                                        selected = tempoMode == mode,
+                                        onClick = { service.selectTempoVersion(mode) },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                            }
+                            if (tempoMode != CAPSULE_TEMPO_NORMAL) {
+                                Spacer(Modifier.height(18.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        stringResource(R.string.eq_tempo_character),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Text(
+                                        "×${formatMultiplier(
+                                            capsuleTempoParams(tempoMode, tempoDepth).speed
+                                        )}",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                CapsuleStudioSlider(
+                                    value = tempoDepth.toFloat(),
+                                    onValueChange = {
+                                        tempoDepth = it.toInt().coerceIn(0, 100)
+                                    },
+                                    onValueChangeFinished = {
+                                        service.setTempoVersionDepth(tempoDepth)
+                                    },
+                                    valueRange = 0f..100f,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                    }
+
+                    if (engine == CapsuleEqEngineMode.NATIVE_FALLBACK && eqEnabled) {
+                        // A useful compatibility warning, not a DSP debug panel.
                         Text(
-                            stringResource(R.string.eq_classic_safety_explanation),
+                            stringResource(R.string.eq_native_fallback_notice),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
-                        )
-                        Text(
-                            stringResource(
-                                when (engine) {
-                                    CapsuleEqEngineMode.UNIFIED -> R.string.eq_engine_unified
-                                    CapsuleEqEngineMode.NATIVE_FALLBACK -> R.string.eq_engine_native
-                                    CapsuleEqEngineMode.UNAVAILABLE -> R.string.eq_engine_unavailable
-                                    else -> R.string.eq_engine_waiting
-                                },
-                            ),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 7.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp),
                         )
                     }
-                    TextButton(
-                        onClick = openSystemEqualizer,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(stringResource(R.string.eq_open_system_panel))
-                    }
+                    Spacer(Modifier.height(8.dp))
                 }
             }
+        }
+    }
+}
+
+/** One shared pill geometry across tone and tempo options. */
+@Composable
+private fun CapsuleSoundPill(
+    title: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.heightIn(min = 48.dp),
+        shape = RoundedCornerShape(15.dp),
+        color = if (selected)
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.64f)
+        else MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = if (selected) BorderStroke(
+            1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
+        ) else null,
+    ) {
+        Box(
+            modifier = Modifier.fillMaxWidth()
+                .padding(horizontal = 6.dp, vertical = 12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = title,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.labelMedium,
+                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                    else MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }

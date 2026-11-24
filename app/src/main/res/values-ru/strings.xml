@@ -1003,4 +1003,10 @@
     <string name="eq_adaptive_activate">Применить мою кривую</string>
     <string name="eq_adaptive_needs_playback">Начни воспроизведение, чтобы определить реальные частотные полосы устройства.</string>
     <string name="eq_classic_safety_explanation">Звук обрабатывает одна плавная кривая с коррекцией резких провалов и цифровым запасом от перегрузки. Отдельное усиление баса, расширение стерео и усиление громкости отключены. Приложение не измеряет звуковое давление и не гарантирует защиту слуха.</string>
+    <string name="eq_ten_band_label">10 частотных полос</string>
+    <string name="eq_tone_character">Выразительность</string>
+    <string name="eq_tone_presets">Характер звука</string>
+    <string name="eq_manual_curve_active">Своя кривая</string>
+    <string name="eq_tempo_character">Скорость и тон</string>
+    <string name="eq_native_fallback_notice">Работает совместимый звуковой движок: десять регуляторов адаптируются к полосам устройства.</string>
 </resources>
