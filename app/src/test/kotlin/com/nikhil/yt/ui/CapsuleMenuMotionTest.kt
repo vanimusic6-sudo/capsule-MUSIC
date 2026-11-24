@@ -248,7 +248,7 @@ class CapsuleMenuMotionTest {
         assertTrue(source.contains("version:slowed"))
         assertTrue(source.contains("CapsuleEqPresets.all.chunked(2)"))
         assertTrue(source.contains("selectSoundVersion("))
-        assertTrue(source.contains("appliedLevelsMb = applied"))
+        assertTrue(source.contains("appliedLevelsMb = if (eqEnabled) applied"))
         assertFalse(source.contains("caps.systemPresets.mapIndexed"))
         assertFalse(source.contains("showAdvancedEqualizer"))
         assertFalse(source.contains("showPitchTempoDialog"))
