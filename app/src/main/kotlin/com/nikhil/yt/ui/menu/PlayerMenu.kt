@@ -91,6 +91,8 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -133,6 +135,7 @@ import com.nikhil.yt.models.MediaMetadata
 import com.nikhil.yt.models.sanitizedArtistCredits
 import com.nikhil.yt.playback.EqCapabilities
 import com.nikhil.yt.playback.EqSettings
+import com.nikhil.yt.playback.SoundStudioTempoVariant
 import com.nikhil.yt.playback.CapsuleEqEngineMode
 import com.nikhil.yt.playback.protectedEqAudioFactor
 import com.nikhil.yt.playback.capsuleSafeEqInputGainMb
@@ -746,7 +749,7 @@ fun EqualizerDialog(
     val (eqEnabled, _) = rememberPreference(EqualizerEnabledKey, defaultValue = false)
     val (selectedId, _) = rememberPreference(EqualizerSelectedProfileIdKey, defaultValue = "flat")
     val (storedRaw, _) = rememberPreference(EqualizerBandLevelsMbKey, defaultValue = "")
-    val (tempo, _) = rememberPreference(SoundStudioTempoVariantKey, defaultValue = "flat")
+    val (tempo, _) = rememberPreference(SoundStudioTempoVariantKey, defaultValue = "")
 
     // Ten *real* studio bands on Android DynamicsProcessing. On OEM fallback
     // these ten control points are mapped by Hz onto its available native bands.
@@ -769,7 +772,7 @@ fun EqualizerDialog(
         else -> List(bandCount) { 0 }
     }
     var draft by remember { mutableStateOf<List<Int>?>(null) }
-    LaunchedEffect(selectedId, storedRaw) { draft = null }
+    LaunchedEffect(eqEnabled, selectedId, storedRaw) { draft = null }
     val levels = draft ?: initial
     var selectedBand by rememberSaveable { mutableIntStateOf(3) }
     val ceilings = studio.centerFreqHz.map { hz ->
@@ -784,7 +787,7 @@ fun EqualizerDialog(
         gain.coerceIn(-460, ceilings[i])
     }
     val settings = EqSettings(
-        enabled = true, bandLevelsMb = levels,
+        enabled = eqEnabled, bandLevelsMb = levels,
         outputGainEnabled = false, outputGainMb = 0,
         bassBoostEnabled = false, bassBoostStrength = 0,
         virtualizerEnabled = false, virtualizerStrength = 0,
@@ -792,23 +795,12 @@ fun EqualizerDialog(
     )
     val applied = capsuleUnifiedEqLevels(settings, studio)
 
-    var lastTone by rememberSaveable { mutableStateOf("capsule:soft_bass_v2") }
-    LaunchedEffect(selectedId) {
-        if (selectedId == "adaptive:manual" ||
-            CapsuleEqPresets.byId(selectedId.removePrefix("capsule:")) != null
-        ) lastTone = selectedId
-    }
     fun chooseTone(id: String) {
         draft = null
         service.selectSoundVersion(id)
     }
-    val activeTempo = when {
-        // A legacy installation has not yet migrated the separate tempo key.
-        tempo == "flat" && selectedId in
-            setOf("version:speed_up", "version:slowed") -> selectedId
-        tempo in listOf("flat", "version:speed_up", "version:slowed") -> tempo
-        else -> "flat"
-    }
+    val activeTempo = SoundStudioTempoVariant.resolve(tempo.takeIf { it.isNotEmpty() }, selectedId)
+    val equalizerLabel = stringResource(R.string.equalizer)
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -820,24 +812,21 @@ fun EqualizerDialog(
                     title = { Text(stringResource(R.string.eq_audio_studio)) },
                     navigationIcon = {
                         IconButton(onClick = onDismiss) {
-                            Icon(painterResource(R.drawable.close), contentDescription = null)
+                            Icon(
+                                painterResource(R.drawable.close),
+                                contentDescription = stringResource(R.string.dismiss),
+                            )
                         }
                     },
                     actions = {
                         Switch(
                             checked = eqEnabled,
                             onCheckedChange = { enabled ->
-                                if (enabled) {
-                                    val restore = lastTone
-                                    if (restore == "adaptive:manual" && stored.isNotEmpty()) {
-                                        service.selectSoundVersion("adaptive:manual", stored)
-                                    } else {
-                                        val safe = CapsuleEqPresets.byId(
-                                            restore.removePrefix("capsule:"),
-                                        ) != null
-                                        chooseTone(if (safe) restore else "capsule:soft_bass_v2")
-                                    }
-                                } else chooseTone("flat")
+                                draft = null
+                                service.setSoundStudioEqEnabled(enabled)
+                            },
+                            modifier = Modifier.semantics {
+                                contentDescription = equalizerLabel
                             },
                             thumbContent = {
                                 Icon(
@@ -1008,13 +997,13 @@ fun EqualizerDialog(
                             horizontalArrangement = Arrangement.spacedBy(9.dp),
                         ) {
                             listOf(
-                                "flat" to stringResource(R.string.eq_tempo_normal),
-                                "version:speed_up" to "Speed Up",
-                                "version:slowed" to "Slowed",
-                            ).forEach { (id, label) ->
-                                val selected = activeTempo == id
+                                SoundStudioTempoVariant.NORMAL to stringResource(R.string.eq_tempo_normal),
+                                SoundStudioTempoVariant.SPEED_UP to "Speed Up",
+                                SoundStudioTempoVariant.SLOWED to "Slowed",
+                            ).forEach { (variant, label) ->
+                                val selected = activeTempo == variant
                                 Surface(
-                                    onClick = { service.selectTempoVariant(id) },
+                                    onClick = { service.selectTempoVariant(variant) },
                                     modifier = Modifier.weight(1f).heightIn(min = 50.dp),
                                     shape = RoundedCornerShape(16.dp),
                                     color = if (selected) MaterialTheme.colorScheme.primaryContainer

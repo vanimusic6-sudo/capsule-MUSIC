@@ -111,9 +111,6 @@ import com.nikhil.yt.constants.EqualizerMusicalBalanceKey
 import com.nikhil.yt.constants.EqualizerBassBoostEnabledKey
 import com.nikhil.yt.constants.EqualizerBassBoostStrengthKey
 import com.nikhil.yt.constants.EqualizerEnabledKey
-import com.nikhil.yt.constants.SoundStudioSpeedKey
-import com.nikhil.yt.constants.SoundStudioPitchKey
-import com.nikhil.yt.constants.SoundStudioTempoVariantKey
 import com.nikhil.yt.constants.EqualizerOutputGainEnabledKey
 import com.nikhil.yt.constants.EqualizerOutputGainMbKey
 import com.nikhil.yt.constants.EqualizerSelectedProfileIdKey
@@ -2421,40 +2418,21 @@ class MusicService :
         )
 
         dataStore.data
-            .map { prefs ->
-                Triple(
-                    readEqSettingsFromPrefs(prefs),
-                    // Independent speed/pitch mode: the EQ can stay on.
-                    // Equal speed+pitch intentionally gives a true sampled
-                    // sped-up / slowed-down sound, not time-stretch-only audio.
-                    when (prefs[SoundStudioTempoVariantKey]
-                        ?: prefs[EqualizerSelectedProfileIdKey]) {
-                        "version:speed_up" -> 1.18f
-                        "version:slowed" -> 0.84f
-                        else -> 1f
-                    },
-                    when (prefs[SoundStudioTempoVariantKey]
-                        ?: prefs[EqualizerSelectedProfileIdKey]) {
-                        "version:speed_up" -> 1.18f
-                        "version:slowed" -> 0.84f
-                        else -> 1f
-                    },
-                )
-            }
+            .map { prefs -> readEqSettingsFromPrefs(prefs) to prefs.readSoundStudioTempoVariant() }
             .distinctUntilChanged()
-            .collect(scope) { (settings, speed, pitch) ->
+            .collect(scope) { (settings, tempoVariant) ->
                 // Tone only: positive makeup gain and independent OEM boost
                 // effects are retired. The common safety reserve is mandatory.
                 if (settings.enabled) soundStudioEnabledForVolume.value = true
-                // Tempo versions do not require enabling any EQ filters.
-                val playbackParams = PlaybackParameters(speed, pitch)
+                // Resampling changes both tempo and pitch for Speed Up / Slowed.
+                val playbackParams = PlaybackParameters(tempoVariant.rate, tempoVariant.rate)
                 val currentParams = player.playbackParameters
                 val paramChange = currentParams.speed != playbackParams.speed ||
                     currentParams.pitch != playbackParams.pitch
                 val previous = previousSoundStudioSettings
                 // Pitch-shifted versions need the software audio pipeline.
                 // OEM compressed offload can bypass Sonic / reject pitch.
-                soundStudioTempoNeedsPcm = speed != 1f || pitch != 1f
+                soundStudioTempoNeedsPcm = tempoVariant != SoundStudioTempoVariant.NORMAL
                 // Short duck avoids an audible edge on legacy OEM mixer
                 // transitions or a large EQ-curve change. No delayed threads
                 // keep running after the scope is cancelled.
@@ -2494,7 +2472,7 @@ class MusicService :
                         audioEffectsController.engineMode.value ==
                             CapsuleEqEngineMode.UNAVAILABLE -> 1f
                         audioEffectsController.isUnifiedDynamicsActive -> 1f
-                        else -> legacySafety
+                        else -> protectedEqAudioFactor(settings, eqCapabilities.value)
                     }
                     // No usable native EQ means there is nothing to protect.
                     // Restore regular loudness normalization as well as player
@@ -2505,10 +2483,15 @@ class MusicService :
                     ) soundStudioEnabledForVolume.value = false
                     // Session effects can be skipped by compressed audio offload.
                     // Permit hardware offload again only when EQ is bypassed.
+                    if (paramChange && !soundStudioTempoNeedsPcm) {
+                        player.playbackParameters = playbackParams
+                    }
                     if (previous?.enabled != settings.enabled || paramChange) {
                         updateAudioOffload(dataStore.get(AudioOffload, false))
                     }
-                    if (paramChange) player.playbackParameters = playbackParams
+                    if (paramChange && soundStudioTempoNeedsPcm) {
+                        player.playbackParameters = playbackParams
+                    }
                     previousSoundStudioSettings = settings
                     if (sensitive) {
                         val beforeRestore = soundStudioSafetyFactor.value
@@ -4016,21 +3999,16 @@ class MusicService :
         val manual = id == "adaptive:manual" &&
             requestedLevelsMb.isNotEmpty() && requestedLevelsMb.size <= 32
         val neutral = id == "flat"
-        if (id == "version:speed_up" || id == "version:slowed") {
-            selectTempoVariant(id)
+        val tempoVariant = SoundStudioTempoVariant.resolve(id, null)
+        if (tempoVariant != SoundStudioTempoVariant.NORMAL) {
+            selectTempoVariant(tempoVariant)
             return
         }
         if (preset == null && !manual && !neutral) return
         ioScope.launch {
             dataStore.edit { prefs ->
                 val previousId = prefs[EqualizerSelectedProfileIdKey]
-                // Old versions stored Speed Up / Slowed in the same key as EQ.
-                // Migrate that choice BEFORE replacing the tone selection so
-                // selecting a custom curve never unexpectedly resets tempo.
-                if (prefs[SoundStudioTempoVariantKey] == null &&
-                    previousId in setOf("version:speed_up", "version:slowed")) {
-                    prefs[SoundStudioTempoVariantKey] = previousId!!
-                }
+                prefs.preserveLegacySoundStudioTempo()
                 prefs[EqualizerSelectedProfileIdKey] = id
                 prefs[EqualizerEnabledKey] = (preset != null || manual)
                 if (manual) {
@@ -4051,19 +4029,26 @@ class MusicService :
         }
     }
 
-    /** No tone reset when selecting a playback-rate version. */
-    fun selectTempoVariant(id: String) {
-        if (id != "flat" && id != "version:speed_up" && id != "version:slowed") return
+    internal fun selectTempoVariant(variant: SoundStudioTempoVariant) {
+        ioScope.launch {
+            dataStore.edit { it.setSoundStudioTempoVariant(variant) }
+        }
+    }
+
+    internal fun setSoundStudioEqEnabled(enabled: Boolean) {
         ioScope.launch {
             dataStore.edit { prefs ->
-                prefs[SoundStudioTempoVariantKey] = id
-                // Migrate an old tempo-as-EQ selection without resurrecting
-                // unrelated legacy manual amplifier settings.
-                if (prefs[EqualizerSelectedProfileIdKey] in
-                    setOf("version:speed_up", "version:slowed")) {
-                    prefs[EqualizerSelectedProfileIdKey] = "flat"
-                    prefs[EqualizerEnabledKey] = false
+                if (enabled) {
+                    val id = prefs[EqualizerSelectedProfileIdKey]
+                    val preset = id?.removePrefix("capsule:")?.let(CapsuleEqPresets::byId)
+                    val hasManualCurve = id == "adaptive:manual" &&
+                        decodeBandLevelsMb(prefs[EqualizerBandLevelsMbKey]).isNotEmpty()
+                    if (preset == null && !hasManualCurve) {
+                        prefs.preserveLegacySoundStudioTempo()
+                        prefs[EqualizerSelectedProfileIdKey] = "capsule:soft_bass_v2"
+                    }
                 }
+                prefs[EqualizerEnabledKey] = enabled
             }
         }
     }

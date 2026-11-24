@@ -244,8 +244,8 @@ class CapsuleMenuMotionTest {
         assertTrue(source.contains("CapsuleEqualizerGraph("))
         // Speed Up / Slowed are now explicit versions. A touch graph and
         // independent, bounded manual curve replace the legacy master slider.
-        assertTrue(source.contains("version:speed_up"))
-        assertTrue(source.contains("version:slowed"))
+        assertTrue(source.contains("SoundStudioTempoVariant.SPEED_UP"))
+        assertTrue(source.contains("SoundStudioTempoVariant.SLOWED"))
         assertTrue(source.contains("CapsuleEqPresets.all.chunked(2)"))
         assertTrue(source.contains("selectSoundVersion("))
         assertTrue(source.contains("appliedLevelsMb = if (eqEnabled) applied"))

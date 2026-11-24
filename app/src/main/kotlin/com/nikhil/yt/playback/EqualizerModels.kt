@@ -8,6 +8,10 @@
 
 package com.nikhil.yt.playback
 
+import androidx.datastore.preferences.core.MutablePreferences
+import androidx.datastore.preferences.core.Preferences
+import com.nikhil.yt.constants.EqualizerSelectedProfileIdKey
+import com.nikhil.yt.constants.SoundStudioTempoVariantKey
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -55,6 +59,32 @@ data class EqSettings(
     // Only identified fixed versions are allowed in the new live DSP path.
     val versionId: String? = null,
 )
+
+internal enum class SoundStudioTempoVariant(val id: String, val rate: Float) {
+    NORMAL("flat", 1f),
+    SPEED_UP("version:speed_up", 1.18f),
+    SLOWED("version:slowed", 0.84f);
+
+    companion object {
+        fun resolve(savedId: String?, legacyProfileId: String?): SoundStudioTempoVariant =
+            entries.firstOrNull { it.id == (savedId ?: legacyProfileId) } ?: NORMAL
+    }
+}
+
+internal fun Preferences.readSoundStudioTempoVariant(): SoundStudioTempoVariant =
+    SoundStudioTempoVariant.resolve(this[SoundStudioTempoVariantKey], this[EqualizerSelectedProfileIdKey])
+
+internal fun MutablePreferences.setSoundStudioTempoVariant(variant: SoundStudioTempoVariant) {
+    this[SoundStudioTempoVariantKey] = variant.id
+}
+
+// Keep the legacy version when a tone selection replaces its old shared key.
+internal fun MutablePreferences.preserveLegacySoundStudioTempo() {
+    val variant = readSoundStudioTempoVariant()
+    if (this[SoundStudioTempoVariantKey] == null && variant != SoundStudioTempoVariant.NORMAL) {
+        setSoundStudioTempoVariant(variant)
+    }
+}
 
 /**
  * Ten independent studio bands are configured with Android DynamicsProcessing

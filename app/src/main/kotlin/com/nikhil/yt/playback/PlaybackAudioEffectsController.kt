@@ -159,26 +159,38 @@ internal class PlaybackAudioEffectsController(
             return
         }
         val levels = capsuleUnifiedEqLevels(settings, caps)
-        val nonFlat = settings.enabled && levels.any { it != 0 }
-        if (nonFlat && appliedEnabled != true &&
-            runCatching { eq.enabled = true }.isSuccess
-        ) appliedEnabled = true
-        // Only write changed bands while native EQ is active. On bypass,
-        // the effect is fully disconnected after MusicService's short duck.
-        if (appliedEnabled == true) {
-            if (appliedBandLevels.size != caps.bandCount)
-                appliedBandLevels = IntArray(caps.bandCount) { Int.MIN_VALUE }
-            for (band in 0 until caps.bandCount) {
-                val gain = levels[band].coerceIn(caps.minBandLevelMb, caps.maxBandLevelMb)
-                if (appliedBandLevels[band] != gain &&
-                    runCatching { eq.setBandLevel(band.toShort(), gain.toShort()) }.isSuccess
-                ) appliedBandLevels[band] = gain
+        val nonFlat = levels.any { it != 0 }
+        try {
+            if (nonFlat || appliedEnabled == true) {
+                if (appliedBandLevels.size != caps.bandCount) {
+                    appliedBandLevels = IntArray(caps.bandCount) { Int.MIN_VALUE }
+                }
+                // Stage the whole curve before enabling an inactive OEM EQ.
+                for (band in 0 until caps.bandCount) {
+                    val gain = levels[band].coerceIn(caps.minBandLevelMb, caps.maxBandLevelMb)
+                    if (appliedBandLevels[band] != gain) {
+                        eq.setBandLevel(band.toShort(), gain.toShort())
+                        appliedBandLevels[band] = gain
+                    }
+                }
+                if (appliedEnabled != true) {
+                    eq.enabled = true
+                    check(eq.enabled) { "Android did not enable the native EQ" }
+                    appliedEnabled = true
+                }
             }
-        }
-        engineMode.value = when {
-            !settings.enabled -> CapsuleEqEngineMode.OFF
-            nonFlat && appliedEnabled != true -> CapsuleEqEngineMode.UNAVAILABLE
-            else -> CapsuleEqEngineMode.NATIVE_FALLBACK
+            engineMode.value = CapsuleEqEngineMode.NATIVE_FALLBACK
+        } catch (failure: Exception) {
+            onRecoverableError("apply native EQ", failure)
+            // A partially updated effect must not stay in the output chain.
+            runCatching { eq.release() }
+                .onFailure { onRecoverableError("release native EQ", it) }
+            equalizer = null
+            nativeCapabilities = null
+            capabilities.value = null
+            appliedEnabled = null
+            appliedBandLevels = intArrayOf()
+            engineMode.value = CapsuleEqEngineMode.UNAVAILABLE
         }
     }
 
