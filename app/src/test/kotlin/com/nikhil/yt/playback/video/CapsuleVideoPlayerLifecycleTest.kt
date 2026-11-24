@@ -27,9 +27,15 @@ class CapsuleVideoPlayerLifecycleTest {
         val context = RuntimeEnvironment.getApplication()
         val music = ExoPlayer.Builder(context).build()
         try {
-            val video = CapsuleVideoCompanion(context, DefaultMediaSourceFactory(context), music, backgroundScope,
+            val video = CapsuleVideoCompanion(
+                context = context,
+                factory = DefaultMediaSourceFactory(context),
+                audio = music,
+                readEqCurve = { List(10) { band -> if (band == 2) 300 else 0 } },
+                scope = backgroundScope,
                 onSoundOwned = {}, onReady = {}, onFailure = { _, error -> throw error },
-                onEnded = {}, onFrameUnavailable = {}, onBufferingChanged = { _, _ -> })
+                onEnded = {}, onFrameUnavailable = {}, onBufferingChanged = { _, _ -> },
+            )
             try {
                 assertEquals(Player.STATE_IDLE, video.player.playbackState)
                 video.stop()
