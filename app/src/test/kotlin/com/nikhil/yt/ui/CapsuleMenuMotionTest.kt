@@ -242,11 +242,11 @@ class CapsuleMenuMotionTest {
         assertTrue(source.contains("painterResource(R.drawable.graphic_eq)"))
         assertTrue(source.contains("showEqualizerDialog = true"))
         assertTrue(source.contains("CapsuleEqualizerGraph("))
-        // Speed Up / Slowed are now explicit versions. A touch graph and
-        // independent, bounded manual curve replace the legacy master slider.
+        // Tempo, the equalizer and the mixer have independent controls.
         assertTrue(source.contains("SoundStudioTempoVariant.SPEED_UP"))
         assertTrue(source.contains("SoundStudioTempoVariant.SLOWED"))
-        assertTrue(source.contains("CapsuleEqPresets.entries.chunked(2)"))
+        assertTrue(source.contains("CapsuleMixerSection(service, mixerProfile)"))
+        assertTrue(source.contains("service.setSoundStudioMixer("))
         assertTrue(source.contains("selectSoundVersion("))
         assertFalse(source.contains("eq_adaptive_activate"))
         assertFalse(source.contains("caps.systemPresets.mapIndexed"))
