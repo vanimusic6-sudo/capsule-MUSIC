@@ -56,6 +56,8 @@ class SimpleEqualizerTest {
         assertTrue(observe.contains("SoundStudioTempoVariantKey"))
         assertTrue(observe.contains("\"version:speed_up\" -> 1.18f"))
         assertTrue(observe.contains("\"version:slowed\" -> 0.84f"))
+        assertTrue(source.contains("!soundStudioTempoNeedsPcm"))
+        assertTrue(source.contains("|| paramChange) {"))
     }
 
     @Test fun hardwareAwareGraphStillHandlesTouchAndLabels() {

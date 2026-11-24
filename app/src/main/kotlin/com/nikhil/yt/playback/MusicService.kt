@@ -1099,6 +1099,7 @@ class MusicService :
     private val hearingCareMaxAppVolume = MutableStateFlow(1f)
     private val hearingCarePreference = MutableStateFlow(true to 0L)
     private var previousSoundStudioSettings: EqSettings? = null
+    private var soundStudioTempoNeedsPcm = false
     private var videoRequestedAtMs = 0L
     val videoRenderPlayer: Player?
         get() = videoCompanion?.player
@@ -2451,6 +2452,9 @@ class MusicService :
                 val paramChange = currentParams.speed != playbackParams.speed ||
                     currentParams.pitch != playbackParams.pitch
                 val previous = previousSoundStudioSettings
+                // Pitch-shifted versions need the software audio pipeline.
+                // OEM compressed offload can bypass Sonic / reject pitch.
+                soundStudioTempoNeedsPcm = speed != 1f || pitch != 1f
                 // Short duck avoids an audible edge on legacy OEM mixer
                 // transitions or a large EQ-curve change. No delayed threads
                 // keep running after the scope is cancelled.
@@ -2501,7 +2505,7 @@ class MusicService :
                     ) soundStudioEnabledForVolume.value = false
                     // Session effects can be skipped by compressed audio offload.
                     // Permit hardware offload again only when EQ is bypassed.
-                    if (previous?.enabled != settings.enabled) {
+                    if (previous?.enabled != settings.enabled || paramChange) {
                         updateAudioOffload(dataStore.get(AudioOffload, false))
                     }
                     if (paramChange) player.playbackParameters = playbackParams
@@ -6420,7 +6424,8 @@ class MusicService :
     private fun updateAudioOffload(enabled: Boolean) {
         player.setOffloadEnabled(
             shouldEnableAudioOffload(
-                requested = enabled && !soundStudioEnabledForVolume.value,
+                requested = enabled && !soundStudioEnabledForVolume.value &&
+                    !soundStudioTempoNeedsPcm,
                 crossfadeDurationMs = crossfadeDurationMs.value,
             ),
         )
