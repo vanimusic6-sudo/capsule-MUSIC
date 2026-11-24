@@ -3995,8 +3995,7 @@ class MusicService :
             bassBoostStrength = 0,
             virtualizerEnabled = false,
             virtualizerStrength = 0,
-            intensityPercent =
-                (prefs[EqualizerCurveIntensityPercentKey] ?: 100).coerceIn(100, 145),
+            intensityPercent = 100, // obsolete external intensity amplifier retired
             musicalBalanceEnabled = true,
             versionId = preset?.id,
         )

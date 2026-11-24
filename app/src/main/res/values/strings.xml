@@ -1082,4 +1082,7 @@ Capsule will only extract your token, and everything else is stored locally.</st
     <string name="eq_adaptive_activate">Use my curve</string>
     <string name="eq_adaptive_needs_playback">Start playback to detect the real frequency bands supported by this device.</string>
     <string name="eq_classic_safety_explanation">The audio engine uses one bounded EQ curve, gentle notch correction and input headroom. The former independent BassBoost, spatializer and volume amplifier stay disabled. This does not measure headphone sound pressure or guarantee hearing safety.</string>
+    <string name="eq_ten_band_title">10-band equalizer</string>
+    <string name="eq_tempo_normal">Normal</string>
+    <string name="eq_ten_band_fallback">This device uses its native EQ bands. The 10-band curve is approximated.</string>
 </resources>

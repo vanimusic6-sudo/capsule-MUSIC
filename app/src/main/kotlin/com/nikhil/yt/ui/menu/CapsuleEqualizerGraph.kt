@@ -85,6 +85,15 @@ internal fun capsuleBandGraphY(
 }
 
 /** Display original Android frequency centers in Hz/kHz, not awkward shorthand. */
+internal fun capsuleGraphShortHz(hz: Int): String = when {
+    hz < 1000 -> hz.toString()
+    hz % 1000 == 0 -> "${hz / 1000}k"
+    else -> {
+        val tenths = (hz / 100f).roundToInt()
+        "${tenths / 10}.${tenths % 10}k"
+    }
+}
+
 internal fun capsuleGraphHz(hz: Int): String = when {
     hz <= 0 -> "—"
     hz >= 1_000 -> {
@@ -278,7 +287,7 @@ internal fun CapsuleEqualizerGraph(
         ) {
             frequenciesHz.take(count).forEachIndexed { index, hz ->
                 Text(
-                    text = capsuleGraphHz(hz),
+                    text = if (count >= 8) capsuleGraphShortHz(hz) else capsuleGraphHz(hz),
                     style = MaterialTheme.typography.labelSmall,
                     color = if (index == selectedBand) MaterialTheme.colorScheme.onSurface
                         else MaterialTheme.colorScheme.onSurfaceVariant,
