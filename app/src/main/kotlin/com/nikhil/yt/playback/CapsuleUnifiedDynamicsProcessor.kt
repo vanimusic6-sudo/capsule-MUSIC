@@ -31,7 +31,7 @@ internal fun capsuleDspCutoffsHz(centersHz: List<Int>, count: Int): List<Float> 
     }
 }
 
-/** Bass is part of the EQ contour; never apply a second amplifier. */
+/** All manual curves use ten logical frequency points. */
 internal fun capsuleUnifiedEqLevels(
     settings: EqSettings, capabilities: EqCapabilities,
 ): List<Int> {

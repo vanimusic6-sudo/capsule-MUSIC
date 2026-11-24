@@ -106,8 +106,13 @@ internal fun protectedEqLevels(
     val n = bandCount.coerceAtMost(32)
     if (!settings.enabled || minMb > maxMb) return List(n) { 0 }
     val boundedMax = maxMb.coerceAtMost(CAPSULE_MAX_EQ_BOOST_MB).coerceAtLeast(minMb)
+    val mapped = if (settings.bandLevelsMb.size == CAPSULE_TEN_BAND_HZ.size &&
+        centerFreqHz.size >= n && centerFreqHz.take(n) != CAPSULE_TEN_BAND_HZ
+    ) {
+        capsuleProjectEqLevelsByFrequency(settings.bandLevelsMb, centerFreqHz.take(n))
+    } else resampleEqLevelsByIndex(settings.bandLevelsMb, n)
     val nativeLevels = scaleEqBandLevels(
-        resampleEqLevelsByIndex(settings.bandLevelsMb, n),
+        mapped,
         settings.intensityPercent,
         minMb,
         maxMb,
