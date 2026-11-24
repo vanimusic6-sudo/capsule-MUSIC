@@ -736,7 +736,6 @@ private fun multiplierToSlider(multiplier: Float): Float {
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EqualizerDialog(
     onDismiss: () -> Unit,
