@@ -106,6 +106,7 @@ import com.nikhil.yt.constants.AutoStartOnBluetoothKey
 import com.nikhil.yt.constants.DiscordTokenKey
 import com.nikhil.yt.constants.EnableDiscordRPCKey
 import com.nikhil.yt.constants.EqualizerBandLevelsMbKey
+import com.nikhil.yt.constants.SoundStudioMixerKey
 import com.nikhil.yt.constants.EqualizerMusicalBalanceKey
 import com.nikhil.yt.constants.EqualizerEnabledKey
 import com.nikhil.yt.constants.EqualizerSelectedProfileIdKey
@@ -1082,8 +1083,10 @@ class MusicService :
     private var effectiveAudioVolume = 1f
     @Volatile private var studioSound = CapsuleStudioSound()
     @Volatile private var studioPreview: StudioCurvePreview? = null
+    @Volatile private var studioMixerPreview: StudioMixerPreview? = null
 
-    private class StudioCurvePreview(val sound: CapsuleStudioSound, val saving: Boolean)
+    private class StudioCurvePreview(val levels: List<Int>, val saving: Boolean)
+    private class StudioMixerPreview(val setting: CapsuleMixerSetting, val saving: Boolean)
     private val soundStudioTransitionFactor = MutableStateFlow(1f)
     private var soundStudioNeedsPcm = false
     // This is a relative SOFTWARE player-volume ceiling, never measured dBA.
@@ -3872,18 +3875,26 @@ class MusicService :
     }
 
     private fun readSoundStudio(prefs: Preferences): CapsuleStudioSound {
-        if (prefs[EqualizerEnabledKey] != true) return CapsuleStudioSound()
-        val selectedId = prefs[EqualizerSelectedProfileIdKey] ?: return CapsuleStudioSound()
-        CapsuleEqPresets.byId(selectedId)?.let { return it.sound }
-        val manual = readStudioManualCurve(selectedId, prefs[EqualizerBandLevelsMbKey])
-        return if (manual.isEmpty()) CapsuleStudioSound() else CapsuleStudioSound(capsuleManualEqLevels(manual))
+        val mixer = prefs.readSoundStudioMixer().setting
+        if (prefs[EqualizerEnabledKey] != true) return CapsuleStudioSound(mixer = mixer)
+        val selectedId = prefs[EqualizerSelectedProfileIdKey]
+        val preset = selectedId?.let(CapsuleEqPresets::byId)
+        val eq = preset?.sound ?: CapsuleStudioSound(readStudioManualCurve(selectedId, prefs[EqualizerBandLevelsMbKey]))
+        return eq.copy(mixer = mixer)
     }
 
-    private fun activeStudioSound(): CapsuleStudioSound = studioPreview?.sound ?: studioSound
+    private fun activeStudioSound(): CapsuleStudioSound {
+        val saved = studioSound
+        val levels = studioPreview?.levels
+        val mixer = studioMixerPreview?.setting
+        if (levels == null && mixer == null) return saved
+        return saved.copy(levelsMb = levels ?: saved.levelsMb, adaptive = levels == null && saved.adaptive,
+            mixer = mixer ?: saved.mixer)
+    }
 
     internal fun previewStudioCurve(levelsMb: List<Int>) {
         if (levelsMb.size == CAPSULE_STUDIO_FREQUENCIES_HZ.size) {
-            studioPreview = StudioCurvePreview(CapsuleStudioSound(capsuleManualEqLevels(levelsMb)), saving = false)
+            studioPreview = StudioCurvePreview(capsuleManualEqLevels(levelsMb), saving = false)
         }
     }
 
@@ -3899,12 +3910,13 @@ class MusicService :
         if (preset == null && !manual) return
         val bounded = if (manual) capsuleManualEqLevels(requestedLevelsMb) else null
         val encoded = bounded?.let(::encodeBandLevelsMb)
-        val pending = bounded?.let { StudioCurvePreview(CapsuleStudioSound(it), saving = true) }
+        val pending = bounded?.let { StudioCurvePreview(it, saving = true) }
         studioPreview = pending
         scope.launch {
             try {
                 val saved = dataStore.edit { prefs ->
                     prefs.preserveLegacySoundStudioTempo()
+                    prefs.preserveLegacySoundStudioMixer()
                     prefs[EqualizerSelectedProfileIdKey] = id
                     prefs[EqualizerEnabledKey] = true
                     if (encoded != null) prefs[EqualizerBandLevelsMbKey] = encoded
@@ -3912,6 +3924,33 @@ class MusicService :
                 if (pending != null && studioPreview === pending) studioSound = readSoundStudio(saved)
             } finally {
                 if (pending != null && studioPreview === pending) studioPreview = null
+            }
+        }
+    }
+
+    internal fun previewStudioMixer(effect: CapsuleMixerEffect, percent: Int) {
+        studioMixerPreview = StudioMixerPreview(CapsuleMixerSetting(effect, percent.coerceIn(0, 100)), saving = false)
+    }
+
+    internal fun cancelStudioMixerPreview() {
+        if (studioMixerPreview?.saving == false) studioMixerPreview = null
+    }
+
+    internal fun setSoundStudioMixer(effect: CapsuleMixerEffect, percent: Int? = null) {
+        val pending = percent?.let {
+            StudioMixerPreview(CapsuleMixerSetting(effect, it.coerceIn(0, 100)), saving = true)
+        }
+        studioMixerPreview = pending
+        scope.launch {
+            try {
+                val saved = dataStore.edit { prefs ->
+                    val profile = prefs.readSoundStudioMixer()
+                    val next = if (percent == null) profile.copy(effect = effect) else profile.withAmount(effect, percent)
+                    prefs[SoundStudioMixerKey] = next.encode()
+                }
+                if (pending != null && studioMixerPreview === pending) studioSound = readSoundStudio(saved)
+            } finally {
+                if (pending != null && studioMixerPreview === pending) studioMixerPreview = null
             }
         }
     }
@@ -3926,6 +3965,7 @@ class MusicService :
         studioPreview = null
         scope.launch {
             dataStore.edit { prefs ->
+                prefs.preserveLegacySoundStudioMixer()
                 if (enabled) {
                     val id = prefs[EqualizerSelectedProfileIdKey]
                     val preset = id?.let(CapsuleEqPresets::byId)

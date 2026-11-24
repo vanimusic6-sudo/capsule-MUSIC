@@ -10,7 +10,7 @@ private const val TAPE_PHASE_COUNT = 1024
 private val tapeSine = DoubleArray(TAPE_PHASE_COUNT + 1) { sin(2.0 * PI * it / TAPE_PHASE_COUNT) }
 
 /** A shared transport for all channels, with independent magnetic drive per channel. */
-internal class CapsuleTapeTransport(sampleRate: Int, private val channels: Int) {
+internal class CapsuleTapeTransport(sampleRate: Int, private val channels: Int) : MixerEffect {
     private val delayFrames = sampleRate * 0.006
     private val wowDepth = sampleRate * 0.00135
     private val flutterDepth = sampleRate * 0.00019
@@ -22,6 +22,7 @@ internal class CapsuleTapeTransport(sampleRate: Int, private val channels: Int) 
     private val ring = FloatArray(capacity * channels)
     private val drive = DoubleArray(channels)
     private val head = DoubleArray(channels)
+    private val playbackHead = DoubleArray(channels)
     private var write = 0
     private var written = 0
     private var wow = 0.0
@@ -31,23 +32,29 @@ internal class CapsuleTapeTransport(sampleRate: Int, private val channels: Int) 
     private var fraction = 0.0
     private var blend = 0.0
 
-    fun process(sample: Double, channel: Int): Double {
+    override fun apply(frame: DoubleArray, peak: Double, amount: Double, transition: Double) {
+        for (channel in frame.indices) frame[channel] = process(frame[channel], channel, amount, transition)
+    }
+
+    private fun process(sample: Double, channel: Int, amount: Double, transition: Double): Double {
         if (channel == 0) {
-            // Delay modulation changes pitch in both directions around unity.
-            val position = write - delayFrames - wowDepth * sinusoid(wow) - flutterDepth * sinusoid(flutter)
+            // Keep the nominal delay steady so changing strength does not bend pitch.
+            val delay = delayFrames + amount * (wowDepth * sinusoid(wow) + flutterDepth * sinusoid(flutter))
+            val position = write - minOf(written.toDouble(), delay)
             val read = floor(position).toInt()
             readOffset = (read and (capacity - 1)) * channels
             nextOffset = ((read + 1) and (capacity - 1)) * channels
             fraction = position - read
             // Only fade to the delayed tap after it has real samples.
-            blend = ((written - delayFrames - wowDepth - flutterDepth) / delayFrames).coerceIn(0.0, 1.0)
+            blend = ((written - delay) / delayFrames).coerceIn(0.0, 1.0)
             wow = wrapPhase(wow + wowStep)
             flutter = wrapPhase(flutter + flutterStep)
         }
         drive[channel] += driveStep * (sample - drive[channel])
-        val saturated = sample * capsuleTapeGain(drive[channel])
+        val saturated = sample * (1.0 - amount * (1.0 - capsuleTapeGain(drive[channel])))
         head[channel] += headStep * (saturated - head[channel])
-        val recorded = head[channel]
+        playbackHead[channel] += headStep * (head[channel] - playbackHead[channel])
+        val recorded = saturated + amount * (playbackHead[channel] - saturated)
         ring[write * channels + channel] = recorded.toFloat()
         val first = ring[readOffset + channel].toDouble()
         val second = ring[nextOffset + channel].toDouble()
@@ -56,7 +63,7 @@ internal class CapsuleTapeTransport(sampleRate: Int, private val channels: Int) 
             write = (write + 1) and (capacity - 1)
             if (written < capacity * 2) written++
         }
-        return recorded + (delayed - recorded) * blend
+        return recorded + (delayed - recorded) * blend * transition
     }
 
     private fun sinusoid(phase: Double): Double {

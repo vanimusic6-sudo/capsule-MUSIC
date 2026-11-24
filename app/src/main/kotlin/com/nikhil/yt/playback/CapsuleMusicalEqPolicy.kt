@@ -12,10 +12,9 @@ internal const val CAPSULE_EQ_MAX_STEP_MB = 375
 
 internal fun capsuleStudioBandLimit(hz: Int): IntRange = when {
     hz < 70 -> -650..160
-    hz < 130 -> -750..390
-    hz <= 620 -> CAPSULE_EQ_MIN_MB..CAPSULE_EQ_MAX_MB
-    hz <= 2_100 -> -750..550
-    hz <= 3_800 -> -700..450
+    hz <= 400 -> CAPSULE_EQ_MIN_MB..CAPSULE_EQ_MAX_MB
+    hz <= 1_000 -> -750..550
+    hz <= 2_400 -> -700..450
     else -> -650..320
 }
 

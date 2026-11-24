@@ -34,6 +34,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.interaction.DragInteraction
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -44,6 +46,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -69,7 +72,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -95,6 +99,7 @@ import com.nikhil.yt.constants.ArtistSeparatorsKey
 import com.nikhil.yt.constants.EqualizerBandLevelsMbKey
 import com.nikhil.yt.constants.EqualizerEnabledKey
 import com.nikhil.yt.constants.SoundStudioTempoVariantKey
+import com.nikhil.yt.constants.SoundStudioMixerKey
 import com.nikhil.yt.constants.EqualizerSelectedProfileIdKey
 import com.nikhil.yt.discovery.ExperimentalArtistRoute
 import com.nikhil.yt.discovery.ExperimentalDownload
@@ -105,10 +110,13 @@ import com.nikhil.yt.playback.CAPSULE_EQ_MIN_MB
 import com.nikhil.yt.playback.CAPSULE_STUDIO_FREQUENCIES_HZ
 import com.nikhil.yt.playback.CAPSULE_STUDIO_MANUAL_ID
 import com.nikhil.yt.playback.CapsuleEqPresets
+import com.nikhil.yt.playback.CapsuleMixerEffect
+import com.nikhil.yt.playback.CapsuleMixerProfile
 import com.nikhil.yt.playback.SoundStudioTempoVariant
 import com.nikhil.yt.playback.capsuleStudioBandLimit
 import com.nikhil.yt.playback.readStudioManualCurve
 import com.nikhil.yt.playback.ExoDownloadService
+import com.nikhil.yt.playback.MusicService
 import com.nikhil.yt.ui.component.BottomSheetState
 import com.nikhil.yt.ui.component.CapsuleMenuListItem as ListItem
 import com.nikhil.yt.ui.component.ListDialog
@@ -630,12 +638,16 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
     val (selectedId, _) = rememberPreference(EqualizerSelectedProfileIdKey, defaultValue = "flat")
     val (storedRaw, _) = rememberPreference(EqualizerBandLevelsMbKey, defaultValue = "")
     val (tempo, _) = rememberPreference(SoundStudioTempoVariantKey, defaultValue = "")
+    val (mixer, _) = rememberPreference(SoundStudioMixerKey, defaultValue = "")
 
     val frequencies = CAPSULE_STUDIO_FREQUENCIES_HZ
     val bandCount = frequencies.size
     val limits = remember { frequencies.map(::capsuleStudioBandLimit) }
     val stored = remember(selectedId, storedRaw) { readStudioManualCurve(selectedId, storedRaw) }
     val preset = CapsuleEqPresets.byId(selectedId)?.takeIf { eqEnabled }
+    val mixerProfile = remember(mixer, selectedId, eqEnabled) {
+        CapsuleMixerProfile.resolve(mixer, selectedId, eqEnabled)
+    }
     val initial = when {
         preset != null -> preset.sound.levelsMb
         eqEnabled && stored.isNotEmpty() -> stored
@@ -668,25 +680,6 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                             )
                         }
                     },
-                    actions = {
-                        Switch(
-                            checked = eqEnabled,
-                            onCheckedChange = { enabled ->
-                                draft = null
-                                service.setSoundStudioEqEnabled(enabled)
-                            },
-                            modifier = Modifier.semantics {
-                                contentDescription = equalizerLabel
-                            },
-                            thumbContent = {
-                                Icon(
-                                    painterResource(if (eqEnabled) R.drawable.check else R.drawable.close),
-                                    contentDescription = null, modifier = Modifier.size(SwitchDefaults.IconSize),
-                                )
-                            },
-                        )
-                        Spacer(Modifier.width(10.dp))
-                    },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.surface,
                     ),
@@ -699,7 +692,22 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    EqSection(title = stringResource(R.string.eq_ten_band_title)) {
+                    EqSection(title = equalizerLabel, trailing = {
+                        Switch(
+                            checked = eqEnabled,
+                            onCheckedChange = { enabled ->
+                                draft = null
+                                service.setSoundStudioEqEnabled(enabled)
+                            },
+                            modifier = Modifier.semantics { contentDescription = equalizerLabel },
+                            thumbContent = {
+                                Icon(
+                                    painterResource(if (eqEnabled) R.drawable.check else R.drawable.close),
+                                    contentDescription = null, modifier = Modifier.size(SwitchDefaults.IconSize),
+                                )
+                            },
+                        )
+                    }) {
                         CapsuleEqualizerGraph(
                             frequenciesHz = frequencies,
                             levelsMb = displayed,
@@ -730,10 +738,9 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                                 draft = null
                                 service.cancelStudioPreview()
                             },
-                            graphHeight = when {
-                                LocalConfiguration.current.screenHeightDp < 690 -> 165.dp
-                                else -> 205.dp
-                            },
+                            graphHeight = if (with(LocalDensity.current) {
+                                    LocalWindowInfo.current.containerSize.height.toDp() < 690.dp
+                                }) 150.dp else 184.dp,
                             editable = eqEnabled,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
                         )
@@ -757,43 +764,25 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                                 service.selectSoundVersion(CAPSULE_STUDIO_MANUAL_ID, List(bandCount) { 0 })
                             }) { Text(stringResource(R.string.reset)) }
                         }
-                    }
-
-                    EqSection(title = stringResource(R.string.eq_studio_character)) {
-                        Column(
-                            modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        Row(
+                            modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            CapsuleEqPresets.entries.chunked(2).forEach { row ->
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    for (version in row) {
-                                        StudioChoice(
-                                            label = stringResource(when (version) {
-                                                CapsuleEqPresets.AUTO -> R.string.eq_studio_auto
-                                                CapsuleEqPresets.WARM -> R.string.eq_studio_warm
-                                                CapsuleEqPresets.TAPE -> R.string.eq_studio_tape
-                                                CapsuleEqPresets.CLEAR -> R.string.eq_studio_clear
-                                            }),
-                                            selected = preset == version,
-                                            onClick = {
-                                                draft = null
-                                                service.selectSoundVersion("capsule:${version.id}")
-                                            },
-                                        )
-                                    }
+                            val versions = listOf(
+                                CapsuleEqPresets.AUTO to R.string.eq_studio_auto,
+                                CapsuleEqPresets.WARM to R.string.eq_studio_warm,
+                                CapsuleEqPresets.CLEAR to R.string.eq_studio_clear,
+                            )
+                            for ((version, label) in versions) {
+                                StudioChoice(stringResource(label), preset == version) {
+                                    draft = null
+                                    service.selectSoundVersion("capsule:${version.id}")
                                 }
-                            }
-                            if (preset == CapsuleEqPresets.AUTO || preset == CapsuleEqPresets.TAPE) {
-                                Text(
-                                    stringResource(if (preset == CapsuleEqPresets.AUTO)
-                                        R.string.eq_studio_auto_hint else R.string.eq_studio_tape_hint),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(horizontal = 4.dp),
-                                )
                             }
                         }
                     }
+
+                    CapsuleMixerSection(service, mixerProfile)
 
                     EqSection(title = stringResource(R.string.eq_tempo_versions)) {
                         Row(
@@ -813,6 +802,95 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                     }
                     Spacer(Modifier.height(10.dp))
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CapsuleMixerSection(service: MusicService, profile: CapsuleMixerProfile) {
+    val setting = profile.setting
+    var draft by remember(setting) { mutableStateOf<Int?>(null) }
+    val strengthInteractions = remember { MutableInteractionSource() }
+    DisposableEffect(service) { onDispose { service.cancelStudioMixerPreview() } }
+    LaunchedEffect(strengthInteractions, setting.effect) {
+        strengthInteractions.interactions.collect {
+            if (it is DragInteraction.Cancel) {
+                draft = null
+                service.cancelStudioMixerPreview()
+            }
+        }
+    }
+    val strength = draft ?: setting.amount
+    val strengthLabel = stringResource(R.string.eq_mixer_strength)
+    EqSection(title = stringResource(R.string.eq_mixer_title), trailing = {
+        if (setting.effect != CapsuleMixerEffect.OFF) {
+            TextButton(onClick = {
+                draft = null
+                service.setSoundStudioMixer(CapsuleMixerEffect.OFF)
+            }) { Text(stringResource(R.string.eq_mixer_off)) }
+        }
+    }) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            val effects = listOf(
+                CapsuleMixerEffect.TAPE to R.string.eq_mixer_tape,
+                CapsuleMixerEffect.SOFT to R.string.eq_mixer_soft,
+                CapsuleMixerEffect.SUN to R.string.eq_mixer_sun,
+                CapsuleMixerEffect.VINYL to R.string.eq_mixer_vinyl,
+            )
+            for (row in effects.chunked(2)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for ((effect, label) in row) {
+                        StudioChoice(stringResource(label), setting.effect == effect) {
+                            if (setting.effect != effect) {
+                                draft = null
+                                service.setSoundStudioMixer(effect)
+                            }
+                        }
+                    }
+                }
+            }
+            val hint = when (setting.effect) {
+                CapsuleMixerEffect.TAPE -> R.string.eq_studio_tape_hint
+                CapsuleMixerEffect.SOFT -> R.string.eq_mixer_soft_hint
+                CapsuleMixerEffect.SUN -> R.string.eq_mixer_sun_hint
+                CapsuleMixerEffect.VINYL -> R.string.eq_mixer_vinyl_hint
+                CapsuleMixerEffect.OFF -> null
+            }
+            if (hint != null) {
+                Text(
+                    stringResource(hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(strengthLabel, style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.eq_mixer_percent, strength),
+                        style = MaterialTheme.typography.labelLarge)
+                }
+                Slider(
+                    value = strength.toFloat(),
+                    onValueChange = { value ->
+                        val amount = round(value).toInt()
+                        if (strength != amount) {
+                            draft = amount
+                            service.previewStudioMixer(setting.effect, amount)
+                        }
+                    },
+                    onValueChangeFinished = {
+                        draft?.let { service.setSoundStudioMixer(setting.effect, it) }
+                    },
+                    valueRange = 0f..100f,
+                    interactionSource = strengthInteractions,
+                    modifier = Modifier.semantics { contentDescription = strengthLabel },
+                )
             }
         }
     }

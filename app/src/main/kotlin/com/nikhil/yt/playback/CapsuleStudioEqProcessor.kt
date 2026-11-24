@@ -66,44 +66,50 @@ internal class CapsuleStudioEqProcessor(
             selectedTone = detector.observe(inputBuffer)
             if (selectedTone != null) analysis = null
         }
-        val sound = if (setting.adaptive) when (selectedTone) {
+        val tone = if (setting.adaptive) (when (selectedTone) {
             CapsuleEqPresets.TAPE -> CapsuleEqPresets.brightAutoSound
             CapsuleEqPresets.CLEAR -> CapsuleEqPresets.CLEAR.sound
             else -> CapsuleEqPresets.WARM.sound
-        } else setting
-        equalizer.setSound(sound, smooth = setting.adaptive)
+        }).levelsMb else setting.levelsMb
+        equalizer.setCurve(tone, smooth = setting.adaptive)
+        equalizer.setMixer(setting.mixer)
         val output = replaceOutputBuffer(inputBuffer.remaining())
         equalizer.process(inputBuffer, output)
         output.flip()
     }
 }
 
-/** A ten-band peaking EQ with a static input trim and a linked stereo peak guard. */
+/** Five bands and a mixer feed the same linked output peak guard. */
 internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int) {
     private val rate = sampleRate
     private val fastTransitionFrames = (sampleRate * 24 / 1000).coerceAtLeast(1)
     private val slowTransitionFrames = (sampleRate * 180 / 1000).coerceAtLeast(1)
     private var transitionFrames = fastTransitionFrames
     private val peakRelease = 1.0 - exp(-1.0 / (sampleRate * 0.045))
+    private val edgeRelease = exp(-1.0 / (sampleRate * 0.035))
     private var current: StudioEqCascade? = null
     private var incoming: StudioEqCascade? = null
-    private var targetSound = CapsuleStudioSound()
+    private var targetCurve = emptyList<Int>()
     private var remaining = 0
     private var peakGain = 1.0
+    private var edgeRisk = 0.0
     private var started = false
     private val frame = DoubleArray(channels)
+    private val previousFrame = DoubleArray(channels)
+    private val mixer = CapsuleMixerStage(sampleRate, channels)
 
-    fun setSound(sound: CapsuleStudioSound, smooth: Boolean = false) {
+    fun setMixer(setting: CapsuleMixerSetting) = mixer.set(setting)
+
+    fun setCurve(curve: List<Int>, smooth: Boolean = false) {
         // Complete the current ramp before acting on a newer snapshot.
-        if (remaining != 0 || sound == targetSound) return
-        targetSound = sound
-        val curve = sound.levelsMb
+        if (remaining != 0 || curve == targetCurve) return
+        targetCurve = curve
         val bands = CAPSULE_STUDIO_FREQUENCIES_HZ.mapIndexedNotNull { i, frequency ->
             val gain = curve.getOrElse(i) { 0 }.coerceIn(capsuleStudioBandLimit(frequency))
             if (gain == 0 || frequency >= rate * 0.47) null
             else StudioEqBiquad.create(frequency, rate, gain, channels)
         }.toTypedArray()
-        incoming = if (bands.isEmpty() && !sound.tape) null else StudioEqCascade(bands, rate, channels, sound.tape)
+        incoming = if (bands.isEmpty()) null else StudioEqCascade(bands, rate)
         if (!started) {
             current = incoming
         } else if (current != null || incoming != null) {
@@ -115,7 +121,7 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
     fun process(input: ByteBuffer, output: ByteBuffer) {
         if (!input.hasRemaining()) return
         started = true
-        if (current == null && remaining == 0 && peakGain == 1.0) {
+        if (current == null && remaining == 0 && peakGain == 1.0 && !mixer.active) {
             output.put(input)
             return
         }
@@ -133,20 +139,40 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
                 frame[channel] = if (mixed.isFinite()) mixed else 0.0
                 peak = max(peak, abs(frame[channel]))
             }
+            if (mixer.active) {
+                mixer.process(frame, peak)
+                peak = 0.0
+                for (channel in frame.indices) {
+                    if (!frame[channel].isFinite()) frame[channel] = 0.0
+                    peak = max(peak, abs(frame[channel]))
+                }
+            }
             val oldCeiling = if (current == null) 1.0 else CAPSULE_EQ_PEAK_AMPLITUDE
-            val ceiling = if (remaining == 0) oldCeiling else {
+            val eqCeiling = if (remaining == 0) oldCeiling else {
                 val newCeiling = if (incoming == null) 1.0 else CAPSULE_EQ_PEAK_AMPLITUDE
                 oldCeiling + (newCeiling - oldCeiling) * mix
             }
-            val requiredGain = if (peak > ceiling) ceiling / peak else 1.0
+            val ceiling = minOf(eqCeiling, 1.0 - (1.0 - CAPSULE_EQ_PEAK_AMPLITUDE) * mixer.ceilingFraction)
+            // Fast changes near full scale need room for peaks between PCM samples.
+            // Keep a shared reserve across channels and release it gradually.
+            var swing = 0.0
+            for (channel in 0 until channels) {
+                swing = max(swing, abs(frame[channel] - previousFrame[channel]))
+                previousFrame[channel] = frame[channel]
+            }
+            edgeRisk = max(edgeRisk * edgeRelease, ((swing - 0.35) / 0.85).coerceIn(0.0, 1.0))
+            val protection = (1.0 - ceiling) / (1.0 - CAPSULE_EQ_PEAK_AMPLITUDE)
+            val peakLimit = ceiling * (1.0 - 0.32 * edgeRisk * protection)
+            val requiredGain = if (peak > peakLimit) peakLimit / peak else 1.0
             peakGain = minOf(requiredGain, peakGain + (1.0 - peakGain) * peakRelease)
             for (value in frame) {
                 val pcm = (value * peakGain * 32768.0).roundToInt().coerceIn(-32768, 32767)
                 output.putShort(pcm.toShort())
             }
             if (remaining != 0 && --remaining == 0) current = incoming
-            if (current == null && remaining == 0 && peakGain >= 0.9999) {
+            if (current == null && remaining == 0 && peakGain >= 0.9999 && !mixer.active) {
                 peakGain = 1.0
+                edgeRisk = 0.0
                 break
             }
         }
@@ -154,10 +180,7 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
     }
 }
 
-private class StudioEqCascade(
-    private val bands: Array<StudioEqBiquad>, sampleRate: Int, channels: Int, tape: Boolean,
-) {
-    private val transport = if (tape) CapsuleTapeTransport(sampleRate, channels) else null
+private class StudioEqCascade(private val bands: Array<StudioEqBiquad>, sampleRate: Int) {
     private val trim = run {
         // Estimate the maximum of the *combined* filter response at the
         // centers and across the spectrum. A fixed margin covers grid gaps.
@@ -183,7 +206,7 @@ private class StudioEqCascade(
     fun process(sample: Double, channel: Int): Double {
         var value = sample * trim
         for (band in bands) value = band.process(value, channel)
-        return transport?.process(value, channel) ?: value
+        return value
     }
 }
 
@@ -213,9 +236,8 @@ private class StudioEqBiquad(
         fun create(hz: Int, sampleRate: Int, gainMb: Int, channels: Int): StudioEqBiquad {
             val amplitude = 10.0.pow(gainMb / 4000.0)
             val w = 2.0 * PI * hz / sampleRate
-            // Roughly octave-wide bands with smooth overlap. Use a narrower
-            // last band to keep 12 kHz adjustments out of upper mids.
-            val q = if (hz >= 10_000) 1.55 else 1.32
+            // Broad bands retain useful overlap across the five centers.
+            val q = if (hz >= 10_000) 0.66 else 0.78
             val alpha = sin(w) / (2.0 * q)
             val a0 = 1.0 + alpha / amplitude
             val common = -2.0 * cos(w) / a0

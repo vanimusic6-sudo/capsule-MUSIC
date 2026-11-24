@@ -1080,13 +1080,20 @@ Capsule will only extract your token, and everything else is stored locally.</st
     <string name="eq_adaptive_original">Requested contour stays unchanged</string>
     <string name="eq_adaptive_needs_playback">Start playback to detect the real frequency bands supported by this device.</string>
     <string name="eq_classic_safety_explanation">The audio engine uses one bounded EQ curve, gentle notch correction and input headroom. The former independent BassBoost, spatializer and volume amplifier stay disabled. This does not measure headphone sound pressure or guarantee hearing safety.</string>
-    <string name="eq_ten_band_title">Fine tuning</string>
     <string name="eq_tempo_normal">Normal</string>
-    <string name="eq_studio_character">Tone</string>
     <string name="eq_studio_auto">Auto</string>
     <string name="eq_studio_warm">Warm</string>
-    <string name="eq_studio_tape">Tape</string>
     <string name="eq_studio_clear">Clarity</string>
-    <string name="eq_studio_auto_hint">Picks a tone from the track’s frequency balance.</string>
+    <string name="eq_mixer_title">Capsule Mixer</string>
+    <string name="eq_mixer_strength">Effect strength</string>
+    <string name="eq_mixer_percent">%1$d%%</string>
+    <string name="eq_mixer_off">Turn off</string>
+    <string name="eq_mixer_tape">Magnetic tape</string>
+    <string name="eq_mixer_soft">Softness</string>
+    <string name="eq_mixer_sun">Sunshine</string>
+    <string name="eq_mixer_vinyl">Vinyl scratch</string>
     <string name="eq_studio_tape_hint">Tape saturation, softer highs and gentle pitch drift.</string>
+    <string name="eq_mixer_soft_hint">Rounds the high frequencies on sharp attacks.</string>
+    <string name="eq_mixer_sun_hint">Adds harmonics around voices and instruments.</string>
+    <string name="eq_mixer_vinyl_hint">A short groove scratch that follows the music level.</string>
 </resources>

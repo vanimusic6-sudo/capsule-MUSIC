@@ -3,24 +3,23 @@ package com.nikhil.yt.playback
 
 internal data class CapsuleStudioSound(
     val levelsMb: List<Int> = emptyList(),
-    val tape: Boolean = false,
     val adaptive: Boolean = false,
+    val mixer: CapsuleMixerSetting = CapsuleMixerSetting(),
 ) {
-    val enabled: Boolean get() = levelsMb.isNotEmpty() || tape || adaptive
+    val enabled: Boolean get() = levelsMb.isNotEmpty() || adaptive || mixer.effect != CapsuleMixerEffect.OFF
 }
 
 internal enum class CapsuleEqPresets(val id: String, levels: List<Int>) {
-    AUTO("studio_auto", listOf(5, 105, 275, 355, 205, 75, 0, -75, -45, -20)),
-    WARM("studio_warm", listOf(5, 105, 275, 355, 205, 75, 0, -75, -45, -20)),
-    TAPE("studio_tape", listOf(0, 175, 225, 125, 55, 15, -30, -125, -345, -480)),
-    CLEAR("studio_clear", listOf(-75, -255, -200, -150, -15, 135, 285, 210, 70, 25));
+    AUTO("studio_auto", listOf(55, 370, 80, -50, -70)),
+    WARM("studio_warm", listOf(55, 370, 80, -50, -70)),
+    TAPE("studio_tape", List(CAPSULE_STUDIO_FREQUENCIES_HZ.size) { 0 }),
+    CLEAR("studio_clear", listOf(-165, -155, 85, 280, 80));
 
-    val sound = CapsuleStudioSound(capsuleMusicalEqLevels(levels), tape = id == "studio_tape", adaptive = id == "studio_auto")
+    val sound = CapsuleStudioSound(capsuleMusicalEqLevels(levels), adaptive = id == "studio_auto")
 
     companion object {
-        // Auto can tame a bright recording without changing its tape speed.
         val brightAutoSound = CapsuleStudioSound(
-            capsuleMusicalEqLevels(listOf(0, 10, 45, 90, 70, 20, -20, -110, -145, -75)),
+            capsuleMusicalEqLevels(listOf(5, 90, 50, -95, -155)),
         )
 
         fun byId(id: String): CapsuleEqPresets? = when (val key = id.removePrefix("capsule:")) {

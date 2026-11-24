@@ -20,9 +20,12 @@ class SimpleEqualizerTest {
     @Test fun adaptiveGraphAndCuratedVersionsCoexist() {
         val dialog=file("PlayerMenu").substringAfter("fun EqualizerDialog(")
             .substringBefore("@Composable\nprivate fun RowScope.StudioChoice(")
-        assertTrue(dialog.contains("CapsuleEqPresets.entries.chunked(2)"))
         assertTrue(dialog.contains("CapsuleEqualizerGraph("))
-        assertTrue(dialog.contains("eq_ten_band_title"))
+        assertTrue(dialog.contains("EqSection(title = equalizerLabel"))
+        assertTrue(dialog.contains("CapsuleMixerSection(service, mixerProfile)"))
+        assertTrue(dialog.contains("service.previewStudioMixer(setting.effect, amount)"))
+        assertTrue(dialog.contains("service.setSoundStudioMixer(setting.effect, it)"))
+        assertTrue(dialog.contains("CapsuleMixerEffect.OFF"))
         assertTrue(dialog.contains("SoundStudioTempoVariant.SPEED_UP"))
         assertTrue(dialog.contains("SoundStudioTempoVariant.SLOWED"))
         assertTrue(dialog.contains("EqSection("))
@@ -35,7 +38,7 @@ class SimpleEqualizerTest {
         assertFalse(dialog.contains("eq_adaptive_activate"))
         assertTrue(dialog.contains("selectTempoVariant(variant)"))
         assertTrue(dialog.indexOf("CapsuleEqualizerGraph(") <
-            dialog.indexOf("CapsuleEqPresets.entries.chunked(2)"))
+            dialog.indexOf("CapsuleMixerSection(service, mixerProfile)"))
         assertFalse(dialog.contains("showBands"))
         assertTrue(dialog.contains("service.previewStudioCurve(next)"))
         assertTrue(dialog.contains("onDispose { service.cancelStudioPreview() }"))
