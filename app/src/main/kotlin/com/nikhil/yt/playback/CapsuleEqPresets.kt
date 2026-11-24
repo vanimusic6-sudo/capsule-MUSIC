@@ -4,7 +4,7 @@ import kotlin.math.ln
 import kotlin.math.roundToInt
 
 /**
- * Five gentle musical signatures over seven logarithmic reference points.
+ * Five smooth musical signatures on the independent ten-band DSP.
  * These are user-facing design frequencies, not claimed "safe" frequencies:
  * each device maps them to its actual available EQ bands.
  * No BassBoost, Virtualizer or global system changes.
@@ -16,22 +16,22 @@ internal data class CapsuleEqPreset(
 )
 
 internal object CapsuleEqPresets {
-    private val referenceHz = listOf(80, 200, 500, 1_300, 3_400, 8_000, 14_000)
+    private val referenceHz = CAPSULE_TEN_BAND_HZ
 
-    // Broader signatures are more noticeable than the previous versions,
-    // without narrow midrange holes or aggressive extreme-treble boosts.
-    // All authored points remain below 3 dB; hardware mapping is logarithmic.
+    // Broad shelves, without a midrange vacuum or narrow treble spikes.
+    // +2.9 dB at the soft-bass peak is an intentionally pre-headroom bound,
+    // not a guaranteed acoustic level. Digital guards still run after mapping.
     val all = listOf(
         CapsuleEqPreset("soft_bass_v2", "Soft Bass",
-            listOf(190, 270, 175, 25, -55, -100, -130)),
+            listOf(180, 260, 290, 200, 100, 20, -70, -110, -100, -110)),
         CapsuleEqPreset("warm_v2", "Warm",
-            listOf(135, 225, 160, 40, -65, -125, -160)),
+            listOf(120, 220, 235, 175, 90, -20, -90, -110, -120, -130)),
         CapsuleEqPreset("vocal_v2", "Vocals",
-            listOf(-110, -85, 35, 180, 190, 60, -50)),
+            listOf(-90, -80, -20, 70, 170, 220, 190, 95, -20, -80)),
         CapsuleEqPreset("air_v2", "Air",
-            listOf(-85, -60, -25, 40, 110, 170, 200)),
+            listOf(-75, -80, -50, -20, 20, 90, 160, 220, 250, 200)),
         CapsuleEqPreset("live_v2", "Live",
-            listOf(85, 130, 55, 145, 160, 80, -15)),
+            listOf(80, 130, 140, 90, 100, 170, 200, 165, 80, -30)),
     )
 
     fun byId(id: String): CapsuleEqPreset? = all.firstOrNull { it.id == id }
@@ -55,9 +55,9 @@ internal object CapsuleEqPresets {
         val last = centerFreqHz.lastIndex
         return centerFreqHz.mapIndexed { index, frequency ->
             val hz = frequency.takeIf { it in 20..20_000 }?.toDouble()
-                ?: if (last == 0) 1_300.0 else {
+                ?: if (last == 0) 1_250.0 else {
                     val position = index.toDouble() / last
-                    80.0 * (14_000.0 / 80.0).pow(position)
+                    80.0 * (16_000.0 / 80.0).pow(position)
                 }
             val anchor = referenceHz.indexOfLast { it <= hz }.coerceIn(0, referenceHz.lastIndex)
             val mb = when {

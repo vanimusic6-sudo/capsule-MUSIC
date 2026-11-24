@@ -3994,7 +3994,9 @@ class MusicService :
         return EqSettings(
             enabled = (prefs[EqualizerEnabledKey] ?: false) &&
                 (preset != null || manualEnabled),
-            bandLevelsMb = preset?.referenceLevelsMb ?: storedLevels,
+            bandLevelsMb = preset?.referenceLevelsMb ?: if (manualEnabled)
+                capsuleProjectEqLevelsByFrequency(storedLevels, CAPSULE_TEN_BAND_HZ)
+                else storedLevels,
             outputGainEnabled = false,
             outputGainMb = 0,
             bassBoostEnabled = false,
