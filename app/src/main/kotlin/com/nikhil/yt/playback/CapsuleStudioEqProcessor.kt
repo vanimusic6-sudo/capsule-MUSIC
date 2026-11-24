@@ -79,9 +79,17 @@ internal class CapsuleStudioEqProcessor(
         val tone = if (setting.adaptive) plan?.levelsMb.orEmpty() else setting.levelsMb
         equalizer.setCurve(tone, smooth = setting.adaptive)
         equalizer.setMixer(setting.mixer)
+        equalizer.setDjControls(setting.dj)
         equalizer.setProcessingGuard(setting.adaptive || setting.tempo != SoundStudioTempoVariant.NORMAL)
         val output = replaceOutputBuffer(inputBuffer.remaining())
         equalizer.process(inputBuffer, output)
+        output.flip()
+    }
+
+    override fun onQueueEndOfStream() {
+        val equalizer = filter ?: return
+        val output = replaceOutputBuffer(equalizer.pendingBytes)
+        equalizer.drain(output)
         output.flip()
     }
 }
@@ -92,14 +100,12 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
     private val fastTransitionFrames = (sampleRate * 24 / 1000).coerceAtLeast(1)
     private val slowTransitionFrames = (sampleRate * 180 / 1000).coerceAtLeast(1)
     private var transitionFrames = fastTransitionFrames
-    private val peakRelease = 1.0 - exp(-1.0 / (sampleRate * 0.045))
     private val edgeRelease = exp(-1.0 / (sampleRate * 0.035))
     private val loadStep = 1.0 - exp(-1.0 / (sampleRate * 0.42))
     private var current: StudioEqCascade? = null
     private var incoming: StudioEqCascade? = null
     private var targetCurve = emptyList<Int>()
     private var remaining = 0
-    private var peakGain = 1.0
     private var edgeRisk = 0.0
     private var sustainedPower = 0.0
     private var processingGuard = false
@@ -109,8 +115,18 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
     private val previousFrame = DoubleArray(channels)
     private val mixer = CapsuleMixerStage(sampleRate, channels)
     private val peakMonitor = CapsuleReconstructedPeak(channels)
+    private val limiter = CapsuleLookaheadLimiter(sampleRate, channels)
+    private val warmupFrames = (sampleRate * 38 / 1000).coerceAtLeast(1)
+    private val history = ShortArray(warmupFrames * channels)
+    private var historyCursor = 0
+    private var historySize = 0
+
+    val pendingBytes: Int get() = limiter.pendingFrames * channels * Short.SIZE_BYTES
+
+    fun drain(output: ByteBuffer) = limiter.drain(output)
 
     fun setMixer(setting: CapsuleMixerSetting) = mixer.set(setting)
+    fun setDjControls(controls: CapsuleDjControls) { mixer.djControls = controls.bounded() }
     fun setProcessingGuard(enabled: Boolean) {
         processingGuard = enabled
         if (enabled || !started) processingGuardMix = if (enabled) 1.0 else 0.0
@@ -129,6 +145,7 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
         if (!started) {
             current = incoming
         } else if (current != null || incoming != null) {
+            incoming?.let(::warmCascade)
             transitionFrames = if (smooth) slowTransitionFrames else fastTransitionFrames
             remaining = transitionFrames
         }
@@ -137,9 +154,10 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
     fun process(input: ByteBuffer, output: ByteBuffer) {
         if (!input.hasRemaining()) return
         started = true
-        if (current == null && remaining == 0 && peakGain == 1.0 && !mixer.active &&
+        if (current == null && remaining == 0 && !limiter.active && !mixer.active &&
             !processingGuard && processingGuardMix == 0.0
         ) {
+            captureDryHistory(input)
             output.put(input)
             return
         }
@@ -148,7 +166,9 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
             val mix = if (remaining == 0) 0.0 else 1.0 - (remaining - 1.0) / transitionFrames
             var peak = 0.0
             for (channel in 0 until channels) {
-                val sample = input.getShort() / 32768.0
+                val raw = input.getShort()
+                history[historyCursor * channels + channel] = raw
+                val sample = raw / 32768.0
                 val old = current?.process(sample, channel) ?: sample
                 val mixed = if (remaining != 0) {
                     val next = incoming?.process(sample, channel) ?: sample
@@ -157,6 +177,7 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
                 frame[channel] = if (mixed.isFinite()) mixed else 0.0
                 peak = max(peak, abs(frame[channel]))
             }
+            commitHistoryFrame()
             if (mixer.active) {
                 mixer.process(frame, peak)
                 peak = 0.0
@@ -192,27 +213,94 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
                 1.0 - (1.0 - sqrt(0.60 / sustainedPower)) * protection
             } else 1.0
             val requiredGain = minOf(peakProtection, sustainedProtection)
-            peakGain = minOf(requiredGain, peakGain + (1.0 - peakGain) * peakRelease)
-            for (value in frame) {
-                val pcm = (value * peakGain * 32768.0).roundToInt().coerceIn(-32768, 32767)
-                output.putShort(pcm.toShort())
-            }
+            limiter.queue(frame, requiredGain, output)
             if (remaining != 0 && --remaining == 0) current = incoming
-            if (current == null && remaining == 0 && peakGain >= 0.9999 && !mixer.active &&
-                !processingGuard && processingGuardMix == 0.0
-            ) {
-                peakGain = 1.0
-                edgeRisk = 0.0
-                sustainedPower = 0.0
-                peakMonitor.clear()
-                break
-            }
         }
         if (input.hasRemaining()) output.put(input)
     }
+
+    private fun captureDryHistory(input: ByteBuffer) {
+        val frameBytes = channels * Short.SIZE_BYTES
+        val frames = input.remaining() / frameBytes
+        val count = minOf(warmupFrames, frames)
+        var byteIndex = input.position() + (frames - count) * frameBytes
+        repeat(count) {
+            for (channel in 0 until channels) {
+                history[historyCursor * channels + channel] = input.getShort(byteIndex)
+                byteIndex += Short.SIZE_BYTES
+            }
+            commitHistoryFrame()
+        }
+    }
+
+    private fun commitHistoryFrame() {
+        if (++historyCursor == warmupFrames) historyCursor = 0
+        historySize = minOf(historySize + 1, warmupFrames)
+    }
+
+    private fun warmCascade(cascade: StudioEqCascade) {
+        var cursor = (historyCursor - historySize + warmupFrames) % warmupFrames
+        repeat(historySize) {
+            for (channel in 0 until channels) {
+                cascade.process(history[cursor * channels + channel] / 32768.0, channel)
+            }
+            if (++cursor == warmupFrames) cursor = 0
+        }
+    }
 }
 
-/** Oversampled history detector, complementing the instantaneous guard without delaying dry PCM. */
+/** Linked two-millisecond lookahead. Once armed, delay stays stable until the sink drains. */
+private class CapsuleLookaheadLimiter(rate: Int, private val channels: Int) {
+    private val delay = (rate / 500).coerceAtLeast(1)
+    private val capacity = delay + 1
+    private val frames = DoubleArray(capacity * channels)
+    private val required = DoubleArray(capacity)
+    private val minimum = LongArray(capacity + 1)
+    private val attack = 1.0 - exp(-8.0 / (delay - 12).coerceAtLeast(delay / 2).coerceAtLeast(1))
+    private val release = 1.0 - exp(-1.0 / (rate * 0.045))
+    private var gain = 1.0
+    private var written = 0L
+    private var emitted = 0L
+    private var head = 0
+    private var tail = 0
+
+    val active: Boolean get() = written != 0L
+    val pendingFrames: Int get() = (written - emitted).toInt()
+
+    fun queue(frame: DoubleArray, demand: Double, output: ByteBuffer) {
+        val slot = (written % capacity).toInt()
+        frame.copyInto(frames, slot * channels)
+        required[slot] = demand
+        while (tail != head) {
+            val last = (tail + capacity) % minimum.size
+            if (required[(minimum[last] % capacity).toInt()] < demand) break
+            tail = last
+        }
+        minimum[tail] = written++
+        tail = (tail + 1) % minimum.size
+        if (pendingFrames > delay) emit(output)
+    }
+
+    fun drain(output: ByteBuffer) {
+        while (pendingFrames != 0) emit(output)
+    }
+
+    private fun emit(output: ByteBuffer) {
+        val slot = (emitted % capacity).toInt()
+        val target = required[(minimum[head] % capacity).toInt()]
+        val smoothTarget = if (target < 1.0) target * 0.995 else 1.0
+        gain += (smoothTarget - gain) * if (smoothTarget < gain) attack else release
+        val safe = minOf(gain, required[slot])
+        for (channel in 0 until channels) {
+            val pcm = (frames[slot * channels + channel] * safe * 32768.0).roundToInt().coerceIn(-32768, 32767)
+            output.putShort(pcm.toShort())
+        }
+        if (minimum[head] == emitted) head = (head + 1) % minimum.size
+        emitted++
+    }
+}
+
+/** Oversampled history detector, evaluated while samples are still in the lookahead window. */
 private class CapsuleReconstructedPeak(private val channels: Int) {
     private val history = DoubleArray(16 * channels)
     private var cursor = 0
@@ -237,12 +325,6 @@ private class CapsuleReconstructedPeak(private val channels: Int) {
         }
         cursor = (cursor + 1) and 15
         return maximum
-    }
-
-    fun clear() {
-        history.fill(0.0)
-        cursor = 0
-        watch = 0
     }
 
     companion object {
@@ -277,7 +359,8 @@ private class StudioEqCascade(private val bands: Array<StudioEqBiquad>, sampleRa
             if (frequency < sampleRate / 2) observe(frequency.toDouble())
         }
         val nyquist = sampleRate / 2.0
-        for (step in 0..160) observe(20.0 * (nyquist / 20.0).pow(step / 160.0))
+        observe(0.0)
+        for (step in 0..192) observe(2.0 * (nyquist / 2.0).pow(step / 192.0))
         10.0.pow(-0.6 / 20.0) / sqrt(peakSquared)
     }
 

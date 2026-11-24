@@ -1084,6 +1084,7 @@ class MusicService :
     @Volatile private var studioSound = CapsuleStudioSound()
     @Volatile private var studioPreview: StudioCurvePreview? = null
     @Volatile private var studioMixerPreview: StudioMixerPreview? = null
+    @Volatile private var studioDjControls = CapsuleDjControls()
     private val studioTrackPlans = MutableStateFlow<Map<String, CapsuleTrackSound>>(emptyMap())
     internal val studioAutoCurve = MutableStateFlow<List<Int>>(emptyList())
 
@@ -2376,7 +2377,7 @@ class MusicService :
                 audioFocusVolumeFactor = audioFocusVolumeFactor,
                 audioNormalizationEnabled = audioNormalizationEnabled,
                 maxSafeGainFactor = maxSafeGainFactor,
-                overlapTempo = { id -> studioPlaybackParameters(studioSound.tempo, lookupStudioPlan(id)) },
+                overlapTempo = { id -> studioPlaybackParameters(studioSound, lookupStudioPlan(id)) },
                 overlapPlayerFactory = {
                     val overlapRenderers = createRenderersFactory()
                     ExoPlayer
@@ -2412,7 +2413,7 @@ class MusicService :
         ) { sound, id, plans -> sound to plans[id] }
             .distinctUntilChanged()
             .collectLatest(scope) { (sound, plan) ->
-                val playbackParams = studioPlaybackParameters(sound.tempo, plan)
+                val playbackParams = studioPlaybackParameters(sound, plan)
                 val paramChange = player.playbackParameters != playbackParams
                 val needsPcm = sound.enabled || sound.tempo != SoundStudioTempoVariant.NORMAL
                 val pcmChanged = soundStudioNeedsPcm != needsPcm
@@ -3909,18 +3910,32 @@ class MusicService :
         }
     }
 
-    private fun studioPlaybackParameters(variant: SoundStudioTempoVariant, plan: CapsuleTrackSound?): PlaybackParameters {
-        val tempo = (plan ?: CapsuleTrackSound.NEUTRAL).tempo(variant)
-        return PlaybackParameters(tempo.speed, tempo.pitch)
+    private fun studioPlaybackParameters(sound: CapsuleStudioSound, plan: CapsuleTrackSound?): PlaybackParameters {
+        val tempo = (plan ?: CapsuleTrackSound.NEUTRAL).tempo(sound.tempo)
+        val rate = capsuleTapeRate(tempo.speed, sound.tempo, sound.mixer)
+        return PlaybackParameters(rate, rate)
     }
 
     private fun activeStudioSound(): CapsuleStudioSound {
         val saved = studioSound
         val levels = studioPreview?.levels
-        val mixer = studioMixerPreview?.setting
-        if (levels == null && mixer == null) return saved
+        val preview = studioMixerPreview?.setting
+        val mixer = preview ?: saved.mixer
+        val dj = if (mixer.effect == CapsuleMixerEffect.VINYL) studioDjControls else saved.dj
+        if (levels == null && preview == null && dj == saved.dj) return saved
         return saved.copy(levelsMb = levels ?: saved.levelsMb, adaptive = levels == null && saved.adaptive,
-            mixer = mixer ?: saved.mixer)
+            mixer = mixer, dj = dj)
+    }
+
+    internal fun setStudioDjControls(value: CapsuleDjControls) {
+        studioDjControls = value.bounded()
+    }
+
+    internal fun rewindStudioDeck() {
+        val timeline = capsuleTimelinePlayer
+        if (timeline.isCurrentMediaItemSeekable) {
+            seekToCapsuleTimeline((timeline.currentPosition - 5_000L).coerceAtLeast(0L))
+        }
     }
 
     internal fun previewStudioCurve(levelsMb: List<Int>) {
@@ -3968,6 +3983,7 @@ class MusicService :
     }
 
     internal fun setSoundStudioMixer(effect: CapsuleMixerEffect, percent: Int? = null) {
+        if (effect != CapsuleMixerEffect.VINYL) studioDjControls = CapsuleDjControls()
         val pending = percent?.let {
             StudioMixerPreview(CapsuleMixerSetting(effect, it.coerceIn(0, 100)), saving = true)
         }

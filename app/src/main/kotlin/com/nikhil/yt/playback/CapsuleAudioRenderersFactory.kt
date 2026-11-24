@@ -3,7 +3,9 @@
 package com.nikhil.yt.playback
 
 import android.content.Context
+import android.media.AudioTrack
 import android.os.Build
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.audio.AudioProcessor
@@ -59,6 +61,51 @@ internal object CapsuleOpusCodecSelector : MediaCodecSelector {
 }
 
 internal const val CAPSULE_PCM_AUDIO_TRACK_BUFFER_DURATION_US = 1_500_000
+private const val CAPSULE_DJ_BUFFER_MS = 240
+
+/** Shorten only the active deck's PCM queue. A new underrun opts it out for that visit. */
+private class CapsuleDjAudioTrackBuffer {
+    private var track: AudioTrack? = null
+    private var originalFrames = 0
+    private var deck = false
+    private var shortened = false
+    private var underruns = 0
+
+    fun attach(output: AudioTrack, config: AudioSink.AudioTrackConfig) {
+        track = output.takeIf { Build.VERSION.SDK_INT >= 24 && !config.offload && !config.tunneling &&
+            config.encoding == C.ENCODING_PCM_16BIT && output.state == AudioTrack.STATE_INITIALIZED }
+        originalFrames = track?.bufferSizeInFrames ?: 0
+        deck = false
+        shortened = false
+    }
+
+    fun update(selected: Boolean) {
+        if (Build.VERSION.SDK_INT < 24) return
+        val current = track ?: return
+        if (current.state != AudioTrack.STATE_INITIALIZED) return
+        if (selected == deck) {
+            if (shortened && (!selected || current.underrunCount > underruns)) restore(current)
+            return
+        }
+        deck = selected
+        if (!selected) {
+            restore(current)
+            return
+        }
+        val frames = current.sampleRate * CAPSULE_DJ_BUFFER_MS / 1_000
+        if (frames in 1 until originalFrames) {
+            underruns = current.underrunCount
+            shortened = runCatching { current.setBufferSizeInFrames(frames) in 1 until originalFrames }.getOrDefault(false)
+        }
+    }
+
+    private fun restore(current: AudioTrack) {
+        if (Build.VERSION.SDK_INT >= 24 && shortened) {
+            shortened = runCatching { current.setBufferSizeInFrames(originalFrames) in 1 until originalFrames }
+                .getOrDefault(true)
+        }
+    }
+}
 
 internal class CapsuleAudioRenderersFactory(
     context: Context,
@@ -89,6 +136,7 @@ internal class CapsuleAudioRenderersFactory(
         enableFloatOutput: Boolean,
         enableAudioOutputPlaybackParams: Boolean,
     ): AudioSink? {
+        val djBuffer = CapsuleDjAudioTrackBuffer()
         val pcmBufferSizeProvider =
             DefaultAudioTrackBufferSizeProvider.Builder()
                 .setMinPcmBufferDurationUs(CAPSULE_PCM_AUDIO_TRACK_BUFFER_DURATION_US)
@@ -99,7 +147,12 @@ internal class CapsuleAudioRenderersFactory(
             // Keep Media3's own time/silence accounting. EQ sees the final
             // sample frequencies and catches peaks after pitch resampling.
             private val processors = super.getAudioProcessors() + CapsuleStudioEqProcessor(
-                readStudioSound, { studioTrackId }, readStudioPlan, publishStudioPlan,
+                {
+                    val sound = readStudioSound()
+                    djBuffer.update(sound.mixer.effect == CapsuleMixerEffect.VINYL && sound.mixer.enabled)
+                    sound
+                },
+                { studioTrackId }, readStudioPlan, publishStudioPlan,
             )
             override fun getAudioProcessors(): Array<AudioProcessor> = processors
         }
@@ -107,6 +160,10 @@ internal class CapsuleAudioRenderersFactory(
             .setEnableFloatOutput(false)
             .setEnableAudioOutputPlaybackParameters(false)
             .setAudioProcessorChain(processorChain)
+            .setAudioTrackProvider { config, attributes, session, outputContext ->
+                DefaultAudioSink.AudioTrackProvider.DEFAULT.getAudioTrack(config, attributes, session, outputContext)
+                    .also { djBuffer.attach(it, config) }
+            }
             .setAudioTrackBufferSizeProvider(
                 if (useMusicBuffer) pcmBufferSizeProvider else DefaultAudioSink.AudioTrackBufferSizeProvider.DEFAULT,
             )

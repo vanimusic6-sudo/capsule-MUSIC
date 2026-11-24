@@ -6,6 +6,7 @@ internal data class CapsuleStudioSound(
     val adaptive: Boolean = false,
     val mixer: CapsuleMixerSetting = CapsuleMixerSetting(),
     val tempo: SoundStudioTempoVariant = SoundStudioTempoVariant.NORMAL,
+    val dj: CapsuleDjControls = CapsuleDjControls(),
 ) {
     val enabled: Boolean get() = levelsMb.isNotEmpty() || adaptive || mixer.effect != CapsuleMixerEffect.OFF
 }

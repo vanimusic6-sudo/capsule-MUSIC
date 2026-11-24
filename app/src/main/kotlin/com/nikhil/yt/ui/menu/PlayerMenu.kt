@@ -113,6 +113,7 @@ import com.nikhil.yt.playback.CAPSULE_STUDIO_FREQUENCIES_HZ
 import com.nikhil.yt.playback.CAPSULE_STUDIO_MANUAL_ID
 import com.nikhil.yt.playback.CapsuleEqPresets
 import com.nikhil.yt.playback.CapsuleMixerEffect
+import com.nikhil.yt.playback.CapsuleDjControls
 import com.nikhil.yt.playback.CapsuleMixerProfile
 import com.nikhil.yt.playback.SoundStudioTempoVariant
 import com.nikhil.yt.playback.capsuleStudioBandLimit
@@ -910,8 +911,62 @@ private fun CapsuleMixerSection(service: MusicService, profile: CapsuleMixerProf
                     },
                 )
             }
+            if (setting.effect == CapsuleMixerEffect.VINYL) {
+                CapsuleDjControlsPanel(service)
+            }
         }
     }
+}
+
+@Composable
+private fun CapsuleDjControlsPanel(service: MusicService) {
+    var controls by remember { mutableStateOf(CapsuleDjControls()) }
+    val jogInteractions = remember { MutableInteractionSource() }
+    fun publish(next: CapsuleDjControls) {
+        controls = next
+        service.setStudioDjControls(next)
+    }
+    DisposableEffect(service) {
+        onDispose { service.setStudioDjControls(CapsuleDjControls()) }
+    }
+    LaunchedEffect(jogInteractions) {
+        jogInteractions.interactions.collect {
+            if (it is DragInteraction.Cancel) publish(controls.copy(jog = 0f))
+        }
+    }
+    val jogLabel = stringResource(R.string.eq_dj_jog)
+    val filterLabel = stringResource(R.string.eq_dj_filter)
+    Text(jogLabel, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 4.dp))
+    Slider(
+        value = controls.jog,
+        onValueChange = { publish(controls.copy(jog = it, brake = false)) },
+        onValueChangeFinished = { publish(controls.copy(jog = 0f)) },
+        valueRange = -1f..1f,
+        interactionSource = jogInteractions,
+        modifier = Modifier.fillMaxWidth().semantics { contentDescription = jogLabel },
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        StudioChoice(stringResource(R.string.eq_dj_rewind), false) {
+            publish(controls.copy(jog = 0f, brake = false))
+            service.rewindStudioDeck()
+        }
+        val brakeLabel = if (controls.brake) R.string.eq_dj_release else R.string.eq_dj_brake
+        StudioChoice(stringResource(brakeLabel), controls.brake) {
+            publish(controls.copy(jog = 0f, brake = !controls.brake))
+        }
+    }
+    Row(Modifier.fillMaxWidth().padding(start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(filterLabel, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+        TextButton(enabled = controls.filter != 0f, onClick = { publish(controls.copy(filter = 0f)) }) {
+            Text(stringResource(R.string.reset))
+        }
+    }
+    Slider(
+        value = controls.filter,
+        onValueChange = { publish(controls.copy(filter = if (kotlin.math.abs(it) < 0.04f) 0f else it)) },
+        valueRange = -1f..1f,
+        modifier = Modifier.fillMaxWidth().semantics { contentDescription = filterLabel },
+    )
 }
 
 @Composable

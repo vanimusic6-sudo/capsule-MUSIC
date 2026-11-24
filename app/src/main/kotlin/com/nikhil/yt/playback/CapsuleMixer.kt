@@ -5,7 +5,6 @@ import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.floor
-import kotlin.math.sin
 
 internal enum class CapsuleMixerEffect(val id: String, val defaultAmount: Int) {
     OFF("off", 0),
@@ -13,6 +12,20 @@ internal enum class CapsuleMixerEffect(val id: String, val defaultAmount: Int) {
     SOFT("soft", 75),
     SUN("sun", 65),
     VINYL("vinyl", 55),
+}
+
+internal data class CapsuleDjControls(
+    val jog: Float = 0f,
+    val brake: Boolean = false,
+    val filter: Float = 0f,
+) {
+    fun bounded(): CapsuleDjControls {
+        if (jog in -1f..1f && filter in -1f..1f) return this
+        return copy(
+            jog = if (jog.isFinite()) jog.coerceIn(-1f, 1f) else 0f,
+            filter = if (filter.isFinite()) filter.coerceIn(-1f, 1f) else 0f,
+        )
+    }
 }
 
 internal data class CapsuleMixerSetting(val effect: CapsuleMixerEffect = CapsuleMixerEffect.OFF, val amount: Int = 0) {
@@ -56,6 +69,7 @@ internal data class CapsuleMixerProfile(
 /** Keep effect history through strength changes and fade to dry before changing effects. */
 internal class CapsuleMixerStage(private val rate: Int, private val channels: Int) {
     private var target = CapsuleMixerSetting()
+    var djControls = CapsuleDjControls()
     private var mode = CapsuleMixerEffect.OFF
     private var effect: MixerEffect? = null
     private var amount = 0.0
@@ -87,7 +101,7 @@ internal class CapsuleMixerStage(private val rate: Int, private val channels: In
                 CapsuleMixerEffect.TAPE -> CapsuleTapeTransport(rate, channels)
                 CapsuleMixerEffect.SOFT -> SoftMixerEffect(rate, channels)
                 CapsuleMixerEffect.SUN -> SunMixerEffect(rate, channels)
-                CapsuleMixerEffect.VINYL -> VinylMixerEffect(rate, channels)
+                CapsuleMixerEffect.VINYL -> CapsuleDjDeck(rate, channels) { djControls }
             }
         }
         effect?.apply(frame, peak, amount, transition)
@@ -100,26 +114,35 @@ internal fun interface MixerEffect {
     fun apply(frame: DoubleArray, peak: Double, amount: Double, transition: Double)
 }
 
-/** A level-dependent high-band dampener with a shared stereo envelope. */
+/** Parallel lower-mid body and dynamic damping of the high-frequency excess. */
 private class SoftMixerEffect(rate: Int, channels: Int) : MixerEffect {
-    private val filter = DoubleArray(channels)
-    private var envelope = 0.0
-    private var body = 0.0
-    private val attack = mixerEnvelopeStep(0.0025, rate)
-    private val release = mixerEnvelopeStep(0.045, rate)
-    private val bodyStep = mixerEnvelopeStep(0.16, rate)
-    private val lowPass = mixerFilterStep(2_700.0, rate)
+    private val bass = DoubleArray(channels)
+    private val body = DoubleArray(channels)
+    private val trebleBase = DoubleArray(channels)
+    private val bassStep = mixerFilterStep(150.0, rate)
+    private val bodyStep = mixerFilterStep(930.0, rate)
+    private val highStep = mixerFilterStep(3_100.0, rate)
+    private val attack = mixerEnvelopeStep(0.002, rate)
+    private val release = mixerEnvelopeStep(0.065, rate)
+    private var sheen = 0.0
 
     override fun apply(frame: DoubleArray, peak: Double, amount: Double, transition: Double) {
-        envelope += (peak - envelope) * if (peak > envelope) attack else release
-        body += (envelope - body) * bodyStep
-        val accent = ((envelope - body - 0.008) / 0.16).coerceIn(0.0, 1.0)
-        val brightness = ((envelope - 0.14) / 0.26).coerceIn(0.0, 1.0)
-        val damping = amount * (0.25 + 0.35 * accent + 0.27 * brightness)
+        var treblePeak = 0.0
         for (channel in frame.indices) {
-            val sample = frame[channel]
-            filter[channel] += (sample - filter[channel]) * lowPass
-            frame[channel] = sample + (filter[channel] - sample) * damping
+            val x = frame[channel]
+            bass[channel] += (x - bass[channel]) * bassStep
+            body[channel] += (x - body[channel]) * bodyStep
+            trebleBase[channel] += (x - trebleBase[channel]) * highStep
+            treblePeak = maxOf(treblePeak, abs(x - trebleBase[channel]))
+        }
+        sheen += (treblePeak - sheen) * if (treblePeak > sheen) attack else release
+        val damping = 0.11 + 0.53 * ((sheen - 0.045) / 0.24).coerceIn(0.0, 1.0)
+        for (channel in frame.indices) {
+            val x = frame[channel]
+            val warmth = body[channel] - bass[channel]
+            val softBody = 0.42 * warmth / (1.0 + 0.8 * abs(warmth))
+            frame[channel] = x * (1.0 - amount * 0.065) +
+                amount * (softBody - damping * (x - trebleBase[channel]))
         }
     }
 }
@@ -132,9 +155,9 @@ private class SunMixerEffect(rate: Int, channels: Int) : MixerEffect {
     private val harmonicHigh = DoubleArray(channels)
     private val airBase = DoubleArray(channels)
     private val upperStep = mixerFilterStep(3_800.0, rate)
-    private val lowerStep = mixerFilterStep(1_350.0, rate)
+    private val lowerStep = mixerFilterStep(680.0, rate)
     private val airStep = mixerFilterStep(4_200.0, rate)
-    private val highPass = mixerFilterStep(2_350.0, rate)
+    private val highPass = mixerFilterStep(1_500.0, rate)
     private val lowPass = mixerFilterStep(5_800.0, rate)
     private val attack = mixerEnvelopeStep(0.008, rate)
     private val release = mixerEnvelopeStep(0.085, rate)
@@ -149,72 +172,114 @@ private class SunMixerEffect(rate: Int, channels: Int) : MixerEffect {
             lower[channel] += (sample - lower[channel]) * lowerStep
             airBase[channel] += (sample - airBase[channel]) * airStep
             val presence = upper[channel] - lower[channel]
-            val band = 5.8 * presence
+            val band = 6.4 * presence
             val driven = band / (1.0 + 1.1 * abs(band))
-            val shaped = driven * (0.62 * driven + 0.16 * abs(driven))
+            val shaped = driven * (0.80 * driven + 0.29 * abs(driven))
             harmonicLow[channel] += (shaped - harmonicLow[channel]) * highPass
             val high = shaped - harmonicLow[channel]
             harmonicHigh[channel] += (high - harmonicHigh[channel]) * lowPass
             val air = sample - airBase[channel]
-            val wet = (0.54 * presence + 0.34 * air + 0.42 * harmonicHigh[channel]).coerceIn(-0.19, 0.19)
+            val wet = (0.40 * presence + 0.26 * air + 0.77 * harmonicHigh[channel]).coerceIn(-0.19, 0.19)
             frame[channel] = sample * (1.0 - 0.10 * amount) + wet * amount * room
         }
     }
 }
 
-/** Pull and release a short slice of the actual record, using a band-limited delay tap. */
-private class VinylMixerEffect(rate: Int, private val channels: Int) : MixerEffect {
-    private val captureStride = (rate + 23_999) / 24_000
-    private val captureRate = rate.toDouble() / captureStride
-    private val capacity = Integer.highestOneBit((captureRate * 0.21).toInt()) shl 1
+/** Momentary jog/brake over recent PCM. The neutral deck has no scheduled sounds. */
+private class CapsuleDjDeck(
+    private val rate: Int,
+    private val channels: Int,
+    private val readControls: () -> CapsuleDjControls,
+) : MixerEffect {
+    private val stride = (rate + 23_999) / 24_000
+    private val captureRate = rate.toDouble() / stride
+    private val capacity = Integer.highestOneBit((captureRate * 0.22).toInt()) shl 1
     private val ring = FloatArray(capacity * channels)
     private val bass = DoubleArray(channels)
     private val mid = DoubleArray(channels)
     private val needle = DoubleArray(channels)
-    private val lower = mixerFilterStep(145.0, rate)
-    private val upper = mixerFilterStep(minOf(3_250.0, captureRate * 0.116), rate)
-    private val release = mixerEnvelopeStep(0.032, rate)
-    private val start = rate / 2
-    private val duration = (rate * 0.221).toInt()
-    private val interval = (rate * 5.8).toInt()
-    private var rotation = 0
+    private val tone = DoubleArray(channels)
+    private val lowStep = mixerFilterStep(135.0, rate)
+    private val highStep = mixerFilterStep(minOf(3_200.0, captureRate * 0.115), rate)
+    private val toneStep = mixerFilterStep(790.0, rate)
+    private val glide = mixerEnvelopeStep(0.018, rate)
+    private val brakeGlide = mixerEnvelopeStep(0.072, rate)
+    private val blendStep = 1.0 / (0.022 * rate)
+    private var frame = 0
     private var cursor = capacity - 1
-    private var capturePhase = 0
     private var stored = 0
-    private var envelope = 0.0
+    private var activeGesture = false
+    private var readAge = 0.041
+    private var motionRate = 1.0
+    private var mix = 0.0
+    private var brakeWeight = 0.0
+    private var tonePosition = 0.0
+    private var reachedEdge = false
 
     override fun apply(frame: DoubleArray, peak: Double, amount: Double, transition: Double) {
-        envelope = maxOf(peak, envelope + (peak - envelope) * release)
-        val capture = capturePhase == 0
+        val control = readControls()
+        val touched = control.brake || abs(control.jog) > 0.015f
+        if (touched && !activeGesture && mix <= 0.0) {
+            readAge = 0.041
+            motionRate = 1.0
+            reachedEdge = false
+        }
+        activeGesture = touched
+        val target = when {
+            control.brake -> 0.025
+            touched -> control.jog.toDouble() * 1.52
+            else -> 1.0
+        }
+        motionRate += (target - motionRate) * if (control.brake) brakeGlide else glide
+        brakeWeight += ((if (control.brake) 1.0 else 0.0) - brakeWeight) * glide
+        tonePosition += (control.filter - tonePosition) * glide
+        val capture = this.frame == 0
         if (capture) {
             cursor = (cursor + 1) and (capacity - 1)
             stored = minOf(stored + 1, capacity)
         }
         for (channel in frame.indices) {
             val sample = frame[channel]
-            bass[channel] += (sample - bass[channel]) * lower
-            mid[channel] += (sample - bass[channel] - mid[channel]) * upper
-            needle[channel] += (mid[channel] - needle[channel]) * upper
+            bass[channel] += (sample - bass[channel]) * lowStep
+            mid[channel] += (sample - bass[channel] - mid[channel]) * highStep
+            needle[channel] += (mid[channel] - needle[channel]) * highStep
             if (capture) ring[cursor * channels + channel] = needle[channel].toFloat()
         }
-        val position = rotation - start
-        if (position in 0 until duration && stored > (captureRate * 0.17).toInt() && envelope > 0.003) {
-            val phase = position.toDouble() / duration
-            val window = (4.0 * phase * (1.0 - phase)).let { it * it }
-            val delay = 0.102 + 0.061 * sin(2.0 * PI * (phase - 0.43))
-            val tap = cursor + capturePhase.toDouble() / captureStride - delay * captureRate
+        val hasTrack = stored > (captureRate * 0.17).toInt()
+        if (!control.brake && touched && reachedEdge &&
+            (readAge > 0.16 && motionRate > 1.02 || readAge < 0.009 && motionRate < 0.98)
+        ) reachedEdge = false
+        val targetMix = if (touched && hasTrack && (!reachedEdge || control.brake)) 1.0 else 0.0
+        mix += (targetMix - mix).coerceIn(-blendStep, blendStep)
+        if (mix > 0.0) {
+            val tap = cursor + this.frame.toDouble() / stride - readAge * captureRate
             val first = floor(tap).toInt()
             val fraction = tap - first
             val left = (first and (capacity - 1)) * channels
             val right = ((first + 1) and (capacity - 1)) * channels
-            val mix = 0.90 * amount * window * ((envelope - 0.003) / 0.028).coerceIn(0.0, 1.0)
+            val wetScale = 0.91 + (motionRate.coerceIn(0.0, 1.0) - 0.91) * brakeWeight
             for (channel in frame.indices) {
-                val wet = ring[left + channel] + (ring[right + channel] - ring[left + channel]) * fraction
-                frame[channel] += (wet * 0.96 - frame[channel]) * mix
+                val scrub = ring[left + channel] + (ring[right + channel] - ring[left + channel]) * fraction
+                frame[channel] += (scrub * wetScale - frame[channel]) * mix * (0.66 + 0.34 * amount)
             }
+            val nextAge = readAge + (1.0 - motionRate) / rate
+            readAge = nextAge.coerceIn(0.007, 0.163)
+            if (nextAge != readAge) reachedEdge = true
+            if (reachedEdge && nextAge == readAge && touched && !control.brake) reachedEdge = false
         }
-        if (++capturePhase == captureStride) capturePhase = 0
-        if (++rotation == interval) rotation = 0
+        if (abs(tonePosition) > 0.00001) {
+            val strength = abs(tonePosition) * (0.52 + 0.48 * amount)
+            for (channel in frame.indices) {
+                val dry = frame[channel]
+                tone[channel] += (dry - tone[channel]) * toneStep
+                val filtered = if (tonePosition < 0.0) tone[channel] else dry - tone[channel]
+                val driven = filtered * (1.0 - 0.22 * strength * abs(filtered).coerceAtMost(1.0))
+                frame[channel] = dry + strength * (driven - dry)
+            }
+        } else {
+            for (channel in frame.indices) tone[channel] += (frame[channel] - tone[channel]) * toneStep
+        }
+        if (++this.frame == stride) this.frame = 0
     }
 }
 

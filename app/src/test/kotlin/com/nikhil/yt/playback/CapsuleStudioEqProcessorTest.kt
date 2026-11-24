@@ -1,5 +1,8 @@
 package com.nikhil.yt.playback
 
+import androidx.media3.common.C
+import androidx.media3.common.audio.AudioProcessor.AudioFormat
+import androidx.media3.common.audio.AudioProcessor.StreamMetadata
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -111,29 +114,18 @@ class CapsuleStudioEqProcessorTest {
         }
     }
 
-    @Test fun tapeTransportMovesPitchInBothDirectionsAndKeepsTheFrameCount() {
-        val rate = 48_000
-        val hz = 800.0
-        val input = ShortArray(rate * 3) { (9000 * sin(2 * PI * hz * it / rate)).roundToInt().toShort() }
-        fun frequencies(amount: Int): List<Double> {
-            val eq = CapsuleStudioEqFilter(rate, 1).apply {
-                setMixer(CapsuleMixerSetting(CapsuleMixerEffect.TAPE, amount))
-            }
-            val output = render(eq, input)
-            assertEquals(input.size, output.size)
-            val crossings = ArrayList<Double>()
-            for (i in rate / 4 until output.lastIndex) {
-                val a = output[i].toDouble()
-                val b = output[i + 1].toDouble()
-                if (a <= 0.0 && b > 0.0) crossings.add(i - a / (b - a))
-            }
-            return crossings.zipWithNext { a, b -> rate / (b - a) }
-        }
-        val frequencies = frequencies(100)
-        assertTrue(frequencies.min() < hz * 0.992)
-        assertTrue(frequencies.max() > hz * 1.008)
-        assertTrue(frequencies.all { it in hz * 0.978..hz * 1.022 })
-        assertTrue(frequencies(25).all { it in hz * 0.995..hz * 1.005 })
+    @Test fun tapeTransportFollowsOneBoundedRateAndRespectsTempoSelection() {
+        val full = CapsuleMixerSetting(CapsuleMixerEffect.TAPE, 100)
+        val low = full.copy(amount = 25)
+        val off = full.copy(amount = 0)
+        val normal = SoundStudioTempoVariant.NORMAL
+        val speedUp = SoundStudioTempoVariant.SPEED_UP
+        val slowed = SoundStudioTempoVariant.SLOWED
+        assertEquals(0.915f, capsuleTapeRate(1f, normal, full), 0.00001f)
+        assertTrue(capsuleTapeRate(1f, normal, low) in 0.97f..0.99f)
+        assertEquals(1f, capsuleTapeRate(1f, normal, off), 0f)
+        assertTrue(capsuleTapeRate(1.045f, speedUp, full) in 1.01f..1.045f)
+        assertTrue(capsuleTapeRate(0.905f, slowed, full) in 0.875f..0.905f)
     }
 
     @Test fun fullScaleTransitionsAreLimitedAndLeaveBothChannelsAligned() {
@@ -174,31 +166,84 @@ class CapsuleStudioEqProcessorTest {
         assertTrue("Generated second harmonic", kotlin.math.hypot(harmonic, quadrature) / (rate / 4) > 40.0)
         assertTrue(effect(CapsuleMixerEffect.SUN, fundamental, 0).contentEquals(fundamental))
 
-        val vinyl = effect(CapsuleMixerEffect.VINYL, fundamental)
-        assertTrue(vinyl.sliceArray(0 until rate / 2).contentEquals(fundamental.sliceArray(0 until rate / 2)))
-        assertTrue((rate / 2 until rate * 3 / 4).any { abs(vinyl[it] - fundamental[it]) > 6_000 })
-        assertTrue(vinyl.sliceArray(rate * 3 / 4 until rate).contentEquals(fundamental.sliceArray(rate * 3 / 4 until rate)))
+        val deck = effect(CapsuleMixerEffect.VINYL, fundamental)
+        assertTrue(deck.contentEquals(fundamental))
+        val soft = CapsuleStudioSound(mixer = CapsuleMixerSetting(CapsuleMixerEffect.SOFT, 100))
+        assertTrue("Lower-mid body is supported", toneGainDb(soft, rate, 410) > 0.75)
         for (mode in CapsuleMixerEffect.entries) {
             assertTrue(effect(mode, ShortArray(rate)).all { it == 0.toShort() })
         }
     }
 
-    @Test fun scratchUsesTheTrackWithoutInjectingAnIndependentToneOrStereoNoise() {
+    @Test fun djRespondsToManualControlsAndBecomesDryOnRelease() {
         val rate = 48_000
         val left = ShortArray(rate) { i -> (16_000 * sin(2 * PI * 720 * i / rate)).roundToInt().toShort() }
         fun run(polarity: Int): ShortArray {
             val eq = CapsuleStudioEqFilter(rate, 2)
             eq.setMixer(CapsuleMixerSetting(CapsuleMixerEffect.VINYL, 100))
             val stereo = ShortArray(2 * rate) { if (it % 2 == 0) (polarity * left[it / 2]).toShort() else 0 }
-            return render(eq, stereo)
+            val idle = render(eq, stereo.copyOfRange(0, rate))
+            assertTrue(idle.contentEquals(stereo.copyOfRange(0, rate)))
+            eq.setDjControls(CapsuleDjControls(jog = -0.9f))
+            val jog = render(eq, stereo.copyOfRange(rate, rate * 5 / 4))
+            eq.setDjControls(CapsuleDjControls())
+            val after = render(eq, stereo.copyOfRange(rate * 5 / 4, rate * 2))
+            assertTrue(after.copyOfRange(after.size - 200, after.size).contentEquals(stereo.takeLast(200).toShortArray()))
+            assertTrue(jog.indices.any { abs(jog[it] - stereo[rate + it]) > 9_000 })
+            return jog
         }
         val positive = run(1)
         val negative = run(-1)
         assertTrue(positive.indices.all { abs(positive[it] + negative[it]) <= 1 })
         assertTrue(positive.indices.filter { it % 2 == 1 }.all { positive[it] == 0.toShort() })
-        val center = (0.585 * rate).toInt()
-        val end = (0.635 * rate).toInt()
-        assertTrue((center until end).any { abs(positive[it * 2] - left[it]) > 9_000 })
+    }
+
+    @Test fun lookaheadStartsAttenuationBeforeThePeakAndDrainsEveryFrame() {
+        val rate = 48_000
+        val signal = ShortArray(3_000) { if (it == 1_500) Short.MAX_VALUE else 11_000 }
+        fun filtered(parts: List<ShortArray>): ShortArray {
+            val eq = CapsuleStudioEqFilter(rate, 1).apply { setProcessingGuard(true) }
+            val output = ByteBuffer.allocate(signal.size * 2).order(ByteOrder.nativeOrder())
+            for (part in parts) {
+                val buffer = ByteBuffer.allocate(part.size * 2).order(ByteOrder.nativeOrder())
+                part.forEach { buffer.putShort(it) }
+                buffer.flip()
+                eq.process(buffer, output)
+            }
+            assertEquals(192, eq.pendingBytes)
+            eq.drain(output)
+            assertEquals(signal.size * 2, output.position())
+            output.flip()
+            return ShortArray(signal.size) { output.getShort() }
+        }
+        val output = filtered(listOf(signal))
+        val streamed = filtered(signal.asList().chunked(137).map { it.toShortArray() })
+        assertTrue(output.contentEquals(streamed))
+        assertEquals(11_000, output[1_300].toInt())
+        assertTrue(output[1_475] < 10_000)
+        assertTrue(output[1_404].toInt() - output[1_405].toInt() < 800)
+        assertTrue(output[1_500] <= (CAPSULE_EQ_PEAK_AMPLITUDE * 32768).roundToInt())
+    }
+
+    @Test fun media3ProcessorReturnsLookaheadTailAtEndOfStream() {
+        val processor = CapsuleStudioEqProcessor(
+            readSound = { CapsuleStudioSound(mixer = CapsuleMixerSetting(CapsuleMixerEffect.VINYL, 55)) },
+            readTrack = { null },
+        )
+        processor.configure(AudioFormat(48_000, 1, C.ENCODING_PCM_16BIT))
+        processor.flush(StreamMetadata.DEFAULT)
+        val source = ByteBuffer.allocateDirect(600).order(ByteOrder.nativeOrder())
+        repeat(300) { source.putShort(it.toShort()) }
+        source.flip()
+        processor.queueInput(source)
+        val first = processor.output
+        assertEquals(408, first.remaining())
+        repeat(204) { assertEquals(it.toShort(), first.getShort()) }
+        processor.queueEndOfStream()
+        val tail = processor.output
+        assertEquals(192, tail.remaining())
+        repeat(96) { assertEquals((it + 204).toShort(), tail.getShort()) }
+        assertTrue(processor.isEnded)
     }
 
     @Test fun sharedPeakGuardLimitsFiveBandExtremesWithEachEffect() {
@@ -302,6 +347,7 @@ class CapsuleStudioEqProcessorTest {
         input.flip()
         val output = ByteBuffer.allocate(input.remaining()).order(ByteOrder.nativeOrder())
         eq.process(input, output)
+        eq.drain(output)
         output.flip()
         return ShortArray(output.remaining() / Short.SIZE_BYTES) { output.getShort() }
     }

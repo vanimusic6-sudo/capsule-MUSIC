@@ -1011,9 +1011,14 @@
     <string name="eq_mixer_tape">Магнитная лента</string>
     <string name="eq_mixer_soft">Мягкость</string>
     <string name="eq_mixer_sun">Солнце</string>
-    <string name="eq_mixer_vinyl">DJ-скретч</string>
-    <string name="eq_studio_tape_hint">Насыщение ленты, мягкий верх и лёгкое плавание тона.</string>
-    <string name="eq_mixer_soft_hint">Сглаживает резкие высокочастотные атаки.</string>
-    <string name="eq_mixer_sun_hint">Подсвечивает голос, струны и тарелки. На громких местах действует мягче.</string>
-    <string name="eq_mixer_vinyl_hint">На мгновение оттягивает и отпускает фрагмент самой дорожки.</string>
+    <string name="eq_mixer_vinyl">DJ-пульт</string>
+    <string name="eq_studio_tape_hint">Скорость и тон снижаются вместе, как при замедлении ленты.</string>
+    <string name="eq_mixer_soft_hint">Добавляет тепла в нижней середине и смягчает резкие атаки.</string>
+    <string name="eq_mixer_sun_hint">Добавляет гармоники и подчёркивает детали голоса и инструментов.</string>
+    <string name="eq_mixer_vinyl_hint">Сдвинь джог влево или вправо и отпусти, чтобы вернуться к дорожке.</string>
+    <string name="eq_dj_jog">Джог</string>
+    <string name="eq_dj_filter">Фильтр</string>
+    <string name="eq_dj_brake">Тормоз</string>
+    <string name="eq_dj_release">Отпустить</string>
+    <string name="eq_dj_rewind">Назад 5 с</string>
 </resources>
