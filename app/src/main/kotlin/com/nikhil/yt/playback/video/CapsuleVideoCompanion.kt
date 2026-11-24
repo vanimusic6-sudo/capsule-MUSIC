@@ -14,6 +14,7 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.DefaultLoadControl
 import com.nikhil.yt.playback.CapsuleAudioRenderersFactory
 import com.nikhil.yt.playback.CapsuleStudioSound
+import com.nikhil.yt.playback.CapsuleTrackSound
 import com.nikhil.yt.playback.CapsuleOpusCodecSelector
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
@@ -171,9 +172,12 @@ internal class CapsuleVideoCompanion(
     onReady: (String) -> Unit, onFailure: (String, Throwable) -> Unit,
     onEnded: (String) -> Unit, onFrameUnavailable: (String) -> Unit,
     onBufferingChanged: (String, Boolean) -> Unit,
+    readStudioPlan: (String) -> CapsuleTrackSound? = { null },
+    publishStudioPlan: (String, CapsuleTrackSound) -> Unit = { _, _ -> },
 ) {
     private var idleExpiry: Job? = null
-    private val renderers = CapsuleAudioRenderersFactory(context, readStudioSound, useMusicBuffer = false)
+    private val renderers = CapsuleAudioRenderersFactory(context, readStudioSound, useMusicBuffer = false,
+        readStudioPlan = readStudioPlan, publishStudioPlan = publishStudioPlan)
     val player: ExoPlayer = ExoPlayer.Builder(context)
         // The video soundtrack can create a SECOND Opus decoder while MUSIC is
         // still audible. Use the same Android 17 native in-process preference

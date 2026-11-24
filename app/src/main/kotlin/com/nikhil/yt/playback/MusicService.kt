@@ -1084,6 +1084,8 @@ class MusicService :
     @Volatile private var studioSound = CapsuleStudioSound()
     @Volatile private var studioPreview: StudioCurvePreview? = null
     @Volatile private var studioMixerPreview: StudioMixerPreview? = null
+    private val studioTrackPlans = MutableStateFlow<Map<String, CapsuleTrackSound>>(emptyMap())
+    internal val studioAutoCurve = MutableStateFlow<List<Int>>(emptyList())
 
     private class StudioCurvePreview(val levels: List<Int>, val saving: Boolean)
     private class StudioMixerPreview(val setting: CapsuleMixerSetting, val saving: Boolean)
@@ -1114,6 +1116,8 @@ class MusicService :
             ),
             audio = player,
             readStudioSound = ::activeStudioSound,
+            readStudioPlan = ::lookupStudioPlan,
+            publishStudioPlan = ::rememberStudioPlan,
             scope = scope,
             onSoundOwned = { ownsVideoAudio ->
                 videoReturnGapJob?.cancel()
@@ -2033,8 +2037,11 @@ class MusicService :
                             )
                         }
                     })
-                    setOffloadEnabled(dataStore.get(AudioOffload, false) &&
-                        !dataStore.get(EqualizerEnabledKey, false))
+                    val startingAudioPrefs = dataStore.data.first()
+                    val startingStudio = readSoundStudio(startingAudioPrefs)
+                    studioSound = startingStudio
+                    soundStudioNeedsPcm = startingStudio.enabled || startingStudio.tempo != SoundStudioTempoVariant.NORMAL
+                    setOffloadEnabled(startingAudioPrefs[AudioOffload] == true && !soundStudioNeedsPcm)
                 }
 
         offlinePlaybackQueue = OfflinePlaybackQueue(player, scope) { items ->
@@ -2369,6 +2376,7 @@ class MusicService :
                 audioFocusVolumeFactor = audioFocusVolumeFactor,
                 audioNormalizationEnabled = audioNormalizationEnabled,
                 maxSafeGainFactor = maxSafeGainFactor,
+                overlapTempo = { id -> studioPlaybackParameters(studioSound.tempo, lookupStudioPlan(id)) },
                 overlapPlayerFactory = {
                     val overlapRenderers = createRenderersFactory()
                     ExoPlayer
@@ -2397,15 +2405,17 @@ class MusicService :
             networkConnectivity = connectivityObserver,
         )
 
-        dataStore.data
-            .map { prefs -> readSoundStudio(prefs) to prefs.readSoundStudioTempoVariant() }
+        combine(
+            dataStore.data.map(::readSoundStudio).distinctUntilChanged(),
+            currentMediaMetadata.map { it?.id }.distinctUntilChanged(),
+            studioTrackPlans,
+        ) { sound, id, plans -> sound to plans[id] }
             .distinctUntilChanged()
-            .collect(scope) { (sound, tempoVariant) ->
-                val playbackParams = PlaybackParameters(tempoVariant.rate, tempoVariant.rate)
+            .collectLatest(scope) { (sound, plan) ->
+                val playbackParams = studioPlaybackParameters(sound.tempo, plan)
                 val paramChange = player.playbackParameters != playbackParams
-                val needsPcm = sound.enabled || tempoVariant != SoundStudioTempoVariant.NORMAL
+                val needsPcm = sound.enabled || sound.tempo != SoundStudioTempoVariant.NORMAL
                 val pcmChanged = soundStudioNeedsPcm != needsPcm
-                soundStudioNeedsPcm = needsPcm
                 val fadeTempo = paramChange && player.isPlaying
                 try {
                     if (fadeTempo) {
@@ -2416,9 +2426,15 @@ class MusicService :
                     }
                     // The PCM processor ramps changes itself in the sample domain.
                     studioSound = sound
+                    studioAutoCurve.value = if (sound.adaptive) plan?.levelsMb.orEmpty() else emptyList()
                     if (paramChange && !needsPcm) player.playbackParameters = playbackParams
-                    if (pcmChanged || paramChange) updateAudioOffload(dataStore.get(AudioOffload, false))
+                    if (pcmChanged || paramChange) {
+                        val offload = dataStore.get(AudioOffload, false)
+                        soundStudioNeedsPcm = needsPcm
+                        updateAudioOffload(offload)
+                    }
                     if (paramChange && needsPcm) player.playbackParameters = playbackParams
+                    if (paramChange) videoCompanion?.player?.playbackParameters = playbackParams
                     if (fadeTempo) {
                         for (factor in listOf(0.42f, 0.60f, 0.78f, 0.91f, 1f)) {
                             soundStudioTransitionFactor.value = factor
@@ -3876,11 +3892,26 @@ class MusicService :
 
     private fun readSoundStudio(prefs: Preferences): CapsuleStudioSound {
         val mixer = prefs.readSoundStudioMixer().setting
-        if (prefs[EqualizerEnabledKey] != true) return CapsuleStudioSound(mixer = mixer)
+        val tempo = prefs.readSoundStudioTempoVariant()
+        if (prefs[EqualizerEnabledKey] != true) return CapsuleStudioSound(mixer = mixer, tempo = tempo)
         val selectedId = prefs[EqualizerSelectedProfileIdKey]
         val preset = selectedId?.let(CapsuleEqPresets::byId)
         val eq = preset?.sound ?: CapsuleStudioSound(readStudioManualCurve(selectedId, prefs[EqualizerBandLevelsMbKey]))
-        return eq.copy(mixer = mixer)
+        return eq.copy(mixer = mixer, tempo = tempo)
+    }
+
+    private fun lookupStudioPlan(mediaId: String): CapsuleTrackSound? = studioTrackPlans.value[mediaId]
+
+    private fun rememberStudioPlan(mediaId: String, plan: CapsuleTrackSound) {
+        studioTrackPlans.update { plans ->
+            if (mediaId in plans) plans
+            else plans.entries.toList().takeLast(23).associate { it.toPair() } + (mediaId to plan)
+        }
+    }
+
+    private fun studioPlaybackParameters(variant: SoundStudioTempoVariant, plan: CapsuleTrackSound?): PlaybackParameters {
+        val tempo = (plan ?: CapsuleTrackSound.NEUTRAL).tempo(variant)
+        return PlaybackParameters(tempo.speed, tempo.pitch)
     }
 
     private fun activeStudioSound(): CapsuleStudioSound {
@@ -3973,6 +4004,7 @@ class MusicService :
                     if (preset == null && !hasManualCurve) {
                         prefs.preserveLegacySoundStudioTempo()
                         prefs[EqualizerSelectedProfileIdKey] = CAPSULE_STUDIO_DEFAULT_ID
+                        prefs[EqualizerBandLevelsMbKey] = encodeBandLevelsMb(List(CAPSULE_STUDIO_FREQUENCIES_HZ.size) { 0 })
                     }
                 }
                 prefs[EqualizerEnabledKey] = enabled
@@ -6274,7 +6306,8 @@ class MusicService :
         )
     }
 
-    private fun createRenderersFactory() = CapsuleAudioRenderersFactory(this, ::activeStudioSound)
+    private fun createRenderersFactory() = CapsuleAudioRenderersFactory(this, ::activeStudioSound,
+        readStudioPlan = ::lookupStudioPlan, publishStudioPlan = ::rememberStudioPlan)
 
     override fun onPlaybackStatsReady(
         eventTime: AnalyticsListener.EventTime,

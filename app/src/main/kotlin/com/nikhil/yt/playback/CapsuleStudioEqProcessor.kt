@@ -22,10 +22,12 @@ internal const val CAPSULE_EQ_PEAK_AMPLITUDE = 0.7943282347 // -2 dBFS sample pe
 internal class CapsuleStudioEqProcessor(
     private val readSound: () -> CapsuleStudioSound,
     private val readTrack: () -> String?,
+    private val readPlan: (String) -> CapsuleTrackSound? = { null },
+    private val publishPlan: (String, CapsuleTrackSound) -> Unit = { _, _ -> },
 ) : BaseAudioProcessor() {
     private var filter: CapsuleStudioEqFilter? = null
     private var analysis: CapsuleStudioAnalysis? = null
-    private var selectedTone: CapsuleEqPresets? = null
+    private var plan: CapsuleTrackSound? = null
     private var analyzedTrack: String? = null
     private var analyzing = false
 
@@ -43,7 +45,7 @@ internal class CapsuleStudioEqProcessor(
     override fun onReset() {
         filter = null
         analysis = null
-        selectedTone = null
+        plan = null
         analyzedTrack = null
         analyzing = false
     }
@@ -52,27 +54,32 @@ internal class CapsuleStudioEqProcessor(
         val equalizer = checkNotNull(filter)
         val setting = readSound()
         val track = readTrack()
-        if (analyzing != setting.adaptive || track != analyzedTrack) {
-            analyzing = setting.adaptive
+        val needsAnalysis = setting.adaptive || setting.tempo != SoundStudioTempoVariant.NORMAL
+        if (track != analyzedTrack) {
             analyzedTrack = track
             analysis = null
-            selectedTone = null
+            plan = null
         }
-        // Each player publishes its own item ID across threads.
-        // Keep a completed choice across a seek or PCM-format flush on that item.
-        if (analyzing && selectedTone == null) {
+        if (analyzing != needsAnalysis) {
+            analyzing = needsAnalysis
+            analysis = null
+        }
+        if (analyzing && plan == null && track != null) {
+            plan = readPlan(track)
+        }
+        if (analyzing && plan == null && track != null) {
             val detector = analysis ?: CapsuleStudioAnalysis(inputAudioFormat.sampleRate, inputAudioFormat.channelCount)
                 .also { analysis = it }
-            selectedTone = detector.observe(inputBuffer)
-            if (selectedTone != null) analysis = null
+            detector.observe(inputBuffer)?.let {
+                plan = it
+                analysis = null
+                publishPlan(track, it)
+            }
         }
-        val tone = if (setting.adaptive) (when (selectedTone) {
-            CapsuleEqPresets.TAPE -> CapsuleEqPresets.brightAutoSound
-            CapsuleEqPresets.CLEAR -> CapsuleEqPresets.CLEAR.sound
-            else -> CapsuleEqPresets.WARM.sound
-        }).levelsMb else setting.levelsMb
+        val tone = if (setting.adaptive) plan?.levelsMb.orEmpty() else setting.levelsMb
         equalizer.setCurve(tone, smooth = setting.adaptive)
         equalizer.setMixer(setting.mixer)
+        equalizer.setTempoGuard(setting.tempo != SoundStudioTempoVariant.NORMAL)
         val output = replaceOutputBuffer(inputBuffer.remaining())
         equalizer.process(inputBuffer, output)
         output.flip()
@@ -87,18 +94,27 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
     private var transitionFrames = fastTransitionFrames
     private val peakRelease = 1.0 - exp(-1.0 / (sampleRate * 0.045))
     private val edgeRelease = exp(-1.0 / (sampleRate * 0.035))
+    private val loadStep = 1.0 - exp(-1.0 / (sampleRate * 0.42))
     private var current: StudioEqCascade? = null
     private var incoming: StudioEqCascade? = null
     private var targetCurve = emptyList<Int>()
     private var remaining = 0
     private var peakGain = 1.0
     private var edgeRisk = 0.0
+    private var sustainedPower = 0.0
+    private var tempoGuard = false
+    private var tempoGuardMix = 0.0
     private var started = false
     private val frame = DoubleArray(channels)
     private val previousFrame = DoubleArray(channels)
     private val mixer = CapsuleMixerStage(sampleRate, channels)
+    private val peakMonitor = CapsuleReconstructedPeak(channels)
 
     fun setMixer(setting: CapsuleMixerSetting) = mixer.set(setting)
+    fun setTempoGuard(enabled: Boolean) {
+        tempoGuard = enabled
+        if (!started) tempoGuardMix = if (enabled) 1.0 else 0.0
+    }
 
     fun setCurve(curve: List<Int>, smooth: Boolean = false) {
         // Complete the current ramp before acting on a newer snapshot.
@@ -121,7 +137,9 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
     fun process(input: ByteBuffer, output: ByteBuffer) {
         if (!input.hasRemaining()) return
         started = true
-        if (current == null && remaining == 0 && peakGain == 1.0 && !mixer.active) {
+        if (current == null && remaining == 0 && peakGain == 1.0 && !mixer.active &&
+            !tempoGuard && tempoGuardMix == 0.0
+        ) {
             output.put(input)
             return
         }
@@ -152,7 +170,11 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
                 val newCeiling = if (incoming == null) 1.0 else CAPSULE_EQ_PEAK_AMPLITUDE
                 oldCeiling + (newCeiling - oldCeiling) * mix
             }
-            val ceiling = minOf(eqCeiling, 1.0 - (1.0 - CAPSULE_EQ_PEAK_AMPLITUDE) * mixer.ceilingFraction)
+            val tempoTarget = if (tempoGuard) 1.0 else 0.0
+            val guardRamp = 1.0 / fastTransitionFrames
+            tempoGuardMix += (tempoTarget - tempoGuardMix).coerceIn(-guardRamp, guardRamp)
+            val protectionMix = max(mixer.ceilingFraction, tempoGuardMix)
+            val ceiling = minOf(eqCeiling, 1.0 - (1.0 - CAPSULE_EQ_PEAK_AMPLITUDE) * protectionMix)
             // Fast changes near full scale need room for peaks between PCM samples.
             // Keep a shared reserve across channels and release it gradually.
             var swing = 0.0
@@ -163,20 +185,78 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
             edgeRisk = max(edgeRisk * edgeRelease, ((swing - 0.35) / 0.85).coerceIn(0.0, 1.0))
             val protection = (1.0 - ceiling) / (1.0 - CAPSULE_EQ_PEAK_AMPLITUDE)
             val peakLimit = ceiling * (1.0 - 0.32 * edgeRisk * protection)
-            val requiredGain = if (peak > peakLimit) peakLimit / peak else 1.0
+            val reconstructed = if (protection > 0.0) peakMonitor.observe(frame, peak) else 0.0
+            val measuredPeak = max(peak, reconstructed)
+            val peakProtection = if (measuredPeak > peakLimit) peakLimit / measuredPeak else 1.0
+            // Prolonged near-full-scale PCM needs more headroom than a musical transient.
+            sustainedPower += (peak * peak - sustainedPower) * loadStep
+            val sustainedProtection = if (sustainedPower > 0.60) {
+                1.0 - (1.0 - sqrt(0.60 / sustainedPower)) * protection
+            } else 1.0
+            val requiredGain = minOf(peakProtection, sustainedProtection)
             peakGain = minOf(requiredGain, peakGain + (1.0 - peakGain) * peakRelease)
             for (value in frame) {
                 val pcm = (value * peakGain * 32768.0).roundToInt().coerceIn(-32768, 32767)
                 output.putShort(pcm.toShort())
             }
             if (remaining != 0 && --remaining == 0) current = incoming
-            if (current == null && remaining == 0 && peakGain >= 0.9999 && !mixer.active) {
+            if (current == null && remaining == 0 && peakGain >= 0.9999 && !mixer.active &&
+                !tempoGuard && tempoGuardMix == 0.0
+            ) {
                 peakGain = 1.0
                 edgeRisk = 0.0
+                sustainedPower = 0.0
+                peakMonitor.clear()
                 break
             }
         }
         if (input.hasRemaining()) output.put(input)
+    }
+}
+
+/** Oversampled history detector, complementing the instantaneous guard without delaying dry PCM. */
+private class CapsuleReconstructedPeak(private val channels: Int) {
+    private val history = DoubleArray(16 * channels)
+    private var cursor = 0
+    private var watch = 0
+
+    fun observe(frame: DoubleArray, peak: Double): Double {
+        frame.copyInto(history, cursor * channels)
+        if (peak > auditThreshold) watch = 12
+        var maximum = 0.0
+        if (watch > 0) {
+            watch--
+            for (channel in 0 until channels) {
+                for (kernel in kernels) {
+                    var interpolated = 0.0
+                    for (tap in kernel.indices) {
+                        val index = ((cursor - 11 + tap) and 15) * channels + channel
+                        interpolated += kernel[tap] * history[index]
+                    }
+                    maximum = max(maximum, abs(interpolated))
+                }
+            }
+        }
+        cursor = (cursor + 1) and 15
+        return maximum
+    }
+
+    fun clear() {
+        history.fill(0.0)
+        cursor = 0
+        watch = 0
+    }
+
+    companion object {
+        private val kernels = Array(3) { phase ->
+            val weights = DoubleArray(12) { tap ->
+                val x = tap - 5.0 - (phase + 1) / 4.0
+                sin(PI * x) / (PI * x) * (0.5 + 0.5 * cos(PI * x / 6.0))
+            }
+            val sum = weights.sum()
+            DoubleArray(weights.size) { weights[it] / sum }
+        }
+        private val auditThreshold = 0.62 / kernels.maxOf { kernel -> kernel.sumOf { abs(it) } }
     }
 }
 

@@ -11,10 +11,10 @@ import kotlinx.serialization.json.Json
 import kotlin.math.ln
 import kotlin.math.roundToInt
 
-internal enum class SoundStudioTempoVariant(val id: String, val rate: Float) {
-    NORMAL("flat", 1f),
-    SPEED_UP("version:speed_up", 1.18f),
-    SLOWED("version:slowed", 0.84f);
+internal enum class SoundStudioTempoVariant(val id: String) {
+    NORMAL("flat"),
+    SPEED_UP("version:speed_up"),
+    SLOWED("version:slowed");
 
     companion object {
         fun resolve(savedId: String?, legacyProfileId: String?): SoundStudioTempoVariant =
@@ -38,7 +38,7 @@ internal fun MutablePreferences.preserveLegacySoundStudioTempo() {
 }
 
 internal const val CAPSULE_STUDIO_MANUAL_ID = "studio:manual_5"
-internal const val CAPSULE_STUDIO_DEFAULT_ID = "capsule:studio_auto"
+internal const val CAPSULE_STUDIO_DEFAULT_ID = CAPSULE_STUDIO_MANUAL_ID
 
 internal val CAPSULE_STUDIO_FREQUENCIES_HZ =
     listOf(60, 400, 1_000, 2_400, 15_000)

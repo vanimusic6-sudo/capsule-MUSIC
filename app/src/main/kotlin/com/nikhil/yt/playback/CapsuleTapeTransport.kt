@@ -17,7 +17,7 @@ internal class CapsuleTapeTransport(sampleRate: Int, private val channels: Int) 
     private val wowStep = 0.76 * TAPE_PHASE_COUNT / sampleRate
     private val flutterStep = 6.4 * TAPE_PHASE_COUNT / sampleRate
     private val driveStep = 1.0 - exp(-2.0 * PI * minOf(1_750.0, sampleRate / 8.0) / sampleRate)
-    private val headStep = 1.0 - exp(-2.0 * PI * minOf(6_400.0, sampleRate * 0.28) / sampleRate)
+    private val headStep = 1.0 - exp(-2.0 * PI * minOf(5_800.0, sampleRate * 0.28) / sampleRate)
     private val capacity = Integer.highestOneBit(sampleRate / 80) shl 1
     private val ring = FloatArray(capacity * channels)
     private val drive = DoubleArray(channels)
@@ -77,5 +77,5 @@ internal class CapsuleTapeTransport(sampleRate: Int, private val channels: Int) 
 /** Soft rounding of peaks with a linear response near zero and no makeup gain. */
 internal fun capsuleTapeGain(drive: Double): Double {
     val power = drive * drive
-    return 1.0 - 0.32 * power / (0.16 + power)
+    return 1.0 - 0.37 * power / (0.16 + power)
 }

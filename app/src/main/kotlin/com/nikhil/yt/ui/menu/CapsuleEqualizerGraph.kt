@@ -19,11 +19,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -133,14 +139,14 @@ internal fun CapsuleEqualizerGraph(
 ) {
     val count = minOf(frequenciesHz.size, levelsMb.size)
     if (count <= 0) return
-    val accent = MaterialTheme.colorScheme.primary
+    val accent = if (editable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     val grid = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
     val neutral = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
     val updateSelected by rememberUpdatedState(onBandSelected)
     val updateLevel by rememberUpdatedState(onLevelChanged)
     val finish by rememberUpdatedState(onFinished)
     val cancel by rememberUpdatedState(onCancelled)
-    val pad = 18.dp
+    val pad = 16.dp
     val normalized = levelsMb.take(count)
 
     Column(modifier = modifier.fillMaxWidth()) {
@@ -150,13 +156,14 @@ internal fun CapsuleEqualizerGraph(
                 .height(graphHeight)
                 .then(if (editable) Modifier.pointerInput(count, minMb, maxMb, bandLimitsMb) {
                     val inset = pad.toPx()
+                    val side = size.width / (2f * count)
                     // Claim the gesture immediately on the graph. Waiting for
                     // drag touch-slop let the parent verticalScroll steal it,
                     // producing random small jumps while editing EQ points.
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val band = capsuleEqualizerBandAt(
-                            down.position.x, size.width.toFloat(), count, inset,
+                            down.position.x, size.width.toFloat(), count, side,
                         )
                         updateSelected(band)
                         val limits = bandLimitsMb[band]
@@ -194,10 +201,11 @@ internal fun CapsuleEqualizerGraph(
                 } else Modifier)
         ) {
             val inset = pad.toPx()
-            val innerW = (size.width - inset * 2f).coerceAtLeast(1f)
+            val side = size.width / (2f * count)
+            val innerW = (size.width - side * 2f).coerceAtLeast(1f)
             val innerH = (size.height - inset * 2f).coerceAtLeast(1f)
             fun point(index: Int): Offset {
-                val x = inset + innerW * if (count == 1) 0.5f else index.toFloat() / (count - 1)
+                val x = if (count == 1) size.width / 2f else side + innerW * index / (count - 1)
                 val y = capsuleBandGraphY(
                     normalized[index], size.height, minMb, maxMb,
                     bandLimitsMb[index].last, inset, bandLimitsMb[index].first,
@@ -205,15 +213,15 @@ internal fun CapsuleEqualizerGraph(
                 return Offset(x, y)
             }
             val baseline = capsuleGraphZeroY(size.height, minMb, maxMb, inset)
-            // Two subtle helpers, not a harsh table/grid behind every drag.
-            for (fraction in listOf(0.25f, 0.75f)) {
-                val y = inset + innerH * fraction
-                drawLine(grid, Offset(inset, y), Offset(size.width - inset, y), 0.8.dp.toPx())
-            }
-            drawLine(neutral, Offset(inset, baseline), Offset(size.width - inset, baseline), 1.dp.toPx())
+            drawLine(neutral, Offset(side, baseline), Offset(size.width - side, baseline), 1.dp.toPx())
             repeat(count) { i ->
                 val x = point(i).x
-                drawLine(grid, Offset(x, inset), Offset(x, size.height - inset), 0.75.dp.toPx())
+                val rail = 6.dp.toPx()
+                drawRoundRect(grid, Offset(x - rail / 2f, inset), Size(rail, innerH), CornerRadius(rail / 2f))
+                val top = minOf(point(i).y, baseline)
+                val height = maxOf(point(i).y, baseline) - top
+                if (height > 0f) drawRoundRect(accent.copy(alpha = 0.19f),
+                    Offset(x - rail / 2f, top), Size(rail, height), CornerRadius(rail / 2f))
             }
 
             // Connected shape follows the REAL device bands, not six fake frequencies.
@@ -242,19 +250,15 @@ internal fun CapsuleEqualizerGraph(
                 ),
             )
             drawPath(curve, color = accent, style = androidx.compose.ui.graphics.drawscope.Stroke(
-                width = 2.8.dp.toPx(), cap = StrokeCap.Round,
+                width = 1.8.dp.toPx(), cap = StrokeCap.Round,
             ))
             repeat(count) { i ->
                 val p = point(i)
                 val active = i == selectedBand
-                if (active) {
-                    drawCircle(accent.copy(alpha = 0.18f), radius = 11.dp.toPx(), center = p)
-                }
-                drawCircle(
-                    color = accent,
-                    radius = if (active) 5.5.dp.toPx() else 4.5.dp.toPx(),
-                    center = p,
-                )
+                val width = (if (active) 25.dp else 18.dp).toPx()
+                val height = (if (active) 10.dp else 7.dp).toPx()
+                drawRoundRect(accent.copy(alpha = if (active) 1f else 0.76f),
+                    Offset(p.x - width / 2f, p.y - height / 2f), Size(width, height), CornerRadius(height / 2f))
             }
         }
         Row(
@@ -270,7 +274,18 @@ internal fun CapsuleEqualizerGraph(
                     maxLines = 1,
                     overflow = TextOverflow.Clip,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).then(if (editable) Modifier.semantics {
+                        val limits = bandLimitsMb[index]
+                        progressBarRangeInfo = ProgressBarRangeInfo(normalized[index] / 100f,
+                            (limits.first / 100f)..(limits.last / 100f))
+                        setProgress { next ->
+                            if (next.isFinite()) {
+                                updateSelected(index)
+                                finish(index, (next * 100).roundToInt().coerceIn(limits))
+                                true
+                            } else false
+                        }
+                    } else Modifier),
                 )
             }
         }

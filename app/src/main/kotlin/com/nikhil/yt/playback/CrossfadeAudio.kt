@@ -10,6 +10,7 @@ package com.nikhil.yt.playback
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CoroutineScope
@@ -43,6 +44,7 @@ internal class CrossfadeAudio(
     private val audioFocusVolumeFactor: MutableStateFlow<Float>,
     private val audioNormalizationEnabled: MutableStateFlow<Boolean>,
     private val maxSafeGainFactor: Float,
+    private val overlapTempo: (String) -> PlaybackParameters = { PlaybackParameters.DEFAULT },
     private val overlapPlayerFactory: () -> ExoPlayer,
 ) {
     private var loopJob: Job? = null
@@ -222,6 +224,7 @@ internal class CrossfadeAudio(
         val overlap = ensureOverlapPlayer()
         overlap.clearMediaItems()
         overlap.setMediaItem(nextItem)
+        overlap.playbackParameters = overlapTempo(nextMediaId)
         overlap.prepare()
         overlap.playWhenReady = true
         overlap.volume = 0f

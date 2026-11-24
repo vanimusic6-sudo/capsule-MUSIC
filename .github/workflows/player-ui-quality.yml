@@ -20,6 +20,8 @@ on:
       - 'app/src/main/kotlin/com/nikhil/yt/playback/SafeListeningGuard.kt'
       - 'app/src/test/kotlin/com/nikhil/yt/playback/SafeListeningGuardTest.kt'
       - 'app/src/main/kotlin/com/nikhil/yt/playback/CapsuleStudioEqProcessor.kt'
+      - 'app/src/main/kotlin/com/nikhil/yt/playback/CapsuleAudioRenderersFactory.kt'
+      - 'app/src/main/kotlin/com/nikhil/yt/playback/CrossfadeAudio.kt'
       - 'app/src/main/kotlin/com/nikhil/yt/playback/CapsuleStudioAnalysis.kt'
       - 'app/src/main/kotlin/com/nikhil/yt/playback/CapsuleTapeTransport.kt'
       - 'app/src/main/kotlin/com/nikhil/yt/playback/CapsuleMixer.kt'

@@ -6,6 +6,7 @@ import com.nikhil.yt.constants.EqualizerEnabledKey
 import com.nikhil.yt.constants.EqualizerSelectedProfileIdKey
 import com.nikhil.yt.constants.SoundStudioTempoVariantKey
 import com.nikhil.yt.playback.SoundStudioTempoVariant
+import com.nikhil.yt.playback.CapsuleTrackSound
 import com.nikhil.yt.playback.preserveLegacySoundStudioTempo
 import com.nikhil.yt.playback.readSoundStudioTempoVariant
 import com.nikhil.yt.playback.setSoundStudioTempoVariant
@@ -75,8 +76,8 @@ class SimpleEqualizerTest {
             assertEquals(curve, prefs[EqualizerBandLevelsMbKey])
             assertEquals(true, prefs[EqualizerEnabledKey])
         }
-        assertEquals(1.18f, SoundStudioTempoVariant.SPEED_UP.rate, 0f)
-        assertEquals(0.84f, SoundStudioTempoVariant.SLOWED.rate, 0f)
+        assertTrue(CapsuleTrackSound.NEUTRAL.tempo(SoundStudioTempoVariant.SPEED_UP).speed in 1.04f..1.08f)
+        assertTrue(CapsuleTrackSound.NEUTRAL.tempo(SoundStudioTempoVariant.SLOWED).speed in 0.94f..0.97f)
     }
 
     @Test fun legacyTempoSurvivesFirstToneSelectionAndExplicitNormalWins() {

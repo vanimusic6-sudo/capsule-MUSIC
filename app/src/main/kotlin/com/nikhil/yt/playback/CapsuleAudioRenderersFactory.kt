@@ -64,6 +64,8 @@ internal class CapsuleAudioRenderersFactory(
     context: Context,
     private val readStudioSound: () -> CapsuleStudioSound,
     private val useMusicBuffer: Boolean = true,
+    private val readStudioPlan: (String) -> CapsuleTrackSound? = { null },
+    private val publishStudioPlan: (String, CapsuleTrackSound) -> Unit = { _, _ -> },
 ) : DefaultRenderersFactory(context), Player.Listener {
     @Volatile private var studioTrackId: String? = null
 
@@ -96,7 +98,9 @@ internal class CapsuleAudioRenderersFactory(
         val processorChain = object : DefaultAudioSink.DefaultAudioProcessorChain() {
             // Keep Media3's own time/silence accounting. EQ sees the final
             // sample frequencies and catches peaks after pitch resampling.
-            private val processors = super.getAudioProcessors() + CapsuleStudioEqProcessor(readStudioSound) { studioTrackId }
+            private val processors = super.getAudioProcessors() + CapsuleStudioEqProcessor(
+                readStudioSound, { studioTrackId }, readStudioPlan, publishStudioPlan,
+            )
             override fun getAudioProcessors(): Array<AudioProcessor> = processors
         }
         return DefaultAudioSink.Builder(context)

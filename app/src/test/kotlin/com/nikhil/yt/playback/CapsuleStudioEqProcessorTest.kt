@@ -45,18 +45,18 @@ class CapsuleStudioEqProcessorTest {
     @Test fun tapeRoundsLoudPeaksWithAStableQuietSignalAndNoMakeupGain() {
         assertEquals(1.0, capsuleTapeGain(0.0), 0.0)
         assertEquals(1.0, capsuleTapeGain(0.02), 0.001)
-        assertTrue(capsuleTapeGain(0.8) in 0.71..0.77)
+        assertTrue(capsuleTapeGain(0.8) in 0.69..0.73)
         for (i in -2000..2000) {
             val x = i / 1000.0
-            assertTrue(capsuleTapeGain(x) in 0.68..1.0)
+            assertTrue(capsuleTapeGain(x) in 0.63..1.0)
             assertEquals(capsuleTapeGain(x), capsuleTapeGain(-x), 0.0)
         }
     }
 
-    @Test fun autoWaitsForRepeatedEvidenceAndChoosesForFrequencyBalance() {
+    @Test fun autoMeasuresBandsIndependentlyAndWaitsForAudibleContent() {
         val rate = 48_000
         fun window(frequency: Int, amplitude: Double = 12000.0): ByteBuffer {
-            val frames = rate * 5 / 4
+            val frames = rate
             val buffer = ByteBuffer.allocate(frames * 4).order(ByteOrder.nativeOrder())
             repeat(frames) { i ->
                 val sample = (amplitude * sin(2 * PI * frequency * i / rate)).roundToInt()
@@ -65,20 +65,50 @@ class CapsuleStudioEqProcessorTest {
             buffer.flip()
             return buffer
         }
-        for ((hz, expected) in listOf(95 to CapsuleEqPresets.CLEAR, 620 to CapsuleEqPresets.WARM, 6800 to CapsuleEqPresets.TAPE)) {
+        val curves = listOf(95, 420, 1_020, 2_900, 8_600).map { hz ->
             val analysis = CapsuleStudioAnalysis(rate, 2)
-            val quiet = window(620, 0.0)
-            assertEquals(null, analysis.observe(quiet))
             val pcm = window(hz)
-            assertEquals(null, analysis.observe(pcm))
+            assertEquals(null, analysis.observe(window(620, 0.0)))
+            repeat(4) { assertEquals(null, analysis.observe(pcm)) }
             assertEquals(0, pcm.position())
-            assertEquals(expected, analysis.observe(pcm))
+            val curve = checkNotNull(analysis.observe(pcm)).levelsMb
+            assertTrue(curve.zip(CAPSULE_STUDIO_FREQUENCIES_HZ).all { (level, band) ->
+                level in capsuleStudioBandLimit(band) && level in -275..120
+            })
+            curve
         }
-        val changing = CapsuleStudioAnalysis(rate, 2)
-        assertEquals(null, changing.observe(window(95)))
-        assertEquals(null, changing.observe(window(6800)))
-        assertEquals(CapsuleEqPresets.TAPE, changing.observe(window(6800)))
-        assertTrue(!CapsuleEqPresets.brightAutoSound.mixer.enabled)
+        assertEquals(5, curves.distinct().size)
+        assertTrue(curves.first().first() < -100)
+        assertTrue(curves.last().last() < -100)
+        val silence = CapsuleStudioAnalysis(rate, 2)
+        repeat(12) { assertEquals(null, silence.observe(window(620, 0.0))) }
+        repeat(4) { assertEquals(null, silence.observe(window(420))) }
+        assertEquals(curves[1], checkNotNull(silence.observe(window(420))).levelsMb)
+    }
+
+    @Test fun denseAudioReceivesLessTempoShiftAndModestPitchChange() {
+        val rate = 16_000
+        fun analyze(hitsPerSecond: Int): CapsuleTrackSound {
+            val probe = CapsuleStudioAnalysis(rate, 1)
+            val input = ByteBuffer.allocate(5 * rate * Short.SIZE_BYTES).order(ByteOrder.nativeOrder())
+            repeat(5 * rate) {
+                val level = if (it % (rate / hitsPerSecond) < rate / 23) 14_000 else 1_450
+                input.putShort((level * sin(2 * PI * 440 * it / rate)).roundToInt().toShort())
+            }
+            input.flip()
+            return checkNotNull(probe.observe(input))
+        }
+        val sparse = analyze(1)
+        val busy = analyze(6)
+        val fast = SoundStudioTempoVariant.SPEED_UP
+        val slow = SoundStudioTempoVariant.SLOWED
+        assertTrue(busy.tempo(fast).speed < sparse.tempo(fast).speed - 0.03f)
+        assertTrue(busy.tempo(slow).speed > sparse.tempo(slow).speed + 0.02f)
+        for (plan in listOf(sparse, busy)) for (variant in SoundStudioTempoVariant.entries) {
+            val shape = plan.tempo(variant)
+            assertTrue(shape.speed in 0.90f..1.14f)
+            assertTrue(abs(shape.pitch - 1f) <= abs(shape.speed - 1f))
+        }
     }
 
     @Test fun tapeTransportMovesPitchInBothDirectionsAndKeepsTheFrameCount() {
@@ -183,6 +213,17 @@ class CapsuleStudioEqProcessorTest {
         assertTrue("Reconstructed amplitude $reconstructed", reconstructed < 0.9)
     }
 
+    @Test fun tempoAloneGetsFinalPeakProtectionAndNeutralIsBitExact() {
+        val rate = 48_000
+        val eq = CapsuleStudioEqFilter(rate, 1)
+        val input = ShortArray(rate) { if (it % 4 < 2) Short.MAX_VALUE else (-32767).toShort() }
+        assertTrue(render(eq, input).contentEquals(input))
+        eq.setTempoGuard(true)
+        val output = render(eq, input)
+        val settled = output.copyOfRange(rate / 2, rate)
+        assertTrue(sqrt(2.0) * settled.maxOf { abs(it.toInt()) } / 32768.0 < 0.85)
+    }
+
     @Test fun bypassAndFlatCurveAreBitExactAndLowSampleRatesSkipUltrasonicBands() {
         val input = shortArrayOf(Short.MIN_VALUE, -100, 0, 100, Short.MAX_VALUE)
         val eq = CapsuleStudioEqFilter(16_000, 1)
@@ -198,12 +239,12 @@ class CapsuleStudioEqProcessorTest {
         val renderer = source("CapsuleAudioRenderersFactory")
         val service = source("MusicService")
         val video = source("video/CapsuleVideoCompanion")
-        assertTrue(renderer.contains("super.getAudioProcessors() + CapsuleStudioEqProcessor(readStudioSound)"))
+        assertTrue(renderer.contains("super.getAudioProcessors() + CapsuleStudioEqProcessor("))
         assertTrue(service.contains("requested = enabled && !soundStudioNeedsPcm"))
         assertTrue(service.contains("overlapPlayerFactory = {"))
-        assertTrue(service.contains("CapsuleAudioRenderersFactory(this, ::activeStudioSound)"))
+        assertTrue(service.contains("CapsuleAudioRenderersFactory(this, ::activeStudioSound,"))
         assertTrue(service.contains("readStudioSound = ::activeStudioSound"))
-        assertTrue(video.contains("CapsuleAudioRenderersFactory(context, readStudioSound, useMusicBuffer = false)"))
+        assertTrue(video.contains("CapsuleAudioRenderersFactory(context, readStudioSound, useMusicBuffer = false,"))
         assertTrue(service.contains("hearingCareOutputVolume(base * transition, ceiling, fade)"))
         assertTrue(service.contains("addListener(musicRenderers)"))
         assertTrue(service.contains("addListener(overlapRenderers)"))

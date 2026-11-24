@@ -107,8 +107,8 @@ private class SoftMixerEffect(rate: Int, channels: Int) : MixerEffect {
 
     override fun apply(frame: DoubleArray, peak: Double, amount: Double, transition: Double) {
         envelope += (peak - envelope) * if (peak > envelope) attack else release
-        val transients = ((envelope - 0.055) / 0.30).coerceIn(0.0, 1.0)
-        val damping = amount * (0.16 + 0.65 * transients)
+        val transients = ((envelope - 0.04) / 0.23).coerceIn(0.0, 1.0)
+        val damping = amount * (0.17 + 0.73 * transients)
         for (channel in frame.indices) {
             val sample = frame[channel]
             filter[channel] += (sample - filter[channel]) * lowPass
@@ -125,30 +125,31 @@ private class SunMixerEffect(rate: Int, channels: Int) : MixerEffect {
     private val harmonicHigh = DoubleArray(channels)
     private val upperStep = mixerFilterStep(2_900.0, rate)
     private val lowerStep = mixerFilterStep(720.0, rate)
-    private val highPass = mixerFilterStep(2_400.0, rate)
-    private val lowPass = mixerFilterStep(7_200.0, rate)
+    private val highPass = mixerFilterStep(1_650.0, rate)
+    private val lowPass = mixerFilterStep(6_700.0, rate)
 
     override fun apply(frame: DoubleArray, peak: Double, amount: Double, transition: Double) {
         for (channel in frame.indices) {
             val sample = frame[channel]
             upper[channel] += (sample - upper[channel]) * upperStep
             lower[channel] += (sample - lower[channel]) * lowerStep
-            val band = (4.0 * (upper[channel] - lower[channel])).coerceIn(-1.0, 1.0)
-            val shaped = band * abs(band)
+            val band = 5.2 * (upper[channel] - lower[channel])
+            val driven = band / (1.0 + 0.72 * abs(band))
+            val shaped = driven * abs(driven) + 0.78 * driven * driven
             harmonicLow[channel] += (shaped - harmonicLow[channel]) * highPass
             val high = shaped - harmonicLow[channel]
             harmonicHigh[channel] += (high - harmonicHigh[channel]) * lowPass
-            val wet = (0.36 * harmonicHigh[channel]).coerceIn(-0.14, 0.14)
-            frame[channel] = sample * (1.0 - 0.14 * amount) + wet * amount
+            val wet = (0.66 * harmonicHigh[channel]).coerceIn(-0.21, 0.21)
+            frame[channel] = sample * (1.0 - 0.18 * amount) + wet * amount
         }
     }
 }
 
 /** Short, rounded scratches tied to record rotation and the music envelope. */
 private class VinylMixerEffect(rate: Int) : MixerEffect {
-    private val rotation = (rate * 1.8).toInt()
+    private val rotation = (rate * 2.3).toInt()
     private val start = rate / 3
-    private val duration = (rate * 0.055).toInt()
+    private val duration = (rate * 0.105).toInt()
     private val pulseSeconds = duration.toDouble() / rate
     private val noisyHighStep = mixerFilterStep(4_200.0, rate)
     private val noisyLowStep = mixerFilterStep(950.0, rate)
@@ -158,11 +159,15 @@ private class VinylMixerEffect(rate: Int) : MixerEffect {
     private var high = 0.0
     private var low = 0.0
     private var envelope = 0.0
+    private var alternating = false
 
     override fun apply(frame: DoubleArray, peak: Double, amount: Double, transition: Double) {
         envelope = maxOf(peak, envelope + (peak - envelope) * release)
         val position = turn - start
-        if (++turn == rotation) turn = 0
+        if (++turn == rotation) {
+            turn = 0
+            alternating = !alternating
+        }
         if (position !in 0 until duration || envelope < 0.0001) return
         val phase = position.toDouble() / duration
         val skew = 4.0 * phase * (1.0 - phase)
@@ -171,10 +176,12 @@ private class VinylMixerEffect(rate: Int) : MixerEffect {
         val noise = (seed shr 8) / 8_388_608.0
         high += (noise - high) * noisyHighStep
         low += (noise - low) * noisyLowStep
-        val scrape = 0.16 * sin(2 * PI * pulseSeconds * phase * (1_020.0 - 300.0 * phase))
-        val scratch = (high - low + scrape) * pulse * (0.22 * envelope.coerceAtMost(0.5))
+        val sweep = if (alternating) 710.0 + 195.0 * phase else 1_060.0 - 380.0 * phase
+        val angle = 2 * PI * pulseSeconds * phase * sweep
+        val scrape = 0.31 * sin(angle) + 0.12 * sin(angle * 1.91)
+        val scratch = (0.67 * (high - low) + scrape) * pulse * (0.47 * envelope.coerceAtMost(0.57))
         for (channel in frame.indices) {
-            frame[channel] = frame[channel] * (1.0 - 0.18 * pulse) + scratch
+            frame[channel] = frame[channel] * (1.0 - 0.30 * pulse) + scratch
         }
     }
 }
