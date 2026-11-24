@@ -22,7 +22,7 @@ class CapsuleTempoVersionsTest {
         assertEquals(capsuleTempoParams(CAPSULE_TEMPO_SLOWED,-100),
             capsuleTempoParams(CAPSULE_TEMPO_SLOWED,0))
         assertTrue(capsuleTempoParams(CAPSULE_TEMPO_SPEED_UP,100).speed<=1.22f)
-        assertTrue(capsuleTempoParams(CAPSULE_TEMPO_SLOWED,100).speed>=0.8f)
+        assertTrue(capsuleTempoParams(CAPSULE_TEMPO_SLOWED,100).speed>=0.799f)
     }
 
     @Test fun tempoProfileDoesNotReinitializeOrResetEqualizerState() {

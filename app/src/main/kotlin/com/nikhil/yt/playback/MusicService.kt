@@ -2422,29 +2422,19 @@ class MusicService :
 
         dataStore.data
             .map { prefs ->
-                Triple(
-                    readEqSettingsFromPrefs(prefs),
-                    capsuleTempoParams(
-                        prefs[SoundStudioTempoModeKey] ?: when (
-                            prefs[EqualizerSelectedProfileIdKey]
-                        ) {
-                            "version:speed_up" -> CAPSULE_TEMPO_SPEED_UP
-                            "version:slowed" -> CAPSULE_TEMPO_SLOWED
-                            else -> CAPSULE_TEMPO_NORMAL
-                        },
-                        prefs[SoundStudioTempoDepthKey] ?: 50,
-                    ).speed,
-                    capsuleTempoParams(
-                        prefs[SoundStudioTempoModeKey] ?: when (
-                            prefs[EqualizerSelectedProfileIdKey]
-                        ) {
-                            "version:speed_up" -> CAPSULE_TEMPO_SPEED_UP
-                            "version:slowed" -> CAPSULE_TEMPO_SLOWED
-                            else -> CAPSULE_TEMPO_NORMAL
-                        },
-                        prefs[SoundStudioTempoDepthKey] ?: 50,
-                    ).pitch,
+                // Tempo lives in its own preference: EQ and tape-like versions
+                // coexist without switching two audio engines on each click.
+                val mode = prefs[SoundStudioTempoModeKey] ?: when (
+                    prefs[EqualizerSelectedProfileIdKey]
+                ) {
+                    "version:speed_up" -> CAPSULE_TEMPO_SPEED_UP
+                    "version:slowed" -> CAPSULE_TEMPO_SLOWED
+                    else -> CAPSULE_TEMPO_NORMAL
+                }
+                val tempo = capsuleTempoParams(
+                    mode, prefs[SoundStudioTempoDepthKey] ?: 50,
                 )
+                Triple(readEqSettingsFromPrefs(prefs), tempo.speed, tempo.pitch)
             }
             .distinctUntilChanged()
             .collect(scope) { (settings, speed, pitch) ->
@@ -2507,10 +2497,10 @@ class MusicService :
                     ) soundStudioEnabledForVolume.value = false
                     // Session effects can be skipped by compressed audio offload.
                     // Permit hardware offload again only when EQ is bypassed.
-                    if (previous?.enabled != settings.enabled) {
+                    if (paramChange) player.playbackParameters = playbackParams
+                    if (previous?.enabled != settings.enabled || paramChange) {
                         updateAudioOffload(dataStore.get(AudioOffload, false))
                     }
-                    if (paramChange) player.playbackParameters = playbackParams
                     previousSoundStudioSettings = settings
                     if (sensitive) {
                         val beforeRestore = soundStudioSafetyFactor.value
@@ -4024,7 +4014,6 @@ class MusicService :
         if (preset == null && !manual && !neutral) return
         ioScope.launch {
             dataStore.edit { prefs ->
-                val previousId = prefs[EqualizerSelectedProfileIdKey]
                 prefs[EqualizerSelectedProfileIdKey] = id
                 prefs[EqualizerEnabledKey] = (preset != null || manual)
                 if (manual) {
@@ -4036,11 +4025,10 @@ class MusicService :
                 // independent boost, virtualizer or makeup-gain preferences.
                 prefs[EqualizerBassBoostEnabledKey] = false
                 prefs[EqualizerOutputGainEnabledKey] = false
-                // Never import legacy 200% strength on a newly selected mode.
-                // But preserve the user's strength while editing the same curve.
-                if (id != previousId) {
-                    prefs[EqualizerCurveIntensityPercentKey] = 100
-                }
+                // Keep the user's chosen expression while changing colours,
+                // but migrate old 200% settings into the tested 100..145 range.
+                prefs[EqualizerCurveIntensityPercentKey] =
+                    (prefs[EqualizerCurveIntensityPercentKey] ?: 100).coerceIn(100, 145)
             }
         }
     }
@@ -6420,7 +6408,9 @@ class MusicService :
     private fun updateAudioOffload(enabled: Boolean) {
         player.setOffloadEnabled(
             shouldEnableAudioOffload(
-                requested = enabled && !soundStudioEnabledForVolume.value,
+                requested = enabled && !soundStudioEnabledForVolume.value &&
+                    player.playbackParameters.speed == 1f &&
+                    player.playbackParameters.pitch == 1f,
                 crossfadeDurationMs = crossfadeDurationMs.value,
             ),
         )
