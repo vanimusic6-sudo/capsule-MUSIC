@@ -60,6 +60,20 @@ class CapsuleUnifiedDynamicsProcessorTest {
         assertEquals(List(5){0},capsuleUnifiedEqLevels(s.copy(enabled=false),caps))
     }
 
+    @Test fun effectsAreConfiguredBeforeEverBeingEnabled() {
+        val src=File("src/main/kotlin/com/nikhil/yt/playback/CapsuleUnifiedDynamicsProcessor.kt").readText()
+        val init=src.substringAfter("val newEffect = DynamicsProcessing")
+            .substringBefore("fun apply(settings: EqSettings)")
+        assertTrue(init.contains("newEffect.enabled = false"))
+        assertFalse(init.contains("newEffect.enabled = true"))
+        val apply=src.substringAfter("fun apply(settings: EqSettings)")
+            .substringBefore("fun release()")
+        assertTrue(apply.indexOf("effect.setInputGainAllChannelsTo") <
+            apply.indexOf("effect.setPreEqBandAllChannelsTo"))
+        assertTrue(apply.indexOf("effect.setPreEqBandAllChannelsTo") <
+            apply.indexOf("effect.enabled = true"))
+    }
+
     @Test fun originalBypassesTheLimiterAndDoesNotModifyDynamics() {
         val s=File("src/main/kotlin/com/nikhil/yt/playback/CapsuleUnifiedDynamicsProcessor.kt").readText()
         val bypass=s.substringAfter("fun apply(settings: EqSettings) {")

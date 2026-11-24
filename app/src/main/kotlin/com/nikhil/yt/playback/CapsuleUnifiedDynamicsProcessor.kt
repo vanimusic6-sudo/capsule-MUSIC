@@ -94,8 +94,10 @@ internal class CapsuleUnifiedDynamicsProcessor(
             .build()
         val newEffect = DynamicsProcessing(0, sessionId, config)
         try {
-            newEffect.enabled = true
-            check(newEffect.enabled) { "Android rejected the tonal processor" }
+            // Configure input headroom and every band while BYPASSED. Android
+            // must never expose the limiter alone or a half-installed curve.
+            // apply() enables the complete DSP only after staging has finished.
+            newEffect.enabled = false
             effect = newEffect
         } catch (failure: Exception) {
             newEffect.release()
