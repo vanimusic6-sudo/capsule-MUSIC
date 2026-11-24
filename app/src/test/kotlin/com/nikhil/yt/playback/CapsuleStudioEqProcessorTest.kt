@@ -86,7 +86,7 @@ class CapsuleStudioEqProcessorTest {
         assertEquals(curves[1], checkNotNull(silence.observe(window(420))).levelsMb)
     }
 
-    @Test fun denseAudioReceivesLessTempoShiftAndModestPitchChange() {
+    @Test fun denseAudioReceivesLessTempoShiftWithoutIndependentTimeStretching() {
         val rate = 16_000
         fun analyze(hitsPerSecond: Int): CapsuleTrackSound {
             val probe = CapsuleStudioAnalysis(rate, 1)
@@ -107,7 +107,7 @@ class CapsuleStudioEqProcessorTest {
         for (plan in listOf(sparse, busy)) for (variant in SoundStudioTempoVariant.entries) {
             val shape = plan.tempo(variant)
             assertTrue(shape.speed in 0.90f..1.14f)
-            assertTrue(abs(shape.pitch - 1f) <= abs(shape.speed - 1f))
+            assertEquals(shape.speed, shape.pitch, 0f)
         }
     }
 
@@ -164,23 +164,41 @@ class CapsuleStudioEqProcessorTest {
 
         val attack = tone(6_000, 19_000)
         val softened = effect(CapsuleMixerEffect.SOFT, attack)
-        assertTrue(rms(softened) < 0.60 * rms(attack))
-        assertTrue(rms(effect(CapsuleMixerEffect.SOFT, attack, 30)) > 1.3 * rms(softened))
+        assertTrue(rms(softened) < 0.75 * rms(attack))
+        assertTrue(rms(effect(CapsuleMixerEffect.SOFT, attack, 30)) > 1.2 * rms(softened))
 
         val fundamental = tone(1_000, 16_000)
         val sun = effect(CapsuleMixerEffect.SUN, fundamental)
-        val harmonic = (rate / 2 until rate).sumOf { sun[it] * sin(2 * PI * 3_000 * it / rate) }
-        assertTrue("Generated third harmonic = ${abs(harmonic) / (rate / 4)}",
-            abs(harmonic) / (rate / 4) > 50.0)
+        val harmonic = (rate / 2 until rate).sumOf { sun[it] * sin(2 * PI * 2_000 * it / rate) }
+        val quadrature = (rate / 2 until rate).sumOf { sun[it] * kotlin.math.cos(2 * PI * 2_000 * it / rate) }
+        assertTrue("Generated second harmonic", kotlin.math.hypot(harmonic, quadrature) / (rate / 4) > 40.0)
         assertTrue(effect(CapsuleMixerEffect.SUN, fundamental, 0).contentEquals(fundamental))
 
         val vinyl = effect(CapsuleMixerEffect.VINYL, fundamental)
-        assertTrue(vinyl.sliceArray(0 until rate / 3).contentEquals(fundamental.sliceArray(0 until rate / 3)))
-        assertTrue((rate / 3 until rate / 2).any { vinyl[it] != fundamental[it] })
-        assertTrue(vinyl.sliceArray(rate / 2 until rate).contentEquals(fundamental.sliceArray(rate / 2 until rate)))
+        assertTrue(vinyl.sliceArray(0 until rate / 2).contentEquals(fundamental.sliceArray(0 until rate / 2)))
+        assertTrue((rate / 2 until rate * 3 / 4).any { abs(vinyl[it] - fundamental[it]) > 6_000 })
+        assertTrue(vinyl.sliceArray(rate * 3 / 4 until rate).contentEquals(fundamental.sliceArray(rate * 3 / 4 until rate)))
         for (mode in CapsuleMixerEffect.entries) {
             assertTrue(effect(mode, ShortArray(rate)).all { it == 0.toShort() })
         }
+    }
+
+    @Test fun scratchUsesTheTrackWithoutInjectingAnIndependentToneOrStereoNoise() {
+        val rate = 48_000
+        val left = ShortArray(rate) { i -> (16_000 * sin(2 * PI * 720 * i / rate)).roundToInt().toShort() }
+        fun run(polarity: Int): ShortArray {
+            val eq = CapsuleStudioEqFilter(rate, 2)
+            eq.setMixer(CapsuleMixerSetting(CapsuleMixerEffect.VINYL, 100))
+            val stereo = ShortArray(2 * rate) { if (it % 2 == 0) (polarity * left[it / 2]).toShort() else 0 }
+            return render(eq, stereo)
+        }
+        val positive = run(1)
+        val negative = run(-1)
+        assertTrue(positive.indices.all { abs(positive[it] + negative[it]) <= 1 })
+        assertTrue(positive.indices.filter { it % 2 == 1 }.all { positive[it] == 0.toShort() })
+        val center = (0.585 * rate).toInt()
+        val end = (0.635 * rate).toInt()
+        assertTrue((center until end).any { abs(positive[it * 2] - left[it]) > 9_000 })
     }
 
     @Test fun sharedPeakGuardLimitsFiveBandExtremesWithEachEffect() {

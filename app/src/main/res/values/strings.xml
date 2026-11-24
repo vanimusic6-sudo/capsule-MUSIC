@@ -1091,9 +1091,9 @@ Capsule will only extract your token, and everything else is stored locally.</st
     <string name="eq_mixer_tape">Magnetic tape</string>
     <string name="eq_mixer_soft">Softness</string>
     <string name="eq_mixer_sun">Sunshine</string>
-    <string name="eq_mixer_vinyl">Vinyl scratch</string>
+    <string name="eq_mixer_vinyl">DJ Scratch</string>
     <string name="eq_studio_tape_hint">Tape saturation, softer highs and gentle pitch drift.</string>
     <string name="eq_mixer_soft_hint">Rounds the high frequencies on sharp attacks.</string>
-    <string name="eq_mixer_sun_hint">Adds harmonics around voices and instruments.</string>
-    <string name="eq_mixer_vinyl_hint">A short groove scratch that follows the music level.</string>
+    <string name="eq_mixer_sun_hint">Adds presence to voices, strings and cymbals, with gentler treatment on loud passages.</string>
+    <string name="eq_mixer_vinyl_hint">Briefly pulls back and releases a slice of the track itself.</string>
 </resources>

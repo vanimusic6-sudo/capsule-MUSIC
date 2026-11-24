@@ -19,7 +19,9 @@ internal data class CapsuleTrackSound(val levelsMb: List<Int>, val pace: Float) 
             SoundStudioTempoVariant.SPEED_UP -> 1.135f - 0.09f * density
             SoundStudioTempoVariant.SLOWED -> 0.905f + 0.06f * density
         }
-        return CapsuleTempoShape(speed, 1f + (speed - 1f) * 0.40f)
+        // Media3 stretches time by speed / pitch. Coupled values use only
+        // resampling and preserve the timing relationships inside the mix.
+        return CapsuleTempoShape(speed, speed)
     }
 
     companion object {

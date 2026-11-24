@@ -1011,9 +1011,9 @@
     <string name="eq_mixer_tape">Магнитная лента</string>
     <string name="eq_mixer_soft">Мягкость</string>
     <string name="eq_mixer_sun">Солнце</string>
-    <string name="eq_mixer_vinyl">Скрип пластинки</string>
+    <string name="eq_mixer_vinyl">DJ-скретч</string>
     <string name="eq_studio_tape_hint">Насыщение ленты, мягкий верх и лёгкое плавание тона.</string>
     <string name="eq_mixer_soft_hint">Сглаживает резкие высокочастотные атаки.</string>
-    <string name="eq_mixer_sun_hint">Добавляет гармоники к голосу и инструментам.</string>
-    <string name="eq_mixer_vinyl_hint">Короткое шуршание дорожки подстраивается под уровень музыки.</string>
+    <string name="eq_mixer_sun_hint">Подсвечивает голос, струны и тарелки. На громких местах действует мягче.</string>
+    <string name="eq_mixer_vinyl_hint">На мгновение оттягивает и отпускает фрагмент самой дорожки.</string>
 </resources>
