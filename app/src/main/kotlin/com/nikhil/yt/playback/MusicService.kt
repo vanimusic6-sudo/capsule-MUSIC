@@ -1936,7 +1936,8 @@ class MusicService :
 
     override fun onCreate() {
         super.onCreate()
-        audioQuality = (PreferenceStore.snapshot() ?: emptyPreferences()).effectiveAudioQuality()
+        val startingAudioPrefs = PreferenceStore.snapshot() ?: emptyPreferences()
+        audioQuality = startingAudioPrefs.effectiveAudioQuality()
         audioStreamPolicy = dataStore[AudioStreamPolicyKey].toEnum(AudioStreamPolicy.VISIONOS).normalizedForPlayback()
         connectivityManager = requireNotNull(getSystemService()) { "ConnectivityManager is unavailable" }
         ensureScopesActive()
@@ -2037,7 +2038,6 @@ class MusicService :
                             )
                         }
                     })
-                    val startingAudioPrefs = dataStore.data.first()
                     val startingStudio = readSoundStudio(startingAudioPrefs)
                     studioSound = startingStudio
                     soundStudioNeedsPcm = startingStudio.enabled || startingStudio.tempo != SoundStudioTempoVariant.NORMAL
