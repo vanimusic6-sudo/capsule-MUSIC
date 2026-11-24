@@ -45,7 +45,10 @@ internal fun capsuleUnifiedEqLevels(
             (0 until capabilities.bandCount).map { capabilities.centerFreqHz.getOrNull(it) ?: 0 },
             capabilities.minBandLevelMb, capabilities.maxBandLevelMb,
         )
-    } else settings.bandLevelsMb
+    } else capsuleProjectStudioLevels(
+        settings.bandLevelsMb,
+        (0 until capabilities.bandCount).map { capabilities.centerFreqHz.getOrNull(it) ?: 0 },
+    )
     val levels = protectedEqLevels(
         settings.copy(
             bandLevelsMb = raw, intensityPercent = settings.intensityPercent.coerceIn(100, 145),

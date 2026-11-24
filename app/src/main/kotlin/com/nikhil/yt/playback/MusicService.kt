@@ -113,6 +113,7 @@ import com.nikhil.yt.constants.EqualizerBassBoostStrengthKey
 import com.nikhil.yt.constants.EqualizerEnabledKey
 import com.nikhil.yt.constants.SoundStudioSpeedKey
 import com.nikhil.yt.constants.SoundStudioPitchKey
+import com.nikhil.yt.constants.SoundStudioTempoVariantKey
 import com.nikhil.yt.constants.EqualizerOutputGainEnabledKey
 import com.nikhil.yt.constants.EqualizerOutputGainMbKey
 import com.nikhil.yt.constants.EqualizerSelectedProfileIdKey
@@ -2422,14 +2423,19 @@ class MusicService :
             .map { prefs ->
                 Triple(
                     readEqSettingsFromPrefs(prefs),
-                    when (prefs[EqualizerSelectedProfileIdKey]) {
-                        "version:speed_up" -> 1.15f
-                        "version:slowed" -> 0.85f
+                    // Independent speed/pitch mode: the EQ can stay on.
+                    // Equal speed+pitch intentionally gives a true sampled
+                    // sped-up / slowed-down sound, not time-stretch-only audio.
+                    when (prefs[SoundStudioTempoVariantKey]
+                        ?: prefs[EqualizerSelectedProfileIdKey]) {
+                        "version:speed_up" -> 1.18f
+                        "version:slowed" -> 0.84f
                         else -> 1f
                     },
-                    when (prefs[EqualizerSelectedProfileIdKey]) {
-                        "version:speed_up" -> 1.08f
-                        "version:slowed" -> 0.93f
+                    when (prefs[SoundStudioTempoVariantKey]
+                        ?: prefs[EqualizerSelectedProfileIdKey]) {
+                        "version:speed_up" -> 1.18f
+                        "version:slowed" -> 0.84f
                         else -> 1f
                     },
                 )
@@ -4006,7 +4012,11 @@ class MusicService :
         val preset = id.removePrefix("capsule:").let(CapsuleEqPresets::byId)
         val manual = id == "adaptive:manual" &&
             requestedLevelsMb.isNotEmpty() && requestedLevelsMb.size <= 32
-        val neutral = id == "flat" || id == "version:speed_up" || id == "version:slowed"
+        val neutral = id == "flat"
+        if (id == "version:speed_up" || id == "version:slowed") {
+            selectTempoVariant(id)
+            return
+        }
         if (preset == null && !manual && !neutral) return
         ioScope.launch {
             dataStore.edit { prefs ->
@@ -4031,11 +4041,28 @@ class MusicService :
         }
     }
 
+    /** No tone reset when selecting a playback-rate version. */
+    fun selectTempoVariant(id: String) {
+        if (id != "flat" && id != "version:speed_up" && id != "version:slowed") return
+        ioScope.launch {
+            dataStore.edit { prefs ->
+                prefs[SoundStudioTempoVariantKey] = id
+                // Migrate an old tempo-as-EQ selection without resurrecting
+                // unrelated legacy manual amplifier settings.
+                if (prefs[EqualizerSelectedProfileIdKey] in
+                    setOf("version:speed_up", "version:slowed")) {
+                    prefs[EqualizerSelectedProfileIdKey] = "flat"
+                    prefs[EqualizerEnabledKey] = false
+                }
+            }
+        }
+    }
+
     fun applyEqFlatPreset() {
         ioScope.launch {
             // Preserve an editable five-band flat profile even before the
             // first AudioTrack session exists. Resampled when playback starts.
-            val bandCount = audioEffectsController.currentBandCount().takeIf { it > 0 } ?: 5
+            val bandCount = CAPSULE_STUDIO_FREQUENCIES_HZ.size
             val encoded = encodeBandLevelsMb(List(bandCount) { 0 })
             dataStore.edit { prefs ->
                 prefs[EqualizerEnabledKey] = true

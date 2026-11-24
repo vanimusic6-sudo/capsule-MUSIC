@@ -17,6 +17,7 @@ internal class PlaybackAudioEffectsController(
     private var desiredSettings = defaultSettings
     private var sessionId: Int? = null
     private var equalizer: Equalizer? = null
+    private var nativeCapabilities: EqCapabilities? = null
     private var unifiedDynamics: CapsuleUnifiedDynamicsProcessor? = null
     private var attemptedUnifiedDynamics = false
     private var appliedBandLevels = intArrayOf()
@@ -55,6 +56,8 @@ internal class PlaybackAudioEffectsController(
         }
         runCatching { equalizer?.release() }
             .onFailure { onRecoverableError("release native EQ", it) }
+        nativeCapabilities = null
+        capabilities.value = null
         unifiedDynamics = null
         equalizer = null
         appliedEnabled = null
@@ -70,6 +73,7 @@ internal class PlaybackAudioEffectsController(
         val low = range?.getOrNull(0)?.toInt() ?: -1500
         val high = range?.getOrNull(1)?.toInt() ?: 1500
         if (n <= 0 || low > high || 0 !in low..high) {
+            nativeCapabilities = null
             capabilities.value = null
             onRecoverableError("invalid native EQ metadata", IllegalStateException(
                 "Invalid native EQ frequency / gain range"))
@@ -84,49 +88,61 @@ internal class PlaybackAudioEffectsController(
             runCatching { eq.getPresetName(index.toShort()).toString() }
                 .getOrNull() ?: "Preset ${index + 1}"
         }
-        capabilities.value = EqCapabilities(n, low, high, center, presets)
+        nativeCapabilities = EqCapabilities(n, low, high, center, presets)
+        capabilities.value = nativeCapabilities
     }
 
     private fun applySettingsToEffects(settings: EqSettings) {
-        val caps = capabilities.value
         val session = sessionId
-        if (caps == null || session == null || equalizer == null) {
-            engineMode.value = if (!settings.enabled) CapsuleEqEngineMode.OFF
-                else if (session == null) CapsuleEqEngineMode.WAITING_FOR_SESSION
-                else CapsuleEqEngineMode.UNAVAILABLE
+        if (session == null) {
+            engineMode.value = if (settings.enabled)
+                CapsuleEqEngineMode.WAITING_FOR_SESSION else CapsuleEqEngineMode.OFF
             return
         }
-
+        // API 28+ permits custom PreEQ band count and cutoffs regardless of
+        // the number/frequency of bands exposed by legacy OEM Equalizer.
         if (settings.enabled && unifiedDynamics == null && !attemptedUnifiedDynamics &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && appliedEnabled != true
         ) {
             attemptedUnifiedDynamics = true
             var candidate: CapsuleUnifiedDynamicsProcessor? = null
             try {
-                candidate = CapsuleUnifiedDynamicsProcessor(session, caps)
+                candidate = CapsuleUnifiedDynamicsProcessor(session, CAPSULE_STUDIO_CAPABILITIES)
                 candidate.apply(settings)
                 unifiedDynamics = candidate
+                capabilities.value = CAPSULE_STUDIO_CAPABILITIES
             } catch (failure: Exception) {
-                onRecoverableError("create unified tonal DSP", failure)
+                onRecoverableError("create ten-band tonal DSP", failure)
                 runCatching { candidate?.release() }
+                capabilities.value = nativeCapabilities
             }
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             unifiedDynamics?.let { engine ->
                 try {
                     engine.apply(settings)
+                    capabilities.value = CAPSULE_STUDIO_CAPABILITIES
                     engineMode.value = if (settings.enabled)
                         CapsuleEqEngineMode.UNIFIED else CapsuleEqEngineMode.OFF
                     return
                 } catch (failure: Exception) {
-                    onRecoverableError("update unified tonal DSP", failure)
+                    onRecoverableError("update ten-band tonal DSP", failure)
                     runCatching { engine.release() }
                     unifiedDynamics = null
+                    capabilities.value = nativeCapabilities
                 }
             }
         }
-
-        val eq = equalizer ?: return
+        // Native fallback: use the *real* band count and center frequencies,
+        // projecting the studio curve rather than inventing editable OEM bands.
+        val caps = nativeCapabilities
+        val eq = equalizer
+        if (caps == null || eq == null) {
+            engineMode.value = if (settings.enabled)
+                CapsuleEqEngineMode.UNAVAILABLE else CapsuleEqEngineMode.OFF
+            return
+        }
+        capabilities.value = caps
         if (!settings.enabled) {
             // Original is a real bypass. Leaving an OEM EQ enabled with a
             // "flat" curve can still alter the signal and waste power.

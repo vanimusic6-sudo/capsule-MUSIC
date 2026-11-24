@@ -56,6 +56,45 @@ data class EqSettings(
     val versionId: String? = null,
 )
 
+/**
+ * Ten independent studio bands are configured with Android DynamicsProcessing
+ * (API 28+). On an unsupported OEM the 10-point curve is interpolated onto
+ * actual native Equalizer bands; that fallback is NOT a ten-band processor.
+ */
+internal val CAPSULE_STUDIO_FREQUENCIES_HZ =
+    listOf(40, 80, 160, 315, 630, 1_250, 2_500, 5_000, 10_000, 16_000)
+
+internal val CAPSULE_STUDIO_CAPABILITIES = EqCapabilities(
+    CAPSULE_STUDIO_FREQUENCIES_HZ.size, -1500, 1500,
+    CAPSULE_STUDIO_FREQUENCIES_HZ, emptyList(),
+)
+
+/** Map the saved 10-point contour by actual Hz, never by OEM band index. */
+internal fun capsuleProjectStudioLevels(levels: List<Int>, targetHz: List<Int>): List<Int> {
+    if (targetHz.isEmpty()) return emptyList()
+    val studio = resampleEqLevelsByIndex(
+        levels.map { it.coerceIn(-1500, 1500) }, CAPSULE_STUDIO_FREQUENCIES_HZ.size,
+    )
+    val valid = targetHz.all { it in 20..20_000 } &&
+        targetHz.zipWithNext().all { (left, right) -> left < right }
+    if (!valid) return resampleEqLevelsByIndex(studio, targetHz.size)
+    val refs = CAPSULE_STUDIO_FREQUENCIES_HZ
+    return targetHz.map { hz ->
+        val i = refs.indexOfLast { it <= hz }.coerceIn(0, refs.lastIndex)
+        when {
+            i == refs.lastIndex -> studio.last()
+            hz <= refs.first() -> studio.first()
+            else -> {
+                val x = kotlin.math.ln(hz.toDouble())
+                val x0 = kotlin.math.ln(refs[i].toDouble())
+                val x1 = kotlin.math.ln(refs[i + 1].toDouble())
+                val t = ((x - x0) / (x1 - x0)).coerceIn(0.0, 1.0)
+                (studio[i] + (studio[i + 1] - studio[i]) * t).toInt()
+            }
+        }
+    }
+}
+
 /** Amplifies EQ *shape*, not master output volume; prevents out-of-range native calls. */
 internal fun scaleEqBandLevels(
     levels: List<Int>,
