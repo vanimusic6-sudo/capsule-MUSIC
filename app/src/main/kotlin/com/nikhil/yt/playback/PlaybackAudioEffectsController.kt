@@ -174,15 +174,36 @@ internal class PlaybackAudioEffectsController(
         // unprotected high-gain contour on legacy devices.
         if (appliedBandLevels.size != caps.bandCount)
             appliedBandLevels = IntArray(caps.bandCount) { Int.MIN_VALUE }
+        var invalidGraph = false
         for (band in 0 until caps.bandCount) {
             val gain = levels[band].coerceIn(caps.minBandLevelMb, caps.maxBandLevelMb)
-            if (appliedBandLevels[band] != gain &&
-                runCatching { eq.setBandLevel(band.toShort(), gain.toShort()) }.isSuccess
-            ) appliedBandLevels[band] = gain
+            if (appliedBandLevels[band] != gain) {
+                runCatching { eq.setBandLevel(band.toShort(), gain.toShort()) }
+                    .onSuccess { appliedBandLevels[band] = gain }
+                    .onFailure {
+                        invalidGraph = true
+                        onRecoverableError("update native EQ band", it)
+                    }
+            }
         }
-        if (nonFlat && appliedEnabled != true &&
-            runCatching { eq.enabled = true }.isSuccess
-        ) appliedEnabled = true
+        if (invalidGraph) {
+            // Never apply a partially configured vendor EQ. Both the signal
+            // level and the shape may differ from the intended safe contour.
+            runCatching { eq.enabled = false }
+                .onFailure { onRecoverableError("disable incomplete EQ", it) }
+            appliedEnabled = false
+            appliedBandLevels = intArrayOf()
+            engineMode.value = CapsuleEqEngineMode.UNAVAILABLE
+            return
+        }
+        if (nonFlat && appliedEnabled != true) {
+            val enabled = runCatching {
+                eq.enabled = true
+                eq.enabled
+            }.onFailure { onRecoverableError("enable native EQ", it) }
+                .getOrDefault(false)
+            if (enabled) appliedEnabled = true
+        }
         engineMode.value = if (nonFlat && appliedEnabled != true)
             CapsuleEqEngineMode.UNAVAILABLE else CapsuleEqEngineMode.NATIVE_FALLBACK
     }

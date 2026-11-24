@@ -66,5 +66,8 @@ class PlaybackAudioEffectsControllerTest {
         assertTrue(source.contains("eq.enabled = false"))
         assertTrue(source.contains("onRecoverableError(\"bypass native EQ\", it)"))
         assertTrue(source.contains("appliedEnabled == true"))
+        assertTrue(source.contains("invalidGraph = true"))
+        assertTrue(source.contains("disable incomplete EQ"))
+        assertTrue(source.contains("enable native EQ"))
     }
 }
