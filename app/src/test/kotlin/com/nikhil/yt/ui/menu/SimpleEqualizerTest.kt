@@ -34,9 +34,11 @@ class SimpleEqualizerTest {
         assertFalse(dialog.contains("eq_version_original"))
         assertFalse(dialog.contains("eq_adaptive_activate"))
         assertTrue(dialog.contains("selectTempoVariant(variant)"))
-        assertTrue(dialog.indexOf("CapsuleEqPresets.entries.chunked(2)") <
-            dialog.indexOf("CapsuleEqualizerGraph("))
-        assertTrue(dialog.contains("if (showBands)"))
+        assertTrue(dialog.indexOf("CapsuleEqualizerGraph(") <
+            dialog.indexOf("CapsuleEqPresets.entries.chunked(2)"))
+        assertFalse(dialog.contains("showBands"))
+        assertTrue(dialog.contains("service.previewStudioCurve(next)"))
+        assertTrue(dialog.contains("onDispose { service.cancelStudioPreview() }"))
         assertFalse(dialog.contains("setVirtualizerEnabled("))
         assertFalse(dialog.contains("setBassBoostEnabled("))
         assertFalse(dialog.contains("setOutputGainMb("))

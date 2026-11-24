@@ -1009,7 +1009,5 @@
     <string name="eq_studio_tape">Кассета</string>
     <string name="eq_studio_clear">Ясность</string>
     <string name="eq_studio_auto_hint">Подбирает характер по балансу частот трека.</string>
-    <string name="eq_studio_tape_hint">Смягчает резкие атаки и верхние частоты.</string>
-    <string name="eq_studio_show_bands">Открыть</string>
-    <string name="eq_studio_hide_bands">Свернуть</string>
+    <string name="eq_studio_tape_hint">Насыщение ленты, мягкий верх и лёгкое плавание тона.</string>
 </resources>

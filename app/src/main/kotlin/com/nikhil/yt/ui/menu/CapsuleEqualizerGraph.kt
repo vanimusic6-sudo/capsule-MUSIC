@@ -113,8 +113,7 @@ internal fun capsuleGraphHz(hz: Int): String = when {
 
 /**
  * Hardware-aware curve: touching or dragging a point updates only that band.
- * [onFinished] persists the final state; edits between pointer events remain
- * local and do not write DataStore on each rendered frame.
+ * [onLevelChanged] previews edits and [onFinished] persists the final state.
  */
 @Composable
 internal fun CapsuleEqualizerGraph(
@@ -127,6 +126,7 @@ internal fun CapsuleEqualizerGraph(
     onBandSelected: (Int) -> Unit,
     onLevelChanged: (Int, Int) -> Unit,
     onFinished: (Int, Int) -> Unit,
+    onCancelled: () -> Unit,
     modifier: Modifier = Modifier,
     graphHeight: Dp = 214.dp,
     editable: Boolean = true,
@@ -139,6 +139,7 @@ internal fun CapsuleEqualizerGraph(
     val updateSelected by rememberUpdatedState(onBandSelected)
     val updateLevel by rememberUpdatedState(onLevelChanged)
     val finish by rememberUpdatedState(onFinished)
+    val cancel by rememberUpdatedState(onCancelled)
     val pad = 18.dp
     val normalized = levelsMb.take(count)
 
@@ -163,26 +164,32 @@ internal fun CapsuleEqualizerGraph(
                             down.position.y, size.height.toFloat(), minMb, maxMb,
                             limits.last, inset, limits.first,
                         )
-                        updateLevel(band, level)
-                        down.consume()
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            if (!change.pressed) {
+                        var committed = false
+                        try {
+                            updateLevel(band, level)
+                            down.consume()
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) {
+                                    change.consume()
+                                    finish(band, level)
+                                    committed = true
+                                    break
+                                }
+                                val next = capsuleBandLevelAt(
+                                    change.position.y, size.height.toFloat(), minMb, maxMb,
+                                    limits.last, inset, limits.first,
+                                )
+                                if (next != level) {
+                                    level = next
+                                    updateLevel(band, level)
+                                }
                                 change.consume()
-                                break
                             }
-                            val next = capsuleBandLevelAt(
-                                change.position.y, size.height.toFloat(), minMb, maxMb,
-                                limits.last, inset, limits.first,
-                            )
-                            if (next != level) {
-                                level = next
-                                updateLevel(band, level)
-                            }
-                            change.consume()
+                        } finally {
+                            if (!committed) cancel()
                         }
-                        finish(band, level)
                     }
                 } else Modifier)
         ) {

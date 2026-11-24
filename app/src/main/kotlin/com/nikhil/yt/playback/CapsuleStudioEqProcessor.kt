@@ -66,7 +66,11 @@ internal class CapsuleStudioEqProcessor(
             selectedTone = detector.observe(inputBuffer)
             if (selectedTone != null) analysis = null
         }
-        val sound = if (setting.adaptive) (selectedTone ?: CapsuleEqPresets.WARM).sound else setting
+        val sound = if (setting.adaptive) when (selectedTone) {
+            CapsuleEqPresets.TAPE -> CapsuleEqPresets.brightAutoSound
+            CapsuleEqPresets.CLEAR -> CapsuleEqPresets.CLEAR.sound
+            else -> CapsuleEqPresets.WARM.sound
+        } else setting
         equalizer.setSound(sound, smooth = setting.adaptive)
         val output = replaceOutputBuffer(inputBuffer.remaining())
         equalizer.process(inputBuffer, output)
@@ -153,8 +157,7 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
 private class StudioEqCascade(
     private val bands: Array<StudioEqBiquad>, sampleRate: Int, channels: Int, tape: Boolean,
 ) {
-    private val tapeDrive = if (tape) DoubleArray(channels) else null
-    private val tapeStep = if (tape) 1.0 - exp(-2.0 * PI * minOf(1_900.0, sampleRate / 8.0) / sampleRate) else 0.0
+    private val transport = if (tape) CapsuleTapeTransport(sampleRate, channels) else null
     private val trim = run {
         // Estimate the maximum of the *combined* filter response at the
         // centers and across the spectrum. A fixed margin covers grid gaps.
@@ -180,11 +183,7 @@ private class StudioEqCascade(
     fun process(sample: Double, channel: Int): Double {
         var value = sample * trim
         for (band in bands) value = band.process(value, channel)
-        // Drive the saturation from the body of the signal. High frequencies
-        // alone should not create strong folded harmonics at lower PCM rates.
-        val drive = tapeDrive ?: return value
-        drive[channel] += tapeStep * (value - drive[channel])
-        return value * capsuleTapeGain(drive[channel])
+        return transport?.process(value, channel) ?: value
     }
 }
 
@@ -215,7 +214,7 @@ private class StudioEqBiquad(
             val amplitude = 10.0.pow(gainMb / 4000.0)
             val w = 2.0 * PI * hz / sampleRate
             // Roughly octave-wide bands with smooth overlap. Use a narrower
-            // last band to keep 16 kHz adjustments out of upper mids.
+            // last band to keep 12 kHz adjustments out of upper mids.
             val q = if (hz >= 10_000) 1.55 else 1.32
             val alpha = sin(w) / (2.0 * q)
             val a0 = 1.0 + alpha / amplitude

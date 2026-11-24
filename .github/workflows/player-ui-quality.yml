@@ -21,6 +21,7 @@ on:
       - 'app/src/test/kotlin/com/nikhil/yt/playback/SafeListeningGuardTest.kt'
       - 'app/src/main/kotlin/com/nikhil/yt/playback/CapsuleStudioEqProcessor.kt'
       - 'app/src/main/kotlin/com/nikhil/yt/playback/CapsuleStudioAnalysis.kt'
+      - 'app/src/main/kotlin/com/nikhil/yt/playback/CapsuleTapeTransport.kt'
       - 'app/src/main/kotlin/com/nikhil/yt/playback/EqualizerModels.kt'
       - 'app/src/test/kotlin/com/nikhil/yt/playback/EqualizerModelsTest.kt'
       - 'app/src/test/kotlin/com/nikhil/yt/playback/CapsuleStudioEqProcessorTest.kt'

@@ -1081,6 +1081,9 @@ class MusicService :
     private var lastVideoExitElapsedMs = 0L
     private var effectiveAudioVolume = 1f
     @Volatile private var studioSound = CapsuleStudioSound()
+    @Volatile private var studioPreview: StudioCurvePreview? = null
+
+    private class StudioCurvePreview(val sound: CapsuleStudioSound, val saving: Boolean)
     private val soundStudioTransitionFactor = MutableStateFlow(1f)
     private var soundStudioNeedsPcm = false
     // This is a relative SOFTWARE player-volume ceiling, never measured dBA.
@@ -1107,7 +1110,7 @@ class MusicService :
                 findResolved = YouTubeVideoResolver::peekResolved,
             ),
             audio = player,
-            readStudioSound = { studioSound },
+            readStudioSound = ::activeStudioSound,
             scope = scope,
             onSoundOwned = { ownsVideoAudio ->
                 videoReturnGapJob?.cancel()
@@ -3873,7 +3876,19 @@ class MusicService :
         val selectedId = prefs[EqualizerSelectedProfileIdKey] ?: return CapsuleStudioSound()
         CapsuleEqPresets.byId(selectedId)?.let { return it.sound }
         val manual = readStudioManualCurve(selectedId, prefs[EqualizerBandLevelsMbKey])
-        return if (manual.isEmpty()) CapsuleStudioSound() else CapsuleStudioSound(capsuleMusicalEqLevels(manual))
+        return if (manual.isEmpty()) CapsuleStudioSound() else CapsuleStudioSound(capsuleManualEqLevels(manual))
+    }
+
+    private fun activeStudioSound(): CapsuleStudioSound = studioPreview?.sound ?: studioSound
+
+    internal fun previewStudioCurve(levelsMb: List<Int>) {
+        if (levelsMb.size == CAPSULE_STUDIO_FREQUENCIES_HZ.size) {
+            studioPreview = StudioCurvePreview(CapsuleStudioSound(capsuleManualEqLevels(levelsMb)), saving = false)
+        }
+    }
+
+    internal fun cancelStudioPreview() {
+        if (studioPreview?.saving == false) studioPreview = null
     }
 
     /** Persist a complete, validated curve and its selection in one transaction. */
@@ -3882,13 +3897,21 @@ class MusicService :
         val manual = id == CAPSULE_STUDIO_MANUAL_ID &&
             requestedLevelsMb.size == CAPSULE_STUDIO_FREQUENCIES_HZ.size
         if (preset == null && !manual) return
-        val encoded = if (manual) encodeBandLevelsMb(requestedLevelsMb.map { it.coerceIn(-1500, 1500) }) else null
+        val bounded = if (manual) capsuleManualEqLevels(requestedLevelsMb) else null
+        val encoded = bounded?.let(::encodeBandLevelsMb)
+        val pending = bounded?.let { StudioCurvePreview(CapsuleStudioSound(it), saving = true) }
+        studioPreview = pending
         scope.launch {
-            dataStore.edit { prefs ->
-                prefs.preserveLegacySoundStudioTempo()
-                prefs[EqualizerSelectedProfileIdKey] = id
-                prefs[EqualizerEnabledKey] = true
-                if (encoded != null) prefs[EqualizerBandLevelsMbKey] = encoded
+            try {
+                val saved = dataStore.edit { prefs ->
+                    prefs.preserveLegacySoundStudioTempo()
+                    prefs[EqualizerSelectedProfileIdKey] = id
+                    prefs[EqualizerEnabledKey] = true
+                    if (encoded != null) prefs[EqualizerBandLevelsMbKey] = encoded
+                }
+                if (pending != null && studioPreview === pending) studioSound = readSoundStudio(saved)
+            } finally {
+                if (pending != null && studioPreview === pending) studioPreview = null
             }
         }
     }
@@ -3900,6 +3923,7 @@ class MusicService :
     }
 
     internal fun setSoundStudioEqEnabled(enabled: Boolean) {
+        studioPreview = null
         scope.launch {
             dataStore.edit { prefs ->
                 if (enabled) {
@@ -6210,7 +6234,7 @@ class MusicService :
         )
     }
 
-    private fun createRenderersFactory() = CapsuleAudioRenderersFactory(this, { studioSound })
+    private fun createRenderersFactory() = CapsuleAudioRenderersFactory(this, ::activeStudioSound)
 
     override fun onPlaybackStatsReady(
         eventTime: AnalyticsListener.EventTime,

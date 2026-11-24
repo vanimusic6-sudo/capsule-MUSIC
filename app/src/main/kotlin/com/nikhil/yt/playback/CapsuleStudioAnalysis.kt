@@ -58,9 +58,3 @@ internal class CapsuleStudioAnalysis(sampleRate: Int, private val channels: Int)
         return null
     }
 }
-
-/** Soft rounding of peaks with a linear response near zero and no makeup gain. */
-internal fun capsuleTapeGain(drive: Double): Double {
-    val power = drive * drive
-    return 1.0 - 0.20 * power / (0.32 + power)
-}

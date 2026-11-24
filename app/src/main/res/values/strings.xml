@@ -1088,7 +1088,5 @@ Capsule will only extract your token, and everything else is stored locally.</st
     <string name="eq_studio_tape">Tape</string>
     <string name="eq_studio_clear">Clarity</string>
     <string name="eq_studio_auto_hint">Picks a tone from the track’s frequency balance.</string>
-    <string name="eq_studio_tape_hint">Smooths sharp attacks and softens the top end.</string>
-    <string name="eq_studio_show_bands">Show</string>
-    <string name="eq_studio_hide_bands">Hide</string>
+    <string name="eq_studio_tape_hint">Tape saturation, softer highs and gentle pitch drift.</string>
 </resources>

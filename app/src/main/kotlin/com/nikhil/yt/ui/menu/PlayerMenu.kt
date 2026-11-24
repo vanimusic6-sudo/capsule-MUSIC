@@ -54,6 +54,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -644,7 +645,7 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
     LaunchedEffect(eqEnabled, selectedId, storedRaw) { draft = null }
     val levels = draft ?: initial
     val displayed = levels.mapIndexed { i, gain -> gain.coerceIn(limits[i]) }
-    var showBands by rememberSaveable { mutableStateOf(stored.isNotEmpty()) }
+    DisposableEffect(service) { onDispose { service.cancelStudioPreview() } }
     var selectedBand by rememberSaveable { mutableIntStateOf(3) }
     val band = selectedBand.coerceIn(0, bandCount - 1)
 
@@ -698,6 +699,66 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
+                    EqSection(title = stringResource(R.string.eq_ten_band_title)) {
+                        CapsuleEqualizerGraph(
+                            frequenciesHz = frequencies,
+                            levelsMb = displayed,
+                            minMb = CAPSULE_EQ_MIN_MB,
+                            maxMb = CAPSULE_EQ_MAX_MB,
+                            bandLimitsMb = limits,
+                            selectedBand = band,
+                            onBandSelected = { selectedBand = it },
+                            onLevelChanged = { band, gain ->
+                                if (eqEnabled && band in 0 until bandCount) {
+                                    val next = (draft ?: initial).toMutableList().apply {
+                                        this[band] = gain.coerceIn(limits[band])
+                                    }
+                                    draft = next
+                                    service.previewStudioCurve(next)
+                                }
+                            },
+                            onFinished = { band, gain ->
+                                if (eqEnabled && band in 0 until bandCount) {
+                                    val next = (draft ?: initial).toMutableList().apply {
+                                        this[band] = gain.coerceIn(limits[band])
+                                    }
+                                    draft = next
+                                    service.selectSoundVersion(CAPSULE_STUDIO_MANUAL_ID, next)
+                                }
+                            },
+                            onCancelled = {
+                                draft = null
+                                service.cancelStudioPreview()
+                            },
+                            graphHeight = when {
+                                LocalConfiguration.current.screenHeightDp < 690 -> 165.dp
+                                else -> 205.dp
+                            },
+                            editable = eqEnabled,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth()
+                                .padding(horizontal = 18.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                capsuleGraphHz(frequencies[band]),
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            Text(
+                                formatDb(displayed[band] / 100f),
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            TextButton(enabled = eqEnabled, onClick = {
+                                draft = null
+                                service.selectSoundVersion(CAPSULE_STUDIO_MANUAL_ID, List(bandCount) { 0 })
+                            }) { Text(stringResource(R.string.reset)) }
+                        }
+                    }
+
                     EqSection(title = stringResource(R.string.eq_studio_character)) {
                         Column(
                             modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp),
@@ -730,69 +791,6 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(horizontal = 4.dp),
                                 )
-                            }
-                        }
-                    }
-
-                    EqSection(
-                        title = stringResource(R.string.eq_ten_band_title),
-                        trailing = {
-                            TextButton(onClick = { showBands = !showBands }) {
-                                Text(stringResource(if (showBands) R.string.eq_studio_hide_bands else R.string.eq_studio_show_bands))
-                            }
-                        },
-                    ) {
-                        if (showBands) {
-                            CapsuleEqualizerGraph(
-                                frequenciesHz = frequencies,
-                                levelsMb = displayed,
-                                minMb = CAPSULE_EQ_MIN_MB,
-                                maxMb = CAPSULE_EQ_MAX_MB,
-                                bandLimitsMb = limits,
-                                selectedBand = band,
-                                onBandSelected = { selectedBand = it },
-                                onLevelChanged = { band, gain ->
-                                    if (eqEnabled && band in 0 until bandCount) {
-                                        draft = levels.toMutableList().apply {
-                                            this[band] = gain.coerceIn(limits[band])
-                                        }
-                                    }
-                                },
-                                onFinished = { band, gain ->
-                                    if (eqEnabled && band in 0 until bandCount) {
-                                        val next = levels.toMutableList().apply {
-                                            this[band] = gain.coerceIn(limits[band])
-                                        }
-                                        draft = next
-                                        service.selectSoundVersion(CAPSULE_STUDIO_MANUAL_ID, next)
-                                    }
-                                },
-                                graphHeight = when {
-                                    LocalConfiguration.current.screenHeightDp < 690 -> 175.dp
-                                    else -> 222.dp
-                                },
-                                editable = eqEnabled,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
-                            )
-                            Row(
-                                modifier = Modifier.fillMaxWidth()
-                                    .padding(horizontal = 18.dp, vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(
-                                    capsuleGraphHz(frequencies[band]),
-                                    style = MaterialTheme.typography.titleSmall,
-                                )
-                                Text(
-                                    formatDb(displayed[band] / 100f),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
-                                TextButton(enabled = eqEnabled, onClick = {
-                                    draft = null
-                                    service.selectSoundVersion(CAPSULE_STUDIO_MANUAL_ID, List(bandCount) { 0 })
-                                }) { Text(stringResource(R.string.reset)) }
                             }
                         }
                     }

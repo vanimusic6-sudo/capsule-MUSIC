@@ -22,7 +22,7 @@ class CapsuleEqPresetsTest {
             assertEquals(10, curve.size)
             assertEquals(mode, CapsuleEqPresets.byId("capsule:${mode.id}"))
             assertTrue(curve.indices.all { i -> curve[i] in capsuleStudioBandLimit(CAPSULE_STUDIO_FREQUENCIES_HZ[i]) })
-            assertTrue(curve.max() - curve.min() in 130..250)
+            assertTrue(curve.max() - curve.min() in 400..750)
         }
     }
 }
