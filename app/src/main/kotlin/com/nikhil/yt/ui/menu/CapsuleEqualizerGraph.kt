@@ -28,6 +28,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.progressBarRangeInfo
@@ -142,9 +143,12 @@ internal fun CapsuleEqualizerGraph(
 ) {
     val count = minOf(frequenciesHz.size, levelsMb.size, bandLimitsMb.size)
     if (count <= 0) return
-    val accent = if (editable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-    val grid = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
-    val neutral = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f)
+    val scheme = MaterialTheme.colorScheme
+    val accent = if (editable) scheme.primary else scheme.onSurfaceVariant
+    // Solid colors keep the rails and curve from showing through the handles.
+    val grid = lerp(scheme.surface, scheme.onSurface, 0.12f)
+    val neutral = lerp(scheme.surface, scheme.onSurface, 0.27f)
+    val railFill = lerp(grid, accent, 0.28f)
     val updateSelected by rememberUpdatedState(onBandSelected)
     val updateLevel by rememberUpdatedState(onLevelChanged)
     val finish by rememberUpdatedState(onFinished)
@@ -226,11 +230,11 @@ internal fun CapsuleEqualizerGraph(
                 drawLine(neutral, Offset(side, baseline), Offset(size.width - side, baseline), 1.dp.toPx())
                 repeat(count) { i ->
                     val x = point(i).x
-                    val rail = 6.dp.toPx()
+                    val rail = 5.dp.toPx()
                     drawRoundRect(grid, Offset(x - rail / 2f, inset), Size(rail, innerH), CornerRadius(rail / 2f))
                     val top = minOf(point(i).y, baseline)
                     val height = maxOf(point(i).y, baseline) - top
-                    if (height > 0f) drawRoundRect(accent.copy(alpha = 0.19f),
+                    if (height > 0f) drawRoundRect(railFill,
                         Offset(x - rail / 2f, top), Size(rail, height), CornerRadius(rail / 2f))
                 }
 
@@ -264,11 +268,10 @@ internal fun CapsuleEqualizerGraph(
                 ))
                 repeat(count) { i ->
                     val p = point(i)
-                    val active = i == selectedBand
-                    val width = (if (active) 28.dp else 20.dp).toPx()
-                    val height = (if (active) 12.dp else 8.dp).toPx()
-                    if (active && editable) drawCircle(accent.copy(alpha = 0.13f), radius = 18.dp.toPx(), center = p)
-                    drawRoundRect(accent.copy(alpha = if (active) 1f else 0.76f),
+                    val active = editable && i == selectedBand
+                    val width = (if (active) 28.dp else 23.dp).toPx()
+                    val height = (if (active) 12.dp else 9.dp).toPx()
+                    drawRoundRect(accent,
                         Offset(p.x - width / 2f, p.y - height / 2f), Size(width, height), CornerRadius(height / 2f))
                 }
             }
@@ -280,8 +283,8 @@ internal fun CapsuleEqualizerGraph(
                     Text(
                         text = capsuleGraphShortHz(hz),
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (index == selectedBand) MaterialTheme.colorScheme.onSurface
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (editable && index == selectedBand) scheme.onSurface
+                            else lerp(scheme.onSurface, scheme.onSurfaceVariant, 0.65f),
                         maxLines = 1,
                         overflow = TextOverflow.Clip,
                         textAlign = TextAlign.Center,

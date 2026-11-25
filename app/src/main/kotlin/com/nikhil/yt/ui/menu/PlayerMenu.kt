@@ -49,8 +49,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
+import com.nikhil.yt.ui.component.CapsuleSoftSwitch
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -72,6 +71,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalDensity
@@ -668,7 +668,7 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
         service.setStudioInteractive(true)
         onDispose { service.setStudioInteractive(false) }
     }
-    var selectedBand by rememberSaveable { mutableIntStateOf(3) }
+    var selectedBand by rememberSaveable { mutableIntStateOf(2) }
     val band = selectedBand.coerceIn(0, bandCount - 1)
 
     val activeTempo = SoundStudioTempoVariant.resolve(tempo.takeIf { it.isNotEmpty() }, selectedId)
@@ -700,24 +700,19 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                         .verticalScroll(rememberScrollState(),
                             flingBehavior = rememberCapsuleFlingBehavior(),
                             overscrollEffect = null)
-                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     EqSection(title = equalizerLabel, trailing = {
-                        Switch(
+                        CapsuleSoftSwitch(
                             checked = eqEnabled,
                             onCheckedChange = { enabled ->
+                                editing = false
                                 draft = null
                                 service.setSoundStudioEqEnabled(enabled)
                             },
                             modifier = Modifier.semantics { contentDescription = equalizerLabel },
-                            thumbContent = {
-                                Icon(
-                                    painterResource(if (eqEnabled) R.drawable.check else R.drawable.close),
-                                    contentDescription = null, modifier = Modifier.size(SwitchDefaults.IconSize),
-                                )
-                            },
                         )
                     }) {
                         CapsuleEqualizerGraph(
@@ -772,6 +767,7 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                                 Text(
                                     capsuleGraphHz(frequencies[band]) + "  ·  " + formatDb(displayed[band] / 100f),
                                     style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                                 )
                             }
@@ -936,11 +932,11 @@ private fun RowScope.StudioChoice(label: String, selected: Boolean, onClick: () 
     Surface(
         selected = selected,
         onClick = onClick,
-        modifier = Modifier.weight(1f).heightIn(min = 52.dp),
-        shape = RoundedCornerShape(14.dp),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary
             else MaterialTheme.colorScheme.onSurface,
     ) {
         Box(Modifier.padding(horizontal = 6.dp, vertical = 8.dp), Alignment.Center) {
@@ -956,11 +952,12 @@ private fun EqSection(
     content: @Composable () -> Unit,
 ) {
     Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        color = lerp(MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.onSurface, 0.035f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
         shape = RoundedCornerShape(24.dp),
         modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.padding(vertical = 14.dp)) {
+        Column(modifier = Modifier.padding(top = 10.dp, bottom = 14.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),

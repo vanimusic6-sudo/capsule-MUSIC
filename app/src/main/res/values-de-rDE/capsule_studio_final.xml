@@ -8,8 +8,6 @@
     <string name="capsule_studio_final_clear">Klarheit</string>
     <string name="capsule_studio_final_versions">Versionen</string>
     <string name="capsule_studio_final_normal">Normal</string>
-    <string name="capsule_studio_final_fast">Schneller</string>
-    <string name="capsule_studio_final_slow">Langsamer</string>
     <string name="capsule_studio_final_fast_hint">Schnellerer Rhythmus und leicht höhere Tonlage.</string>
     <string name="capsule_studio_final_slow_hint">Langsamerer Rhythmus, tiefere Tonlage und sanfter Raumklang.</string>
     <string name="capsule_studio_final_listening">Sicheres Hören</string>

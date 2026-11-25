@@ -8,8 +8,6 @@
     <string name="capsule_studio_final_clear">Claridad</string>
     <string name="capsule_studio_final_versions">Versiones</string>
     <string name="capsule_studio_final_normal">Normal</string>
-    <string name="capsule_studio_final_fast">Acelerada</string>
-    <string name="capsule_studio_final_slow">Ralentizada</string>
     <string name="capsule_studio_final_fast_hint">Ritmo más rápido y tono ligeramente más alto.</string>
     <string name="capsule_studio_final_slow_hint">Ritmo más lento, tono más grave y ambiente suave.</string>
     <string name="capsule_studio_final_listening">Escucha segura</string>

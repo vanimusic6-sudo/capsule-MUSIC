@@ -8,8 +8,6 @@
     <string name="capsule_studio_final_clear">स्पष्टता</string>
     <string name="capsule_studio_final_versions">संस्करण</string>
     <string name="capsule_studio_final_normal">सामान्य</string>
-    <string name="capsule_studio_final_fast">तेज़</string>
-    <string name="capsule_studio_final_slow">धीमा</string>
     <string name="capsule_studio_final_fast_hint">तेज़ लय और थोड़ी ऊँची स्वर-ऊँचाई।</string>
     <string name="capsule_studio_final_slow_hint">धीमी लय, थोड़ा गहरा स्वर और हल्की गूँज।</string>
     <string name="capsule_studio_final_listening">सुरक्षित सुनना</string>

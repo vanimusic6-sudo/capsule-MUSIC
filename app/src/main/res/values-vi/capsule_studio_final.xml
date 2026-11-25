@@ -8,8 +8,6 @@
     <string name="capsule_studio_final_clear">Trong trẻo</string>
     <string name="capsule_studio_final_versions">Phiên bản</string>
     <string name="capsule_studio_final_normal">Bình thường</string>
-    <string name="capsule_studio_final_fast">Tăng tốc</string>
-    <string name="capsule_studio_final_slow">Giảm tốc</string>
     <string name="capsule_studio_final_fast_hint">Nhịp nhanh hơn và cao độ hơi cao hơn.</string>
     <string name="capsule_studio_final_slow_hint">Nhịp chậm hơn, cao độ trầm hơn và âm vang nhẹ.</string>
     <string name="capsule_studio_final_listening">Nghe an toàn</string>

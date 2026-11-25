@@ -8,8 +8,6 @@
     <string name="capsule_studio_final_clear">Helderheid</string>
     <string name="capsule_studio_final_versions">Versies</string>
     <string name="capsule_studio_final_normal">Normaal</string>
-    <string name="capsule_studio_final_fast">Versneld</string>
-    <string name="capsule_studio_final_slow">Vertraagd</string>
     <string name="capsule_studio_final_fast_hint">Sneller ritme en een iets hogere toonhoogte.</string>
     <string name="capsule_studio_final_slow_hint">Langzamer ritme, lagere toonhoogte en zachte ruimtelijkheid.</string>
     <string name="capsule_studio_final_listening">Veilig luisteren</string>

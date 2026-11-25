@@ -8,8 +8,6 @@
     <string name="capsule_studio_final_clear">Jernih</string>
     <string name="capsule_studio_final_versions">Versi</string>
     <string name="capsule_studio_final_normal">Normal</string>
-    <string name="capsule_studio_final_fast">Dipercepat</string>
-    <string name="capsule_studio_final_slow">Diperlambat</string>
     <string name="capsule_studio_final_fast_hint">Irama lebih cepat dan nada sedikit lebih tinggi.</string>
     <string name="capsule_studio_final_slow_hint">Irama lebih lambat, nada lebih rendah, dan suasana lembut.</string>
     <string name="capsule_studio_final_listening">Mendengarkan dengan aman</string>

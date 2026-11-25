@@ -8,8 +8,6 @@
     <string name="capsule_studio_final_clear">선명함</string>
     <string name="capsule_studio_final_versions">버전</string>
     <string name="capsule_studio_final_normal">일반</string>
-    <string name="capsule_studio_final_fast">빠르게</string>
-    <string name="capsule_studio_final_slow">느리게</string>
     <string name="capsule_studio_final_fast_hint">빠른 리듬과 약간 높은 음정.</string>
     <string name="capsule_studio_final_slow_hint">느린 리듬, 조금 낮은 음정과 부드러운 공간감.</string>
     <string name="capsule_studio_final_listening">안전한 청취</string>

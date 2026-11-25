@@ -8,8 +8,6 @@
     <string name="capsule_studio_final_clear">בהירות</string>
     <string name="capsule_studio_final_versions">גרסאות</string>
     <string name="capsule_studio_final_normal">רגילה</string>
-    <string name="capsule_studio_final_fast">מואצת</string>
-    <string name="capsule_studio_final_slow">מואטת</string>
     <string name="capsule_studio_final_fast_hint">קצב מהיר יותר וגובה צליל מעט גבוה יותר.</string>
     <string name="capsule_studio_final_slow_hint">קצב איטי יותר, צליל עמוק יותר ואווירה רכה.</string>
     <string name="capsule_studio_final_listening">האזנה בטוחה</string>

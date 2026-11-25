@@ -8,8 +8,6 @@
     <string name="capsule_studio_final_clear">وضوح</string>
     <string name="capsule_studio_final_versions">الإصدارات</string>
     <string name="capsule_studio_final_normal">عادي</string>
-    <string name="capsule_studio_final_fast">تسريع</string>
-    <string name="capsule_studio_final_slow">إبطاء</string>
     <string name="capsule_studio_final_fast_hint">إيقاع أسرع وطبقة صوت أعلى قليلًا.</string>
     <string name="capsule_studio_final_slow_hint">إيقاع أبطأ وطبقة صوت أعمق وصدى خفيف.</string>
     <string name="capsule_studio_final_listening">استماع آمن</string>
