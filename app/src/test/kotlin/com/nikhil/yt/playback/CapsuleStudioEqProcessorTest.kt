@@ -352,6 +352,23 @@ class CapsuleStudioEqProcessorTest {
         assertTrue(render(eq, input).contentEquals(input))
     }
 
+    @Test fun newestCurveSurvivesInFlightRampWithoutAnotherInputBuffer() {
+        val rate = 48_000
+        val eq = CapsuleStudioEqFilter(rate, 1)
+        val input = ShortArray(rate / 5) { i ->
+            (8000 * sin(2 * PI * 400 * i / rate)).roundToInt().toShort()
+        }
+        render(eq, input)
+        eq.setCurve(listOf(0, -600, 0, 0, 0))
+        eq.setCurve(listOf(0, 0, 200, 0, 0))
+        eq.setCurve(List(5) { 0 })
+        val out = render(eq, input)
+        assertEquals(input.size, out.size)
+        assertTrue((input.size / 2 until input.size).all { i ->
+            abs(out[i].toInt() - input[i].toInt()) <= 2
+        })
+    }
+
     @Test fun musicCrossfadeAndVideoUsePcmEqAndListeningCeiling() {
         fun source(name: String) = File("src/main/kotlin/com/nikhil/yt/playback/$name.kt").readText()
         val renderer = source("CapsuleAudioRenderersFactory")

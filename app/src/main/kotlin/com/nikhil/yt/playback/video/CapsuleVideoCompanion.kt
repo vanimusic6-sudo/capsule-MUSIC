@@ -174,10 +174,12 @@ internal class CapsuleVideoCompanion(
     onBufferingChanged: (String, Boolean) -> Unit,
     readStudioPlan: (String) -> CapsuleTrackSound? = { null },
     publishStudioPlan: (String, CapsuleTrackSound) -> Unit = { _, _ -> },
+    readStudioInteractive: () -> Boolean = { false },
 ) {
     private var idleExpiry: Job? = null
     private val renderers = CapsuleAudioRenderersFactory(context, readStudioSound, useMusicBuffer = false,
-        readStudioPlan = readStudioPlan, publishStudioPlan = publishStudioPlan)
+        readStudioPlan = readStudioPlan, publishStudioPlan = publishStudioPlan,
+        readStudioInteractive = readStudioInteractive)
     val player: ExoPlayer = ExoPlayer.Builder(context)
         // The video soundtrack can create a SECOND Opus decoder while MUSIC is
         // still audible. Use the same Android 17 native in-process preference

@@ -663,6 +663,10 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
     val levels = draft ?: initial
     val displayed = levels.mapIndexed { i, gain -> gain.coerceIn(limits[i]) }
     DisposableEffect(service) { onDispose { service.cancelStudioPreview() } }
+    DisposableEffect(service) {
+        service.setStudioInteractive(true)
+        onDispose { service.setStudioInteractive(false) }
+    }
     var selectedBand by rememberSaveable { mutableIntStateOf(3) }
     val band = selectedBand.coerceIn(0, bandCount - 1)
 

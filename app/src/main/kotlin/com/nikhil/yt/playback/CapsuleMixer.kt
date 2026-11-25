@@ -113,7 +113,7 @@ private class RecordMixerEffect(rate: Int, channels: Int) : MixerEffect {
     }
 }
 
-/** Automatic club mix and short beat-gated gestures; no manual controls. */
+/** Automatic club mix and beat-following tonal sweeps; no manual controls. */
 private class ClubMixerEffect(rate: Int, channels: Int) : MixerEffect {
     private val dynamics = CapsuleMusicalDynamics(rate, channels)
     private val gesture = CapsuleAutoDjGesture(rate, channels)

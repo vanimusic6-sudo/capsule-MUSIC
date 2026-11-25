@@ -3,7 +3,9 @@
 package com.nikhil.yt.playback
 
 import android.content.Context
+import android.media.AudioTrack
 import android.os.Build
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.audio.AudioProcessor
@@ -59,12 +61,57 @@ internal object CapsuleOpusCodecSelector : MediaCodecSelector {
 }
 
 internal const val CAPSULE_PCM_AUDIO_TRACK_BUFFER_DURATION_US = 1_500_000
+/** One short-buffer attempt per studio visit; restore immediately after an underrun.
+ * No flush, seek or AudioTrack recreation. Already queued audio drains normally. */
+private class CapsuleStudioInteractiveBuffer {
+    private var track: AudioTrack? = null
+    private var originalFrames = 0
+    private var visiting = false
+    private var attempted = false
+    private var shortened = false
+    private var baselineUnderruns = 0
+
+    fun attach(output: AudioTrack, config: AudioSink.AudioTrackConfig) {
+        track = if (Build.VERSION.SDK_INT >= 24 && !config.offload && !config.tunneling &&
+            config.encoding == C.ENCODING_PCM_16BIT && output.state == AudioTrack.STATE_INITIALIZED) output else null
+        originalFrames = track?.bufferSizeInFrames ?: 0
+        visiting = false
+        attempted = false
+        shortened = false
+    }
+
+    fun update(interactive: Boolean) {
+        if (Build.VERSION.SDK_INT < 24) return
+        val output = track ?: return
+        if (output.state != AudioTrack.STATE_INITIALIZED || originalFrames <= 0) return
+        if (visiting != interactive) {
+            visiting = interactive
+            attempted = false
+        }
+        if (shortened && (!interactive || output.underrunCount > baselineUnderruns)) {
+            // Stay on the conservative queue for the rest of this visit.
+            attempted = interactive
+            val restored = runCatching { output.setBufferSizeInFrames(originalFrames) }.getOrNull()
+            if (restored != null && restored >= originalFrames) shortened = false
+            return
+        }
+        if (!interactive || attempted || shortened) return
+        attempted = true
+        val target = (output.sampleRate.toLong() * 450L / 1000L).toInt().coerceAtLeast(1)
+        if (target >= originalFrames) return
+        baselineUnderruns = output.underrunCount
+        val actual = runCatching { output.setBufferSizeInFrames(target) }.getOrNull()
+        shortened = actual != null && actual in 1 until originalFrames
+    }
+}
+
 internal class CapsuleAudioRenderersFactory(
     context: Context,
     private val readStudioSound: () -> CapsuleStudioSound,
     private val useMusicBuffer: Boolean = true,
     private val readStudioPlan: (String) -> CapsuleTrackSound? = { null },
     private val publishStudioPlan: (String, CapsuleTrackSound) -> Unit = { _, _ -> },
+    private val readStudioInteractive: () -> Boolean = { false },
 ) : DefaultRenderersFactory(context), Player.Listener {
     @Volatile private var studioTrackId: String? = null
 
@@ -88,6 +135,7 @@ internal class CapsuleAudioRenderersFactory(
         enableFloatOutput: Boolean,
         enableAudioOutputPlaybackParams: Boolean,
     ): AudioSink? {
+        val interactiveBuffer = CapsuleStudioInteractiveBuffer()
         val pcmBufferSizeProvider =
             DefaultAudioTrackBufferSizeProvider.Builder()
                 .setMinPcmBufferDurationUs(CAPSULE_PCM_AUDIO_TRACK_BUFFER_DURATION_US)
@@ -98,7 +146,10 @@ internal class CapsuleAudioRenderersFactory(
             // Keep Media3's own time/silence accounting. EQ sees the final
             // sample frequencies and catches peaks after pitch resampling.
             private val processors = super.getAudioProcessors() + CapsuleStudioEqProcessor(
-                readStudioSound,
+                {
+                    interactiveBuffer.update(readStudioInteractive())
+                    readStudioSound()
+                },
                 { studioTrackId }, readStudioPlan, publishStudioPlan,
             )
             override fun getAudioProcessors(): Array<AudioProcessor> = processors
@@ -107,6 +158,10 @@ internal class CapsuleAudioRenderersFactory(
             .setEnableFloatOutput(false)
             .setEnableAudioOutputPlaybackParameters(false)
             .setAudioProcessorChain(processorChain)
+            .setAudioTrackProvider { config, attributes, session, outputContext ->
+                DefaultAudioSink.AudioTrackProvider.DEFAULT.getAudioTrack(config, attributes, session, outputContext)
+                    .also { interactiveBuffer.attach(it, config) }
+            }
             .setAudioTrackBufferSizeProvider(
                 if (useMusicBuffer) pcmBufferSizeProvider else DefaultAudioSink.AudioTrackBufferSizeProvider.DEFAULT,
             )

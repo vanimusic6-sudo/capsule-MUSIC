@@ -134,6 +134,7 @@ jobs:
           --tests 'com.nikhil.yt.ui.component.PlayerWindowAccessibilityTest'
           --tests 'com.nikhil.yt.ui.CapsuleMenuMotionTest'
           --tests 'com.nikhil.yt.ui.menu.SimpleEqualizerTest'
+          --tests 'com.nikhil.yt.ui.menu.CapsuleStudioInteractionContractTest'
           --tests 'com.nikhil.yt.ui.menu.CapsuleEqualizerGraphTest'
           --tests 'com.nikhil.yt.playback.EqualizerModelsTest'
           --tests 'com.nikhil.yt.playback.CapsuleStudioEqProcessorTest'

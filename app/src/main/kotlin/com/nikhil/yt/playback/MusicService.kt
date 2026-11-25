@@ -1082,6 +1082,7 @@ class MusicService :
     private var lastVideoExitElapsedMs = 0L
     private var effectiveAudioVolume = 1f
     @Volatile private var studioSound = CapsuleStudioSound()
+    @Volatile private var studioInteractive = false
     @Volatile private var studioPreview: StudioCurvePreview? = null
     @Volatile private var studioMixerPreview: StudioMixerPreview? = null
     private val studioTrackPlans = MutableStateFlow<Map<String, CapsuleTrackSound>>(emptyMap())
@@ -1118,6 +1119,7 @@ class MusicService :
             readStudioSound = ::activeStudioSound,
             readStudioPlan = ::lookupStudioPlan,
             publishStudioPlan = ::rememberStudioPlan,
+            readStudioInteractive = { studioInteractive },
             scope = scope,
             onSoundOwned = { ownsVideoAudio ->
                 videoReturnGapJob?.cancel()
@@ -3927,6 +3929,8 @@ class MusicService :
             mixer = preview ?: saved.mixer)
     }
 
+    internal fun setStudioInteractive(value: Boolean) { studioInteractive = value }
+
     internal fun previewStudioCurve(levelsMb: List<Int>) {
         if (levelsMb.size == CAPSULE_STUDIO_FREQUENCIES_HZ.size) {
             studioPreview = StudioCurvePreview(capsuleManualEqLevels(levelsMb), saving = false)
@@ -6311,7 +6315,8 @@ class MusicService :
     }
 
     private fun createRenderersFactory() = CapsuleAudioRenderersFactory(this, ::activeStudioSound,
-        readStudioPlan = ::lookupStudioPlan, publishStudioPlan = ::rememberStudioPlan)
+        readStudioPlan = ::lookupStudioPlan, publishStudioPlan = ::rememberStudioPlan,
+        readStudioInteractive = { studioInteractive })
 
     override fun onPlaybackStatsReady(
         eventTime: AnalyticsListener.EventTime,

@@ -4,7 +4,6 @@ package com.nikhil.yt.playback
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.exp
-import kotlin.math.sin
 
 private fun characterStep(hz: Double, rate: Int) =
     1.0 - exp(-2.0 * PI * minOf(hz, rate * 0.28) / rate)
@@ -75,26 +74,19 @@ internal class CapsuleRecordTexture(private val rate: Int, channels: Int) {
     private val expIntro = exp(-1.0 / (rate * 0.19))
 }
 
-/** Sparse, beat-gated gestures on the actual recording. No new beats or feedback. */
-internal class CapsuleAutoDjGesture(private val rate: Int, private val channels: Int) {
-    private val stride = ((rate + 15999) / 16000).coerceAtLeast(1)
-    private val captureRate = rate.toDouble() / stride
-    private val capacity = (captureRate * 0.30).toInt() + 4
-    private val ring = FloatArray(capacity * channels)
+/** Beat-following club sweeps on the current frame only.
+ * No history buffer, sample replacement, time displacement or broadband muting. */
+internal class CapsuleAutoDjGesture(private val rate: Int, channels: Int) {
     private val bass = DoubleArray(channels)
-    private val mid = DoubleArray(channels)
-    private val smooth = DoubleArray(channels)
-    private val tone = DoubleArray(channels)
+    private val body = DoubleArray(channels)
+    private val air = DoubleArray(channels)
     private val bassStep = characterStep(150.0, rate)
-    private val captureStep = characterStep(minOf(3400.0, captureRate * 0.18), rate)
-    private val toneStep = characterStep(600.0, rate)
+    private val bodyStep = characterStep(1250.0, rate)
+    private val airStep = characterStep(4200.0, rate)
     private val fastStep = characterTime(0.009, rate)
     private val slowStep = characterTime(0.22, rate)
     private var fast = 0.0
     private var slow = 0.0
-    private var cursor = 0
-    private var stored = 0
-    private var phase = 0
     private var sinceBeat = rate * 2
     private var sinceEvent = rate * 5
     private var period = 0.0
@@ -103,32 +95,21 @@ internal class CapsuleAutoDjGesture(private val rate: Int, private val channels:
     private var armed = true
     private var gesture = -1
     private var gestureLength = 1
-    private var scratch = true
     internal var eventsStarted = 0
         private set
 
     fun apply(frame: DoubleArray, amount: Double) {
         val strength = amount.coerceIn(0.0, 1.0)
-        var bassPeak = 0.0
-        var midPeak = 0.0
+        var onsetLevel = 0.0
         var fullPeak = 0.0
-        val capture = phase == 0
         for (ch in frame.indices) {
             val x = frame[ch]
-            fullPeak = maxOf(fullPeak, abs(x))
             bass[ch] += (x - bass[ch]) * bassStep
-            bassPeak = maxOf(bassPeak, abs(bass[ch]))
-            mid[ch] += (x - bass[ch] - mid[ch]) * captureStep
-            smooth[ch] += (mid[ch] - smooth[ch]) * captureStep
-            midPeak = maxOf(midPeak, abs(mid[ch]))
-            tone[ch] += (x - tone[ch]) * toneStep
-            if (capture) ring[cursor * channels + ch] = smooth[ch].toFloat()
+            body[ch] += (x - body[ch]) * bodyStep
+            air[ch] += (x - air[ch]) * airStep
+            onsetLevel = maxOf(onsetLevel, abs(bass[ch]) + 0.28 * abs(body[ch] - bass[ch]))
+            fullPeak = maxOf(fullPeak, abs(x))
         }
-        if (capture) { if (++cursor == capacity) cursor = 0; stored = minOf(stored + 1, capacity) }
-        if (++phase == stride) phase = 0
-        // Include percussion above the kick range instead of depending on a
-        // bass-heavy master. A linked detector keeps all channels synchronized.
-        val onsetLevel = bassPeak + 0.28 * midPeak
         fast += (onsetLevel - fast) * fastStep
         slow += (onsetLevel - slow) * slowStep
         if (sinceBeat < rate * 3) sinceBeat++
@@ -139,39 +120,34 @@ internal class CapsuleAutoDjGesture(private val rate: Int, private val channels:
             val interval = sinceBeat.toDouble()
             if (interval in rate * 0.25..rate * 1.05) {
                 if (period > 0.0 && abs(interval - period) < period * 0.24) {
-                    stable = minOf(stable + 1, 32); beats++
+                    stable = minOf(stable + 1, 32)
+                    beats = if (beats == 32) 5 else beats + 1
                     period += (interval - period) * 0.2
                 } else { period = interval; stable = 0; beats = 0 }
             } else { period = 0.0; stable = 0; beats = 0 }
             sinceBeat = 0
-            if (stable >= 2 && (beats == 2 || beats % 4 == 0) && sinceEvent >= rate * 4 && gesture < 0 &&
-                stored >= (captureRate * 0.24).toInt() && strength >= 0.10 && fullPeak > 0.025) {
-                scratch = eventsStarted % 2 == 0
+            if (stable >= 2 && (beats == 2 || beats % 4 == 0) && sinceEvent >= rate * 4 &&
+                gesture < 0 && strength >= 0.10 && fullPeak > 0.025) {
                 eventsStarted++
                 sinceEvent = 0
                 gesture = 0
-                gestureLength = (period * if (scratch) 0.50 else 0.65).toInt()
-                    .coerceIn((rate * 0.16).toInt(), (rate * 0.32).toInt())
+                gestureLength = (period * 3.0).toInt()
+                    .coerceIn((rate * 0.9).toInt(), (rate * 2.8).toInt())
             }
         }
         if (gesture < 0) return
         val p = gesture.toDouble() / gestureLength
-        val shape = sin(PI * p).let { it * it }
-        val wet = shape * strength * if (scratch) 0.86 else 0.88
-        // Reverse then forward through a short recent phrase; band-limited to avoid harsh edges.
-        val age = if (p < 0.46) 0.025 + 0.205 * p / 0.46 else 0.230 - 0.210 * (p - 0.46) / 0.54
-        val tap = cursor - 1 + phase.toDouble() / stride - age * captureRate
-        val first = kotlin.math.floor(tap).toInt()
-        val frac = tap - first
-        val a = ((first % capacity + capacity) % capacity) * channels
-        val b = (((first + 1) % capacity + capacity) % capacity) * channels
+        // Slow tonal buildup, then release over the next beat. Smoothstep
+        // gives zero slope at both ends and at the turning point.
+        val t = if (p < 0.66) p / 0.66 else (1.0 - p) / 0.34
+        val sweep = t * t * (3.0 - 2.0 * t) * strength
         for (ch in frame.indices) {
             val x = frame[ch]
-            val replacement = if (scratch) {
-                val scrub = ring[a + ch] + (ring[b + ch] - ring[a + ch]) * frac
-                0.85 * scrub + 0.15 * bass[ch]
-            } else 0.55 * tone[ch]
-            frame[ch] = x + wet * (replacement - x)
+            val presence = air[ch] - body[ch]
+            val top = x - air[ch]
+            val mids = body[ch] - bass[ch]
+            // Preserve the direct bass and most of the vocal band.
+            frame[ch] = x - sweep * (0.12 * mids + 0.38 * presence + 0.56 * top)
         }
         if (++gesture >= gestureLength) gesture = -1
     }

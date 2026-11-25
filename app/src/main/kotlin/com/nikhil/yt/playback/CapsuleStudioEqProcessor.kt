@@ -106,6 +106,8 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
     private var incoming: StudioEqCascade? = null
     private var targetCurve = emptyList<Int>()
     private var remaining = 0
+    private var pendingCurve: List<Int>? = null
+    private var pendingSmooth = false
     private var edgeRisk = 0.0
     private var sustainedPower = 0.0
     private var processingGuard = false
@@ -145,8 +147,15 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
     }
 
     fun setCurve(curve: List<Int>, smooth: Boolean = false) {
-        // Complete the current ramp before acting on a newer snapshot.
-        if (remaining != 0 || curve == targetCurve) return
+        // Keep the newest edit during an in-flight ramp and apply it at the
+        // sample boundary, not on a later decoder buffer.
+        if (remaining != 0) {
+            pendingCurve = curve.takeUnless { it == targetCurve }
+            pendingSmooth = smooth
+            return
+        }
+        pendingCurve = null
+        if (curve == targetCurve) return
         targetCurve = curve
         val bands = CAPSULE_STUDIO_FREQUENCIES_HZ.mapIndexedNotNull { i, frequency ->
             val gain = curve.getOrElse(i) { 0 }.coerceIn(capsuleStudioBandLimit(frequency))
@@ -237,7 +246,10 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
             val bandProtection = loadGuard.observe(dryFrame, frame, protection)
             val requiredGain = minOf(peakProtection, sustainedProtection, bandProtection)
             limiter.queue(frame, requiredGain, output)
-            if (remaining != 0 && --remaining == 0) current = incoming
+            if (remaining != 0 && --remaining == 0) {
+                current = incoming
+                pendingCurve?.let { setCurve(it, pendingSmooth) }
+            }
         }
         if (input.hasRemaining()) output.put(input)
     }
