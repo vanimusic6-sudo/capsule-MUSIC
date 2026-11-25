@@ -10,8 +10,8 @@ internal fun capsuleTapeRate(base: Float, variant: SoundStudioTempoVariant, mixe
     val amount = mixer.amount.coerceIn(0, 100) * 0.01f
     val floor = when (variant) {
         SoundStudioTempoVariant.NORMAL -> 0.91f
-        SoundStudioTempoVariant.SPEED_UP -> 1.018f
-        SoundStudioTempoVariant.SLOWED -> 0.875f
+        SoundStudioTempoVariant.SPEED_UP -> minOf(base, 1.06f)
+        SoundStudioTempoVariant.SLOWED -> minOf(base, 0.875f)
     }
     return (base * (1f - 0.085f * amount)).coerceAtLeast(floor)
 }

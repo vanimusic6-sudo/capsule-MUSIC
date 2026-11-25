@@ -16,12 +16,30 @@ internal data class CapsuleTrackSound(val levelsMb: List<Int>, val pace: Float) 
         val density = if (pace.isFinite()) pace.coerceIn(0f, 1f) else 0.76f
         val speed = when (variant) {
             SoundStudioTempoVariant.NORMAL -> 1f
-            SoundStudioTempoVariant.SPEED_UP -> 1.135f - 0.09f * density
-            SoundStudioTempoVariant.SLOWED -> 0.905f + 0.06f * density
+            SoundStudioTempoVariant.SPEED_UP -> 1.20f - 0.09f * density
+            SoundStudioTempoVariant.SLOWED -> 0.84f + 0.08f * density
         }
         // Media3 stretches time by speed / pitch. Coupled values use only
         // resampling and preserve the timing relationships inside the mix.
         return CapsuleTempoShape(speed, speed)
+    }
+
+    /** A small mastering curve, independent of the user's EQ and mixer. */
+    fun versionLevels(variant: SoundStudioTempoVariant): List<Int> {
+        if (variant == SoundStudioTempoVariant.NORMAL) return emptyList()
+        val density = if (pace.isFinite()) pace.coerceIn(0f, 1f) else 0.76f
+        val voicing = when (variant) {
+            SoundStudioTempoVariant.SPEED_UP -> listOf(-110, -45, 55, 145, -65)
+            SoundStudioTempoVariant.SLOWED -> listOf(-90, 145, 65, -105, -165)
+            SoundStudioTempoVariant.NORMAL -> return emptyList()
+        }
+        val strength = 1.0 - 0.35 * density
+        return voicing.mapIndexed { band, level ->
+            // Only apply the subtractive part of the source correction here;
+            // adaptive EQ, if selected, remains its own independent layer.
+            val excess = levelsMb.getOrElse(band) { 0 }.coerceIn(-350, 0)
+            (level * strength + 0.20 * excess).roundToInt()
+        }
     }
 
     companion object {
@@ -108,14 +126,15 @@ internal class CapsuleStudioAnalysis(private val sampleRate: Int, private val ch
     private fun result(): CapsuleTrackSound {
         val reference = doubleArrayOf(0.27, 0.27, 0.19, 0.19, 0.08)
         val total = energy.sum()
+        if (!total.isFinite() || total <= 0.0) return CapsuleTrackSound.NEUTRAL
         val authored = energy.mapIndexed { band, power ->
             val share = power / total
             val imbalance = 10 * log10((share + 0.012) / (reference[band] + 0.012))
             // A missing band is left alone. Only cut excess or gently support audible content.
             val support = (share / reference[band]).coerceIn(0.0, 1.0)
-            val correction = if (imbalance > 0.0) -44.0 * imbalance else -24.0 * imbalance * support
-            val ceiling = if (band == 0 || band == energy.lastIndex) 35.0 else 120.0
-            ((correction.coerceIn(-275.0, ceiling) / 5.0).roundToInt() * 5)
+            val correction = if (imbalance > 0.0) -64.0 * imbalance else -68.0 * imbalance * support
+            val ceiling = if (band == 0 || band == energy.lastIndex) 45.0 else 180.0
+            ((correction.coerceIn(-350.0, ceiling) / 5.0).roundToInt() * 5)
         }
         val density = attacks * 50.0 / audibleBlocks
         val pace = (density / 7.0 + activity / audibleBlocks * 0.55).coerceIn(0.0, 1.0)

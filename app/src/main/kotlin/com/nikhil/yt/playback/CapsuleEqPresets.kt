@@ -13,7 +13,7 @@ internal data class CapsuleStudioSound(
 
 internal enum class CapsuleEqPresets(val id: String, levels: List<Int>) {
     AUTO("studio_auto", List(CAPSULE_STUDIO_FREQUENCIES_HZ.size) { 0 }),
-    WARM("studio_warm", listOf(55, 370, 80, -50, -70)),
+    WARM("studio_warm", listOf(-45, 420, 110, -40, -100)),
     TAPE("studio_tape", List(CAPSULE_STUDIO_FREQUENCIES_HZ.size) { 0 }),
     CLEAR("studio_clear", listOf(-165, -155, 85, 280, 80));
 

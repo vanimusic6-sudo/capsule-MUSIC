@@ -76,7 +76,7 @@ class CapsuleStudioEqProcessorTest {
             assertEquals(0, pcm.position())
             val curve = checkNotNull(analysis.observe(pcm)).levelsMb
             assertTrue(curve.zip(CAPSULE_STUDIO_FREQUENCIES_HZ).all { (level, band) ->
-                level in capsuleStudioBandLimit(band) && level in -275..120
+                level in capsuleStudioBandLimit(band) && level in -350..180
             })
             curve
         }
@@ -109,9 +109,29 @@ class CapsuleStudioEqProcessorTest {
         assertTrue(busy.tempo(slow).speed > sparse.tempo(slow).speed + 0.02f)
         for (plan in listOf(sparse, busy)) for (variant in SoundStudioTempoVariant.entries) {
             val shape = plan.tempo(variant)
-            assertTrue(shape.speed in 0.90f..1.14f)
+            assertTrue(shape.speed in 0.84f..1.20f)
             assertEquals(shape.speed, shape.pitch, 0f)
         }
+    }
+
+    @Test fun trackVersionsHaveDistinctBoundedMasteringAndClock() {
+        val sparse = CapsuleTrackSound(listOf(-300, 80, 0, 10, -60), 0f)
+        val dense = CapsuleTrackSound(listOf(0, -200, 0, -100, 30), 1f)
+        val fast = SoundStudioTempoVariant.SPEED_UP
+        val slow = SoundStudioTempoVariant.SLOWED
+        assertTrue(sparse.versionLevels(SoundStudioTempoVariant.NORMAL).isEmpty())
+        assertTrue(sparse.versionLevels(fast) != dense.versionLevels(fast))
+        assertTrue(sparse.versionLevels(slow) != sparse.versionLevels(fast))
+        assertTrue(sparse.versionLevels(fast)[3] > sparse.versionLevels(fast)[1])
+        assertTrue(sparse.versionLevels(slow)[1] > sparse.versionLevels(slow)[3])
+        for (plan in listOf(sparse, dense)) for (variant in listOf(fast, slow)) {
+            assertEquals(5, plan.versionLevels(variant).size)
+            assertTrue(plan.versionLevels(variant).zip(CAPSULE_STUDIO_FREQUENCIES_HZ).all { (gain, hz) ->
+                gain in capsuleStudioBandLimit(hz)
+            })
+        }
+        assertEquals(0.84f, capsuleTapeRate(0.84f, slow,
+            CapsuleMixerSetting(CapsuleMixerEffect.TAPE, 100)), 0.00001f)
     }
 
     @Test fun tapeTransportFollowsOneBoundedRateAndRespectsTempoSelection() {
@@ -163,19 +183,21 @@ class CapsuleStudioEqProcessorTest {
         val sun = effect(CapsuleMixerEffect.SUN, fundamental)
         val harmonic = (rate / 2 until rate).sumOf { sun[it] * sin(2 * PI * 2_000 * it / rate) }
         val quadrature = (rate / 2 until rate).sumOf { sun[it] * kotlin.math.cos(2 * PI * 2_000 * it / rate) }
-        assertTrue("Generated second harmonic", kotlin.math.hypot(harmonic, quadrature) / (rate / 4) > 40.0)
+        assertTrue("No added second harmonic", kotlin.math.hypot(harmonic, quadrature) / (rate / 4) < 40.0)
+        assertTrue(rms(sun) < rms(fundamental))
         assertTrue(effect(CapsuleMixerEffect.SUN, fundamental, 0).contentEquals(fundamental))
 
         val deck = effect(CapsuleMixerEffect.VINYL, fundamental)
-        assertTrue(deck.contentEquals(fundamental))
+        assertTrue(!deck.contentEquals(fundamental))
+        assertTrue(rms(deck) < rms(fundamental))
         val soft = CapsuleStudioSound(mixer = CapsuleMixerSetting(CapsuleMixerEffect.SOFT, 100))
-        assertTrue("Lower-mid body is supported", toneGainDb(soft, rate, 410) > 0.75)
+        assertTrue("Lower-mid body is revealed", toneGainDb(soft, rate, 410) - toneGainDb(soft, rate, 6_000) > 2.0)
         for (mode in CapsuleMixerEffect.entries) {
             assertTrue(effect(mode, ShortArray(rate)).all { it == 0.toShort() })
         }
     }
 
-    @Test fun djRespondsToManualControlsAndBecomesDryOnRelease() {
+    @Test fun djRespondsToManualControlsAndReturnsToAutomaticOnRelease() {
         val rate = 48_000
         val left = ShortArray(rate) { i -> (16_000 * sin(2 * PI * 720 * i / rate)).roundToInt().toShort() }
         fun run(polarity: Int): ShortArray {
@@ -183,12 +205,15 @@ class CapsuleStudioEqProcessorTest {
             eq.setMixer(CapsuleMixerSetting(CapsuleMixerEffect.VINYL, 100))
             val stereo = ShortArray(2 * rate) { if (it % 2 == 0) (polarity * left[it / 2]).toShort() else 0 }
             val idle = render(eq, stereo.copyOfRange(0, rate))
-            assertTrue(idle.contentEquals(stereo.copyOfRange(0, rate)))
+            assertTrue(!idle.contentEquals(stereo.copyOfRange(0, rate)))
+            val automatic = render(CapsuleStudioEqFilter(rate, 2).apply {
+                setMixer(CapsuleMixerSetting(CapsuleMixerEffect.VINYL, 100))
+            }, stereo)
             eq.setDjControls(CapsuleDjControls(jog = -0.9f))
             val jog = render(eq, stereo.copyOfRange(rate, rate * 5 / 4))
             eq.setDjControls(CapsuleDjControls())
             val after = render(eq, stereo.copyOfRange(rate * 5 / 4, rate * 2))
-            assertTrue(after.copyOfRange(after.size - 200, after.size).contentEquals(stereo.takeLast(200).toShortArray()))
+            assertTrue(after.takeLast(200).zip(automatic.takeLast(200)).all { (a, b) -> abs(a - b) <= 12 })
             assertTrue(jog.indices.any { abs(jog[it] - stereo[rate + it]) > 9_000 })
             return jog
         }
@@ -227,7 +252,7 @@ class CapsuleStudioEqProcessorTest {
 
     @Test fun media3ProcessorReturnsLookaheadTailAtEndOfStream() {
         val processor = CapsuleStudioEqProcessor(
-            readSound = { CapsuleStudioSound(mixer = CapsuleMixerSetting(CapsuleMixerEffect.VINYL, 55)) },
+            readSound = { CapsuleStudioSound(adaptive = true) },
             readTrack = { null },
         )
         processor.configure(AudioFormat(48_000, 1, C.ENCODING_PCM_16BIT))

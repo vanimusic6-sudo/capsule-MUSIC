@@ -9,9 +9,9 @@ import kotlin.math.floor
 internal enum class CapsuleMixerEffect(val id: String, val defaultAmount: Int) {
     OFF("off", 0),
     TAPE("tape", 72),
-    SOFT("soft", 75),
-    SUN("sun", 65),
-    VINYL("vinyl", 55),
+    SOFT("soft", 82),
+    SUN("sun", 75),
+    VINYL("vinyl", 78),
 }
 
 internal data class CapsuleDjControls(
@@ -114,7 +114,7 @@ internal fun interface MixerEffect {
     fun apply(frame: DoubleArray, peak: Double, amount: Double, transition: Double)
 }
 
-/** Parallel lower-mid body and dynamic damping of the high-frequency excess. */
+/** Reveal lower-mid body by subtracting sub-bass and treble rather than adding gain. */
 private class SoftMixerEffect(rate: Int, channels: Int) : MixerEffect {
     private val bass = DoubleArray(channels)
     private val body = DoubleArray(channels)
@@ -136,56 +136,53 @@ private class SoftMixerEffect(rate: Int, channels: Int) : MixerEffect {
             treblePeak = maxOf(treblePeak, abs(x - trebleBase[channel]))
         }
         sheen += (treblePeak - sheen) * if (treblePeak > sheen) attack else release
-        val damping = 0.11 + 0.53 * ((sheen - 0.045) / 0.24).coerceIn(0.0, 1.0)
+        val damping = 0.27 + 0.33 * ((sheen - 0.035) / 0.22).coerceIn(0.0, 1.0)
         for (channel in frame.indices) {
             val x = frame[channel]
-            val warmth = body[channel] - bass[channel]
-            val softBody = 0.42 * warmth / (1.0 + 0.8 * abs(warmth))
-            frame[channel] = x * (1.0 - amount * 0.065) +
-                amount * (softBody - damping * (x - trebleBase[channel]))
+            // The body stays dry; attenuating the adjacent regions creates warmth
+            // without boosting long bass notes or compressing the entire recording.
+            frame[channel] = x - amount * (
+                0.24 * bass[channel] + 0.09 * (x - body[channel]) +
+                    damping * (x - trebleBase[channel])
+                )
         }
     }
 }
 
-/** Presence and harmonics from upper mids, with a shared allowance on loud passages. */
+/** Subtractive presence: no saturation, generated harmonics or treble makeup gain. */
 private class SunMixerEffect(rate: Int, channels: Int) : MixerEffect {
-    private val upper = DoubleArray(channels)
     private val lower = DoubleArray(channels)
-    private val harmonicLow = DoubleArray(channels)
-    private val harmonicHigh = DoubleArray(channels)
+    private val upper = DoubleArray(channels)
     private val airBase = DoubleArray(channels)
-    private val upperStep = mixerFilterStep(3_800.0, rate)
-    private val lowerStep = mixerFilterStep(680.0, rate)
-    private val airStep = mixerFilterStep(4_200.0, rate)
-    private val highPass = mixerFilterStep(1_500.0, rate)
-    private val lowPass = mixerFilterStep(5_800.0, rate)
-    private val attack = mixerEnvelopeStep(0.008, rate)
-    private val release = mixerEnvelopeStep(0.085, rate)
-    private var envelope = 0.0
+    private val lowerStep = mixerFilterStep(320.0, rate)
+    private val upperStep = mixerFilterStep(1_350.0, rate)
+    private val airStep = mixerFilterStep(4_500.0, rate)
+    private val attack = mixerEnvelopeStep(0.003, rate)
+    private val release = mixerEnvelopeStep(0.10, rate)
+    private var brightness = 0.0
 
     override fun apply(frame: DoubleArray, peak: Double, amount: Double, transition: Double) {
-        envelope += (peak - envelope) * if (peak > envelope) attack else release
-        val room = 1.0 - 0.53 * ((envelope - 0.18) / 0.48).coerceIn(0.0, 1.0)
+        var airPeak = 0.0
         for (channel in frame.indices) {
-            val sample = frame[channel]
-            upper[channel] += (sample - upper[channel]) * upperStep
-            lower[channel] += (sample - lower[channel]) * lowerStep
-            airBase[channel] += (sample - airBase[channel]) * airStep
-            val presence = upper[channel] - lower[channel]
-            val band = 6.4 * presence
-            val driven = band / (1.0 + 1.1 * abs(band))
-            val shaped = driven * (0.80 * driven + 0.29 * abs(driven))
-            harmonicLow[channel] += (shaped - harmonicLow[channel]) * highPass
-            val high = shaped - harmonicLow[channel]
-            harmonicHigh[channel] += (high - harmonicHigh[channel]) * lowPass
-            val air = sample - airBase[channel]
-            val wet = (0.40 * presence + 0.26 * air + 0.77 * harmonicHigh[channel]).coerceIn(-0.19, 0.19)
-            frame[channel] = sample * (1.0 - 0.10 * amount) + wet * amount * room
+            val x = frame[channel]
+            lower[channel] += (x - lower[channel]) * lowerStep
+            upper[channel] += (x - upper[channel]) * upperStep
+            airBase[channel] += (x - airBase[channel]) * airStep
+            airPeak = maxOf(airPeak, abs(x - airBase[channel]))
+        }
+        brightness += (airPeak - brightness) * if (airPeak > brightness) attack else release
+        val fatigue = ((brightness - 0.035) / 0.23).coerceIn(0.0, 1.0)
+        val bodyCut = 0.31 * (1.0 - 0.50 * fatigue)
+        val veilCut = 0.17 * (1.0 - 0.55 * fatigue)
+        for (channel in frame.indices) {
+            val x = frame[channel]
+            frame[channel] = x - amount * (bodyCut * lower[channel] +
+                veilCut * upper[channel] + 0.16 * fatigue * (x - airBase[channel]))
         }
     }
 }
 
-/** Momentary jog/brake over recent PCM. The neutral deck has no scheduled sounds. */
+/** Automatic club voicing with optional momentary manual jog/brake over recent PCM. */
 private class CapsuleDjDeck(
     private val rate: Int,
     private val channels: Int,
@@ -215,6 +212,11 @@ private class CapsuleDjDeck(
     private var brakeWeight = 0.0
     private var tonePosition = 0.0
     private var reachedEdge = false
+    private var fastEnvelope = 0.0
+    private var slowEnvelope = 0.0
+    private val punchAttack = mixerEnvelopeStep(0.006, rate)
+    private val punchRelease = mixerEnvelopeStep(0.055, rate)
+    private val grooveStep = mixerEnvelopeStep(0.18, rate)
 
     override fun apply(frame: DoubleArray, peak: Double, amount: Double, transition: Double) {
         val control = readControls()
@@ -266,6 +268,21 @@ private class CapsuleDjDeck(
             readAge = nextAge.coerceIn(0.007, 0.163)
             if (nextAge != readAge) reachedEdge = true
             if (reachedEdge && nextAge == readAge && touched && !control.brake) reachedEdge = false
+        }
+        // Automatic mode changes the mix even without touches. Keep the kick
+        // and transient intact, make space in the middle, and tame busy highs.
+        // No synthetic beat, periodic scratching, stereo widening or makeup gain.
+        fastEnvelope += (peak - fastEnvelope) * if (peak > fastEnvelope) punchAttack else punchRelease
+        slowEnvelope += (peak - slowEnvelope) * grooveStep
+        val punch = ((fastEnvelope - slowEnvelope) / maxOf(0.06, slowEnvelope)).coerceIn(0.0, 1.0)
+        val automatic = amount * (1.0 - mix) * (1.0 - abs(tonePosition).coerceAtMost(1.0))
+        for (channel in frame.indices) {
+            val dry = frame[channel]
+            val high = dry - bass[channel] - mid[channel]
+            frame[channel] = dry - automatic * (
+                0.08 * bass[channel] + (0.36 - 0.11 * punch) * mid[channel] +
+                    (0.15 - 0.09 * punch) * high + (0.055 - 0.045 * punch) * dry
+                )
         }
         if (abs(tonePosition) > 0.00001) {
             val strength = abs(tonePosition) * (0.52 + 0.48 * amount)

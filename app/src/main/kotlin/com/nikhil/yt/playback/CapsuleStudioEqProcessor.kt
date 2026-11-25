@@ -77,7 +77,13 @@ internal class CapsuleStudioEqProcessor(
             }
         }
         val tone = if (setting.adaptive) plan?.levelsMb.orEmpty() else setting.levelsMb
-        equalizer.setCurve(tone, smooth = setting.adaptive)
+        val version = (plan ?: CapsuleTrackSound.NEUTRAL).versionLevels(setting.tempo)
+        val combined = if (version.isEmpty()) tone else CAPSULE_STUDIO_FREQUENCIES_HZ.mapIndexed { band, hz ->
+            val limit = capsuleStudioBandLimit(hz)
+            val base = tone.getOrElse(band) { 0 }.coerceIn(limit)
+            (base + version.getOrElse(band) { 0 }).coerceIn(limit)
+        }
+        equalizer.setCurve(combined, smooth = setting.adaptive || version.isNotEmpty())
         equalizer.setMixer(setting.mixer)
         equalizer.setDjControls(setting.dj)
         equalizer.setProcessingGuard(setting.adaptive || setting.tempo != SoundStudioTempoVariant.NORMAL)
