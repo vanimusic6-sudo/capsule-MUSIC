@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capsule_studio_final_title">声音工作室</string>
+    <string name="capsule_studio_final_eq">均衡器</string>
+    <string name="capsule_studio_final_reset">重置</string>
+    <string name="capsule_studio_final_auto">自动</string>
+    <string name="capsule_studio_final_warm">温暖</string>
+    <string name="capsule_studio_final_clear">清晰</string>
+    <string name="capsule_studio_final_versions">版本</string>
+    <string name="capsule_studio_final_normal">普通</string>
+    <string name="capsule_studio_final_fast">加速</string>
+    <string name="capsule_studio_final_slow">减速</string>
+    <string name="capsule_studio_final_fast_hint">更快的节奏，略高的音调。</string>
+    <string name="capsule_studio_final_slow_hint">更慢的节奏，略低的音调和柔和的空间感。</string>
+    <string name="capsule_studio_final_listening">安全聆听</string>
+    <string name="capsule_studio_final_note">工作室限制数字峰值和过高的信号能量，但无法测量耳机实际声压或扬声器负载。请从低音量开始，并适时休息。</string>
+    <string name="capsule_studio_final_strength">强度</string>
+    <string name="capsule_studio_final_mixer">混音器</string>
+    <string name="capsule_studio_final_off">关闭</string>
+    <string name="capsule_studio_final_tape">磁带</string>
+    <string name="capsule_studio_final_soft">柔和</string>
+    <string name="capsule_studio_final_record">黑胶</string>
+    <string name="capsule_studio_final_dj">DJ</string>
+    <string name="capsule_studio_final_close">关闭</string>
+    <string name="capsule_studio_final_percent">%1$d%%</string>
+    <string name="capsule_studio_final_db">%1$s dB</string>
+</resources>

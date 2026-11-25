@@ -71,16 +71,18 @@ internal object CapsuleHeadphoneRouting {
                 )
             }.getOrNull()
         } else null
-        val outputs = routed ?: runCatching {
+        val outputs = routed?.takeIf { it.isNotEmpty() } ?: runCatching {
             manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).toList()
         }.getOrDefault(emptyList())
+        if (outputs.isEmpty()) return SAFE_LISTENING_RELATIVE_CEILING
         val headphone = outputs.firstOrNull { isHeadphoneType(it.type) }
             ?: return 1f
         val index = runCatching { manager.getStreamVolume(AudioManager.STREAM_MUSIC) }
-            .getOrDefault(0)
+            .getOrNull() ?: return SAFE_LISTENING_RELATIVE_CEILING
         val maximum = runCatching { manager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) }
             .getOrDefault(0)
-        if (maximum <= 0 || index <= 0) return 1f
+        if (maximum <= 0) return SAFE_LISTENING_RELATIVE_CEILING
+        if (index <= 0) return 1f
 
         val attenuation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             platformVolumeAmplitude(manager, index.coerceIn(0, maximum), headphone.type)

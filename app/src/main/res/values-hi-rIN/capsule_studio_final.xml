@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capsule_studio_final_title">ध्वनि स्टूडियो</string>
+    <string name="capsule_studio_final_eq">इक्वलाइज़र</string>
+    <string name="capsule_studio_final_reset">रीसेट करें</string>
+    <string name="capsule_studio_final_auto">ऑटो</string>
+    <string name="capsule_studio_final_warm">गर्माहट</string>
+    <string name="capsule_studio_final_clear">स्पष्टता</string>
+    <string name="capsule_studio_final_versions">संस्करण</string>
+    <string name="capsule_studio_final_normal">सामान्य</string>
+    <string name="capsule_studio_final_fast">तेज़</string>
+    <string name="capsule_studio_final_slow">धीमा</string>
+    <string name="capsule_studio_final_fast_hint">तेज़ लय और थोड़ी ऊँची स्वर-ऊँचाई।</string>
+    <string name="capsule_studio_final_slow_hint">धीमी लय, थोड़ा गहरा स्वर और हल्की गूँज।</string>
+    <string name="capsule_studio_final_listening">सुरक्षित सुनना</string>
+    <string name="capsule_studio_final_note">स्टूडियो डिजिटल पीक और अतिरिक्त सिग्नल ऊर्जा को सीमित करता है। यह हेडफ़ोन की ध्वनि तीव्रता या स्पीकर का भार नहीं मापता। कम आवाज़ से शुरू करें और बीच-बीच में विराम लें।</string>
+    <string name="capsule_studio_final_strength">तीव्रता</string>
+    <string name="capsule_studio_final_mixer">मिक्सर</string>
+    <string name="capsule_studio_final_off">बंद</string>
+    <string name="capsule_studio_final_tape">टेप</string>
+    <string name="capsule_studio_final_soft">कोमलता</string>
+    <string name="capsule_studio_final_record">विनाइल</string>
+    <string name="capsule_studio_final_dj">DJ</string>
+    <string name="capsule_studio_final_close">बंद करें</string>
+    <string name="capsule_studio_final_percent">%1$d%%</string>
+    <string name="capsule_studio_final_db">%1$s dB</string>
+</resources>

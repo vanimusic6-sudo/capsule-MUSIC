@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capsule_studio_final_title">Studio bunyi</string>
+    <string name="capsule_studio_final_eq">Penyama bunyi</string>
+    <string name="capsule_studio_final_reset">Tetapkan semula</string>
+    <string name="capsule_studio_final_auto">Auto</string>
+    <string name="capsule_studio_final_warm">Hangat</string>
+    <string name="capsule_studio_final_clear">Kejelasan</string>
+    <string name="capsule_studio_final_versions">Versi</string>
+    <string name="capsule_studio_final_normal">Biasa</string>
+    <string name="capsule_studio_final_fast">Dipercepat</string>
+    <string name="capsule_studio_final_slow">Diperlahankan</string>
+    <string name="capsule_studio_final_fast_hint">Rentak lebih pantas dan nada sedikit lebih tinggi.</string>
+    <string name="capsule_studio_final_slow_hint">Rentak lebih perlahan, nada lebih rendah dan suasana lembut.</string>
+    <string name="capsule_studio_final_listening">Pendengaran selamat</string>
+    <string name="capsule_studio_final_note">Studio mengehadkan puncak digital dan tenaga isyarat berlebihan. Ia tidak mengukur kelantangan fon kepala atau beban pembesar suara. Mulakan dengan kelantangan rendah dan berehat secara berkala.</string>
+    <string name="capsule_studio_final_strength">Keamatan</string>
+    <string name="capsule_studio_final_mixer">Pengadun</string>
+    <string name="capsule_studio_final_off">Mati</string>
+    <string name="capsule_studio_final_tape">Pita</string>
+    <string name="capsule_studio_final_soft">Kelembutan</string>
+    <string name="capsule_studio_final_record">Vinil</string>
+    <string name="capsule_studio_final_dj">DJ</string>
+    <string name="capsule_studio_final_close">Tutup</string>
+    <string name="capsule_studio_final_percent">%1$d%%</string>
+    <string name="capsule_studio_final_db">%1$s dB</string>
+</resources>

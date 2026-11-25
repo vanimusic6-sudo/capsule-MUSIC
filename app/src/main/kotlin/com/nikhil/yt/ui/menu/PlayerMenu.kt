@@ -16,7 +16,6 @@ import com.nikhil.yt.together.TogetherSessionState
 import com.nikhil.yt.ui.component.ArtistSelectionItem
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -76,6 +75,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -433,7 +433,7 @@ if (mediaMetadata.album != null) {
             item(key = "audio-tools", contentType = "menu-section") {
                 MenuSurfaceSection {
                     ListItem(
-                        headlineContent = { Text(stringResource(R.string.equalizer)) },
+                        headlineContent = { Text(stringResource(R.string.capsule_studio_final_eq)) },
                         leadingContent = {
                             Icon(painterResource(R.drawable.graphic_eq), contentDescription = null)
                         },
@@ -659,7 +659,8 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
         else -> List(bandCount) { 0 }
     }
     var draft by remember { mutableStateOf<List<Int>?>(null) }
-    LaunchedEffect(eqEnabled, selectedId, storedRaw) { draft = null }
+    var editing by remember { mutableStateOf(false) }
+    LaunchedEffect(eqEnabled, selectedId, storedRaw) { if (!editing || !eqEnabled) draft = null }
     val levels = draft ?: initial
     val displayed = levels.mapIndexed { i, gain -> gain.coerceIn(limits[i]) }
     DisposableEffect(service) { onDispose { service.cancelStudioPreview() } }
@@ -671,7 +672,8 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
     val band = selectedBand.coerceIn(0, bandCount - 1)
 
     val activeTempo = SoundStudioTempoVariant.resolve(tempo.takeIf { it.isNotEmpty() }, selectedId)
-    val equalizerLabel = stringResource(R.string.equalizer)
+    val equalizerLabel = stringResource(R.string.capsule_studio_final_eq)
+    var showListeningNote by rememberSaveable { mutableStateOf(false) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -680,12 +682,12 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.fillMaxSize()) {
                 TopAppBar(
-                    title = { Text(stringResource(R.string.eq_audio_studio)) },
+                    title = { Text(stringResource(R.string.capsule_studio_final_title)) },
                     navigationIcon = {
                         IconButton(onClick = onDismiss) {
                             Icon(
                                 painterResource(R.drawable.close),
-                                contentDescription = stringResource(R.string.dismiss),
+                                contentDescription = stringResource(R.string.capsule_studio_final_close),
                             )
                         }
                     },
@@ -700,7 +702,7 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                             overscrollEffect = null)
                         .padding(horizontal = 14.dp, vertical = 12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     EqSection(title = equalizerLabel, trailing = {
                         Switch(
@@ -728,6 +730,7 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                             onBandSelected = { selectedBand = it },
                             onLevelChanged = { band, gain ->
                                 if (eqEnabled && band in 0 until bandCount) {
+                                    editing = true
                                     val next = (draft ?: initial).toMutableList().apply {
                                         this[band] = gain.coerceIn(limits[band])
                                     }
@@ -736,6 +739,7 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                                 }
                             },
                             onFinished = { band, gain ->
+                                editing = false
                                 if (eqEnabled && band in 0 until bandCount) {
                                     val next = (draft ?: initial).toMutableList().apply {
                                         this[band] = gain.coerceIn(limits[band])
@@ -745,12 +749,13 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                                 }
                             },
                             onCancelled = {
+                                editing = false
                                 draft = null
                                 service.cancelStudioPreview()
                             },
                             graphHeight = if (with(LocalDensity.current) {
                                     LocalWindowInfo.current.containerSize.height.toDp() < 690.dp
-                                }) 132.dp else 158.dp,
+                                }) 140.dp else 176.dp,
                             editable = eqEnabled,
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                         )
@@ -760,28 +765,29 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(
-                                capsuleGraphHz(frequencies[band]),
-                                style = MaterialTheme.typography.titleSmall,
-                            )
-                            Text(
-                                formatDb(displayed[band] / 100f),
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                shape = RoundedCornerShape(12.dp),
+                            ) {
+                                Text(
+                                    capsuleGraphHz(frequencies[band]) + "  ·  " + formatDb(displayed[band] / 100f),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                )
+                            }
                             TextButton(enabled = eqEnabled, onClick = {
                                 draft = null
                                 service.selectSoundVersion(CAPSULE_STUDIO_MANUAL_ID, List(bandCount) { 0 })
-                            }) { Text(stringResource(R.string.reset)) }
+                            }) { Text(stringResource(R.string.capsule_studio_final_reset)) }
                         }
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 6.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             val versions = listOf(
-                                CapsuleEqPresets.AUTO to R.string.eq_studio_auto,
-                                CapsuleEqPresets.WARM to R.string.eq_studio_warm,
-                                CapsuleEqPresets.CLEAR to R.string.eq_studio_clear,
+                                CapsuleEqPresets.AUTO to R.string.capsule_studio_final_auto,
+                                CapsuleEqPresets.WARM to R.string.capsule_studio_final_warm,
+                                CapsuleEqPresets.CLEAR to R.string.capsule_studio_final_clear,
                             )
                             for ((version, label) in versions) {
                                 StudioChoice(stringResource(label), preset == version) {
@@ -794,15 +800,15 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
 
                     CapsuleMixerSection(service, mixerProfile)
 
-                    EqSection(title = stringResource(R.string.eq_tempo_versions)) {
+                    EqSection(title = stringResource(R.string.capsule_studio_final_versions)) {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             listOf(
-                                SoundStudioTempoVariant.NORMAL to stringResource(R.string.eq_tempo_normal),
-                                SoundStudioTempoVariant.SPEED_UP to "Speed Up",
-                                SoundStudioTempoVariant.SLOWED to "Slowed",
+                                SoundStudioTempoVariant.NORMAL to stringResource(R.string.capsule_studio_final_normal),
+                                SoundStudioTempoVariant.SPEED_UP to stringResource(R.string.capsule_studio_final_fast),
+                                SoundStudioTempoVariant.SLOWED to stringResource(R.string.capsule_studio_final_slow),
                             ).forEach { (variant, label) ->
                                 StudioChoice(label, activeTempo == variant) {
                                     service.selectTempoVariant(variant)
@@ -812,14 +818,25 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                         if (activeTempo != SoundStudioTempoVariant.NORMAL) {
                             Text(
                                 stringResource(if (activeTempo == SoundStudioTempoVariant.SPEED_UP)
-                                    R.string.eq_version_fast_hint else R.string.eq_version_slow_hint),
+                                    R.string.capsule_studio_final_fast_hint else R.string.capsule_studio_final_slow_hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                             )
                         }
                     }
-                    Spacer(Modifier.height(10.dp))
+                    TextButton(onClick = { showListeningNote = !showListeningNote }) {
+                        Text(stringResource(R.string.capsule_studio_final_listening))
+                    }
+                    if (showListeningNote) {
+                        Text(
+                            stringResource(R.string.capsule_studio_final_note),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.widthIn(max = 560.dp).padding(horizontal = 16.dp),
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
                 }
             }
         }
@@ -842,24 +859,22 @@ private fun CapsuleMixerSection(service: MusicService, profile: CapsuleMixerProf
         }
     }
     val strength = draft ?: setting.amount
-    val strengthLabel = stringResource(R.string.eq_mixer_strength)
-    EqSection(title = stringResource(R.string.eq_mixer_title), trailing = {
-        if (setting.effect != CapsuleMixerEffect.OFF) {
-            TextButton(onClick = {
-                draft = null
-                service.setSoundStudioMixer(CapsuleMixerEffect.OFF)
-            }) { Text(stringResource(R.string.eq_mixer_off)) }
-        }
+    val strengthLabel = stringResource(R.string.capsule_studio_final_strength)
+    EqSection(title = stringResource(R.string.capsule_studio_final_mixer), trailing = {
+        TextButton(enabled = setting.effect != CapsuleMixerEffect.OFF, onClick = {
+            draft = null
+            service.setSoundStudioMixer(CapsuleMixerEffect.OFF)
+        }) { Text(stringResource(R.string.capsule_studio_final_off)) }
     }) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             val effects = listOf(
-                CapsuleMixerEffect.TAPE to R.string.eq_mixer_tape,
-                CapsuleMixerEffect.SOFT to R.string.eq_mixer_soft,
-                CapsuleMixerEffect.SUN to R.string.eq_mixer_sun,
-                CapsuleMixerEffect.VINYL to R.string.eq_mixer_vinyl,
+                CapsuleMixerEffect.TAPE to R.string.capsule_studio_final_tape,
+                CapsuleMixerEffect.SOFT to R.string.capsule_studio_final_soft,
+                CapsuleMixerEffect.SUN to R.string.capsule_studio_final_record,
+                CapsuleMixerEffect.VINYL to R.string.capsule_studio_final_dj,
             )
             for (row in effects.chunked(2)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -873,26 +888,13 @@ private fun CapsuleMixerSection(service: MusicService, profile: CapsuleMixerProf
                     }
                 }
             }
-            val hint = when (setting.effect) {
-                CapsuleMixerEffect.TAPE -> R.string.eq_studio_tape_hint
-                CapsuleMixerEffect.SOFT -> R.string.eq_mixer_soft_hint
-                CapsuleMixerEffect.SUN -> R.string.eq_mixer_sun_hint
-                CapsuleMixerEffect.VINYL -> R.string.eq_mixer_vinyl_hint
-                CapsuleMixerEffect.OFF -> null
-            }
-            if (hint != null) {
-                Text(
-                    stringResource(hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp),
-                )
+            if (setting.effect != CapsuleMixerEffect.OFF) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text(strengthLabel, style = MaterialTheme.typography.labelLarge)
-                    Text(stringResource(R.string.eq_mixer_percent, strength),
+                    Text(stringResource(R.string.capsule_studio_final_percent, strength),
                         style = MaterialTheme.typography.labelLarge)
                 }
                 Slider(
@@ -934,8 +936,8 @@ private fun RowScope.StudioChoice(label: String, selected: Boolean, onClick: () 
     Surface(
         selected = selected,
         onClick = onClick,
-        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.weight(1f).heightIn(min = 52.dp),
+        shape = RoundedCornerShape(14.dp),
         color = if (selected) MaterialTheme.colorScheme.primaryContainer
             else MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
@@ -956,9 +958,6 @@ private fun EqSection(
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = RoundedCornerShape(24.dp),
-        border = BorderStroke(
-            1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.075f),
-        ),
         modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(vertical = 14.dp)) {
@@ -978,7 +977,15 @@ private fun EqSection(
     }
 }
 
+@Composable
 private fun formatDb(db: Float): String {
+    val locale = LocalConfiguration.current.locales[0]
+    val number = remember(locale) {
+        java.text.NumberFormat.getNumberInstance(locale).apply {
+            maximumFractionDigits = 1
+            minimumFractionDigits = 0
+        }
+    }
     val rounded = round(db * 10f) / 10f
-    return "${if (rounded > 0f) "+" else ""}$rounded dB"
+    return stringResource(R.string.capsule_studio_final_db, (if (rounded > 0f) "+" else "") + number.format(rounded.toDouble()))
 }

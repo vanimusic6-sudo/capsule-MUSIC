@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capsule_studio_final_title">Sound Studio</string>
+    <string name="capsule_studio_final_eq">Equalizer</string>
+    <string name="capsule_studio_final_reset">Reset</string>
+    <string name="capsule_studio_final_auto">Auto</string>
+    <string name="capsule_studio_final_warm">Warm</string>
+    <string name="capsule_studio_final_clear">Clarity</string>
+    <string name="capsule_studio_final_versions">Versions</string>
+    <string name="capsule_studio_final_normal">Normal</string>
+    <string name="capsule_studio_final_fast">Speed up</string>
+    <string name="capsule_studio_final_slow">Slowed</string>
+    <string name="capsule_studio_final_fast_hint">Faster rhythm and subtly higher pitch.</string>
+    <string name="capsule_studio_final_slow_hint">Slower rhythm, deeper pitch and soft ambience.</string>
+    <string name="capsule_studio_final_listening">Safe listening</string>
+    <string name="capsule_studio_final_note">Studio limits digital peaks and excessive signal energy. It cannot measure headphone loudness or speaker load. Start at low volume and take listening breaks.</string>
+    <string name="capsule_studio_final_strength">Intensity</string>
+    <string name="capsule_studio_final_mixer">Mixer</string>
+    <string name="capsule_studio_final_off">Off</string>
+    <string name="capsule_studio_final_tape">Tape</string>
+    <string name="capsule_studio_final_soft">Softness</string>
+    <string name="capsule_studio_final_record">Vinyl</string>
+    <string name="capsule_studio_final_dj">DJ</string>
+    <string name="capsule_studio_final_close">Close</string>
+    <string name="capsule_studio_final_percent">%1$d%%</string>
+    <string name="capsule_studio_final_db">%1$s dB</string>
+</resources>

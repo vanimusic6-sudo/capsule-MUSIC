@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capsule_studio_final_title">Студия звука</string>
+    <string name="capsule_studio_final_eq">Эквалайзер</string>
+    <string name="capsule_studio_final_reset">Сбросить</string>
+    <string name="capsule_studio_final_auto">Авто</string>
+    <string name="capsule_studio_final_warm">Тепло</string>
+    <string name="capsule_studio_final_clear">Ясность</string>
+    <string name="capsule_studio_final_versions">Версии</string>
+    <string name="capsule_studio_final_normal">Обычная</string>
+    <string name="capsule_studio_final_fast">Ускоренная</string>
+    <string name="capsule_studio_final_slow">Замедленная</string>
+    <string name="capsule_studio_final_fast_hint">Более быстрый ритм и слегка повышенный тон.</string>
+    <string name="capsule_studio_final_slow_hint">Медленный ритм, чуть более глубокий тон и мягкое пространство.</string>
+    <string name="capsule_studio_final_listening">Бережное прослушивание</string>
+    <string name="capsule_studio_final_note">Студия ограничивает цифровые пики и избыточную энергию сигнала, но не измеряет громкость в наушниках или нагрузку на динамики. Начинай с небольшой громкости и делай перерывы.</string>
+    <string name="capsule_studio_final_strength">Интенсивность</string>
+    <string name="capsule_studio_final_mixer">Микшер</string>
+    <string name="capsule_studio_final_off">Выключить</string>
+    <string name="capsule_studio_final_tape">Лента</string>
+    <string name="capsule_studio_final_soft">Мягкость</string>
+    <string name="capsule_studio_final_record">Винил</string>
+    <string name="capsule_studio_final_dj">DJ</string>
+    <string name="capsule_studio_final_close">Закрыть</string>
+    <string name="capsule_studio_final_percent">%1$d%%</string>
+    <string name="capsule_studio_final_db">%1$s дБ</string>
+</resources>

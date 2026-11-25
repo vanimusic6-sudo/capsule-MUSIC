@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capsule_studio_final_title">Estudio de sonido</string>
+    <string name="capsule_studio_final_eq">Ecualizador</string>
+    <string name="capsule_studio_final_reset">Restablecer</string>
+    <string name="capsule_studio_final_auto">Auto</string>
+    <string name="capsule_studio_final_warm">Calidez</string>
+    <string name="capsule_studio_final_clear">Claridad</string>
+    <string name="capsule_studio_final_versions">Versiones</string>
+    <string name="capsule_studio_final_normal">Normal</string>
+    <string name="capsule_studio_final_fast">Acelerada</string>
+    <string name="capsule_studio_final_slow">Ralentizada</string>
+    <string name="capsule_studio_final_fast_hint">Ritmo más rápido y tono ligeramente más alto.</string>
+    <string name="capsule_studio_final_slow_hint">Ritmo más lento, tono más grave y ambiente suave.</string>
+    <string name="capsule_studio_final_listening">Escucha segura</string>
+    <string name="capsule_studio_final_note">El estudio limita los picos digitales y el exceso de energía de la señal. No mide el volumen de los auriculares ni la carga de los altavoces. Empieza con un volumen bajo y haz pausas.</string>
+    <string name="capsule_studio_final_strength">Intensidad</string>
+    <string name="capsule_studio_final_mixer">Mezclador</string>
+    <string name="capsule_studio_final_off">Desactivar</string>
+    <string name="capsule_studio_final_tape">Cinta</string>
+    <string name="capsule_studio_final_soft">Suavidad</string>
+    <string name="capsule_studio_final_record">Vinilo</string>
+    <string name="capsule_studio_final_dj">DJ</string>
+    <string name="capsule_studio_final_close">Cerrar</string>
+    <string name="capsule_studio_final_percent">%1$d%%</string>
+    <string name="capsule_studio_final_db">%1$s dB</string>
+</resources>

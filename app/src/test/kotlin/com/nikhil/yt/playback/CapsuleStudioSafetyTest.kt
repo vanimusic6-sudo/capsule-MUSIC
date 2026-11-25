@@ -42,4 +42,39 @@ class CapsuleStudioSafetyTest {
             }
         }
     }
+    @Test fun loudChannelCannotMaskExcessEnergyInAnotherChannel() {
+        val rate = 48000
+        for (hz in listOf(50, 8000)) {
+            val guard = CapsuleStudioLoadGuard(rate, 2)
+            val dry = DoubleArray(2)
+            val wet = DoubleArray(2)
+            var gain = 1.0
+            repeat(rate * 3) { i ->
+                val x = sin(2 * PI * hz * i / rate)
+                dry[0] = 0.65 * x
+                wet[0] = dry[0]
+                dry[1] = 0.10 * x
+                wet[1] = 0.40 * x
+                gain = guard.observe(dry, wet, 1.0)
+            }
+            assertTrue("Hidden excess at $hz Hz: $gain", gain < 0.4)
+        }
+    }
+
+    @Test fun sustainedDcIsAttenuatedWithoutTouchingOrdinaryBass() {
+        val rate = 48000
+        val guard = CapsuleStudioLoadGuard(rate, 1)
+        val dry = doubleArrayOf(0.4)
+        val wet = doubleArrayOf(0.4)
+        var gain = 1.0
+        repeat(rate * 3) { gain = guard.observe(dry, wet, 1.0) }
+        assertTrue(gain < 0.15)
+        val ordinary = CapsuleStudioLoadGuard(rate, 1)
+        repeat(rate * 2) { i ->
+            dry[0] = 0.4 * sin(2 * PI * 60 * i / rate)
+            wet[0] = dry[0]
+            gain = ordinary.observe(dry, wet, 1.0)
+        }
+        assertTrue(gain > 0.99)
+    }
 }

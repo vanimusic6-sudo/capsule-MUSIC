@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capsule_studio_final_title">ശബ്ദ സ്റ്റുഡിയോ</string>
+    <string name="capsule_studio_final_eq">ഇക്വലൈസർ</string>
+    <string name="capsule_studio_final_reset">പുനഃക്രമീകരിക്കുക</string>
+    <string name="capsule_studio_final_auto">ഓട്ടോ</string>
+    <string name="capsule_studio_final_warm">ഊഷ്മളത</string>
+    <string name="capsule_studio_final_clear">വ്യക്തത</string>
+    <string name="capsule_studio_final_versions">പതിപ്പുകൾ</string>
+    <string name="capsule_studio_final_normal">സാധാരണം</string>
+    <string name="capsule_studio_final_fast">വേഗത്തിൽ</string>
+    <string name="capsule_studio_final_slow">പതുക്കെ</string>
+    <string name="capsule_studio_final_fast_hint">വേഗമേറിയ താളവും അല്പം ഉയർന്ന ശ്രുതിയും.</string>
+    <string name="capsule_studio_final_slow_hint">പതുക്കെയുള്ള താളം, താഴ്ന്ന ശ്രുതി, മൃദുവായ പ്രതിധ്വനി.</string>
+    <string name="capsule_studio_final_listening">സുരക്ഷിത ശ്രവണം</string>
+    <string name="capsule_studio_final_note">സ്റ്റുഡിയോ ഡിജിറ്റൽ പീക്കുകളും അധിക സിഗ്നൽ ഊർജവും നിയന്ത്രിക്കുന്നു. ഹെഡ്‌ഫോണിലെ ശബ്ദനിലയോ സ്പീക്കറിലെ ഭാരമോ അളക്കുന്നില്ല. കുറഞ്ഞ ശബ്ദനിലയിൽ തുടങ്ങുകയും ഇടവേളകൾ എടുക്കുകയും ചെയ്യുക.</string>
+    <string name="capsule_studio_final_strength">തീവ്രത</string>
+    <string name="capsule_studio_final_mixer">മിക്സർ</string>
+    <string name="capsule_studio_final_off">ഓഫ്</string>
+    <string name="capsule_studio_final_tape">ടേപ്പ്</string>
+    <string name="capsule_studio_final_soft">മൃദുത്വം</string>
+    <string name="capsule_studio_final_record">വിനൈൽ</string>
+    <string name="capsule_studio_final_dj">DJ</string>
+    <string name="capsule_studio_final_close">അടയ്ക്കുക</string>
+    <string name="capsule_studio_final_percent">%1$d%%</string>
+    <string name="capsule_studio_final_db">%1$s dB</string>
+</resources>

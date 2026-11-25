@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capsule_studio_final_title">אולפן סאונד</string>
+    <string name="capsule_studio_final_eq">אקולייזר</string>
+    <string name="capsule_studio_final_reset">איפוס</string>
+    <string name="capsule_studio_final_auto">אוטומטי</string>
+    <string name="capsule_studio_final_warm">חמימות</string>
+    <string name="capsule_studio_final_clear">בהירות</string>
+    <string name="capsule_studio_final_versions">גרסאות</string>
+    <string name="capsule_studio_final_normal">רגילה</string>
+    <string name="capsule_studio_final_fast">מואצת</string>
+    <string name="capsule_studio_final_slow">מואטת</string>
+    <string name="capsule_studio_final_fast_hint">קצב מהיר יותר וגובה צליל מעט גבוה יותר.</string>
+    <string name="capsule_studio_final_slow_hint">קצב איטי יותר, צליל עמוק יותר ואווירה רכה.</string>
+    <string name="capsule_studio_final_listening">האזנה בטוחה</string>
+    <string name="capsule_studio_final_note">האולפן מגביל שיאים דיגיטליים ואנרגיית אות עודפת. הוא אינו מודד את עוצמת השמע באוזניות או את העומס על הרמקולים. התחילו בעוצמה נמוכה וקחו הפסקות.</string>
+    <string name="capsule_studio_final_strength">עוצמה</string>
+    <string name="capsule_studio_final_mixer">מיקסר</string>
+    <string name="capsule_studio_final_off">כיבוי</string>
+    <string name="capsule_studio_final_tape">סרט מגנטי</string>
+    <string name="capsule_studio_final_soft">רכות</string>
+    <string name="capsule_studio_final_record">ויניל</string>
+    <string name="capsule_studio_final_dj">DJ</string>
+    <string name="capsule_studio_final_close">סגירה</string>
+    <string name="capsule_studio_final_percent">%1$d%%</string>
+    <string name="capsule_studio_final_db">%1$s dB</string>
+</resources>

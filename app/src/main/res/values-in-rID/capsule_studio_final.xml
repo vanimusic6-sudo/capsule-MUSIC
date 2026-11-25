@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capsule_studio_final_title">Studio suara</string>
+    <string name="capsule_studio_final_eq">Ekualiser</string>
+    <string name="capsule_studio_final_reset">Atur ulang</string>
+    <string name="capsule_studio_final_auto">Otomatis</string>
+    <string name="capsule_studio_final_warm">Hangat</string>
+    <string name="capsule_studio_final_clear">Jernih</string>
+    <string name="capsule_studio_final_versions">Versi</string>
+    <string name="capsule_studio_final_normal">Normal</string>
+    <string name="capsule_studio_final_fast">Dipercepat</string>
+    <string name="capsule_studio_final_slow">Diperlambat</string>
+    <string name="capsule_studio_final_fast_hint">Irama lebih cepat dan nada sedikit lebih tinggi.</string>
+    <string name="capsule_studio_final_slow_hint">Irama lebih lambat, nada lebih rendah, dan suasana lembut.</string>
+    <string name="capsule_studio_final_listening">Mendengarkan dengan aman</string>
+    <string name="capsule_studio_final_note">Studio membatasi puncak digital dan energi sinyal berlebih. Studio tidak mengukur kenyaringan headphone atau beban speaker. Mulai dengan volume rendah dan beristirahatlah secara berkala.</string>
+    <string name="capsule_studio_final_strength">Intensitas</string>
+    <string name="capsule_studio_final_mixer">Mixer</string>
+    <string name="capsule_studio_final_off">Nonaktif</string>
+    <string name="capsule_studio_final_tape">Pita</string>
+    <string name="capsule_studio_final_soft">Lembut</string>
+    <string name="capsule_studio_final_record">Vinil</string>
+    <string name="capsule_studio_final_dj">DJ</string>
+    <string name="capsule_studio_final_close">Tutup</string>
+    <string name="capsule_studio_final_percent">%1$d%%</string>
+    <string name="capsule_studio_final_db">%1$s dB</string>
+</resources>

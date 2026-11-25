@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capsule_studio_final_title">Phòng thu âm thanh</string>
+    <string name="capsule_studio_final_eq">Bộ cân bằng</string>
+    <string name="capsule_studio_final_reset">Đặt lại</string>
+    <string name="capsule_studio_final_auto">Tự động</string>
+    <string name="capsule_studio_final_warm">Ấm áp</string>
+    <string name="capsule_studio_final_clear">Trong trẻo</string>
+    <string name="capsule_studio_final_versions">Phiên bản</string>
+    <string name="capsule_studio_final_normal">Bình thường</string>
+    <string name="capsule_studio_final_fast">Tăng tốc</string>
+    <string name="capsule_studio_final_slow">Giảm tốc</string>
+    <string name="capsule_studio_final_fast_hint">Nhịp nhanh hơn và cao độ hơi cao hơn.</string>
+    <string name="capsule_studio_final_slow_hint">Nhịp chậm hơn, cao độ trầm hơn và âm vang nhẹ.</string>
+    <string name="capsule_studio_final_listening">Nghe an toàn</string>
+    <string name="capsule_studio_final_note">Phòng thu giới hạn đỉnh tín hiệu số và năng lượng tín hiệu quá mức. Không đo được độ lớn âm thanh trong tai nghe hoặc tải của loa. Hãy bắt đầu với âm lượng thấp và nghỉ giải lao.</string>
+    <string name="capsule_studio_final_strength">Cường độ</string>
+    <string name="capsule_studio_final_mixer">Bộ trộn</string>
+    <string name="capsule_studio_final_off">Tắt</string>
+    <string name="capsule_studio_final_tape">Băng từ</string>
+    <string name="capsule_studio_final_soft">Êm dịu</string>
+    <string name="capsule_studio_final_record">Đĩa than</string>
+    <string name="capsule_studio_final_dj">DJ</string>
+    <string name="capsule_studio_final_close">Đóng</string>
+    <string name="capsule_studio_final_percent">%1$d%%</string>
+    <string name="capsule_studio_final_db">%1$s dB</string>
+</resources>

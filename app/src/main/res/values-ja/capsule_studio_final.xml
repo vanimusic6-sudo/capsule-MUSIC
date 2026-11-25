@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capsule_studio_final_title">サウンドスタジオ</string>
+    <string name="capsule_studio_final_eq">イコライザー</string>
+    <string name="capsule_studio_final_reset">リセット</string>
+    <string name="capsule_studio_final_auto">自動</string>
+    <string name="capsule_studio_final_warm">暖かさ</string>
+    <string name="capsule_studio_final_clear">明瞭さ</string>
+    <string name="capsule_studio_final_versions">バージョン</string>
+    <string name="capsule_studio_final_normal">通常</string>
+    <string name="capsule_studio_final_fast">スピードアップ</string>
+    <string name="capsule_studio_final_slow">スロー</string>
+    <string name="capsule_studio_final_fast_hint">速いリズムと少し高い音程。</string>
+    <string name="capsule_studio_final_slow_hint">ゆっくりしたリズム、少し低い音程、やわらかな残響。</string>
+    <string name="capsule_studio_final_listening">安全なリスニング</string>
+    <string name="capsule_studio_final_note">デジタルピークと過剰な信号エネルギーを抑えますが、ヘッドホンの音圧やスピーカーへの負荷は測定できません。小さな音量から始め、休憩を取りましょう。</string>
+    <string name="capsule_studio_final_strength">強さ</string>
+    <string name="capsule_studio_final_mixer">ミキサー</string>
+    <string name="capsule_studio_final_off">オフ</string>
+    <string name="capsule_studio_final_tape">テープ</string>
+    <string name="capsule_studio_final_soft">柔らかさ</string>
+    <string name="capsule_studio_final_record">レコード</string>
+    <string name="capsule_studio_final_dj">DJ</string>
+    <string name="capsule_studio_final_close">閉じる</string>
+    <string name="capsule_studio_final_percent">%1$d%%</string>
+    <string name="capsule_studio_final_db">%1$s dB</string>
+</resources>

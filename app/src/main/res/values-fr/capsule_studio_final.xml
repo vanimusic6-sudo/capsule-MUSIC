@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capsule_studio_final_title">Studio audio</string>
+    <string name="capsule_studio_final_eq">Égaliseur</string>
+    <string name="capsule_studio_final_reset">Réinitialiser</string>
+    <string name="capsule_studio_final_auto">Auto</string>
+    <string name="capsule_studio_final_warm">Chaleur</string>
+    <string name="capsule_studio_final_clear">Clarté</string>
+    <string name="capsule_studio_final_versions">Versions</string>
+    <string name="capsule_studio_final_normal">Normale</string>
+    <string name="capsule_studio_final_fast">Accélérée</string>
+    <string name="capsule_studio_final_slow">Ralentie</string>
+    <string name="capsule_studio_final_fast_hint">Rythme plus rapide et tonalité légèrement plus aiguë.</string>
+    <string name="capsule_studio_final_slow_hint">Rythme plus lent, tonalité plus grave et ambiance douce.</string>
+    <string name="capsule_studio_final_listening">Écoute sûre</string>
+    <string name="capsule_studio_final_note">Le studio limite les crêtes numériques et les excès d’énergie du signal. Il ne mesure ni le niveau sonore du casque ni la charge des haut-parleurs. Commence à faible volume et fais des pauses.</string>
+    <string name="capsule_studio_final_strength">Intensité</string>
+    <string name="capsule_studio_final_mixer">Mixeur</string>
+    <string name="capsule_studio_final_off">Désactiver</string>
+    <string name="capsule_studio_final_tape">Bande</string>
+    <string name="capsule_studio_final_soft">Douceur</string>
+    <string name="capsule_studio_final_record">Vinyle</string>
+    <string name="capsule_studio_final_dj">DJ</string>
+    <string name="capsule_studio_final_close">Fermer</string>
+    <string name="capsule_studio_final_percent">%1$d%%</string>
+    <string name="capsule_studio_final_db">%1$s dB</string>
+</resources>

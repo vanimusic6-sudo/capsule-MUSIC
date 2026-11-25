@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capsule_studio_final_title">Geluidsstudio</string>
+    <string name="capsule_studio_final_eq">Equalizer</string>
+    <string name="capsule_studio_final_reset">Herstellen</string>
+    <string name="capsule_studio_final_auto">Auto</string>
+    <string name="capsule_studio_final_warm">Warmte</string>
+    <string name="capsule_studio_final_clear">Helderheid</string>
+    <string name="capsule_studio_final_versions">Versies</string>
+    <string name="capsule_studio_final_normal">Normaal</string>
+    <string name="capsule_studio_final_fast">Versneld</string>
+    <string name="capsule_studio_final_slow">Vertraagd</string>
+    <string name="capsule_studio_final_fast_hint">Sneller ritme en een iets hogere toonhoogte.</string>
+    <string name="capsule_studio_final_slow_hint">Langzamer ritme, lagere toonhoogte en zachte ruimtelijkheid.</string>
+    <string name="capsule_studio_final_listening">Veilig luisteren</string>
+    <string name="capsule_studio_final_note">De studio begrenst digitale pieken en overtollige signaalenergie. Hij meet geen hoofdtelefoonvolume of luidsprekerbelasting. Begin op laag volume en neem luisterpauzes.</string>
+    <string name="capsule_studio_final_strength">Intensiteit</string>
+    <string name="capsule_studio_final_mixer">Mixer</string>
+    <string name="capsule_studio_final_off">Uit</string>
+    <string name="capsule_studio_final_tape">Tape</string>
+    <string name="capsule_studio_final_soft">Zachtheid</string>
+    <string name="capsule_studio_final_record">Vinyl</string>
+    <string name="capsule_studio_final_dj">DJ</string>
+    <string name="capsule_studio_final_close">Sluiten</string>
+    <string name="capsule_studio_final_percent">%1$d%%</string>
+    <string name="capsule_studio_final_db">%1$s dB</string>
+</resources>

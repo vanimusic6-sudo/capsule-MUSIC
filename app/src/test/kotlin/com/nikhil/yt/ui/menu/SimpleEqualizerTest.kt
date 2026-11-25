@@ -35,6 +35,10 @@ class SimpleEqualizerTest {
         assertFalse(dialog.contains("eq_clean_headroom"))
         assertFalse(dialog.contains("CapsuleDjControlsPanel"))
         assertFalse(dialog.contains("eq_dj_jog"))
+        assertFalse(dialog.contains("eq_mixer_sun_hint"))
+        assertFalse(dialog.contains("eq_mixer_vinyl_hint"))
+        assertTrue(dialog.contains("R.string.capsule_studio_final_fast"))
+        assertTrue(dialog.contains("R.string.capsule_studio_final_slow"))
         assertTrue(dialog.contains("editable = eqEnabled"))
         assertTrue(dialog.contains("selectSoundVersion(CAPSULE_STUDIO_MANUAL_ID, next)"))
         assertFalse(dialog.contains("eq_version_original"))
@@ -97,6 +101,32 @@ class SimpleEqualizerTest {
         assertEquals(SoundStudioTempoVariant.NORMAL, prefs.readSoundStudioTempoVariant())
         prefs[SoundStudioTempoVariantKey] = "invalid"
         assertEquals(SoundStudioTempoVariant.NORMAL, prefs.readSoundStudioTempoVariant())
+    }
+
+    @Test fun everyStudioLocaleProvidesAllVisibleLabelsAndSafeListeningNote() {
+        val res = File("src/main/res")
+        val files = res.listFiles().orEmpty().filter { it.isDirectory && it.name.startsWith("values") }
+            .map { File(it, "capsule_studio_final.xml") }
+        val pattern = Regex("""name="(capsule_studio_final_[a-z_]+)"""")
+        val expected = pattern.findAll(File(res, "values/capsule_studio_final.xml").readText())
+            .map { it.groupValues[1] }.toSet()
+        assertEquals(24, expected.size)
+        assertTrue(files.size >= 24)
+        for (file in files) {
+            assertTrue("Missing studio locale: " + file, file.isFile)
+            val xml = file.readText()
+            val names = pattern.findAll(xml).map { it.groupValues[1] }.toList()
+            assertEquals(file.path, expected, names.toSet())
+            assertEquals(file.path, expected.size, names.size)
+            assertTrue(xml.contains("%1\$d%%"))
+            assertTrue(xml.contains("%1\$s"))
+        }
+        val dialog = file("PlayerMenu").substringAfter("fun EqualizerDialog(")
+        val references = Regex("""R\.string\.(capsule_studio_final_[a-z_]+)""")
+            .findAll(dialog).map { it.groupValues[1] }.toSet()
+        assertTrue(expected.containsAll(references))
+        assertFalse(dialog.contains("eq_mixer_soft_hint"))
+        assertFalse(dialog.contains("eq_studio_tape_hint"))
     }
 
     @Test fun hardwareAwareGraphStillHandlesTouchAndLabels() {

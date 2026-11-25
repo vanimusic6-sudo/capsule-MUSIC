@@ -17,17 +17,19 @@ internal class CapsuleStudioLoadGuard(rate: Int, channels: Int) {
     private val powerStep = 1.0 - exp(-1.0 / (rate * 0.18))
     private val attack = 1.0 - exp(-1.0 / (rate * 0.055))
     private val release = 1.0 - exp(-1.0 / (rate * 0.45))
-    private var dryBass = 0.0
-    private var wetBass = 0.0
-    private var dryTreble = 0.0
-    private var wetTreble = 0.0
+    private val dryBass = DoubleArray(channels)
+    private val wetBass = DoubleArray(channels)
+    private val dryTreble = DoubleArray(channels)
+    private val wetTreble = DoubleArray(channels)
+    // Slow mean detects sustained DC without adding a filter in the music passband.
+    private val dc = DoubleArray(channels)
+    private val dcStep = 1.0 - exp(-1.0 / (rate * 0.5))
     private var gain = 1.0
     private val updateEvery = (rate / 250).coerceAtLeast(1)
     private var countdown = 0
     private var target = 1.0
 
     fun observe(dry: DoubleArray, wet: DoubleArray, protection: Double): Double {
-        var dl = 0.0; var wl = 0.0; var dh = 0.0; var wh = 0.0
         for (ch in dry.indices) {
             val x = dry[ch]
             val y = wet[ch]
@@ -36,20 +38,23 @@ internal class CapsuleStudioLoadGuard(rate: Int, channels: Int) {
             val d = x - dryHighBase[ch]; val w = y - wetHighBase[ch]
             dryHighBase[ch] += d * highStep
             wetHighBase[ch] += w * highStep
-            dl = maxOf(dl, dryLow[ch] * dryLow[ch])
-            wl = maxOf(wl, wetLow[ch] * wetLow[ch])
-            dh = maxOf(dh, d * d); wh = maxOf(wh, w * w)
+            dryBass[ch] += (dryLow[ch] * dryLow[ch] - dryBass[ch]) * powerStep
+            wetBass[ch] += (wetLow[ch] * wetLow[ch] - wetBass[ch]) * powerStep
+            dryTreble[ch] += (d * d - dryTreble[ch]) * powerStep
+            wetTreble[ch] += (w * w - wetTreble[ch]) * powerStep
+            dc[ch] += (y - dc[ch]) * dcStep
         }
-        dryBass += (dl - dryBass) * powerStep
-        wetBass += (wl - wetBass) * powerStep
-        dryTreble += (dh - dryTreble) * powerStep
-        wetTreble += (wh - wetTreble) * powerStep
         if (countdown-- <= 0) {
             countdown = updateEvery - 1
             // Allow modest musical redistribution, not sustained added extreme-band power.
-            val bass = sqrt((1.26 * dryBass + 0.0009) / maxOf(0.0009, wetBass)).coerceAtMost(1.0)
-            val treble = sqrt((1.26 * dryTreble + 0.0009) / maxOf(0.0009, wetTreble)).coerceAtMost(1.0)
-            target = minOf(bass, treble)
+            target = 1.0
+            for (ch in dry.indices) {
+                val bass = sqrt((1.26 * dryBass[ch] + 0.0009) / maxOf(0.0009, wetBass[ch])).coerceAtMost(1.0)
+                val treble = sqrt((1.26 * dryTreble[ch] + 0.0009) / maxOf(0.0009, wetTreble[ch])).coerceAtMost(1.0)
+                val dcLimit = 0.05 / maxOf(0.05, abs(dc[ch]))
+                // Compare each channel against itself, then link the gain.
+                target = minOf(target, bass, treble, dcLimit)
+            }
         }
         val goal = 1.0 - protection.coerceIn(0.0, 1.0) * (1.0 - target)
         gain += (goal - gain) * if (goal < gain) attack else release

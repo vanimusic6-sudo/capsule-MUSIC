@@ -2083,7 +2083,7 @@ class MusicService :
                 audioManager, enabled = true, overrideUntilMs = 0L,
                 nowMs = System.currentTimeMillis(),
             )
-        }.getOrDefault(1f)
+        }.getOrDefault(SAFE_LISTENING_RELATIVE_CEILING)
         playbackFocusController.initialize()
 
         mediaLibrarySessionCallback.apply {
@@ -2267,7 +2267,7 @@ class MusicService :
                             audioManager, enabled, overrideUntilMs,
                             System.currentTimeMillis(),
                         )
-                    }.getOrDefault(1f)
+                    }.getOrDefault(SAFE_LISTENING_RELATIVE_CEILING)
                 } else 1f
                 val from = hearingCareMaxAppVolume.value
                 if (kotlin.math.abs(from - target) > 0.002f) {

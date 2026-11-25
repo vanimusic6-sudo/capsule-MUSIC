@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="capsule_studio_final_title">사운드 스튜디오</string>
+    <string name="capsule_studio_final_eq">이퀄라이저</string>
+    <string name="capsule_studio_final_reset">초기화</string>
+    <string name="capsule_studio_final_auto">자동</string>
+    <string name="capsule_studio_final_warm">따뜻함</string>
+    <string name="capsule_studio_final_clear">선명함</string>
+    <string name="capsule_studio_final_versions">버전</string>
+    <string name="capsule_studio_final_normal">일반</string>
+    <string name="capsule_studio_final_fast">빠르게</string>
+    <string name="capsule_studio_final_slow">느리게</string>
+    <string name="capsule_studio_final_fast_hint">빠른 리듬과 약간 높은 음정.</string>
+    <string name="capsule_studio_final_slow_hint">느린 리듬, 조금 낮은 음정과 부드러운 공간감.</string>
+    <string name="capsule_studio_final_listening">안전한 청취</string>
+    <string name="capsule_studio_final_note">스튜디오는 디지털 피크와 과도한 신호 에너지를 제한합니다. 헤드폰의 실제 음량이나 스피커 부하는 측정하지 못합니다. 낮은 음량으로 시작하고 중간에 휴식하세요.</string>
+    <string name="capsule_studio_final_strength">강도</string>
+    <string name="capsule_studio_final_mixer">믹서</string>
+    <string name="capsule_studio_final_off">끄기</string>
+    <string name="capsule_studio_final_tape">테이프</string>
+    <string name="capsule_studio_final_soft">부드러움</string>
+    <string name="capsule_studio_final_record">바이닐</string>
+    <string name="capsule_studio_final_dj">DJ</string>
+    <string name="capsule_studio_final_close">닫기</string>
+    <string name="capsule_studio_final_percent">%1$d%%</string>
+    <string name="capsule_studio_final_db">%1$s dB</string>
+</resources>

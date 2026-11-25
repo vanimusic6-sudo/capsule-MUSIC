@@ -16,9 +16,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -37,7 +40,7 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
 internal fun capsuleEqualizerBandAt(x: Float, width: Float, count: Int, inset: Float): Int {
-    if (count < 2 || width <= inset * 2f) return 0
+    if (count < 2 || !x.isFinite() || !width.isFinite() || !inset.isFinite() || width <= inset * 2f) return 0
     return (((x - inset) / (width - inset * 2f)).coerceIn(0f, 1f) * (count - 1))
         .roundToInt().coerceIn(0, count - 1)
 }
@@ -137,7 +140,7 @@ internal fun CapsuleEqualizerGraph(
     graphHeight: Dp = 214.dp,
     editable: Boolean = true,
 ) {
-    val count = minOf(frequenciesHz.size, levelsMb.size)
+    val count = minOf(frequenciesHz.size, levelsMb.size, bandLimitsMb.size)
     if (count <= 0) return
     val accent = if (editable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
     val grid = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
@@ -149,146 +152,154 @@ internal fun CapsuleEqualizerGraph(
     val pad = 16.dp
     val normalized = levelsMb.take(count)
 
-    Column(modifier = modifier.fillMaxWidth()) {
-        Canvas(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(graphHeight)
-                .then(if (editable) Modifier.pointerInput(count, minMb, maxMb, bandLimitsMb) {
-                    val inset = pad.toPx()
-                    val side = size.width / (2f * count)
-                    // Claim the gesture immediately on the graph. Waiting for
-                    // drag touch-slop let the parent verticalScroll steal it,
-                    // producing random small jumps while editing EQ points.
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        val band = capsuleEqualizerBandAt(
-                            down.position.x, size.width.toFloat(), count, side,
-                        )
-                        updateSelected(band)
-                        val limits = bandLimitsMb[band]
-                        var level = capsuleBandLevelAt(
-                            down.position.y, size.height.toFloat(), minMb, maxMb,
-                            limits.last, inset, limits.first,
-                        )
-                        var committed = false
-                        try {
-                            updateLevel(band, level)
-                            down.consume()
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                if (!change.pressed) {
+    // Keep the frequency axis low-to-high, including in RTL locales.
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Column(modifier = modifier.fillMaxWidth()) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(graphHeight)
+                    .then(if (editable) Modifier.pointerInput(count, minMb, maxMb, bandLimitsMb) {
+                        val inset = pad.toPx()
+                        val side = size.width / (2f * count)
+                        // Claim the gesture immediately on the graph. Waiting for
+                        // drag touch-slop let the parent verticalScroll steal it,
+                        // producing random small jumps while editing EQ points.
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val band = capsuleEqualizerBandAt(
+                                down.position.x, size.width.toFloat(), count, side,
+                            )
+                            updateSelected(band)
+                            val limits = bandLimitsMb[band]
+                            var level = capsuleBandLevelAt(
+                                down.position.y, size.height.toFloat(), minMb, maxMb,
+                                limits.last, inset, limits.first,
+                            )
+                            var committed = false
+                            try {
+                                updateLevel(band, level)
+                                down.consume()
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    if (change.isConsumed) break
+                                    if (!change.pressed) {
+                                        level = capsuleBandLevelAt(
+                                            change.position.y, size.height.toFloat(), minMb, maxMb,
+                                            limits.last, inset, limits.first,
+                                        )
+                                        change.consume()
+                                        finish(band, level)
+                                        committed = true
+                                        break
+                                    }
+                                    val next = capsuleBandLevelAt(
+                                        change.position.y, size.height.toFloat(), minMb, maxMb,
+                                        limits.last, inset, limits.first,
+                                    )
+                                    if (next != level) {
+                                        level = next
+                                        updateLevel(band, level)
+                                    }
                                     change.consume()
-                                    finish(band, level)
-                                    committed = true
-                                    break
                                 }
-                                val next = capsuleBandLevelAt(
-                                    change.position.y, size.height.toFloat(), minMb, maxMb,
-                                    limits.last, inset, limits.first,
-                                )
-                                if (next != level) {
-                                    level = next
-                                    updateLevel(band, level)
-                                }
-                                change.consume()
+                            } finally {
+                                if (!committed) cancel()
                             }
-                        } finally {
-                            if (!committed) cancel()
                         }
-                    }
-                } else Modifier)
-        ) {
-            val inset = pad.toPx()
-            val side = size.width / (2f * count)
-            val innerW = (size.width - side * 2f).coerceAtLeast(1f)
-            val innerH = (size.height - inset * 2f).coerceAtLeast(1f)
-            fun point(index: Int): Offset {
-                val x = if (count == 1) size.width / 2f else side + innerW * index / (count - 1)
-                val y = capsuleBandGraphY(
-                    normalized[index], size.height, minMb, maxMb,
-                    bandLimitsMb[index].last, inset, bandLimitsMb[index].first,
-                )
-                return Offset(x, y)
-            }
-            val baseline = capsuleGraphZeroY(size.height, minMb, maxMb, inset)
-            drawLine(neutral, Offset(side, baseline), Offset(size.width - side, baseline), 1.dp.toPx())
-            repeat(count) { i ->
-                val x = point(i).x
-                val rail = 6.dp.toPx()
-                drawRoundRect(grid, Offset(x - rail / 2f, inset), Size(rail, innerH), CornerRadius(rail / 2f))
-                val top = minOf(point(i).y, baseline)
-                val height = maxOf(point(i).y, baseline) - top
-                if (height > 0f) drawRoundRect(accent.copy(alpha = 0.19f),
-                    Offset(x - rail / 2f, top), Size(rail, height), CornerRadius(rail / 2f))
-            }
+                    } else Modifier)
+            ) {
+                val inset = pad.toPx()
+                val side = size.width / (2f * count)
+                val innerW = (size.width - side * 2f).coerceAtLeast(1f)
+                val innerH = (size.height - inset * 2f).coerceAtLeast(1f)
+                fun point(index: Int): Offset {
+                    val x = if (count == 1) size.width / 2f else side + innerW * index / (count - 1)
+                    val y = capsuleBandGraphY(
+                        normalized[index], size.height, minMb, maxMb,
+                        bandLimitsMb[index].last, inset, bandLimitsMb[index].first,
+                    )
+                    return Offset(x, y)
+                }
+                val baseline = capsuleGraphZeroY(size.height, minMb, maxMb, inset)
+                drawLine(neutral, Offset(side, baseline), Offset(size.width - side, baseline), 1.dp.toPx())
+                repeat(count) { i ->
+                    val x = point(i).x
+                    val rail = 6.dp.toPx()
+                    drawRoundRect(grid, Offset(x - rail / 2f, inset), Size(rail, innerH), CornerRadius(rail / 2f))
+                    val top = minOf(point(i).y, baseline)
+                    val height = maxOf(point(i).y, baseline) - top
+                    if (height > 0f) drawRoundRect(accent.copy(alpha = 0.19f),
+                        Offset(x - rail / 2f, top), Size(rail, height), CornerRadius(rail / 2f))
+                }
 
-            // Connected shape follows the REAL device bands, not six fake frequencies.
-            val curve = Path()
-            for (i in 0 until count) {
-                val p = point(i)
-                if (i == 0) curve.moveTo(p.x, p.y)
-                else {
-                    val prev = point(i - 1)
-                    val midX = (prev.x + p.x) / 2f
-                    curve.cubicTo(midX, prev.y, midX, p.y, p.x, p.y)
+                // Connected shape follows the REAL device bands, not six fake frequencies.
+                val curve = Path()
+                for (i in 0 until count) {
+                    val p = point(i)
+                    if (i == 0) curve.moveTo(p.x, p.y)
+                    else {
+                        val prev = point(i - 1)
+                        val midX = (prev.x + p.x) / 2f
+                        curve.cubicTo(midX, prev.y, midX, p.y, p.x, p.y)
+                    }
+                }
+                val fill = Path().apply {
+                    addPath(curve)
+                    lineTo(point(count - 1).x, baseline)
+                    lineTo(point(0).x, baseline)
+                    close()
+                }
+                drawPath(
+                    path = fill,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(accent.copy(alpha = 0.15f), accent.copy(alpha = 0.008f)),
+                        startY = inset,
+                        endY = size.height,
+                    ),
+                )
+                drawPath(curve, color = accent, style = androidx.compose.ui.graphics.drawscope.Stroke(
+                    width = 2.2.dp.toPx(), cap = StrokeCap.Round,
+                ))
+                repeat(count) { i ->
+                    val p = point(i)
+                    val active = i == selectedBand
+                    val width = (if (active) 28.dp else 20.dp).toPx()
+                    val height = (if (active) 12.dp else 8.dp).toPx()
+                    if (active && editable) drawCircle(accent.copy(alpha = 0.13f), radius = 18.dp.toPx(), center = p)
+                    drawRoundRect(accent.copy(alpha = if (active) 1f else 0.76f),
+                        Offset(p.x - width / 2f, p.y - height / 2f), Size(width, height), CornerRadius(height / 2f))
                 }
             }
-            val fill = Path().apply {
-                addPath(curve)
-                lineTo(point(count - 1).x, baseline)
-                lineTo(point(0).x, baseline)
-                close()
-            }
-            drawPath(
-                path = fill,
-                brush = Brush.verticalGradient(
-                    colors = listOf(accent.copy(alpha = 0.15f), accent.copy(alpha = 0.008f)),
-                    startY = inset,
-                    endY = size.height,
-                ),
-            )
-            drawPath(curve, color = accent, style = androidx.compose.ui.graphics.drawscope.Stroke(
-                width = 1.8.dp.toPx(), cap = StrokeCap.Round,
-            ))
-            repeat(count) { i ->
-                val p = point(i)
-                val active = i == selectedBand
-                val width = (if (active) 25.dp else 18.dp).toPx()
-                val height = (if (active) 10.dp else 7.dp).toPx()
-                drawRoundRect(accent.copy(alpha = if (active) 1f else 0.76f),
-                    Offset(p.x - width / 2f, p.y - height / 2f), Size(width, height), CornerRadius(height / 2f))
-            }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 3.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-        ) {
-            frequenciesHz.take(count).forEachIndexed { index, hz ->
-                Text(
-                    text = if (count >= 8) capsuleGraphShortHz(hz) else capsuleGraphHz(hz),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (index == selectedBand) MaterialTheme.colorScheme.onSurface
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Clip,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.weight(1f).then(if (editable) Modifier.semantics {
-                        val limits = bandLimitsMb[index]
-                        progressBarRangeInfo = ProgressBarRangeInfo(normalized[index] / 100f,
-                            (limits.first / 100f)..(limits.last / 100f))
-                        setProgress { next ->
-                            if (next.isFinite()) {
-                                updateSelected(index)
-                                finish(index, (next * 100).roundToInt().coerceIn(limits))
-                                true
-                            } else false
-                        }
-                    } else Modifier),
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 3.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+            ) {
+                frequenciesHz.take(count).forEachIndexed { index, hz ->
+                    Text(
+                        text = capsuleGraphShortHz(hz),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (index == selectedBand) MaterialTheme.colorScheme.onSurface
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Clip,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.weight(1f).then(if (editable) Modifier.semantics {
+                            val limits = bandLimitsMb[index]
+                            progressBarRangeInfo = ProgressBarRangeInfo(normalized[index] / 100f,
+                                (limits.first / 100f)..(limits.last / 100f))
+                            setProgress { next ->
+                                if (next.isFinite()) {
+                                    updateSelected(index)
+                                    finish(index, (next * 100).roundToInt().coerceIn(limits))
+                                    true
+                                } else false
+                            }
+                        } else Modifier),
+                    )
+                }
             }
         }
     }
 }
-
