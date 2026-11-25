@@ -6,14 +6,13 @@ internal data class CapsuleStudioSound(
     val adaptive: Boolean = false,
     val mixer: CapsuleMixerSetting = CapsuleMixerSetting(),
     val tempo: SoundStudioTempoVariant = SoundStudioTempoVariant.NORMAL,
-    val dj: CapsuleDjControls = CapsuleDjControls(),
 ) {
     val enabled: Boolean get() = levelsMb.isNotEmpty() || adaptive || mixer.effect != CapsuleMixerEffect.OFF
 }
 
 internal enum class CapsuleEqPresets(val id: String, levels: List<Int>) {
     AUTO("studio_auto", List(CAPSULE_STUDIO_FREQUENCIES_HZ.size) { 0 }),
-    WARM("studio_warm", listOf(-45, 420, 110, -40, -100)),
+    WARM("studio_warm", listOf(0, 450, 25, -50, -85)),
     TAPE("studio_tape", List(CAPSULE_STUDIO_FREQUENCIES_HZ.size) { 0 }),
     CLEAR("studio_clear", listOf(-165, -155, 85, 280, 80));
 

@@ -89,32 +89,17 @@ class CapsuleStudioEqProcessorTest {
         assertEquals(curves[1], checkNotNull(silence.observe(window(420))).levelsMb)
     }
 
-    @Test fun denseAudioReceivesLessTempoShiftWithSmallIndependentPitchAdjustment() {
-        val rate = 16_000
-        fun analyze(hitsPerSecond: Int): CapsuleTrackSound {
-            val probe = CapsuleStudioAnalysis(rate, 1)
-            val input = ByteBuffer.allocate(5 * rate * Short.SIZE_BYTES).order(ByteOrder.nativeOrder())
-            repeat(5 * rate) {
-                val level = if (it % (rate / hitsPerSecond) < rate / 23) 14_000 else 1_450
-                input.putShort((level * sin(2 * PI * 440 * it / rate)).roundToInt().toShort())
-            }
-            input.flip()
-            return checkNotNull(probe.observe(input))
+    @Test fun finishedAnalysisNeverChangesTheVersionClock() {
+        val plans = listOf(CapsuleTrackSound.NEUTRAL,
+            CapsuleTrackSound(listOf(0, 100, 0, 0, 0), 0f, 80f, 1f),
+            CapsuleTrackSound(listOf(0, -100, 0, 0, 0), 1f, 180f, 1f))
+        for (variant in SoundStudioTempoVariant.entries) {
+            val shapes = plans.map { it.tempo(variant) }
+            assertEquals(1, shapes.distinct().size)
+            assertEquals(shapes.first().speed, shapes.first().pitch, 0f)
         }
-        val sparse = analyze(1)
-        val busy = analyze(6)
-        val fast = SoundStudioTempoVariant.SPEED_UP
-        val slow = SoundStudioTempoVariant.SLOWED
-        assertTrue(busy.tempo(fast).speed < sparse.tempo(fast).speed - 0.03f)
-        assertTrue(busy.tempo(slow).speed > sparse.tempo(slow).speed + 0.02f)
-        for (plan in listOf(sparse, busy)) for (variant in SoundStudioTempoVariant.entries) {
-            val shape = plan.tempo(variant)
-            assertTrue(shape.speed in 0.83f..1.24f)
-            assertTrue(shape.pitch in 0.83f..1.24f)
-            assertTrue(abs(shape.speed - shape.pitch) <= 0.04f)
-            if (variant == SoundStudioTempoVariant.NORMAL) assertEquals(1f, shape.pitch, 0f)
-            else assertTrue(shape.speed != shape.pitch)
-        }
+        assertEquals(1.2599211f, plans.first().tempo(SoundStudioTempoVariant.SPEED_UP).speed, 0f)
+        assertEquals(0.7937005f, plans.first().tempo(SoundStudioTempoVariant.SLOWED).speed, 0f)
     }
 
     @Test fun trackVersionsHaveBoundedClockAndIndependentMastering() {
@@ -122,8 +107,8 @@ class CapsuleStudioEqProcessorTest {
         val dense = CapsuleTrackSound(listOf(0, -200, 0, -100, 30), 1f, 175f, 0.8f)
         val fast = SoundStudioTempoVariant.SPEED_UP
         val slow = SoundStudioTempoVariant.SLOWED
-        assertTrue(sparse.tempo(fast).speed > dense.tempo(fast).speed)
-        assertTrue(sparse.tempo(slow).speed < dense.tempo(slow).speed)
+        assertEquals(sparse.tempo(fast), dense.tempo(fast))
+        assertEquals(sparse.tempo(slow), dense.tempo(slow))
         val rate = 48_000
         val samples = ShortArray(rate) { i -> (18_000 * sin(2 * PI * 440 * i / rate)).roundToInt().toShort() }
         fun version(mode: SoundStudioTempoVariant) = render(CapsuleStudioEqFilter(rate, 1).apply {
@@ -168,8 +153,8 @@ class CapsuleStudioEqProcessorTest {
         assertEquals(0.915f, capsuleTapeRate(1f, normal, full), 0.00001f)
         assertTrue(capsuleTapeRate(1f, normal, low) in 0.97f..0.99f)
         assertEquals(1f, capsuleTapeRate(1f, normal, off), 0f)
-        assertTrue(capsuleTapeRate(1.045f, speedUp, full) in 1.01f..1.045f)
-        assertTrue(capsuleTapeRate(0.905f, slowed, full) in 0.875f..0.905f)
+        assertEquals(1.045f, capsuleTapeRate(1.045f, speedUp, full), 0f)
+        assertEquals(0.905f, capsuleTapeRate(0.905f, slowed, full), 0f)
     }
 
     @Test fun fullScaleTransitionsAreLimitedAndLeaveBothChannelsAligned() {
@@ -221,30 +206,18 @@ class CapsuleStudioEqProcessorTest {
         }
     }
 
-    @Test fun djRespondsToManualControlsAndReturnsToAutomaticOnRelease() {
-        val rate = 48_000
-        val left = ShortArray(rate) { i -> (16_000 * sin(2 * PI * 720 * i / rate)).roundToInt().toShort() }
-        fun run(polarity: Int): ShortArray {
-            val eq = CapsuleStudioEqFilter(rate, 2)
-            eq.setMixer(CapsuleMixerSetting(CapsuleMixerEffect.VINYL, 100))
-            val stereo = ShortArray(2 * rate) { if (it % 2 == 0) (polarity * left[it / 2]).toShort() else 0 }
-            val idle = render(eq, stereo.copyOfRange(0, rate))
-            assertTrue(!idle.contentEquals(stereo.copyOfRange(0, rate)))
-            val automatic = render(CapsuleStudioEqFilter(rate, 2).apply {
-                setMixer(CapsuleMixerSetting(CapsuleMixerEffect.VINYL, 100))
-            }, stereo)
-            eq.setDjControls(CapsuleDjControls(jog = -0.9f))
-            val jog = render(eq, stereo.copyOfRange(rate, rate * 5 / 4))
-            eq.setDjControls(CapsuleDjControls())
-            val after = render(eq, stereo.copyOfRange(rate * 5 / 4, rate * 2))
-            assertTrue(after.takeLast(200).zip(automatic.takeLast(200)).all { (a, b) -> abs(a - b) <= 12 })
-            assertTrue(jog.indices.any { abs(jog[it] - stereo[rate + it]) > 9_000 })
-            return jog
+    @Test fun djIsAutomaticAndIsolatesChannels() {
+        val rate = 48000
+        val stereo = ShortArray(rate * 2) { i ->
+            if (i % 2 == 0) (16000 * sin(2 * PI * 720 * (i / 2) / rate)).roundToInt().toShort() else 0
         }
-        val positive = run(1)
-        val negative = run(-1)
-        assertTrue(positive.indices.all { abs(positive[it] + negative[it]) <= 1 })
-        assertTrue(positive.indices.filter { it % 2 == 1 }.all { positive[it] == 0.toShort() })
+        val eq = CapsuleStudioEqFilter(rate, 2).apply {
+            setMixer(CapsuleMixerSetting(CapsuleMixerEffect.VINYL, 100))
+        }
+        val output = render(eq, stereo)
+        assertTrue(!output.contentEquals(stereo))
+        assertTrue(output.indices.filter { it % 2 == 1 }.all { output[it] == 0.toShort() })
+        assertTrue(output.all { abs(it.toInt()) <= (CAPSULE_EQ_PEAK_AMPLITUDE * 32768).roundToInt() })
     }
 
     @Test fun lookaheadStartsAttenuationBeforeThePeakAndDrainsEveryFrame() {

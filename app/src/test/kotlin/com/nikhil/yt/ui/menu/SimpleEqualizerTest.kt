@@ -33,6 +33,8 @@ class SimpleEqualizerTest {
         assertTrue(dialog.contains("Switch("))
         assertFalse(dialog.contains("eq_curve_intensity"))
         assertFalse(dialog.contains("eq_clean_headroom"))
+        assertFalse(dialog.contains("CapsuleDjControlsPanel"))
+        assertFalse(dialog.contains("eq_dj_jog"))
         assertTrue(dialog.contains("editable = eqEnabled"))
         assertTrue(dialog.contains("selectSoundVersion(CAPSULE_STUDIO_MANUAL_ID, next)"))
         assertFalse(dialog.contains("eq_version_original"))
@@ -76,8 +78,8 @@ class SimpleEqualizerTest {
             assertEquals(curve, prefs[EqualizerBandLevelsMbKey])
             assertEquals(true, prefs[EqualizerEnabledKey])
         }
-        assertTrue(CapsuleTrackSound.NEUTRAL.tempo(SoundStudioTempoVariant.SPEED_UP).speed in 1.04f..1.08f)
-        assertTrue(CapsuleTrackSound.NEUTRAL.tempo(SoundStudioTempoVariant.SLOWED).speed in 0.94f..0.97f)
+        assertEquals(1.2599211f, CapsuleTrackSound.NEUTRAL.tempo(SoundStudioTempoVariant.SPEED_UP).speed, 0f)
+        assertEquals(0.7937005f, CapsuleTrackSound.NEUTRAL.tempo(SoundStudioTempoVariant.SLOWED).speed, 0f)
     }
 
     @Test fun legacyTempoSurvivesFirstToneSelectionAndExplicitNormalWins() {

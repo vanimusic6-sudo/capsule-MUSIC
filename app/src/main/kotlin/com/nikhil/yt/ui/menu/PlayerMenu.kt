@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -113,7 +114,6 @@ import com.nikhil.yt.playback.CAPSULE_STUDIO_FREQUENCIES_HZ
 import com.nikhil.yt.playback.CAPSULE_STUDIO_MANUAL_ID
 import com.nikhil.yt.playback.CapsuleEqPresets
 import com.nikhil.yt.playback.CapsuleMixerEffect
-import com.nikhil.yt.playback.CapsuleDjControls
 import com.nikhil.yt.playback.CapsuleMixerProfile
 import com.nikhil.yt.playback.SoundStudioTempoVariant
 import com.nikhil.yt.playback.capsuleStudioBandLimit
@@ -694,8 +694,9 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                         .verticalScroll(rememberScrollState(),
                             flingBehavior = rememberCapsuleFlingBehavior(),
                             overscrollEffect = null)
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     EqSection(title = equalizerLabel, trailing = {
                         Switch(
@@ -747,7 +748,7 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                                     LocalWindowInfo.current.containerSize.height.toDp() < 690.dp
                                 }) 132.dp else 158.dp,
                             editable = eqEnabled,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                         )
                         Row(
                             modifier = Modifier.fillMaxWidth()
@@ -770,7 +771,7 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                             }) { Text(stringResource(R.string.reset)) }
                         }
                         Row(
-                            modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 4.dp),
+                            modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 6.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             val versions = listOf(
@@ -791,7 +792,7 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
 
                     EqSection(title = stringResource(R.string.eq_tempo_versions)) {
                         Row(
-                            modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp),
+                            modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             listOf(
@@ -803,6 +804,15 @@ fun EqualizerDialog(onDismiss: () -> Unit) {
                                     service.selectTempoVariant(variant)
                                 }
                             }
+                        }
+                        if (activeTempo != SoundStudioTempoVariant.NORMAL) {
+                            Text(
+                                stringResource(if (activeTempo == SoundStudioTempoVariant.SPEED_UP)
+                                    R.string.eq_version_fast_hint else R.string.eq_version_slow_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                            )
                         }
                     }
                     Spacer(Modifier.height(10.dp))
@@ -838,7 +848,7 @@ private fun CapsuleMixerSection(service: MusicService, profile: CapsuleMixerProf
         }
     }) {
         Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             val effects = listOf(
@@ -848,7 +858,7 @@ private fun CapsuleMixerSection(service: MusicService, profile: CapsuleMixerProf
                 CapsuleMixerEffect.VINYL to R.string.eq_mixer_vinyl,
             )
             for (row in effects.chunked(2)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     for ((effect, label) in row) {
                         StudioChoice(stringResource(label), setting.effect == effect) {
                             if (setting.effect != effect) {
@@ -911,62 +921,8 @@ private fun CapsuleMixerSection(service: MusicService, profile: CapsuleMixerProf
                     },
                 )
             }
-            if (setting.effect == CapsuleMixerEffect.VINYL) {
-                CapsuleDjControlsPanel(service)
-            }
         }
     }
-}
-
-@Composable
-private fun CapsuleDjControlsPanel(service: MusicService) {
-    var controls by remember { mutableStateOf(CapsuleDjControls()) }
-    val jogInteractions = remember { MutableInteractionSource() }
-    fun publish(next: CapsuleDjControls) {
-        controls = next
-        service.setStudioDjControls(next)
-    }
-    DisposableEffect(service) {
-        onDispose { service.setStudioDjControls(CapsuleDjControls()) }
-    }
-    LaunchedEffect(jogInteractions) {
-        jogInteractions.interactions.collect {
-            if (it is DragInteraction.Cancel) publish(controls.copy(jog = 0f))
-        }
-    }
-    val jogLabel = stringResource(R.string.eq_dj_jog)
-    val filterLabel = stringResource(R.string.eq_dj_filter)
-    Text(jogLabel, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 4.dp))
-    Slider(
-        value = controls.jog,
-        onValueChange = { publish(controls.copy(jog = it, brake = false)) },
-        onValueChangeFinished = { publish(controls.copy(jog = 0f)) },
-        valueRange = -1f..1f,
-        interactionSource = jogInteractions,
-        modifier = Modifier.fillMaxWidth().semantics { contentDescription = jogLabel },
-    )
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        StudioChoice(stringResource(R.string.eq_dj_rewind), false) {
-            publish(controls.copy(jog = 0f, brake = false))
-            service.rewindStudioDeck()
-        }
-        val brakeLabel = if (controls.brake) R.string.eq_dj_release else R.string.eq_dj_brake
-        StudioChoice(stringResource(brakeLabel), controls.brake) {
-            publish(controls.copy(jog = 0f, brake = !controls.brake))
-        }
-    }
-    Row(Modifier.fillMaxWidth().padding(start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(filterLabel, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
-        TextButton(enabled = controls.filter != 0f, onClick = { publish(controls.copy(filter = 0f)) }) {
-            Text(stringResource(R.string.reset))
-        }
-    }
-    Slider(
-        value = controls.filter,
-        onValueChange = { publish(controls.copy(filter = if (kotlin.math.abs(it) < 0.04f) 0f else it)) },
-        valueRange = -1f..1f,
-        modifier = Modifier.fillMaxWidth().semantics { contentDescription = filterLabel },
-    )
 }
 
 @Composable
@@ -975,14 +931,14 @@ private fun RowScope.StudioChoice(label: String, selected: Boolean, onClick: () 
         selected = selected,
         onClick = onClick,
         modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-        shape = RoundedCornerShape(13.dp),
+        shape = RoundedCornerShape(16.dp),
         color = if (selected) MaterialTheme.colorScheme.primaryContainer
             else MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
             else MaterialTheme.colorScheme.onSurface,
     ) {
         Box(Modifier.padding(horizontal = 6.dp, vertical = 8.dp), Alignment.Center) {
-            Text(label, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center)
+            Text(label, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -994,14 +950,14 @@ private fun EqSection(
     content: @Composable () -> Unit,
 ) {
     Surface(
-        color = com.nikhil.yt.ui.component.CapsuleMenuBlack,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = RoundedCornerShape(24.dp),
         border = BorderStroke(
             1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.075f),
         ),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.widthIn(max = 560.dp).fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.padding(vertical = 11.dp)) {
+        Column(modifier = Modifier.padding(vertical = 14.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),

@@ -4,16 +4,11 @@ package com.nikhil.yt.playback
 import kotlin.math.PI
 import kotlin.math.exp
 
-/** Keep the source clock and pitch coupled, including when combined with a tempo variant. */
+/** The explicit track version owns its clock; tape may only slow the normal version. */
 internal fun capsuleTapeRate(base: Float, variant: SoundStudioTempoVariant, mixer: CapsuleMixerSetting): Float {
-    if (mixer.effect != CapsuleMixerEffect.TAPE || !mixer.enabled) return base
+    if (variant != SoundStudioTempoVariant.NORMAL || mixer.effect != CapsuleMixerEffect.TAPE || !mixer.enabled) return base
     val amount = mixer.amount.coerceIn(0, 100) * 0.01f
-    val floor = when (variant) {
-        SoundStudioTempoVariant.NORMAL -> 0.91f
-        SoundStudioTempoVariant.SPEED_UP -> minOf(base, 1.06f)
-        SoundStudioTempoVariant.SLOWED -> minOf(base, 0.875f)
-    }
-    return (base * (1f - 0.085f * amount)).coerceAtLeast(floor)
+    return (base * (1f - 0.085f * amount)).coerceAtLeast(0.91f)
 }
 
 /** Gentle recording compression and upper-mid saturation. Playback speed is set by the player. */

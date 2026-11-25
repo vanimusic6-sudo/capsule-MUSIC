@@ -10,22 +10,16 @@ internal data class CapsuleTrackSound(
     val levelsMb: List<Int>, val pace: Float, val bpm: Float = 0f, val rhythmConfidence: Float = 0f,
 ) {
     fun tempo(variant: SoundStudioTempoVariant): CapsuleTempoShape {
-        val density = if (pace.isFinite()) pace.coerceIn(0f, 1f) else 0.76f
-        val rhythmic = if (rhythmConfidence.isFinite() && rhythmConfidence >= 0.45f && bpm in 65f..190f)
-            ((bpm - 100f) / 90f).coerceIn(-0.4f, 1f) else 0f
-        val speed = when (variant) {
+        // A version is a stable varispeed master, not a live tempo estimate.
+        // Exactly four semitones in either direction, preserving rhythmic relationships.
+        val rate = when (variant) {
             SoundStudioTempoVariant.NORMAL -> 1f
-            SoundStudioTempoVariant.SPEED_UP -> (1.23f - 0.11f * density - 0.025f * rhythmic).coerceIn(1.10f, 1.24f)
-            SoundStudioTempoVariant.SLOWED -> (0.83f + 0.09f * density + 0.015f * rhythmic).coerceIn(0.83f, 0.94f)
+            SoundStudioTempoVariant.SPEED_UP -> 1.2599211f
+            SoundStudioTempoVariant.SLOWED -> 0.7937005f
         }
-        // Mostly varispeed, with a small independent pitch adjustment to avoid caricature.
-        val pitch = when (variant) {
-            SoundStudioTempoVariant.NORMAL -> 1f
-            SoundStudioTempoVariant.SPEED_UP -> speed + (1f - speed) * 0.15f
-            SoundStudioTempoVariant.SLOWED -> speed + (1f - speed) * 0.12f
-        }
-        return CapsuleTempoShape(speed, pitch)
+        return CapsuleTempoShape(rate, rate)
     }
+
     companion object { val NEUTRAL = CapsuleTrackSound(emptyList(), 0.76f) }
 }
 

@@ -80,7 +80,6 @@ internal class CapsuleStudioEqProcessor(
         equalizer.setCurve(tone, smooth = setting.adaptive)
         equalizer.setVersion(setting.tempo, plan ?: CapsuleTrackSound.NEUTRAL)
         equalizer.setMixer(setting.mixer)
-        equalizer.setDjControls(setting.dj)
         equalizer.setProcessingGuard(setting.adaptive || setting.tempo != SoundStudioTempoVariant.NORMAL)
         val output = replaceOutputBuffer(inputBuffer.remaining())
         equalizer.process(inputBuffer, output)
@@ -113,6 +112,8 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
     private var processingGuardMix = 0.0
     private var started = false
     private val frame = DoubleArray(channels)
+    private val dryFrame = DoubleArray(channels)
+    private val loadGuard = CapsuleStudioLoadGuard(sampleRate, channels)
     private val previousFrame = DoubleArray(channels)
     private val mixer = CapsuleMixerStage(sampleRate, channels)
     private val versionStage = CapsuleVersionStage(sampleRate, channels)
@@ -138,7 +139,6 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
         }
         versionCharacter = if (plan.pace.isFinite()) plan.pace.toDouble().coerceIn(0.0, 1.0) else 0.76
     }
-    fun setDjControls(controls: CapsuleDjControls) { mixer.djControls = controls.bounded() }
     fun setProcessingGuard(enabled: Boolean) {
         processingGuard = enabled
         if (enabled || !started) processingGuardMix = if (enabled) 1.0 else 0.0
@@ -181,6 +181,7 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
                 val raw = input.getShort()
                 history[historyCursor * channels + channel] = raw
                 val sample = raw / 32768.0
+                dryFrame[channel] = sample
                 val old = current?.process(sample, channel) ?: sample
                 val mixed = if (remaining != 0) {
                     val next = incoming?.process(sample, channel) ?: sample
@@ -233,7 +234,8 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
             val sustainedProtection = if (sustainedPower > 0.60) {
                 1.0 - (1.0 - sqrt(0.60 / sustainedPower)) * protection
             } else 1.0
-            val requiredGain = minOf(peakProtection, sustainedProtection)
+            val bandProtection = loadGuard.observe(dryFrame, frame, protection)
+            val requiredGain = minOf(peakProtection, sustainedProtection, bandProtection)
             limiter.queue(frame, requiredGain, output)
             if (remaining != 0 && --remaining == 0) current = incoming
         }

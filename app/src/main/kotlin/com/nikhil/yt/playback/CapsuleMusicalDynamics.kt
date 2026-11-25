@@ -69,8 +69,8 @@ internal class CapsuleMusicalDynamics(private val rate: Int, channels: Int) {
                 CapsuleVoicing.SUN -> set(0.94, 0.84 - 0.19 * mud, 0.83, 1.0 - 0.10 * bite, 0.98 - 0.30 * bite)
                 CapsuleVoicing.WARM -> set(0.83, 0.99 - 0.12 * mud, 1.0, 0.77 - 0.07 * bite, 0.58 - 0.18 * bite)
                 CapsuleVoicing.CLUB -> set(0.91, 0.98 - 0.12 * mud, 0.72 - 0.19 * kick, 0.86 + 0.10 * kick, 0.80 - 0.14 * bite)
-                CapsuleVoicing.FAST -> set(0.87, 0.79 + 0.08 * kick, 0.87, 1.0 - 0.06 * busy, 0.86 - 0.23 * bite)
-                CapsuleVoicing.SLOW -> set(0.84, 0.96 - 0.12 * mud, 1.0, 0.78 - 0.05 * busy, 0.64 - 0.12 * bite)
+                CapsuleVoicing.FAST -> set(0.91, 0.73 + 0.13 * kick, 0.89, 1.0 - 0.06 * busy, 0.90 - 0.27 * bite)
+                CapsuleVoicing.SLOW -> set(0.87, 0.97 - 0.15 * mud, 1.0, 0.84 - 0.05 * busy, 0.70 - 0.14 * bite)
             }
         }
         for (i in 0..4) gains[i] += (desired[i] - gains[i]) * if (desired[i] < gains[i]) gainAttack else gainRelease
@@ -92,9 +92,13 @@ internal class CapsuleMusicalDynamics(private val rate: Int, channels: Int) {
 internal class CapsuleVersionStage(private val rate: Int, private val channels: Int) {
     private var dynamics: CapsuleMusicalDynamics? = null
     private var room: FloatArray? = null
-    private val roomFrames = (rate * 0.047).toInt().coerceAtLeast(2)
-    private val tapA = (rate * 0.019).toInt().coerceAtLeast(1)
-    private val tapB = (rate * 0.037).toInt().coerceAtLeast(1)
+    private val roomFrames = (rate * 0.27).toInt().coerceAtLeast(2)
+    private val taps = doubleArrayOf(0.023, 0.037, 0.053, 0.071, 0.097, 0.131, 0.173, 0.233)
+        .map { (rate * it).toInt().coerceIn(1, roomFrames - 1) }.toIntArray()
+    private val weights = doubleArrayOf(0.21, 0.18, 0.16, 0.13, 0.11, 0.09, 0.07, 0.05)
+    private val positions = IntArray(taps.size)
+    private var smoothedCharacter = 0.76
+    private val characterStep = 1.0 - exp(-1.0 / (rate * 0.65))
     private val tone = DoubleArray(channels)
     private val toneStep = 1.0 - exp(-2 * PI * minOf(2400.0, rate * 0.28) / rate)
     private var cursor = 0
@@ -104,9 +108,10 @@ internal class CapsuleVersionStage(private val rate: Int, private val channels: 
 
     fun apply(frame: DoubleArray, mode: CapsuleVoicing?, character: Double) {
         if (mode != null && dynamics == null) dynamics = CapsuleMusicalDynamics(rate, channels)
-        dynamics?.apply(frame, mode, if (mode == null) 0.0 else 0.95, character)
+        smoothedCharacter += (character.coerceIn(0.0, 1.0) - smoothedCharacter) * characterStep
+        dynamics?.apply(frame, mode, if (mode == null) 0.0 else 0.95, smoothedCharacter)
         if (mode == null && dynamics?.active == false) dynamics = null
-        val targetWet = if (mode == CapsuleVoicing.SLOW) 0.10 - 0.045 * character.coerceIn(0.0, 1.0) else 0.0
+        val targetWet = if (mode == CapsuleVoicing.SLOW) 0.22 - 0.09 * smoothedCharacter else 0.0
         wet += (targetWet - wet).coerceIn(-ramp, ramp)
         if (wet <= 0.0) {
             room = null
@@ -115,12 +120,15 @@ internal class CapsuleVersionStage(private val rate: Int, private val channels: 
             return
         }
         val history = room ?: FloatArray(roomFrames * channels).also { room = it }
-        val a = ((cursor - tapA + roomFrames) % roomFrames) * channels
-        val b = ((cursor - tapB + roomFrames) % roomFrames) * channels
+        for (i in taps.indices) {
+            val offset = cursor - taps[i]
+            positions[i] = (if (offset < 0) offset + roomFrames else offset) * channels
+        }
         for (ch in frame.indices) {
             val x = frame[ch]
-            // Two quiet, damped early reflections; no feedback, generated notes or channel mixing.
-            val reflection = 0.64 * history[a + ch] + 0.36 * history[b + ch]
+            // Finite, damped multi-tap ambience. No recursive feedback or channel mixing.
+            var reflection = 0.0
+            for (i in positions.indices) reflection += weights[i] * history[positions[i] + ch]
             tone[ch] += (reflection - tone[ch]) * toneStep
             history[cursor * channels + ch] = x.toFloat()
             frame[ch] = x + wet * (tone[ch] - x)
