@@ -1096,8 +1096,8 @@ Capsule will only extract your token, and everything else is stored locally.</st
     <string name="eq_mixer_soft_hint">Dynamically reveals warm mids and gently controls sharp highs.</string>
     <string name="eq_mixer_sun_hint">Warm record coloration, soft needle texture and gentle surface crackle.</string>
     <string name="eq_mixer_vinyl_hint">Club mix with occasional scratches and filter pulls on a steady beat.</string>
-    <string name="eq_version_fast_hint">A faster master with higher pitch and brighter character.</string>
-    <string name="eq_version_slow_hint">A slower master with deeper pitch and soft ambience.</string>
+    <string name="eq_version_fast_hint">Faster rhythm, natural vocal pitch and a touch of brightness.</string>
+    <string name="eq_version_slow_hint">Slower rhythm, near-original vocal pitch and soft ambience.</string>
     <string name="eq_dj_jog">Jog</string>
     <string name="eq_dj_filter">Filter</string>
     <string name="eq_dj_brake">Brake</string>

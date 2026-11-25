@@ -11,6 +11,14 @@ internal fun capsuleTapeRate(base: Float, variant: SoundStudioTempoVariant, mixe
     return (base * (1f - 0.085f * amount)).coerceAtLeast(0.91f)
 }
 
+/** Preserve independent pitch in explicit versions; only normal tape is varispeed. */
+internal fun capsuleStudioPlaybackShape(variant: SoundStudioTempoVariant, mixer: CapsuleMixerSetting): CapsuleTempoShape {
+    val shape = CapsuleTrackSound.NEUTRAL.tempo(variant)
+    if (variant != SoundStudioTempoVariant.NORMAL) return shape
+    val rate = capsuleTapeRate(shape.speed, variant, mixer)
+    return CapsuleTempoShape(rate, rate)
+}
+
 /** Gentle recording compression and upper-mid saturation. Playback speed is set by the player. */
 internal class CapsuleTapeTransport(sampleRate: Int, channels: Int) : MixerEffect {
     private val low = DoubleArray(channels)

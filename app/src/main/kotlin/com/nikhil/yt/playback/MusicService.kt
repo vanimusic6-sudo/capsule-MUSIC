@@ -3914,9 +3914,8 @@ class MusicService :
     }
 
     private fun studioPlaybackParameters(sound: CapsuleStudioSound): PlaybackParameters {
-        val tempo = CapsuleTrackSound.NEUTRAL.tempo(sound.tempo)
-        val rate = capsuleTapeRate(tempo.speed, sound.tempo, sound.mixer)
-        return PlaybackParameters(rate, rate)
+        val shape = capsuleStudioPlaybackShape(sound.tempo, sound.mixer)
+        return PlaybackParameters(shape.speed, shape.pitch)
     }
 
     private fun activeStudioSound(): CapsuleStudioSound {

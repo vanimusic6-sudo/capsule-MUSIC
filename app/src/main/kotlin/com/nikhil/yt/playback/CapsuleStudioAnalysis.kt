@@ -10,14 +10,15 @@ internal data class CapsuleTrackSound(
     val levelsMb: List<Int>, val pace: Float, val bpm: Float = 0f, val rhythmConfidence: Float = 0f,
 ) {
     fun tempo(variant: SoundStudioTempoVariant): CapsuleTempoShape {
-        // A version is a stable varispeed master, not a live tempo estimate.
-        // Exactly four semitones in either direction, preserving rhythmic relationships.
-        val rate = when (variant) {
-            SoundStudioTempoVariant.NORMAL -> 1f
-            SoundStudioTempoVariant.SPEED_UP -> 1.2599211f
-            SoundStudioTempoVariant.SLOWED -> 0.7937005f
+        // Stable clock and independent pitch. Media3's time-stretch changes
+        // rhythmic pace without a matching transposition of voices/instruments.
+        // Half a semitone (50 cents) adds character without caricaturing vocals.
+        // Never depend on late-arriving track analysis.
+        return when (variant) {
+            SoundStudioTempoVariant.NORMAL -> CapsuleTempoShape(1f, 1f)
+            SoundStudioTempoVariant.SPEED_UP -> CapsuleTempoShape(1.2599211f, 1.0293022f)
+            SoundStudioTempoVariant.SLOWED -> CapsuleTempoShape(0.7937005f, 0.9715319f)
         }
-        return CapsuleTempoShape(rate, rate)
     }
 
     companion object { val NEUTRAL = CapsuleTrackSound(emptyList(), 0.76f) }
