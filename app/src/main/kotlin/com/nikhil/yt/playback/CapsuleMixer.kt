@@ -106,13 +106,19 @@ private class SoftMixerEffect(rate: Int, channels: Int) : MixerEffect {
 /** Record coloration, independent of the tape transport. */
 private class RecordMixerEffect(rate: Int, channels: Int) : MixerEffect {
     private val record = CapsuleRecordVoicing(rate, channels)
-    override fun apply(frame: DoubleArray, peak: Double, amount: Double, transition: Double) =
+    private val texture = CapsuleRecordTexture(rate, channels)
+    override fun apply(frame: DoubleArray, peak: Double, amount: Double, transition: Double) {
         record.apply(frame, amount)
+        texture.apply(frame, amount)
+    }
 }
 
-/** Automatic club mix, no jog, brake, rewind, ring buffer or user gesture dependency. */
+/** Automatic club mix and short beat-gated gestures; no manual controls. */
 private class ClubMixerEffect(rate: Int, channels: Int) : MixerEffect {
     private val dynamics = CapsuleMusicalDynamics(rate, channels)
-    override fun apply(frame: DoubleArray, peak: Double, amount: Double, transition: Double) =
+    private val gesture = CapsuleAutoDjGesture(rate, channels)
+    override fun apply(frame: DoubleArray, peak: Double, amount: Double, transition: Double) {
+        gesture.apply(frame, amount)
         dynamics.apply(frame, CapsuleVoicing.CLUB, amount, smoothAmount = false)
+    }
 }

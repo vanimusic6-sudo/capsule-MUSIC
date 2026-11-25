@@ -139,6 +139,7 @@ jobs:
           --tests 'com.nikhil.yt.playback.CapsuleStudioEqProcessorTest'
           --tests 'com.nikhil.yt.playback.CapsuleMusicalDynamicsTest'
           --tests 'com.nikhil.yt.playback.CapsuleStudioSafetyTest'
+          --tests 'com.nikhil.yt.playback.CapsuleMixerCharacterTest'
           --tests 'com.nikhil.yt.playback.video.CapsuleVideoPlayerLifecycleTest'
           --tests 'com.nikhil.yt.playback.CapsuleMusicalEqPolicyTest'
           --tests 'com.nikhil.yt.playback.SafeListeningGuardTest'
