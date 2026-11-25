@@ -25,9 +25,9 @@ class CapsuleMixerCharacterTest {
                 record.apply(frame, 1.0)
                 residual = maxOf(residual, abs(frame[0] - x))
                 assertTrue(frame[1] == 0.0 && frame[0].isFinite())
-                assertTrue(abs(frame[0] - x) <= 0.01300001)
+                assertTrue(abs(frame[0] - x) <= 0.02400001)
             }
-            assertTrue(residual > 0.0008)
+            assertTrue(residual > 0.0015)
             var changed = 0
             repeat(rate * 13) { i ->
                 val t = (i % (rate / 2)).toDouble() / rate
@@ -38,7 +38,7 @@ class CapsuleMixerCharacterTest {
                 assertTrue(frame[0].isFinite() && abs(frame[0]) < 0.8 && frame[1] == 0.0)
                 if (abs(frame[0] - x) > 0.005) changed++
             }
-            assertTrue(dj.eventsStarted in 2..3 && changed > rate / 40)
+            assertTrue(dj.eventsStarted in 2..4 && changed > rate / 15)
             val steady = CapsuleAutoDjGesture(rate, 1)
             val mono = DoubleArray(1)
             repeat(rate * 5) { i ->

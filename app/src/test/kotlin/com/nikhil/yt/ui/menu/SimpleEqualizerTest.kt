@@ -78,10 +78,10 @@ class SimpleEqualizerTest {
             assertEquals(curve, prefs[EqualizerBandLevelsMbKey])
             assertEquals(true, prefs[EqualizerEnabledKey])
         }
-        assertEquals(1.2599211f, CapsuleTrackSound.NEUTRAL.tempo(SoundStudioTempoVariant.SPEED_UP).speed, 0f)
-        assertEquals(0.7937005f, CapsuleTrackSound.NEUTRAL.tempo(SoundStudioTempoVariant.SLOWED).speed, 0f)
-        assertEquals(1.0293022f, CapsuleTrackSound.NEUTRAL.tempo(SoundStudioTempoVariant.SPEED_UP).pitch, 0f)
-        assertEquals(0.9715319f, CapsuleTrackSound.NEUTRAL.tempo(SoundStudioTempoVariant.SLOWED).pitch, 0f)
+        assertEquals(1.18f, CapsuleTrackSound.NEUTRAL.tempo(SoundStudioTempoVariant.SPEED_UP).speed, 0f)
+        assertEquals(0.85f, CapsuleTrackSound.NEUTRAL.tempo(SoundStudioTempoVariant.SLOWED).speed, 0f)
+        assertEquals(1.0594631f, CapsuleTrackSound.NEUTRAL.tempo(SoundStudioTempoVariant.SPEED_UP).pitch, 0f)
+        assertEquals(0.9438743f, CapsuleTrackSound.NEUTRAL.tempo(SoundStudioTempoVariant.SLOWED).pitch, 0f)
     }
 
     @Test fun legacyTempoSurvivesFirstToneSelectionAndExplicitNormalWins() {

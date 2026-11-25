@@ -97,14 +97,14 @@ class CapsuleStudioEqProcessorTest {
             val shapes = plans.map { it.tempo(variant) }
             assertEquals(1, shapes.distinct().size)
             val shape = shapes.first()
-            assertTrue(kotlin.math.abs(12.0 * kotlin.math.ln(shape.pitch.toDouble()) / kotlin.math.ln(2.0)) <= 0.501)
+            assertTrue(kotlin.math.abs(12.0 * kotlin.math.ln(shape.pitch.toDouble()) / kotlin.math.ln(2.0)) <= 1.001)
             if (variant == SoundStudioTempoVariant.NORMAL) assertEquals(1f, shape.pitch, 0f)
-            else assertTrue(kotlin.math.abs(shape.speed - shape.pitch) > 0.15f)
+            else assertTrue(kotlin.math.abs(shape.speed - shape.pitch) > 0.08f)
         }
-        assertEquals(1.2599211f, plans.first().tempo(SoundStudioTempoVariant.SPEED_UP).speed, 0f)
-        assertEquals(0.7937005f, plans.first().tempo(SoundStudioTempoVariant.SLOWED).speed, 0f)
-        assertEquals(1.0293022f, plans.first().tempo(SoundStudioTempoVariant.SPEED_UP).pitch, 0f)
-        assertEquals(0.9715319f, plans.first().tempo(SoundStudioTempoVariant.SLOWED).pitch, 0f)
+        assertEquals(1.18f, plans.first().tempo(SoundStudioTempoVariant.SPEED_UP).speed, 0f)
+        assertEquals(0.85f, plans.first().tempo(SoundStudioTempoVariant.SLOWED).speed, 0f)
+        assertEquals(1.0594631f, plans.first().tempo(SoundStudioTempoVariant.SPEED_UP).pitch, 0f)
+        assertEquals(0.9438743f, plans.first().tempo(SoundStudioTempoVariant.SLOWED).pitch, 0f)
     }
 
     @Test fun explicitVersionsKeepIndependentPitchWithEveryMixerAndStrength() {

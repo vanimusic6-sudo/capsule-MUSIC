@@ -67,8 +67,8 @@ internal class CapsuleMusicalDynamics(private val rate: Int, channels: Int) {
             val busy = character.coerceIn(0.0, 1.0)
             when (current) {
                 CapsuleVoicing.SUN -> set(0.94, 0.84 - 0.19 * mud, 0.83, 1.0 - 0.10 * bite, 0.98 - 0.30 * bite)
-                CapsuleVoicing.WARM -> set(0.83, 0.99 - 0.12 * mud, 1.0, 0.77 - 0.07 * bite, 0.58 - 0.18 * bite)
-                CapsuleVoicing.CLUB -> set(0.91, 0.98 - 0.12 * mud, 0.72 - 0.19 * kick, 0.86 + 0.10 * kick, 0.80 - 0.14 * bite)
+                CapsuleVoicing.WARM -> set(0.83, 0.99 - 0.12 * mud, 1.0, 0.71 - 0.07 * bite, 0.54 - 0.12 * bite)
+                CapsuleVoicing.CLUB -> set(0.91, 0.98 - 0.12 * mud, 0.66 - 0.18 * kick, 0.86 + 0.10 * kick, 0.80 - 0.14 * bite)
                 CapsuleVoicing.FAST -> set(0.91, 0.73 + 0.13 * kick, 0.89, 1.0 - 0.06 * busy, 0.90 - 0.27 * bite)
                 CapsuleVoicing.SLOW -> set(0.87, 0.97 - 0.15 * mud, 1.0, 0.84 - 0.05 * busy, 0.70 - 0.14 * bite)
             }

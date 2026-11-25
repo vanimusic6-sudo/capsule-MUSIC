@@ -35,7 +35,7 @@ internal class CapsuleTapeTransport(sampleRate: Int, channels: Int) : MixerEffec
 
     override fun apply(frame: DoubleArray, peak: Double, amount: Double, transition: Double) {
         envelope += (peak - envelope) * if (peak > envelope) attack else release
-        val compression = 1.0 - amount * 0.15 * ((envelope - 0.22) / 0.55).coerceIn(0.0, 1.0)
+        val compression = 1.0 - amount * 0.20 * ((envelope - 0.22) / 0.55).coerceIn(0.0, 1.0)
         for (channel in frame.indices) {
             val x = frame[channel] * compression
             low[channel] += (x - low[channel]) * lowStep
@@ -45,7 +45,7 @@ internal class CapsuleTapeTransport(sampleRate: Int, channels: Int) : MixerEffec
             offset[channel] += (magnetic - offset[channel]) * offsetStep
             val recorded = x + amount * (magnetic - offset[channel])
             head[channel] += (recorded - head[channel]) * headStep
-            frame[channel] = recorded + (head[channel] - recorded) * (0.66 * amount)
+            frame[channel] = recorded + (head[channel] - recorded) * (0.78 * amount)
         }
     }
 

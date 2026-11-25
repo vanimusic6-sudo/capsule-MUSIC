@@ -12,12 +12,12 @@ internal data class CapsuleTrackSound(
     fun tempo(variant: SoundStudioTempoVariant): CapsuleTempoShape {
         // Stable clock and independent pitch. Media3's time-stretch changes
         // rhythmic pace without a matching transposition of voices/instruments.
-        // Half a semitone (50 cents) adds character without caricaturing vocals.
+        // One semitone adds character without the previous four-semitone caricature.
         // Never depend on late-arriving track analysis.
         return when (variant) {
             SoundStudioTempoVariant.NORMAL -> CapsuleTempoShape(1f, 1f)
-            SoundStudioTempoVariant.SPEED_UP -> CapsuleTempoShape(1.2599211f, 1.0293022f)
-            SoundStudioTempoVariant.SLOWED -> CapsuleTempoShape(0.7937005f, 0.9715319f)
+            SoundStudioTempoVariant.SPEED_UP -> CapsuleTempoShape(1.18f, 1.0594631f)
+            SoundStudioTempoVariant.SLOWED -> CapsuleTempoShape(0.85f, 0.9438743f)
         }
     }
 

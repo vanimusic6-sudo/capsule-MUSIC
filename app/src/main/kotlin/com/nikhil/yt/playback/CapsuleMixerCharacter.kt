@@ -17,7 +17,7 @@ internal class CapsuleRecordTexture(private val rate: Int, channels: Int) {
     private val release = characterTime(0.090, rate)
     private val lowerStep = characterStep(650.0, rate)
     private val upperStep = characterStep(2800.0, rate)
-    private val tickDecay = exp(-1.0 / (rate * 0.0035))
+    private val tickDecay = exp(-1.0 / (rate * 0.006))
     private var state = 0x51a7b5c3
     private var lower = 0.0
     private var upper = 0.0
@@ -51,12 +51,15 @@ internal class CapsuleRecordTexture(private val rate: Int, channels: Int) {
         if (elapsed < rate) elapsed++
         intro *= expIntro
         if (countdown-- <= 0) {
-            tick = random() * (0.65 + 0.35 * intro)
-            val interval = if (elapsed < rate / 3) 0.035 else 0.30
+            val polarity = if (random() < 0.0) -1.0 else 1.0
+            tick = polarity * (0.45 + 0.55 * abs(random()))
+            val interval = if (elapsed < rate / 3) 0.048 else 0.22
             countdown = (rate * interval * (1.0 + 0.65 * random())).toInt().coerceAtLeast(1)
         }
         val white = random()
-        val excitation = white * (0.18 + 0.82 * abs(tick))
+        // A decaying signed groove transient produces a recognizable tick rather
+        // than burying the event in nearly inaudible modulated white noise.
+        val excitation = (white * (0.30 + 0.35 * abs(tick)) + 0.65 * tick).coerceIn(-1.0, 1.0)
         tick *= tickDecay
         lower += (excitation - lower) * lowerStep
         upper += (excitation - upper) * upperStep
@@ -65,7 +68,7 @@ internal class CapsuleRecordTexture(private val rate: Int, channels: Int) {
             val level = envelope[ch]
             val gate = ((level - 0.002) / 0.018).coerceIn(0.0, 1.0)
             // Follow each channel independently; a silent channel stays silent.
-            val budget = minOf(0.013, level * (0.12 + 0.16 * intro))
+            val budget = minOf(0.024, level * (0.20 + 0.22 * intro))
             frame[ch] += texture * budget * gate * amount.coerceIn(0.0, 1.0)
         }
     }
@@ -107,6 +110,7 @@ internal class CapsuleAutoDjGesture(private val rate: Int, private val channels:
     fun apply(frame: DoubleArray, amount: Double) {
         val strength = amount.coerceIn(0.0, 1.0)
         var bassPeak = 0.0
+        var midPeak = 0.0
         var fullPeak = 0.0
         val capture = phase == 0
         for (ch in frame.indices) {
@@ -116,42 +120,46 @@ internal class CapsuleAutoDjGesture(private val rate: Int, private val channels:
             bassPeak = maxOf(bassPeak, abs(bass[ch]))
             mid[ch] += (x - bass[ch] - mid[ch]) * captureStep
             smooth[ch] += (mid[ch] - smooth[ch]) * captureStep
+            midPeak = maxOf(midPeak, abs(mid[ch]))
             tone[ch] += (x - tone[ch]) * toneStep
             if (capture) ring[cursor * channels + ch] = smooth[ch].toFloat()
         }
         if (capture) { if (++cursor == capacity) cursor = 0; stored = minOf(stored + 1, capacity) }
         if (++phase == stride) phase = 0
-        fast += (bassPeak - fast) * fastStep
-        slow += (bassPeak - slow) * slowStep
+        // Include percussion above the kick range instead of depending on a
+        // bass-heavy master. A linked detector keeps all channels synchronized.
+        val onsetLevel = bassPeak + 0.28 * midPeak
+        fast += (onsetLevel - fast) * fastStep
+        slow += (onsetLevel - slow) * slowStep
         if (sinceBeat < rate * 3) sinceBeat++
         if (sinceEvent < rate * 6) sinceEvent++
-        if (fast < maxOf(0.018, slow * 1.18)) armed = true
-        if (armed && fast > maxOf(0.035, slow * 1.65) && sinceBeat >= rate / 4) {
+        if (fast < maxOf(0.014, slow * 1.13)) armed = true
+        if (armed && fast > maxOf(0.025, slow * 1.42) && sinceBeat >= rate / 5) {
             armed = false
             val interval = sinceBeat.toDouble()
-            if (interval in rate * 0.28..rate * 0.92) {
-                if (period > 0.0 && abs(interval - period) < period * 0.16) {
+            if (interval in rate * 0.25..rate * 1.05) {
+                if (period > 0.0 && abs(interval - period) < period * 0.24) {
                     stable = minOf(stable + 1, 32); beats++
                     period += (interval - period) * 0.2
                 } else { period = interval; stable = 0; beats = 0 }
             } else { period = 0.0; stable = 0; beats = 0 }
             sinceBeat = 0
-            if (stable >= 3 && beats % 8 == 0 && sinceEvent >= rate * 4 && gesture < 0 &&
+            if (stable >= 2 && (beats == 2 || beats % 4 == 0) && sinceEvent >= rate * 4 && gesture < 0 &&
                 stored >= (captureRate * 0.24).toInt() && strength >= 0.10 && fullPeak > 0.025) {
                 scratch = eventsStarted % 2 == 0
                 eventsStarted++
                 sinceEvent = 0
                 gesture = 0
-                gestureLength = (period * if (scratch) 0.36 else 0.46).toInt()
-                    .coerceIn((rate * 0.12).toInt(), (rate * 0.25).toInt())
+                gestureLength = (period * if (scratch) 0.50 else 0.65).toInt()
+                    .coerceIn((rate * 0.16).toInt(), (rate * 0.32).toInt())
             }
         }
         if (gesture < 0) return
         val p = gesture.toDouble() / gestureLength
         val shape = sin(PI * p).let { it * it }
-        val wet = shape * strength * if (scratch) 0.62 else 0.68
+        val wet = shape * strength * if (scratch) 0.86 else 0.88
         // Reverse then forward through a short recent phrase; band-limited to avoid harsh edges.
-        val age = if (p < 0.46) 0.045 + 0.14 * p / 0.46 else 0.185 - 0.165 * (p - 0.46) / 0.54
+        val age = if (p < 0.46) 0.025 + 0.205 * p / 0.46 else 0.230 - 0.210 * (p - 0.46) / 0.54
         val tap = cursor - 1 + phase.toDouble() / stride - age * captureRate
         val first = kotlin.math.floor(tap).toInt()
         val frac = tap - first
@@ -161,8 +169,8 @@ internal class CapsuleAutoDjGesture(private val rate: Int, private val channels:
             val x = frame[ch]
             val replacement = if (scratch) {
                 val scrub = ring[a + ch] + (ring[b + ch] - ring[a + ch]) * frac
-                0.70 * scrub + 0.30 * bass[ch]
-            } else 0.72 * tone[ch]
+                0.85 * scrub + 0.15 * bass[ch]
+            } else 0.55 * tone[ch]
             frame[ch] = x + wet * (replacement - x)
         }
         if (++gesture >= gestureLength) gesture = -1
