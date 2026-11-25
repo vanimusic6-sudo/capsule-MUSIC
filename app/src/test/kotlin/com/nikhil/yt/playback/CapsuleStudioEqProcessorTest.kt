@@ -76,7 +76,7 @@ class CapsuleStudioEqProcessorTest {
             assertEquals(0, pcm.position())
             val curve = checkNotNull(analysis.observe(pcm)).levelsMb
             assertTrue(curve.zip(CAPSULE_STUDIO_FREQUENCIES_HZ).all { (level, band) ->
-                level in capsuleStudioBandLimit(band) && level in -350..180
+                level in capsuleStudioBandLimit(band) && level in -420..225
             })
             curve
         }
@@ -89,7 +89,7 @@ class CapsuleStudioEqProcessorTest {
         assertEquals(curves[1], checkNotNull(silence.observe(window(420))).levelsMb)
     }
 
-    @Test fun denseAudioReceivesLessTempoShiftWithoutIndependentTimeStretching() {
+    @Test fun denseAudioReceivesLessTempoShiftWithSmallIndependentPitchAdjustment() {
         val rate = 16_000
         fun analyze(hitsPerSecond: Int): CapsuleTrackSound {
             val probe = CapsuleStudioAnalysis(rate, 1)
@@ -109,29 +109,53 @@ class CapsuleStudioEqProcessorTest {
         assertTrue(busy.tempo(slow).speed > sparse.tempo(slow).speed + 0.02f)
         for (plan in listOf(sparse, busy)) for (variant in SoundStudioTempoVariant.entries) {
             val shape = plan.tempo(variant)
-            assertTrue(shape.speed in 0.84f..1.20f)
-            assertEquals(shape.speed, shape.pitch, 0f)
+            assertTrue(shape.speed in 0.83f..1.24f)
+            assertTrue(shape.pitch in 0.83f..1.24f)
+            assertTrue(abs(shape.speed - shape.pitch) <= 0.04f)
+            if (variant == SoundStudioTempoVariant.NORMAL) assertEquals(1f, shape.pitch, 0f)
+            else assertTrue(shape.speed != shape.pitch)
         }
     }
 
-    @Test fun trackVersionsHaveDistinctBoundedMasteringAndClock() {
-        val sparse = CapsuleTrackSound(listOf(-300, 80, 0, 10, -60), 0f)
-        val dense = CapsuleTrackSound(listOf(0, -200, 0, -100, 30), 1f)
+    @Test fun trackVersionsHaveBoundedClockAndIndependentMastering() {
+        val sparse = CapsuleTrackSound(listOf(-300, 80, 0, 10, -60), 0f, 90f, 0.8f)
+        val dense = CapsuleTrackSound(listOf(0, -200, 0, -100, 30), 1f, 175f, 0.8f)
         val fast = SoundStudioTempoVariant.SPEED_UP
         val slow = SoundStudioTempoVariant.SLOWED
-        assertTrue(sparse.versionLevels(SoundStudioTempoVariant.NORMAL).isEmpty())
-        assertTrue(sparse.versionLevels(fast) != dense.versionLevels(fast))
-        assertTrue(sparse.versionLevels(slow) != sparse.versionLevels(fast))
-        assertTrue(sparse.versionLevels(fast)[3] > sparse.versionLevels(fast)[1])
-        assertTrue(sparse.versionLevels(slow)[1] > sparse.versionLevels(slow)[3])
-        for (plan in listOf(sparse, dense)) for (variant in listOf(fast, slow)) {
-            assertEquals(5, plan.versionLevels(variant).size)
-            assertTrue(plan.versionLevels(variant).zip(CAPSULE_STUDIO_FREQUENCIES_HZ).all { (gain, hz) ->
-                gain in capsuleStudioBandLimit(hz)
-            })
+        assertTrue(sparse.tempo(fast).speed > dense.tempo(fast).speed)
+        assertTrue(sparse.tempo(slow).speed < dense.tempo(slow).speed)
+        val rate = 48_000
+        val samples = ShortArray(rate) { i -> (18_000 * sin(2 * PI * 440 * i / rate)).roundToInt().toShort() }
+        fun version(mode: SoundStudioTempoVariant) = render(CapsuleStudioEqFilter(rate, 1).apply {
+            setVersion(mode, sparse)
+            setCurve(listOf(0, 100, 0, 0, 0))
+        }, samples)
+        assertTrue(!version(fast).contentEquals(version(slow)))
+        for (mode in SoundStudioTempoVariant.entries) {
+            val output = version(mode)
+            assertEquals(samples.size, output.size)
+            assertTrue(output.all { abs(it.toInt()) <= (CAPSULE_EQ_PEAK_AMPLITUDE * 32768).roundToInt() })
         }
         assertEquals(0.84f, capsuleTapeRate(0.84f, slow,
             CapsuleMixerSetting(CapsuleMixerEffect.TAPE, 100)), 0.00001f)
+    }
+
+    @Test fun mixerAndVersionCombinationsStayBelowPeakCeilingAndIsolateChannels() {
+        val rate = 16_000
+        val signal = ShortArray(rate * 2) { i ->
+            if (i % 2 != 0) 0 else if ((i / 2) % 7 < 3) Short.MAX_VALUE else Short.MIN_VALUE
+        }
+        for (effect in CapsuleMixerEffect.entries) for (mode in listOf(SoundStudioTempoVariant.SPEED_UP, SoundStudioTempoVariant.SLOWED)) {
+            val eq = CapsuleStudioEqFilter(rate, 2).apply {
+                setCurve(capsuleManualEqLevels(listOf(160, -800, 550, -700, 320)))
+                setVersion(mode, CapsuleTrackSound.NEUTRAL)
+                setMixer(CapsuleMixerSetting(effect, 100))
+            }
+            val output = render(eq, signal)
+            assertEquals(signal.size, output.size)
+            assertTrue(output.indices.filter { it % 2 == 1 }.all { output[it] == 0.toShort() })
+            assertTrue(output.all { abs(it.toInt()) <= (CAPSULE_EQ_PEAK_AMPLITUDE * 32768).roundToInt() })
+        }
     }
 
     @Test fun tapeTransportFollowsOneBoundedRateAndRespectsTempoSelection() {

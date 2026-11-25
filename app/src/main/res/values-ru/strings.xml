@@ -1013,9 +1013,9 @@
     <string name="eq_mixer_sun">Солнце</string>
     <string name="eq_mixer_vinyl">DJ-пульт</string>
     <string name="eq_studio_tape_hint">Скорость и тон снижаются вместе, как при замедлении ленты.</string>
-    <string name="eq_mixer_soft_hint">Раскрывает тёплую середину, смягчает резкие верха и не усиливает глубокий бас.</string>
-    <string name="eq_mixer_sun_hint">Раскрывает голос и инструменты без генерации гармоник и усиления верхов.</string>
-    <string name="eq_mixer_vinyl_hint">Автоматически создаёт клубный баланс с выразительными атаками. Джог — по желанию.</string>
+    <string name="eq_mixer_soft_hint">Динамически выделяет тёплую середину и мягко контролирует резкие верха.</string>
+    <string name="eq_mixer_sun_hint">Сохраняет бас, раскрывает голос и динамически смягчает резкие высокие частоты.</string>
+    <string name="eq_mixer_vinyl_hint">Следит за ударами баса и динамически раскрывает ритм. Джог — по желанию.</string>
     <string name="eq_dj_jog">Джог</string>
     <string name="eq_dj_filter">Фильтр</string>
     <string name="eq_dj_brake">Тормоз</string>

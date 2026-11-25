@@ -3913,7 +3913,9 @@ class MusicService :
     private fun studioPlaybackParameters(sound: CapsuleStudioSound, plan: CapsuleTrackSound?): PlaybackParameters {
         val tempo = (plan ?: CapsuleTrackSound.NEUTRAL).tempo(sound.tempo)
         val rate = capsuleTapeRate(tempo.speed, sound.tempo, sound.mixer)
-        return PlaybackParameters(rate, rate)
+        // Tape changes the source clock proportionally, retaining the version's independent pitch offset.
+        val pitch = tempo.pitch * (rate / tempo.speed)
+        return PlaybackParameters(rate, pitch)
     }
 
     private fun activeStudioSound(): CapsuleStudioSound {

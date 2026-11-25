@@ -1093,9 +1093,9 @@ Capsule will only extract your token, and everything else is stored locally.</st
     <string name="eq_mixer_sun">Sunshine</string>
     <string name="eq_mixer_vinyl">DJ Deck</string>
     <string name="eq_studio_tape_hint">Lowers speed and pitch together, like slowing down tape.</string>
-    <string name="eq_mixer_soft_hint">Reveals warm mids, softens harsh highs and avoids deep-bass boost.</string>
-    <string name="eq_mixer_sun_hint">Reveals vocals and instruments without generating harmonics or boosting highs.</string>
-    <string name="eq_mixer_vinyl_hint">Automatically shapes a club-style mix with punchy attacks. Jog controls are optional.</string>
+    <string name="eq_mixer_soft_hint">Dynamically reveals warm mids and gently controls sharp highs.</string>
+    <string name="eq_mixer_sun_hint">Retains bass, reveals vocals and dynamically softens harsh highs.</string>
+    <string name="eq_mixer_vinyl_hint">Follows bass attacks and dynamically reveals the groove. Jog controls are optional.</string>
     <string name="eq_dj_jog">Jog</string>
     <string name="eq_dj_filter">Filter</string>
     <string name="eq_dj_brake">Brake</string>

@@ -77,13 +77,8 @@ internal class CapsuleStudioEqProcessor(
             }
         }
         val tone = if (setting.adaptive) plan?.levelsMb.orEmpty() else setting.levelsMb
-        val version = (plan ?: CapsuleTrackSound.NEUTRAL).versionLevels(setting.tempo)
-        val combined = if (version.isEmpty()) tone else CAPSULE_STUDIO_FREQUENCIES_HZ.mapIndexed { band, hz ->
-            val limit = capsuleStudioBandLimit(hz)
-            val base = tone.getOrElse(band) { 0 }.coerceIn(limit)
-            (base + version.getOrElse(band) { 0 }).coerceIn(limit)
-        }
-        equalizer.setCurve(combined, smooth = setting.adaptive || version.isNotEmpty())
+        equalizer.setCurve(tone, smooth = setting.adaptive)
+        equalizer.setVersion(setting.tempo, plan ?: CapsuleTrackSound.NEUTRAL)
         equalizer.setMixer(setting.mixer)
         equalizer.setDjControls(setting.dj)
         equalizer.setProcessingGuard(setting.adaptive || setting.tempo != SoundStudioTempoVariant.NORMAL)
@@ -100,7 +95,7 @@ internal class CapsuleStudioEqProcessor(
     }
 }
 
-/** Five bands and a mixer feed the same linked output peak guard. */
+/** EQ, independent version mastering and mixer share the final linked peak guard. */
 internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int) {
     private val rate = sampleRate
     private val fastTransitionFrames = (sampleRate * 24 / 1000).coerceAtLeast(1)
@@ -120,6 +115,9 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
     private val frame = DoubleArray(channels)
     private val previousFrame = DoubleArray(channels)
     private val mixer = CapsuleMixerStage(sampleRate, channels)
+    private val versionStage = CapsuleVersionStage(sampleRate, channels)
+    private var versionMode: CapsuleVoicing? = null
+    private var versionCharacter = 0.76
     private val peakMonitor = CapsuleReconstructedPeak(channels)
     private val limiter = CapsuleLookaheadLimiter(sampleRate, channels)
     private val warmupFrames = (sampleRate * 38 / 1000).coerceAtLeast(1)
@@ -132,6 +130,14 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
     fun drain(output: ByteBuffer) = limiter.drain(output)
 
     fun setMixer(setting: CapsuleMixerSetting) = mixer.set(setting)
+    fun setVersion(variant: SoundStudioTempoVariant, plan: CapsuleTrackSound) {
+        versionMode = when (variant) {
+            SoundStudioTempoVariant.NORMAL -> null
+            SoundStudioTempoVariant.SPEED_UP -> CapsuleVoicing.FAST
+            SoundStudioTempoVariant.SLOWED -> CapsuleVoicing.SLOW
+        }
+        versionCharacter = if (plan.pace.isFinite()) plan.pace.toDouble().coerceIn(0.0, 1.0) else 0.76
+    }
     fun setDjControls(controls: CapsuleDjControls) { mixer.djControls = controls.bounded() }
     fun setProcessingGuard(enabled: Boolean) {
         processingGuard = enabled
@@ -161,7 +167,7 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
         if (!input.hasRemaining()) return
         started = true
         if (current == null && remaining == 0 && !limiter.active && !mixer.active &&
-            !processingGuard && processingGuardMix == 0.0
+            !processingGuard && processingGuardMix == 0.0 && versionMode == null && !versionStage.active
         ) {
             captureDryHistory(input)
             output.put(input)
@@ -184,6 +190,14 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
                 peak = max(peak, abs(frame[channel]))
             }
             commitHistoryFrame()
+            if (versionMode != null || versionStage.active) {
+                versionStage.apply(frame, versionMode, versionCharacter)
+                peak = 0.0
+                for (channel in frame.indices) {
+                    if (!frame[channel].isFinite()) frame[channel] = 0.0
+                    peak = max(peak, abs(frame[channel]))
+                }
+            }
             if (mixer.active) {
                 mixer.process(frame, peak)
                 peak = 0.0
@@ -198,7 +212,8 @@ internal class CapsuleStudioEqFilter(sampleRate: Int, private val channels: Int)
                 oldCeiling + (newCeiling - oldCeiling) * mix
             }
             if (!processingGuard) processingGuardMix = (processingGuardMix - 1.0 / fastTransitionFrames).coerceAtLeast(0.0)
-            val protectionMix = max(mixer.ceilingFraction, processingGuardMix)
+            val versionGuard = if (versionMode != null || versionStage.active) 1.0 else 0.0
+            val protectionMix = max(max(mixer.ceilingFraction, processingGuardMix), versionGuard)
             val ceiling = minOf(eqCeiling, 1.0 - (1.0 - CAPSULE_EQ_PEAK_AMPLITUDE) * protectionMix)
             // Fast changes near full scale need room for peaks between PCM samples.
             // Keep a shared reserve across channels and release it gradually.

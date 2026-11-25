@@ -1,143 +1,174 @@
-/* Capsule MUSIC — per-track PCM analysis. GPL-3.0. */
+/* Capsule MUSIC — bounded per-track musical analysis. GPL-3.0. */
 package com.nikhil.yt.playback
 
 import java.nio.ByteBuffer
-import kotlin.math.PI
-import kotlin.math.abs
-import kotlin.math.exp
-import kotlin.math.log10
-import kotlin.math.roundToInt
-import kotlin.math.sqrt
+import kotlin.math.*
 
 internal data class CapsuleTempoShape(val speed: Float, val pitch: Float)
 
-internal data class CapsuleTrackSound(val levelsMb: List<Int>, val pace: Float) {
+internal data class CapsuleTrackSound(
+    val levelsMb: List<Int>, val pace: Float, val bpm: Float = 0f, val rhythmConfidence: Float = 0f,
+) {
     fun tempo(variant: SoundStudioTempoVariant): CapsuleTempoShape {
         val density = if (pace.isFinite()) pace.coerceIn(0f, 1f) else 0.76f
+        val rhythmic = if (rhythmConfidence.isFinite() && rhythmConfidence >= 0.45f && bpm in 65f..190f)
+            ((bpm - 100f) / 90f).coerceIn(-0.4f, 1f) else 0f
         val speed = when (variant) {
             SoundStudioTempoVariant.NORMAL -> 1f
-            SoundStudioTempoVariant.SPEED_UP -> 1.20f - 0.09f * density
-            SoundStudioTempoVariant.SLOWED -> 0.84f + 0.08f * density
+            SoundStudioTempoVariant.SPEED_UP -> (1.23f - 0.11f * density - 0.025f * rhythmic).coerceIn(1.10f, 1.24f)
+            SoundStudioTempoVariant.SLOWED -> (0.83f + 0.09f * density + 0.015f * rhythmic).coerceIn(0.83f, 0.94f)
         }
-        // Media3 stretches time by speed / pitch. Coupled values use only
-        // resampling and preserve the timing relationships inside the mix.
-        return CapsuleTempoShape(speed, speed)
-    }
-
-    /** A small mastering curve, independent of the user's EQ and mixer. */
-    fun versionLevels(variant: SoundStudioTempoVariant): List<Int> {
-        if (variant == SoundStudioTempoVariant.NORMAL) return emptyList()
-        val density = if (pace.isFinite()) pace.coerceIn(0f, 1f) else 0.76f
-        val voicing = when (variant) {
-            SoundStudioTempoVariant.SPEED_UP -> listOf(-110, -45, 55, 145, -65)
-            SoundStudioTempoVariant.SLOWED -> listOf(-90, 145, 65, -105, -165)
-            SoundStudioTempoVariant.NORMAL -> return emptyList()
+        // Mostly varispeed, with a small independent pitch adjustment to avoid caricature.
+        val pitch = when (variant) {
+            SoundStudioTempoVariant.NORMAL -> 1f
+            SoundStudioTempoVariant.SPEED_UP -> speed + (1f - speed) * 0.15f
+            SoundStudioTempoVariant.SLOWED -> speed + (1f - speed) * 0.12f
         }
-        val strength = 1.0 - 0.35 * density
-        return voicing.mapIndexed { band, level ->
-            // Only apply the subtractive part of the source correction here;
-            // adaptive EQ, if selected, remains its own independent layer.
-            val excess = levelsMb.getOrElse(band) { 0 }.coerceIn(-350, 0)
-            (level * strength + 0.20 * excess).roundToInt()
-        }
+        return CapsuleTempoShape(speed, pitch)
     }
-
-    companion object {
-        val NEUTRAL = CapsuleTrackSound(emptyList(), 0.76f)
-    }
+    companion object { val NEUTRAL = CapsuleTrackSound(emptyList(), 0.76f) }
 }
 
-/** Analyze a bounded audible excerpt once. Each band has its own energy measurement. */
+/** Independent broad bandpass energy, level-normalized excerpts and onset periodicity.
+ * Once a plan is published, the real-time detector is released by its owner. */
 internal class CapsuleStudioAnalysis(private val sampleRate: Int, private val channels: Int) {
-    private val steps = listOf(150.0, 635.0, 1_550.0, 5_900.0).map {
-        1.0 - exp(-2.0 * PI * minOf(it, sampleRate * 0.32) / sampleRate)
-    }.toDoubleArray()
-    private val filters = DoubleArray(channels * steps.size)
-    private val blockEnergy = DoubleArray(steps.size + 1)
-    private val energy = DoubleArray(steps.size + 1)
+    private val centers = doubleArrayOf(80.0, 400.0, 1000.0, 2800.0, 8500.0)
+    private val bank = Array(centers.size) { i -> AnalysisBand(centers[i], sampleRate, channels) }
+    private val power = DoubleArray(5)
+    private val shares = DoubleArray(5)
+    private val energy = DoubleArray(5)
+    private val onset = DoubleArray(600)
     private val blockSize = (sampleRate / 50).coerceAtLeast(1)
     private var frames = 0
     private var blocks = 0
-    private var audibleBlocks = 0
+    private var audible = 0
     private var blockPower = 0.0
+    private var blockPeak = 0.0
     private var envelope = 0.0
     private var previous = 0.0
+    private var previousBass = 0.0
     private var attacks = 0
     private var lastAttack = -10
     private var activity = 0.0
+    private var crest = 0.0
 
     fun observe(input: ByteBuffer): CapsuleTrackSound? {
         val frameBytes = channels * Short.SIZE_BYTES
         var index = input.position()
         while (index + frameBytes <= input.limit()) {
-            for (channel in 0 until channels) {
+            for (ch in 0 until channels) {
                 val x = input.getShort(index) / 32768.0
                 index += Short.SIZE_BYTES
                 blockPower += x * x
-                var last = 0.0
-                for (band in steps.indices) {
-                    val slot = channel * steps.size + band
-                    filters[slot] += steps[band] * (x - filters[slot])
-                    val value = filters[slot] - last
-                    blockEnergy[band] += value * value
-                    last = filters[slot]
+                blockPeak = maxOf(blockPeak, abs(x))
+                for (i in bank.indices) {
+                    val b = bank[i].process(x, ch)
+                    power[i] += b * b
                 }
-                val upper = x - last
-                blockEnergy[steps.size] += upper * upper
             }
-            if (++frames != blockSize) continue
+            if (++frames < blockSize) continue
             finishBlock()
-            if (audibleBlocks >= 210 || blocks >= 600 && audibleBlocks >= 60) return result()
-            if (blocks >= 600) {
-                blocks = 0
-                audibleBlocks = 0
-                lastAttack = -10
-                attacks = 0
-                activity = 0.0
-                energy.fill(0.0)
-            }
+            if (audible >= 210 || blocks >= onset.size && audible >= 60) return result()
+            if (blocks >= onset.size) resetWindow()
         }
         return null
     }
 
     private fun finishBlock() {
         val rms = sqrt(blockPower / (blockSize * channels))
+        val total = power.sum()
+        val bass = sqrt((power[0] + power[1]) / (blockSize * channels))
+        val flux = (rms - previous).coerceAtLeast(0.0) + 0.65 * (bass - previousBass).coerceAtLeast(0.0)
+        onset[blocks] = (flux / maxOf(0.025, envelope)).coerceIn(0.0, 2.0)
         blocks++
-        if (rms > 0.006) {
-            audibleBlocks++
-            // Cap each block's contribution so a loud hit cannot set the track EQ.
-            val weight = minOf(1.0, 0.0484 / (rms * rms))
-            for (band in energy.indices) energy[band] += blockEnergy[band] * weight
-            if (rms > maxOf(0.018, envelope * 1.32) && rms - previous > maxOf(0.009, envelope * 0.16) &&
-                blocks - lastAttack >= 4
-            ) {
+        if (rms > 0.006 && total > 1e-12) {
+            audible++
+            for (i in power.indices) {
+                val share = power[i] / total
+                shares[i] += share
+                energy[i] += share * share
+            }
+            if (rms > maxOf(0.018, envelope * 1.32) && rms - previous > maxOf(0.009, envelope * 0.16) && blocks - lastAttack >= 4) {
                 attacks++
                 lastAttack = blocks
             }
             activity += (abs(rms - previous) / maxOf(0.035, envelope)).coerceAtMost(1.0)
+            crest += (blockPeak / maxOf(rms, 0.006)).coerceIn(1.0, 8.0)
         }
         envelope += 0.14 * (rms - envelope)
         previous = rms
+        previousBass = bass
         frames = 0
         blockPower = 0.0
-        blockEnergy.fill(0.0)
+        blockPeak = 0.0
+        power.fill(0.0)
+    }
+
+    private fun resetWindow() {
+        blocks = 0; audible = 0; attacks = 0; lastAttack = -10; activity = 0.0; crest = 0.0
+        shares.fill(0.0); energy.fill(0.0); onset.fill(0.0)
+    }
+
+    private fun rhythm(): Pair<Float, Float> {
+        if (blocks < 150 || attacks < 4) return 0f to 0f
+        val mean = onset.take(blocks).average()
+        var best = 0.0
+        var lag = 0
+        // 65–190 BPM, at 50 analysis blocks per second. Normalize both sides.
+        for (d in 16..46) {
+            var xy = 0.0; var xx = 0.0; var yy = 0.0
+            for (i in d until blocks) {
+                val x = onset[i] - mean; val y = onset[i - d] - mean
+                xy += x * y; xx += x * x; yy += y * y
+            }
+            val score = if (xx * yy > 1e-12) xy / sqrt(xx * yy) else 0.0
+            if (score > best + 0.025) { best = score; lag = d }
+        }
+        return if (best >= 0.45 && lag > 0) (3000f / lag) to best.toFloat() else 0f to 0f
     }
 
     private fun result(): CapsuleTrackSound {
-        val reference = doubleArrayOf(0.27, 0.27, 0.19, 0.19, 0.08)
-        val total = energy.sum()
-        if (!total.isFinite() || total <= 0.0) return CapsuleTrackSound.NEUTRAL
-        val authored = energy.mapIndexed { band, power ->
-            val share = power / total
-            val imbalance = 10 * log10((share + 0.012) / (reference[band] + 0.012))
-            // A missing band is left alone. Only cut excess or gently support audible content.
-            val support = (share / reference[band]).coerceIn(0.0, 1.0)
-            val correction = if (imbalance > 0.0) -64.0 * imbalance else -68.0 * imbalance * support
-            val ceiling = if (band == 0 || band == energy.lastIndex) 45.0 else 180.0
-            ((correction.coerceIn(-350.0, ceiling) / 5.0).roundToInt() * 5)
+        if (audible == 0) return CapsuleTrackSound.NEUTRAL
+        val reference = doubleArrayOf(0.23, 0.26, 0.22, 0.20, 0.09)
+        val density = (attacks * 50.0 / audible / 7.0 + activity / audible * 0.55).coerceIn(0.0, 1.0)
+        val dynamics = ((crest / audible - 1.4) / 3.0).coerceIn(0.0, 1.0)
+        val authored = shares.mapIndexed { i, sum ->
+            val share = sum / audible
+            val variance = (energy[i] / audible - share * share).coerceAtLeast(0.0)
+            val stability = (1.0 - 1.8 * sqrt(variance)).coerceIn(0.35, 1.0)
+            val imbalance = 10 * log10((share + 0.012) / (reference[i] + 0.012))
+            val support = (share / reference[i]).coerceIn(0.0, 1.0)
+            val correction = if (imbalance > 0) -80 * imbalance * stability else -92 * imbalance * support * stability
+            // Add audible musical contour without lifting empty bands or sub/air extremes.
+            val character = when (i) {
+                1 -> 95 * support * (1.0 - density)
+                2 -> 85 * support
+                3 -> 115 * support * (1.0 - 0.55 * density)
+                else -> 0.0
+            }
+            val ceiling = if (i == 0 || i == 4) 35.0 else 225.0
+            val value = correction + character * (0.7 + 0.3 * dynamics)
+            (value.coerceIn(-420.0, ceiling) / 5.0).roundToInt() * 5
         }
-        val density = attacks * 50.0 / audibleBlocks
-        val pace = (density / 7.0 + activity / audibleBlocks * 0.55).coerceIn(0.0, 1.0)
-        return CapsuleTrackSound(capsuleMusicalEqLevels(authored), pace.toFloat())
+        val (bpm, confidence) = rhythm()
+        return CapsuleTrackSound(capsuleMusicalEqLevels(authored), density.toFloat(), bpm, confidence)
+    }
+}
+
+private class AnalysisBand(hz: Double, rate: Int, channels: Int) {
+    private val enabled = hz < rate * 0.46
+    private val w = 2 * PI * minOf(hz, rate * 0.45) / rate
+    private val alpha = sin(w) / (2 * 0.65)
+    private val b = alpha / (1 + alpha)
+    private val a1 = -2 * cos(w) / (1 + alpha)
+    private val a2 = (1 - alpha) / (1 + alpha)
+    private val z1 = DoubleArray(channels)
+    private val z2 = DoubleArray(channels)
+    fun process(x: Double, ch: Int): Double {
+        if (!enabled) return 0.0
+        val y = b * x + z1[ch]
+        z1[ch] = -a1 * y + z2[ch]
+        z2[ch] = -b * x - a2 * y
+        return y
     }
 }
