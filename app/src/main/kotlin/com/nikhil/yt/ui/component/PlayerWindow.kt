@@ -148,7 +148,10 @@ internal fun PlayerWindow(
                         .graphicsLayer {
                             val p = state.visualProgress
                             alpha = playerPresentationOpacity(p)
-                            translationY = playerSceneTravelDp(p).dp.toPx()
+                            // An invisible composed page is prepared off-screen, not
+                            // hit-testable over Home or the dock during the spring tail.
+                            translationY = if (alpha > 0f) playerSceneTravelDp(p).dp.toPx()
+                                else size.height
                             val scale = playerPresentationScale(p)
                             scaleX = scale
                             scaleY = scale
