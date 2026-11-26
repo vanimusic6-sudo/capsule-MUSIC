@@ -877,7 +877,7 @@ private fun CapsuleMixerSection(service: MusicService, profile: CapsuleMixerProf
         TextButton(enabled = setting.effect != CapsuleMixerEffect.OFF, onClick = {
             draft = null
             service.cancelStudioMixerPreview()
-            service.setSoundStudioMixer(CapsuleMixerEffect.OFF)
+            service.setSoundStudioMixer(CapsuleMixerEffect.OFF, previewAmount = 0)
         }) { Text(stringResource(R.string.capsule_studio_final_off)) }
     }) {
         Column(
@@ -897,7 +897,7 @@ private fun CapsuleMixerSection(service: MusicService, profile: CapsuleMixerProf
                             if (setting.effect != effect) {
                                 draft = null
                                 service.cancelStudioMixerPreview()
-                                service.setSoundStudioMixer(effect)
+                                service.setSoundStudioMixer(effect, previewAmount = profile.copy(effect = effect).setting.amount)
                             }
                         }
                     }
