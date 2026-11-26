@@ -1,7 +1,7 @@
 /* Capsule MUSIC — one physical timeline for the player window and its app scene. GPL-3.0. */
 package com.nikhil.yt.ui.component
 
-import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -28,17 +28,25 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import com.nikhil.yt.ui.motion.CapsuleMotion
 
-// One bounded timeline for both layouts: no overshoot or sub-pixel spring tail.
-// A reversed request starts from the actual current anchor, not an endpoint.
-internal const val PLAYER_OPEN_DURATION_MS = 370
-internal const val PLAYER_CLOSE_DURATION_MS = 330
+// A finite minimum-jerk trajectory, biased gently toward earlier travel.
+// Position, speed and acceleration all join continuously at both rest anchors.
+// No separate spring tail or rebound is added to the actual sheet.
+internal const val PLAYER_OPEN_DURATION_MS = 380
+internal const val PLAYER_CLOSE_DURATION_MS = 345
+
+internal fun playerTravelCurve(fraction: Float, opening: Boolean): Float {
+    val t = if (fraction.isFinite()) fraction.coerceIn(0f, 1f) else 0f
+    val bias = if (opening) 0.28f else 0.19f
+    return CapsuleMotion.smooth(t + bias * t * (1f - t))
+}
+
 internal val PlayerOpenAnimation = tween<Float>(
     durationMillis = PLAYER_OPEN_DURATION_MS,
-    easing = CubicBezierEasing(0.38f, 0f, 0.24f, 1f),
+    easing = Easing { playerTravelCurve(it, true) },
 )
 internal val PlayerCloseAnimation = tween<Float>(
     durationMillis = PLAYER_CLOSE_DURATION_MS,
-    easing = CubicBezierEasing(0.38f, 0f, 0.30f, 1f),
+    easing = Easing { playerTravelCurve(it, false) },
 )
 
 /** Action ownership is separate from Scaffold's subcomposition order. No clock or retained UI. */
@@ -74,7 +82,7 @@ private fun window(progress: Float, start: Float, end: Float): Float {
 }
 
 /** The app stays stationary; a restrained shadow gives the arriving surface depth. */
-internal fun playerSceneDim(progress: Float): Float = 0.16f * boundedProgress(progress)
+internal fun playerSceneDim(progress: Float): Float = 0.16f * window(progress, 0.04f, 0.82f)
 internal fun playerSceneNeedsDrawing(progress: Float): Boolean = boundedProgress(progress) < 1f
 
 /**
@@ -99,24 +107,26 @@ internal fun playerSceneShouldInterceptTouch(
     dismissed: Boolean,
 ): Boolean = !dismissed && (expanding || boundedProgress(progress) > PlayerSceneTouchThreshold)
 
-// The real mini starts returning before the closing window reaches its final dock.
-// Both surfaces use the same anchor, so no late source swap or flash is introduced.
-internal fun playerMiniDrawAlpha(progress: Float): Float = 1f - window(progress, 0.12f, 0.70f)
-internal fun playerMiniLift(progress: Float, density: Float): Float =
-    -2f * density * window(progress, 0f, 0.48f)
-internal fun playerMiniApproach(progress: Float): Float =
-    1f
+// All stages sample the SAME anchored position. On close the order is
+// automatically reversed; there is no direction-dependent visual jump.
+internal const val PLAYER_MINI_FADE_END = 0.66f
+internal fun playerNavigationTuck(progress: Float): Float = window(progress, 0.005f, 0.29f)
+internal fun playerMiniDrawAlpha(progress: Float): Float =
+    1f - window(progress, 0.18f, PLAYER_MINI_FADE_END)
+internal fun playerPresentationOpacity(progress: Float): Float = window(progress, 0.015f, 0.40f)
+internal fun playerArtworkBackdropAlpha(progress: Float): Float = window(progress, 0.015f, 0.32f)
+internal fun playerContentOpacity(progress: Float): Float = window(progress, 0.15f, 0.79f)
 
-// Let the real page content become readable slightly earlier as the Mini recedes.
-// The contour still supplies the large size change; the small scale settle eases at both ends.
-// Keep the content close to its natural size; the CONTOUR supplies the large size change.
-// A 24% page scale made the artwork collapse into a detached, left-anchored vertical strip
-// on device. The real mini card owns the first/last frames, not a tiny copy of the full UI.
-internal fun playerPresentationOpacity(progress: Float): Float = window(progress, 0.025f, 0.65f)
-internal fun playerContentOpacity(progress: Float): Float = window(progress, 0.16f, 0.80f)
-// The real contour supplies the size transformation. The previous extra
-// 5% scale on revealed artwork looked like a second card snapping into place.
-// Keep a quiet 2.5% GPU settle, with no new layout or animation clock.
+/** A tiny release pulse, bounded by the source/destination overlap, never a bounce. */
+internal fun playerMiniRelease(progress: Float): Float {
+    val p = boundedProgress(progress)
+    return window(p, 0.015f, 0.15f) * (1f - window(p, 0.15f, 0.38f))
+}
+
+internal fun playerMiniLift(progress: Float, density: Float): Float =
+    -0.8f * density * playerMiniRelease(progress)
+internal fun playerMiniApproach(progress: Float): Float = 1f - 0.009f * playerMiniRelease(progress)
+internal fun playerMiniHeightScale(progress: Float): Float = 1f - 0.005f * playerMiniRelease(progress)
 internal fun playerPresentationScale(progress: Float): Float =
     0.99f + 0.01f * CapsuleMotion.smooth(boundedProgress(progress))
 
@@ -137,10 +147,7 @@ internal fun playerPresentationContentY(
  * than descending as an opaque fullscreen rectangle. It is reversible and monotonic,
  * and the same transform applies to a finger-driven transition or an interrupted spring.
  */
-internal fun playerFrameGeometryProgress(progress: Float): Float = boundedProgress(progress).let { p ->
-    // A gentle magnetic departure, with a continuous first derivative at both anchors.
-    p
-}
+internal fun playerFrameGeometryProgress(progress: Float): Float = boundedProgress(progress)
 
 internal fun playerPresentationBounds(
     progress: Float,
