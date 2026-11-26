@@ -215,6 +215,19 @@ class PlayerOpeningMotionTest {
         return android.graphics.Rect(left,top,right+1,bottom+1)
     }
 
+    @Test fun contourStartsAtRealMiniRadiusAndStaysRoundUntilFullscreen() {
+        assertEquals(14f, playerPageContour(0f, 14f, 1f).radius, 0f)
+        assertEquals(0f, playerPageContour(0f, 14f, 1f).bleed, 0f)
+        assertEquals(0f, playerPageContour(0.85f, 14f, 1f).bleed, 0f)
+        assertTrue(playerPageContour(0.85f, 14f, 1f).radius >= 24f)
+        assertTrue(playerPageContour(1f, 14f, 1f).bleed > 0f)
+        for (i in 1..99) {
+            val p = i / 100f
+            assertTrue("No blank handoff between Mini and destination",
+                playerMiniDrawAlpha(p) > 0f || playerPresentationOpacity(p) >= 0.99f)
+        }
+    }
+
     @Test fun closingGeometryCompressesTheActualWindowBeforeItsContentFades() {
         assertEquals(0f, playerFrameGeometryProgress(Float.NaN), 0f)
         assertEquals(0f, playerFrameGeometryProgress(0f), 0f)
