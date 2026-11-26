@@ -176,7 +176,7 @@ internal fun playerFrameGeometryProgress(progress: Float): Float {
     // Finish at the exact dock while the real Mini takes ownership. C1 join
     // to the physical trajectory at 0.24, no trailing rectangle at rest.
     val dockTransfer = playerPresentationOpacity(p)
-    return p * dockTransfer * dockTransfer
+    return p * dockTransfer
 }
 
 internal fun playerPresentationBounds(
