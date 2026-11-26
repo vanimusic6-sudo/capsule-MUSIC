@@ -633,9 +633,9 @@ fun BottomSheetPlayer(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            alpha = if (state.playerMotion && !state.classicPlayerPresentation) 1f else
-                                if (state.classicPlayerPresentation)
-                                    com.nikhil.yt.ui.component.playerClassicBackdropAlpha(state.visualProgress)
+                            // Both player windows own the opacity of the composited surface.
+                            // A second backdrop fade exposes a grey plate during the reveal.
+                            alpha = if (state.playerMotion) 1f
                                 else playerBackdropContentAlpha(state.visualProgress, state.contentHandoffPoint)
                         }
                         .background(playerSurfaceColor(useBlackBackground))
