@@ -102,36 +102,30 @@ class PlayerTransitionArchitectureTest {
         assertTrue(videoArtwork.contains("onClick = onArtworkClick"))
     }
 
-    @Test fun playerUsesOnlyDedicatedContainerAndTrackScopedSharedArtwork() {
+    @Test fun playerUsesOneLiveSceneWithoutSyntheticMaterialOrMovingArtwork() {
         val main = source("com/nikhil/yt/MainActivity.kt")
         val sheet = source("com/nikhil/yt/ui/component/BottomSheet.kt")
         val window = source("com/nikhil/yt/ui/component/PlayerWindow.kt")
-        val artwork = source("com/nikhil/yt/ui/component/PlayerArtworkMotion.kt")
         val mini = source("com/nikhil/yt/ui/player/CapsuleMiniPlayer.kt")
         val light = source("com/nikhil/yt/ui/player/CapsuleTrackArtworkHandoff.kt")
         val immersion = source("com/nikhil/yt/ui/player/CapsuleImmersiveContent.kt")
         assertTrue(main.contains("classicPlayerPresentation = false"))
         assertTrue(sheet.contains("if (state.playerMotion) {"))
-        assertFalse(sheet.contains("playerPageNeedsFirstFrame"))
-        assertTrue(window.contains("PlayerWindowShape(frame, contour.radius, 0f)"))
-        assertTrue(window.contains("artwork.draw(this, frame,"))
-        assertTrue(artwork.contains("activeMediaId == matchingId()"))
-        assertTrue(artwork.contains("activePainter = b.painter"))
-        assertTrue(artwork.contains("motion.endpointOpacity(endpoint, mini)"))
-        assertTrue(artwork.contains("capturedSource = dock.bounds"))
-        assertTrue(artwork.contains("it.viewport == host.size && it.collapsedBound == state.collapsedBound"))
-        assertTrue(artwork.contains("p >= 0.985f"))
-        assertTrue(artwork.contains("capturedDestination = bounds(b)"))
-        assertFalse(artwork.contains("AsyncImage("))
-        assertTrue(mini.contains(".playerArtworkEndpoint("))
-        assertTrue(light.contains(".playerArtworkEndpoint("))
+        assertTrue(window.contains("alpha = playerPresentationOpacity(p)"))
+        assertTrue(window.contains("playerSceneTravelDp(p).dp.toPx()"))
+        assertTrue(window.contains("val scale = playerPresentationScale(p)"))
+        assertTrue(window.contains("Box(Modifier.fillMaxSize(), content = backgroundContent)"))
+        assertTrue(window.contains("Box(Modifier.fillMaxSize(), content = content)"))
+        assertFalse(window.contains("PlayerWindowShape("))
+        assertFalse(window.contains("PlayerArtworkMotion("))
+        assertFalse(window.contains("drawWithCache"))
+        assertFalse(window.contains("Brush.horizontalGradient"))
+        assertFalse(window.contains("artwork.draw("))
+        assertFalse(mini.contains(".playerArtworkEndpoint("))
+        assertFalse(light.contains(".playerArtworkEndpoint("))
         assertFalse(immersion.contains(".playerArtworkEndpoint("))
-        assertTrue(window.contains("sharedArtwork && !atomicScene"))
-        assertTrue(window.contains("if (atomicScene) playerAtomicSceneAlpha(p)"))
-        assertTrue(artwork.contains("clipPath(frameClip)"))
-        assertTrue(mini.contains("transition?.compactMaterial"))
-        assertTrue(mini.contains("playerLayerAlpha(playerMiniMaterialAlpha(p), outer)"))
-        assertTrue(mini.contains("playerMiniBadgeAlpha(it.progress)"))
+        assertFalse(mini.contains("compactMaterial"))
+        assertFalse(mini.contains("playerMiniBadgeAlpha("))
     }
 
     @Test fun classicPlayerNeverShowsSecondGreyFullscreenCompactPlate() {
@@ -146,7 +140,7 @@ class PlayerTransitionArchitectureTest {
         )
         assertTrue(
             "Real Light backdrop enters before the new photo handoff",
-            player.contains("(if (state.classicPlayerPresentation) 0.015f else state.contentHandoffPoint)"),
+            player.contains("state.isAnimationRunning || state.compactOpenPress ||"),
         )
     }
 
