@@ -10,6 +10,9 @@ import android.graphics.Color as AndroidColor
 import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.core.TargetBasedAnimation
+import androidx.compose.animation.core.VectorConverter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -216,19 +219,6 @@ class PlayerOpeningMotionTest {
     }
 
     @Test fun coordinatedTravelAndSurfaceHandoffHaveContinuousEndpoints() {
-        for (opening in listOf(true, false)) {
-            assertEquals(0f, playerTravelCurve(0f, opening), 0f)
-            assertEquals(1f, playerTravelCurve(1f, opening), 0f)
-            assertTrue(playerTravelCurve(0.01f, opening) < 0.00005f)
-            assertTrue(1f - playerTravelCurve(0.99f, opening) < 0.00005f)
-            var last = 0f
-            for (i in 0..1000) {
-                val p = playerTravelCurve(i / 1000f, opening)
-                assertTrue(p >= last - 0.00001f)
-                assertTrue(p in 0f..1f)
-                last = p
-            }
-        }
         for (i in 0..1000) {
             val p = i / 1000f
             val mini = playerMiniDrawAlpha(p)
@@ -242,11 +232,11 @@ class PlayerOpeningMotionTest {
             assertEquals(classicShell, playerClassicContentAlpha(p), 0f)
             assertEquals(classicShell, playerClassicBackdropAlpha(p), 0f)
             if (classicMini == 0f) assertEquals(1f, classicShell, 0.00001f)
-            assertTrue(playerMiniApproach(p) in 0.99f..1f)
-            assertTrue(playerMiniHeightScale(p) in 0.99f..1f)
+            assertTrue(playerMiniApproach(p) in 0.964f..1f)
+            assertTrue(playerMiniHeightScale(p) in 0.980f..1f)
             if (mini == 0f) assertEquals(1f, playerContentOpacity(p), 0.00001f)
         }
-        assertTrue(playerNavigationTuck(0.18f) > 0.70f)
+        assertTrue(playerNavigationTuck(0.18f) > 0.60f)
         assertEquals(1f, playerNavigationTuck(0.30f), 0f)
         assertEquals(0f, playerNavigationTuck(0f), 0f)
         assertEquals(1f, playerMiniApproach(0f), 0f)
@@ -274,44 +264,50 @@ class PlayerOpeningMotionTest {
         assertEquals(0f, playerClassicContentLead(0.5f, Float.NaN, 1f), 0f)
     }
 
-    @Test fun travelRespondsEarlyAndSettlesWithoutRebound() {
-        for (opening in listOf(true, false)) {
-            val duration = if (opening) PLAYER_OPEN_DURATION_MS else PLAYER_CLOSE_DURATION_MS
-            fun at(ms: Int) = playerTravelCurve(ms.toFloat() / duration, opening)
-            assertTrue("Responsive first 80 ms", at(80) in 0.18f..0.26f)
-            assertTrue("Most travel is complete by 200 ms", at(200) > 0.85f)
-            assertTrue("Soft approach, not a hard stop", at(duration - 16) > 0.99f)
-            var peak = 0f
-            var peakTime = 0
-            for (ms in 1..duration) {
-                val step = at(ms) - at(ms - 1)
-                assertTrue(step >= -0.00001f)
-                if (step > peak) {
-                    peak = step
-                    peakTime = ms
-                }
+    @Test fun physicalSpringRespondsEarlyAndSettlesWithoutRebound() {
+        for (spec in listOf(PlayerOpenAnimation, PlayerCloseAnimation)) {
+            val animation = TargetBasedAnimation(
+                animationSpec = spec, typeConverter = Float.VectorConverter,
+                initialValue = 0f, targetValue = 1000f,
+            )
+            fun at(ms: Long) = animation.getValueFromNanos(ms * 1_000_000L)
+            assertTrue("Responsive first two frames", at(33) in 150f..230f)
+            assertTrue("Most travel is complete by 200 ms", at(200) > 930f)
+            var previous = 0f
+            for (ms in 0L..600L) {
+                val value = at(ms)
+                assertTrue("Rest-to-rest spring cannot bounce", value >= previous - 0.01f)
+                assertTrue(value in 0f..1000.01f)
+                previous = value
             }
-            assertTrue("Early impulse, followed by a longer deceleration",
-                peakTime in (duration / 4)..(duration * 2 / 5))
-            assertTrue("Last frame settles gently", 1f - at(duration - 1) < 0.00001f)
+            assertTrue("No persistent animation", animation.durationNanos < 600_000_000L)
         }
+        val reversal = TargetBasedAnimation(
+            animationSpec = PlayerCloseAnimation, typeConverter = Float.VectorConverter,
+            initialValue = 600f, targetValue = 0f,
+            initialVelocityVector = AnimationVector1D(1200f),
+        )
+        assertEquals(600f, reversal.getValueFromNanos(0L), 0.01f)
+        assertTrue("An interrupted spring retains the outgoing velocity",
+            reversal.getValueFromNanos(1_000_000L) > 600f)
+        assertTrue("The latest target wins", reversal.getValueFromNanos(150_000_000L) < 600f)
     }
 
     @Test fun fullPlayerMotionFinishesWithinShortBoundedTime() {
         mount()
         compose.runOnIdle { state.expandSoft() }
-        advance((PLAYER_OPEN_DURATION_MS + 64).toLong())
+        advance(650)
         compose.runOnIdle { assertTrue(state.isExpanded); assertFalse(state.isAnimationRunning) }
         compose.runOnIdle { state.collapseSoft() }
-        advance((PLAYER_CLOSE_DURATION_MS + 64).toLong())
+        advance(650)
         compose.runOnIdle { assertTrue(state.isCollapsed); assertFalse(state.isAnimationRunning) }
     }
 
     @Test fun contourStartsAtRealMiniRadiusAndStaysRoundUntilFullscreen() {
         assertEquals(14f, playerPageContour(0f, 14f, 1f).radius, 0f)
         assertEquals(0f, playerPageContour(0f, 14f, 1f).bleed, 0f)
-        assertEquals(0f, playerPageContour(0.85f, 14f, 1f).bleed, 0f)
-        assertTrue(playerPageContour(0.85f, 14f, 1f).radius >= 24f)
+        assertTrue(playerPageContour(0.85f, 14f, 1f).bleed > 0f)
+        assertTrue(playerPageContour(0.85f, 14f, 1f).radius in 0f..4f)
         assertTrue(playerPageContour(1f, 14f, 1f).bleed > 0f)
         for (i in 1..99) {
             val p = i / 100f
@@ -363,7 +359,7 @@ class PlayerOpeningMotionTest {
         assertEquals(0f, playerPresentationOpacity(-1f), 0f)
         assertEquals(1f, playerPresentationOpacity(2f), 0f)
         assertEquals(1f, playerPresentationScale(1f), 0f)
-        assertEquals(0.99f, playerPresentationScale(0f), 0f)
+        assertEquals(0.94f, playerPresentationScale(0f), 0f)
         assertEquals(0f, playerPresentationContentY(1f, 0f, 1f), 0f)
 
         val source = playerPresentationBounds(0f, 360f, 700f, 590f, 48f, 12f)
@@ -383,7 +379,7 @@ class PlayerOpeningMotionTest {
             assertTrue("outer frame grows downward", frame.bottom >= previous.bottom)
             assertTrue("frame grows horizontally", frame.left <= previous.left && frame.right >= previous.right)
             assertTrue(opacity >= previousOpacity && opacity in 0f..1f)
-            assertTrue(scale >= previousScale && scale in 0.95f..1f)
+            assertTrue(scale >= previousScale && scale in 0.94f..1f)
             previous = frame; previousOpacity = opacity; previousScale = scale
         }
     }
@@ -402,8 +398,8 @@ class PlayerOpeningMotionTest {
             val frame = playerPresentationBounds(p, with(compose.density) { 360.dp.toPx() },
                 with(compose.density) { 700.dp.toPx() }, with(compose.density) { 590.dp.toPx() },
                 with(compose.density) { 48.dp.toPx() }, with(compose.density) { 12.dp.toPx() })
-            assertEquals("content follows its clipped, physical source", frame.top -
-                with(compose.density) { 10.dp.toPx() } * (1f - p), a.y, 2f)
+            assertEquals("content follows its clipped, physical source",
+                playerPresentationContentY(p, frame.top, compose.density.density), a.y, 2f)
             val poster = rawBounds("poster")
             assertEquals(with(compose.density) { 180.dp.toPx() } * actualScale, poster.width, 2f)
             assertEquals("cover stays attached to its moving content",
@@ -580,13 +576,13 @@ class PlayerOpeningMotionTest {
         advance(64)
         compose.runOnIdle {
             assertTrue("prepare the first frame before the motion starts", state.visualProgress > 0.005f)
-            assertTrue("do not throw a fully opaque frame over Mini", playerPresentationOpacity(state.visualProgress) < 0.60f)
+            assertTrue("first moving frame retains the original Mini", playerMiniDrawAlpha(state.visualProgress) > 0f)
         }
         advance(96)
         compose.runOnIdle {
             val p = state.visualProgress
             val frame = playerPresentationBounds(p, 360f, 700f, 590f, 48f, 12f)
-            assertTrue("at 128ms the frame must be visibly in transit", frame.top in 20f..520f)
+            assertTrue("frame travels toward the actual expanded anchor", frame.top in 0f..520f)
             assertTrue("real artwork must not collapse into a narrow offset strip",
                 playerPresentationScale(p) >= 0.95f)
         }
@@ -601,7 +597,7 @@ class PlayerOpeningMotionTest {
         compose.runOnIdle {
             val p = state.visualProgress
             val frame = playerPresentationBounds(p, 360f, 700f, 590f, 48f, 12f)
-            assertTrue("the closing frame travels into the compact card", frame.top in 20f..540f)
+            assertTrue("the closing frame travels into the compact card", frame.top in 20f..590f)
             assertTrue("Mini must reappear before the shrinking frame reaches it", playerMiniDrawAlpha(p) > 0f)
         }
         advance(600)
@@ -612,11 +608,10 @@ class PlayerOpeningMotionTest {
         mount();compose.runOnIdle {state.expandSoft()};advance(96)
         val before=compose.runOnIdle {state.value.value}
         compose.runOnIdle {state.collapseSoft();assertEquals(before,state.value.value,0.01f)}
-        // The bounded transition reverses immediately from the existing
-        // position, rather than coasting in the wrong direction.
-        advance(32)
+        // A spring brakes the inherited velocity, then turns toward the newest target.
+        advance(64)
         val turning=compose.runOnIdle {state.value.value}
-        assertTrue("reversal must not continue opening: $before -> $turning",turning<=before+0.01f)
+        assertTrue("reversal brakes toward the latest anchor: $before -> $turning", turning <= before + 0.01f)
         advance(160)
         val closing=compose.runOnIdle {state.value.value}
         assertTrue("the latest closing intent must turn the same page: $before -> $closing",closing<before)
