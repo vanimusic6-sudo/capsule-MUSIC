@@ -28,15 +28,17 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import com.nikhil.yt.ui.motion.CapsuleMotion
 
-// A finite minimum-jerk trajectory, biased gently toward earlier travel.
+// A finite, minimum-jerk-inspired trajectory with an early physical impulse.
 // Position, speed and acceleration all join continuously at both rest anchors.
 // No separate spring tail or rebound is added to the actual sheet.
-internal const val PLAYER_OPEN_DURATION_MS = 380
-internal const val PLAYER_CLOSE_DURATION_MS = 345
+internal const val PLAYER_OPEN_DURATION_MS = 335
+internal const val PLAYER_CLOSE_DURATION_MS = 300
 
 internal fun playerTravelCurve(fraction: Float, opening: Boolean): Float {
     val t = if (fraction.isFinite()) fraction.coerceIn(0f, 1f) else 0f
-    val bias = if (opening) 0.28f else 0.19f
+    // Front-load the impulse, then let the velocity decay over the remaining travel.
+    // The quintic envelope still has zero velocity and acceleration at rest.
+    val bias = if (opening) 0.49f else 0.40f
     return CapsuleMotion.smooth(t + bias * t * (1f - t))
 }
 
@@ -110,7 +112,7 @@ internal fun playerSceneShouldInterceptTouch(
 // All stages sample the SAME anchored position. On close the order is
 // automatically reversed; there is no direction-dependent visual jump.
 internal const val PLAYER_MINI_FADE_END = 0.66f
-internal fun playerNavigationTuck(progress: Float): Float = window(progress, 0.005f, 0.29f)
+internal fun playerNavigationTuck(progress: Float): Float = window(progress, 0.005f, 0.27f)
 internal fun playerMiniDrawAlpha(progress: Float): Float =
     1f - window(progress, 0.18f, PLAYER_MINI_FADE_END)
 internal fun playerPresentationOpacity(progress: Float): Float = window(progress, 0.015f, 0.40f)
