@@ -29,7 +29,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import com.nikhil.yt.ui.component.playerArtworkEndpoint
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
@@ -1013,9 +1012,7 @@ internal fun CapsuleImmersiveContent(
                                 painter = preparedFrame.painter,
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize().playerArtworkEndpoint(
-                                    mediaMetadata.id, preparedFrame.painter, mini = false, radius = 0.dp,
-                                ).graphicsLayer(
+                                modifier = Modifier.fillMaxSize().graphicsLayer(
                                     scaleX = if (preparedFrame.landscape) 1.06f else 1f,
                                     scaleY = if (preparedFrame.landscape) 1.06f else 1f,
                                 ),
