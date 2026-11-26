@@ -57,6 +57,7 @@ import com.nikhil.yt.ui.component.LocalPlayerArtworkMotion
 import com.nikhil.yt.ui.component.playerMiniMaterialAlpha
 import com.nikhil.yt.ui.component.playerMiniBadgeAlpha
 import com.nikhil.yt.ui.component.playerMiniDrawAlpha
+import com.nikhil.yt.ui.component.playerLayerAlpha
 import com.nikhil.yt.ui.component.playerArtworkEndpoint
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
@@ -739,7 +740,7 @@ internal fun MiniPlayerSurface(
                 alpha = transition?.let {
                     val p = it.progress
                     val outer = playerMiniDrawAlpha(p)
-                    if (outer <= 0.0001f) 0f else (playerMiniMaterialAlpha(p) / outer).coerceIn(0f, 1f)
+                    playerLayerAlpha(playerMiniMaterialAlpha(p), outer)
                 } ?: 1f
             }
         if (style == MiniPlayerBackgroundStyle.GLASS) {
@@ -942,7 +943,7 @@ private fun CapsuleMiniPlayButton(
                         .fillMaxSize()
                         .clip(CircleShape)
                         .playerArtworkEndpoint(mediaMetadata?.id, decodedMini, mini = true,
-                            radius = if (standardStyle) 20.dp else 22.dp),
+                            radius = if (standardStyle) 20.dp else 22.dp, parentOwnsOpacity = true),
             )
 
             if (
