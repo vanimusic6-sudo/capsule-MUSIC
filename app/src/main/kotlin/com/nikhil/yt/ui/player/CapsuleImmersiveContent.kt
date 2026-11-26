@@ -239,12 +239,10 @@ internal fun ImmersiveAudioScene(
                             y to Color.White.copy(alpha = immersivePhotoFeatherAlpha(y))
                         },
                     )
-                    val stageScrim = Brush.verticalGradient(
-                        0.58f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.12f),
-                    )
+                    // The diffuse backdrop already owns the luminance ramp.
+                    // Do not add a second darkening ramp to the fading photo.
                     onDrawWithContent {
                         drawContent()
-                        drawRect(brush = stageScrim)
                         drawRect(brush = fadeMask, blendMode = BlendMode.DstIn)
                     }
                 },
@@ -863,7 +861,7 @@ internal fun CapsuleImmersiveContent(
         // had TWO independent render coroutines and a readiness callback:
         // one often won by a frame and the other faded in as a visible wave.
         val paintKey = remember(frame?.key, coverFraction) {
-            "image-original-direction-v7|${frame?.key}|$coverFraction"
+            "image-original-direction-v8|${frame?.key}|$coverFraction"
         }
         // This texture is keyed to the currently displayed frame. No outgoing
         // bitmap is retained, so there is no cross-song GPU layer to draw.
