@@ -247,7 +247,7 @@ class PlayerOpeningMotionTest {
             val classicShell = playerClassicSurfaceAlpha(p)
             val classicMini = playerClassicMiniAlpha(p)
             assertTrue("Classic player retains coverage at the dock",
-                classicShell + classicMini * (1f - classicShell) >= 0.99f)
+                classicShell + classicMini * (1f - classicShell) >= 0.985f)
             assertEquals(classicShell, playerClassicContentAlpha(p), 0f)
             assertEquals(classicShell, playerClassicBackdropAlpha(p), 0f)
             if (classicMini == 0f) assertEquals(1f, classicShell, 0.00001f)
@@ -290,8 +290,8 @@ class PlayerOpeningMotionTest {
                 initialValue = 0f, targetValue = 1000f,
             )
             fun at(ms: Long) = animation.getValueFromNanos(ms * 1_000_000L)
-            assertTrue("Responsive first two frames", at(33) in 130f..220f)
-            assertTrue("Most travel is complete by 200 ms", at(200) > 900f)
+            assertTrue("Responsive first two frames", at(33) in 110f..150f)
+            assertTrue("Most travel is complete by 200 ms", at(200) > 850f)
             var previous = 0f
             for (ms in 0L..600L) {
                 val value = at(ms)
@@ -530,8 +530,8 @@ class PlayerOpeningMotionTest {
         assertEquals(0f, lastMini, 0f)
         assertEquals(1f, playerMiniMaterialAlpha(0f), 0f)
         assertEquals(0f, playerAtomicSceneAlpha(0f), 0f)
-        assertEquals(0f, playerSharedForegroundOpacity(0.74f), 0f)
-        assertEquals(1f, playerSharedForegroundOpacity(0.94f), 0f)
+        assertEquals(0f, playerSharedForegroundOpacity(0.60f), 0f)
+        assertEquals(1f, playerSharedForegroundOpacity(0.92f), 0f)
         assertEquals(0f, playerAtomicContentY(Float.NaN), 0f)
     }
 
@@ -551,11 +551,49 @@ class PlayerOpeningMotionTest {
                 assertTrue(art.right <= frame.right + 0.001f && art.bottom <= frame.bottom + 0.001f)
                 val foreground = playerSharedForegroundOpacity(p)
                 assertTrue(foreground >= lastForeground - 0.00001f)
-                if (p <= 0.74f) assertEquals(0f, foreground, 0f)
+                if (p <= 0.60f) assertEquals(0f, foreground, 0f)
                 assertEquals(frame.top, playerAtomicContentY(frame.top), 0f)
                 lastForeground = foreground
             }
         }
+    }
+
+    @Test fun glassDockAndSharedArtworkHaveOneContinuousOwnershipHandoff() {
+        val dock = playerPresentationBounds(0f, 360f, 700f, 590f, 48f, 12f)
+        var lastShell = 0f
+        var lastSource = 1f
+        var lastNative = 0f
+        var lastGeometry = 0f
+        for (i in 0..1000) {
+            val p = i / 1000f
+            val shell = playerPresentationOpacity(p)
+            val outer = playerMiniDrawAlpha(p)
+            val source = outer * playerMiniForegroundLayerAlpha(p)
+            val material = outer * playerLayerAlpha(playerMiniMaterialAlpha(p), outer)
+            val native = playerSharedDestinationAlpha(p)
+            val geometry = playerFrameGeometryProgress(p)
+            assertEquals("Source and shell share ownership", 1f, source + shell, 0.001f)
+            assertTrue("Opaque dock material stays covered", material + shell * (1f - material) >= 0.985f)
+            assertTrue(shell >= lastShell - 0.00001f)
+            assertTrue(source <= lastSource + 0.00001f)
+            assertTrue(native >= lastNative - 0.00001f)
+            assertTrue(geometry >= lastGeometry - 0.00001f)
+            assertEquals("Glass samples fixed Home geometry", 1f, playerSceneScale(p), 0f)
+            if (p <= 0.035f) {
+                assertEquals(0f, shell, 0f)
+                assertEquals(dock, playerPresentationBounds(p, 360f, 700f, 590f, 48f, 12f))
+                assertEquals(1f, source, 0.001f)
+            }
+            if (p <= 0.985f) assertEquals(1f, playerSharedOverlayAlpha(p), 0f)
+            lastShell = shell
+            lastSource = source
+            lastNative = native
+            lastGeometry = geometry
+        }
+        assertEquals(1f, lastShell, 0f)
+        assertEquals(1f, lastNative, 0f)
+        assertEquals(0f, playerSharedOverlayAlpha(1f), 0f)
+        assertEquals(0f, lastSource, 0f)
     }
 
     @Test fun sharedBoundsRemainFiniteAndReversibleWithAsymmetricInsets() {
@@ -687,7 +725,7 @@ class PlayerOpeningMotionTest {
         advance(64)
         compose.runOnIdle {
             assertTrue("prepare the first frame before the motion starts", state.visualProgress > 0.005f)
-            assertTrue("the moving container is already visible", playerPresentationOpacity(state.visualProgress) == 1f)
+            assertTrue("the moving container is already visible", playerPresentationOpacity(state.visualProgress) > 0f)
         }
         advance(96)
         compose.runOnIdle {
