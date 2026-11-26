@@ -549,7 +549,7 @@ class PlayerOpeningMotionTest {
             assertTrue("closing begins from the existing page rather than fading it out",
                 playerPresentationOpacity(state.visualProgress) > 0.90f)
         }
-        advance(96)
+        advance(144)
         compose.runOnIdle {
             val p = state.visualProgress
             val frame = playerPresentationBounds(p, 360f, 700f, 590f, 48f, 12f)
