@@ -217,19 +217,19 @@ internal fun playerHandoffSurfaceAlpha(progress: Float): Float =
  * early, the original Mini yields late, and the optional solid backing catches up quietly.
  */
 internal fun playerClassicSurfaceAlpha(progress: Float): Float =
-    transitionWindow(progress, 0.12f, 0.64f)
+    transitionWindow(progress, 0.16f, 0.68f)
 
 /** The same real Mini stays visible until the player has acquired visible artwork. */
 internal fun playerClassicMiniAlpha(progress: Float): Float =
-    1f - transitionWindow(progress, 0.07f, 0.64f)
+    1f - transitionWindow(progress, 0.10f, 0.70f)
 
 /** Full artwork is already in view while Mini still has its original silhouette. */
 internal fun playerClassicContentAlpha(progress: Float): Float =
-    transitionWindow(progress, 0.045f, 0.63f)
+    transitionWindow(progress, 0.035f, 0.56f)
 
 /** Colored Light background precedes text/control reveal; Immersion owns its own photograph. */
 internal fun playerClassicBackdropAlpha(progress: Float): Float =
-    transitionWindow(progress, 0.035f, 0.51f)
+    transitionWindow(progress, 0.025f, 0.46f)
 
 /** Mount the player invisibly before any opacity becomes nonzero; preserve its existing state. */
 internal const val PlayerClassicContentMountThreshold = 0.015f
@@ -579,9 +579,9 @@ private val BottomSheetSoftAnimationSpecPx: AnimationSpec<Float> =
 // Lower initial acceleration, soft near-critical settling, no visible bounce. Both travel the
 // exact same physical anchors; Back starts from the current offset and velocity.
 internal val PlayerClassicOpenAnimation: AnimationSpec<Float> =
-    spring(dampingRatio = 1f, stiffness = 132f, visibilityThreshold = 0.75f)
+    spring(dampingRatio = 1f, stiffness = 110f, visibilityThreshold = 0.75f)
 internal val PlayerClassicCloseAnimation: AnimationSpec<Float> =
-    spring(dampingRatio = 1f, stiffness = 148f, visibilityThreshold = 0.75f)
+    spring(dampingRatio = 1f, stiffness = 128f, visibilityThreshold = 0.75f)
 
 private fun SheetAnchor.legacyId(): Int =
     when (this) {
