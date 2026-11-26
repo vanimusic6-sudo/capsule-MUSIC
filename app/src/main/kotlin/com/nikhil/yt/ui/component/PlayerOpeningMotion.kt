@@ -105,10 +105,10 @@ internal fun playerSceneShouldInterceptTouch(
 
 // All stages sample the SAME anchored position. On close the order is
 // automatically reversed; there is no direction-dependent visual jump.
-internal const val PLAYER_MINI_FADE_END = 0.38f
+internal const val PLAYER_MINI_FADE_END = 0.25f
 internal fun playerNavigationTuck(progress: Float): Float = playerSoftPhase(progress, 0f, 0.32f)
 internal fun playerMiniDrawAlpha(progress: Float): Float =
-    1f - playerSoftPhase(progress, 0.035f, PLAYER_MINI_FADE_END)
+    1f - playerSoftPhase(progress, 0.02f, PLAYER_MINI_FADE_END)
 internal fun playerPresentationOpacity(progress: Float): Float = if (boundedProgress(progress) > 0f) 1f else 0f
 internal fun playerArtworkBackdropAlpha(progress: Float): Float = 1f
 // The shell is opaque; only incoming foreground fades in. The shared cover
@@ -120,10 +120,18 @@ internal fun playerSoftPhase(progress: Float, start: Float, end: Float): Float {
 
 // Opacity phases have soft endpoints, but geometry follows the physical progress.
 // The compact material turns into the real destination, not a second moving card.
-internal fun playerMaterialReveal(progress: Float): Float = playerSoftPhase(progress, 0.025f, 0.34f)
-internal fun playerMiniMaterialAlpha(progress: Float): Float = 1f - playerSoftPhase(progress, 0.015f, 0.20f)
-internal fun playerAtomicSceneAlpha(progress: Float): Float = playerSoftPhase(progress, 0.08f, 0.60f)
-internal fun playerContentOpacity(progress: Float): Float = playerSoftPhase(progress, 0.12f, 0.56f)
+internal fun playerMaterialReveal(progress: Float): Float = playerSoftPhase(progress, 0.08f, 0.63f)
+internal fun playerMiniMaterialAlpha(progress: Float): Float = 1f - playerSoftPhase(progress, 0f, 0.12f)
+internal fun playerAtomicSceneAlpha(progress: Float): Float = playerSoftPhase(progress, 0.12f, 0.68f)
+internal fun playerContentOpacity(progress: Float): Float = playerSoftPhase(progress, 0.28f, 0.74f)
+// Shared artwork is allowed to pass across the destination title/transport area.
+// Keep that foreground out of its path until the cover is almost at its slot.
+internal fun playerSharedForegroundOpacity(progress: Float): Float = playerSoftPhase(progress, 0.74f, 0.94f)
+internal fun playerArtworkTravel(progress: Float, start: Float): Float {
+    val t = playerPhase(progress, start, 1f)
+    return t + 0.18f * t * (1f - t)
+}
+internal fun playerAtomicContentY(frameTop: Float): Float = if (frameTop.isFinite()) frameTop.coerceAtLeast(0f) else 0f
 
 // Reuse the visible release pulse instead of a subpixel vibration.
 internal fun playerMiniLift(progress: Float, density: Float): Float = 0f
@@ -234,8 +242,8 @@ internal data class PlayerFrameContour(
 /** The mini's round corners follow the growing frame, then disappear outside the viewport. */
 internal fun playerPageContour(progress: Float, miniRadius: Float, density: Float): PlayerFrameContour {
     val p = boundedProgress(progress)
-    val radius = (miniRadius + (maxOf(miniRadius, 22f * density) - miniRadius) * playerSoftPhase(p, 0f, 0.30f)) *
-        (1f - playerSoftPhase(p, 0.78f, 1f))
+    val radius = (miniRadius + (maxOf(miniRadius, 22f * density) - miniRadius) * playerSoftPhase(p, 0f, 0.40f)) *
+        (1f - playerSoftPhase(p, 0.68f, 1f))
     return PlayerFrameContour(
         radius = radius.coerceAtLeast(0f),
         // At ~0.293r of diagonal overscan the circular arc is completely outside a square
