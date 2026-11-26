@@ -19,7 +19,7 @@ class PlayerTransitionArchitectureTest {
     @Test fun allMenusKeepNativeSwipesButAvoidPlatformPredictiveBackScaling() {
         val menu = source("com/nikhil/yt/ui/component/BottomSheetMenu.kt")
         assertTrue(menu.contains("ModalBottomSheet("))
-        assertTrue(menu.contains("skipPartiallyExpanded = false"))
+        assertTrue(menu.contains("skipPartiallyExpanded = compactLyrics"))
         assertTrue(menu.contains("PredictiveBackHandler("))
         assertTrue(menu.contains("shouldDismissOnBackPress = false"))
         assertTrue(menu.contains("PredictiveBackHandler(enabled = !state.dismissRequested)"))
@@ -28,14 +28,14 @@ class PlayerTransitionArchitectureTest {
         assertTrue(menu.contains("state.completeAnimatedDismiss(generation)"))
         assertTrue(menu.contains("observedGeneration != generation"))
         assertTrue(menu.contains("progress.collect { }"))
-        // The normal More variants must stay native sheets. Fullscreen
-        // Lyrics gets one bounded Dialog because its former compact sheet
-        // displayed only the scrim on some OEM builds.
-        val nativeMenu = menu.substringBefore("private fun CompactLyricsMoreDialog(")
-        val lyricsDialog = menu.substringAfter("private fun CompactLyricsMoreDialog(")
-        assertFalse(nativeMenu.contains("\n    Dialog("))
-        assertTrue(lyricsDialog.contains("\n    Dialog("))
-        assertTrue(lyricsDialog.contains("state.content(this@Column)"))
+        // Every More menu shares the native transition. Lyrics has only
+        // hidden/expanded anchors to avoid the former invisible partial sheet.
+        assertTrue(menu.contains("val compactLyrics = state.presentation == MenuPresentation.LYRICS_COMPACT"))
+        assertTrue(menu.contains("skipPartiallyExpanded = compactLyrics"))
+        assertTrue(menu.contains("if (compactLyrics) Modifier.heightIn("))
+        assertFalse(menu.contains("private fun CompactLyricsMoreDialog("))
+        assertFalse(menu.contains("\n    Dialog("))
+        assertTrue(menu.contains("state.content(this)"))
         assertFalse(menu.contains("rememberDraggableState"))
     }
 
